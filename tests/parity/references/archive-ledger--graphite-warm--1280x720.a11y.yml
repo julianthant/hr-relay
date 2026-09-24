@@ -30,6 +30,7 @@
   - button "Refresh"
   - region "Saved reports":
     - heading "Saved reports" [level=2]
+    - text: 1 shown
     - form "Filter saved reports":
       - text: Workflow
       - textbox "Workflow"
@@ -46,14 +47,7 @@
         - option "discarded"
         - option "interrupted"
         - option "superseded"
-      - text: Completed from (UTC)
-      - textbox "Completed from (UTC)"
-      - text: Completed through (UTC)
-      - textbox "Completed through (UTC)"
-      - text: Captured from (UTC)
-      - textbox "Captured from (UTC)"
-      - text: Captured through (UTC)
-      - textbox "Captured through (UTC)"
+      - group: Date filters
       - button "Clear filters"
     - table "Saved reports":
       - rowgroup:

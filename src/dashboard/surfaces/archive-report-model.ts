@@ -47,6 +47,17 @@ export function savedOutcomeLabel(outcome: SavedArchiveReportWire["outcome"]): s
   return outcome.charAt(0).toUpperCase() + outcome.slice(1);
 }
 
+export function savedDateFilterSummary(query: SavedArchiveQuery): string {
+  return ([
+    ["from", "Completed from"],
+    ["to", "Completed through"],
+    ["capturedFrom", "Captured from"],
+    ["capturedTo", "Captured through"],
+  ] as const)
+    .flatMap(([key, label]) => query[key] === undefined ? [] : [`${label} ${query[key].slice(0, 10)}`])
+    .join(", ");
+}
+
 /** Filter changes discard the server cursor while retaining the other filters. */
 export function savedFilterQuery(query: SavedArchiveQuery, key: "workflow" | "title" | "descriptorVersion" | "outcome" | "from" | "to" | "capturedFrom" | "capturedTo", value: string): SavedArchiveQuery {
   const next = { ...query };

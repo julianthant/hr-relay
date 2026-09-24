@@ -52,6 +52,12 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
     await expect(page.getByText("synthetic-visible-credential", { exact: true })).toBeVisible();
   } else if (scene.id === "readonly") {
     await expect(page.locator("input,textarea,select")).toHaveCount(0);
+    await expect(page.getByText("Source: active process configuration. Read-only here; changes apply after restart.", { exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Production routes", exact: true })).toBeVisible();
+    await expect(page.getByText("Runtime state folder", { exact: true })).toBeVisible();
+    await expect(page.getByText("Login URL", { exact: true })).toBeVisible();
+    const identity = page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator("details > summary");
+    await identity.focus(); await page.keyboard.press("Enter");
     await expect(page.getByText("paths.stateRoot", { exact: true })).toBeVisible();
   } else if (scene.id === "annual") {
     await expect(page.locator('[data-settings-path^="annualDates.FY2027."]')).toHaveCount(3);
@@ -65,7 +71,7 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
     await page.getByRole("button", { name: "Save 1", exact: true }).click();
     await expect(page.getByText(/Current values are refreshed beside your retained draft/u)).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Operator label" })).toHaveValue("Retained operator draft");
-    await expect(page.getByText("Competing operator", { exact: true })).toHaveCount(2);
+    await expect(page.getByText("Competing operator", { exact: true })).toHaveCount(1);
     expect(await page.locator("body").innerText()).not.toContain("synthetic diagnostic");
   }
   expect(errors).toEqual([]);
@@ -171,7 +177,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     await expect(page.getByText("Missing", { exact: true })).toHaveCount(5);
     await expect(page.locator("input,select,textarea")).toHaveCount(0);
     await page.getByRole("link", { name: "Observed host", exact: true }).click();
-    await expect(page.getByText("Primary display: 2560 × 1440", { exact: true })).toBeVisible();
+    await expect(page.getByText("Primary display 2560 × 1440", { exact: true })).toBeVisible();
     await assertThemeApplied(page, theme); expect(errors).toEqual([]);
     await attachTree(page, `settings-catalog-real-${theme.name}.a11y.yml`);
   } finally { await server.stop(); }

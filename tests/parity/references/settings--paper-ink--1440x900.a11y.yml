@@ -64,53 +64,38 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "General" [level=2]
-    - text: Ordinary settings · SQLite Revision 1 Operator label
-    - textbox "Operator label": Local operator
-    - text: Default Valid · Ordinary · Editable · New runs actor.label
-    - button "Clear Operator label" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: Local operator
-    - term: Default
-    - definition: Local operator
-    - text: browser · headless
-    - combobox "browser · headless":
-      - option "Enabled" [selected]
-      - option "Disabled"
-    - text: Default Valid · Ordinary · Editable · New runs browser.headless
-    - button "Clear browser · headless" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "true"
-    - term: Default
-    - definition: "true"
-    - text: features · debug Screenshots
-    - combobox "features · debug Screenshots":
-      - option "Enabled"
-      - option "Disabled" [selected]
-    - text: Default Valid · Ordinary · Editable · New runs features.debugScreenshots
-    - button "Clear features · debug Screenshots" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "false"
-    - term: Default
-    - definition: "false"
-    - text: features · duo Web Authn
-    - combobox "features · duo Web Authn":
-      - option "Enabled" [selected]
-      - option "Disabled"
-    - text: Default Valid · Ordinary · Editable · New runs features.duoWebAuthn
-    - button "Clear features · duo Web Authn" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "true"
-    - term: Default
-    - definition: "true"
-    - text: 0 unsaved changes
+    - text: Revision 1
+    - paragraph: Saved values apply to new runs.
+    - region "Operator":
+      - heading "Operator" [level=3]
+      - separator
+      - text: Operator label
+      - textbox "Operator label": Local operator
+      - text: Using default
+      - button "Clear Operator label" [disabled]: Clear
+      - group: Setting identity
+      - text: browser · headless
+      - combobox "browser · headless":
+        - option "Enabled" [selected]
+        - option "Disabled"
+      - text: Using default
+      - button "Clear browser · headless" [disabled]: Clear
+      - group: Setting identity
+      - text: features · debug Screenshots
+      - combobox "features · debug Screenshots":
+        - option "Enabled"
+        - option "Disabled" [selected]
+      - text: Using default
+      - button "Clear features · debug Screenshots" [disabled]: Clear
+      - group: Setting identity
+      - text: features · duo Web Authn
+      - combobox "features · duo Web Authn":
+        - option "Enabled" [selected]
+        - option "Disabled"
+      - text: Using default
+      - button "Clear features · duo Web Authn" [disabled]: Clear
+      - group: Setting identity
+    - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]
 - region "Session Panel":

@@ -14,7 +14,7 @@ RotateCw,
 UsersRound,
 X
 } from "lucide-react";
-import { useCallback,useEffect,useMemo,useState } from "react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 import type { CommandSettlement } from "../app/command-result.js";
 import { type SubscriptionState } from "../client/subscription.js";
 import { Banner,Button,Dialog,DialogBody,DialogContent,DialogFooter,Field,IconButton,MetaLine,Popover,PopoverContent,PopoverTrigger,Select,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
@@ -350,10 +350,10 @@ function WorkerCard({
             workerId={String(card.workerId)}
             facts={[{ label: "Workflow", value: workflowLabel }]}
           />
-          <span className={cn(dsText.caps, "shrink-0 text-[color:var(--ds-danger)]")}>{tone.label}</span>
+          <span className={cn("inline-flex h-[var(--ds-h-xs)] shrink-0 items-center border px-[var(--ds-space-tight)]", dsRadius.sm, dsText.meta, "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)] text-[color:var(--ds-danger)]")}>{tone.label}</span>
         </div>
-        <p className={cn(dsText.meta, "text-[color:var(--ds-danger)] opacity-85")}>
-          {card.stopReason === undefined ? "" : WORKER_STOP_REASON_LABEL[card.stopReason]}
+        <p className={cn(dsText.body, "text-[color:var(--ds-danger)]")}>
+          {card.stopReason === undefined ? "Failure reason unavailable" : WORKER_STOP_REASON_LABEL[card.stopReason]}
         </p>
       </article>
     );
@@ -689,6 +689,7 @@ export function PoolOutcomeNotice({ outcome }: { outcome: PoolControlOutcome }) 
 function AddWorkersDialog({
   open,
   onOpenChange,
+  returnFocusRef,
   workflows,
   workerCards,
   workerPools,
@@ -698,6 +699,7 @@ function AddWorkersDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  returnFocusRef: React.RefObject<HTMLButtonElement | null>;
   workflows: readonly WorkflowBootstrapPrimitive[];
   workerCards: readonly WorkerCardWire[];
   workerPools: readonly WorkerPoolWire[];
@@ -735,7 +737,7 @@ function AddWorkersDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent size="md" title="Add workers" description="Start parallel executors for one workflow">
+      <DialogContent size="md" title="Add workers" description="Start parallel executors for one workflow" onCloseAutoFocus={(event) => { event.preventDefault(); returnFocusRef.current?.focus(); }}>
         <DialogBody>
           {workflow === undefined || group === undefined ? (
             <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
@@ -795,16 +797,19 @@ function AddWorkersDialog({
                 day projection, so no control here is withheld on it; the
                 server's refusal by name stays the authority.
               */}
-              <MetaLine
-                items={[
-                  group.facts.state === "declared"
-                    ? `${String(group.facts.desiredWorkers)} declared`
-                    : "no pool declaration",
-                  `${String(group.facts.activeWorkers)} active`,
-                  `pool version ${String(group.expectedVersion)}`,
-                  `cap ${String(SESSION_POOL_MAX_WORKERS)}`,
-                ]}
-              />
+              <dl aria-label="Worker pool" className="grid grid-cols-2 gap-x-[var(--ds-space-loose)] px-[var(--ds-space-tight)] py-[var(--ds-space-tight)]">
+                {[
+                  { label: "Declared workers", value: group.facts.state === "declared" ? String(group.facts.desiredWorkers) : "No pool declaration" },
+                  { label: "Active workers", value: String(group.facts.activeWorkers) },
+                  { label: "Pool version", value: String(group.expectedVersion) },
+                  { label: "Maximum workers", value: String(SESSION_POOL_MAX_WORKERS) },
+                ].map((fact) => (
+                  <div key={fact.label} className={cn("flex min-w-0 flex-col gap-[var(--ds-space-hair)] border-b py-[var(--ds-space-tight)]", dsBorder.subtle)}>
+                    <dt className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>{fact.label}</dt>
+                    <dd className={cn(dsText.body, dsText.nums, "break-words font-medium text-[color:var(--ds-fg)]")}>{fact.value}</dd>
+                  </div>
+                ))}
+              </dl>
 
               {intent !== undefined && intent.kind === "refused" && (
                 <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{intent.reason}</span>
@@ -970,6 +975,7 @@ export function SessionPanel({
   ) => Promise<CommandSettlement>;
 }) {
   const [localOpen, setLocalOpen] = useState(false);
+  const addWorkersTriggerRef = useRef<HTMLButtonElement>(null);
   const open = controlledOpen ?? localOpen;
   const setOpen = onOpenChange ?? setLocalOpen;
   const [addOpen, setAddOpen] = useState(false);
@@ -1164,6 +1170,7 @@ export function SessionPanel({
               per-member answer; this is only its door (the demo's `+`,
               `DemoShell.tsx:1903-1910`, D305). */}
           <IconButton
+            ref={addWorkersTriggerRef}
             size="sm"
             label="Add workers"
             title="Start parallel executors — pick a workflow and how many"
@@ -1244,6 +1251,7 @@ export function SessionPanel({
       <AddWorkersDialog
         open={addOpen}
         onOpenChange={setAddOpen}
+        returnFocusRef={addWorkersTriggerRef}
         workflows={workflows}
         workerCards={workerCards}
         workerPools={workerPools}

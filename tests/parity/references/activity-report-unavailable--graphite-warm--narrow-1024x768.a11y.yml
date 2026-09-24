@@ -25,16 +25,26 @@
 - main:
   - region "Activity report":
     - text: Activity report
-    - group "Report span":
+    - group "Activity report range":
       - text: From
-      - textbox "From": 2026-07-02
+      - group "From":
+        - spinbutton "month, From": "7"
+        - spinbutton "day, From": "2"
+        - spinbutton "year, From": "2026"
+        - button "Choose from date From"
       - text: To
-      - textbox "To": 2026-08-03
-    - heading "Automation activity" [level=2]
+      - group "To":
+        - spinbutton "month, To": "8"
+        - spinbutton "day, To": "3"
+        - spinbutton "year, To": "2026"
+        - button "Choose to date To"
+    - heading "Activity results" [level=2]
     - text: Thu, Jul 2 – Mon, Aug 3 12 runs · distinct people unavailable
     - button "How it is counted"
-    - button "Export CSV"
-    - button "XLSX"
+    - text: Export report
+    - group "Export activity report":
+      - button "Export CSV"
+      - button "Export XLSX"
     - button "Refresh report"
     - text: Runs
     - button "How runs is counted" [expanded]

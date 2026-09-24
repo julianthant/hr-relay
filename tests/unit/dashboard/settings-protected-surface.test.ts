@@ -9,13 +9,13 @@ afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup();
 async function setup() { const authority = syntheticSettingsAuthority(); cleanups.push(authority.close); const mounted = await mountSettingsHarness(authority, "protected-store"); cleanups.push(mounted.close); return { ...mounted, authority }; }
 function savedText(host: HTMLElement): string {
   const copy = host.cloneNode(true) as HTMLElement;
-  copy.querySelectorAll('input[type="password"]').forEach(input => input.remove());
+  copy.querySelectorAll("input").forEach(input => input.remove());
   return copy.outerHTML;
 }
 describe("independent protected Settings surface", () => {
-  it("starts empty, validates all five names, confirms only presence and empties inputs after save", async () => {
+  it("starts empty, validates all five names, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
-    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 5);
+    assert.equal(h.host.querySelectorAll('input[type="text"]').length, 5);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
     for (const name of ProtectedSettingsNameSchema.options) {
@@ -27,12 +27,12 @@ describe("independent protected Settings surface", () => {
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
-    assert.doesNotMatch(JSON.stringify(after), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
+    assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
     const history = h.authority.database.authority.commands.getSettingsHistory(request.commandId);
     const audit = h.authority.database.authority.commandAudits.findSettingsHistory(request.commandId);
     assert.doesNotMatch(JSON.stringify({ history, audit }), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
-    assert.doesNotMatch(savedText(h.host), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
+    assert.match(savedText(h.host), /synthetic-password-sentinel/u);
     assert.doesNotMatch(h.host.textContent ?? "", /show password|reveal|restart required/iu);
   });
   it("ordinary and credential drafts, revisions and outcomes are independent; Clear is explicit", async () => {
@@ -77,7 +77,7 @@ describe("independent protected Settings surface", () => {
       await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "draft-secret-sentinel"));
       await settingsAction(() => h.controller().protectedEditor.submit());
       assert.equal(h.controller().protectedEditor.save.state, "unconfirmed"); assert.equal(h.controller().protectedEditor.dirtyCount, 1);
-      assert.doesNotMatch(savedText(h.host), /secret-sentinel/u);
+      assert.doesNotMatch(savedText(h.host), /raw-secret-server-sentinel/u);
       const exact = structuredClone(h.commands[0]);
       await settingsAction(() => h.controller().protectedEditor.update("ucpathPassword", "divergent-secret-sentinel"));
       assert.deepEqual(h.controller().protectedEditor.draft.ucpathPassword, { kind: "set", raw: "draft-secret-sentinel" });

@@ -453,7 +453,6 @@ export function StorageSection({
       <PanelHeader
         title="Storage health"
         headingLevel={2}
-        subtitle="The tracker volume, the authority generation, and the backups a restore would use."
         icon={<Database aria-hidden className={dsIcon.lg} />}
         meta={`checked ${fmtClock(storage.checkedAt)}`}
       />

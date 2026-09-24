@@ -4,7 +4,9 @@ import { afterEach, describe, it } from "vitest";
 import { SettingsCommandRequestSchema } from "../../../src/domain/commands.js";
 import { mergeSettingsPatch, SettingsPatchSchema } from "../../../src/domain/config/settings.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
+import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { draftError, fiscalYearLeaves, patchFromSettingsDraft, settingInput, settingsLeaves } from "../../../src/dashboard/surfaces/settings-draft-model.js";
+import { differingSettingsValues, groupDeploymentFacts, groupSettingsLeaves, settingsFactLabel } from "../../../src/dashboard/surfaces/ui-settings-records-labels.js";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "./helpers/settings-harness.js";
 
 const cleanups: (() => void)[] = [];
@@ -13,7 +15,97 @@ async function setup(section?: string) {
   const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
   const mounted = await mountSettingsHarness(authority, section); cleanups.push(mounted.close); return { ...mounted, authority };
 }
+function settingsWithDistinctRuntimeValues() {
+  const saved = fixtureSettingsDocument({ actor: { label: "Saved operator" } }, 2);
+  const active = fixtureSettingsDocument({ actor: { label: "Running operator" } }, 2);
+  const defaultSettings = fixtureSettingsDocument();
+  assert.equal(saved.runtimeStatus.state, "current");
+  assert.equal(active.runtimeStatus.state, "current");
+  const activeIdentity = active.runtimeStatus.state === "current" ? active.runtimeStatus.identity : undefined;
+  const persistedIdentity = saved.runtimeStatus.state === "current" ? saved.runtimeStatus.identity : undefined;
+  assert.ok(activeIdentity); assert.ok(persistedIdentity);
+  const activeValue = active.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label")?.activeValue;
+  assert.ok(activeValue);
+  const document = EditableSettingsWireSchema.parse({
+    ...saved,
+    runtimeStatus: { state: "restart-required", persisted: persistedIdentity, active: activeIdentity },
+    activeConfigFingerprint: activeIdentity.configFingerprint,
+    sections: saved.sections.map(section => ({ ...section, leaves: section.leaves.map(leaf => leaf.path === "actor.label" ? { ...leaf, activeValue } : leaf) })),
+  });
+  const defaultValue = defaultSettings.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label")?.defaultValue;
+  const actor = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "actor.label");
+  assert.ok(actor); assert.equal(actor.settingsValue, "Saved operator"); assert.equal(actor.activeValue, "Running operator"); assert.equal(actor.defaultValue, defaultValue);
+  return document;
+}
 describe("typed Settings catalog controls", () => {
+  it("groups related settings and surfaces only distinct served values", () => {
+    const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026" } } }, 2);
+    const providerLeaves = document.sections.find(section => section.id === "providers")?.leaves;
+    const pathLeaves = document.sections.find(section => section.id === "paths")?.leaves;
+    const dateLeaves = document.sections.find(section => section.id === "annual-dates")?.leaves;
+    assert.ok(providerLeaves); assert.ok(pathLeaves); assert.ok(dateLeaves);
+    assert.deepEqual(groupSettingsLeaves("providers", providerLeaves).map(group => group.label), ["OCR extraction", "Census geocoding", "Nominatim geocoding", "AI advisory", "Gemini", "Groq", "Mistral", "OpenRouter", "SambaNova"]);
+    assert.ok(groupSettingsLeaves("paths", pathLeaves).some(group => group.label === "Reports and documents"));
+    assert.deepEqual(groupSettingsLeaves("annual-dates", dateLeaves).map(group => group.label), ["Fiscal year 2027"]);
+    assert.deepEqual(groupDeploymentFacts(document.deployment).map(group => group.label), ["Operator", "Production routes", "Runtime paths"]);
+    assert.equal(settingsFactLabel("paths.stateRoot"), "Runtime state folder");
+    assert.equal(settingsFactLabel("urls.ucpath.prod"), "UCPath production routes");
+    assert.equal(settingsFactLabel("smartHr"), "SmartHR URL");
+    const leaf = settingsLeaves(document).find(candidate => candidate.path === "actor.label"); assert.ok(leaf);
+    assert.deepEqual(differingSettingsValues({ ...leaf, settingsValue: "Saved", activeValue: "Running", defaultValue: "Default" }), [
+      { label: "Saved", value: "Saved" }, { label: "Active", value: "Running" }, { label: "Default", value: "Default" },
+    ]);
+    assert.deepEqual(differingSettingsValues({ ...leaf, settingsValue: "Same", activeValue: "Same", defaultValue: "Same" }), []);
+    assert.deepEqual(differingSettingsValues({ ...leaf, settingsValue: "Saved", activeValue: "Default", defaultValue: "Default" }), [
+      { label: "Saved", value: "Saved" }, { label: "Active and Default", value: "Default" },
+    ]);
+    assert.deepEqual(differingSettingsValues({ ...leaf, settingsValue: "Saved", activeValue: undefined, defaultValue: undefined }), [
+      { label: "Saved", value: "Saved" }, { label: "Active and Default", value: undefined },
+    ]);
+    assert.deepEqual(differingSettingsValues({ ...leaf, settingsValue: "Saved", activeValue: "Saved", defaultValue: undefined }), [
+      { label: "Saved and Active", value: "Saved" }, { label: "Default", value: undefined },
+    ]);
+  });
+  it("renders saved, active and default differences and keeps raw setting identity disclosed", async () => {
+    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const mounted = await mountSettingsHarness(authority, "general", settingsWithDistinctRuntimeValues); cleanups.push(mounted.close);
+    assert.match(mounted.host.textContent ?? "", /Saved operator/u);
+    assert.match(mounted.host.textContent ?? "", /Running operator/u);
+    assert.match(mounted.host.textContent ?? "", /Local operator/u);
+    const field = mounted.host.querySelector('[data-settings-path="actor.label"]'); assert.ok(field);
+    const identity = field.querySelector('details > summary');
+    assert.equal(identity?.textContent, "Setting identity");
+    assert.equal(identity?.parentElement?.querySelector("code")?.textContent, "actor.label");
+    assert.equal(field.querySelectorAll("details").length, 1);
+  });
+  it("shows saved, active and default host values plus their process-lifetime source", async () => {
+    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const applied = authority.apply({
+      "display.screenWidth": { set: 1800 },
+      "display.screenHeight": { set: 1000 },
+    });
+    assert.equal(applied.state, "applied");
+    const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
+    assert.match(mounted.host.textContent ?? "", /Source: active process observation\. Values describe this process lifetime\./u);
+    const width = mounted.host.querySelector('[data-settings-path="display.screenWidth"]'); assert.ok(width);
+    const widthLabels = [...width.querySelectorAll("dt")].map(node => node.textContent);
+    const widthValues = [...width.querySelectorAll("dd")].map(node => node.textContent);
+    assert.deepEqual(widthLabels, ["Saved and Active", "Default"]);
+    assert.deepEqual(widthValues, ["1800", "1920"]);
+    const height = mounted.host.querySelector('[data-settings-path="display.screenHeight"]'); assert.ok(height);
+    const heightLabels = [...height.querySelectorAll("dt")].map(node => node.textContent);
+    const heightValues = [...height.querySelectorAll("dd")].map(node => node.textContent);
+    assert.deepEqual(heightLabels, ["Saved and Active", "Default"]);
+    assert.deepEqual(heightValues, ["1000", "1080"]);
+  });
+  it("marks observed host values as using defaults when no saved override exists", async () => {
+    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
+    const width = mounted.host.querySelector('[data-settings-path="display.screenWidth"]'); assert.ok(width);
+    assert.match(width.textContent ?? "", /Using default/u);
+    assert.deepEqual([...width.querySelectorAll("dt")].map(node => node.textContent), ["Active and Default"]);
+    assert.deepEqual([...width.querySelectorAll("dd")].map(node => node.textContent), ["1920"]);
+  });
   it("preserves text, zero/nonzero integers, booleans, routes, complete budgets and ordered chains", () => {
     const document = fixtureSettingsDocument(); const leaves = settingsLeaves(document);
     for (const [path, raw, value] of [
@@ -120,7 +212,16 @@ describe("typed Settings catalog controls", () => {
   it("renders the source's field type and safe defaults, without environment provenance", async () => {
     const h = await setup("providers");
     assert.ok(h.host.querySelector('input[type="number"]')); assert.ok(h.host.querySelector("textarea"));
+    assert.equal(h.host.querySelector('input[type="number"]')?.getAttribute("aria-label"), null);
     assert.doesNotMatch(h.host.textContent ?? "", /Environment:/u);
     const leaf = settingsLeaves(h.authority.read()).find(candidate => candidate.path === "providers.gemini.models"); assert.ok(leaf); assert.equal(settingInput(leaf), "");
+  });
+  it("keeps provider environment source and process-start activation visible", async () => {
+    const h = await setup("provider-env");
+    const text = h.host.textContent ?? "";
+    assert.match(text, /Source: \.env\.providers/u);
+    assert.match(text, /Read-only at process start/u);
+    assert.match(text, /restart after changing a provider key/u);
+    assert.match(text, /Environment key family/u);
   });
 });

@@ -63,13 +63,7 @@ export function CapabilitiesSection({ workflowLabels }: { workflowLabels: Readon
       <PanelHeader
         title="Workflow capabilities"
         headingLevel={2}
-        // ported from legacy 1ec1d870
-        // src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:178-182
-        subtitle="What each workflow can do — and, where it cannot, whether that is a decision or a gap."
         icon={<Table2 aria-hidden className={dsIcon.lg} />}
-        meta={facts.state === "loaded"
-          ? `${String(facts.facts.workflowCapabilities.length)} workflows · ${String(CAPABILITY_SPECS.length)} capabilities`
-          : undefined}
       />
       <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
         <FactsPane facts={facts}>
@@ -89,12 +83,7 @@ export function CapabilitiesSection({ workflowLabels }: { workflowLabels: Readon
             }
             return (
               <>
-                <Banner tone="info" title="Read from the descriptors, not from a list somebody kept up to date">
-                  Every cell is derived from the same descriptor the Run modal and the Explorer read.
-                  A workflow that gains a dry run gains it here on the same deploy. These six are what
-                  a descriptor declares; a seventh appears when a descriptor grows one, never before.
-                </Banner>
-
+                <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Source: served workflow descriptors.</p>
                 {CAPABILITY_SPECS.map((spec) => (
                   <div key={spec.key} className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
                     <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">

@@ -198,9 +198,11 @@ describe("System hosts (SE40)", () => {
     assert.ok(text.includes("1 of 3 have a test host"), text);
   });
 
-  it("states that the instance is a per-run decision this page does not make", async () => {
+  it("shows the current deployment source beside the per-run host decision", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("Choosing between these is a per-run decision"), text);
+    assert.ok(text.includes("Current deployment. Production is the default."), text);
+    assert.ok(text.includes("Each run selects its host"), text);
+    assert.ok(text.includes("never falls through to production"), text);
   });
 
   /**
@@ -236,15 +238,11 @@ describe("System hosts (SE40)", () => {
     assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.onbase.note), text);
   });
 
-  /** UF-SET-22 — the demo's subtitle, which says where the choice IS made. */
-  it("subtitles the section with where the instance question is actually asked", async () => {
+  it("keeps host source and refusal beside the facts after removing the subtitle", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(
-      text.includes(
-        "Which machine each system resolves to. Choosing between them is a per-run question, asked in the run modal.",
-      ),
-      text,
-    );
+    assert.ok(text.includes("Current deployment."), text);
+    assert.ok(text.includes("test request without a distinct test host is refused"), text);
+    assert.doesNotMatch(text, /Which machine each system resolves to/u);
   });
 
   /**
@@ -283,12 +281,10 @@ describe("System hosts (SE40)", () => {
 });
 
 describe("Workflow capabilities (SE41/SE42)", () => {
-  it("carries SE42's provenance banner", async () => {
+  it("names the served descriptor source without blanket teaching", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(
-      text.includes("Read from the descriptors, not from a list somebody kept up to date"),
-      text,
-    );
+    assert.ok(text.includes("Source: served workflow descriptors."), text);
+    assert.doesNotMatch(text, /Every cell is derived from the same descriptor/u);
   });
 
   it("draws all three cell shapes, each with its own word", async () => {
@@ -303,15 +299,12 @@ describe("Workflow capabilities (SE41/SE42)", () => {
     assert.ok(text.includes("write-anyway declares no preview arm"), text);
   });
 
-  /** UF-SET-31 — the demo's subtitle, which names the two kinds of "cannot". */
-  it("subtitles the section with the decision-or-gap distinction", async () => {
-    const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(
-      text.includes(
-        "What each workflow can do — and, where it cannot, whether that is a decision or a gap.",
-      ),
-      text,
-    );
+  it("keeps capability explanations available on demand", async () => {
+    await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
+    const help = mounted().querySelector('button[aria-label="What Dry run means"]');
+    assert.ok(help instanceof HTMLButtonElement);
+    await act(async () => { help.click(); });
+    assert.ok(document.body.textContent?.includes("Offers a rehearsal that reads everything for real and writes nothing."));
   });
 
   it("counts, per capability, how many workflows answer it", async () => {

@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { act, createElement } from "react";
@@ -23,7 +23,7 @@ import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/set
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 export function syntheticSettingsAuthority() {
-  const root = mkdtempSync(join(tmpdir(), "settings-surface-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-surface-"));
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
   const database = AuthorityDatabase.open({ path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
   const credentials = createCredentialStore({ stateRoot: root });
@@ -41,11 +41,11 @@ export function syntheticSettingsAuthority() {
   const protectedApply = (entries: unknown, revision = credentials.read().revision) => execute({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries } });
   return { root, database, credentials, clock, execute, read, apply, protectedApply, close: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
 }
-export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general") {
+export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
   const ports = {
     response: (): Response | undefined => undefined,
-    read: (): unknown => authority.read(),
+    read: (): unknown => readDocument?.() ?? authority.read(),
     execute: (request: unknown): unknown => authority.execute(request),
   };
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {

@@ -1083,7 +1083,7 @@ export function ActivityReport({
              other's gap (AC19), which is a transposition rather than two
              independent calls. Both fields are one height, so centring and
              end-aligning paint the same pixels. */
-          <span role="group" aria-label="Report span" className="flex items-center gap-[var(--ds-space-tight)]">
+          <span role="group" aria-label="Activity report range" className="flex items-center gap-[var(--ds-space-tight)]">
             <DateInput inline label="From" value={resolved.from} max={resolved.to} onChange={from => onRange(activityRangeValue({ ...resolved, from }))} />
             <DateInput inline label="To" value={resolved.to} min={resolved.from} onChange={to => onRange(activityRangeValue({ ...resolved, to }))} />
           </span>
@@ -1093,7 +1093,7 @@ export function ActivityReport({
       <div className="min-h-0 flex-1 overflow-y-auto p-[var(--ds-space-cozy)]">
         <Panel>
           <PanelHeader
-            title="Automation activity"
+            title="Activity results"
             headingLevel={2}
             subtitle={spanLabel}
             meta={report === undefined
@@ -1101,7 +1101,7 @@ export function ActivityReport({
               : `${plural(report.totalRuns, "run")} · ${activityPeopleMeta(report.people)}`}
             actions={
               report === undefined ? undefined : (
-                <span className="flex items-center gap-[var(--ds-space-snug)]">
+                <span className="flex flex-wrap items-end gap-[var(--ds-space-snug)]">
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
@@ -1112,22 +1112,23 @@ export function ActivityReport({
                       <BulletList items={[...activityReportCaveats(report)]} />
                     </PopoverContent>
                   </Popover>
-                  {/* The demo's Export, beside the ⓘ exactly as it draws it.
-                      It renders only once the report is loaded — a button that
-                      exported a window nothing had answered for would hand a
-                      supervisor a file about a report the operator never saw. */}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={<Download aria-hidden className={dsIcon.md} />}
-                    disabled={exportState==="pending"}
-                    onClick={()=>{void exportReport("csv");}}
-                  >
-                    Export CSV
-                  </Button>
-                  <Button size="sm" variant="secondary" disabled={exportState==="pending"} onClick={()=>{void exportReport("xlsx");}}>XLSX</Button>
-                  <Button size="sm" variant="ghost" onClick={()=>{exportRequest.current?.abort();exportRequest.current=null;setResponse({range:requestRange,resource:LOADING});setRefresh(value=>value+1);}}>Refresh report</Button>
-                  {exportState==="pending"&&<Button size="sm" variant="ghost" onClick={()=>{exportRequest.current?.abort();exportRequest.current=null;setExportState("cancelled");}}>Cancel download</Button>}
+                  <span className="flex flex-col gap-[var(--ds-space-tight)]">
+                    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Export report</span>
+                    <span role="group" aria-label="Export activity report" className="flex items-center gap-[var(--ds-space-tight)]">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<Download aria-hidden className={dsIcon.md} />}
+                        disabled={exportState === "pending"}
+                        onClick={() => { void exportReport("csv"); }}
+                      >
+                        Export CSV
+                      </Button>
+                      <Button size="sm" variant="secondary" disabled={exportState === "pending"} onClick={() => { void exportReport("xlsx"); }}>Export XLSX</Button>
+                      {exportState === "pending" && <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setExportState("cancelled"); }}>Cancel download</Button>}
+                    </span>
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setResponse({ range: requestRange, resource: LOADING }); setRefresh(value => value + 1); }}>Refresh report</Button>
                 </span>
               )
             }

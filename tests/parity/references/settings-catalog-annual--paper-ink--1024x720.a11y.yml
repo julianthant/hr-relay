@@ -64,41 +64,43 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Annual dates" [level=2]
-    - text: Ordinary settings · SQLite Revision 2 New fiscal year
+    - text: Revision 2
+    - paragraph: Saved values apply to new runs.
+    - text: New fiscal year
     - textbox "New fiscal year":
       - /placeholder: FY2027
     - button "Add fiscal year"
-    - text: annual Dates · FY2027 · job End Date M/D/YYYY
-    - textbox "annual Dates · FY2027 · job End Date": 6/30/2027
-    - text: Saved Valid · Ordinary · Editable · New runs annualDates.FY2027.jobEndDate
-    - button "Clear annual Dates · FY2027 · job End Date": Clear
-    - term: Saved
-    - definition: 6/30/2027
-    - term: Active
-    - definition: 6/30/2027
-    - term: Default
-    - definition: not set
-    - text: annual Dates · FY2027 · kronos Default End Date M/D/YYYY
-    - textbox "annual Dates · FY2027 · kronos Default End Date": 6/30/2027
-    - text: Saved Valid · Ordinary · Editable · New runs annualDates.FY2027.kronosDefaultEndDate
-    - button "Clear annual Dates · FY2027 · kronos Default End Date": Clear
-    - term: Saved
-    - definition: 6/30/2027
-    - term: Active
-    - definition: 6/30/2027
-    - term: Default
-    - definition: not set
-    - text: annual Dates · FY2027 · kronos Default Start Date M/D/YYYY
-    - textbox "annual Dates · FY2027 · kronos Default Start Date": 7/1/2026
-    - text: Saved Valid · Ordinary · Editable · New runs annualDates.FY2027.kronosDefaultStartDate
-    - button "Clear annual Dates · FY2027 · kronos Default Start Date": Clear
-    - term: Saved
-    - definition: 7/1/2026
-    - term: Active
-    - definition: 7/1/2026
-    - term: Default
-    - definition: not set
-    - text: 0 unsaved changes
+    - region "Fiscal year 2027":
+      - heading "Fiscal year 2027" [level=3]
+      - separator
+      - text: annual Dates · FY2027 · job End Date M/D/YYYY
+      - textbox "annual Dates · FY2027 · job End Date": 6/30/2027
+      - text: Saved
+      - button "Clear annual Dates · FY2027 · job End Date": Clear
+      - term: Saved and Active
+      - definition: 6/30/2027
+      - term: Default
+      - definition: not set
+      - group: Setting identity
+      - text: annual Dates · FY2027 · kronos Default End Date M/D/YYYY
+      - textbox "annual Dates · FY2027 · kronos Default End Date": 6/30/2027
+      - text: Saved
+      - button "Clear annual Dates · FY2027 · kronos Default End Date": Clear
+      - term: Saved and Active
+      - definition: 6/30/2027
+      - term: Default
+      - definition: not set
+      - group: Setting identity
+      - text: annual Dates · FY2027 · kronos Default Start Date M/D/YYYY
+      - textbox "annual Dates · FY2027 · kronos Default Start Date": 7/1/2026
+      - text: Saved
+      - button "Clear annual Dates · FY2027 · kronos Default Start Date": Clear
+      - term: Saved and Active
+      - definition: 7/1/2026
+      - term: Default
+      - definition: not set
+      - group: Setting identity
+    - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]
 - region "Session Panel":

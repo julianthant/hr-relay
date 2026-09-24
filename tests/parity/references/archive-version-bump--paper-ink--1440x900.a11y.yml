@@ -29,29 +29,48 @@
   - button "Versions & bumps" [pressed]
   - button "Refresh"
   - region "Versions and saved changes":
-    - heading "Review a version change" [level=2]
-    - paragraph: A major change archives reviewed terminal prior-version runs. A minor change archives none.
-    - text: Scope
-    - combobox "Scope":
-      - option "Dashboard update · every workflow"
-      - option "Person lookup · v2" [selected]
-    - text: Change kind
-    - combobox "Change kind":
-      - option "Major" [selected]
-      - option "Minor"
-    - text: What changed
-    - textbox "What changed"
-    - text: Why
-    - textbox "Why"
-    - button "Create review"
-    - paragraph: 1 historical version records retained.
-    - heading "Synthetic blocked version change" [level=3]
-    - paragraph: A current run must finish before this reviewed archive transfer
-    - paragraph: Major change · planned · target 0.2.0
-    - paragraph: "Scope: person-lookup"
-    - paragraph: "Progress: 0 reviewed runs · 0 archived."
-    - status: "Blocked by: 00000000-0000-4000-8000-000000000099"
-    - button "Apply reviewed change" [disabled]
+    - heading "Versions and saved changes" [level=2]
+    - text: Application 0.1.0
+    - region "Review a version change":
+      - heading "Review a version change" [level=3]
+      - text: Create a saved record before applying a version change.
+      - paragraph: A major change archives reviewed terminal prior-version runs. A minor change archives none.
+      - text: Scope
+      - combobox "Scope":
+        - option "Dashboard update · every workflow"
+        - option "Person lookup · v2" [selected]
+      - text: Change kind
+      - combobox "Change kind":
+        - option "Major" [selected]
+        - option "Minor"
+      - text: What changed
+      - textbox "What changed"
+      - text: Why
+      - textbox "Why"
+      - button "Create review"
+    - region "Saved version changes":
+      - heading "Saved changes" [level=3]
+      - paragraph: 1 historical version record retained.
+      - region "Version change 00000000-0000-4000-8000-000000000098":
+        - heading "Synthetic blocked version change" [level=4]
+        - paragraph: A current run must finish before this reviewed archive transfer
+        - term: Change kind
+        - definition: Major change
+        - term: Version state
+        - definition: planned
+        - term: Target version
+        - definition: 0.2.0
+        - term: Scope
+        - definition: person-lookup
+        - term: Reviewed membership
+        - definition: No runs are part of this change.
+        - term: Blockers
+        - definition: 00000000-0000-4000-8000-000000000099
+        - term: Archived runs
+        - definition: None
+        - term: Progress
+        - definition: "Progress: 0 reviewed runs · 0 archived."
+        - button "Apply reviewed change" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

@@ -23,7 +23,6 @@ export function KeyboardSection() {
       <PanelHeader
         title="Keyboard"
         headingLevel={2}
-        subtitle="Every key the shell binds, by where it works."
         icon={<KeyboardIcon aria-hidden className={dsIcon.lg} />}
         meta={plural(DEMO_SHORTCUTS.length, "binding")}
       />

@@ -64,8 +64,7 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Workflow capabilities" [level=2]
-    - text: What each workflow can do — and, where it cannot, whether that is a decision or a gap. 1 workflows · 6 capabilities
-    - status: Read from the descriptors, not from a list somebody kept up to date Every cell is derived from the same descriptor the Run modal and the Explorer read. A workflow that gains a dry run gains it here on the same deploy. These six are what a descriptor declares; a seventh appears when a descriptor grows one, never before.
+    - paragraph: "Source: served workflow descriptors."
     - text: Typed start 1 of 1
     - button "What Typed start means"
     - table "Typed start by workflow":
