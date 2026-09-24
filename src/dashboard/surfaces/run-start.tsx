@@ -567,10 +567,7 @@ function WorkflowPicker({
           false-deferral shape R8 finding 1 found on the park cards. The reason
           is the MODAL's own precondition and is worded as one; see
           `run-start-model.ts`. */}
-      <div className="shrink-0 border-t border-[color:var(--ds-border)] p-[var(--ds-space-base)]">
-        {/* The SAME rule as the list above it (D219): a chunk harness is a step
-            of its composition here too, so the two halves of one picker cannot
-            say different things about the same workflow. */}
+      {blocked.length > 0 && <div className="shrink-0 border-t border-[color:var(--ds-border)] p-[var(--ds-space-base)]">
         {showBlocked && (
           <div className="mb-[var(--ds-space-snug)] flex max-h-[11rem] flex-col gap-[var(--ds-space-snug)] overflow-y-auto">
             {blockedGroups.map((group) => (
@@ -616,7 +613,7 @@ function WorkflowPicker({
         >
           {blocked.length} not startable
         </Button>
-      </div>
+      </div>}
     </div>
   );
 }

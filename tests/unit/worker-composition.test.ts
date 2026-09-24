@@ -590,6 +590,10 @@ describe("worker CLI argument parsing", () => {
     assert.throws(() => parseWorkerArguments([]), /needs a workflow id/);
     assert.throws(() => parseWorkerArguments(["not-registered"]), /is not registered/);
     assert.throws(
+      () => parseWorkerArguments(["separations-kuali-finalization", "--pool-index", "1", "--drain"]),
+      /is not registered/,
+    );
+    assert.throws(
       () => parseWorkerArguments([WORKFLOW_ID, "--pool-index", "--drain"]),
       /requires a positive integer value/,
     );

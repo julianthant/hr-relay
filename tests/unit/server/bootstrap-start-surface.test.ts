@@ -161,11 +161,10 @@ describe("bootstrap start-surface block", () => {
             : { inputRun: descriptor.surfaces.inputRun }),
         });
       }
-      // Non-vacuous: the corpus really does carry both arms of the optional
-      // door, so "startable" and "not startable" are both being asserted.
+      // Both operator workflows carry a typed start door. The absent arm is
+      // exercised by the synthetic descriptor below.
       const doors = [...served.values()].map((start) => start?.inputRun !== undefined);
       expect(doors).toContain(true);
-      expect(doors).toContain(false);
     } finally {
       world.dispose();
     }
@@ -184,6 +183,7 @@ describe("bootstrap start-surface block", () => {
 
       expect(wire.workflows).toHaveLength(1);
       expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.version).toBe(VERSION_SEVEN_DESCRIPTOR.version);
+      expect(WorkflowBootstrapPrimitiveSchema.array().parse(wire.workflows)[0]?.start.inputRun).toBeUndefined();
     } finally {
       world.dispose();
     }

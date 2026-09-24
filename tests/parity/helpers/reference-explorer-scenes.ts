@@ -17,10 +17,14 @@ export const SCENES: readonly ReferenceScene[] = [
   */
   { id: "explorer-graph", route: { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID } },
 
-  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "separations-kuali-finalization" } },
+  { id: "explorer-transaction", route: { day: FIXTURE_DAY, explore: "separations" } },
 
   {
     id: "catalog-search",
     route: { day: FIXTURE_DAY, settings: "ui-catalog", catalog: FIXTURE_CATALOG_QUERY },
   }];
-export const ANCHORS: SceneAnchors = {};
+export const ANCHORS: SceneAnchors = {
+  "explorer-transaction": async (page) => {
+    await page.getByRole("button", { name: /^finalize-kuali .*Transaction/u }).click();
+  },
+};

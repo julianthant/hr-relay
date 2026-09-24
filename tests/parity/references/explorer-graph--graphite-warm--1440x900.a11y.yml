@@ -1,7 +1,7 @@
 # explorer-graph--graphite-warm--1440x900
 # adapter: fixture
 # fixture: explorer-graph
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
   - button "Settings"
@@ -28,21 +29,10 @@
     - button "Version registry"
     - region "Registered workflows":
       - heading "Workflows" [level=2]
-      - text: 7 Separations
+      - text: 2 Separations
       - list:
         - listitem:
           - button "Separations 21"
-          - list "Proving harnesses of Separations":
-            - listitem:
-              - button "Separation Timecard a proving harness of Separations 2"
-            - listitem:
-              - button "Separation Document a proving harness of Separations 2"
-            - listitem:
-              - button "Identity Check a proving harness of Separations 5"
-            - listitem:
-              - button "UCPath Termination a proving harness of Separations 9"
-            - listitem:
-              - button "Kuali Finalization a proving harness of Separations 8"
       - text: Search
       - list:
         - listitem:
@@ -154,7 +144,7 @@
             - row "Source contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts":
               - rowheader "Source"
               - cell "contract src/domain/contracts/ucpath/search-person-org.ts impl src/stores/ucpath/tasks/search-person-org.ts"
-        - text: input ee4776e0a94eoutput 6b08cc3af988impl d7bc1bbc9de8
+        - text: input ee4776e0a94eoutput 6b08cc3af988impl 222991e25517
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

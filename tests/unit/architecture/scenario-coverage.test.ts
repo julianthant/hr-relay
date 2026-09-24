@@ -36,6 +36,7 @@ import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../src/control/step-proof-modules.js";
 import { workflowProjections } from "../../../src/base/workflow.js";
 import { ScenarioIdSchema } from "../../../src/domain/ids.js";
 import {
@@ -87,7 +88,7 @@ function fullClaims(pointIds: readonly string[]): readonly ScenarioCoverageClaim
  */
 function productionScenarioReferences(): readonly string[] {
   return [...new Set([
-    ...DESCRIPTORS.flatMap((descriptor) => [
+    ...[...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS].flatMap((descriptor) => [
       ...descriptor.scenarios.map(String),
       ...workflowProjections(descriptor).contracts.flatMap((contract) =>
         contract.scenarios.map(String)),
@@ -237,7 +238,7 @@ describe("scenario coverage", () => {
   });
 
   it("holds every registered descriptor to the executable scenario corpus", () => {
-    for (const descriptor of [...DESCRIPTORS, fixtureDescriptor]) {
+    for (const descriptor of [...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS, fixtureDescriptor]) {
       const id = String(descriptor.id);
       const points = workflowProjections(descriptor).coveragePoints;
       const claims = SCENARIO_COVERAGE_CLAIMS[id];
@@ -251,7 +252,7 @@ describe("scenario coverage", () => {
 
   it("keeps each workflow's executable scenarios in its one structural T1a file", () => {
     const corpus = scenarioCorpusFiles();
-    for (const descriptor of DESCRIPTORS) {
+    for (const descriptor of [...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS]) {
       const workflow = String(descriptor.id);
       const expectedFile = `${SCENARIO_ROOT}/workflows/${workflow}/structural.scenario.test.ts`;
       const manifestedFiles = new Set(

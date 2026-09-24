@@ -35,6 +35,7 @@ import {
   workflowCodeRegistry,
   workflowRoleRegistry,
 } from "../../../src/control/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../../src/control/step-proof-modules.js";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../../src/base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
@@ -166,8 +167,9 @@ describe("descriptor coverage", () => {
    * sees the passing corpus is a check that cannot fail.
    */
   it("declares one role per module, every chunk harness naming a registered composition", () => {
-    assert.deepEqual(auditWorkflowModuleRoles(WORKFLOW_MODULES), []);
-    for (const module of WORKFLOW_MODULES) {
+    const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
+    assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
+    for (const module of roleSpecimens) {
       assert.ok(
         WorkflowModuleRoleSchema.safeParse(module.role).success,
         `${String(module.descriptor.id)} must declare a role the closed union admits`,
@@ -179,22 +181,22 @@ describe("descriptor coverage", () => {
       WORKFLOW_MODULES.map((module) => String(module.descriptor.id)).sort(),
     );
 
-    const harness = WORKFLOW_MODULES.find((module) => module.role.kind === "chunk-harness");
+    const harness = STEP_PROOF_MODULES[0];
     const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
     if (harness === undefined || composition === undefined) {
-      throw new Error("the role fixtures require one registered chunk harness and one composition");
+      throw new Error("the role fixtures require one retained step proof and one composition");
     }
 
     // A dangling `of`: the composition is simply not in the tuple.
     const dangling = auditWorkflowModuleRoles(
-      WORKFLOW_MODULES.filter((module) => module !== composition),
+      roleSpecimens.filter((module) => module !== composition),
     );
     assert.match(dangling.join("\n"), /which is not a registered workflow/);
     assert.match(dangling.join("\n"), new RegExp(String(harness.descriptor.id)));
 
     // An `of` that resolves to a workflow which is NOT a composition — the
     // harness-of-a-harness chain, and the standalone target, in one arm.
-    const notAComposition = auditWorkflowModuleRoles(WORKFLOW_MODULES.map((module) =>
+    const notAComposition = auditWorkflowModuleRoles(roleSpecimens.map((module) =>
       module === composition
         ? { descriptor: module.descriptor, role: defineWorkflowRole({ kind: "standalone" }) }
         : module));
@@ -203,10 +205,10 @@ describe("descriptor coverage", () => {
     // The load-time refusal is the SAME audit, so the throw and the guard can
     // never disagree about what a violation is.
     assert.throws(
-      () => workflowRoleRegistry(WORKFLOW_MODULES.filter((module) => module !== composition)),
+      () => workflowRoleRegistry(roleSpecimens.filter((module) => module !== composition)),
       /which is not a registered workflow/,
     );
-    assert.doesNotThrow(() => workflowRoleRegistry(WORKFLOW_MODULES));
+    assert.doesNotThrow(() => workflowRoleRegistry(roleSpecimens));
   });
 
   /**
@@ -221,18 +223,19 @@ describe("descriptor coverage", () => {
    * they come to disagree about what a step is.
    */
   it("refuses a chunk harness whose step its composition does not declare (D265)", () => {
-    const harness = WORKFLOW_MODULES.find((module) => module.role.kind === "chunk-harness");
+    const roleSpecimens = [...WORKFLOW_MODULES, ...STEP_PROOF_MODULES];
+    const harness = STEP_PROOF_MODULES[0];
     const composition = WORKFLOW_MODULES.find((module) => module.role.kind === "composition");
     if (harness === undefined || composition === undefined) {
-      throw new Error("the role fixtures require one registered chunk harness and one composition");
+      throw new Error("the role fixtures require one retained step proof and one composition");
     }
     const compositionId = String(composition.descriptor.id);
     const declaredKeys = composition.descriptor.timeline.map((category) => category.key);
 
     // The real tuple is clean, and every harness names a key its composition
     // actually declares.
-    assert.deepEqual(auditWorkflowModuleRoles(WORKFLOW_MODULES), []);
-    for (const module of WORKFLOW_MODULES) {
+    assert.deepEqual(auditWorkflowModuleRoles(roleSpecimens), []);
+    for (const module of roleSpecimens) {
       if (module.role.kind !== "chunk-harness") continue;
       assert.ok(
         declaredKeys.includes(module.role.step),
@@ -242,7 +245,7 @@ describe("descriptor coverage", () => {
 
     // An unknown step: the violation names the workflow, the step, and what
     // the composition does declare.
-    const unknownStep = auditWorkflowModuleRoles(WORKFLOW_MODULES.map((module) =>
+    const unknownStep = auditWorkflowModuleRoles(roleSpecimens.map((module) =>
       module === harness
         ? {
           descriptor: module.descriptor,
@@ -283,7 +286,7 @@ describe("descriptor coverage", () => {
 
     // And the load-time refusal is the same audit.
     assert.throws(
-      () => workflowRoleRegistry(WORKFLOW_MODULES.map((module) =>
+      () => workflowRoleRegistry(roleSpecimens.map((module) =>
         module === harness
           ? {
             descriptor: module.descriptor,

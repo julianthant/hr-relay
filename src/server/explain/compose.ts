@@ -14,6 +14,7 @@ import { join } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DESCRIPTORS } from "../../control/workflow-registry.js";
+import { HISTORICAL_STEP_PROOF_DESCRIPTORS, historicalStepProofDescriptorOf } from "../../control/step-proof-modules.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { descriptorRuntimeNodes } from "../../base/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../domain/ids.js";
@@ -100,7 +101,8 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (runId === undefined) throw new Error(`no run matches "${identity}" in this authority database`);
   const run = requireTrustRun(runReader, runId);
 
-  const descriptor = DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow);
+  const descriptor = DESCRIPTORS.find((entry) => entry.id === run.envelope.workflow)
+    ?? historicalStepProofDescriptorOf(run.envelope.workflow);
   if (descriptor === undefined) {
     throw new Error(
       `run ${run.envelope.runId} is workflow ${run.envelope.workflow}, which this build does not register`,
@@ -115,7 +117,7 @@ function explainRunSnapshot(database: AuthorityDatabase, identity: string): Retu
   if (result !== undefined && result.runId !== run.envelope.runId) throw new Error("TRUST_EVIDENCE_IDENTITY_MISMATCH: Explain result");
   const settled = run.lifecycle.state === "terminal" && run.lifecycle.outcome !== "interrupted";
   const receipt = settled
-    ? createReceiptService({ database, descriptors: DESCRIPTORS, runReader }).ensureReceipt(run.envelope.runId)
+    ? createReceiptService({ database, descriptors: [...DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS], runReader }).ensureReceipt(run.envelope.runId)
     : undefined;
 
   const evidence: ExplainRunEvidence = {

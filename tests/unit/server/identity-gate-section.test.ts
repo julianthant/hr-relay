@@ -34,7 +34,7 @@ import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../src/domain/
 import { deriveStableUuid } from "../../../src/domain/identifiers.js";
 import { timelineCheckpointReference } from "../../../src/events/timeline.js";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { separationsIdentityCheckModule } from "../../../src/control/step-proof-modules.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
 import {
@@ -73,13 +73,7 @@ const RUN_ID = uuidOf(1);
 const NOW = "2026-08-12T18:00:00.000Z";
 const EID = "10833507";
 const HASH = "a".repeat(64);
-const IDENTITY_DESCRIPTOR = (() => {
-  const descriptor = WORKFLOW_DESCRIPTORS.find(
-    (candidate) => String(candidate.id) === "separations-identity-check",
-  );
-  if (descriptor === undefined) throw new Error("identity-check descriptor is not registered");
-  return descriptor;
-})();
+const IDENTITY_DESCRIPTOR = separationsIdentityCheckModule.descriptor;
 const RESULT_SCHEMA_HASH = deriveSchemaHash(IdentityApprovalResultSchema, "output");
 
 const PARKED_GATE_LIFECYCLE = {

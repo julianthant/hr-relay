@@ -18,9 +18,9 @@ as-built blocks above §0. Each has been folded into the numbered section it ame
 states the contract AND what the tree actually holds in one place. The chronology header that
 recorded *when* the doc changed is `history/superseded/2026-08-21-workflow-model-status-header.md`.
 
-**Seven workflows are registered** (`src/control/workflow-registry.ts`): `person-lookup`, the five
-`separations-*` chunk harnesses, and the composed `separations`. Every active role contract in this
-doc is exercised by at least one of them, and the sections below say which.
+**Two workflows are registered** (`src/control/workflow-registry.ts`): `person-lookup` and
+`separations`. The latter owns its declared timeline steps. The five former `separations-*`
+registrations remain as historical step proofs and test fixtures, outside the active registry.
 
 ## Ownership (D1)
 
@@ -742,7 +742,7 @@ descriptor — states which, as a **required** closed union:
 role:
   | { kind: "standalone" }                       // an ordinary workflow (person-lookup)
   | { kind: "composition" }                      // a graph assembled from chunk-proven tasks (separations)
-  | { kind: "chunk-harness"; of: WorkflowId; step: string } // independently startable proof of one composition step
+  | { kind: "chunk-harness"; of: WorkflowId; step: string } // retained historical proof of one composition step
 ```
 
 **The `proving` arm is RETIRED (D266, 2026-08-21).** Its only member, `kuali-timekeeper-annotation`,
@@ -776,12 +776,13 @@ whose `of` does not resolve to a registered module whose own role is `compositio
 dangling target and a harness-of-a-harness chain unrepresentable rather than banned. §1.4 item 2's
 tuple audit gains the same check at CI.
 
-**What the role does NOT change:** registration, startability, run identity, or §3.2 obligations.
-A chunk harness stays independently runnable through the start-plan lane — each of the five
-separations harnesses still owes/holds its own controlled-commit proof — and docs 03.2/03.3 name no
-criterion about rail presence. How the role PRESENTS (rail nesting, picker, counts, run-row labels)
-is ref dashboard-surfaces's (§Shell, D219); the bootstrap wire serves the raw fact and the frontend owns display,
-per the standing R2 D17/D18 split.
+**D345 supersedes the registration and startability part of D219.** The five step proofs remain
+available for historical run reads and isolated tests, but are absent from `WORKFLOW_MODULES`,
+`DESCRIPTORS`, `SERVER_REGISTRY`, bootstrap, Explorer, worker pools and the start-plan lane. A
+new run can start only as `person-lookup` or `separations`. The Separations descriptor owns its six
+timeline groups and their nodes; the groups are steps, not independently selectable workflows.
+Existing proof run identities are unchanged. Read-only detail, receipt and Explain resolution may
+use their retained descriptors without admitting a new run or worker for those ids.
 
 #### 1.2.2 The workflow tree IS the rail and the timeline (D265, 2026-08-21)
 
@@ -805,12 +806,16 @@ steps, and `kuali-timekeeper-annotation` beside daily HR work — so the one pla
 first said nothing about which of them an operator would ever see, and D219/D220/D241 had to say it
 on every surface instead. **The layout now says it, and the role and the layout are pinned to agree.**
 
+**D345's current registration rule:** only the two top-level definitions are operator workflows.
+The nested proof files remain under their steps to preserve source and run history. The layout
+rules below still audit those files, but they confer no registration or startability.
+
 **The rule — three arms, one per role kind, read straight off the path:**
 
 | Path | What it is | Role (§1.2.1) | Where it shows |
 |---|---|---|---|
 | `src/workflows/<workflow>/workflow.ts` (its compiled descriptor + module) | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
-| `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | (a folder, not a module) unless it carries a harness: `{ kind: "chunk-harness", of: "<workflow>", step: "<step>" }` | one segment of that workflow's timeline; the harness nests under its composition in the picker and the Explorer (D219), never the rail (D220) |
+| `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | a folder, with a retained proof definition when present | one segment of that workflow's timeline; no separate picker, Explorer or worker entry (D345) |
 | ~~`src/workflows/proving/<workflow>/`~~ | **RETIRED the same day (D266)** — there is no test equipment: a proof of machinery is a dry-run scenario on the real workflow (ref guards-and-tests §10), never a workflow of its own | — | — |
 
 1. **A top-level folder is a rail entry.** The rail is D220's filter (`standalone` + `composition`),
@@ -833,12 +838,12 @@ on every surface instead. **The layout now says it, and the role and the layout 
    > holds nothing but the harness `workflow.ts` that proves the step, which imports those
    > identities (rule 3). So a step folder exists **iff** the step carries a harness — `job-summary`
    > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
-   > is a declared group AND a registered harness address; a declared group needs no folder.
+   > is a declared group AND a retained proof address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
    its composition* — becomes a path: the harness's `workflow.ts` sits in the step
-   folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The registry
-   refuses a `step` that `of` does not declare as a timeline category, exactly as it already refuses
-   an `of` that is not a registered composition. A harness that needs other steps' nodes IMPORTS
+   folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
+   refuses a `step` that `of` does not declare as a timeline category, or an `of` that is not an
+   active composition. A harness that needs other steps' nodes IMPORTS
    their entry identities rather than restating them — today the three write harnesses each carry a second
    copy of `job-summary` / `name-search` / `comparison` / the gate / `approval` so that each can
    re-establish identity authority before its write; after the move they import `identity-check/`'s, and
@@ -853,13 +858,10 @@ on every surface instead. **The layout now says it, and the role and the layout 
 **What does NOT move, stated so nobody re-litigates it.** Workflow IDS are unchanged — a harness
 keeps `separations-identity-check`; the id is run identity and the path is layout, which is D170's
 and D219's argument in the other direction (a path move re-stamps no run, no receipt and no
-checkpoint). D225's rendering and fold are unchanged. D219/D220's presentation is unchanged, while
-D241's sole `Test equipment` member and group retire under D266 — every remaining surface still
-reads the served ROLE, and the `workflow-layout` guard pins
-the role and the path to each other, so the folder view an author sees and the dashboard view an
-operator sees can never disagree. Startability, §3.2 obligations and the D106 bundle boundary are
-untouched: a step folder's fragments are under `src/workflows/` and value-import only what a
-descriptor may.
+checkpoint). D225's timeline rendering and fold are unchanged. D345 removes the proof entries
+from workflow surfaces and startability; the `workflow-layout` guard still pins each retained
+proof's role to its step folder. The D106 bundle boundary is unchanged: a step folder's fragments
+are under `src/workflows/` and value-import only what a descriptor may.
 
 **The separations mapping — D225's six approved categories, as folders.**
 
@@ -879,10 +881,10 @@ ruled.
 
 **The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, active in
 `docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
-and the real tree, each with a violating fixture: (a) every registered module's path matches its
+and the real tree, each with a violating fixture: (a) every active or retained proof module's path matches its
 role's arm above and holds exactly its one `workflow.ts` (D312/D317), and nothing else lives under
 `src/workflows/` — a stray folder is refused; (b) for every workflow that declares a timeline, every
-step folder is one of its declared groups and the address of a registered `chunk-harness`, and a
+step folder is one of its declared groups and the address of a retained `chunk-harness` proof, and a
 workflow with no declared timeline has no step folders (a declared group with no harness has no
 folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
@@ -942,9 +944,9 @@ what `descriptor-coverage` owns is the descriptor ↔ registry ↔ store-impl jo
 1. ids unique; codes unique + well-formed per §1.1.1, and every code composes a legal trace id;
    `icon` ∈ `ICON_NAMES`.
 2. Each `WORKFLOW_MODULES` entry has one descriptor+loader and one declared `role` (§1.2.1);
-   every `chunk-harness.of` resolves to a registered module whose role is `composition`; derived
-   registry keys === derived descriptor ids (both directions). No second workflow-id literal list
-   exists.
+   each retained step proof's `chunk-harness.of` resolves to an active module whose role is
+   `composition`; derived registry keys === active descriptor ids (both directions). No second
+   operator workflow-id literal list exists.
 3. Every task/transaction arm resolves in the store impl index; every contract's `example` parses;
    every read declares freshness and provenance; prepare contracts occur only in transaction prepare arms; commit
    contracts occur only in transaction commit arms and carry write safety.

@@ -92,7 +92,7 @@ import {
 } from "../fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
 import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
-import { WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
+import { separationsIdentityCheckModule } from "../../src/control/step-proof-modules.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import {
   UNWIRED_ARCHIVE_SNAPSHOTS,
@@ -159,9 +159,7 @@ function kernelDescriptor(id: string, code: string, enqueue: "reject-active" | "
 const rejectActiveDescriptor = kernelDescriptor("kernel-reject", "kr", "reject-active");
 const supersedeDescriptor = kernelDescriptor("kernel-supersede", "ks", "supersede-active");
 const parallelDescriptor = kernelDescriptor("kernel-parallel", "kp", "allow-parallel");
-const identityCheckDescriptor = WORKFLOW_DESCRIPTORS.find(
-  (descriptor) => descriptor.id === "separations-identity-check",
-) ?? (() => { throw new Error("identity-check descriptor is not registered"); })();
+const identityCheckDescriptor = separationsIdentityCheckModule.descriptor;
 const DESCRIPTOR_SET: readonly AnyWorkflowDescriptor[] = [
   rejectActiveDescriptor,
   supersedeDescriptor,

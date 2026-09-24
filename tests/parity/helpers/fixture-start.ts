@@ -10,38 +10,20 @@ import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as St
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
 import {
-personLookupModule,separationsDescriptor,
-separationsIdentityCheckModule,
-separationsKronosTimecardModule,
-separationsKualiFinalizationModule,
-separationsKualiReadModule,
-separationsModule,
-separationsUcpathTerminationModule,
-} from "../../helpers/registered-workflows.js";
+WORKFLOW_MODULES,
+} from "../../../src/control/workflow-registry.js";
+import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";
 import { FIXTURE_DAY_WIRE } from "./fixture-queue.js";
 
 
 /**
- * The start-picker reference needs the actual registry shape, while the day
- * fixture above intentionally remains the Person Lookup queue corpus. Keeping
- * these as separate profiles prevents a picker-coverage addition from
- * redrawing unrelated queue references.
- *
- * Every role comes from its real `module.ts`, not a fixture-local spelling: in
- * particular, the Kronos timecard is a `timekeeping` harness of `separations`.
- * That cross-category fact is the regression this profile exists to capture.
+ * The start-picker reference uses the active registry while the day fixture
+ * remains the Person Lookup queue corpus. Keeping these separate prevents a
+ * picker change from redrawing unrelated queue references.
  */
-const START_PICKER_MODULES = Object.freeze([
-  personLookupModule,
-  separationsKronosTimecardModule,
-  separationsKualiReadModule,
-  separationsIdentityCheckModule,
-  separationsUcpathTerminationModule,
-  separationsKualiFinalizationModule,
-  separationsModule,
-]);
+const START_PICKER_MODULES = WORKFLOW_MODULES;
 
 
 export const FIXTURE_START_PICKER_DESCRIPTOR_HASH = descriptorSetHash(
@@ -77,7 +59,7 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       // reads it. `intake` is an optional property a module may not declare at
       // all, so the `in` test is what distinguishes "declares none" from
       // "declares one" without an invented default — this profile carries one
-      // spreadsheet-capable workflow and five that are not.
+      // spreadsheet-capable workflow and one that is not.
       spreadsheetIntake: "intake" in module && module.intake !== undefined,
     },
   })),

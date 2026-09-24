@@ -84,6 +84,7 @@ import {
   INTAKE_PROJECTIONS,
   SERVER_REGISTRY,
 } from "../../control/workflow-registry.js";
+import { historicalStepProofDescriptorOf } from "../../control/step-proof-modules.js";
 import {
   createCommandKernel,
   type WorkerPoolRuntimeAdoption,
@@ -806,7 +807,7 @@ async function composeDashboardRuntimeStartup(
    * not two.
    */
   const trustReads = createTrustReadDependencies({ database, artifactReader, reader: lifecycle });
-  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
+  const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
 

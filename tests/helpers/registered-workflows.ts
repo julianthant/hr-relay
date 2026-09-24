@@ -8,13 +8,15 @@
  */
 import {
   personLookupModule,
+  separationsModule,
+} from "../../src/control/workflow-registry.js";
+import {
   separationsIdentityCheckModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
   separationsKualiReadModule,
-  separationsModule,
   separationsUcpathTerminationModule,
-} from "../../src/control/workflow-registry.js";
+} from "../../src/control/step-proof-modules.js";
 
 export {
   personLookupModule,

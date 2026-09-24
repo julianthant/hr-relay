@@ -50,6 +50,8 @@ import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js"
 import { SECRET_SPECS } from "../../../src/domain/secrets.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
+import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../src/control/step-proof-modules.js";
+
 import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";
 import { separationsIdentityCheckDescriptor } from "../../helpers/registered-workflows.js";
 import {
@@ -69,6 +71,8 @@ import {
   WriteFixtureSaveCommit,
 } from "../fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
+
+const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS];
 
 function kualiReceipt() {
   const evidence = kualiReceiptEvidence();
@@ -255,7 +259,7 @@ describe("evidence receipt — strictness", () => {
       },
     }), /interrupted/);
     assert.throws(() => buildRunEvidenceReceipt({
-      descriptor: WORKFLOW_DESCRIPTORS.find(({ id }) => id === "person-lookup") ?? separationsKualiFinalizationDescriptor,
+      descriptor: RECEIPT_DESCRIPTORS.find(({ id }) => id === "person-lookup") ?? separationsKualiFinalizationDescriptor,
       ...evidence,
     }), /refusing to explain a run with another workflow's graph/);
   });
@@ -518,7 +522,7 @@ describe("evidence receipt — redaction", () => {
 
 describe("evidence receipt — declared classification coverage", () => {
   it("classifies every leaf of every registered canonical-input sample", () => {
-    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+    for (const descriptor of RECEIPT_DESCRIPTORS) {
       const scope: EvidenceValueScope = { kind: "workflow-input", workflowId: descriptor.id };
       for (const sample of canonicalInputSamples(descriptor.canonicalInput)) {
         for (const leaf of evidenceLeaves(sample)) classifyEvidenceLeaf(scope, leaf.path);
@@ -527,7 +531,7 @@ describe("evidence receipt — declared classification coverage", () => {
   });
 
   it("classifies every leaf of every used contract's sealed example", () => {
-    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+    for (const descriptor of RECEIPT_DESCRIPTORS) {
       for (const contract of workflowProjections(descriptor).contracts) {
         const scope: EvidenceValueScope = { kind: "task-output", taskId: contract.id };
         for (const leaf of evidenceLeaves(contract.example)) classifyEvidenceLeaf(scope, leaf.path);
@@ -536,7 +540,7 @@ describe("evidence receipt — declared classification coverage", () => {
   });
 
   it("declares a result classification for every registered workflow", () => {
-    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+    for (const descriptor of RECEIPT_DESCRIPTORS) {
       const key = evidenceScopeKey({ kind: "workflow-result", workflowId: descriptor.id });
       assert.ok(
         EVIDENCE_FIELD_CLASSIFICATIONS.some((entry) => evidenceScopeKey(entry.scope) === key),
@@ -555,7 +559,7 @@ describe("evidence receipt — declared classification coverage", () => {
    */
   it("declares a decision and a classification for every registered gate node", () => {
     let gateNodes = 0;
-    for (const descriptor of WORKFLOW_DESCRIPTORS) {
+    for (const descriptor of RECEIPT_DESCRIPTORS) {
       for (const node of descriptor.nodes) {
         if (node.kind !== "gate") continue;
         gateNodes++;
@@ -577,7 +581,7 @@ describe("evidence receipt — declared classification coverage", () => {
   });
 
   it("has no orphan classification or obligation", () => {
-    const gateNodeKeys = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
+    const gateNodeKeys = new Set(RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
       descriptor.nodes
         .filter((node) => node.kind === "gate")
         .map((node) => `${String(descriptor.id)} ${String(node.id)}`)));
@@ -587,7 +591,7 @@ describe("evidence receipt — declared classification coverage", () => {
         `orphan gate decision ${declaration.workflowId}/${declaration.gateId}`,
       );
     }
-    const workflowIds = new Set(WORKFLOW_DESCRIPTORS.map(({ id }) => String(id)));
+    const workflowIds = new Set(RECEIPT_DESCRIPTORS.map(({ id }) => String(id)));
     /*
      * A task-output scope is an orphan when it names a task this RUNTIME cannot
      * execute — which is the build manifest's task set, not the narrower set
@@ -604,7 +608,7 @@ describe("evidence receipt — declared classification coverage", () => {
      * composes YET is exactly the case the narrower rule refused and the wider
      * one still catches when the task is deleted.
      */
-    const descriptorTaskIds = new Set(WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
+    const descriptorTaskIds = new Set(RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
       workflowProjections(descriptor).contracts.map((contract) => String(contract.id))));
     const taskIds = new Set([
       ...descriptorTaskIds,
@@ -618,7 +622,7 @@ describe("evidence receipt — declared classification coverage", () => {
      * can ever reach (ledger 2 D16–D22).
      */
     const commitTaskIds = new Set([
-      ...WORKFLOW_DESCRIPTORS.flatMap((descriptor) =>
+      ...RECEIPT_DESCRIPTORS.flatMap((descriptor) =>
         descriptor.nodes.flatMap((node) =>
           node.kind === "transaction" ? [String(node.commit.uses.id)] : [])),
       String(WriteFixtureCommit.id),
@@ -643,7 +647,7 @@ describe("evidence receipt — declared classification coverage", () => {
     }
     for (const obligation of EVIDENCE_OBLIGATIONS) {
       assert.ok(workflowIds.has(String(obligation.workflowId)), `orphan obligation ${obligation.obligation}`);
-      const descriptor = WORKFLOW_DESCRIPTORS.find(({ id }) => String(id) === String(obligation.workflowId));
+      const descriptor = RECEIPT_DESCRIPTORS.find(({ id }) => String(id) === String(obligation.workflowId));
       assert.ok(descriptor !== undefined);
       const nodeIds = new Set(descriptor.nodes.map((node) => String(node.id)));
       for (const source of obligation.sources) {

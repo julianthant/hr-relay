@@ -30,12 +30,7 @@ import type { WorkflowModuleRole } from "../domain/workflow/module-role.js";
 import { workflowSourceFolder } from "../domain/workflow/source-layout.js";
 import { taskStoreRegistry } from "../stores/index.js";
 import { personLookupWorkflow } from "../workflows/person-lookup/workflow.js";
-import { separationsIdentityCheckWorkflow } from "../workflows/separations/identity-check/workflow.js";
-import { separationsKronosTimecardWorkflow } from "../workflows/separations/kronos-timecard/workflow.js";
-import { separationsKualiFinalizationWorkflow } from "../workflows/separations/kuali-finalization/workflow.js";
-import { separationsKualiReadWorkflow } from "../workflows/separations/kuali-extraction/workflow.js";
 import { separationsWorkflow } from "../workflows/separations/workflow.js";
-import { separationsUcpathTerminationWorkflow } from "../workflows/separations/ucpath-transaction/workflow.js";
 
 /**
  * D311/D317 — a definition-backed workflow's server module is DERIVED here,
@@ -50,34 +45,8 @@ export const separationsModule = composeWorkflowModule(
   compileWorkflow(separationsWorkflow),
   taskStoreRegistry.stores,
 );
-export const separationsKronosTimecardModule = composeWorkflowModule(
-  compileWorkflow(separationsKronosTimecardWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsUcpathTerminationModule = composeWorkflowModule(
-  compileWorkflow(separationsUcpathTerminationWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsKualiFinalizationModule = composeWorkflowModule(
-  compileWorkflow(separationsKualiFinalizationWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsKualiReadModule = composeWorkflowModule(
-  compileWorkflow(separationsKualiReadWorkflow),
-  taskStoreRegistry.stores,
-);
-export const separationsIdentityCheckModule = composeWorkflowModule(
-  compileWorkflow(separationsIdentityCheckWorkflow),
-  taskStoreRegistry.stores,
-);
-
 export const WORKFLOW_MODULES = Object.freeze([
   personLookupModule,
-  separationsKronosTimecardModule,
-  separationsKualiReadModule,
-  separationsIdentityCheckModule,
-  separationsUcpathTerminationModule,
-  separationsKualiFinalizationModule,
   separationsModule,
 ]);
 

@@ -1,7 +1,7 @@
 # start-run-separations--paper-ink--1440x900
 # adapter: fixture
 # fixture: start-run-separations
-# descriptorHash: 54cd9be55d9e1fd64518a3f5e381b5e799b4afa6a347fea50a95ee783154c0bf
+# descriptorHash: ebc94624774bb282007bd8b6a0c36e760951cdfcdcae3b5cd52978b3b790ff1f
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -23,16 +23,6 @@
     - list:
       - listitem:
         - button "Person Lookup pl"
-  - text: Separations
-  - list:
-    - listitem: Separation Document , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
-    - listitem: Identity Check , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
-    - listitem: UCPath Termination , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
-    - listitem: Kuali Finalization , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
-  - text: Timekeeping
-  - list:
-    - listitem: Separation Timecard , a proving harness of separations This workflow declares no typed-input surface, so this dialog has no box for it.
-  - button "5 not startable" [expanded]
   - list "Run configuration path":
     - listitem: Input
     - listitem: Options

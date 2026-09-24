@@ -35,7 +35,7 @@ import {
   type RunDetailQueryDeps,
   type RunNoteScanEntry,
 } from "../../../src/server/dashboard/queries/run-detail.js";
-import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
+import { separationsKualiFinalizationModule } from "../../../src/control/step-proof-modules.js";
 import { dataOriginViewsOf } from "../../../src/server/dashboard/compose.js";
 import {
   AT,
@@ -651,9 +651,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
   });
 
   it("serves a real transaction module as probe, prepare, fence, commit, verify without fabricating fence data", () => {
-    const module = WORKFLOW_MODULES.find((candidate) =>
-      String(candidate.descriptor.id) === "separations-kuali-finalization");
-    assert.ok(module !== undefined);
+    const module = separationsKualiFinalizationModule;
     const w = makeWorld({ descriptors: { resolve: () => module.descriptor } });
     worlds.push(w);
     queuedEventOf(w, { seed: 1, workflow: "separations-kuali-finalization" });

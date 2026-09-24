@@ -92,6 +92,9 @@ workflow-model` §1.6.1):
 A workflow folder holds **only** `workflow.ts`. A step sub-folder exists only when the step carries
 a chunk harness (its own `workflow.ts`, §6.4); a declared timeline group needs no folder.
 
+Only operator workflows are registered. A step proof in a sub-folder is retained for historical
+run reads and isolated tests; it is not added to either active registry tuple.
+
 **Registration is five one-line edits across two files, not authoring.** The composition root is
 the ONE static module tuple, and its own header says so ("adding a workflow is one import plus one
 tuple entry rather than ten synchronized lists"):
@@ -673,8 +676,9 @@ node is read through a declared `omitted` arm (§7.3).
 `role` is `defineWorkflowRole({ kind: "chunk-harness", of: "separations", step:
 KUALI_FINALIZATION_STEP.key })` (the folder name IS the step key; the harness's own workflow id is
 free of it — `separations-kuali-read` lives in `kuali-extraction/`), which IMPORTS the step's
-identities from `../workflow.js` and wires them from its own ingress. A harness is independently
-startable, nests under its composition in the picker and Explorer, and never appears in the rail.
+identities from `../workflow.js` and wires them from its own ingress. A harness is not an operator
+workflow and does not appear in the picker, Explorer, worker controls or rail. Its composition owns
+the step in the run timeline.
 `job-summary` is a declared group with no harness, so it has no folder.
 
 **A harness's artifact budget** is smaller than a rail workflow's: its `workflow.ts` and ONE
