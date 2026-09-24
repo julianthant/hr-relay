@@ -1,7 +1,7 @@
 # HR Rebuild Roadmap
 <!-- `docs/roadmap/roadmap.md` is the plan as written, in the roadmap notation (see docs/roadmap/notation.md): everything between roadmap:start and roadmap:end renders at docs/roadmap/index.html via `npm run roadmap`; appendices after roadmap:end are prose. Per D263 (§Governance below) a node also carries `doc:` — the docs/rebuild sections owning its contracts — and a `log:` block, the append-only history kept in the detail drawer rather than on the phase spine. -->
-asOf: 2026-09-19
-head: 438bd311f
+asOf: 2026-09-24
+head: 4b22f03a0
 eyebrow: hr-automation-rebuild · the plan · source: docs/roadmap/roadmap.md
 source: Stems from phase docs `docs/rebuild/00`–`06` (§Phases at a glance below, D323 phase hierarchy, `00`'s size model)
 source: `9993ab39^:docs/plans/2026-08-18-separations-completion-and-dashboard-generalization.md` (historical Tracks 0/A/B/C)
@@ -13,7 +13,7 @@ tiles:
 - Historical completion | 0.1–0.2 · 1.1–1.5 · 2.1–2.5 | evidence retained; runtime marker still reports `completedThrough: 2j`
 - Complete | Phase 2.6 | final candidate independently accepted, integrated locally and cleaned up
 - Next | Phase 3.1.9 · dashboard boundaries | 3.1.8 accepted; numbered task order includes each group finalization
-- Decisions | D1–D344 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D344 uses tangible tasks and explicit Parallel labels from 3.2; full gates at phase exit · D131 retired, never reused
+- Decisions | D1–D347 | D326 normalizes Phases 0–3 · D327 fixes the one-source run/settings outcomes · D330 fixes the run-record lifecycle contract (0.3 Task 1) · D331 fixes the settings catalog and protected root (0.3 Task 2) · D332 fixes the authority upgrade, adapters and recovery (0.3 Task 3) · D328 renders parallel peers as numeric wave members (`9-1`, `9-2`) · D329 puts authoring/freeze before controlled acceptance · D336/D337 consolidate ordinary settings and appearance overrides in SQLite · D338 gives agents full API capability parity · D339 defers optional release screens · D342 adds optional 3.4 document tools and moves cooperation to 3.5 · D344 uses tangible tasks and explicit Parallel labels from 3.2; full gates at phase exit · D347 adds runtime dashboard/workflow versions and version-bound archival · D131 retired, never reused
 - Gates | current source authority | open the active part for exact completion evidence and remaining gates
 - !Critical-path blocker | Separations controlled proof | D329 holds every write behind 3.2's independent candidate audit and 3.3's exact-candidate admission. Historical 4589 remains inspection-only; the bounded authorization must name the candidate, fingerprints, disposable targets, disposition, and sequence, and expires on drift, failure, or UNKNOWN
 
@@ -2231,6 +2231,7 @@ builds:
 
 needs:
 - dash-ui-finalizer
+- dash-archive-runtime-versions
 - dash-shell
 - dash-date-navigation
 - dash-settings
@@ -2271,6 +2272,7 @@ builds:
 
 needs:
 - dash-ui-finalizer
+- dash-archive-runtime-versions
 - dash-realtime
 
 log:
@@ -2292,6 +2294,7 @@ builds:
 
 needs:
 - dash-ui-finalizer
+- dash-archive-runtime-versions
 - dash-performance
 - dash-production-runtime
 
@@ -2315,6 +2318,7 @@ builds:
 
 needs:
 - dash-ui-finalizer
+- dash-archive-runtime-versions
 - dash-shell
 - dash-date-navigation
 - dash-settings
@@ -2474,6 +2478,27 @@ needs:
 - dash-ui-baseline
 - dash-ui-settings-records
 - dash-ui-workflow-interactions
+
+
+#### 24 · Archive and runtime version redesign {#dash-archive-runtime-versions}
+status: planned
+date: 2026-09-24 · operator-approved contract and task plan
+doc: 3.1/task-24-archive-runtime-versions · ref:dashboard-surfaces §9.5.1
+
+> Required Archive redesign after UI refinement finalization and before realtime, performance, proof infrastructure and final acceptance. The operator approved the grouped screens, independent dashboard/workflow runtime versions, and a 1.0 starting version. Isolated backend implementation may start before UI finalization; Archive UI changes and integration wait for its accepted output. D347 supersedes D274 item 2 for new version changes.
+
+builds:
+- [ ] BE persist dashboard and workflow runtime versions, stamp all newly created runs, and fence version publication until a reviewed archive transfer settles
+- [ ] BOTH archive selected workflows' old completed runs on a minor bump and every workflow's old completed runs on a dashboard major bump; block nonterminal runs and preserve exact recovery
+- [ ] FE group saved reports by dashboard, workflow and workflow version with bounded search and filters, reviewed bump controls, and truthful legacy version states
+- [ ] PROOF migration, read-forward history, concurrency, crash/replay, deletion/file custody, focused behavior/lint and desktop Archive parity
+
+needs:
+- dash-ui-finalizer
+
+log:
+- 2026-09-24 | operator-approved redesign | approved concrete plan in the task owner; implementation, focused proof and operator-directed integration remain open
+- 2026-09-24 | backend-start amendment | operator authorizes isolated backend work now; UI and integration retain the UI-finalizer dependency
 
 
 ### 3.2 · Workflow authoring and candidate freeze {#workflow-authoring-model}
