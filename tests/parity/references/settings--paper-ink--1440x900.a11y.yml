@@ -1,7 +1,7 @@
 # settings--paper-ink--1440x900
 # adapter: fixture
 # fixture: settings
-# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -64,55 +64,30 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "General" [level=2]
-    - text: Ordinary settings · SQLite Revision 1 Operator label
+    - text: Saved changes apply to new jobs; existing jobs keep their settings. Revision 1
+    - heading "Everyday operation" [level=3]
+    - text: Operator label
     - textbox "Operator label": Local operator
-    - text: Default Valid · Ordinary · Editable · New runs actor.label
-    - button "Clear Operator label" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: Local operator
-    - term: Default
-    - definition: Local operator
-    - text: browser · headless
-    - combobox "browser · headless":
+    - paragraph: Name shown in new run records
+    - text: Browser headless
+    - combobox "Browser headless":
       - option "Enabled" [selected]
       - option "Disabled"
-    - text: Default Valid · Ordinary · Editable · New runs browser.headless
-    - button "Clear browser · headless" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "true"
-    - term: Default
-    - definition: "true"
-    - text: features · debug Screenshots
-    - combobox "features · debug Screenshots":
+    - paragraph: Run browser sessions without a visible window
+    - heading "Features" [level=3]
+    - text: Debug screenshots
+    - combobox "Debug screenshots":
       - option "Enabled"
       - option "Disabled" [selected]
-    - text: Default Valid · Ordinary · Editable · New runs features.debugScreenshots
-    - button "Clear features · debug Screenshots" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "false"
-    - term: Default
-    - definition: "false"
-    - text: features · duo Web Authn
-    - combobox "features · duo Web Authn":
+    - paragraph: Capture extra diagnostic images
+    - text: Duo WebAuthn
+    - combobox "Duo WebAuthn":
       - option "Enabled" [selected]
       - option "Disabled"
-    - text: Default Valid · Ordinary · Editable · New runs features.duoWebAuthn
-    - button "Clear features · duo Web Authn" [disabled]: Clear
-    - term: Saved
-    - definition: not set
-    - term: Active
-    - definition: "true"
-    - term: Default
-    - definition: "true"
-    - text: 0 unsaved changes
-    - button "Discard all" [disabled]
-    - button "Save 0" [disabled]
+    - paragraph: Use WebAuthn for Duo sign-in
+    - text: All changes saved · New jobs use these settings
+    - button "Discard" [disabled]
+    - button "Save changes" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

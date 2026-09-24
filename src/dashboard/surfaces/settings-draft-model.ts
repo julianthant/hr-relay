@@ -9,8 +9,7 @@ export function formatSetting(value: EditorValue | undefined): string {
   if (value === undefined) return "not set";
   return typeof value === "object" ? JSON.stringify(value) : String(value);
 }
-export function settingInput(leaf: EditableSettingsLeafWire): SettingsDraftInput {
-  const value = leaf.effectiveValue;
+export function settingInput(leaf: EditableSettingsLeafWire, value = leaf.effectiveValue): SettingsDraftInput {
   if (leaf.input === "object") {
     if (leaf.control.input !== "object") throw new Error("settings-control-mismatch");
     return Object.fromEntries(leaf.control.fields.map(field => [field.name, value !== undefined && typeof value === "object" && !Array.isArray(value) && value[field.name] !== undefined ? String(value[field.name]) : ""]));
@@ -18,6 +17,29 @@ export function settingInput(leaf: EditableSettingsLeafWire): SettingsDraftInput
   if (leaf.input === "models") return Array.isArray(value) ? value.join("\n") : "";
   if (value !== undefined && typeof value === "object") throw new Error("settings-scalar-value-invalid");
   return value === undefined ? "" : String(value);
+}
+export function settingsSectionGroups(sectionId: string, leaves: readonly EditableSettingsLeafWire[]): readonly { title: string; leaves: readonly EditableSettingsLeafWire[] }[] {
+  const groupTitle = (path: string): string => {
+    if (sectionId === "general") return path.startsWith("features.") ? "Features" : "Everyday operation";
+    if (sectionId === "performance") {
+      if (path.startsWith("timeouts.")) return "Timeouts";
+      if (path.startsWith("ocr.")) return "OCR";
+      if (path.startsWith("browserHealth.") || path.startsWith("browser.")) return "Browser health";
+      if (path.startsWith("daemon.") || path.startsWith("concurrency.")) return "Worker capacity";
+      return "Retries and limits";
+    }
+    if (sectionId === "providers") return path.endsWith(".models") ? "Model order" : "Provider budgets";
+    if (sectionId === "annual-dates") return path.split(".")[1] ?? "Annual dates";
+    return { display: "Display size", paths: "Working locations", routes: "System entry points" }[sectionId] ?? "Settings";
+  };
+  const groups = new Map<string, EditableSettingsLeafWire[]>();
+  for (const leaf of leaves) {
+    const title = groupTitle(leaf.path);
+    const group = groups.get(title) ?? [];
+    group.push(leaf);
+    groups.set(title, group);
+  }
+  return [...groups].map(([title, groupedLeaves]) => ({ title, leaves: groupedLeaves }));
 }
 function integer(raw: string): number {
   if (!/^(?:0|[1-9]\d*)$/u.test(raw) || !Number.isSafeInteger(Number(raw))) throw new Error("invalid-number");

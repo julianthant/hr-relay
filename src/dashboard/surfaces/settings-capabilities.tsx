@@ -59,7 +59,7 @@ function CapabilityCellView({ cell }: { cell: CapabilityCell }) {
 export function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<string, string> }) {
   const facts = useSettingsFacts();
   return (
-    <Panel className="min-h-0 flex-1">
+    <Panel className="settings-page-panel">
       <PanelHeader
         title="Workflow capabilities"
         headingLevel={2}

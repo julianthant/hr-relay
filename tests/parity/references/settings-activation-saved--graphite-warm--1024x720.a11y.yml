@@ -64,30 +64,18 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Display" [level=2]
-    - text: "Ordinary settings · SQLite Revision 2 Observed host: 2560 × 1440"
-    - button "Clear override"
+    - text: "Display dimensions used by new browser sessions. Revision 2 Observed host: 2560 × 1440"
+    - heading "Display size" [level=3]
     - text: Screen width px
     - spinbutton "Screen width": "1980"
-    - text: Saved Valid · Ordinary · Editable · New runs display.screenWidth
-    - term: Saved
-    - definition: "1980"
-    - term: Active
-    - definition: "1980"
-    - term: Default
-    - definition: "2560"
+    - button "Restore standard"
     - text: Screen height px
     - spinbutton "Screen height": "1080"
-    - text: Saved Valid · Ordinary · Editable · New runs display.screenHeight
-    - term: Saved
-    - definition: "1080"
-    - term: Active
-    - definition: "1080"
-    - term: Default
-    - definition: "1440"
+    - button "Restore standard"
     - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
-    - text: 0 unsaved changes
-    - button "Discard all" [disabled]
-    - button "Save 0" [disabled]
+    - text: All changes saved · New jobs use these settings
+    - button "Discard" [disabled]
+    - button "Save changes" [disabled]
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
   - button "Add workers"

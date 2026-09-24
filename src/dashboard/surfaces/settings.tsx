@@ -265,7 +265,7 @@ export function SettingsPage({
       <nav
         aria-label="Settings sections"
         className={cn(
-          "flex w-[220px] shrink-0 flex-col gap-[var(--ds-space-hair)] overflow-y-auto",
+          "flex w-[196px] shrink-0 flex-col gap-[var(--ds-space-hair)] overflow-y-auto",
           "border-r border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] p-[var(--ds-space-base)]",
         )}
       >
@@ -296,7 +296,7 @@ export function SettingsPage({
         ))}
       </nav>
 
-      <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--ds-space-base)] overflow-y-auto p-[var(--ds-space-cozy)]">
+      <div className="settings-content flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--ds-space-base)] overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]">
         {/* A link naming a section this build has no entry for is stated, never
             redirected: landing on Storage under `?settings=budgets` tells the
             operator they are reading something they are not. */}

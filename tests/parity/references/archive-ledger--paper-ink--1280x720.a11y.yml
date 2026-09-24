@@ -1,7 +1,7 @@
 # archive-ledger--paper-ink--1280x720
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
   - button "Settings"

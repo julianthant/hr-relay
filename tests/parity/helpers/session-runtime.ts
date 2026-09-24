@@ -2,7 +2,7 @@ import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.j
 /** Private 3.1.11 runtime: real BFF, child and Chromium, synthetic transaction-free drivers. */
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
-import { cpSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
@@ -23,7 +23,7 @@ import { PARITY_DIST_DIR, ensureParityBundle } from "./bundle.js";
 
 export async function sessionRuntime() {
   ensureParityBundle();
-  const root = mkdtempSync(join(tmpdir(), "hrauto-sessions-ui-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "hrauto-sessions-ui-"));
   const children: ChildProcess[] = []; const logs: string[] = [];
   let runtime: DashboardRuntime | undefined; let database: AuthorityDatabase | undefined;
   const workerId = "person-lookup-worker-1";
@@ -58,7 +58,8 @@ export async function sessionRuntime() {
     rmSync(root, { recursive: true, force: true });
   }
   try {
-    for (const name of ["package.json", "package-lock.json"]) copyFileSync(name, join(root, name));
+    for (const name of ["package.json", "package-lock.json", "vite.dashboard.config.ts", "tsconfig.json"]) copyFileSync(name, join(root, name));
+    cpSync(join(process.cwd(), "src"), join(root, "src"), { recursive: true });
     mkdirSync(join(root, "dist")); cpSync(PARITY_DIST_DIR, join(root, "dist/dashboard"), { recursive: true });
     writeFileSync(join(root, "release-drivers"), "released\n");
     runtime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, frontend: "built-bundle", backendPortOverride: 0, frontendPortOverride: 0, env: {},

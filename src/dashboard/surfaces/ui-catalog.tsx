@@ -438,7 +438,7 @@ export function UiCatalogSection({
       `Panel` + `PanelHeader` + body shape every other Settings destination
       draws (SE45).
     */
-    <Panel className="min-h-0 flex-1">
+    <Panel className="settings-page-panel">
       <PanelHeader
         title="UI catalog"
         headingLevel={2}

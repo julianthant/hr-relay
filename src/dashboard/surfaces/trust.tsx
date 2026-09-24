@@ -741,7 +741,7 @@ function DiagnosticBundleDialog({
           )}
         </DialogBody>
         <DialogFooter className="[&>span]:min-w-0 [&>span]:shrink [&>span]:flex-wrap [&>span]:justify-end">
-          <Button variant="secondary" className="min-h-11" onClick={onClose}>Close</Button>
+          <Button variant="secondary" className="min-h-11" onClick={onClose}><span data-slot="diagnostic-close-label">Close</span></Button>
           {state.state === "ready" && manifestUrl !== undefined && (
             <ButtonLink
               variant="primary"

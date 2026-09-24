@@ -449,7 +449,7 @@ export function StorageSection({
       invented or lazily-borrowed age, and the sentence below keeps the
       provenance half it used to say twice.
     */
-    <Panel className="min-h-0 flex-1">
+    <Panel className="settings-page-panel">
       <PanelHeader
         title="Storage health"
         headingLevel={2}

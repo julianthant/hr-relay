@@ -155,13 +155,18 @@ export async function captureParityPair(
    * `false`: the dashboard is a fixed shell that must fit, and a full-page shot
    * of one would photograph a scroll height instead of a layout.
    */
-  options: Readonly<{ fullPage?: boolean }> = {},
+  options: Readonly<{ fullPage?: boolean; screenshotStyle?: string }> = {},
 ): Promise<void> {
   const name = await captureA11yReference(page, referencesDir, metadata);
-  await expect(page).toHaveScreenshot(`${name}.png`, {
-    fullPage: options.fullPage ?? false,
-    animations: "disabled",
-  });
+  const screenshotStyle = options.screenshotStyle === undefined ? undefined : await page.addStyleTag({ content: options.screenshotStyle });
+  try {
+    await expect(page).toHaveScreenshot(`${name}.png`, {
+      fullPage: options.fullPage ?? false,
+      animations: "disabled",
+    });
+  } finally {
+    await screenshotStyle?.evaluate(element => { element.parentNode?.removeChild(element); });
+  }
 }
 
 /**

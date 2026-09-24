@@ -37,6 +37,7 @@
 @import "@fontsource/ibm-plex-mono/600.css";
 
 @import "tailwindcss";
+@import "@heroui/styles";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -219,4 +220,149 @@
   ::-webkit-scrollbar-corner {
     background: transparent;
   }
+}
+
+.settings-content > * {
+  width: min(100%, var(--ds-w-settings-content));
+  margin-inline: auto;
+  flex: none;
+}
+.settings-page-panel {
+  width: min(100%, var(--ds-w-settings-content));
+  margin-inline: auto;
+  flex: none;
+  overflow: visible;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+.settings-page-panel > header {
+  min-height: 0;
+  margin-bottom: var(--ds-space-page);
+  padding: 0;
+  border: 0;
+}
+.settings-page-panel > header > span:first-child {
+  display: none;
+}
+.settings-page-panel > header h2 {
+  font-size: var(--ds-text-display);
+  line-height: var(--ds-lh-display);
+}
+.settings-page-panel > header h2 + span {
+  font-size: var(--ds-text-body);
+}
+.settings-page-body {
+  overflow: visible;
+  padding: 0;
+}
+.settings-group-rows {
+  overflow: hidden;
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-1);
+}
+.settings-fact-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-settings-control));
+  align-items: center;
+  gap: var(--ds-space-section);
+  min-width: 0;
+  padding: var(--ds-space-loose);
+  border-bottom: 1px solid var(--ds-border);
+}
+.settings-fact-row:last-child {
+  border-bottom: 0;
+}
+.settings-fact-row > :last-child {
+  justify-self: end;
+}
+.settings-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-settings-control));
+  column-gap: var(--ds-space-section);
+  row-gap: var(--ds-space-tight);
+  min-width: 0;
+  padding: var(--ds-space-loose);
+  border-bottom: 1px solid var(--ds-border);
+}
+.settings-row:last-child {
+  border-bottom: 0;
+}
+.settings-row-field {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: subgrid;
+  align-items: center;
+  gap: var(--ds-space-tight) var(--ds-space-section);
+}
+.settings-row-field > :first-child {
+  grid-column: 1;
+  grid-row: 1;
+  align-self: end;
+}
+.settings-row-field > :first-child label {
+  color: var(--ds-fg);
+  font-size: var(--ds-text-ui);
+  font-weight: 600;
+}
+.settings-row-field > :nth-child(2) {
+  grid-column: 2;
+  grid-row: 1 / span 2;
+}
+.settings-row-field > p {
+  grid-column: 1;
+  grid-row: 2;
+  margin: 0;
+}
+.settings-row-field > p[role="alert"] {
+  grid-column: 2;
+  grid-row: 3;
+}
+.settings-row-actions {
+  grid-column: 2;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-tight);
+  min-width: 0;
+}
+.settings-row-actions button {
+  min-height: 0;
+  height: auto;
+  padding: var(--ds-space-tight) 0;
+  font-weight: 500;
+  text-align: left;
+  white-space: normal;
+}
+.settings-row-hazard {
+  grid-column: 1 / -1;
+}
+.settings-object-field {
+  grid-column: 1 / -1;
+}
+.settings-object-fields {
+  width: 100%;
+  grid-template-columns: 1fr;
+}
+.settings-object-subfield {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-settings-control));
+  align-items: center;
+  column-gap: var(--ds-space-section);
+}
+.settings-object-subfield > :nth-child(2) {
+  grid-column: 2;
+}
+.settings-savebar {
+  position: sticky;
+  bottom: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--ds-space-base);
+  padding: var(--ds-space-cozy) var(--ds-space-loose);
+  border: 1px solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-1);
 }
