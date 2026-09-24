@@ -161,9 +161,16 @@ function ActivityDateControl({ from, to, invalid, onRange }: {
         <span className="tabular-nums">{label}</span><ChevronDown aria-hidden className={dsIcon.sm} />
       </Button>
     </PopoverTrigger>
-    <PopoverContent title="Select report dates" description="Choose a start and end date. Select the same date twice for one day." align="end" width="md" className="ds-date-popover">
+    <PopoverContent title="Select report dates" hideTitle align="end" width="md" className="ds-date-popover">
       <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar" value={selected ? { start, end } : null} onChange={dates => { if (dates !== null) choose(dates.start.toString(), dates.end.toString()); }}>
-        <HeroRangeCalendar.Header><HeroRangeCalendar.NavButton slot="previous" /><HeroRangeCalendar.YearPickerTrigger><HeroRangeCalendar.YearPickerTriggerHeading /><HeroRangeCalendar.YearPickerTriggerIndicator /></HeroRangeCalendar.YearPickerTrigger><HeroRangeCalendar.NavButton slot="next" /></HeroRangeCalendar.Header>
+        <HeroRangeCalendar.Header>
+          <HeroRangeCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
+          <HeroRangeCalendar.YearPickerTrigger className="w-full justify-center">
+            <HeroRangeCalendar.YearPickerTriggerHeading className="text-foreground" />
+            <HeroRangeCalendar.YearPickerTriggerIndicator className="text-foreground" />
+          </HeroRangeCalendar.YearPickerTrigger>
+          <HeroRangeCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
+        </HeroRangeCalendar.Header>
         <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
         <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>
       </HeroRangeCalendar>

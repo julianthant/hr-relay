@@ -50,12 +50,12 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
       <DatePicker.Popover className={cn("ds-date-popover", dsElev.mid, dsLayer.menu)}>
         <HeroCalendar aria-label={`Choose ${label.toLowerCase()} date`} className="ds-hero-calendar">
           <HeroCalendar.Header>
-            <HeroCalendar.NavButton slot="previous" />
-            <HeroCalendar.YearPickerTrigger>
-              <HeroCalendar.YearPickerTriggerHeading />
-              <HeroCalendar.YearPickerTriggerIndicator />
+            <HeroCalendar.NavButton className="text-foreground" slot="previous" />
+            <HeroCalendar.YearPickerTrigger className="w-full justify-center">
+              <HeroCalendar.YearPickerTriggerHeading className="text-foreground" />
+              <HeroCalendar.YearPickerTriggerIndicator className="text-foreground" />
             </HeroCalendar.YearPickerTrigger>
-            <HeroCalendar.NavButton slot="next" />
+            <HeroCalendar.NavButton className="text-foreground" slot="next" />
           </HeroCalendar.Header>
           <HeroCalendar.Grid>
             <HeroCalendar.GridHeader>

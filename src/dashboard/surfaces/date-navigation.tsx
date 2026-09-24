@@ -63,15 +63,14 @@ function DateCalendar({
         }}
         minValue={parseDate("0001-01-01")}
         maxValue={parseDate(today)}
-        isDateUnavailable={date => !countByDay.has(date.toString())}
       >
         <HeroCalendar.Header>
-          <HeroCalendar.NavButton slot="previous" aria-label="Previous month" />
-          <HeroCalendar.YearPickerTrigger>
-            <HeroCalendar.YearPickerTriggerHeading />
-            <HeroCalendar.YearPickerTriggerIndicator />
+          <HeroCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
+          <HeroCalendar.YearPickerTrigger className="w-full justify-center">
+            <HeroCalendar.YearPickerTriggerHeading className="text-foreground" />
+            <HeroCalendar.YearPickerTriggerIndicator className="text-foreground" />
           </HeroCalendar.YearPickerTrigger>
-          <HeroCalendar.NavButton slot="next" aria-label="Next month" />
+          <HeroCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
         </HeroCalendar.Header>
         <HeroCalendar.Grid>
           <HeroCalendar.GridHeader>
@@ -114,7 +113,7 @@ function DateCalendar({
           Today
         </Button>
         <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-muted)]")}>
-          {resource.state === "failed" ? "Calendar unavailable" : resource.state === "loaded" ? `${counts.length} days this month` : "Loading calendar…"}
+          {resource.state === "failed" ? "Calendar unavailable" : resource.state === "loaded" ? `${counts.length} active days this month` : "Loading calendar…"}
         </span>
       </div>
     </div>
@@ -244,7 +243,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday, followingToda
           </button>
         </PopoverTrigger>
         </Tooltip>
-        <PopoverContent title="Pick a day" hideTitle width="md" align="center" side="bottom">
+        <PopoverContent title="Pick a day" hideTitle width="md" align="center" side="bottom" className="ds-date-popover">
           <DateCalendar
             day={day}
             today={today}

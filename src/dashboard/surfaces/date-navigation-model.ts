@@ -119,9 +119,7 @@ export interface CalendarCell {
  * button under the pointer) every time you step a month, which is the one thing
  * a date picker must not do.
  *
- * Availability and count both come from the served `monthCounts`: a day the
- * projection did not serve is DRAWN and DISABLED rather than skipped, because a
- * calendar with holes in it teaches the operator that the month is missing days.
+ * Counts identify days with rows; every day through today can be opened.
  */
 export function buildCalendarMonth(
   month: string,
@@ -141,7 +139,7 @@ export function buildCalendarMonth(
       dayOfMonth: new Date(ms).getUTCDate(),
       inMonth: day.slice(0, 7) === month,
       count: count ?? 0,
-      available: day <= today && (day === today || (count !== undefined && count > 0)),
+      available: day <= today,
       isToday: day === today,
     });
   }

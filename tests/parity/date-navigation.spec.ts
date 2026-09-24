@@ -15,6 +15,16 @@ async function selectMonth(page: Page, month: string) {
   await expect(page.locator(`[data-demo-day="${month}-15"]`)).toBeVisible();
 }
 for (const theme of PARITY_THEMES) {
+  test(`dashboard calendar opens a day without workflow rows @ ${theme.name}`, async ({ page }) => {
+    await installTheme(page, theme);
+    await gotoAppState(page, server.baseUrl, { day: "2026-07-30" });
+    await picker(page).click();
+    const emptyDay = page.locator('[data-demo-day="2026-07-15"]');
+    await expect(emptyDay).toBeEnabled();
+    await emptyDay.click();
+    await expect(page).toHaveURL(/day=2026-07-15$/);
+    await expect(picker(page)).toHaveAccessibleName(/0 rows/);
+  });
   test(`canonical calendar, history, empty links, picker and desktop geometry @ ${theme.name}`, { annotation: [{ type: "required-a11y-evidence", description: `date-navigation-${theme.name}.a11y.yml` }] }, async ({ page }, info) => {
     const errors: string[] = [];
     page.on("pageerror", error => errors.push(error.message));
@@ -41,9 +51,11 @@ for (const theme of PARITY_THEMES) {
     await page.getByRole("button", { name: "Forward", exact: true }).click(); await expect(page).toHaveURL(/day=2026-06-15/);
     await picker(page).click(); await page.getByRole("button", { name: /^Previous month/ }).click();
     await selectMonth(page, "2026-05");
-    await expect(page.locator('[data-demo-day^="2026-05-"]:not([aria-disabled="true"])')).toHaveCount(0);
-    await page.locator('[role="grid"] [tabindex="0"]').press("Enter");
-    expect(new URL(page.url()).searchParams.get("day")).toBe("2026-06-15");
+    await expect(page.locator('[data-demo-day="2026-05-15"]')).toBeEnabled();
+    await page.locator('[data-demo-day="2026-05-15"]').press("Enter");
+    await expect(page).toHaveURL(/day=2026-05-15$/);
+    await expect(picker(page)).toHaveAccessibleName(/0 rows/);
+    await picker(page).click();
     await page.getByRole("button", { name: "Today", exact: true }).click();
     await expect(page).not.toHaveURL(/day=/); await expect(picker(page)).toBeFocused();
     await picker(page).click();
