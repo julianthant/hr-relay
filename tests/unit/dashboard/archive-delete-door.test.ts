@@ -280,9 +280,9 @@ describe("D308 — the archived run's delete door", () => {
     await archive.press("Delete saved report");
 
     assert.deepEqual(archive.commands, []);
-    assert.equal(archive.text().includes("Delete this saved report"), true, "the confirm did not open");
+    assert.equal(archive.text().includes(`Delete ${FIXTURE_ARCHIVED_RUN.title}?`), true, "the confirm did not open");
     assert.equal(
-      archive.text().includes("This cannot be undone."),
+      archive.text().includes("cannot be undone"),
       true,
       "the confirm opened without the sentence that makes it a decision",
     );
@@ -292,10 +292,10 @@ describe("D308 — the archived run's delete door", () => {
     const archive = await mountArchive({});
 
     await archive.press("Delete saved report");
-    await archive.press("Keep report");
+    await archive.press("Cancel");
 
     assert.deepEqual(archive.commands, []);
-    assert.equal(archive.text().includes("Delete this saved report"), false, "the confirm stayed open");
+    assert.equal(archive.text().includes(`Delete ${FIXTURE_ARCHIVED_RUN.title}?`), false, "the confirm stayed open");
     assert.equal(archive.text().includes(FIXTURE_ARCHIVED_RUN.title), true);
   });
 
@@ -304,7 +304,7 @@ describe("D308 — the archived run's delete door", () => {
     const archive = await mountArchive({});
 
     await archive.press("Delete saved report");
-    await archive.press("Confirm deletion");
+    await archive.press("Delete this report");
 
     assert.equal(archive.commands.length, 1);
     const sent = archive.commands[0];
@@ -328,7 +328,7 @@ describe("D308 — the archived run's delete door", () => {
     const archive = await mountArchive({});
 
     await archive.press("Delete saved report");
-    await archive.press("Confirm deletion");
+    await archive.press("Delete this report");
 
     assert.equal(archive.indexReads(), 2, "the applied delete did not re-read the ledger");
     assert.equal(
@@ -348,7 +348,7 @@ describe("D308 — the archived run's delete door", () => {
     const archive = await mountArchive({ result: MISMATCH });
 
     await archive.press("Delete saved report");
-    await archive.press("Confirm deletion");
+    await archive.press("Delete this report");
 
     const text = archive.text();
     assert.equal(text.includes("That command was refused"), true, text);

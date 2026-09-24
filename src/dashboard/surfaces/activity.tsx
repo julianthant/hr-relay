@@ -1071,36 +1071,26 @@ export function ActivityReport({
         title="Activity report"
         icon={<ChartNoAxesColumn aria-hidden className={dsIcon.lg} />}
         actions={
-          /* THE SPAN CONTROL LIVES ON THE PAGE'S OWN BAR, above the sentence
-             that reports it. The demo offers two fixture spans as chips; the
-             served wire requires both bounds by name (D180) and defaults
-             nothing, so the two bounds themselves are the control.
-
-             AC10/AC11 (D276 item 4): the demo's chip group NAMES itself to
-             assistive tech, and two bare `Field`s did not — a group of controls
-             with no name is a group a screen reader reads as loose inputs. The
-             `items-center`/`gap-tight` pair is the demo's, and it is not a
-             coin-flip: this span and the panel's actions row below had each
-             other's gap (AC19), which is a transposition rather than two
-             independent calls. Both fields are one height, so centring and
-             end-aligning paint the same pixels. */
-          <span role="group" aria-label="Report span" className="flex items-center gap-[var(--ds-space-tight)]">
-            <Field label="From">
-              <Input
-                type="date"
-                value={resolved.from}
-                max={resolved.to}
-                onChange={(event) => onRange(activityRangeValue({ ...resolved, from: event.target.value }))}
-              />
-            </Field>
-            <Field label="To">
-              <Input
-                type="date"
-                value={resolved.to}
-                min={resolved.from}
-                onChange={(event) => onRange(activityRangeValue({ ...resolved, to: event.target.value }))}
-              />
-            </Field>
+          <span role="group" aria-label="Activity report range" className="flex flex-col gap-[var(--ds-space-tight)]">
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Report range</span>
+            <span className="flex items-center gap-[var(--ds-space-tight)]">
+              <Field label="From">
+                <Input
+                  type="date"
+                  value={resolved.from}
+                  max={resolved.to}
+                  onChange={(event) => onRange(activityRangeValue({ ...resolved, from: event.target.value }))}
+                />
+              </Field>
+              <Field label="To">
+                <Input
+                  type="date"
+                  value={resolved.to}
+                  min={resolved.from}
+                  onChange={(event) => onRange(activityRangeValue({ ...resolved, to: event.target.value }))}
+                />
+              </Field>
+            </span>
           </span>
         }
       />
@@ -1108,7 +1098,7 @@ export function ActivityReport({
       <div className="min-h-0 flex-1 overflow-y-auto p-[var(--ds-space-cozy)]">
         <Panel>
           <PanelHeader
-            title="Automation activity"
+            title="Activity results"
             headingLevel={2}
             subtitle={spanLabel}
             meta={report === undefined
@@ -1116,7 +1106,7 @@ export function ActivityReport({
               : `${plural(report.totalRuns, "run")} · ${activityPeopleMeta(report.people)}`}
             actions={
               report === undefined ? undefined : (
-                <span className="flex items-center gap-[var(--ds-space-snug)]">
+                <span className="flex flex-wrap items-end gap-[var(--ds-space-snug)]">
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
@@ -1127,22 +1117,23 @@ export function ActivityReport({
                       <BulletList items={[...activityReportCaveats(report)]} />
                     </PopoverContent>
                   </Popover>
-                  {/* The demo's Export, beside the ⓘ exactly as it draws it.
-                      It renders only once the report is loaded — a button that
-                      exported a window nothing had answered for would hand a
-                      supervisor a file about a report the operator never saw. */}
-                  <Button
-                    size="sm"
-                    variant="secondary"
-                    icon={<Download aria-hidden className={dsIcon.md} />}
-                    disabled={exportState==="pending"}
-                    onClick={()=>{void exportReport("csv");}}
-                  >
-                    Export CSV
-                  </Button>
-                  <Button size="sm" variant="secondary" disabled={exportState==="pending"} onClick={()=>{void exportReport("xlsx");}}>XLSX</Button>
-                  <Button size="sm" variant="ghost" onClick={()=>{exportRequest.current?.abort();exportRequest.current=null;setResponse({range:requestRange,resource:LOADING});setRefresh(value=>value+1);}}>Refresh report</Button>
-                  {exportState==="pending"&&<Button size="sm" variant="ghost" onClick={()=>{exportRequest.current?.abort();exportRequest.current=null;setExportState("cancelled");}}>Cancel download</Button>}
+                  <span className="flex flex-col gap-[var(--ds-space-tight)]">
+                    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Export report</span>
+                    <span role="group" aria-label="Export activity report" className="flex items-center gap-[var(--ds-space-tight)]">
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        icon={<Download aria-hidden className={dsIcon.md} />}
+                        disabled={exportState === "pending"}
+                        onClick={() => { void exportReport("csv"); }}
+                      >
+                        Export CSV
+                      </Button>
+                      <Button size="sm" variant="secondary" disabled={exportState === "pending"} onClick={() => { void exportReport("xlsx"); }}>Export XLSX</Button>
+                      {exportState === "pending" && <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setExportState("cancelled"); }}>Cancel download</Button>}
+                    </span>
+                  </span>
+                  <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setResponse({ range: requestRange, resource: LOADING }); setRefresh(value => value + 1); }}>Refresh report</Button>
                 </span>
               )
             }

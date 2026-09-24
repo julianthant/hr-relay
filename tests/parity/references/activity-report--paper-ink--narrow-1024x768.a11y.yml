@@ -1,7 +1,7 @@
 # activity-report--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: activity-report
-# descriptorHash: a14b8216ad1d07ba93a8db23f9d466ded323816d37c0086a731ac41ca9834328
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -25,16 +25,18 @@
 - main:
   - region "Activity report":
     - text: Activity report
-    - group "Report span":
-      - text: From
+    - group "Activity report range":
+      - text: Report range From
       - textbox "From": 2026-07-01
       - text: To
       - textbox "To": 2026-08-03
-    - heading "Automation activity" [level=2]
+    - heading "Activity results" [level=2]
     - text: Wed, Jul 1 – Mon, Aug 3 12 runs · 8 distinct people
     - button "How it is counted"
-    - button "Export CSV"
-    - button "XLSX"
+    - text: Export report
+    - group "Export activity report":
+      - button "Export CSV"
+      - button "Export XLSX"
     - button "Refresh report"
     - text: Runs
     - button "How runs is counted"

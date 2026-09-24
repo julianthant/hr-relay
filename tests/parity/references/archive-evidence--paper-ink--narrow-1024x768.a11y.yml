@@ -1,7 +1,7 @@
 # archive-evidence--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: archive-evidence-verified
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
   - button "Settings"
@@ -29,6 +30,7 @@
   - button "Refresh"
   - region "Saved reports":
     - heading "Saved reports" [level=2]
+    - text: 1 shown
     - form "Filter saved reports":
       - text: Workflow
       - textbox "Workflow"
@@ -45,14 +47,7 @@
         - option "discarded"
         - option "interrupted"
         - option "superseded"
-      - text: Completed from (UTC)
-      - textbox "Completed from (UTC)"
-      - text: Completed through (UTC)
-      - textbox "Completed through (UTC)"
-      - text: Captured from (UTC)
-      - textbox "Captured from (UTC)"
-      - text: Captured through (UTC)
-      - textbox "Captured through (UTC)"
+      - group: Date filters
       - button "Clear filters"
     - table "Saved reports":
       - rowgroup:
@@ -61,7 +56,7 @@
           - columnheader "Outcome"
           - columnheader "Completed"
       - rowgroup:
-        - row "Synthetic retained capture retired-synthetic-workflow · v1 Done 2026-08-03T09:21:00.000Z":
+        - row "Synthetic retained capture retired-synthetic-workflow · v1 Done 2026-08-03T09:21:00.000Z" [selected]:
           - cell "Synthetic retained capture retired-synthetic-workflow · v1":
             - button "Synthetic retained capture" [pressed]
             - paragraph: retired-synthetic-workflow · v1
@@ -71,10 +66,13 @@
     - article "Saved archive report":
       - heading "Synthetic retained capture" [level=2]
       - paragraph: retired-synthetic-workflow · version 1
-      - paragraph: "Outcome: Done"
-      - paragraph: Report 99999999-0009-4000-8000-999900000009
-      - paragraph: Completed 2026-08-03T09:21:00.000Z · Captured 2026-08-03T09:25:00.000Z
+      - text: Outcome Done
+      - term: Completed
+      - definition: 2026-08-03T09:21:00.000Z
+      - term: Captured
+      - definition: 2026-08-03T09:25:00.000Z
       - paragraph: Saved record · read-only
+      - group: Report identity
       - link "Export report":
         - /url: data:application/json;charset=utf-8,%7B%22state%22%3A%22available%22%2C%22runId%22%3A%2299999999-0009-4000-8000-999900000009%22%2C%22title%22%3A%22Synthetic%20retained%20capture%22%2C%22workflow%22%3A%22retired-synthetic-workflow%22%2C%22descriptorVersion%22%3A%221%22%2C%22outcome%22%3A%22done%22%2C%22completedAt%22%3A%222026-08-03T09%3A21%3A00.000Z%22%2C%22capturedAt%22%3A%222026-08-03T09%3A25%3A00.000Z%22%2C%22sections%22%3A%5B%7B%22kind%22%3A%22values%22%2C%22title%22%3A%22Frozen%20capture%20facts%22%2C%22values%22%3A%5B%7B%22label%22%3A%22Digest%22%2C%22value%22%3A%22f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847%22%7D%2C%7B%22label%22%3A%22Artifact%22%2C%22value%22%3A%22aa11bb22-000a-4000-8000-aa11bb22000a%22%7D%2C%7B%22label%22%3A%22Bundle%22%2C%22value%22%3A%22aa11bb22-000b-4000-8000-aa11bb22000b%22%7D%2C%7B%22label%22%3A%22Media%20type%22%2C%22value%22%3A%22image%2Fpng%22%7D%2C%7B%22label%22%3A%22Bytes%22%2C%22value%22%3A3281%7D%2C%7B%22label%22%3A%22Dimensions%22%2C%22value%22%3A%221440%20%C3%97%20900%22%7D%2C%7B%22label%22%3A%22Declared%20retention%22%2C%22value%22%3A%222026-09-02T09%3A11%3A00.000Z%22%7D%5D%7D%5D%2C%22files%22%3A%5B%7B%22digest%22%3A%22f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847%22%2C%22byteLength%22%3A3281%2C%22mediaType%22%3A%22image%2Fpng%22%2C%22name%22%3A%22Synthetic%20screenshot.png%22%2C%22artifactIds%22%3A%5B%22aa11bb22-000a-4000-8000-aa11bb22000a%22%5D%7D%5D%2C%22archiveFingerprint%22%3A%22eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee%22%7D
       - region "Frozen capture facts":

@@ -60,7 +60,9 @@ test.describe("version bump", () => {
       await expect(page.getByRole("textbox",{name:"What changed"})).toHaveAttribute("maxlength","200");
       await expect(page.getByRole("textbox",{name:"Why",exact:true})).toHaveAttribute("maxlength","1000");
       await expect(page.getByRole("button",{name:"Apply reviewed change"})).toBeDisabled();
-      await expect(page.getByText(`Blocked by: ${blocker}`)).toBeVisible();
+      const plannedChange = page.getByRole("region", { name: /^Version change /u });
+      await expect(plannedChange.locator("dt", { hasText: "Blockers" })).toBeVisible();
+      await expect(plannedChange).toContainText(blocker);
       expect(errors,"page errors while opening the served version review").toEqual([]);
 
       await captureParityPair(page, REFERENCES, {

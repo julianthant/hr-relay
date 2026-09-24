@@ -8,9 +8,35 @@ import { fixtureSettingsDocument } from "./helpers/fixture-settings.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { registerReferenceServers } from "./helpers/reference-harness.js";
+import { H_REPORT } from "./helpers/fixture-archive-report.js";
+import { SavedVersionIndexWireSchema } from "../../src/domain/dashboard/archive.js";
+import { FIXTURE_ACTIVITY_RANGE, FIXTURE_SAVED_VERSIONS } from "./helpers/fixture-archive.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 const servers = registerReferenceServers(["server"]);
+const RECORDS_VERSION_CHANGE = {
+  changeId: "00000000-0000-4000-8000-000000000098",
+  state: "planned",
+  targetVersion: "0.3.0",
+  change: {
+    kind: "major",
+    what: "Synthetic major version review",
+    why: "A terminal prior-version run still blocks the reviewed archive transfer.",
+    commit: { state: "absent", reason: "No commit reference supplied." },
+  },
+  reviewFingerprint: "b".repeat(64),
+  scope: { kind: "workflows", workflowIds: ["person-lookup"] },
+  memberRunIds: [
+    "00000000-0000-4000-8000-000000000011",
+    "00000000-0000-4000-8000-000000000012",
+  ],
+  blockerRunIds: ["00000000-0000-4000-8000-000000000012"],
+  completedRunIds: [],
+} as const;
+const RECORDS_SAVED_VERSIONS = SavedVersionIndexWireSchema.parse({
+  ...FIXTURE_SAVED_VERSIONS,
+  changes: [RECORDS_VERSION_CHANGE],
+});
 const SETTINGS = [
   ["general", "General"],
   ["display", "Display"],
@@ -231,4 +257,332 @@ async function setBrowserZoom(worker: import("playwright").Worker, pageUrl: stri
     await chrome.tabs.setZoom(tabId, factor);
     return { tabId, value: await chrome.tabs.getZoom(tabId), settings: await chrome.tabs.getZoomSettings(tabId) };
   }, { pageUrl, factor });
+}
+
+const RECORD_VIEWPORTS = [
+  { width: 1440, height: 900, name: "1440x900" },
+  { width: 1280, height: 720, name: "1280x720" },
+  { width: 1024, height: 768, name: "1024x768" },
+  { width: 1024, height: 720, name: "1024x720" },
+] as const;
+
+for (const theme of PARITY_THEMES) {
+  test(`UI-A Records desktop capture matrix @ ${theme.name}`, {
+    annotation: [{ type: "required-a11y-evidence", description: `ui-settings-records-records-${theme.name}.a11y.yml` }],
+  }, async ({ page }, info) => {
+    const second = { ...H_REPORT, runId: "00000000-0000-4000-8000-000000000083", title: "Second saved report" };
+    const digest = H_REPORT.files[0]?.digest;
+    if (digest === undefined) throw new Error("The saved report fixture requires a retained attachment.");
+    const downloadUrl = `/artifacts/v1/archive/${H_REPORT.runId}/files/${digest}`;
+    await page.route("**/api/v1/archive/reports/*", route => route.fulfill({
+      json: route.request().url().endsWith(second.runId) ? second : H_REPORT,
+    }));
+    await page.route("**/api/v1/archive/reports/*/files/*", route => route.fulfill({ json: {
+      runId: H_REPORT.runId,
+      digest,
+      resource: { state: "available", downloadUrl },
+    } }));
+    await page.route("**/api/v1/archive/versions", route => route.fulfill({ json: RECORDS_SAVED_VERSIONS }));
+    await page.route("**/api/v1/archive/reports?*", route => route.fulfill({ json: { items: [H_REPORT, second], next: null } }));
+    await installTheme(page, theme);
+
+    let finalTree = "";
+    for (const viewport of RECORD_VIEWPORTS) {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, archive: H_REPORT.runId });
+      await assertThemeApplied(page, theme);
+      await expect(page.getByRole("main").getByText("Archive", { exact: true })).toBeVisible();
+      const selectedButton = page.getByRole("button", { name: H_REPORT.title, exact: true });
+      await expect(selectedButton).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("row", { name: new RegExp(H_REPORT.title, "u") })).toHaveAttribute("aria-selected", "true");
+      const report = page.getByRole("article", { name: "Saved archive report" });
+      await expect(report).toContainText(H_REPORT.workflow);
+      await expect(report.getByText("Saved record · read-only", { exact: true })).toBeVisible();
+      await expect(page.getByRole("link", { name: H_REPORT.files[0]?.name ?? "Retained attachment" })).toBeVisible();
+      let stem = `ui-settings-records-records-matrix/${viewport.name}/archive-${theme.name}`;
+      let screenshot = info.outputPath(`${stem}.png`);
+      mkdirSync(dirname(screenshot), { recursive: true });
+      await page.screenshot({ path: screenshot });
+      await info.attach(`records-archive-${viewport.name}-${theme.name}`, { path: screenshot, contentType: "image/png" });
+      finalTree = await page.locator("body").ariaSnapshot();
+      writeFileSync(info.outputPath(`${stem}.a11y.yml`), finalTree);
+
+      if (viewport.name === "1440x900") {
+        const dateFilters = page.locator("details").filter({ hasText: "Date filters" });
+        await dateFilters.locator("summary").click();
+        await page.getByLabel("Completed from (UTC)").fill("2026-08-01");
+        await expect(dateFilters).toContainText("Active: Completed from 2026-08-01");
+        await expect(selectedButton).toHaveAttribute("aria-pressed", "false");
+        await expect(page.getByText("Select a saved report.", { exact: true })).toBeVisible();
+        await dateFilters.locator("summary").click();
+        await expect(dateFilters).not.toHaveAttribute("open");
+        await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+        await page.getByRole("button", { name: H_REPORT.title, exact: true }).click();
+        await expect(page.getByRole("button", { name: H_REPORT.title, exact: true })).toHaveAttribute("aria-pressed", "true");
+      }
+
+      if (viewport.name === "1024x720") {
+        const trigger = page.getByRole("button", { name: "Delete saved report", exact: true });
+        await trigger.focus();
+        await trigger.click();
+        const dialog = page.getByRole("dialog", { name: `Delete ${H_REPORT.title}?` });
+        await expect(dialog).toBeVisible();
+        await expect(dialog).toHaveCSS("opacity", "1");
+        await expect(dialog).toContainText(H_REPORT.title);
+        await expect(dialog).toContainText("transaction evidence");
+        await expect(dialog).toContainText("permanent idempotency keys");
+        await expect(dialog).toContainText("submit the same write again");
+        const dialogStem = `ui-settings-records-records-matrix/${viewport.name}/archive-delete-${theme.name}`;
+        const dialogScreenshot = info.outputPath(`${dialogStem}.png`);
+        mkdirSync(dirname(dialogScreenshot), { recursive: true });
+        await page.screenshot({ path: dialogScreenshot });
+        await info.attach(`records-archive-delete-${viewport.name}-${theme.name}`, { path: dialogScreenshot, contentType: "image/png" });
+        const dialogTree = await page.locator("body").ariaSnapshot();
+        writeFileSync(info.outputPath(`${dialogStem}.a11y.yml`), dialogTree);
+        await page.keyboard.press("Escape");
+        await expect(dialog).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+        await trigger.click();
+        await page.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(dialog).toHaveCount(0);
+        await expect(trigger).toBeFocused();
+      }
+
+      if (viewport.name === "1440x900") {
+        await page.getByRole("button", { name: "Versions & bumps", exact: true }).click();
+        const versions = page.getByRole("region", { name: "Versions and saved changes" });
+        await expect(versions).toBeVisible();
+        await expect(versions.getByRole("heading", { name: "Review a version change", exact: true })).toBeVisible();
+        await expect(versions).toContainText("A major change archives reviewed terminal prior-version runs. A minor change archives none.");
+        await expect(versions).toContainText("1 historical version record retained.");
+        const planned = versions.getByRole("region", { name: `Version change ${RECORDS_VERSION_CHANGE.changeId}` });
+        await expect(planned).toContainText("Synthetic major version review");
+        await expect(planned).toContainText("planned");
+        await expect(planned).toContainText("Target version");
+        await expect(planned).toContainText(RECORDS_VERSION_CHANGE.memberRunIds.join(", "));
+        await expect(planned.locator("dt", { hasText: "Blockers" })).toBeVisible();
+        await expect(planned).toContainText(RECORDS_VERSION_CHANGE.blockerRunIds.join(", "));
+        await expect(planned.getByRole("button", { name: "Apply reviewed change", exact: true })).toBeDisabled();
+        const versionStem = `ui-settings-records-records-matrix/${viewport.name}/archive-versions-${theme.name}`;
+        const versionScreenshot = info.outputPath(`${versionStem}.png`);
+        mkdirSync(dirname(versionScreenshot), { recursive: true });
+        await page.screenshot({ path: versionScreenshot });
+        await info.attach(`records-archive-versions-${viewport.name}-${theme.name}`, { path: versionScreenshot, contentType: "image/png" });
+        const versionTree = await page.locator("body").ariaSnapshot();
+        writeFileSync(info.outputPath(`${versionStem}.a11y.yml`), versionTree);
+        await planned.scrollIntoViewIfNeeded();
+        await expect(planned).toBeInViewport();
+        const activeVersionStem = `ui-settings-records-records-matrix/${viewport.name}/archive-versions-active-${theme.name}`;
+        const activeVersionScreenshot = info.outputPath(`${activeVersionStem}.png`);
+        mkdirSync(dirname(activeVersionScreenshot), { recursive: true });
+        await page.screenshot({ path: activeVersionScreenshot });
+        await info.attach(`records-archive-versions-active-${viewport.name}-${theme.name}`, { path: activeVersionScreenshot, contentType: "image/png" });
+        await page.getByRole("button", { name: "Saved reports", exact: true }).click();
+        await expect(page.getByRole("region", { name: "Versions and saved changes" })).toHaveCount(0);
+        await expect(page.getByRole("article", { name: "Saved archive report" })).toBeVisible();
+      }
+
+      await gotoAppState(page, servers.server.baseUrl, {
+        day: FIXTURE_DAY,
+        activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}`,
+      });
+      await assertThemeApplied(page, theme);
+      const activity = page.getByRole("region", { name: "Activity report" });
+      await expect(activity).toBeVisible();
+      await expect(activity.getByRole("heading", { name: "Activity results", exact: true })).toBeVisible();
+      await expect(activity.getByRole("group", { name: "Activity report range" }).getByRole("textbox")).toHaveCount(2);
+      await expect(activity.getByRole("group", { name: "Export activity report" })).toBeVisible();
+      await expect(page.getByRole("button", { name: /Export CSV/u })).toBeVisible();
+      await expect(page.getByRole("button", { name: /XLSX/u })).toBeVisible();
+      stem = `ui-settings-records-records-matrix/${viewport.name}/activity-${theme.name}`;
+      screenshot = info.outputPath(`${stem}.png`);
+      mkdirSync(dirname(screenshot), { recursive: true });
+      await page.screenshot({ path: screenshot });
+      await info.attach(`records-activity-${viewport.name}-${theme.name}`, { path: screenshot, contentType: "image/png" });
+      finalTree = await page.locator("body").ariaSnapshot();
+      writeFileSync(info.outputPath(`${stem}.a11y.yml`), finalTree);
+    }
+
+    const evidenceName = `ui-settings-records-records-${theme.name}.a11y.yml`;
+    info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(finalTree).digest("hex") });
+    await info.attach(evidenceName, { body: finalTree, contentType: "text/yaml" });
+  });
+}
+
+for (const theme of PARITY_THEMES) {
+  test(`UI-A Records real browser zoom @ ${theme.name}`, {
+    annotation: [{ type: "required-a11y-evidence", description: `ui-settings-records-records-zoom-${theme.name}.a11y.yml` }],
+  }, async ({ browserName }, info) => {
+    expect(browserName).toBe("chromium");
+    const root = join(tmpdir(), `records-zoom-${process.pid}-${Date.now()}`);
+    mkdirSync(root, { recursive: true });
+    writeFileSync(join(root, "manifest.json"), JSON.stringify({
+      manifest_version: 3, name: "Records zoom proof", version: "1.0", permissions: ["tabs"],
+      background: { service_worker: "worker.js" },
+    }));
+    writeFileSync(join(root, "worker.js"), "chrome.runtime.onInstalled.addListener(() => {});\n");
+    const context = await chromium.launchPersistentContext(join(root, "profile"), {
+      channel: "chromium", headless: false,
+      args: ["--headless=new", `--disable-extensions-except=${root}`, `--load-extension=${root}`],
+      viewport: { width: 1280, height: 720 },
+    }).catch((error: unknown) => { rmSync(root, { recursive: true, force: true }); throw error; });
+    try {
+      const worker = context.serviceWorkers()[0] ?? await context.waitForEvent("serviceworker", { timeout: 10_000 });
+      const page = await context.newPage();
+      await page.route("**/api/v1/archive/reports/*", route => route.fulfill({ json: H_REPORT }));
+      await page.route("**/api/v1/archive/versions", route => route.fulfill({ json: RECORDS_SAVED_VERSIONS }));
+      const digest = H_REPORT.files[0]?.digest;
+      if (digest === undefined) throw new Error("The saved report fixture requires a retained attachment.");
+      const downloadUrl = `/artifacts/v1/archive/${H_REPORT.runId}/files/${digest}`;
+      await page.route("**/api/v1/archive/reports/*/files/*", route => route.fulfill({ json: {
+        runId: H_REPORT.runId, digest, resource: { state: "available", downloadUrl },
+      } }));
+      await page.route("**/api/v1/archive/reports?*", route => route.fulfill({ json: { items: [H_REPORT], next: null } }));
+      await installTheme(page, theme);
+
+      const receipts: Array<Record<string, unknown>> = [];
+      let finalTree = "";
+      for (const sample of [
+        { zoom: 1.25, viewport: { width: 1280, height: 720 }, css: { width: 1024, height: 576 } },
+        { zoom: 2, viewport: { width: 1440, height: 900 }, css: { width: 720, height: 450 } },
+      ] as const) {
+        await page.setViewportSize(sample.viewport);
+        for (const surface of ["archive", "activity", "versions"] as const) {
+          await gotoAppState(page, servers.server.baseUrl, surface === "archive"
+            ? { day: FIXTURE_DAY, archive: H_REPORT.runId }
+            : surface === "activity"
+              ? { day: FIXTURE_DAY, activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}` }
+              : { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
+          await assertThemeApplied(page, theme);
+          const zoomResult = await setBrowserZoom(worker, page.url(), sample.zoom);
+          expect(zoomResult.value).toBe(sample.zoom);
+          await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(sample.css);
+          if (surface === "archive") {
+            await expect(page.getByRole("button", { name: H_REPORT.title, exact: true })).toHaveAttribute("aria-pressed", "true");
+            await expect(page.getByRole("article", { name: "Saved archive report" }).getByText("Saved record · read-only", { exact: true })).toBeVisible();
+          } else if (surface === "activity") {
+            const activity = page.getByRole("region", { name: "Activity report" });
+            await expect(activity.getByRole("heading", { name: "Activity results", exact: true })).toBeVisible();
+            await expect(activity.getByRole("group", { name: "Activity report range" })).toBeVisible();
+            await expect(activity.getByRole("group", { name: "Export activity report" })).toBeVisible();
+          } else {
+            const versions = page.getByRole("region", { name: "Versions and saved changes" });
+            await expect(versions.getByRole("heading", { name: "Review a version change", exact: true })).toBeVisible();
+            await expect(versions).toContainText("A major change archives reviewed terminal prior-version runs. A minor change archives none.");
+            await expect(versions.getByRole("region", { name: `Version change ${RECORDS_VERSION_CHANGE.changeId}` })).toContainText("planned");
+          }
+          const geometry = await page.evaluate(() => ({
+            width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
+            cssZoom: document.documentElement.style.zoom,
+            bodyCssZoom: document.body.style.zoom,
+            documentWidth: document.documentElement.scrollWidth,
+          }));
+          expect(geometry.width).toBe(sample.css.width);
+          expect(geometry.height).toBe(sample.css.height);
+          expect(geometry.cssZoom).toBe("");
+          expect(geometry.bodyCssZoom).toBe("");
+          if (sample.zoom === 1.25) expect(geometry.documentWidth).toBeLessThanOrEqual(geometry.width);
+          else expect(geometry.documentWidth, "the desktop canvas preserves D340 and remains horizontally scrollable at 200% zoom").toBeGreaterThanOrEqual(1024);
+          const scrollRange = await page.evaluate(() => ({
+            horizontal: document.documentElement.scrollWidth - innerWidth,
+            vertical: document.documentElement.scrollHeight - innerHeight,
+          }));
+          if (sample.zoom === 2) expect(scrollRange.horizontal).toBeGreaterThan(0);
+
+          await page.evaluate(() => window.scrollTo(0, 0));
+          const stem = `ui-settings-records-records-zoom/${theme.name}/${String(sample.zoom)}-${surface}`;
+          const screenshot = info.outputPath(`${stem}.png`);
+          mkdirSync(dirname(screenshot), { recursive: true });
+          await page.screenshot({ path: screenshot });
+          await info.attach(`records-zoom-${String(sample.zoom)}-${surface}-${theme.name}`, { path: screenshot, contentType: "image/png" });
+
+          if (surface === "archive") {
+            const exportLink = page.getByRole("link", { name: "Export report", exact: true });
+            const deleteTrigger = page.getByRole("button", { name: "Delete saved report", exact: true });
+            for (const action of [exportLink, deleteTrigger]) {
+              await action.scrollIntoViewIfNeeded();
+              await expect(action).toBeInViewport();
+              await action.focus();
+              await expect(action).toBeFocused();
+            }
+            await deleteTrigger.click();
+            const dialog = page.getByRole("dialog", { name: `Delete ${H_REPORT.title}?` });
+            await expect(dialog).toBeVisible();
+            await expect(dialog).toHaveCSS("opacity", "1");
+            const confirm = dialog.getByRole("button", { name: "Delete this report", exact: true });
+            await confirm.scrollIntoViewIfNeeded();
+            await expect(confirm).toBeInViewport();
+            const cancel = dialog.getByRole("button", { name: "Cancel", exact: true });
+            await cancel.focus();
+            await expect(cancel).toBeFocused();
+            await cancel.click();
+            await expect(dialog).toHaveCount(0);
+            await expect(deleteTrigger).toBeFocused();
+          } else {
+            if (surface === "versions") {
+              const versions = page.getByRole("region", { name: "Versions and saved changes" });
+              for (const field of ["Scope", "Change kind", "What changed", "Why"]) {
+                const control = field === "Scope" || field === "Change kind"
+                  ? versions.getByRole("combobox", { name: field, exact: true })
+                  : versions.getByRole("textbox", { name: field, exact: true });
+                await expect(control).toHaveCount(1);
+                await control.scrollIntoViewIfNeeded();
+                await expect(control).toBeInViewport();
+                await control.focus();
+                await expect(control).toBeFocused();
+              }
+              const createReview = versions.getByRole("button", { name: "Create review", exact: true });
+              await createReview.scrollIntoViewIfNeeded();
+              await expect(createReview).toBeInViewport();
+              await createReview.focus();
+              await expect(createReview).toBeFocused();
+              const planned = versions.getByRole("region", { name: `Version change ${RECORDS_VERSION_CHANGE.changeId}` });
+              const applyBlocked = planned.getByRole("button", { name: "Apply reviewed change", exact: true });
+              await applyBlocked.scrollIntoViewIfNeeded();
+              await expect(applyBlocked).toBeInViewport();
+              await expect(applyBlocked).toBeDisabled();
+            } else {
+              const activity = page.getByRole("region", { name: "Activity report" });
+              const range = activity.getByRole("group", { name: "Activity report range" });
+              const labeledRangeFields = range.getByLabel(/^(From|To)$/u);
+              await expect(labeledRangeFields).toHaveCount(2);
+              for (const rangeField of [range.getByLabel("From", { exact: true }), range.getByLabel("To", { exact: true })]) {
+                await rangeField.scrollIntoViewIfNeeded();
+                await expect(rangeField).toBeInViewport();
+                await rangeField.focus();
+                await expect(rangeField).toBeFocused();
+              }
+              const exportActions = activity.getByRole("group", { name: "Export activity report" });
+              for (const action of await exportActions.getByRole("button").all()) {
+                await action.scrollIntoViewIfNeeded();
+                await expect(action).toBeInViewport();
+                await action.focus();
+                await expect(action).toBeFocused();
+              }
+            }
+          }
+          const actionScreenshot = info.outputPath(`${stem}-actions.png`);
+          mkdirSync(dirname(actionScreenshot), { recursive: true });
+          await page.screenshot({ path: actionScreenshot });
+          await info.attach(`records-zoom-actions-${String(sample.zoom)}-${surface}-${theme.name}`, { path: actionScreenshot, contentType: "image/png" });
+          const tree = await page.locator("body").ariaSnapshot();
+          writeFileSync(info.outputPath(`${stem}.a11y.yml`), tree);
+          finalTree = tree;
+          receipts.push({ theme: theme.name, surface, ...sample, mechanism: "chrome.tabs.setZoom", zoomResult, geometry });
+        }
+        const restored = await setBrowserZoom(worker, page.url(), 1);
+        expect(restored.value).toBe(1);
+      }
+      const proof = info.outputPath(`ui-settings-records-records-zoom/${theme.name}/real-zoom-proof.json`);
+      mkdirSync(dirname(proof), { recursive: true });
+      writeFileSync(proof, JSON.stringify({ receipts }, null, 2));
+      await info.attach(`records-zoom-proof-${theme.name}`, { path: proof, contentType: "application/json" });
+      const evidenceName = `ui-settings-records-records-zoom-${theme.name}.a11y.yml`;
+      info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(finalTree).digest("hex") });
+      await info.attach(evidenceName, { body: finalTree, contentType: "text/yaml" });
+    } finally {
+      await context.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 }

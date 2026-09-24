@@ -123,7 +123,7 @@ test("interrupted deletion survives reload and resumes the exact retained reques
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: server.runId });
     server.interruptNextAudit();
     await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
-    await page.getByRole("button", { name: "Confirm deletion", exact: true }).click();
+    await page.getByRole("button", { name: "Delete this report", exact: true }).click();
     const status = page.getByRole("region", { name: "Saved report deletion status" });
     await expect(status).toContainText("Saved report deleted");
     await expect(status).toContainText("final operator command audit is still pending");
@@ -211,7 +211,10 @@ test("real minor review with active and terminal prior runs transfers none",
     await page.getByRole("button", { name: "Create review", exact: true }).click();
     await expect(page.getByText("Progress: 0 reviewed runs · 0 archived.", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
-    await expect(page.getByText(/Minor change · applied/)).toBeVisible();
+    const appliedChange = page.getByRole("region", { name: /^Version change /u });
+    await expect(appliedChange.getByText("Minor change", { exact: true })).toBeVisible();
+    await expect(appliedChange.locator("dt", { hasText: "Version state" })).toBeVisible();
+    await expect(appliedChange.getByText("applied", { exact: true })).toBeVisible();
     expect(server.database.savedReportOwner(server.runId).state).toBe("live");
     expect(server.database.savedReportOwner(active).state).toBe("live");
     expect(SavedArchiveIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/reports?limit=50`)).json()).items).toEqual([]);
@@ -273,12 +276,21 @@ test("late real deletion of A leaves B selected and history reads A's current di
   page.on("pageerror", error => errors.push(error.message));
   const delayed = server.delayNextResponse("/api/v1/commands");
   try {
-    await gotoAppState(page, server.baseUrl, { day: server.day, archive: server.runId });
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
+    const index = SavedArchiveIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/reports?limit=50`)).json());
+    const reportA = index.items.find(report => report.runId === server.runId);
+    if (reportA === undefined) throw new Error("saved report A is absent from the served list");
+    await page.getByRole("button", { name: reportA.title, exact: true }).click();
+    await expect(page.getByRole("article")).toContainText(reportA.title);
+    await page.getByRole("button", { name: "Synthetic report 91001", exact: true }).click();
+    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
+    await page.getByRole("button", { name: reportA.title, exact: true }).click();
+    await expect(page.getByRole("article")).toContainText(reportA.title);
     await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
     await expect(page.getByText(/permanent idempotency keys/)).toBeVisible();
-    await page.getByRole("button", { name: "Confirm deletion", exact: true }).click();
+    await page.getByRole("button", { name: "Delete this report", exact: true }).click();
     await delayed.ready;
-    await page.getByRole("button", { name: "Synthetic report 91001", exact: true }).click();
+    await page.goBack();
     await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
     const reply = page.waitForResponse(response => response.url().endsWith("/api/v1/commands"));
     delayed.release(); await reply;

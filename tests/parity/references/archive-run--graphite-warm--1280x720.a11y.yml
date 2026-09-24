@@ -1,7 +1,7 @@
 # archive-run--graphite-warm--1280x720
 # adapter: fixture
 # fixture: archive-run
-# descriptorHash: 71b1674fb6ac138b75c62161efda36042ca6fe175f425a1f2a7c7eec5d0b38e3
+# descriptorHash: 67c72bc13123e9fb6a19d0a534d01a06850f1345d98c861c0b646064044a497d
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -18,6 +18,7 @@
   - button "Previous day — Sun, Aug 2"
   - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
   - button "Today is the newest day" [disabled]
+  - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Paper Ink"
   - button "Settings"
@@ -29,6 +30,7 @@
   - button "Refresh"
   - region "Saved reports":
     - heading "Saved reports" [level=2]
+    - text: 1 shown
     - form "Filter saved reports":
       - text: Workflow
       - textbox "Workflow"
@@ -45,14 +47,7 @@
         - option "discarded"
         - option "interrupted"
         - option "superseded"
-      - text: Completed from (UTC)
-      - textbox "Completed from (UTC)"
-      - text: Completed through (UTC)
-      - textbox "Completed through (UTC)"
-      - text: Captured from (UTC)
-      - textbox "Captured from (UTC)"
-      - text: Captured through (UTC)
-      - textbox "Captured through (UTC)"
+      - group: Date filters
       - button "Clear filters"
     - table "Saved reports":
       - rowgroup:
@@ -61,7 +56,7 @@
           - columnheader "Outcome"
           - columnheader "Completed"
       - rowgroup:
-        - row "Synthetic saved lookup retired-synthetic-workflow · v1 Done 2026-08-03T09:21:00.000Z":
+        - row "Synthetic saved lookup retired-synthetic-workflow · v1 Done 2026-08-03T09:21:00.000Z" [selected]:
           - cell "Synthetic saved lookup retired-synthetic-workflow · v1":
             - button "Synthetic saved lookup" [pressed]
             - paragraph: retired-synthetic-workflow · v1
@@ -71,10 +66,13 @@
     - article "Saved archive report":
       - heading "Synthetic saved lookup" [level=2]
       - paragraph: retired-synthetic-workflow · version 1
-      - paragraph: "Outcome: Done"
-      - paragraph: Report aa11bb22-0001-4000-8000-aa11bb220001
-      - paragraph: Completed 2026-08-03T09:21:00.000Z · Captured 2026-08-03T09:25:00.000Z
+      - text: Outcome Done
+      - term: Completed
+      - definition: 2026-08-03T09:21:00.000Z
+      - term: Captured
+      - definition: 2026-08-03T09:25:00.000Z
       - paragraph: Saved record · read-only
+      - group: Report identity
       - link "Export report":
         - /url: data:application/json;charset=utf-8,%7B%22state%22%3A%22available%22%2C%22runId%22%3A%22aa11bb22-0001-4000-8000-aa11bb220001%22%2C%22title%22%3A%22Synthetic%20saved%20lookup%22%2C%22workflow%22%3A%22retired-synthetic-workflow%22%2C%22descriptorVersion%22%3A%221%22%2C%22outcome%22%3A%22done%22%2C%22completedAt%22%3A%222026-08-03T09%3A21%3A00.000Z%22%2C%22capturedAt%22%3A%222026-08-03T09%3A25%3A00.000Z%22%2C%22sections%22%3A%5B%7B%22kind%22%3A%22values%22%2C%22title%22%3A%22Saved%20facts%22%2C%22values%22%3A%5B%7B%22label%22%3A%22Subject%22%2C%22value%22%3A%22Synthetic%20person%22%7D%2C%7B%22label%22%3A%22Result%22%2C%22value%22%3A%22Verified%22%7D%2C%7B%22label%22%3A%22Unrecorded%20fact%22%2C%22value%22%3Anull%7D%5D%7D%2C%7B%22kind%22%3A%22table%22%2C%22title%22%3A%22Saved%20work%22%2C%22columns%22%3A%5B%22Step%22%2C%22Outcome%22%5D%2C%22rows%22%3A%5B%5B%22Lookup%22%2C%22Completed%22%5D%2C%5B%22Cross-check%22%2C%22Completed%22%5D%5D%7D%2C%7B%22kind%22%3A%22text%22%2C%22title%22%3A%22Historical%20note%22%2C%22text%22%3A%22Saved%20before%20this%20workflow%20was%20retired.%20Readable%20without%20current%20workflow%20registration.%22%7D%2C%7B%22kind%22%3A%22unavailable%22%2C%22title%22%3A%22Unretained%20evidence%22%2C%22reason%22%3A%22No%20additional%20evidence%20was%20retained.%22%7D%5D%2C%22files%22%3A%5B%7B%22digest%22%3A%22bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%22%2C%22byteLength%22%3A28%2C%22mediaType%22%3A%22text%2Fyaml%22%2C%22name%22%3A%22Synthetic%20attachment%22%2C%22artifactIds%22%3A%5B%22aa11bb22-000a-4000-8000-aa11bb22000a%22%5D%7D%5D%2C%22archiveFingerprint%22%3A%22eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee%22%7D
       - region "Saved facts":
@@ -104,7 +102,7 @@
         - text: Saved before this workflow was retired. Readable without current workflow registration.
       - region "Unretained evidence":
         - heading "Unretained evidence" [level=3]
-        - paragraph: No additional evidence was retained.
+        - status: No additional evidence was retained.
       - region "Retained attachments":
         - heading "Retained attachments" [level=3]
         - status: "Synthetic attachment: The retained synthetic attachment is missing. Saved report remains readable."
