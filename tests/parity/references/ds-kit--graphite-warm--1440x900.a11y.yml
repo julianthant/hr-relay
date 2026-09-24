@@ -187,6 +187,12 @@
   - text: Employee ID
   - textbox "Employee ID" [invalid]: 10084412X
   - alert: No UCPath record matches 10084412X.
+  - text: Date
+  - group "Date":
+    - spinbutton "month, Date": "7"
+    - spinbutton "day, Date": "16"
+    - spinbutton "year, Date": "2026"
+    - button "Choose date date Date"
   - text: Workflow 8 available
   - combobox "Workflow":
     - option "Separations" [selected]

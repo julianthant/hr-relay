@@ -1,4 +1,12 @@
-# `reference/decisions.md` — the decision ledger (D1–D346, 2026-07-17 → 2026-09-24)
+# `reference/decisions.md` — the decision ledger (D1–D347, 2026-07-17 → 2026-09-24)
+
+**D347 — Remember the selected workflow and simplify the rail heading (operator direction, 2026-09-24):**
+The Workflow Panel remembers the last selected workflow across page visits and refreshes in local
+browser storage. A stored ID absent from the served workflow list falls back to the first served
+workflow. Remove the rail's `active │ all` heading while keeping each workflow's `active │ all`
+count pair. The toolbar's day-wide active count, status filters, queue projection and panel
+display-mode preference remain. Owner:
+[dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including

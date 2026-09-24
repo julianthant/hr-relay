@@ -279,7 +279,7 @@
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"
     - button "Minimise the Workflow Panel to an icon"
-    - text: active all Search
+    - text: Search
     - list:
       - listitem:
         - button "Person Lookup 5 active of 14 in Person Lookup": Person Lookup 5 14

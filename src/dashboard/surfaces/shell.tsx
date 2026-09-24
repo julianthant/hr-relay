@@ -273,20 +273,6 @@ function WorkflowEntryList({
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto py-[var(--ds-space-cozy)]">
-      {/* The pair is named ONCE, as a column head, not per row: two bare
-          numbers beside a rule is exactly the anonymous-badge problem the
-          launcher had, and a caption on every entry would be the same word
-          fourteen times. */}
-      <div
-        className={cn(
-          dsText.caps,
-          "flex items-center justify-end gap-[var(--ds-space-hair)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        <span>active</span>
-        <span aria-hidden className="text-[color:var(--ds-fg-faint)]">│</span>
-        <span>all</span>
-      </div>
       {groups.map((group) => (
         <div key={group.label} className="pb-[var(--ds-space-cozy)]">
           {/* More air above a group heading than below it — the label belongs to
