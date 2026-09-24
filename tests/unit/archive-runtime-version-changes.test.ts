@@ -151,6 +151,7 @@ describe("runtime version change transfer", () => {
       assert.deepEqual(index.dashboard, { major: 1, minor: 0 });
       assert.deepEqual(index.workflows.find(row => row.workflowId === "other-workflow")?.version, { major: 1, minor: 1 });
       assert.equal(index.changes[0]?.state, "applied");
+      assert.equal(index.changes[0]?.reviewFingerprint, planned.reviewFingerprint);
       assert.deepEqual(index.changes[0]?.completedRunIds, [runId]);
       assert.deepEqual(service.apply(planned.changeId), applied);
     } finally { f.dispose(); }

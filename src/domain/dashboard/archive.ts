@@ -446,6 +446,7 @@ export const SavedRuntimeVersionIndexWireSchema = z.strictObject({
   applyingChangeId: z.string().uuid().optional(),
   changes: z.array(z.strictObject({
     changeId: z.string().uuid(), actorId: z.string().min(1), reviewedAt: IsoInstantSchema,
+    reviewFingerprint: FingerprintSchema,
     scope: RuntimeVersionScopeSchema, before: RuntimeVersionStateSchema, after: RuntimeVersionStateSchema,
     state: z.enum(["planned", "applying", "applied"]), members: z.array(RuntimeVersionMemberSchema),
     completedRunIds: z.array(RunIdSchema),

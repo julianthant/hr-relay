@@ -248,8 +248,7 @@ it("pages past an unsettled deletion tombstone to surviving reports", () => {
       target: { archivedRunId: first.runId, archiveFingerprint: first.archiveFingerprint } }), /injected-settlement/u);
     const page = queryArchiveReports(storage, { limit: 1 });
     assert.deepEqual(page.items, [before.items[1]]);
-    assert.ok(page.next);
-    assert.deepEqual(queryArchiveReports(storage, { limit: 1, after: page.next }).items, []);
+    assert.equal(page.next, null);
     assert.equal(storage.listReports({ workflow: "person-lookup", limit: 1 }).next, null);
   } finally { f.dispose(); }
 });
