@@ -227,6 +227,20 @@ checkpoint revision is reported in the returning task message.
 - Retained check receipts: `settings-focused-unit-final.log`, `settings-eslint-final.log`, and
   `settings-parity-focused-final-2workers.log` under the evidence `receipts/` directory above.
 
+### UI-A Records checkpoint — 2026-09-23
+
+Status: **Records implementation and focused proof complete; candidate ready for root acceptance.**
+
+- Plan / input: approved planning commit `fac236fbc2c27192c31fdfbca3e2a5512d870800`; accepted product input `beb2a79b6bd699afb3701ee8aeb3ec3bfe011a1a`.
+- Base / source candidate: `e08007ebbddef47550c95c20a10493c4113d6e71` → `d745f6066356b091e1e3a2c4e00641403141b9b7`; branch `codex/3.1-ui-settings-records`; worktree `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-ui-settings`. The candidate commit contains only Records source, tests and owned references. The task checkpoint is a separate docs-only commit.
+- Scope: Activity report range and existing CSV/XLSX exports; Archive saved-report list/detail, filters, attachments, saved version form/history, and delete dialog. Frozen `archive.tsx`, `archive-model.ts`, APIs, authority rules, shell, toolbar and tokens remain unchanged. Activity search was not added.
+- Behavior checklist: visible selected-report state and clear filters; active date-range summary; structured saved facts, neutral exact saved outcome labels and collapsed report identity; exact attachment selection with missing/unavailable/corrupt/read failures retained as distinct states; cancel/Escape/focus return and visible refusal/unknown deletion response inside the named dialog; no automatic retry or premature success; late deletion response does not replace the current selection; major/minor consequence copy, version state, target/scope, reviewed membership, blockers, archived runs and progress remain visible.
+- Render checklist: both themes at 1440×900, 1280×720, 1024×768 and 1024×720 for Archive/Activity; delete dialog at 1024×720; Versions form and planned-change view at 1440×900. Real browser zoom used `chrome.tabs.setZoom`: 125% from 1280×720 (CSS 1024×576) and 200% from 1440×900 (CSS 720×450), both themes. At 200%, the 1024 CSS px desktop floor remains and tested content/actions are reachable by horizontal/vertical scroll.
+- Focused gates: four assigned unit files pass, 40 tests; owned Archive/Activity parity passes, 57 tests with two workers; exact owned reference refresh assertion passes, 49 tests; final UI-A Records matrix and real-zoom capture pass, four tests across two themes; scoped ESLint with `--max-warnings 0` and `git diff --check` pass. Receipt files are under `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-settings-records-2026-09-23/records/logs/`: `records-unit-final-pass-2.log`, `records-owned-parity-final-pass-2.log`, `records-parity-refresh-with-proof.log`, `records-final-capture-with-actions.log`, `records-eslint-final-after-actions.log`, and `records-final-diff-check.log`.
+- Reference attribution: changed only owned triples in `activity-report`, `activity-report-unavailable`, `archive-evidence`, `archive-ledger`, `archive-report-saved`, `archive-report-zoom`, `archive-run`, and `archive-version-bump`. The exact Records refresh reflects current descriptor (`71b1674` → `67c72b`) and served preflight-trigger metadata drift in those owned triples; no frozen source was changed and no global refresh ran.
+- Final screenshot/a11y captures: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/ui-settings-records-2026-09-23/records/final/records-matrix-final/` and `records-zoom-final/`; capture attribution and source/artifact SHA-256 manifests are alongside them. Exact old/new copy with stable review IDs: `records/records-copy-changes.md`. Limits: `records/scope-limits.md`.
+- The approved UI-A-only exception skips release UI-A 3.1.23. Its skipped repairs and proof are **not passed**; broader repository gates remain for the phase finalizer. Sessions/Calendar remains outside this checkpoint.
+
 ## Resume prompt
 
 Resume the existing execution under its UI-A-only prerequisite exception. Verify actual current HEAD
