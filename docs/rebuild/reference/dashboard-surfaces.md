@@ -6903,9 +6903,9 @@ render.
 The drawer under the Sessions bar is ONE horizontal strip of worker cards, one per served worker
 lease across every workflow, in wire order — the demo's `DemoSessionPanel` (`DemoShell.tsx:1825-1957`)
 and its `SessionCard`, ported with provenance. A card is titled by its **workflow** (the demo strips
-even the instance ordinal from the title), carries the served `queued` chip and the state word,
-prints the trace id or the server's absence reason on its subline, its browser tiles in two columns,
-a RESERVED micro-pipeline row, and a footer of step slot · elapsed · `Stop`. A worker whose lease
+even the instance ordinal from the title), carries the state word, and prints the trace id or the
+server's absence reason on its subline. Compact browser tiles sit in two columns with a timeline
+beneath them. Pause/Resume, Stop and elapsed time live in the card header. A worker whose lease
 settled `crashed` / `lease-expired` is the demo's crashed card: no tiles, no clock, its recorded stop
 reason underneath, kept on screen so the failure is learned. The worker id, the run and trace ids and
 the run's session membership are the card's identity-popover facts, on the subline's `AuthorityDetails`
@@ -6947,20 +6947,19 @@ were D271's controls given a home before the demo's `+` had a CAS basis to open 
 basis, and the dialog is where the demo puts them. No fact left the panel: every declaration,
 version, excess member and unmet index the band printed is in the dialog or on the bar chip.
 
-**What is still not drawn, and where that is booked.** The demo card's STEP (`UCPath transaction`),
-its `steps[]` pipeline dots and each OPEN tile's health word (`Ready` / `Refreshing`) have no producer:
-the card is folded from the worker lease plus browser child spans, which carry no node, no step
-vector and no health observation. The slots are reserved (the pipeline row keeps its height, the
-step slot is `flex-1`, an open tile prints the demo's `unknown` tone word `Not checked`) and the gap is
-recorded in `docs/rebuild/findings/dashboard-projection.md` ("The worker card's step, pipeline and browser
-health have no producer") with the fold that would serve it. The tally vocabulary is the served
-lease state (`starting`, not the demo's `authenticating` — R7's ruling).
+The card has no independent worker-step producer. For a claimed run, it joins the exact
+`currentRun.runId` to that day's queue row and draws its served `pipeline[]` states and step names.
+Without that row or a claim, it draws a neutral line and the served absence reason; it never
+invents step dots. Browser health comes from the exact session's dated owner observation, and
+missing observations say `Not checked`. The remaining idle-worker step-vector gap is recorded in
+`docs/rebuild/findings/dashboard-projection.md`. The tally vocabulary is the served lease state
+(`starting`, not the demo's `authenticating` — R7's ruling).
 
 <a id="session-controls-presentation-2026-09-18"></a>
 
 #### Session controls presentation — 2026-09-18
 
-**Operator-approved requirements; implementation pending in
+**Operator-approved requirements, implemented by
 [3.1.11](../plans/phase-3/3.1-finish-the-dashboard/task-11-finish-sessions-worker-pools-and-browser-lifecycle.md#approved-execution-brief--2026-09-18).**
 The [session-controls amendment](execution-and-sessions.md#session-controls-amendment-2026-09-18)
 owns effects, identity and recovery. D305's strip, cards, identity facts and Add-workers dialog
@@ -6987,7 +6986,23 @@ refuses races, including between steps. Do not show a queued-for-idle promise af
 On successful Reopen, show the observed replacement session identity. Keep focus, keyboard access,
 both themes, calibrated elapsed time, accessibility and desktop resize/zoom behavior. This amendment
 supersedes the historical absence of health/control producers only as those producers are built;
-it does not fabricate the still-unserved step or pipeline fields.
+it does not fabricate worker-owned step fields.
+
+<a id="session-card-presentation-2026-09-24"></a>
+
+#### Session card presentation — 2026-09-24
+
+The operator's compact card reference replaces D305's older reserved-row and footer layout.
+Keep the strong rounded card border, workflow title and status subline. Show Pause/Resume and Stop
+in the header beside the elapsed clock. Put the workflow's queued count in the worker-details
+overlay, reached from the eye icon on the status subline. Show any control refusal reason on the
+card itself. Browser tiles remain a two-column grid, including an odd last tile at half width.
+Each open tile shows its observed status at rest; success styling requires
+an authenticated owner observation. Put exact session facts and Refresh in the tile's `?` overlay.
+Reopen is an icon beside that overlay trigger, directly available on the tile. Disabled controls
+retain their refusal reason in their title and on the card. The lower timeline draws only the
+current claimed run's served queue pipeline; an unclaimed worker shows the neutral track and its
+absence reason.
 
 #### A live elapsed TICKS, from ONE calibration against the server's instant (D256)
 
