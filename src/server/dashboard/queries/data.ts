@@ -13,6 +13,7 @@ import type { RunRecord } from "../../../domain/run/record.js";
 import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RunDetailQueryDeps, RunDetailDescriptorView } from "./run-detail-types.js";
+import { runDataObservationsForRun } from "./run-logs.js";
 import { TargetNotFoundError, SectionUnavailableError } from "../../failures.js";
 import type { z } from "zod";
 
@@ -237,16 +238,17 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
   const run = existence.run;
 
   const descriptor = deps.descriptors.resolve(run.envelope.workflow);
+  const observations = runDataObservationsForRun(deps, run, runId);
   const exactDescriptor = deps.canonical?.descriptors.resolve(run.envelope.workflow);
   if (descriptor === undefined || exactDescriptor === undefined) {
     return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "descriptor-unavailable", entries: [],
+      runId, state: "unavailable", reason: "descriptor-unavailable", entries: [], observations,
     });
   }
   if (exactDescriptor.version !== run.envelope.descriptorVersion
     || exactDescriptor.contractFingerprint !== run.envelope.contractFingerprint) {
     return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "descriptor-mismatch", entries: [],
+      runId, state: "unavailable", reason: "descriptor-mismatch", entries: [], observations,
     });
   }
   const fields = typeof descriptor.capabilities?.editData === "object"
@@ -255,7 +257,7 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
   const database = deps.canonical?.database;
   if (database === undefined) {
     return ContextDataSectionSchema.parse({
-      runId, state: "unavailable", reason: "checkpoint-reader-unavailable", entries: [],
+      runId, state: "unavailable", reason: "checkpoint-reader-unavailable", entries: [], observations,
     });
   }
   const entries = database.withAuthorityReadSnapshot(() => {
@@ -274,7 +276,7 @@ function buildContextDataPayload(deps: RunDetailQueryDeps, runId: string): Conte
     ));
   });
   return ContextDataSectionSchema.parse({
-    runId, state: existence.disposition === "archived" ? "archived" : "available", entries,
+    runId, state: existence.disposition === "archived" ? "archived" : "available", entries, observations,
   });
 }
 

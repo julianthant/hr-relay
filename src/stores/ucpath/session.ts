@@ -39,6 +39,7 @@
  *    every return path including the early one.
  */
 import { resolveSystemEntryUrl, resolveSystemLoginUrl } from "../../domain/config/instance.js";
+import { recordBrowserAction } from "../../infra/browser/action-notes.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -167,6 +168,7 @@ async function selectUcSanDiego(context: SystemLoginContext): Promise<void> {
       "campus-discovery",
       context,
     );
+    recordBrowserAction("clicked", "ucpath.campus-discovery");
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
@@ -191,6 +193,7 @@ async function clickPortalLoginControl(context: SystemLoginContext): Promise<voi
       "navigate-login-entry",
       context,
     );
+    recordBrowserAction("clicked", "ucpath.portal.login");
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
@@ -288,6 +291,7 @@ async function enterAuthenticatedApplication(context: SystemLoginContext): Promi
       "verify-landing",
       context,
     );
+    recordBrowserAction("opened", "ucpath.application");
   } catch (error) {
     if (error instanceof BrowserLoginError) throw error;
     throw new BrowserLoginError(
@@ -314,6 +318,7 @@ export const ucpathLoginRecipe = defineVerifiedLoginRecipe({
         "navigate-login-entry",
         context,
       );
+      recordBrowserAction("opened", "ucpath.portal");
     } catch (error) {
       if (error instanceof BrowserLoginError) throw error;
       throw new BrowserLoginError(

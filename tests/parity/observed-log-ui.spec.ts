@@ -1,4 +1,4 @@
-import { expect,test,type Page } from "@playwright/test";
+import { expect,test } from "@playwright/test";
 import { DashboardDayWireSchema } from "../../src/domain/dashboard/projection.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
@@ -94,14 +94,6 @@ function logResponse(next: boolean) {
         : { state: "present" as const, value: `lc:${"a".repeat(64)}:3` },
     },
   };
-}
-
-async function serveObservedLogs(page: Page, continuationRelease?: Promise<void>): Promise<void> {
-  await page.route(`**/api/v1/runs/${RUN}/logs**`, async (route) => {
-    const cursor = new URL(route.request().url()).searchParams.get("cursor");
-    if (cursor !== null && continuationRelease !== undefined) await continuationRelease;
-    await route.fulfill({ contentType: "application/json", body: JSON.stringify(logResponse(cursor !== null)) });
-  });
 }
 
 function deferred<Value>() {
@@ -379,85 +371,45 @@ test("the served 200-row bound remains complete and searchable without eager con
 
 for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
+  { name: "narrow", width: 1024, height: 768 },
 ]) {
-  test(`observed log ledger is reachable and contained at ${viewport.name}`, async ({ page }, testInfo) => {
-    const continuationRelease = deferred<void>();
+  test(`observed fields sit in Run data while Logs narrates actions at ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
-    await serveObservedLogs(page, continuationRelease.promise);
+    await page.route(`**/api/v1/runs/${RUN}/logs**`, async (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ section: "logs", payload: {
+        runId: RUN,
+        rows: [{ kind: "note", logId: note.noteId, sequence: 0, note: {
+          ...note, sequence: 0, message: "Typed into Kuali action list search input",
+        } }, { ...fence, sequence: 1 }],
+        notes: [{ ...note, sequence: 0, message: "Typed into Kuali action list search input" }],
+        nextCursor: { state: "absent", reason: "end-of-page" },
+      } }),
+    }));
+    await page.route(`**/api/v1/runs/${RUN}/context-data**`, async (route) => route.fulfill({
+      contentType: "application/json",
+      body: JSON.stringify({ section: "context-data", payload: {
+        runId: RUN, state: "available", entries: [], observations: [observed, serviceObserved],
+      } }),
+    }));
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: RUN, section: "logs" });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Workflow Panel" })).toHaveCount(0);
 
     const log = page.getByRole("list", { name: "Run log lines" });
     await expect(log).toBeVisible();
-    await expect(log.getByText("Find person · ucpath/person-read")).toBeVisible();
-    await expect(log.getByText("UCPATH", { exact: true })).toBeVisible();
-    await expect(log.getByTitle("person.employeeId · employeeId: redacted")).toBeVisible();
-    const observedRow = log.getByRole("listitem", { name: /observed at Find person/i });
-    await expect(observedRow).toHaveAttribute("aria-label", /system ucpath/i);
-    await expect(observedRow).toHaveAttribute("aria-label", /directions read, write/i);
-    await expect(observedRow).toMatchAriaSnapshot(`
-      - 'listitem "5:00 AM: observed at Find person, ucpath/person-read, system ucpath, directions read, write, attempt 2. person.employeeId · employeeId: redacted; person.employeeId · matchCount: 1; person.status · status: staged"'
-    `);
-    // The ledger states each direction ONCE, on its section label, in the
-    // direction's own text token; the facts under it are plain key · value
-    // rows. The pill-per-fact colour this used to read is gone by design.
-    await expect(log.getByTitle("person.status · status: staged")).toBeVisible();
-    const readLabel = observedRow.getByText("read", { exact: true });
-    const writeLabel = observedRow.getByText("write", { exact: true });
-    await expect(readLabel).toHaveCount(1);
-    await expect(writeLabel).toHaveCount(1);
-    const [readColor, writeColor, readTokenColor, writeTokenColor] = await Promise.all([
-      readLabel.evaluate((element) => getComputedStyle(element).color),
-      writeLabel.evaluate((element) => getComputedStyle(element).color),
-      page.evaluate(() => {
-        const probe = document.createElement("span");
-        probe.style.color = "var(--ds-read-fg)";
-        document.body.append(probe);
-        const color = getComputedStyle(probe).color;
-        probe.remove();
-        return color;
-      }),
-      page.evaluate(() => {
-        const probe = document.createElement("span");
-        probe.style.color = "var(--ds-write-fg)";
-        document.body.append(probe);
-        const color = getComputedStyle(probe).color;
-        probe.remove();
-        return color;
-      }),
-    ]);
-    expect(readColor).toBe(readTokenColor);
-    expect(writeColor).toBe(writeTokenColor);
-    expect(readColor).not.toBe(writeColor);
-    await expect(log.getByText("attempt 2").first()).toBeVisible();
+    await expect(log.getByText("Typed into Kuali action list search input")).toBeVisible();
+    await expect(log.getByRole("listitem", { name: /observed at Find person/i })).toHaveCount(0);
     const fenced = log.getByRole("listitem", { name: /authority transaction fence/i });
     await expect(fenced).toContainText("Authority fence");
-    await expect(fenced).not.toContainText("KUALI");
-    await expect(fenced).not.toContainText("read");
-    await expect(fenced).not.toHaveAttribute("aria-label", /system |directions? /i);
-
-    const search = page.getByRole("searchbox", { name: "Search logs" });
-    await search.focus();
-    await expect(search).toBeFocused();
-    await search.fill("employeeId");
-    await expect(page.getByText("1 match")).toBeVisible();
-    await search.fill("");
-
-    const loadMore = page.getByRole("button", { name: "Load more lines" });
-    await loadMore.click();
-    const loading = page.getByRole("button", { name: "Loading more lines…" });
-    await expect(loading).toBeVisible();
-    await expect(loading).toBeDisabled();
-    await expect(loading).toHaveAttribute("aria-busy", "true");
-    continuationRelease.resolve();
-    await expect(page.getByRole("button", { name: "Load more lines" })).toHaveCount(0);
-    await expect(log.getByRole("listitem")).toHaveCount(4);
-    const logWidth = await log.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
-    expect(logWidth, "the observed log ledger must fit its own desktop panel").toEqual({ scroll: logWidth.client, client: logWidth.client });
-    if (viewport.name === "desktop") {
-      await expect(log.getByRole("heading", { name: "Find person · ucpath/person-read" }).first()).toHaveCSS("position", "sticky");
-    }
-    await page.screenshot({ path: testInfo.outputPath(`observed-log-${viewport.name}.png`), fullPage: true });
+    const data = page.getByRole("region", { name: "Extracted fields" });
+    await expect(data.getByText("Find person")).toBeVisible();
+    await expect(data.getByText("UCPATH", { exact: true })).toBeVisible();
+    await expect(data.getByText("redacted", { exact: true }).first()).toBeVisible();
+    await expect(data.getByText("Read separation plan")).toBeVisible();
+    await expect(data.getByText("No run data recorded")).toHaveCount(0);
+    const width = await data.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+    expect(width, "recorded values must fit the Context rail").toEqual({ scroll: width.client, client: width.client });
+    await page.screenshot({ path: testInfo.outputPath(`observed-data-${viewport.name}.png`), fullPage: true });
   });
 }

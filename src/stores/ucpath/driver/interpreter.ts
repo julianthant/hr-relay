@@ -1,4 +1,5 @@
 import type { Page } from "playwright";
+import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { EidSchema } from "../../../domain/ids.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
@@ -129,6 +130,7 @@ export function createUcpathPersonOrgDriver(
       if (element.effect !== "prepare") throw new Error(`${id} is not a prepare-class field`);
       await waitForUcpathElementStates(page, element);
       await resolveUcpathElement(page, id).fill(eid);
+      recordBrowserAction("typed", id);
       return UiActionProofSchema.parse({ elementId: id, effect: "prepare", performed: true });
     },
     async read(id) {

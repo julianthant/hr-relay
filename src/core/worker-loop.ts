@@ -123,7 +123,7 @@ export interface WorkerLoopDependencies {
   readonly idleRepollMs: number;
   readonly log: TaskLogger;
   /** Allowlisted run notes from ordinary tasks; transaction callbacks stay outside this sink. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote">;
+  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote" | "emitRunAction">;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
   /**

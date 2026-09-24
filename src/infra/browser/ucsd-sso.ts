@@ -24,6 +24,7 @@
  * appears within the Duo window, or this login fails loud".
  */
 import type { Locator, Page } from "playwright";
+import { recordBrowserAction } from "./action-notes.js";
 import { assertDuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import type { DuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import { probeAbsentControl } from "./authenticated-application.js";
@@ -236,7 +237,9 @@ export async function fillSsoCredentials(
   await requireMatchedField(system, context, passwordField(context.page), "password", SSO_PASSWORD_SELECTOR);
   try {
     await usernameField(context.page).fill(context.credentials.userId, { timeout });
+    recordBrowserAction("typed", "ucsd.sso.username");
     await passwordField(context.page).fill(context.credentials.password, { timeout });
+    recordBrowserAction("typed", "ucsd.sso.password");
   } catch (error) {
     throw new BrowserLoginError(
       system,
@@ -290,6 +293,7 @@ export async function submitSsoForm(
   abortIfCancelled(system, "sso-submit", context);
   try {
     await ssoSubmitButton(context.page).click({ timeout: context.config.timeouts.navigationMs });
+    recordBrowserAction("clicked", "ucsd.sso.submit");
   } catch (error) {
     throw new BrowserLoginError(
       system,

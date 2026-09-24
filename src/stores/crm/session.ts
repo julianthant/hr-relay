@@ -25,6 +25,7 @@
  * poll loop (ref execution-and-sessions §5).
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
+import { recordBrowserAction } from "../../infra/browser/action-notes.js";
 import type { DuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import {
   defineVerifiedLoginRecipe,
@@ -141,6 +142,7 @@ async function ensureActiveDirectorySelected(context: SystemLoginContext, token:
       { label: ACTIVE_DIRECTORY_OPTION },
       { timeout: config.timeouts.navigationMs },
     );
+    recordBrowserAction("selected", "crm.sso.login-type");
   } catch (error) {
     throw new BrowserLoginError(
       SYSTEM,
@@ -180,6 +182,7 @@ export const crmLoginRecipe = defineVerifiedLoginRecipe({
         "navigate-login-entry",
         context,
       );
+      recordBrowserAction("opened", "crm.login-entry");
     } catch (error) {
       if (error instanceof BrowserLoginError) throw error;
       throw new BrowserLoginError(

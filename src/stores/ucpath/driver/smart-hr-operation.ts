@@ -51,6 +51,7 @@
  * only ever over-refuse — it can never manufacture a false absence.
  */
 import type { Locator, Page } from "playwright";
+import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
@@ -438,6 +439,7 @@ async function readTransactionDetail(
   emplId: Eid,
 ): Promise<UcpathTransactionRow> {
   await page.goto(detailUrl(transactionId), { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
+  recordBrowserAction("opened", "ucpath.smart-hr.transaction-detail");
   const receipt = resolveUcpathElement(page, UCPATH_SS_SMART_HR_RECEIPT_DISPLAY);
   await receipt.waitFor({ state: "visible", timeout: SCAN_BOUND_MS });
   const displayedId = await textOf(receipt);
@@ -493,9 +495,12 @@ export async function scanTerminationTransactionsOnPage(
     + redactScanFailureDetail(error, input.emplId);
   try {
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
+    recordBrowserAction("opened", "ucpath.smart-hr.search");
     await waitForUcpathState(page, UCPATH_SS_SMART_HR_SEARCH_READY);
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_EID_INPUT).fill(input.emplId);
+    recordBrowserAction("typed", UCPATH_SS_SMART_HR_SEARCH_EID_INPUT);
     await page.locator(DRIVER_ANCHOR.searchEmplIdOperator).selectOption(EQUALS_OPERATOR);
+    recordBrowserAction("selected", "ucpath.smart-hr.search-operator");
     const autoDrilledReceipt = resolveUcpathElement(
       page,
       UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
@@ -524,6 +529,7 @@ export async function scanTerminationTransactionsOnPage(
       throw new Error("the SS Smart HR receipt settlement signal requires its proven CSS anchor");
     }
     await resolveUcpathElement(page, UCPATH_SS_SMART_HR_SEARCH_BUTTON).click();
+    recordBrowserAction("clicked", UCPATH_SS_SMART_HR_SEARCH_BUTTON);
     try {
       await page.waitForFunction(hasVisibleSsSmartHrSettlementSignal, {
         resultRow: DRIVER_ANCHOR.searchResultRow,
@@ -684,14 +690,20 @@ export async function stageTerminationOnPage(
   observedAt: string,
 ): Promise<UcpathTerminationStaging> {
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
+  recordBrowserAction("opened", "ucpath.smart-hr.wizard");
   await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
   await resolveUcpathElement(page, UCPATH_SMART_HR_TEMPLATE_INPUT).fill(input.template);
+  recordBrowserAction("typed", UCPATH_SMART_HR_TEMPLATE_INPUT);
   await resolveUcpathElement(page, UCPATH_SMART_HR_TRANSACTION_DATE_INPUT).fill(input.effectiveDate);
+  recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_DATE_INPUT);
   await resolveUcpathElement(page, UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON).click();
+  recordBrowserAction("clicked", UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON);
   await waitForUcpathState(page, UCPATH_SMART_HR_DETAILS_READY);
 
   await resolveUcpathElement(page, UCPATH_SMART_HR_DETAILS_EID_INPUT).fill(input.emplId);
+  recordBrowserAction("typed", UCPATH_SMART_HR_DETAILS_EID_INPUT);
   await page.keyboard.press("Tab");
+  recordBrowserAction("pressed", "ucpath.smart-hr.details-eid-tab");
   const nameDisplay = page.locator(DRIVER_ANCHOR.wizardPersonName);
   try {
     await nameDisplay.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
@@ -733,7 +745,9 @@ export async function stageTerminationOnPage(
   const reason = resolveReasonOption(options, input.reasonCode);
   await resolveUcpathElement(page, UCPATH_SMART_HR_REASON_CODE_SELECT)
     .selectOption({ value: reason.value });
+  recordBrowserAction("selected", UCPATH_SMART_HR_REASON_CODE_SELECT);
   await resolveUcpathElement(page, UCPATH_SMART_HR_CONTINUE_BUTTON).click();
+  recordBrowserAction("clicked", UCPATH_SMART_HR_CONTINUE_BUTTON);
   await waitForUcpathState(page, UCPATH_SMART_HR_INFORMATION_READY);
 
   const override = resolveUcpathElement(page, UCPATH_SMART_HR_OVERRIDE_LDW_CHECKBOX);
@@ -741,14 +755,20 @@ export async function stageTerminationOnPage(
   // checked and the date pre-filled to (transaction date − 1 day). That is a
   // default, not the operator's answer, so the value is written and read back
   // either way — but the box is only clicked when it is genuinely unchecked.
-  if (!await override.isChecked()) await override.check();
+  if (!await override.isChecked()) {
+    await override.check();
+    recordBrowserAction("checked", UCPATH_SMART_HR_OVERRIDE_LDW_CHECKBOX);
+  }
   const ldw = resolveUcpathElement(page, UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT);
   await ldw.fill(input.lastDateWorked);
+  recordBrowserAction("typed", UCPATH_SMART_HR_LAST_DATE_WORKED_INPUT);
   await ldw.blur();
   await resolveUcpathElement(page, UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD)
     .fill(input.initiatorComments);
+  recordBrowserAction("typed", UCPATH_SMART_HR_INITIATOR_COMMENTS_FIELD);
   await resolveUcpathElement(page, UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD)
     .fill(input.initiatorComments);
+  recordBrowserAction("typed", UCPATH_SMART_HR_TRANSACTION_COMMENTS_FIELD);
   await waitForUcpathState(page, UCPATH_SMART_HR_TERMINATION_STAGED);
 
   const transactionIdDisplay = await textOf(page.locator(DRIVER_ANCHOR.wizardTransactionIdDisplay));
@@ -952,6 +972,7 @@ export async function stagePendingTerminationSweepOnPage(
     );
   }
   await page.goto(WIZARD_URL, { waitUntil: "domcontentloaded", timeout: STEP_BOUND_MS });
+  recordBrowserAction("opened", "ucpath.smart-hr.wizard");
   await waitForUcpathState(page, UCPATH_SMART_HR_SETUP_READY);
   const text = async (row: Locator, selector: string, field: string): Promise<string> => {
     const matches = row.locator(selector);
@@ -996,6 +1017,7 @@ export async function stagePendingTerminationSweepOnPage(
   const selected = joined.map(({ selected: row }) => row);
   for (const { candidateIndex } of joined) {
     await candidates[candidateIndex].checkbox.check();
+    recordBrowserAction("checked", "ucpath.smart-hr.pending-transaction");
   }
   for (const { candidateIndex } of joined) {
     const candidate = candidates[candidateIndex];
@@ -1084,6 +1106,7 @@ export async function commitOnPage(
   const locator = resolveUcpathElement(page, id);
   await locator.waitFor({ state: "visible", timeout: STEP_BOUND_MS });
   await locator.click();
+  recordBrowserAction("clicked", id);
   // The click is not the answer. Returning a proof unconditionally made both
   // commit contracts' refusal codes unreachable on a real page: a refusal
   // UCPath rendered in full was reported as a performed commit and left for the

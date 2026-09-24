@@ -2843,7 +2843,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "b622cd93513a828580d3bb9e19ef6ab464f7ef4318748c064f88ead932546f04",
+      "fingerprint": "584e4d25b83e2207fcfbe49daa8b7aab27270ce4d547c3793a89f91a39b66eb7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2880,6 +2880,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/canonical-json.ts",
           "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
         },
         {
           "path": "src/domain/config/catalog.ts",
@@ -3022,12 +3026,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/crm/declaration.ts",
           "sha256": "f9475f41af20cfebe8753ed508d8701b2f27294e7ca4144870d88f4dc92a90cd"
         },
         {
           "path": "src/stores/crm/driver/interpreter.ts",
-          "sha256": "69581eaa673c29bb9ee95706eda9ab57794d2794069622f1a76d3215fd43f9ab"
+          "sha256": "2d5ef0ecba0428d239b11b67838a48eb5cb0f95b056f68a492104deb8748d867"
         },
         {
           "path": "src/stores/crm/driver/ui-registry.ts",
@@ -3045,7 +3053,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "e6c0dff420ff18f3564dfbbe5d338f5656d059078c7bbe0410b20ce3eb645b4d",
+      "fingerprint": "4837e4ea42cb4a9b763a6225ba265552f31efbc024dcc8a027668148cc39b667",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3082,6 +3090,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/domain/canonical-json.ts",
           "sha256": "1153e14ab0d175fd8b5f5deae02a44ecd7308d7c2bd11e2557cc3527b386faea"
+        },
+        {
+          "path": "src/domain/clock.ts",
+          "sha256": "72c239b7dc373d95f08332f922efd9338e4ab17b0aee2ac07676af22d7810979"
         },
         {
           "path": "src/domain/config/catalog.ts",
@@ -3224,12 +3236,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/crm/declaration.ts",
           "sha256": "f9475f41af20cfebe8753ed508d8701b2f27294e7ca4144870d88f4dc92a90cd"
         },
         {
           "path": "src/stores/crm/driver/interpreter.ts",
-          "sha256": "69581eaa673c29bb9ee95706eda9ab57794d2794069622f1a76d3215fd43f9ab"
+          "sha256": "2d5ef0ecba0428d239b11b67838a48eb5cb0f95b056f68a492104deb8748d867"
         },
         {
           "path": "src/stores/crm/driver/ui-registry.ts",
@@ -3543,7 +3559,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "9e9ced128fd4b0ef272bc9849bc20cc69f8964f0ca7bdca70cdbabcd756d88d1",
+      "fingerprint": "ed943325428de22c74165097710069de21aec1686aefa7c8910b18d888ce5f68",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3746,12 +3762,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/kuali/declaration.ts",
           "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
+          "sha256": "aa40cd9537d34a53a932f41178f4afb9a659f92a4f34df7016415f02df6fb1dd"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -3773,7 +3793,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "9fb874cc7be5e826745046ee9c3d2fca8acb8d4f75dec327239f40a2ba83dd21",
+      "fingerprint": "5fa4ab2e58893345a0f838619a889b8ef8fe002e4566908dfaba38bc24cd6da7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3964,12 +3984,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/kuali/declaration.ts",
           "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
+          "sha256": "aa40cd9537d34a53a932f41178f4afb9a659f92a4f34df7016415f02df6fb1dd"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -3987,7 +4011,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "b9888da1e78778ad721b8616b0530e459676dde6bad259d50208d8ab314d4611",
+      "fingerprint": "a1daa824a3f8a162467d4e7e8bbaa87597d6d8bb0a9a82efc72d693d6e41a6f9",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4182,12 +4206,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/kuali/declaration.ts",
           "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
+          "sha256": "aa40cd9537d34a53a932f41178f4afb9a659f92a4f34df7016415f02df6fb1dd"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -4205,7 +4233,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "03539187d390dff2b96d7b73a26f3965b4d4a30f18e2f09425fee59e98c8d238",
+      "fingerprint": "35f55f5f88add06d1228c3ff2ee2e22b292602efaca4f302e21093d3195436e3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4396,12 +4424,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/kuali/declaration.ts",
           "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
+          "sha256": "aa40cd9537d34a53a932f41178f4afb9a659f92a4f34df7016415f02df6fb1dd"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -4419,7 +4451,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "3429607ea21909eca205a502bd289aaaefbf88ccc9cef0d50bb86f4424e46acc",
+      "fingerprint": "5c22a50aee1b085e7bd3a575a5c64c85414044a28845322fa5d73d8918ff4104",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4614,12 +4646,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/kuali/declaration.ts",
           "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
+          "sha256": "aa40cd9537d34a53a932f41178f4afb9a659f92a4f34df7016415f02df6fb1dd"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -4637,7 +4673,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "6dfe76baaa01b082ee478b168ca3fddc23ef60880bc3e684d37c23229955bc3f",
+      "fingerprint": "08cc156a329273ef078f2022c366f98f58c1849d586dfc8d53a530bd84977474",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4844,12 +4880,16 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/kuali/declaration.ts",
           "sha256": "cf8def89a53cb7a3e9fe5565256a2a979b351aba360096d881cc8dbf1d3925bc"
         },
         {
           "path": "src/stores/kuali/driver/interpreter.ts",
-          "sha256": "0b86b786387b7c1771836ca75908b30623b827ccc353ef16f593f02b6b842219"
+          "sha256": "aa40cd9537d34a53a932f41178f4afb9a659f92a4f34df7016415f02df6fb1dd"
         },
         {
           "path": "src/stores/kuali/driver/ui-registry.ts",
@@ -4871,7 +4911,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "aa9bea5d46c6126cde99a47842e2000ef4d14f70c07885cee10f3d89b3fd2550",
+      "fingerprint": "a17536aa36025f60898a1913979383ded4808037f8af98499b0f578ad8151f66",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5058,6 +5098,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/new-kronos/declaration.ts",
           "sha256": "8af55a6559c2b38b06a1483dbd6393dbc11967b5aabe9a2a6b8b61a8741667c5"
         },
@@ -5067,7 +5111,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "98008e7a3c74a64142f37e1aab641a4fd012b880567dd13f9cd1fd6a89c91147"
+          "sha256": "1f801357505b4d7dcd8df6766f9867a7b3a3a9150f0918cde8439d242f845553"
         },
         {
           "path": "src/stores/new-kronos/driver/search-render.ts",
@@ -5089,7 +5133,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "f37e3cdeacd9124e32c57965c5868052d51cfc14ad967ffe70bf46c128040a15",
+      "fingerprint": "2a61d6c6c133ad7230dd47e466adc039c965c622b9427142f41186d956e42199",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5276,6 +5320,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "a555666140133d18e3b5dfc9b41cf8b3b70f6e0de2df05812f6126d83a442c5e"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/new-kronos/declaration.ts",
           "sha256": "8af55a6559c2b38b06a1483dbd6393dbc11967b5aabe9a2a6b8b61a8741667c5"
         },
@@ -5285,7 +5333,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/new-kronos/driver/interpreter.ts",
-          "sha256": "98008e7a3c74a64142f37e1aab641a4fd012b880567dd13f9cd1fd6a89c91147"
+          "sha256": "1f801357505b4d7dcd8df6766f9867a7b3a3a9150f0918cde8439d242f845553"
         },
         {
           "path": "src/stores/new-kronos/driver/search-render.ts",
@@ -5813,7 +5861,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "20bc5f6c73c55a03787852be22c5195d74b8e8a103ba1c84d0299e854dc5a9e5",
+      "fingerprint": "6835fc0bc4a1979379c6118444fb56398744151e8f3dd7214fa0a9077efc0bd6",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6052,16 +6100,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -6069,7 +6121,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6091,7 +6143,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "1dc3b100fe1c454a880c8ae584a59716b8d4c50583a9bf03f1986f2bcddefb87",
+      "fingerprint": "e67ca9817d2e26516bf74f40e0c3949f218e2ade7b070be6595a9474780c4598",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6330,16 +6382,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -6347,7 +6403,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6369,7 +6425,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "0141afb18f5a5349e59b7e4dfa5179eb62566f786d44b0108b16340abecfe0de",
+      "fingerprint": "10448c8dbbec25631c3b46c3c76045136024f6189961f61776dc96955859493a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6608,16 +6664,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -6625,7 +6685,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6647,7 +6707,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "c18d39f8632a0d805b2eadf0fd299e3c70304283ab3582199e276e3fdcad82d2",
+      "fingerprint": "6d58473b99cf867eed6cbf7a2831e0dfab96c4d7c1ab1e20b7b77a54a0666b2f",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6886,16 +6946,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -6903,7 +6967,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -6925,7 +6989,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "354be57c32b2154b8251df97fe673f7a7d7accc8df295b0efb5ce9f94cb79305",
+      "fingerprint": "c904964745c89f8d85e8a0cced57eb5223a14a9e7c0c3b313e7aaefa5c0f9375",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7168,16 +7232,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -7185,7 +7253,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7207,7 +7275,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "f35b75270106ea0bd0f4f976ea91fcac7c3efb3a6fbca3356a740cfcff3a503c",
+      "fingerprint": "3191fd59abbd058af0335c18e019c311bd806656a545c5e9fccbced9b4580532",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7450,16 +7518,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -7467,7 +7539,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7489,7 +7561,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "222991e255178685c6f899b728b405c91586d2acb6a2e5150f73caca69f6f852",
+      "fingerprint": "fbed6ae5f92224dffbac280e9ced6e236328748112ccf9dfaee70f0118fd4ece",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7728,16 +7800,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -7745,7 +7821,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -7767,7 +7843,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "c302b561ef9790ddde9e68c85713525afc4c6ad73052601e358fab74f6551677",
+      "fingerprint": "534871412b3b5498d6e25548cb37486eaea9a2073402cc3ec7ede58cfc05fce0",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8010,16 +8086,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -8027,7 +8107,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -8049,7 +8129,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "1486c299d3e8e2c7e66f032ea6ac8f44ea8355d2b786a4794e688edfd368cdc2",
+      "fingerprint": "d7e0a99126a389326997fa9bdbab0c6ce29b98ba5da00f2baafb5ac3774ea224",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8292,16 +8372,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -8309,7 +8393,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -8331,7 +8415,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "e55d6c6cd152cdce645c72a173fc8c326f4c8a611cff880e1d491d6bec7a3124",
+      "fingerprint": "8ed4ccf42a28549f019eb209fd48373e8322e07f29ae8134963ec5c8e42463e7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8574,16 +8658,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -8591,7 +8679,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -8613,7 +8701,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "da60690c1f17e183f431dbb91a2a3583d4f95a2e608934aaaeaf6acfd1d917cb",
+      "fingerprint": "57a587c459716b271a09e7809c42e5409c1a2d973dfabd74172ab86defc57379",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8856,16 +8944,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -8873,7 +8965,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",
@@ -8895,7 +8987,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "f86a3bcbeaa8ea068e75cac137b53296ef1afc32d437793ddbb734fe071c819b",
+      "fingerprint": "e0578021cbdbe5ed96e3e5ca18843338376cb10663ec13bbf6581bd9afd457d5",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -9138,16 +9230,20 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "fcc03116450c4ba4643baa93e273ba0ab52857dc73f54eee73fb2c3941146379"
         },
         {
+          "path": "src/infra/browser/action-notes.ts",
+          "sha256": "ed345e21c61ac7ddb6af9f5bcda4d684449f2de15a9f222a74c3bec34c425bdb"
+        },
+        {
           "path": "src/stores/ucpath/driver-declaration.ts",
           "sha256": "1082f7f3bb71c82790923ddf51058fae080d67b6ce9e4ba70afd87ccc2b12e30"
         },
         {
           "path": "src/stores/ucpath/driver/interpreter.ts",
-          "sha256": "2da0b8a9a30fc583c24400ef514c05b837df86cf9fcbed035f6ec643aa3d525e"
+          "sha256": "1267a8fb8272d5b5dd63ecb3b081dc7fa4e96f934a8e50ccf9b39c33e42615c0"
         },
         {
           "path": "src/stores/ucpath/driver/person-org-operation.ts",
-          "sha256": "989aed5faedeb35545933d2272ad7197885bc8f88b36b6ec05198422db6c43c4"
+          "sha256": "f4810ef9982119b8248da080bfb739629965a2095e0940fa45d3a848e3a0fcd2"
         },
         {
           "path": "src/stores/ucpath/driver/registry-locators.ts",
@@ -9155,7 +9251,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/stores/ucpath/driver/smart-hr-operation.ts",
-          "sha256": "ee253b6441be018d2b4efe9852e1776b661ad7bb2cf32e4ab81fdd42f217fea4"
+          "sha256": "badcfcc986defbb508b5bbbcf7fda15449491ac86eb87f9438fdc6abdedbfe61"
         },
         {
           "path": "src/stores/ucpath/driver/ui-registry.ts",

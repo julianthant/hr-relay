@@ -12,6 +12,7 @@
  * empty array, no missing-table not-found, no swallowed field clear, and no drill-failure null.
  */
 import type { Locator, Page } from "playwright";
+import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import { z } from "zod";
 import {
   SearchPersonOrgInputSchema,
@@ -575,7 +576,10 @@ function playwrightViewTogglePort(page: Page, id: ElementId, label: string): Per
     count: () => toggle().count(),
     readText: () => readRequiredText(toggle(), `${label} View All state`),
     readHref: () => toggle().getAttribute("href"),
-    click: () => toggle().click(),
+    click: async () => {
+      await toggle().click();
+      recordBrowserAction("clicked", id);
+    },
     waitForExpanded: () => toggle().filter({ hasText: /^View [1-9]\d*$/u }).waitFor({
       state: "visible",
       timeout: OUTCOME_TIMEOUT_MS,
@@ -829,12 +833,14 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
       waitUntil: "domcontentloaded",
       timeout: OUTCOME_TIMEOUT_MS,
     });
+    recordBrowserAction("opened", "ucpath.person-org.summary");
     const navigation = resolveUcpathElement(page, UCPATH_PERSON_ORG_NAVIGATION_LINK);
     await navigation.waitFor({ state: "visible", timeout: OUTCOME_TIMEOUT_MS });
     // The step control routes through the nav collection's content frame, so
     // clicking before that frame holds a document is silently dropped.
     await waitForUcpathContentFrameDocument(page, OUTCOME_TIMEOUT_MS);
     await navigation.click();
+    recordBrowserAction("clicked", UCPATH_PERSON_ORG_NAVIGATION_LINK);
     await waitForUcpathState(page, UCPATH_PERSON_ORG_SEARCH_READY);
   };
 
@@ -845,14 +851,23 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
       const lastNameInput = resolveUcpathElement(page, UCPATH_PERSON_ORG_LAST_NAME_INPUT);
       const givenNameInput = resolveUcpathElement(page, UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
       await eidInput.fill("");
+      recordBrowserAction("cleared", UCPATH_PERSON_ORG_EID_INPUT);
       await lastNameInput.fill("");
+      recordBrowserAction("cleared", UCPATH_PERSON_ORG_LAST_NAME_INPUT);
       await givenNameInput.fill("");
-      if (query.kind === "by-eid") await eidInput.fill(query.eid);
+      recordBrowserAction("cleared", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
+      if (query.kind === "by-eid") {
+        await eidInput.fill(query.eid);
+        recordBrowserAction("typed", UCPATH_PERSON_ORG_EID_INPUT);
+      }
       else {
         await lastNameInput.fill(query.lastName);
+        recordBrowserAction("typed", UCPATH_PERSON_ORG_LAST_NAME_INPUT);
         await givenNameInput.fill(query.givenName);
+        recordBrowserAction("typed", UCPATH_PERSON_ORG_GIVEN_NAME_INPUT);
       }
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_SEARCH_BUTTON).click();
+      recordBrowserAction("clicked", UCPATH_PERSON_ORG_SEARCH_BUTTON);
 
       const criteriaBanner = resolveUcpathElement(page, UCPATH_PERSON_ORG_NO_RESULTS_STATUS);
       const displayedEid = resolveUcpathElement(page, UCPATH_PERSON_ORG_EID_DISPLAY);
@@ -892,10 +907,12 @@ function createPlaywrightPersonOrgPage(page: Page): PersonOrgPagePort {
     },
     async drill(rowIndex) {
       await resolveUcpathIndexedElement(page, UCPATH_PERSON_ORG_RESULT_DRILL_IN, rowIndex).click();
+      recordBrowserAction("clicked", UCPATH_PERSON_ORG_RESULT_DRILL_IN);
       return extractDetail(page);
     },
     async returnToResults() {
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_RETURN_TO_SEARCH).click();
+      recordBrowserAction("clicked", UCPATH_PERSON_ORG_RETURN_TO_SEARCH);
       await resolveUcpathElement(page, UCPATH_PERSON_ORG_RESULTS_GRID).waitFor({
         state: "visible",
         timeout: OUTCOME_TIMEOUT_MS,

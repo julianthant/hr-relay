@@ -30,6 +30,7 @@ import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
+import { recordBrowserAction } from "../../src/infra/browser/action-notes.js";
 import { NoteWireSchema } from "../../src/events/types.js";
 import { ucpathStore } from "../../src/stores/ucpath/index.js";
 import { ucpathDriver } from "../../src/stores/ucpath/driver-declaration.js";
@@ -123,6 +124,37 @@ function enqueueAndClaim(
 const SIGNAL = new AbortController().signal;
 
 describe("person-lookup full walk", () => {
+  it("records completed browser gestures on the task span and names action overflow", async () => {
+    const sessions = sessionFactoryHarness({
+      ucpath: () => {
+        const driver = healthyUcpathDriver();
+        return Object.freeze({ ...driver,
+          async searchPersonOrg(...args: Parameters<typeof driver.searchPersonOrg>) {
+            const result = await driver.searchPersonOrg(...args);
+            for (let index = 0; index < 258; index += 1) {
+              recordBrowserAction("clicked", "ucpath.person-org.search-button");
+            }
+            return result;
+          },
+        });
+      },
+      crm: () => healthyCrmDriver(),
+    });
+    const harness = executorHarness({ sessions });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(database, personLookupQueuedRun(), clock.now().toISOString());
+    const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: RUN_ID });
+    const notes = readEventStreamLines(stateRoot, "notes")
+      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+    const actions = notes.filter((note) => note.action !== undefined);
+    assert.equal(actions.length, 256);
+    assert.equal(actions.every((note) => note.message === "Clicked ucpath person org search button"), true);
+    assert.equal(actions.every((note) => note.spanPath.includes("searching")), true);
+    assert.equal(notes.some((note) => note.message === "Further browser actions were omitted after the 256-action operation limit."), true);
+  });
+
   it("writes bounded, protected ordinary task logs through the run query cursor", async () => {
     let searchCalls = 0;
     const sessions = sessionFactoryHarness({

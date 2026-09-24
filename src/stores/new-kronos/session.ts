@@ -36,6 +36,7 @@
  * **3.32 s** measured; whole browser-launch-to-home ≈ 33 s.
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
+import { recordBrowserAction } from "../../infra/browser/action-notes.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
@@ -178,6 +179,7 @@ export const newKronosLoginRecipe = defineVerifiedLoginRecipe({
         "navigate-login-entry",
         context,
       );
+      recordBrowserAction("opened", "new-kronos.login-entry");
     } catch (error) {
       if (error instanceof BrowserLoginError) throw error;
       throw new BrowserLoginError(

@@ -14,7 +14,8 @@ import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { localDatePart } from "../../domain/clock.js";
 import { redactDiagnosticFields } from "../../domain/redaction.js";
-import { NoteLevelSchema, NoteWireSchema, type NoteFieldWire, type NoteWire } from "../../events/types.js";
+import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../events/types.js";
+import type { BrowserAction } from "../browser/action-notes.js";
 import { assertNoteWithinRunScope } from "../../domain/run/note-scope.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../domain/run/task-note.js";
@@ -57,6 +58,11 @@ export interface NoteJsonlWriter {
     address: z.input<typeof RunNoteAddressSchema>;
     kind: TaskRunNoteKind;
   }>, authority: RunRecord): NoteWire;
+  emitRunAction(input: Readonly<{
+    workflow: string;
+    address: z.input<typeof RunNoteAddressSchema>;
+    action: BrowserAction;
+  }>, authority: RunRecord): NoteWire;
 }
 
 function toWireField(field: ReturnType<typeof redactDiagnosticFields>["fields"][number]): NoteFieldWire | undefined {
@@ -74,7 +80,7 @@ function toWireField(field: ReturnType<typeof redactDiagnosticFields>["fields"][
 
 export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWriter {
   const pid = z.number().int().positive().parse(deps.pid ?? process.pid);
-  const write = (input: unknown, authority?: RunRecord): NoteWire => {
+  const write = (input: unknown, authority?: RunRecord, occurredAt?: string, action?: BrowserAction): NoteWire => {
     const ingress = NoteIngressSchema.parse(input);
     const at = deps.clock.now();
     if (authority !== undefined) {
@@ -101,11 +107,12 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
     const note = NoteWireSchema.parse({
       diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
       ...ingress.address,
-      ts: at.toISOString(),
+      ts: occurredAt ?? at.toISOString(),
       workflow: ingress.workflow,
       pid,
       level: ingress.level,
       message: ingress.message,
+      ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
     appendEventStreamLine(deps.stateRoot, "notes", note.workflow, localDatePart(at), JSON.stringify(note));
@@ -124,8 +131,25 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       message: taskRunNoteMessage(ingress.kind),
     }, authority);
   };
+  const emitRunAction: NoteJsonlWriter["emitRunAction"] = (input, authority) => {
+    const action = z.strictObject({
+      kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
+      targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
+      at: z.iso.datetime({ offset: true }),
+    }).parse(input.action);
+    if (Date.parse(action.at) > deps.clock.now().getTime()) {
+      throw new Error("browser action occurred after note append time");
+    }
+    return write({
+      workflow: input.workflow,
+      address: input.address,
+      level: "step",
+      message: browserActionMessage(action),
+    }, authority, action.at, action);
+  };
   return Object.freeze({
     emitNote: (input: unknown): NoteWire => write(input),
     emitRunNote,
+    emitRunAction,
   });
 }

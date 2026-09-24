@@ -192,6 +192,38 @@ function renderRail(sections: ContextSections, dataExpanded = false): string {
   );
 }
 
+describe("observed Run data", () => {
+  it("shows a recorded field when there is no editable checkpoint field", () => {
+    const response = RunDetailSectionResponseSchema.parse({
+      section: "context-data",
+      payload: {
+        runId: RUN_ID,
+        state: "available",
+        entries: [],
+        observations: [{
+          kind: "observed",
+          logId: "e1b8ae3e-0000-4000-8000-000000000021",
+          sequence: 0,
+          at: "2026-09-22T17:00:00.000Z",
+          attempt: 2,
+          traceId: "pl-100000-e1b8",
+          spanPath: "pl-100000-e1b8/read-document#1.2",
+          producer: { nodeId: "read-document", step: "Separation Document", taskId: "kuali/read-separation-document", system: "kuali" },
+          points: [{ direction: "read", field: "documentNumber", values: [
+            { key: "documentNumber", state: "allowed", classification: "safe-diagnostic", transform: "allow", value: "4684" },
+          ] }],
+        }],
+      },
+    });
+    assert.equal(response.section, "context-data");
+    const markup = renderRail({ ...dataSections(), "context-data": response.payload });
+    const visible = textOf(withoutTooltips(markup));
+    assert.match(visible, /Separation Document/u);
+    assert.match(visible, /4684/u);
+    assert.doesNotMatch(visible, /No run data recorded/u);
+  });
+});
+
 describe("the step group's own chrome (C51, D273 item 5)", () => {
   it("gives every attributed step a Well, a recessed band and divided rows", () => {
     const markup = renderRail(dataSections());

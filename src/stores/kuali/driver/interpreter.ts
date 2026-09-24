@@ -32,6 +32,7 @@
  * recorded by the 2026-07-23 probe and re-verified read-only 2026-08-04.
  */
 import type { ElementHandle, Locator, Page, Response } from "playwright";
+import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
@@ -789,13 +790,16 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_TIMEOUT_MS,
     });
+    recordBrowserAction("opened", "kuali.action-list");
     // The list's own two controls ARE the ready state: legacy waits for the
     // search box for the same reason, and it renders whether or not the list
     // holds anything — an empty Action List is a real answer, not a dead page.
     const search = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_INPUT);
     const go = await exactlyOne(page, KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
     await search.fill(documentNumber, { timeout: FIELD_TIMEOUT_MS });
+    recordBrowserAction("typed", KUALI_ACTION_LIST_SEARCH_INPUT);
     await go.click({ timeout: FIELD_TIMEOUT_MS });
+    recordBrowserAction("clicked", KUALI_ACTION_LIST_SEARCH_GO_BUTTON);
     // Kuali refetches the filtered list server-side. Waiting for the MATCHED
     // link is a bounded wait for the fact we came for; when it never renders
     // the count below is 0 and `classifyKualiActionResolution` refuses by name,
@@ -844,6 +848,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_TIMEOUT_MS,
     });
+    recordBrowserAction("opened", "kuali.separation-document");
     const observedNumber = await waitForDocumentReady(page, actionId);
     if (observedNumber !== expectedNumber) {
       throw new Error(
@@ -970,6 +975,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       waitUntil: "domcontentloaded",
       timeout: NAVIGATION_TIMEOUT_MS,
     });
+    recordBrowserAction("opened", "kuali.separation-document");
     assertExactKualiDocumentUrl(page.url(), actionId);
 
     const heading = await probeDocumentNumberHeading(page, actionId);
@@ -1248,10 +1254,13 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     try {
       await stampModelProps(handle, documentNumber, what);
       await field.fill(value, { timeout: FIELD_TIMEOUT_MS });
+      recordBrowserAction("typed", id);
       let displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
       if (displayed !== value) {
         await field.clear({ timeout: FIELD_TIMEOUT_MS });
+        recordBrowserAction("cleared", id);
         await field.pressSequentially(value, { delay: 30, timeout: FIELD_TIMEOUT_MS });
+        recordBrowserAction("typed", id);
         displayed = (await field.inputValue({ timeout: FIELD_TIMEOUT_MS })).trim();
       }
       if (displayed !== value) return;
@@ -1344,7 +1353,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const departmentControl = await exactlyOne(page, KUALI_RRSS_DEPARTMENT_FIELD);
     await stageDiscrete(
       departmentControl,
-      async () => { await departmentControl.selectOption({ label: fields.department }, { timeout: FIELD_TIMEOUT_MS }); },
+      async () => {
+        await departmentControl.selectOption({ label: fields.department }, { timeout: FIELD_TIMEOUT_MS });
+        recordBrowserAction("selected", KUALI_RRSS_DEPARTMENT_FIELD);
+      },
       "department",
       view.documentNumber,
     );
@@ -1353,7 +1365,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const acknowledged = await exactlyOne(page, KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX);
     await stageDiscrete(
       acknowledged,
-      async () => { await acknowledged.setChecked(fields.requestAcknowledged, { timeout: FIELD_TIMEOUT_MS }); },
+      async () => {
+        await acknowledged.setChecked(fields.requestAcknowledged, { timeout: FIELD_TIMEOUT_MS });
+        recordBrowserAction("set", KUALI_RRSS_REQUEST_ACKNOWLEDGED_CHECKBOX);
+      },
       "request acknowledged",
       view.documentNumber,
     );
@@ -1388,7 +1403,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const template = await exactlyOne(page, KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX);
     await stageDiscrete(
       template,
-      async () => { await template.setChecked(fields.submittedTerminationTemplate, { timeout: FIELD_TIMEOUT_MS }); },
+      async () => {
+        await template.setChecked(fields.submittedTerminationTemplate, { timeout: FIELD_TIMEOUT_MS });
+        recordBrowserAction("set", KUALI_RRSS_SUBMITTED_TEMPLATE_CHECKBOX);
+      },
       "submitted termination template",
       view.documentNumber,
     );
@@ -1396,7 +1414,10 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
     const finalPay = await finalPayLocator(fields.finalPay);
     await stageDiscrete(
       finalPay,
-      async () => { await finalPay.check({ timeout: FIELD_TIMEOUT_MS }); },
+      async () => {
+        await finalPay.check({ timeout: FIELD_TIMEOUT_MS });
+        recordBrowserAction("checked", "kuali.rrss.final-pay");
+      },
       "final pay radio",
       view.documentNumber,
     );
@@ -1519,6 +1540,7 @@ export function createKualiRrssDocumentDriver(page: Page, clock: Clock): KualiRr
       { timeout: SUBMIT_OBSERVE_TIMEOUT_MS },
     );
     await save.click({ timeout: FIELD_TIMEOUT_MS });
+    recordBrowserAction("clicked", KUALI_RRSS_SAVE_BUTTON);
     // Legacy `clickSave` settles on `networkidle` here and calls that success.
     // This one waits for the SPECIFIC mutation to be ANSWERED instead, because
     // `networkidle` and Kuali's own `Form saved` are both true of a save that

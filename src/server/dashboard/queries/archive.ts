@@ -190,21 +190,38 @@ function archivedFailureForOperator(
   });
 }
 
-function archivedSectionsForOperator(
+export function archivedSectionsForOperator(
   sections: ArchivedRunSections,
   archiveSchemaGeneration: number,
 ): ArchivedRunSections {
-  if (archiveSchemaGeneration >= 6 || sections.logs.state === "absent") return sections;
-  const message = "historical note text withheld (predates diagnostic safety v1)";
+  if (sections.logs.state === "absent") return sections;
   const page = sections.logs.value;
-  const rows = page.rows?.map((row) => row.kind === "note"
-    ? { ...row, note: { ...row.note, message } }
-    : row);
+  const observed = page.rows?.filter((row) => row.kind === "observed") ?? [];
+  if (archiveSchemaGeneration >= 6 && observed.length === 0) return sections;
+  const message = "historical note text withheld (predates diagnostic safety v1)";
+  const rows = page.rows?.filter((row) => row.kind !== "observed").map((row) =>
+    archiveSchemaGeneration < 6 && row.kind === "note"
+      ? { ...row, note: { ...row.note, message } }
+      : row);
   const notes = rows === undefined
-    ? page.notes.map((note) => ({ ...note, message }))
+    ? page.notes.map((note) => archiveSchemaGeneration < 6 ? { ...note, message } : note)
     : rows.flatMap((row) => row.kind === "note" ? [row.note] : []);
+  const priorData = sections.data.state === "present"
+    ? sections.data.value
+    : { runId: page.runId, state: "archived" as const, entries: [] };
+  const mergedObservations = [...(priorData.observations ?? [])];
+  const seen = new Set(mergedObservations.map((row) => row.logId));
+  for (const row of observed) {
+    if (seen.has(row.logId)) continue;
+    mergedObservations.push(row);
+    seen.add(row.logId);
+  }
   return ArchivedRunSectionsSchema.parse({
     ...sections,
+    ...(observed.length === 0 ? {} : { data: {
+      state: "present",
+      value: { ...priorData, observations: mergedObservations },
+    } }),
     logs: {
       state: "present",
       value: NotePageSchema.parse({

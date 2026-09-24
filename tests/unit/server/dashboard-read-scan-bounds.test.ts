@@ -21,6 +21,7 @@ import { afterEach, describe, it } from "vitest";
 import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { deterministicUuid } from "../../../src/server/dashboard/support.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import {
   assertNoteWithinRunScope,
@@ -622,7 +623,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     });
   }
 
-  it("combines redacted observations and the durable fence with notes in one ordered, addressable page", () => {
+  it("serves observations in Run data while Logs keeps the durable fence", () => {
     const w = world();
     terminalDone(w, 1);
     const first = instantOffsetOf(0, 10);
@@ -631,11 +632,15 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     observedEvent(w, { at: first });
     fencedEvent(w, fence);
     observedEvent(w, { at: last });
-    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    const deps = observedDepsOf(w, [SEARCH_ORIGIN]);
+    const section = buildRunSection(deps, uuidOf(1), "logs");
     assert.equal(section.section, "logs");
     assert.ok(section.payload.rows !== undefined);
-    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["observed", "transaction-fenced", "observed"]);
-    const observed = section.payload.rows[0];
+    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["transaction-fenced"]);
+    const data = buildRunSection(deps, uuidOf(1), "context-data");
+    assert.equal(data.section, "context-data");
+    assert.equal(data.payload.observations?.length, 2);
+    const observed = data.payload.observations?.[0];
     assert.ok(observed !== undefined && observed.kind === "observed");
     assert.equal(observed.at, first);
     assert.equal(observed.attempt, 1);
@@ -643,7 +648,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.deepEqual(observed.producer, SEARCH_ORIGIN);
     assert.equal(observed.points[0]?.direction, "read");
     assert.equal(observed.points[0]?.values[0]?.transform, "allow");
-    const fenced = section.payload.rows[1];
+    const fenced = section.payload.rows[0];
     assert.ok(fenced !== undefined && fenced.kind === "transaction-fenced");
     assert.equal(fenced.at, fence);
     assert.deepEqual(fenced.producer, SEARCH_ORIGIN);
@@ -705,21 +710,23 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     };
 
     const section = buildRunSection(deps, uuidOf(1), "logs");
+    const data = buildRunSection(deps, uuidOf(1), "context-data");
 
     assert.equal(section.section, "logs");
+    assert.equal(data.section, "context-data");
     assert.ok(section.payload.rows !== undefined);
-    assert.deepEqual(section.payload.rows.map((row) => ({
+    assert.deepEqual(data.payload.observations?.map((row) => ({
       kind: row.kind,
-      taskId: row.kind === "note" ? "note" : row.producer.taskId,
-      direction: row.kind === "observed" ? row.points[0]?.direction : undefined,
+      taskId: row.producer.taskId,
+      direction: row.points[0]?.direction,
       hasPoints: "points" in row,
     })), [
       { kind: "observed", taskId: "kuali/match-separation-finalization", direction: "read", hasPoints: true },
       { kind: "observed", taskId: "kuali/stage-separation-finalization", direction: "write", hasPoints: true },
-      { kind: "transaction-fenced", taskId: "kuali/save-separation-finalization", direction: undefined, hasPoints: false },
       { kind: "observed", taskId: "kuali/save-separation-finalization", direction: "write", hasPoints: true },
       { kind: "observed", taskId: "kuali/verify-separation-finalization", direction: "read", hasPoints: true },
     ]);
+    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["transaction-fenced"]);
     assert.ok(section.payload.rows.every((row) => row.kind === "note" || row.producer.system === "kuali"));
   });
 
@@ -730,18 +737,18 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     const section = buildRunSection(
       observedDepsOf(w, [{ ...SEARCH_ORIGIN, system: undefined }]),
       uuidOf(1),
-      "logs",
+      "context-data",
     );
-    assert.equal(section.section, "logs");
-    const row = section.payload.rows?.find((entry) => entry.kind === "observed");
-    assert.ok(row !== undefined && row.kind === "observed");
+    assert.equal(section.section, "context-data");
+    const row = section.payload.observations?.[0];
+    assert.ok(row !== undefined);
     assert.deepEqual(row.producer, {
       nodeId: SEARCH_ORIGIN.nodeId,
       step: SEARCH_ORIGIN.step,
       taskId: SEARCH_ORIGIN.taskId,
     });
     assert.throws(
-      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN, { ...SEARCH_ORIGIN, system: "crm" }]), uuidOf(1), "logs"),
+      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN, { ...SEARCH_ORIGIN, system: "crm" }]), uuidOf(1), "context-data"),
       /has 2 matching data origins/,
     );
   });
@@ -773,10 +780,9 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     observedEvent(w, { seed: 1, attempt: 2, at: instantOffsetOf(0, 20) });
     assert.equal(w.projection.runLogSnapshot(uuidOf(1)).entries.length, 2);
     assert.equal(w.projection.runLogSnapshot(uuidOf(2)).entries.length, 1);
-    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
-    assert.equal(section.section, "logs");
-    assert.ok(section.payload.rows !== undefined);
-    const observations = section.payload.rows.filter((row) => row.kind === "observed");
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data");
+    assert.equal(section.section, "context-data");
+    const observations = section.payload.observations ?? [];
     assert.deepEqual(observations.map((row) => row.attempt), [1, 2]);
     assert.deepEqual(observations.map((row) => row.at), [instantOffsetOf(0, 10), instantOffsetOf(0, 20)]);
   });
@@ -787,11 +793,42 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     w.clock.setWall(new Date(AT.getTime() + 3 * DAY_MS));
     observedEvent(w, { at: instantOffsetOf(0, 10) });
 
-    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data");
 
+    assert.equal(section.section, "context-data");
+    assert.deepEqual(section.payload.observations?.map((row) => row.kind), ["observed"]);
+  });
+
+  it("keeps SQLite ingestion order when equal-time observations landed in different day files", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const observedAt = instantOffsetOf(0, 10);
+    observedEvent(w, { at: observedAt });
+    w.clock.setWall(new Date(AT.getTime() + 3 * DAY_MS));
+    observedEvent(w, { at: observedAt });
+    const indexed = w.projection.runLogSnapshot(uuidOf(1)).entries;
+    assert.equal(indexed.length, 2);
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data");
+    assert.equal(section.section, "context-data");
+    assert.deepEqual(section.payload.observations?.map((row) => row.logId), indexed.map(({ line }) =>
+      deterministicUuid(`log:${line.file.path}:${String(line.lineNumber)}`)));
+  });
+
+  it("serves a completed browser action as a concise Logs line", () => {
+    const w = world();
+    terminalDone(w, 1);
+    const authority = w.authority.getRun(uuidOf(1));
+    assert.ok(authority !== undefined);
+    const notes = createNoteJsonlWriter({ stateRoot: w.stateRoot, clock: w.clock, pid: 4242 });
+    notes.emitRunAction({
+      workflow: "person-lookup",
+      address: { runId: uuidOf(1), attempt: 1, traceId: traceOf(1), spanPath: traceOf(1) },
+      action: { kind: "clicked", targetId: "ucpath.person-org.search-button", at: w.clock.now().toISOString() },
+    }, authority);
+    const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
-    assert.ok(section.payload.rows !== undefined);
-    assert.deepEqual(section.payload.rows.map((row) => row.kind), ["observed"]);
+    assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["note"]);
+    assert.equal(section.payload.notes[0]?.message, "Clicked ucpath person org search button");
   });
 
   it("refuses a same-run observation whose trace is not the run authority trace", () => {
@@ -800,7 +837,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     observedEvent(w, { traceId: traceOf(2) });
 
     assert.throws(
-      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
       /run 0001.*span trace pl-100002-0002.*authority trace is pl-100001-0001/s,
     );
   });
@@ -810,7 +847,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     terminalDone(foreignWorkflow, 1);
     observedEvent(foreignWorkflow, { workflow: "separations" });
     assert.throws(
-      () => buildRunSection(observedDepsOf(foreignWorkflow, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      () => buildRunSection(observedDepsOf(foreignWorkflow, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
       /run 0001.*workflow separations.*authority names person-lookup/s,
     );
 
@@ -818,7 +855,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     terminalDone(foreignAttempt, 1);
     observedEvent(foreignAttempt, { attempt: 2 });
     assert.throws(
-      () => buildRunSection(observedDepsOf(foreignAttempt, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      () => buildRunSection(observedDepsOf(foreignAttempt, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
       /run 0001.*attempt 2.*legal attempts 1\.\.1/s,
     );
   });
@@ -867,7 +904,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     const w = world();
     terminalDone(w, 1);
     const tie = instantOffsetOf(0, 10);
-    for (let index = 0; index < 201; index += 1) observedEvent(w, { at: tie });
+    for (let index = 0; index < 201; index += 1) fencedEvent(w, tie);
     const inner = createRunNoteScanCache();
     let scans = 0;
     const cache = {
@@ -909,14 +946,17 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     w.projection.ingestFromTimeline();
     const section = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs");
     assert.equal(section.section, "logs");
-    assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["observed", "transaction-fenced"]);
+    assert.deepEqual(section.payload.rows?.map((row) => row.kind), ["transaction-fenced"]);
+    const data = buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data");
+    assert.equal(data.section, "context-data");
+    assert.deepEqual(data.payload.observations?.map((row) => row.kind), ["observed"]);
   });
 
   it("keeps a page walk on one immutable ordering when a later append has an older record clock", () => {
     const w = world();
     terminalDone(w, 1);
     const tie = instantOffsetOf(0, 20);
-    for (let index = 0; index < 201; index += 1) observedEvent(w, { at: tie });
+    for (let index = 0; index < 201; index += 1) fencedEvent(w, tie);
     const deps = observedDepsOf(w, [SEARCH_ORIGIN]);
     const first = buildRunSection(deps, uuidOf(1), "logs");
     assert.equal(first.section, "logs");
@@ -924,7 +964,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     assert.equal(first.payload.nextCursor.state, "present");
     if (first.payload.nextCursor.state !== "present") throw new Error("first combined page must continue");
 
-    observedEvent(w, { at: instantOffsetOf(0, 10) });
+    fencedEvent(w, instantOffsetOf(0, 10));
     const second = buildRunSection(deps, uuidOf(1), "logs", first.payload.nextCursor.value);
 
     assert.equal(second.section, "logs");
@@ -932,7 +972,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     const walked = [...first.payload.rows, ...second.payload.rows];
     assert.equal(walked.length, 201);
     assert.equal(new Set(walked.map((row) => row.logId)).size, 201);
-    assert.ok(walked.every((row) => row.kind !== "observed" || row.at === tie));
+    assert.ok(walked.every((row) => row.kind === "transaction-fenced" && row.at === tie));
   });
 
   it("ignores retired malformed spans and refuses corrupt SQLite events instead of serving an empty observation page", () => {
@@ -955,7 +995,7 @@ describe("D5 · a logs GET opens only its run's partitions (audit P3)", () => {
     } finally { raw.close(); }
     w.projection.rebuildFromTimeline();
     assert.throws(
-      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "logs"),
+      () => buildRunSection(observedDepsOf(w, [SEARCH_ORIGIN]), uuidOf(1), "context-data"),
       /degraded/u,
     );
   });

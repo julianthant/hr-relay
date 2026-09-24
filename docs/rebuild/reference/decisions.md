@@ -1,4 +1,11 @@
-# `reference/decisions.md` — the decision ledger (D1–D339, 2026-07-17 → 2026-09-06)
+# `reference/decisions.md` — the decision ledger (D1–D345, 2026-07-17 → 2026-09-24)
+
+**D345 — Run data and action Logs (operator direction, 2026-09-24):** recorded read/write
+fields belong in the Run data Context rail, including fields with no editable checkpoint.
+Logs presents time-ordered browser actions, ordinary task notes and transaction fences.
+Action notes name the semantic control and verb but contain no typed value. Older frozen
+archives project their observed rows into Run data without changing archived bytes.
+Owner: [dashboard-surfaces §1.1](dashboard-surfaces.md#d345-run-data-and-action-logs--2026-09-24).
 
 **2026-09-19 D334 Rerun default-selection clarification (operator-approved 1 A):** failed/interrupted
 sources select failed/unfinished steps plus descriptor-required completed steps, explaining the

@@ -13,7 +13,7 @@ import { ObservedDataPointSchema } from "../../../src/core/span-emitter.js";
 import { localDatePart, manualClock, type Clock } from "../../../src/domain/clock.js";
 import { RedactedFieldSchema } from "../../../src/domain/redaction.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { NoteWireSchema, SpanEventWireSchema } from "../../../src/events/types.js";
+import { NoteWireSchema, SpanEventWireSchema, projectNoteForOperator } from "../../../src/events/types.js";
 import {
   appendEventStreamLine,
   listEventStreamFiles,
@@ -410,6 +410,28 @@ describe("note JSONL writer and schema-owned redaction", () => {
     assert.equal(note.ts, noteAt.toISOString());
     assert.equal(stored.ts, noteAt.toISOString());
     assert.equal(stored.message, "roster match completed");
+  });
+
+  it("records action verbs and static targets without copying typed values into protected-run Logs", () => {
+    const root = stateRoot();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const clock = manualClock(new Date(run.updatedAt));
+    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const note = writer.emitRunAction({
+      workflow: run.envelope.workflow,
+      address: {
+        runId: run.envelope.runId,
+        attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId,
+        spanPath: run.envelope.traceId,
+      },
+      action: { kind: "typed", targetId: "ucpath.person-org.eid-input", at: clock.now().toISOString() },
+    }, run);
+    assert.equal(note.message, "Typed into ucpath person org eid input");
+    assert.equal(projectNoteForOperator(note, true).message, note.message);
+    const bytes = readFileSync(readEventStreamLines(root, "notes")[0].file.path, "utf8");
+    assert.equal(bytes.includes("951-57-1700"), false);
+    assert.equal(bytes.includes("ucpath.person-org.eid-input"), true);
   });
 
   it("refuses arbitrary run-task note text at the writer boundary", () => {

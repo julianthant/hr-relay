@@ -62,6 +62,7 @@ import type { GateResultRecord } from "../domain/gates.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import type { TaskRunNoteKind } from "../domain/run/task-note.js";
 import type { NoteJsonlWriter } from "../infra/events/note-jsonl-writer.js";
+import { withBrowserActionNotes, type BrowserAction } from "../infra/browser/action-notes.js";
 import {
   GateIdSchema,
   IsoInstantSchema,
@@ -308,7 +309,7 @@ export interface RunExecutorDependencies {
   readonly taskDeadlineMs: number;
   readonly log: TaskLogger;
   /** Optional production sink for the executor's allowlisted ordinary task notes. */
-  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote">;
+  readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunNote" | "emitRunAction">;
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
@@ -536,6 +537,31 @@ export async function executeClaimedRun(
     traceId: envelope.traceId,
     spanPath: runSpanPath(envelope.traceId),
   } as const;
+
+  const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[], truncated: boolean): void => {
+    const sink = deps.taskNotes;
+    if (sink === undefined) return;
+    const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
+    for (const action of actions) {
+      try {
+        sink.emitRunAction({
+          workflow: descriptor.id,
+          address,
+          action,
+        }, getRun());
+      } catch {
+        // Diagnostic I/O must not change a settled external write into a failed or UNKNOWN result.
+        deps.log.warn("browser action note could not be recorded");
+      }
+    }
+    if (truncated) {
+      try {
+        sink.emitRunNote({ workflow: descriptor.id, address, kind: "browser-action-limit-reached" }, getRun());
+      } catch {
+        deps.log.warn("browser action limit note could not be recorded");
+      }
+    }
+  };
 
   const emit = (event: Readonly<Record<string, unknown>>): void => {
     deps.emitter.emit(ExecutorSpanEventSchema.parse({
@@ -1250,12 +1276,12 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          raw = await raceAbortable(
+          raw = await withBrowserActionNotes(clock, () => raceAbortable(
             deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) =>
               run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } })),
             controller.signal,
             contract.id,
-          );
+          ), (actions, truncated) => drainBrowserActions(spanPath, actions, truncated));
         }
       } finally {
         deadline.cancel();
@@ -1768,12 +1794,12 @@ export async function executeClaimedRun(
           if (envelope.dryRun) {
             let preview: TransactionDryRunPreview;
             try {
-              preview = TransactionDryRunPreviewSchema.parse(await deps.writeSequencer.executeDryRun({
+              preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
                 descriptor, node, run: getRun(), claim,
                 scope: scopeFor(node.dependsOn),
                 dryRun: true,
                 signal: input.signal,
-              }));
+              }), (actions, truncated) => drainBrowserActions(runSpanIdentity.spanPath, actions, truncated)));
             } catch (error) {
               if (error instanceof RunAbandonedError) throw error;
               return await failNode(node, node.commit.uses.id, error);
@@ -1792,12 +1818,12 @@ export async function executeClaimedRun(
             return settlePreview(node, preview);
           }
           try {
-            const raw = await deps.writeSequencer.executeTransaction({
+            const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
               descriptor, node, run: getRun(), claim,
               scope: scopeFor(node.dependsOn),
               dryRun: envelope.dryRun,
               signal: input.signal,
-            });
+            }), (actions, truncated) => drainBrowserActions(runSpanIdentity.spanPath, actions, truncated));
             const OutcomeSchema = z.strictObject({
               disposition: z.enum(["committed", "already-present"]),
               proofSource: z.enum([

@@ -422,6 +422,10 @@ const NoteBodyFields = {
   level: NoteLevelSchema,
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
+  action: z.strictObject({
+    kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
+    targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
+  }).optional(),
 } as const;
 
 /** Same `SpanRef` addressing as spans — a note attributes to its exact task attempt or worker lifetime. */
@@ -434,10 +438,23 @@ export type NoteWire = z.infer<typeof NoteWireSchema>;
 /** Historical note messages and text fields predate the diagnostic-safe stamp. */
 export function projectNoteForOperator(noteInput: unknown, protectedInput = false): NoteWire {
   const note = NoteWireSchema.parse(noteInput);
+  if (note.action !== undefined && note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) {
+    const { fields: _fields, ...safe } = note;
+    return NoteWireSchema.parse({ ...safe, message: browserActionMessage(note.action) });
+  }
   if (!protectedInput && note.diagnosticSafetyVersion === CURRENT_DIAGNOSTIC_SAFETY_VERSION) return note;
   const { fields: _historicalFields, ...identity } = note;
   return NoteWireSchema.parse({
     ...identity,
     message: protectedInput ? "protected run note text withheld" : "historical note text withheld (predates diagnostic safety v1)",
   });
+}
+
+export function browserActionMessage(action: { readonly kind: string; readonly targetId: string }): string {
+  const target = action.targetId.replaceAll(/[._/-]+/gu, " ").replaceAll(/\s+/gu, " ").trim();
+  const verb = action.kind === "typed" ? "Typed into" : action.kind === "selected" ? "Selected in"
+    : action.kind === "checked" ? "Checked" : action.kind === "set" ? "Set" : action.kind === "cleared" ? "Cleared"
+      : action.kind === "pressed" ? "Pressed key in"
+      : action.kind === "opened" ? "Opened" : "Clicked";
+  return `${verb} ${target}`;
 }

@@ -50,6 +50,7 @@
  * bare `getByText(eid)`.
  */
 import type { FrameLocator, Locator, Page } from "playwright";
+import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import type { Clock } from "../../../domain/clock.js";
 import { IsoInstantSchema } from "../../../domain/ids.js";
 import {
@@ -357,12 +358,15 @@ function createDriverInternals(page: Page, clock: Clock) {
 
     const openButton = await exactlyOne(clock, page, NEW_KRONOS_SEARCH_OPEN_BUTTON);
     await openButton.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_SEARCH_OPEN_BUTTON);
 
     const { root, context } = await resolvePanelRoot(NEW_KRONOS_SEARCH_QUERY_FIELD);
     const queryField = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_QUERY_FIELD);
     await queryField.fill(input.employeeId, { timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("typed", NEW_KRONOS_SEARCH_QUERY_FIELD);
     const submit = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
     await submit.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_SEARCH_SUBMIT_BUTTON);
 
     // legacy navigate.ts:142-178 — poll BOTH contexts and let a found signal
     // beat the sentinel: WFD renders both briefly while the grid loads (legacy
@@ -500,6 +504,7 @@ function createDriverInternals(page: Page, clock: Clock) {
       .nth(candidates.indexOf(matched))
       .getByRole("checkbox", { name: "Select Item", exact: true });
     await checkbox.check({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("checked", NEW_KRONOS_SEARCH_RESULT_SLAT);
 
     const enabled = await pollUntil(clock, SELECTION_TIMEOUT_MS, async () => {
       const goTo = resolveRecipe(resultRoot, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
@@ -553,6 +558,7 @@ function createDriverInternals(page: Page, clock: Clock) {
       const close = resolveRecipe(root, NEW_KRONOS_SEARCH_CLOSE_BUTTON);
       if (await close.count() !== 1) continue;
       await close.click({ timeout: CONTROL_TIMEOUT_MS });
+      recordBrowserAction("clicked", NEW_KRONOS_SEARCH_CLOSE_BUTTON);
       return;
     }
   };
@@ -574,9 +580,12 @@ function createDriverInternals(page: Page, clock: Clock) {
   const setRangeField = async (id: ElementId, value: string, label: string): Promise<void> => {
     const field = await exactlyOne(clock, page, id);
     await field.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", id);
     const priorValue = await field.inputValue();
     await field.press("ControlOrMeta+a", { timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("selected", id);
     await field.pressSequentially(value, { delay: 60, timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("typed", id);
     const wanted = parseTimecardDate(value, `${label} date`);
     // The last value the poll actually SAW, so the refusal below reports the
     // observation instead of re-reading a field that may already have moved.
@@ -833,6 +842,7 @@ function createDriverInternals(page: Page, clock: Clock) {
       );
     }
     await goTo.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_SEARCH_GO_TO_BUTTON);
 
     const optionReady = await pollUntil(clock, CONTROL_TIMEOUT_MS, async () =>
       await resolveRecipe(root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION).count() === 1 ? true : null);
@@ -844,6 +854,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     }
     const option = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
     await option.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
 
     const landed = await pollUntil(clock, TIMECARD_NAVIGATION_TIMEOUT_MS, async () => {
       if (!page.url().includes(NEW_KRONOS_TIMECARD_ROUTE)) return null;
@@ -897,8 +908,10 @@ function createDriverInternals(page: Page, clock: Clock) {
     // Apply the window. Everything below runs on the SAME page visit.
     const trigger = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
     await trigger.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_TIMECARD_PERIOD_TRIGGER);
     const selectRange = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
     await selectRange.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON);
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_START_FIELD, input.rangeStart, "start");
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_END_FIELD, input.rangeEnd, "end");
     // Setting the end can nudge the start (the widget auto-advances between the
@@ -906,6 +919,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     await setRangeField(NEW_KRONOS_TIMECARD_RANGE_START_FIELD, input.rangeStart, "start (re-proof)");
     const apply = await exactlyOne(clock, page, NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
     await apply.click({ timeout: CONTROL_TIMEOUT_MS });
+    recordBrowserAction("clicked", NEW_KRONOS_TIMECARD_RANGE_APPLY_BUTTON);
 
     const requested = {
       start: parseTimecardDate(input.rangeStart, "requested range start"),
