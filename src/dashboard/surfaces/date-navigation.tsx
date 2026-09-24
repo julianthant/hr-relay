@@ -12,10 +12,7 @@ import { type ReactElement,useMemo,useRef,useState } from "react";
 import { Button,CountBadge,Popover,PopoverContent,PopoverTrigger,Tooltip,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { type DayCountWire,monthOfDay } from "./date-navigation-model.js";
-import {
-dayLabelWithToday,
-plural
-} from "./format.js";
+import { dayLabel,plural } from "./format.js";
 import { SEGMENTED_FRAME } from "./top-bar-layout-model.js";
 
 
@@ -80,7 +77,7 @@ function DateCalendar({
             {date => <HeroCalendar.Cell
               date={date}
               data-demo-day={date.toString()}
-              aria-label={`${dayLabelWithToday(date.toString(), today)} — ${countByDay.has(date.toString()) ? plural(countByDay.get(date.toString()) ?? 0, "row") : "the tracker holds no rows"}`}
+              aria-label={`${dayLabel(date.toString())} — ${countByDay.has(date.toString()) ? plural(countByDay.get(date.toString()) ?? 0, "row") : "the tracker holds no rows"}`}
             >
               {({ formattedDate }) => <>
                 {formattedDate}
@@ -149,7 +146,7 @@ function DateStep({
 
 const NO_COUNTS: readonly DayCountWire[] = Object.freeze([]);
 
-/** Chronological navigation comes from the calendar; the badge comes from the matching day stream. */
+/** Arrows move by calendar day; the badge comes from the matching day stream. */
 export function DateNav({ day, today, monthCounts, onDay, onToday,
   dateError, calendarRevision, dayState = "loaded" }: {
   day: string; today: string; monthCounts: readonly DayCountWire[]; onDay: (day: string) => void;
@@ -162,8 +159,8 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
   const month = open ? viewedMonth : monthOfDay(dateError === undefined ? day : today);
   const [attempt, setAttempt] = useState(0);
   const resource = useCalendar(month, dateError === undefined ? day : undefined, today, calendarRevision, attempt);
-  const older = resource.state === "loaded" ? resource.value.previousDay ?? undefined : undefined;
-  const newer = resource.state === "loaded" ? resource.value.nextDay ?? undefined : undefined;
+  const older = dateError === undefined && day > "0001-01-01" ? parseDate(day).subtract({ days: 1 }).toString() : undefined;
+  const newer = dateError === undefined && day < today ? parseDate(day).add({ days: 1 }).toString() : undefined;
   const count = dayState === "loaded" ? monthCounts.find(entry => entry.day === day)?.count ?? 0 : undefined;
   const countLabel = count === undefined ? dayState === "failed" ? "queue unavailable" : "loading queue" : plural(count, "row");
   if (dateError !== undefined) return <Button size="sm" variant="secondary" onClick={onToday} title={dateError}>Today</Button>;
@@ -171,7 +168,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
   return (
     <span className={cn(DATE_NAV_FRAME, dsMotion.base, "hover:border-[color:var(--ds-border-strong)]")}>
       <DateStep
-        label={resource.state !== "loaded" ? resource.state === "failed" ? "Calendar unavailable" : "Loading calendar" : older === undefined ? "No earlier day in the tracker" : `Previous day — ${dayLabelWithToday(older, today)}`}
+        label={older === undefined ? "No earlier day" : `Previous day — ${dayLabel(older)}`}
         disabled={older === undefined}
         onClick={() => {
           if (older !== undefined) onDay(older);
@@ -203,7 +200,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
           <button
             ref={triggerRef}
             type="button"
-            aria-label={`Pick a day — showing ${dayLabelWithToday(day, today)}, ${countLabel}`}
+            aria-label={`Pick a day — showing ${dayLabel(day)}, ${countLabel}`}
             className={cn(
               // The middle segment. `h-full` and no border of its own: the frame
               // above owns the height and the hairline, which is the rule a
@@ -219,7 +216,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
             )}
           >
             <Calendar aria-hidden className={cn(dsIcon.sm, "text-[color:var(--ds-fg-muted)]")} />
-            {dayLabelWithToday(day, today)}
+            {dayLabel(day)}
             {count === undefined ? <span className={dsText.meta}>{dayState === "failed" ? "Unavailable" : "Loading…"}</span> : <CountBadge value={count} tone={day === today ? "info" : "neutral"} />}
           </button>
         </PopoverTrigger>
@@ -240,7 +237,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
         </PopoverContent>
       </Popover>
       <DateStep
-        label={resource.state !== "loaded" ? resource.state === "failed" ? "Calendar unavailable" : "Loading calendar" : newer === undefined ? "Today is the newest day" : `Next day — ${dayLabelWithToday(newer, today)}`}
+        label={newer === undefined ? "No later day" : `Next day — ${dayLabel(newer)}`}
         disabled={newer === undefined}
         onClick={() => {
           if (newer !== undefined) onDay(newer);

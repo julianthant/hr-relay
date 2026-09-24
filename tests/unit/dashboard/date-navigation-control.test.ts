@@ -23,7 +23,13 @@ it("browses independently and retains a usable tab stop across empty months", as
   const button = (prefix: string) => { const found = [...document.querySelectorAll<HTMLButtonElement>("button")].find(b => b.getAttribute("aria-label")?.startsWith(prefix) || b.textContent === prefix); assert.ok(found, prefix); return found; };
   const click = async (target: HTMLElement) => { await act(async () => target.click()); };
   try {
-    await draw(); await click(button("Pick a day"));
+    await draw();
+    assert.match(button("Previous day").getAttribute("aria-label") ?? "", /Jan 1/);
+    assert.match(button("Next day").getAttribute("aria-label") ?? "", /Jan 3/);
+    await click(button("Next day"));
+    assert.deepEqual(picks, ["2026-01-03"]);
+    picks.length = 0;
+    await click(button("Pick a day"));
     const cell = document.querySelector<HTMLButtonElement>('[data-demo-day="2026-01-02"]'); assert.ok(cell);
     await act(async () => { cell.focus(); cell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true })); });
     assert.equal(document.activeElement?.getAttribute("data-demo-day"), "2026-01-03");
