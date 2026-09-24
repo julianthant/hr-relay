@@ -3277,6 +3277,14 @@ export class AuthorityDatabase implements Disposable {
     return this.withAuthorityReadSnapshot(() => this.#readRecord("runtime_version_changes", changeId, RuntimeVersionChangeSchema));
   }
 
+  readRuntimeVersionIndex() {
+    return this.withAuthorityReadSnapshot(() => ({
+      authority: readStoredRuntimeVersionAuthority(this.#database),
+      changes: this.#database.prepare("SELECT record_json FROM runtime_version_changes ORDER BY created_at DESC, record_key DESC").all()
+        .map(raw => RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json))),
+    }));
+  }
+
   writeRuntimeVersionChange(input: RuntimeVersionChange): RuntimeVersionChange {
     const change = RuntimeVersionChangeSchema.parse(input);
     return this.#authorityWrite("runtime_version_changes", () => {

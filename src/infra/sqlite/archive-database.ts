@@ -135,12 +135,19 @@ export class ArchiveDatabase {
   private querySnapshot(input:ArchiveQuery) {
     const q=ArchiveQuerySchema.parse(input),clauses=["workflow=?","state='published'"],values:(string|number)[]=[q.workflow];
     if(q.title!==undefined){clauses.push("title=?");values.push(q.title);}
+    if(q.search!==undefined){clauses.push("(instr(lower(title),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(report_json,'$.content.files') AS file WHERE instr(lower(json_extract(file.value,'$.name')),lower(?))>0))");values.push(q.search,q.search);}
     if(q.capturedFrom!==undefined){clauses.push("captured_at>=?");values.push(q.capturedFrom);}
     if(q.capturedTo!==undefined){clauses.push("captured_at<=?");values.push(q.capturedTo);}
     if(q.from!==undefined){clauses.push("completed_at>=?");values.push(q.from);}
     if(q.to!==undefined){clauses.push("completed_at<=?");values.push(q.to);}
     if(q.descriptorVersion!==undefined){clauses.push("descriptor_version=?");values.push(q.descriptorVersion);}
     if(q.outcome!==undefined){clauses.push("outcome=?");values.push(q.outcome);}
+    if(q.dashboardVersion!==undefined){clauses.push("json_extract(report_json,'$.content.runtimeVersion.dashboard.major')=? AND json_extract(report_json,'$.content.runtimeVersion.dashboard.minor')=?");values.push(q.dashboardVersion.major,q.dashboardVersion.minor);}
+    if(q.workflowVersion!==undefined){clauses.push("json_extract(report_json,'$.content.runtimeVersion.workflow.major')=? AND json_extract(report_json,'$.content.runtimeVersion.workflow.minor')=?");values.push(q.workflowVersion.major,q.workflowVersion.minor);}
+    if(q.versionState!==undefined){
+      if(q.versionState==="unrecorded")clauses.push("json_extract(report_json,'$.content.runtimeVersion') IS NULL");
+      else {clauses.push("json_extract(report_json,'$.content.runtimeVersion.state')=?");values.push(q.versionState);}
+    }
     if(q.after!==undefined){clauses.push("(completed_at,run_id)>(?,?)");values.push(q.after.completedAt,q.after.runId);}
     const rows=this.#database.prepare(`SELECT run_id FROM archive_records WHERE ${clauses.join(" AND ")} ORDER BY completed_at,run_id LIMIT ?`).all(...values,q.limit+1);
     const reports=rows.map(raw=>{const id=z.object({run_id:z.string()}).parse(raw).run_id;const report=this.readPublishedReport(id);if(report===undefined)throw new Error("archive-query-state-changed");return report;});

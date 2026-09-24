@@ -10,6 +10,8 @@ import { foundationFixture, id, NOW } from "./database-foundation/fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../fixtures/archive-fixtures.js";
 import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
+import { queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
+import { savedArchiveRuntimeVersions } from "../../src/server/dashboard/queries/archive.js";
 
 function fixture(afterTransferStep?: (runId: string, step: "captured" | "verified" | "cleaned" | "published") => void) {
   const f = foundationFixture({ registeredRuntimeVersion: true });
@@ -77,6 +79,20 @@ describe("runtime version change transfer", () => {
       assert.deepEqual(authority.state.dashboard, { major: 1, minor: 0 });
       assert.deepEqual(authority.state.workflows.find(row => row.workflowId === "other-workflow")?.version, { major: 1, minor: 1 });
       assert.deepEqual(authority.state.workflows.find(row => row.workflowId === "person-lookup")?.version, { major: 1, minor: 0 });
+      const storage = createRunLifecycleStorage(f.db);
+      assert.deepEqual(queryArchiveReports(storage, { limit: 5, search: report.content.title.slice(0, 5) }).items.length, 1);
+      assert.deepEqual(queryArchiveReports(storage, { limit: 5, dashboardVersion: { major: 1, minor: 0 },
+        workflowVersion: { major: 1, minor: 0 }, versionState: "stamped" }).items.map(item => item.state === "available" ? item.runId : "unavailable"), [runId]);
+      assert.deepEqual(queryArchiveReports(storage, { limit: 5, workflowVersion: { major: 1, minor: 1 } }).items, []);
+      assert.deepEqual(queryArchiveReports(storage, { limit: 5, versionState: "unrecorded" }).items, []);
+      const index = savedArchiveRuntimeVersions({ storage, descriptors: { list: () => [
+        { id: "person-lookup", label: "Person lookup", code: "PL", version: 1, contractFingerprint: "a".repeat(64) },
+        { id: "other-workflow", label: "Other workflow", code: "OW", version: 1, contractFingerprint: "a".repeat(64) },
+      ] } });
+      assert.deepEqual(index.dashboard, { major: 1, minor: 0 });
+      assert.deepEqual(index.workflows.find(row => row.workflowId === "other-workflow")?.version, { major: 1, minor: 1 });
+      assert.equal(index.changes[0]?.state, "applied");
+      assert.deepEqual(index.changes[0]?.completedRunIds, [runId]);
       assert.deepEqual(service.apply(planned.changeId), applied);
     } finally { f.dispose(); }
   });

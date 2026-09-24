@@ -1,9 +1,9 @@
 import {
 ArchiveIndexWireSchema,
 ArchivedCaptureResourceWireSchema,
-ArchivedRunDetailWireSchema,SavedArchiveDetailWireSchema,SavedArchiveFileWireSchema,SavedArchiveIndexWireSchema,SavedArchiveQuerySchema,SavedVersionIndexWireSchema,type ArchiveIndexWire,
+ArchivedRunDetailWireSchema,SavedArchiveDetailWireSchema,SavedArchiveFileWireSchema,SavedArchiveIndexWireSchema,SavedArchiveQuerySchema,SavedVersionIndexWireSchema,SavedRuntimeVersionIndexWireSchema,type ArchiveIndexWire,
 type ArchivedCaptureResourceWire,
-type ArchivedRunDetailWire,type SavedArchiveDetailWire,type SavedArchiveFileWire,type SavedArchiveIndexWire,type SavedArchiveQuery,type SavedVersionIndexWire
+type ArchivedRunDetailWire,type SavedArchiveDetailWire,type SavedArchiveFileWire,type SavedArchiveIndexWire,type SavedArchiveQuery,type SavedVersionIndexWire,type SavedRuntimeVersionIndexWire
 } from "../../domain/dashboard/archive.js";
 import { ArtifactIdSchema,FingerprintSchema,RunIdSchema } from "../../domain/ids.js";
 import { runIdentityError } from "./detail-queries.js";
@@ -51,6 +51,7 @@ export interface ArchiveQueries {
   savedArchiveFile(runId: string, digest: string): Promise<SavedArchiveFileWire>;
 
   savedArchiveVersions(): Promise<SavedVersionIndexWire>;
+  savedRuntimeVersions(): Promise<SavedRuntimeVersionIndexWire>;
 
   savedArchiveIndex(query: SavedArchiveQuery): Promise<SavedArchiveIndexWire>;
 
@@ -79,6 +80,11 @@ export function createArchiveQueries(transport: DashboardTransport): ArchiveQuer
 
     async savedArchiveVersions(): Promise<SavedVersionIndexWire> {
       return parseOrThrow(SavedVersionIndexWireSchema, "GET /api/v1/archive/versions", await transport.requestJson("/api/v1/archive/versions"));
+    },
+
+    async savedRuntimeVersions(): Promise<SavedRuntimeVersionIndexWire> {
+      return parseOrThrow(SavedRuntimeVersionIndexWireSchema, "GET /api/v1/archive/runtime-versions",
+        await transport.requestJson("/api/v1/archive/runtime-versions"));
     },
 
     async savedArchiveIndex(input: SavedArchiveQuery): Promise<SavedArchiveIndexWire> {

@@ -1,7 +1,7 @@
 import { SavedArchiveQuerySchema } from "../../../domain/dashboard/archive.js";
 
 import {
-  savedFileResource, savedArchiveVersions, savedArchiveIndex, savedArchiveDetail, savedCaptureResource, prepareSavedCaptureLease,
+  savedFileResource, savedArchiveVersions, savedArchiveRuntimeVersions, savedArchiveIndex, savedArchiveDetail, savedCaptureResource, prepareSavedCaptureLease,
   buildArchiveIndex,
   buildArchivedCaptureResource,
   buildArchivedRunDetail,
@@ -40,10 +40,14 @@ export function registerArchiveRoutes(app: DashboardApp, deps: ArchiveRouteDeps)
     return verifiedByteResponse({ lease: artifact.lease, method: c.req.method, range: c.req.header("range"), profile: "archive" });
   });
   app.get("/api/v1/archive/versions", (c) => c.json(savedArchiveVersions(deps.archive)));
+  app.get("/api/v1/archive/runtime-versions", (c) => c.json(savedArchiveRuntimeVersions(deps.archive)));
   app.get("/api/v1/archive/reports", (c) => {
     const params = Object.fromEntries(new URL(c.req.url).searchParams);
     const { after, limit, ...filters } = params;
-    const query = SavedArchiveQuerySchema.parse({ ...filters, limit: limit === undefined ? 50 : Number(limit),
+    const query = SavedArchiveQuerySchema.parse({ ...filters,
+      ...(filters.dashboardVersion === undefined ? {} : { dashboardVersion: JSON.parse(filters.dashboardVersion) as unknown }),
+      ...(filters.workflowVersion === undefined ? {} : { workflowVersion: JSON.parse(filters.workflowVersion) as unknown }),
+      limit: limit === undefined ? 50 : Number(limit),
       ...(after === undefined ? {} : { after: JSON.parse(after) as unknown }) });
     return c.json(savedArchiveIndex(deps.archive, query));
   });

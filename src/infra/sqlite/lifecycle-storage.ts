@@ -20,6 +20,7 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
     archiveWorkflows: () => database.archiveWorkflows(),
     listReports: (query: import("../../domain/archive/report.js").ArchiveQuery) => database.queryArchiveReports(query),
     readVersionChange: (id: string) => database.readVersionChange(id),
+    runtimeVersionIndex: () => database.readRuntimeVersionIndex(),
     writeVersionChange: (change: VersionChange) => database.writeVersionChange(change),
     capture: (runId: string) => database.captureLifecycleSource(runId),
     refreshSummaries: () => database.refreshRunSummaries(),

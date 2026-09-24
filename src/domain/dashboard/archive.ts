@@ -1,5 +1,7 @@
 import { ArchiveDeleteCommandRequestSchema, VersionArchiveCommandRequestSchema } from "../commands.js";
 import { ArchiveReportSectionSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, ArchiveRuntimeVersionAttributionSchema } from "../archive/report.js";
+import { RuntimeVersionSchema, RuntimeVersionScopeSchema, RuntimeVersionStateSchema } from "../archive/runtime-version.js";
+import { RuntimeVersionMemberSchema } from "../archive/runtime-version-review.js";
 import { VersionChangeReviewSchema } from "../archive/change-record.js";
 import { DeletedRunRecordSchema } from "../run/deleted-run.js";
 /**
@@ -436,6 +438,20 @@ export const SavedVersionIndexWireSchema = z.strictObject({
   historicalChanges: z.number().int().nonnegative(),
 });
 export type SavedVersionIndexWire = z.infer<typeof SavedVersionIndexWireSchema>;
+
+export const SavedRuntimeVersionIndexWireSchema = z.strictObject({
+  revision: z.number().int().positive(),
+  dashboard: RuntimeVersionSchema,
+  workflows: z.array(z.strictObject({ workflowId: WorkflowIdSchema, label: z.string().min(1), version: RuntimeVersionSchema })),
+  applyingChangeId: z.string().uuid().optional(),
+  changes: z.array(z.strictObject({
+    changeId: z.string().uuid(), actorId: z.string().min(1), reviewedAt: IsoInstantSchema,
+    scope: RuntimeVersionScopeSchema, before: RuntimeVersionStateSchema, after: RuntimeVersionStateSchema,
+    state: z.enum(["planned", "applying", "applied"]), members: z.array(RuntimeVersionMemberSchema),
+    completedRunIds: z.array(RunIdSchema),
+  })),
+});
+export type SavedRuntimeVersionIndexWire = z.infer<typeof SavedRuntimeVersionIndexWireSchema>;
 
 /** Membership-scoped access also covers historical files without an issued artifact UUID. */
 export const SavedArchiveFileWireSchema = z.strictObject({ runId: RunIdSchema, digest: FingerprintSchema,

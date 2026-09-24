@@ -3,7 +3,7 @@ import { z } from "zod";
 import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../ids.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { sha256Hex } from "../sha256.js";
-import { RunRuntimeVersionStampSchema } from "./runtime-version.js";
+import { RunRuntimeVersionStampSchema, RuntimeVersionSchema } from "./runtime-version.js";
 
 export const ArchiveRuntimeVersionAttributionSchema = RunRuntimeVersionStampSchema.extend({
   state: z.enum(["stamped", "adopted"]),
@@ -54,7 +54,9 @@ export function sealArchiveReport(input: z.input<typeof ArchiveReportContentSche
 }
 
 export const ArchiveQuerySchema=z.strictObject({workflow:z.string().min(1),limit:z.number().int().min(1).max(500),
-  title:z.string().optional(),capturedFrom:z.string().datetime().optional(),capturedTo:z.string().datetime().optional(),
+  title:z.string().optional(),search:z.string().trim().min(1).max(120).optional(),capturedFrom:z.string().datetime().optional(),capturedTo:z.string().datetime().optional(),
   from:z.string().datetime().optional(),to:z.string().datetime().optional(),descriptorVersion:z.string().optional(),outcome:z.string().optional(),
+  dashboardVersion:RuntimeVersionSchema.optional(),workflowVersion:RuntimeVersionSchema.optional(),
+  versionState:z.enum(["stamped","adopted","unrecorded"]).optional(),
   after:z.strictObject({completedAt:z.string().datetime(),runId:RunIdSchema}).optional()});
 export type ArchiveQuery=z.infer<typeof ArchiveQuerySchema>;
