@@ -109,7 +109,7 @@ test("Explorer's Version registry door restores the route-owned view through lin
   await expectVersionRegistry(page, registrySearch);
 });
 
-test("Explorer's Version registry action keeps ghost-sm geometry and a clear desktop hit target", async ({ page }) => {
+test("Explorer's Version registry action keeps toolbar geometry and a clear desktop hit target", async ({ page }) => {
   await page.setViewportSize(NARROW_DESKTOP_VIEWPORT);
   await gotoAppState(page, server.baseUrl, {
     day: FIXTURE_DAY,
@@ -155,7 +155,7 @@ test("Explorer's Version registry action keeps ghost-sm geometry and a clear des
     };
   });
 
-  expect(proof.visualHeight).toBe(24);
+  expect(proof.visualHeight).toBe(28);
   expect(proof.effectiveHeight).toBe(proof.visualHeight);
   expect(proof.ownsTop).toBe(true);
   expect(proof.ownsBottom).toBe(true);

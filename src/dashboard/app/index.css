@@ -5,9 +5,10 @@
    layer (border/outline defaults, body colours, themed native scrollbars).
 
    Dropped from the legacy file, verified unreferenced by `src/dashboard/ds/**`:
-   HeroUI/xyflow imports and their overrides, `--chart-*`, `--sidebar-*`, the
+   xyflow imports and its overrides, `--chart-*`, `--sidebar-*`, the
    retired `--log-*` categorical accents, `@layer components` app rules
-   (search-results panel, `.form-input`), and the HeroUI calendar fixes.
+   (search-results panel, `.form-input`). HeroUI calendar styling now uses
+   the dashboard tokens in `ds/tokens.css`.
 
    The `--ds-*` layer itself lives in `ds/tokens.css`, loaded by
    `ds/tokens.ts` / `ds/ui.tsx` exactly as the legacy demo loads it; its theme
@@ -36,6 +37,7 @@
 @import "@fontsource/ibm-plex-mono/500.css";
 @import "@fontsource/ibm-plex-mono/600.css";
 
+@import "@heroui/styles";
 @import "tailwindcss";
 
 @custom-variant dark (&:is(.dark *));

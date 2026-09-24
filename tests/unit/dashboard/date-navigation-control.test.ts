@@ -26,13 +26,18 @@ it("browses independently, retains a usable tab stop over gaps, recovers from em
     await draw(); await click(button("Pick a day"));
     const cell = document.querySelector<HTMLButtonElement>('[data-demo-day="2026-01-02"]'); assert.ok(cell);
     await act(async () => { cell.focus(); cell.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true })); });
+    assert.equal(document.activeElement?.getAttribute("data-demo-day"), "2026-01-03");
+    assert.equal(document.activeElement?.getAttribute("aria-disabled"), "true");
+    for (let step = 0; step < 2; step++) await act(async () => {
+      document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", bubbles: true, cancelable: true }));
+    });
     assert.equal(document.activeElement?.getAttribute("data-demo-day"), "2026-01-05");
     assert.equal(document.querySelectorAll('[role="grid"] [tabindex="0"]').length, 1);
     await click(button("Previous month"));
     assert.ok(requests.includes("2025-12/2026-01-02")); assert.deepEqual(picks, []);
     assert.equal(document.querySelectorAll('[role="grid"] [tabindex="0"]').length, 1);
     await click(button("Previous month"));
-    assert.equal(document.querySelectorAll('[role="grid"] [tabindex="0"]').length, 0);
+    assert.equal(document.querySelectorAll('[role="grid"] [tabindex="0"][aria-disabled="true"]').length, 1);
     assert.equal(button("Today").disabled, false);
     await draw("2026-01-03");
     assert.ok(requests.includes("2025-11/2026-01-03"));

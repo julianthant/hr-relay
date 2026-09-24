@@ -3825,7 +3825,7 @@ export function LegacyArchiveWorkspace({
     <TakeoverFrame label="Archive">
       <PageHeader
         title="Archive"
-        icon={<ArchiveIcon aria-hidden className={dsIcon.lg} />}
+        icon={<ArchiveIcon aria-hidden className={dsIcon.md} />}
         badge={
           <Badge tone="neutral">
             <Lock aria-hidden className={dsIcon.sm} />
@@ -3834,8 +3834,8 @@ export function LegacyArchiveWorkspace({
         }
         back={
           <Button
-            size="sm"
-            variant="ghost"
+            size="toolbar"
+            variant="secondary"
             icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
             onClick={() => (selection === ARCHIVE_INDEX ? onClose() : onSelection(ARCHIVE_INDEX))}
           >

@@ -1,15 +1,17 @@
 import type { CalendarWire } from "../../domain/dashboard/calendar.js";
 import type { AsyncResource } from "../state/async-resource.js";
 import { useCalendar } from "../state/use-calendar.js";
+import { Calendar as HeroCalendar } from "@heroui/react";
+import { parseDate } from "@internationalized/date";
 import {
 Calendar,
 ChevronLeft,
 ChevronRight
 } from "lucide-react";
-import { type ReactElement,useLayoutEffect,useMemo,useRef,useState } from "react";
-import { Button,CountBadge,IconButton,Popover,PopoverContent,PopoverTrigger,Tooltip,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
+import { type ReactElement,useMemo,useRef,useState } from "react";
+import { Button,CountBadge,Popover,PopoverContent,PopoverTrigger,Tooltip,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
-import { type DayCountWire,WEEKDAY_HEADS,buildCalendarMonth,monthLabel,monthOfDay,moveCalendarFocus,calendarTabStop,shiftMonth } from "./date-navigation-model.js";
+import { type DayCountWire,monthOfDay } from "./date-navigation-model.js";
 import {
 dayLabelWithToday,
 plural
@@ -39,137 +41,61 @@ function DateCalendar({
   onPick: (day: string) => void;
 }) {
   const counts = resource.state === "loaded" ? resource.value.monthCounts : NO_COUNTS;
-  const cells = useMemo(() => buildCalendarMonth(month, counts, today), [month, counts, today]);
-  const previous = month > "0000-01" ? shiftMonth(month, -1) : undefined;
-  const next = month < monthOfDay(today) ? shiftMonth(month, 1) : undefined;
+  const countByDay = useMemo(() => new Map<string, number>(counts.map(entry => [entry.day, entry.count])), [counts]);
   const [focusedDay, setFocusedDay] = useState<string>();
-  const focus = calendarTabStop(cells, focusedDay, day);
-  const gridRef = useRef<HTMLDivElement>(null);
-  const todayRef = useRef<HTMLButtonElement>(null);
-  const gridOwnedFocus = useRef(false);
-  // Restore the roving stop when new availability disables the focused cell.
-  useLayoutEffect(() => {
-    if (gridOwnedFocus.current) {
-      const button = gridRef.current?.querySelector<HTMLButtonElement>('[tabindex="0"]');
-      (button ?? todayRef.current)?.focus();
-    }
-  }, [cells, focus]);
-  const moveTo = (index: number): void => {
-    const cell = cells[index];
-    if (cell === undefined || !cell.available) return;
-    setFocusedDay(cell.day);
-    gridRef.current?.querySelectorAll<HTMLButtonElement>("button[data-demo-day]")[index]?.focus();
-  };
+  const calendarFocus = parseDate(focusedDay?.startsWith(month)
+    ? focusedDay
+    : day.startsWith(month) ? day : `${month}-15`);
 
   return (
     <div className="flex flex-col gap-[var(--ds-space-snug)]">
-      <div className="flex items-center gap-[var(--ds-space-snug)]">
-        <IconButton
-          size="sm"
-          disabled={previous === undefined}
-          label={
-            previous === undefined
-              ? `The tracker holds nothing before ${monthLabel(month)}`
-              : `Previous month — ${monthLabel(previous)}`
-          }
-          onClick={() => {
-            if (previous !== undefined) setMonth(previous);
-          }}
-          icon={<ChevronLeft aria-hidden className={dsIcon.md} />}
-        />
-        <span className={cn(dsText.ui, "min-w-0 flex-1 text-center font-semibold text-[color:var(--ds-fg)]")}>
-          {monthLabel(month)}
-        </span>
-        <IconButton
-          size="sm"
-          disabled={next === undefined}
-          label={
-            next === undefined
-              ? `The tracker holds nothing after ${monthLabel(month)}`
-              : `Next month — ${monthLabel(next)}`
-          }
-          onClick={() => {
-            if (next !== undefined) setMonth(next);
-          }}
-          icon={<ChevronRight aria-hidden className={dsIcon.md} />}
-        />
-      </div>
-
-      <div aria-hidden className={cn(dsText.caps, "grid grid-cols-7 text-center text-[color:var(--ds-fg-muted)]")}>
-        {WEEKDAY_HEADS.map((weekday) => (
-          <span key={weekday} className="py-[var(--ds-space-hair)]">
-            {weekday}
-          </span>
-        ))}
-      </div>
-
-      <div
-        ref={gridRef}
-        role="grid"
-        onFocusCapture={() => { gridOwnedFocus.current = true; }}
-        onBlurCapture={(event) => { if (event.relatedTarget !== null && !event.currentTarget.contains(event.relatedTarget)) gridOwnedFocus.current = false; }}
+      <HeroCalendar
         aria-label="Pick a day"
-        onKeyDown={(event) => {
-          const to = moveCalendarFocus(cells, focus, event.key);
-          if (to === null) return;
-          event.preventDefault();
-          moveTo(to);
+        className="ds-hero-calendar"
+        value={parseDate(day)}
+        onChange={next => { if (next !== null) onPick(next.toString()); }}
+        focusedValue={calendarFocus}
+        onFocusChange={next => {
+          const focused = next.toString();
+          setFocusedDay(focused);
+          const focusedMonth = monthOfDay(focused);
+          if (focusedMonth !== month) setMonth(focusedMonth);
         }}
-        className="grid grid-cols-7 gap-[var(--ds-space-hair)]"
+        minValue={parseDate("0001-01-01")}
+        maxValue={parseDate(today)}
+        isDateUnavailable={date => !countByDay.has(date.toString())}
       >
-        {cells.map((cell, index) => {
-          const selected = cell.day === day;
-          return (
-            <button
-              key={cell.day}
-              type="button"
-              data-demo-day={cell.day}
-              role="gridcell"
-              aria-selected={selected}
-              aria-current={cell.isToday ? "date" : undefined}
-              disabled={!cell.available}
-              tabIndex={index === focus ? 0 : -1}
-              onFocus={() => setFocusedDay(cell.day)}
-              onClick={() => onPick(cell.day)}
-              aria-label={`${dayLabelWithToday(cell.day, today)}${
-                cell.available ? ` — ${plural(cell.count, "row")}` : " — the tracker holds no rows"
-              }`}
-              title={cell.available ? undefined : "The tracker holds no partition for this day"}
-              className={cn(
-                "relative flex cursor-pointer flex-col items-center justify-center",
-                "h-[var(--ds-h-md)] w-full",
-                dsRadius.sm,
-                dsText.meta,
-                dsText.nums,
-                dsFocus,
-                dsMotion.fast,
-                "disabled:cursor-default",
-                selected
-                  ? cn(dsBorder.loud, "border bg-[var(--ds-surface-selected)] font-semibold text-[color:var(--ds-fg)]")
-                  : cell.available
-                    ? "text-[color:var(--ds-fg)] hover:bg-[var(--ds-surface-3)]"
-                    : cell.inMonth
-                      ? "text-[color:var(--ds-fg-faint)]"
-                      : "text-[color:var(--ds-fg-faint)] opacity-50",
-              )}
+        <HeroCalendar.Header>
+          <HeroCalendar.NavButton slot="previous" aria-label="Previous month" />
+          <HeroCalendar.YearPickerTrigger>
+            <HeroCalendar.YearPickerTriggerHeading />
+            <HeroCalendar.YearPickerTriggerIndicator />
+          </HeroCalendar.YearPickerTrigger>
+          <HeroCalendar.NavButton slot="next" aria-label="Next month" />
+        </HeroCalendar.Header>
+        <HeroCalendar.Grid>
+          <HeroCalendar.GridHeader>
+            {weekday => <HeroCalendar.HeaderCell>{weekday}</HeroCalendar.HeaderCell>}
+          </HeroCalendar.GridHeader>
+          <HeroCalendar.GridBody>
+            {date => <HeroCalendar.Cell
+              date={date}
+              data-demo-day={date.toString()}
+              aria-label={`${dayLabelWithToday(date.toString(), today)} — ${countByDay.has(date.toString()) ? plural(countByDay.get(date.toString()) ?? 0, "row") : "the tracker holds no rows"}`}
             >
-              {cell.dayOfMonth}
-              {/* A DOT, not the count: 42 numbers plus 42 counts is a wall, and
-                  the count the operator is acting on is already on the pill.
-                  It is `--ds-accent-mark` — a mark, never text. */}
-              {cell.available && (
-                <span
-                  aria-hidden
-                  className={cn(
-                    "absolute bottom-[var(--ds-space-hair)] size-1 rounded-full",
-                    cell.count > 0 ? "bg-[var(--ds-accent-mark)]" : "bg-[var(--ds-fg-faint)]",
-                  )}
-                />
-              )}
-            </button>
-          );
-        })}
-      </div>
+              {({ formattedDate }) => <>
+                {formattedDate}
+                {countByDay.has(date.toString()) && <HeroCalendar.CellIndicator className={countByDay.get(date.toString()) ? "bg-[var(--ds-accent-mark)]" : "bg-[var(--ds-fg-faint)]"} />}
+              </>}
+            </HeroCalendar.Cell>}
+          </HeroCalendar.GridBody>
+        </HeroCalendar.Grid>
+        <HeroCalendar.YearPickerGrid>
+          <HeroCalendar.YearPickerGridBody>
+            {({ year }) => <HeroCalendar.YearPickerCell year={year} />}
+          </HeroCalendar.YearPickerGridBody>
+        </HeroCalendar.YearPickerGrid>
+      </HeroCalendar>
 
       {/* TODAY IN ONE ACTION, from anywhere in the calendar. It moves the month
           AND the day, so a picker parked three months out is one press from
@@ -179,7 +105,6 @@ function DateCalendar({
         <Button
           size="sm"
           variant="secondary"
-          ref={todayRef}
           disabled={followingToday && day === today && month === monthOfDay(today)}
           onClick={() => {
             setMonth(monthOfDay(today));

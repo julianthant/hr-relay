@@ -40,7 +40,9 @@ for (const theme of PARITY_THEMES) {
     await page.getByRole("button", { name: "Back", exact: true }).click(); await expect(page).toHaveURL(/day=2026-07-01/);
     await page.getByRole("button", { name: "Forward", exact: true }).click(); await expect(page).toHaveURL(/day=2026-06-15/);
     await picker(page).click(); await page.getByRole("button", { name: /^Previous month/ }).click();
-    await selectMonth(page, "2026-05"); await expect(page.locator('[role="grid"] [tabindex="0"]')).toHaveCount(0);
+    await selectMonth(page, "2026-05");
+    await expect(page.locator('[data-demo-day^="2026-05-"]:not([aria-disabled="true"])')).toHaveCount(0);
+    await page.locator('[role="grid"] [tabindex="0"]').press("Enter");
     expect(new URL(page.url()).searchParams.get("day")).toBe("2026-06-15");
     await page.getByRole("button", { name: "Today", exact: true }).click();
     await expect(page).not.toHaveURL(/day=/); await expect(picker(page)).toBeFocused();

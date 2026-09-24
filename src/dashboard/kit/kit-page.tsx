@@ -66,6 +66,7 @@ import {
   ContextMenuSeparator,
   ContextMenuTrigger,
   CountBadge,
+  DateInput,
   MetaLine,
   Refusal,
   DS_STATUS,
@@ -792,6 +793,7 @@ function FormsSection() {
   const [search, setSearch] = useState("");
   const [corrected, setCorrected] = useState("07/16/2026");
   const [proposed, setProposed] = useState("07/18/2026");
+  const [date, setDate] = useState("2026-07-16");
   return (
     <Section
       id="forms"
@@ -806,6 +808,7 @@ function FormsSection() {
           <Field label="Employee ID" error="No UCPath record matches 10084412X.">
             <Input defaultValue="10084412X" />
           </Field>
+          <DateInput label="Date" value={date} onChange={setDate} />
           {/* The three LABELS are the legacy page's, verbatim; the three option
               VALUES are not. Legacy's are the demo's real workflow ids, and
               `dashboard-wire-boundary` arm (3) forbids a registered id as a

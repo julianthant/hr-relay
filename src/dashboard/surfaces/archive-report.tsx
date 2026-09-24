@@ -2,7 +2,7 @@ import { Archive,ArrowLeft,Download,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { Button,ButtonLink,Dialog,DialogBody,DialogContent,DialogFooter,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR } from "../ds/ui.js";
+import { Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR } from "../ds/ui.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
 import { savedCell,savedCommandEnvelope,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,savedReportExport,useSavedResource } from "./archive-report-model.js";
 
@@ -135,7 +135,7 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
   const detailRead = useCallback(() => selection === "" ? Promise.resolve(null) : client.savedArchiveReport(selection), [client, selection]);
   const detail = useSavedResource(detailRead, nonce);
   return <div className="flex min-h-0 flex-1 flex-col">
-    <PageHeader title="Archive" icon={<Archive />} back={<Button icon={<ArrowLeft />} onClick={onClose}>Back</Button>} actions={<><Button aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button><Button aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button><Button icon={<RefreshCw />} onClick={refresh}>Refresh</Button></>} />
+    <PageHeader title="Archive" icon={<Archive className={dsIcon.md} />} back={<Button size="toolbar" icon={<ArrowLeft className={dsIcon.md} />} onClick={onClose}>Back</Button>} actions={<><Button size="toolbar" aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button><Button size="toolbar" aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button><Button size="toolbar" icon={<RefreshCw className={dsIcon.md} />} onClick={refresh}>Refresh</Button></>} />
     {view === "versions" ? <SavedVersions actorId={actorId} nonce={nonce} onChanged={refresh} onArchive={() => {setQuery({limit:50});onSelection("");onView("runs");}} />
       : <div className="grid min-h-0 flex-1 grid-cols-2 gap-[var(--ds-space-base)] overflow-auto p-[var(--ds-space-base)]">
         <Panel aria-label="Saved reports"><PanelHeader title="Saved reports" headingLevel={2} /><PanelBody className={`${dsText.body} min-w-0 space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]`}>
@@ -144,7 +144,7 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
             <label>Title<Input value={query.title ?? ""} onChange={event => filter("title", event.target.value)} /></label>
             <label>Version<Input value={query.descriptorVersion ?? ""} onChange={event => filter("descriptorVersion", event.target.value)} /></label>
             <label>Outcome<Select value={query.outcome ?? ""} onChange={event => filter("outcome", event.target.value)}><option value="">All outcomes</option>{["done", "failed", "cancelled", "discarded", "interrupted", "superseded"].map(outcome => <option key={outcome} value={outcome}>{outcome}</option>)}</Select></label>
-            {([ ["from", "Completed from (UTC)"], ["to", "Completed through (UTC)"], ["capturedFrom", "Captured from (UTC)"], ["capturedTo", "Captured through (UTC)"]] as const).map(([key, label]) => <label key={key}>{label}<Input type="date" value={query[key]?.slice(0, 10) ?? ""} onChange={event => filter(key, event.target.value === "" ? "" : `${event.target.value}${key === "to" || key === "capturedTo" ? "T23:59:59.999Z" : "T00:00:00.000Z"}`)} /></label>)}
+            {([ ["from", "Completed from (UTC)"], ["to", "Completed through (UTC)"], ["capturedFrom", "Captured from (UTC)"], ["capturedTo", "Captured through (UTC)"]] as const).map(([key, label]) => <DateInput key={key} label={label} value={query[key]?.slice(0, 10) ?? ""} onChange={date => filter(key, date === "" ? "" : `${date}${key === "to" || key === "capturedTo" ? "T23:59:59.999Z" : "T00:00:00.000Z"}`)} />)}
             <Button type="button" onClick={() => changeQuery({ limit: 50 })}>Clear filters</Button>
           </form>
           {index.state === "loading" ? <p role="status">Loading saved reports…</p> : index.state === "error" ? <p role="alert">{index.message}</p>
