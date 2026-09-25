@@ -108,7 +108,7 @@ export function createDetailQueries(transport: DashboardTransport): DetailQuerie
       if (options.limit !== undefined) query.set("limit", String(options.limit));
       if (options.cursor !== undefined) query.set("cursor", options.cursor);
       const suffix = query.size === 0 ? "" : `?${query.toString()}`;
-      const path = `/api/v1/runs/${encodeURIComponent(runId)}/attempt-history${suffix}`;
+      const path = `/api/v1/runs/${encodeURIComponent(runId)}/attempt-history` + suffix;
       const context = `GET ${path}`;
       const response = parseOrThrow(
         ItemAttemptHistoryResponseSchema,
