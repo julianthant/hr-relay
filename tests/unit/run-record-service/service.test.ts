@@ -423,6 +423,26 @@ function raceConnection(data: unknown) {
 }
 
 describe("canonical run-record service", () => {
+  it("stamps the published workflow minor version on later runs while leaving other workflows at 1.0", () => {
+    const { service, request, database } = fixture();
+    const baseline = database.registerRuntimeVersionWorkflows([WORKFLOW_ID, "other-workflow"]);
+    const scope = { kind: "workflows" as const, workflowIds: [WORKFLOW_ID] };
+    const planned = planRuntimeVersionTransition(baseline.state, scope);
+    const review = database.reviewRuntimeVersionTransition(scope);
+    const changeId = "10000000-0000-4000-8000-000000000097";
+    const claimed = database.claimRuntimeVersionTransition({ changeId, expectedRevision: baseline.revision,
+      workflowIds: planned.affectedWorkflowIds, after: planned.after, expectedMembershipDigest: review.review.membershipDigest });
+    database.publishRuntimeVersionTransition({ changeId, expectedRevision: claimed.revision, next: planned.after });
+    const changed = created(service, request);
+    assert.deepEqual(changed.runtimeVersion, {
+      dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 1 },
+    });
+    const other = created(service, { ...request, commandId: UUID_6, workflow: "other-workflow" });
+    assert.deepEqual(other.runtimeVersion, {
+      dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 0 },
+    });
+  });
+
   it("stamps new runs and fences only workflows in a claimed version change", () => {
     const { service, request, database, published } = fixture();
     const baseline = database.registerRuntimeVersionWorkflows([WORKFLOW_ID, "other-workflow"]);
