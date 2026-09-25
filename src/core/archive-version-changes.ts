@@ -296,7 +296,7 @@ export function runArchiveCommand(request: Request, deps: ArchiveCommandDependen
       "runtime-version-all-workflows-requires-dashboard-scope",
       "runtime-version-review-stale", "runtime-version-active-blockers", "runtime-version-workflow-claimed",
       "runtime-version-claim-active", "runtime-version-legacy-change-active",
-      "runtime-version-child-out-of-scope",
+      "runtime-version-child-out-of-scope", "runtime-version-parent-out-of-scope",
       "runtime-version-application-command-conflict", "runtime-version-plan-command-conflict"].includes(error.message)) {
       return { state: "rejected" as const, commandId: request.commandId, code: "policy-refused" as const, message: error.message };
     }

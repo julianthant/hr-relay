@@ -69,6 +69,13 @@ export function createRuntimeVersionChanges(deps: Readonly<{
     const candidates = current.review.candidates;
     const candidateIds = new Set(candidates.map(member => member.runId));
     for (const member of candidates) {
+      const run = deps.database.authority.runs.get(member.runId);
+      if (run === undefined) throw new Error("runtime-version-source-stale");
+      const parentId = run.envelope.parent?.runId;
+      if (parentId !== undefined && !candidateIds.has(parentId)
+        && deps.database.authority.runs.get(parentId) !== undefined) {
+        throw new Error("runtime-version-parent-out-of-scope");
+      }
       if (deps.database.authority.runs.listChildren(member.runId).some(child => !candidateIds.has(child.envelope.runId))) {
         throw new Error("runtime-version-child-out-of-scope");
       }

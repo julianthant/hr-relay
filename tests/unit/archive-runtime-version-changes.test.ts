@@ -232,6 +232,19 @@ describe("runtime version change transfer", () => {
     } finally { f.dispose(); }
   });
 
+  it("refuses a selected child when its live parent is outside the archive scope", () => {
+    const { f, service } = fixture();
+    try {
+      const childId = id(9906);
+      enqueueTerminalChild(f, childId, "other-workflow");
+      const planned = service.plan({ kind: "workflows", workflowIds: ["other-workflow"] }, "local-operator");
+      assert.throws(() => service.apply(planned.changeId), /runtime-version-parent-out-of-scope/);
+      assert.equal(f.db.readRuntimeVersionAuthority().claim, undefined);
+      assert.ok(f.db.authority.runs.get(childId));
+      assert.ok(f.db.authority.runs.get(f.run.envelope.runId));
+    } finally { f.dispose(); }
+  });
+
   for (const interruption of ["captured", "verified", "cleaned", "published"] as const) {
     it(`resumes the exact frozen transfer after ${interruption}`, () => {
       let fail = true;
