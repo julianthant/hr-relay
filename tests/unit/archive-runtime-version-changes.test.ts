@@ -112,6 +112,7 @@ describe("runtime version change transfer", () => {
       f.failAfter("audit");
       assert.throws(() => f.kernel.execute(applyRequest), /injected-audit/);
       assert.equal(f.database.readRuntimeVersionChange(change.changeId)?.state, "applied");
+      f.reopen();
       const divergent = f.kernel.execute({ ...applyRequest, requestedAt: "2026-09-09T12:00:01.000Z" });
       assert.equal(divergent.state, "rejected");
       assert.equal(f.kernel.execute(applyRequest).state, "applied");
