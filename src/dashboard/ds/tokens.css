@@ -525,6 +525,11 @@
      one ending wherever its sentence stopped. */
   --ds-w-archive-status: 132px;
   --ds-w-archive-trace: 148px;
+  --ds-w-archive-search: 280px;
+  --ds-w-archive-filter: 68px;
+  --ds-h-archive-choice: 160px;
+  --ds-archive-current-bg: color-mix(in srgb, var(--ds-accent-mark) 8%, var(--ds-surface-1));
+  --ds-archive-current-border: color-mix(in srgb, var(--ds-accent-mark) 24%, var(--ds-border));
   /* Wide enough for `Jul 20, 9:02 AM` plus cell padding — 124 used to cut the
      meridian to `A…` and made 24h-looking bulk clocks look like a second format. */
   --ds-w-archive-when: 152px;

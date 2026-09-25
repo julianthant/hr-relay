@@ -21,6 +21,15 @@ export function archiveReportCount(count: number): string {
   return `${count} ${count === 1 ? "report" : "reports"}`;
 }
 
+export function archiveDisplayDate(value: string): string {
+  return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(value));
+}
+
+export function archiveWorkflowMark(label: string): string {
+  const words = label.split(/[\s_-]+/u).filter(Boolean);
+  return (words.length > 1 ? `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}` : label.slice(0, 2)).toUpperCase();
+}
+
 export function groupArchiveVersions(groups: readonly ArchiveGroup[]): DashboardArchiveGroup[] {
   const dashboards = new Map<string, DashboardArchiveGroup>();
   for (const group of groups) {

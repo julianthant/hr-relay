@@ -68,7 +68,7 @@ it("reviews one workflow without changing the dashboard scope, then offers the a
   await click("Review affected runs");
   expect(calls.executeCommand).toHaveBeenCalledWith(expect.objectContaining({type:"plan-runtime-version",
     target:{scope:{kind:"workflows",workflowIds:["first-workflow"]}}}));
-  await click("Dashboard versionAdvance every workflow to 2.0");
+  await click("Dashboard version");
   await click("Review affected runs");
   expect(calls.executeCommand).toHaveBeenLastCalledWith(expect.objectContaining({type:"plan-runtime-version",
     target:{scope:{kind:"dashboard"}}}));
