@@ -34,6 +34,10 @@ it("upgrades a stopped schema 1 archive to indexed runtime version queries witho
     try {
       assert.equal(historical.schemaVersion, 1);
       assert.deepEqual(historical.query({ workflow: "person-lookup", limit: 5, versionState: "unrecorded" }).items, [oldReport]);
+      assert.deepEqual(historical.groups({ versionState: "unrecorded" }).map(({dashboardVersion, workflow, workflowVersion, reportCount}) =>
+        ({dashboardVersion, workflow, workflowVersion, reportCount})), [
+        {dashboardVersion: null, workflow: "person-lookup", workflowVersion: null, reportCount: 1},
+      ]);
     } finally { historical.close(); }
     ArchiveDatabase.upgradeStopped(path);
     ArchiveDatabase.upgradeStopped(path);
@@ -50,6 +54,11 @@ it("upgrades a stopped schema 1 archive to indexed runtime version queries witho
       assert.deepEqual(upgraded.query({ workflow: "person-lookup", limit: 5,
         dashboardVersion: { major: 1, minor: 0 }, workflowVersion: { major: 1, minor: 2 } }).items, [currentReport]);
       assert.deepEqual(upgraded.query({ workflow: "person-lookup", limit: 5, versionState: "unrecorded" }).items, [oldReport]);
+      assert.deepEqual(upgraded.groups({ workflow: "person-lookup" }).map(({dashboardVersion, workflowVersion, reportCount}) =>
+        ({dashboardVersion, workflowVersion, reportCount})), [
+        {dashboardVersion: {major:1, minor:0}, workflowVersion: {major:1, minor:2}, reportCount:1},
+        {dashboardVersion: null, workflowVersion: null, reportCount:1},
+      ]);
     } finally { upgraded.close(); }
     const indexed = new DatabaseSync(path, { readOnly: true });
     try {
