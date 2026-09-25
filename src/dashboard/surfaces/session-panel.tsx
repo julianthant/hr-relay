@@ -1190,7 +1190,7 @@ export function SessionPanel({
               a third digit under a tooltip that explains exactly two is a claim
               the operator cannot check. */}
           <span
-            title={`App ${fmtAppVersion(appVersion)} — MAJOR moves when a dashboard change reaches some or all workflows (prior-version runs archive); MINOR when it reaches none. A run that RAN under a different version carries its own, which is a fact about the run and stays on the run.`}
+            title={`App ${fmtAppVersion(appVersion)} is the build version. Dashboard and workflow runtime versions are managed in Archive and recorded on runs.`}
             className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}
           >
             {appVersionTag(appVersion)}

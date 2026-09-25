@@ -92,7 +92,7 @@ export function createArchiveQueries(transport: DashboardTransport): ArchiveQuer
     async savedArchiveGroups(input: ArchiveGroupQuery): Promise<SavedArchiveGroupsWire> {
       const query = ArchiveGroupQuerySchema.parse(input);
       const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
-      const path = `/api/v1/archive/groups${params.size === 0 ? "" : `?${params.toString()}`}`;
+      const path = `/api/v1/archive/groups?${params.toString()}`;
       return parseOrThrow(SavedArchiveGroupsWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 

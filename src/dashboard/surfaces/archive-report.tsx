@@ -1,6 +1,7 @@
-import { Archive,ArrowLeft,Download,RefreshCw,ZoomIn } from "lucide-react";
+import { Archive,Download,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -13,7 +14,7 @@ export function SavedArchiveReport({ report }: { report: SavedArchiveReportWire 
   return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[var(--ds-space-cozy)]`}>
     <header className="flex min-w-0 flex-col gap-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-cozy)]">
       <div className="flex min-w-0 flex-wrap items-start justify-between gap-[var(--ds-space-base)]">
-        <div className="min-w-0"><h2 className={cn(dsText.title, "break-words font-semibold")}>{report.title}</h2><p className={cn(dsText.meta, "mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>{report.workflow} · version {report.descriptorVersion}</p></div>
+        <div className="min-w-0"><h2 className={cn(dsText.title, "break-words font-semibold")}>{report.title}</h2><p className={cn(dsText.meta, "mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>{report.workflow} · {report.runtimeVersion === undefined ? "Runtime version not recorded" : `Dashboard ${formatRuntimeVersion(report.runtimeVersion.dashboard)} · Workflow ${formatRuntimeVersion(report.runtimeVersion.workflow)}`} · descriptor {report.descriptorVersion}</p></div>
         <div className="flex flex-col items-start gap-[var(--ds-space-tight)] sm:items-end">
           <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Outcome</span>
           <Badge tone="neutral">{savedOutcomeLabel(report.outcome)}</Badge>
@@ -155,7 +156,7 @@ function SavedVersionForm({ wire, actorId, busy, onCommand }: { wire: SavedVersi
     <Button type="submit" disabled={busy || workflow === ""}>Create review</Button>
   </form>;
 }
-export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, onView, onClose }: {
+export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, onView }: {
   selection: string; view: "runs" | "versions"; actorId: string; onSelection: (id: string) => void; onView: (view: "runs" | "versions") => void; onClose: () => void;
 }) {
   const client = useDashboardClient(); const [nonce, setNonce] = useState(0);
@@ -169,7 +170,7 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
   const detailRead = useCallback(() => selection === "" ? Promise.resolve(null) : client.savedArchiveReport(selection), [client, selection]);
   const detail = useSavedResource(detailRead, nonce);
   return <div className="flex min-h-0 flex-1 flex-col">
-    <PageHeader title="Archive" icon={<Archive className={dsIcon.md} />} back={<Button size="toolbar" icon={<ArrowLeft className={dsIcon.md} />} onClick={onClose}>Back</Button>} actions={<><Button size="toolbar" aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button><Button size="toolbar" aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button><Button size="toolbar" icon={<RefreshCw className={dsIcon.md} />} onClick={refresh}>Refresh</Button></>} />
+    <PageHeader title="Archive" icon={<Archive className={dsIcon.md} />} actions={<><Button size="toolbar" aria-pressed={view === "runs"} onClick={() => onView("runs")}>Saved reports</Button><Button size="toolbar" aria-pressed={view === "versions"} onClick={() => onView("versions")}>Versions &amp; bumps</Button><Button size="toolbar" icon={<RefreshCw className={dsIcon.md} />} onClick={refresh}>Refresh</Button></>} />
     {view === "versions" ? <SavedVersions actorId={actorId} nonce={nonce} onChanged={refresh} onArchive={() => {setQuery({limit:50});onSelection("");onView("runs");}} />
       : <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,0.9fr)_minmax(0,1.1fr)] gap-[var(--ds-space-base)] overflow-auto p-[var(--ds-space-base)]">
         <Panel aria-label="Saved reports"><PanelHeader title="Saved reports" headingLevel={2} meta={index.state === "loaded" ? `${String(index.value.items.length)} shown` : undefined} /><PanelBody className={`${dsText.body} min-w-0 space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]`}>
@@ -206,7 +207,7 @@ function SavedReportList({ index, selection, onSelection, onNext }: { index: Sav
   })}</TBody></Table>{index.next !== null && <Button onClick={onNext}>Next reports</Button>}</>;
 }
 
-function SavedArchiveDeletion({ report, actorId, onChanged }: { report: SavedArchiveReportWire; actorId: string; onChanged: () => void }) {
+export function SavedArchiveDeletion({ report, actorId, onChanged }: { report: SavedArchiveReportWire; actorId: string; onChanged: () => void }) {
   const client = useDashboardClient(); const [confirming, setConfirming] = useState(false); const [busy, setBusy] = useState(false); const [problem, setProblem] = useState("");
   const active = useRef(true);
   const pending = useRef(false);
@@ -242,7 +243,7 @@ function SavedArchiveDeletion({ report, actorId, onChanged }: { report: SavedArc
       <DialogTrigger asChild><Button variant="danger">Delete saved report</Button></DialogTrigger>
       <DialogContent size="md" title={`Delete ${report.title}?`} description="Deleting this report is permanent and cannot be undone.">
         <DialogBody className="flex flex-col gap-[var(--ds-space-base)]">
-          <p>This deletes the saved report “{report.title}” for {report.workflow} (version {report.descriptorVersion}, completed {report.completedAt}) and its exclusively owned retained files, including transaction evidence.</p>
+          <p>This deletes the saved report “{report.title}” for {report.workflow} (descriptor {report.descriptorVersion}, completed {report.completedAt}) and its exclusively owned retained files, including transaction evidence.</p>
           <p>If no other run owns this report&apos;s permanent idempotency keys, deleting it releases them. A later run could submit the same write again.</p>
           {problem !== "" && <p role="alert" className="m-0">{problem}</p>}
         </DialogBody>
@@ -255,7 +256,7 @@ function SavedArchiveDeletion({ report, actorId, onChanged }: { report: SavedArc
   </section>;
 }
 
-function SavedArchiveDeletionStatus({ status, onRefresh }: { status: SavedArchiveDeletionStatusWire; onRefresh: () => void }) {
+export function SavedArchiveDeletionStatus({ status, onRefresh }: { status: SavedArchiveDeletionStatusWire; onRefresh: () => void }) {
   const client = useDashboardClient();
   const [busy, setBusy] = useState(false);
   const [problem, setProblem] = useState("");
