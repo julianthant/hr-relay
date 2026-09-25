@@ -213,5 +213,7 @@ describe("typed Settings catalog controls", () => {
     assert.match(text, /Read-only at process start/u);
     assert.match(text, /restart after changing a provider key/u);
     assert.match(text, /Provider keys/u);
+    const names = [...h.host.querySelectorAll(".settings-fact-label > span:first-child")].map(node => node.textContent);
+    assert.deepEqual(names, ["Gemini", "Groq", "Mistral", "OpenRouter", "SambaNova"]);
   });
 });

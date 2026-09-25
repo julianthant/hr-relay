@@ -64,83 +64,56 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Deployment" [level=2]
-    - text: Code-owned configuration for this process.
-    - paragraph: Deployment facts change through config/runtime-isolation.json, runtime-paths.ts and configuration code.
-    - heading "Runtime paths and routes" [level=3]
-    - region "Operator":
-      - heading "Operator" [level=4]
-      - term: Local operator ID
-      - definition: local-operator
-    - region "Production routes":
-      - heading "Production routes" [level=4]
-      - term: Kuali production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb
-      - term: New Kronos production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd-sso.prd.mykronos.com/wfd/home
-      - term: CRM production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://crm.ucsd.edu/hr
-        - term: Onboarding search URL
-        - definition: https://act-crm.my.site.com/hr/ONB_SearchOnboardings
-        - term: UCPath entry sheet URL
-        - definition: https://act-crm.my.site.com/hr/ONB_PPSEntrySheet
-        - term: Onboarding history URL
-        - definition: https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory
-        - term: iDocs viewer URL
-        - definition: https://act-idocs.ucsd.edu
-      - term: OnBase production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd.hylandcloud.com/251ids/NavPanel.aspx
-      - term: UCPath production routes
-      - definition:
-        - term: Login URL
-        - definition: https://ucpath.ucsd.edu
-        - term: SmartHR URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y
-        - term: Job summary URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL
-        - term: Personal data URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1
-        - term: Person profile URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL
-      - term: I-9 production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://i9complete.ucop.edu
-        - term: Application URL
-        - definition: https://wwwe.i9complete.com
-      - term: Old Kronos production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/
-      - term: ServiceNow production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf
-      - term: SharePoint production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsdcloud.sharepoint.com
-    - region "Runtime paths":
-      - heading "Runtime paths" [level=4]
-      - term: Runtime state folder
-      - definition: /tmp/settings-fixture/state
-      - term: Artifact folder
-      - definition: /tmp/settings-fixture/artifacts
-      - term: Browser profile folder
-      - definition: /tmp/settings-fixture/auth
-      - term: Duo credential file
-      - definition: /tmp/settings-fixture/auth/duo-webauthn.json
-      - term: Duo extension folder
-      - definition: /tmp/settings-fixture/duo-autopilot
-      - term: Duo WebAuthn credential file
-      - definition: /tmp/settings-fixture/auth/duo-webauthn.json
+    - heading "Operator" [level=3]
+    - text: Local operator ID local-operator
+    - heading "Production routes" [level=3]
+    - text: Kuali production routes
+    - term: Entry URL
+    - definition: https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb
+    - text: New Kronos production routes
+    - term: Entry URL
+    - definition: https://ucsd-sso.prd.mykronos.com/wfd/home
+    - text: CRM production routes
+    - term: Entry URL
+    - definition: https://crm.ucsd.edu/hr
+    - term: Onboarding search URL
+    - definition: https://act-crm.my.site.com/hr/ONB_SearchOnboardings
+    - term: UCPath entry sheet URL
+    - definition: https://act-crm.my.site.com/hr/ONB_PPSEntrySheet
+    - term: Onboarding history URL
+    - definition: https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory
+    - term: iDocs viewer URL
+    - definition: https://act-idocs.ucsd.edu
+    - text: OnBase production routes
+    - term: Entry URL
+    - definition: https://ucsd.hylandcloud.com/251ids/NavPanel.aspx
+    - text: UCPath production routes
+    - term: Login URL
+    - definition: https://ucpath.ucsd.edu
+    - term: SmartHR URL
+    - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y
+    - term: Job summary URL
+    - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL
+    - term: Personal data URL
+    - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1
+    - term: Person profile URL
+    - definition: https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL
+    - text: I-9 production routes
+    - term: Entry URL
+    - definition: https://i9complete.ucop.edu
+    - term: Application URL
+    - definition: https://wwwe.i9complete.com
+    - text: Old Kronos production routes
+    - term: Entry URL
+    - definition: https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/
+    - text: ServiceNow production routes
+    - term: Entry URL
+    - definition: https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf
+    - text: SharePoint production routes
+    - term: Entry URL
+    - definition: https://ucsdcloud.sharepoint.com
+    - heading "Runtime paths" [level=3]
+    - text: Runtime state folder /tmp/settings-fixture/state Artifact folder /tmp/settings-fixture/artifacts Browser profile folder /tmp/settings-fixture/auth Duo credential file /tmp/settings-fixture/auth/duo-webauthn.json Duo extension folder /tmp/settings-fixture/duo-autopilot Duo WebAuthn credential file /tmp/settings-fixture/auth/duo-webauthn.json
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

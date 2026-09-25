@@ -71,15 +71,15 @@
     - heading "FY2027" [level=3]
     - text: Job End Date M/D/YYYY
     - textbox "Job End Date": 6/30/2027
-    - paragraph: M/D/YYYY or MM/DD/YYYY
+    - paragraph: End date used in annual job records
     - button "Restore standard"
     - text: Kronos Default End Date M/D/YYYY
     - textbox "Kronos Default End Date": 6/30/2027
-    - paragraph: M/D/YYYY or MM/DD/YYYY
+    - paragraph: Default end date for Kronos reports
     - button "Restore standard"
     - text: Kronos Default Start Date M/D/YYYY
     - textbox "Kronos Default Start Date": 7/1/2026
-    - paragraph: M/D/YYYY or MM/DD/YYYY
+    - paragraph: Default start date for Kronos reports
     - button "Restore standard"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"

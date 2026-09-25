@@ -6,7 +6,7 @@ ShieldAlert
 import { useState } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
-import { IconButton,Popover,PopoverContent,PopoverTrigger,Banner,Button,dsFocus,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,Separator,StatusDot,type DsStatus } from "../ds/ui.js";
+import { IconButton,Popover,PopoverContent,PopoverTrigger,Banner,Button,dsFocus,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,StatusDot,type DsStatus } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useStorageClient as useDashboardClient } from "../state/storage-client.js";
 import { fmtClock,fmtInstantDay,plural } from "./format.js";
@@ -131,7 +131,7 @@ function HealthLine({ status, label, value }: { status: DsStatus; label: string;
   return (
     <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
       <StatusDot status={status} />
-      <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{label}</span>
+      {label !== "" && <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{label}</span>}
       <span className={cn(dsText.body, "min-w-0 break-words font-medium text-[color:var(--ds-fg)]")}>{value}</span>
     </span>
   );
@@ -297,6 +297,7 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
         Read-only doctor · checked {fmtClock(report.checkedAt)}
       </span>
 
+      <section className="settings-doctor-section"><h4 className={cn(dsText.ui, "font-medium")}>Authority</h4>
       {report.authority.state === "healthy" ? (
         <HealthLine
           status="verifiedDone"
@@ -328,9 +329,12 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
         </span>
       )}
 
-      <RecoveryStatus report={report} />
-      <SpanAuthorityReport spanAuthority={report.spanAuthority} />
-      <UpgradeAndCredentials report={report} />
+      </section>
+      <section className="settings-doctor-section"><h4 className={cn(dsText.ui, "font-medium")}>Recovery and run history</h4>
+        <RecoveryStatus report={report} />
+        <SpanAuthorityReport spanAuthority={report.spanAuthority} />
+      </section>
+      <section className="settings-doctor-section"><h4 className={cn(dsText.ui, "font-medium")}>Backup</h4>
 
       {report.backup.state === "current" || report.backup.state === "stale" ? (
         <HealthLine
@@ -381,6 +385,10 @@ function DoctorReport({ report }: { report: StorageDoctorWire }) {
           </span>
         ))}
       </div>
+      </section>
+      <section className="settings-doctor-section"><h4 className={cn(dsText.ui, "font-medium")}>Upgrade and credentials</h4>
+        <UpgradeAndCredentials report={report} />
+      </section>
     </div>
   );
 }
@@ -433,22 +441,6 @@ export function StorageSection({
 
   const degraded = storage.authority !== "healthy";
   return (
-    /*
-      SE45 (D276 item 4). Every other Settings destination in this file is a
-      `Panel` + `PanelHeader` + `PanelBody` — the demo's shape, and the shape
-      `System hosts` and `Workflow capabilities` were built to. Storage was the
-      one section that never got it and read as a loose `SectionLabel` inside
-      the frame, which made the doctor look like part of the page rather than
-      part of a destination.
-
-      The header's `meta` is the demo's freshness slot filled with the fact this
-      tree actually serves. The demo prints `newest backup <age>`; the summary
-      wire carries `authority`, `backup` and `checkedAt` and NO backup age at
-      all — the age exists only on the doctor report, which is a read the
-      operator has not made yet. So the slot takes the check time rather than an
-      invented or lazily-borrowed age, and the sentence below keeps the
-      provenance half it used to say twice.
-    */
     <Panel className="settings-page-panel">
       <PanelHeader
         title="Storage health"
@@ -456,41 +448,33 @@ export function StorageSection({
         icon={<Database aria-hidden className={dsIcon.lg} />}
         meta={`checked ${fmtClock(storage.checkedAt)}`}
       />
-      <PanelBody className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
-        {/*
-          SE46 — the demo's verdict banner, keyed on the ONE fact that decides
-          whether this dashboard can record anything. The two `HealthLine`s
-          below are NOT replaced by it: the demo's single `mode` collapses
-          authority and backup into one binary, and this wire serves them
-          separately — a stale backup is not a read-only volume, and a banner
-          that said so would be the surface losing a fact it holds. The banner
-          is the verdict; the lines are the facts it was derived from.
-        */}
-        <Banner
-          tone={degraded ? "danger" : "success"}
-          title={degraded ? "Authority unavailable" : "Authority summary healthy"}
-        >
-          {degraded
-            ? AUTHORITY_HAZARD
-            : "Backup metadata has not been re-verified by this summary."}
-        </Banner>
-
-        <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
-        <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
-        <span className="flex items-center gap-[var(--ds-space-snug)]">
-          <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
-            {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
-          </Button>
-          <RecoveryGuidance />
-        </span>
-        {doctor.state === "failed" && (
-          <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
-            {doctor.message}
-          </span>
-        )}
-        {doctor.state === "loaded" && <DoctorReport report={doctor.report} />}
-        <Separator />
-        <PreflightControl editor={editor} retained={preflight} />
+      <PanelBody className="settings-page-body">
+        <div className="settings-section-stack">
+          <section className="settings-group">
+            <h3 className={cn(dsText.title, "mb-[var(--ds-space-cozy)] font-medium")}>Current state</h3>
+            {degraded && <Banner tone="danger" title="Authority unavailable" className="mb-[var(--ds-space-cozy)]">{AUTHORITY_HAZARD}</Banner>}
+            <div className="settings-group-rows">
+              <div className="settings-health-row"><span>Authority</span><HealthLine status={authorityStatusOf(storage.authority)} label="" value={storage.authority} /></div>
+              <div className="settings-health-row"><span>Backup</span><HealthLine status={backupStatusOf(storage.backup)} label="" value={storage.backup} /></div>
+            </div>
+            <p className={cn(dsText.meta, "settings-group-note")}>Backup metadata is a summary. Run the doctor to verify current backup evidence.</p>
+          </section>
+          <section className="settings-group">
+            <div className="settings-group-heading">
+              <h3 className={cn(dsText.title, "font-medium")}>Storage doctor</h3>
+              <span className="flex items-center gap-[var(--ds-space-snug)]"><Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+                {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
+              </Button><RecoveryGuidance /></span>
+            </div>
+            {doctor.state === "failed" && <Banner tone="danger" title="Doctor unavailable">{doctor.message}</Banner>}
+            {doctor.state === "loaded" && <div className="settings-group-rows settings-status-section"><DoctorReport report={doctor.report} /></div>}
+            {doctor.state === "idle" && <p className={cn(dsText.body, "settings-group-note")}>Run a read-only check of the authority, backup and recovery evidence.</p>}
+          </section>
+          <section className="settings-group">
+            <h3 className={cn(dsText.title, "mb-[var(--ds-space-cozy)] font-medium")}>Preflight</h3>
+            <div className="settings-group-rows settings-status-section"><PreflightControl editor={editor} retained={preflight} /></div>
+          </section>
+        </div>
       </PanelBody>
     </Panel>
   );

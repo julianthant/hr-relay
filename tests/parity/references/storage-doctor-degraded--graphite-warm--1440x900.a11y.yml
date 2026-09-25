@@ -65,16 +65,21 @@
         - /url: "?settings=ui-catalog"
     - heading "Storage health" [level=2]
     - text: checked 9:00 AM
-    - status: Authority summary healthy Backup metadata has not been re-verified by this summary.
+    - heading "Current state" [level=3]
+    - text: Authority
     - img "Done"
-    - text: Authority healthy
+    - text: healthy Backup
     - img "Done"
-    - text: Backup current
+    - text: current
+    - paragraph: Backup metadata is a summary. Run the doctor to verify current backup evidence.
+    - heading "Storage doctor" [level=3]
     - button "Run the read-only storage doctor": Run storage doctor
     - button "Storage recovery instructions"
     - text: Read-only doctor · checked 9:01 AM
+    - heading "Authority" [level=4]
     - img "Done"
     - text: Authority healthy — schema v27 · generation 41 · 12 pages pending commands 0 unresolved write intents 0 leases 0 provider reservations 0 artifact outbox 0
+    - heading "Recovery and run history" [level=4]
     - region "Recovery status":
       - img "Done"
       - text: Recovery No interruption markers
@@ -91,17 +96,19 @@
         - listitem: missing-span run 00000000-0403-4000-8000-000000000403
         - listitem: malformed-authority source archived · record record-digest-8dc3 · archived authority record failed strict parsing
         - listitem: malformed table span_stream · run 00000000-0404-4000-8000-000000000404 · queued root ordering is contradictory
+    - heading "Backup" [level=4]
+    - img "Failed"
+    - text: "Backup missing — no verified backup is present Backup service: backup service has not run 0 restore candidates"
+    - heading "Upgrade and credentials" [level=4]
     - region "Authority upgrade history":
       - heading "Authority upgrade history" [level=3]
       - text: No upgrade history recorded.
     - region "Independent credentials":
       - heading "Independent credentials" [level=3]
       - text: "Credential inspection unavailable: protected settings fixture is unavailable"
-    - img "Failed"
-    - text: "Backup missing — no verified backup is present Backup service: backup service has not run 0 restore candidates"
-    - separator
+    - heading "Preflight" [level=3]
     - region "Preflight":
-      - text: Preflight Check readiness for
+      - text: Check readiness for
       - combobox "Check readiness for":
         - option "Dashboard" [selected]
         - option "Person Lookup"

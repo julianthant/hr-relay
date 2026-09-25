@@ -64,83 +64,27 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Workflow capabilities" [level=2]
-    - paragraph: "Source: served workflow descriptors."
-    - text: Typed start 1 of 1
+    - heading "Typed start" [level=3]
     - button "What Typed start means"
-    - table "Typed start by workflow":
-      - rowgroup:
-        - row "Workflow Typed start":
-          - columnheader "Workflow"
-          - columnheader "Typed start"
-      - rowgroup:
-        - row "Person Lookup Yes typed input":
-          - cell "Person Lookup"
-          - cell "Yes typed input"
-    - text: Dry run 0 of 1
+    - text: 1 of 1 Person Lookup Yes typed input
+    - heading "Dry run" [level=3]
     - button "What Dry run means"
-    - table "Dry run by workflow":
-      - rowgroup:
-        - row "Workflow Dry run":
-          - columnheader "Workflow"
-          - columnheader "Dry run"
-      - rowgroup:
-        - row "Person Lookup N/A writes to no system of record":
-          - cell "Person Lookup"
-          - cell "N/A writes to no system of record"
-    - text: Edit Data 1 of 1
+    - text: 0 of 1 Person Lookup N/A writes to no system of record
+    - heading "Edit Data" [level=3]
     - button "What Edit Data means"
-    - table "Edit Data by workflow":
-      - rowgroup:
-        - row "Workflow Edit Data":
-          - columnheader "Workflow"
-          - columnheader "Edit Data"
-      - rowgroup:
-        - row "Person Lookup Yes 3 correctable fields":
-          - cell "Person Lookup"
-          - cell "Yes 3 correctable fields"
-    - text: Review panel 0 of 1
+    - text: 1 of 1 Person Lookup Yes 3 correctable fields
+    - heading "Review panel" [level=3]
     - button "What Review panel means"
-    - table "Review panel by workflow":
-      - rowgroup:
-        - row "Workflow Review panel":
-          - columnheader "Workflow"
-          - columnheader "Review panel"
-      - rowgroup:
-        - row "Person Lookup N/A read from the queue":
-          - cell "Person Lookup"
-          - cell "N/A read from the queue"
-    - text: Operator gates 0 of 1
+    - text: 0 of 1 Person Lookup N/A read from the queue
+    - heading "Operator gates" [level=3]
     - button "What Operator gates means"
-    - table "Operator gates by workflow":
-      - rowgroup:
-        - row "Workflow Operator gates":
-          - columnheader "Workflow"
-          - columnheader "Operator gates"
-      - rowgroup:
-        - row "Person Lookup N/A parks on no operator gate":
-          - cell "Person Lookup"
-          - cell "N/A parks on no operator gate"
-    - text: Systems 1 of 1
+    - text: 0 of 1 Person Lookup N/A parks on no operator gate
+    - heading "Systems" [level=3]
     - button "What Systems means"
-    - table "Systems by workflow":
-      - rowgroup:
-        - row "Workflow Systems":
-          - columnheader "Workflow"
-          - columnheader "Systems"
-      - rowgroup:
-        - row "Person Lookup Yes crm, ucpath":
-          - cell "Person Lookup"
-          - cell "Yes crm, ucpath"
-    - text: Where a dry run stops
-    - table "Dry-run posture by workflow":
-      - rowgroup:
-        - row "Workflow Posture":
-          - columnheader "Workflow"
-          - columnheader "Posture"
-      - rowgroup:
-        - 'row "Person Lookup Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run."':
-          - cell "Person Lookup"
-          - 'cell "Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run."'
+    - text: 1 of 1 Person Lookup Yes crm, ucpath
+    - heading "Where a dry run stops" [level=3]
+    - text: "Person Lookup Nothing to stop at: this graph commits to no system of record, so a rehearsal of it is an ordinary run."
+    - paragraph: "Source: served workflow descriptors."
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

@@ -1,5 +1,5 @@
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
-import { Badge, Banner, Button, dsText, Field, SectionLabel, Select } from "../ds/ui.js";
+import { Badge, Banner, Button, dsText, Field, Select } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { usePreflightActions } from "../state/preflight-actions.js";
 import { usePreflightScope } from "../state/preflight-client.js";
@@ -38,8 +38,8 @@ export function PreflightReportContent({ preflight, onRerun }: { preflight: Pref
         Scope: {completed.report.requestedCapabilities.join(" · ")}<br />
         Checked <time dateTime={completed.report.checkedAt}>{completed.report.checkedAt}</time>
       </span>
-      <div className="flex min-w-0 flex-col gap-[var(--ds-space-base)]">
-        {completed.checks.map(check => <div key={check.id} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+      <div className="settings-preflight-list">
+        {completed.checks.map(check => <div key={check.id} className="settings-preflight-item">
           <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>{check.verdict}</Badge>
             <span className={cn(dsText.ui, "break-words font-medium")}>{check.label}</span>
@@ -60,7 +60,6 @@ export function PreflightReportContent({ preflight, onRerun }: { preflight: Pref
 
 export function PreflightControl({ editor }: { editor: ReturnType<typeof useEditableSettings>; retained: NonNullable<FrontendBootstrapWire["preflight"]> }) {
   return <section className="flex flex-col gap-[var(--ds-space-snug)]" aria-label="Preflight">
-    <SectionLabel>Preflight</SectionLabel>
     <PreflightReportContent preflight={editor.preflight} onRerun={editor.rerunPreflight} />
   </section>;
 }

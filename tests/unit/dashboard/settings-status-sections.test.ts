@@ -215,8 +215,8 @@ describe("System hosts (SE40)", () => {
     // Read the SYSTEM cell itself rather than the panel's text: the host URLs
     // in the two columns beside it contain `crm` and `onbase` as substrings, so
     // a whole-panel search cannot tell a name from a hostname.
-    const names = [...mounted().querySelectorAll("tbody tr")].map(
-      (row) => row.querySelector("td")?.textContent ?? "",
+    const names = [...mounted().querySelectorAll(".settings-host-row")].map(
+      (row) => row.querySelector(".settings-host-heading > span")?.textContent ?? "",
     );
     assert.equal(names.length, 3);
     assert.ok(names[0]?.startsWith("Kuali"), names.join(" | "));
@@ -388,7 +388,7 @@ describe("the F11b review fixes", () => {
 describe("the async arms (D275 item 4)", () => {
   it("says it is reading, rather than drawing an empty table", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, pending);
-    assert.ok(text.includes("Reading what this deployment is configured with"), text);
+    assert.ok(text.includes("Loading deployment facts"), text);
     assert.ok(!text.includes("none provisioned"), text);
   });
 
