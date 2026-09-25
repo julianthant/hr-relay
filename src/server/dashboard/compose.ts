@@ -108,6 +108,7 @@ import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
 import {
   FingerprintSchema,
+  IsoInstantSchema,
   LOCAL_OPERATOR_ACTOR_ID,
   ProviderAdmissionIdSchema,
   type Fingerprint,
@@ -1015,7 +1016,7 @@ async function composeDashboardRuntimeStartup(
       // resolves only after each OS exit event has been observed.
       try {
         await workerControl.supervisor.drainOwnedChildren({
-          requestedAt: clock.now().toISOString(),
+          requestedAt: IsoInstantSchema.parse(clock.now().toISOString()),
           requestedBy: LOCAL_OPERATOR_ACTOR_ID,
           reason: "dashboard-shutdown",
         });

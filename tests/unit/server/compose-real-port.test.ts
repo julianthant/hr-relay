@@ -443,6 +443,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       acquiredAt: clock.now().toISOString(),
       releasedAt: null,
     });
+    if (crashedServer.schemaVersion !== 2) throw new Error("expected-version-2-crash-record");
     mkdirSync(processLockRoot, { recursive: true });
     writeFileSync(serverLockPath, `${JSON.stringify(crashedServer)}\n`);
 

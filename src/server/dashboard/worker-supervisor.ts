@@ -1105,12 +1105,13 @@ export function createDashboardWorkerProcessSupervisor(
           const promise = new Promise<void>((_resolve, reject) => { rejectDrain = reject; });
           // The promise is raced below after all stop requests have been started.
           void promise.catch(() => undefined);
-          record.drainFailure = { promise, reject: rejectDrain };
+          const drainFailure = { promise, reject: rejectDrain };
+          record.drainFailure = drainFailure;
           if (record.state === "running") {
             stopRequests.push(beginStopEscalation(record, canonicalEscalation(), parsedDirective).then(() => undefined).catch((error: unknown) => {
               const failure = error instanceof Error ? error : new Error(String(error));
               failures.push(failure);
-              if (record.state !== "exited") record.drainFailure.reject(failure);
+              if (record.state !== "exited") drainFailure.reject(failure);
             }));
           } else if (record.state === "stopping") {
             const finalSignalSent = record.observedStop.at(-1)?.stage === "sigkill-sent";
