@@ -102,7 +102,7 @@ export function createRuntimeVersionChanges(deps: Readonly<{
       return { runId: RunIdSchema.parse(member.runId), reportJson: canonicalJsonStringify(report),
         parentId: snapshot.run.envelope.parent?.runId };
     });
-    const byId = new Map(captures.map(capture => [capture.runId, capture]));
+    const byId = new Map<string, typeof captures[number]>(captures.map(capture => [capture.runId, capture]));
     const depth = (runId: string, seen = new Set<string>()): number => {
       if (seen.has(runId)) throw new Error("runtime-version-run-parent-cycle");
       const parentId = byId.get(runId)?.parentId;

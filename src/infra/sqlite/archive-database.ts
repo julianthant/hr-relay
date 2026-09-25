@@ -8,8 +8,8 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { z } from "zod";
 
 export const ARCHIVE_APPLICATION_ID = 1213350482;
-export const ARCHIVE_SCHEMA_VERSION = 1;
-const ARCHIVE_DDL = `CREATE TABLE archive_records (
+export const ARCHIVE_SCHEMA_VERSION = 2;
+const ARCHIVE_V1_DDL = `CREATE TABLE archive_records (
  run_id TEXT PRIMARY KEY, transfer_id TEXT NOT NULL UNIQUE, workflow TEXT NOT NULL,
  title TEXT NOT NULL, descriptor_version TEXT NOT NULL, outcome TEXT NOT NULL,
  completed_at TEXT NOT NULL, captured_at TEXT NOT NULL, digest TEXT NOT NULL,
@@ -42,15 +42,33 @@ WHEN NEW.run_id IS NOT OLD.run_id OR NEW.digest IS NOT OLD.digest OR NEW.receipt
 BEGIN SELECT RAISE(ABORT,'archive-deletion-immutable'); END;
 CREATE TRIGGER archive_deletions_retained BEFORE DELETE ON archive_deletions
 BEGIN SELECT RAISE(ABORT,'archive-deletion-retained'); END;`;
+const ARCHIVE_V2_INDEX_DDL = `CREATE INDEX archive_records_dashboard_runtime_version_idx ON archive_records(
+ workflow, json_extract(report_json,'$.content.runtimeVersion.dashboard.major'),
+ json_extract(report_json,'$.content.runtimeVersion.dashboard.minor'), completed_at, run_id
+) WHERE state='published';
+CREATE INDEX archive_records_workflow_runtime_version_idx ON archive_records(
+ workflow, json_extract(report_json,'$.content.runtimeVersion.workflow.major'),
+ json_extract(report_json,'$.content.runtimeVersion.workflow.minor'), completed_at, run_id
+) WHERE state='published';
+CREATE INDEX archive_records_runtime_version_state_idx ON archive_records(
+ workflow, json_extract(report_json,'$.content.runtimeVersion.state'), completed_at, run_id
+) WHERE state='published';`;
+const ARCHIVE_DDL = `${ARCHIVE_V1_DDL}\n${ARCHIVE_V2_INDEX_DDL}`;
 const RowSchema = z.strictObject({ run_id:z.string(), transfer_id:z.string(), workflow:z.string(),title:z.string(),descriptor_version:z.string(),outcome:z.string(),completed_at:z.string(),captured_at:z.string(),report_json:z.string(),digest:z.string(),state:z.enum(["captured","verified","published"]) });
 const DeletionRowSchema = z.strictObject({run_id:z.string(),digest:z.string(),receipt_json:z.string(),files_json:z.string(),state:z.enum(["deleting","deleted"])});
 const SchemaRow = z.strictObject({type:z.string(),name:z.string(),tbl_name:z.string(),sql:z.string()});
 function schemaRows(database: DatabaseSync) { return database.prepare("SELECT type,name,tbl_name,sql FROM sqlite_master WHERE sql IS NOT NULL AND name NOT LIKE 'sqlite_%' ORDER BY type,name").all().map(row=>SchemaRow.parse(row)); }
-let expectedSchema: string | undefined;
-function archiveSchemaIdentity(): string {
-  if (expectedSchema !== undefined) return expectedSchema;
+const expectedSchemas = new Map<number, string>();
+function archiveSchemaIdentity(version: 1 | 2): string {
+  const cached = expectedSchemas.get(version);
+  if (cached !== undefined) return cached;
   const reference = new DatabaseSync(":memory:");
-  try { reference.exec(ARCHIVE_DDL); expectedSchema=canonicalJsonStringify(schemaRows(reference)); return expectedSchema; }
+  try {
+    reference.exec(version === 1 ? ARCHIVE_V1_DDL : ARCHIVE_DDL);
+    const identity = canonicalJsonStringify(schemaRows(reference));
+    expectedSchemas.set(version, identity);
+    return identity;
+  }
   finally { reference.close(); }
 }
 function syncPath(path:string) { const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{fsyncSync(fd);}finally{closeSync(fd);} }
@@ -62,6 +80,8 @@ function fileBytes(path:string): Buffer {
 export class ArchiveDatabase {
   readonly #database: DatabaseSync;
   readonly #readOnly: boolean;
+  #schemaVersion: 1 | 2;
+  get schemaVersion(): 1 | 2 { return this.#schemaVersion; }
   #memoryFiles: Map<string, Buffer> | undefined;
   constructor(readonly path: string, options: Readonly<{readOnly?:boolean; validation?:"all"|"selected"}> = {}) {
     const existed=existsSync(path); this.#readOnly=options.readOnly===true;
@@ -69,10 +89,11 @@ export class ArchiveDatabase {
     if ((!existed && this.#readOnly) || (existed && (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).size===0))) throw new Error("archive-database-invalid-path");
     this.#database=new DatabaseSync(path,{readOnly:this.#readOnly,enableForeignKeyConstraints:true,enableDoubleQuotedStringLiterals:false,allowExtension:false,timeout:5000,defensive:true});
     try {
-      if (!existed) { this.#database.exec(`BEGIN IMMEDIATE; PRAGMA application_id=${String(ARCHIVE_APPLICATION_ID)}; PRAGMA user_version=1; ${ARCHIVE_DDL} COMMIT;`); }
+      if (!existed) { this.#database.exec(`BEGIN IMMEDIATE; PRAGMA application_id=${String(ARCHIVE_APPLICATION_ID)}; PRAGMA user_version=${String(ARCHIVE_SCHEMA_VERSION)}; ${ARCHIVE_DDL} COMMIT;`); }
       const app=z.strictObject({application_id:z.literal(ARCHIVE_APPLICATION_ID)}).safeParse(this.#database.prepare("PRAGMA application_id").get());
-      const version=z.strictObject({user_version:z.literal(ARCHIVE_SCHEMA_VERSION)}).safeParse(this.#database.prepare("PRAGMA user_version").get());
-      if (!app.success || !version.success || canonicalJsonStringify(schemaRows(this.#database))!==archiveSchemaIdentity()) throw new Error("archive-database-identity-mismatch");
+      const version=z.strictObject({user_version:z.union([z.literal(1),z.literal(2)])}).safeParse(this.#database.prepare("PRAGMA user_version").get());
+      if (!app.success || !version.success || canonicalJsonStringify(schemaRows(this.#database))!==archiveSchemaIdentity(version.data.user_version)) throw new Error("archive-database-identity-mismatch");
+      this.#schemaVersion = version.data.user_version;
       const check=z.strictObject({integrity_check:z.literal("ok")}).safeParse(this.#database.prepare("PRAGMA integrity_check").get());
       if(!check.success)throw new Error("archive-database-integrity-failed");
       if(!this.#readOnly)this.#database.exec("PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL");
@@ -83,6 +104,21 @@ export class ArchiveDatabase {
         for(const raw of this.#database.prepare("SELECT * FROM archive_deletions").all())this.parseDeletion(raw);
       }
     } catch(error) {this.#database.close();throw error;}
+  }
+  /** Called only by the stopped, backed-up storage upgrade. Ordinary opens retain schema 1. */
+  static upgradeStopped(path: string): void {
+    if (!existsSync(path)) throw new Error("archive-database-missing");
+    const archive = new ArchiveDatabase(path);
+    try {
+      if (archive.schemaVersion === 2) return;
+      archive.#database.exec("BEGIN EXCLUSIVE");
+      try {
+        archive.#database.exec(`${ARCHIVE_V2_INDEX_DDL} PRAGMA user_version=2`);
+        if (canonicalJsonStringify(schemaRows(archive.#database)) !== archiveSchemaIdentity(2)) throw new Error("archive-upgrade-schema-mismatch");
+        archive.#database.exec("COMMIT");
+        archive.#schemaVersion = 2;
+      } catch (error) { archive.#database.exec("ROLLBACK"); throw error; }
+    } finally { archive.close(); }
   }
   /** Disposable preflight snapshot; neither database nor retained files write to disk. */
   static preflightCopy(path: string): ArchiveDatabase {

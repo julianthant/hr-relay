@@ -61,7 +61,7 @@ function enqueueTerminal(f: ReturnType<typeof foundationFixture>, runId: string,
   assert.equal(result.state, "applied");
 }
 
-function enqueueTerminalChild(f: ReturnType<typeof foundationFixture>, childId: string, workflow = f.run.envelope.workflow) {
+function enqueueTerminalChild(f: ReturnType<typeof foundationFixture>, childId: string, workflow: string = f.run.envelope.workflow) {
   const parentId = f.run.envelope.runId;
   const child = RunRecordSchema.parse({ ...f.run,
     envelope: { ...f.run.envelope, runId: childId, itemId: childId, workflow,
