@@ -29,8 +29,8 @@ import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/d
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 /** Real HTTP composition with deliberately absent current workflow/detail providers. */
-export function savedHttpFixture() {
-  const f = archiveFixture();
+export function savedHttpFixture(options: Parameters<typeof archiveFixture>[0] = {}) {
+  const f = archiveFixture(options);
   const app = () => createDashboardApp({
     requestIdentity: createSoloRequestIdentityCheckpoint({ id: "local-operator", label: "Local operator" }),
     bootstrap: { clock: f.base.clock }, commandJournal: f.database.authority.commands,

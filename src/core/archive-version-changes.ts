@@ -293,6 +293,7 @@ export function runArchiveCommand(request: Request, deps: ArchiveCommandDependen
     if (error instanceof CommandIdentityConflictError) return { state: "rejected" as const, commandId: request.commandId, code: "command-divergent" as const, message: error.message };
     if (error instanceof ArchivePolicyRefusal) return error.result;
     if (error instanceof Error && ["runtime-version-no-workflows", "runtime-version-invalid-selection",
+      "runtime-version-all-workflows-requires-dashboard-scope",
       "runtime-version-review-stale", "runtime-version-active-blockers", "runtime-version-workflow-claimed",
       "runtime-version-claim-active", "runtime-version-legacy-change-active",
       "runtime-version-child-out-of-scope",
