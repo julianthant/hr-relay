@@ -18,7 +18,7 @@ import { createExplorerOverrideRepository, validateExplorerOverrides } from "./e
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { ArchiveReportSchema, ArchiveQuerySchema, type ArchiveQuery, type ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema, type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
@@ -3168,6 +3168,20 @@ export class AuthorityDatabase implements Disposable {
       for(const report of items) { const owner=this.savedReportOwner(report.content.runId); if(owner.state!=="archived" || owner.reportDigest!==report.digest)throw new Error("archive-query-owner-mismatch"); }
       const last=items.at(-1);
       return {items,next:visible.length>query.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
+    });
+  }
+
+  archiveGroups(query:ArchiveGroupQuery) {
+    query=ArchiveGroupQuerySchema.parse(query);
+    return this.withAuthorityReadSnapshot(()=>{
+      const path=join(dirname(this.#path),"archive.sqlite");
+      if(!existsSync(path)){
+        if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");
+        return [];
+      }
+      const deletedRunIds=this.#database.prepare("SELECT record_key FROM deleted_runs WHERE origin='archive'").all()
+        .map(row=>z.strictObject({record_key:RunIdSchema}).parse(row).record_key);
+      return this.lifecycleArchive(true).groups(query,deletedRunIds);
     });
   }
 

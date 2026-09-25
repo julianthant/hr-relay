@@ -429,6 +429,13 @@ export const SavedArchiveIndexWireSchema = z.strictObject({
 });
 export type SavedArchiveIndexWire = z.infer<typeof SavedArchiveIndexWireSchema>;
 
+export const SavedArchiveGroupsWireSchema = z.strictObject({ groups: z.array(z.strictObject({
+  dashboardVersion: RuntimeVersionSchema.nullable(), workflow: z.string().min(1),
+  workflowVersion: RuntimeVersionSchema.nullable(), reportCount: z.number().int().positive(),
+  latestCompletedAt: IsoInstantSchema,
+})) });
+export type SavedArchiveGroupsWire = z.infer<typeof SavedArchiveGroupsWireSchema>;
+
 export const SavedVersionIndexWireSchema = z.strictObject({
   appVersion: z.string(), workflows: z.array(z.strictObject({ workflow: z.string(), label: z.string(), version: z.number(), fingerprint: FingerprintSchema })),
   changes: z.array(z.strictObject({ changeId: z.string().uuid(), state: z.enum(["planned", "applying", "applied", "superseded"]),

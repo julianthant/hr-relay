@@ -2,7 +2,8 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync, lstatSync, unlinkSy
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
-import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, type ArchiveQuery, type ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema,
+  type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { z } from "zod";
@@ -163,13 +164,9 @@ export class ArchiveDatabase {
     return report;
   }
   workflows() { return this.#database.prepare("SELECT DISTINCT workflow FROM archive_records WHERE state='published' ORDER BY workflow").all().map(row=>z.object({workflow:z.string()}).parse(row).workflow); }
-  query(input:ArchiveQuery) {
-    this.#database.exec("BEGIN");
-    try { const result=this.querySnapshot(input);this.#database.exec("COMMIT");return result; }
-    catch(error){this.#database.exec("ROLLBACK");throw error;}
-  }
-  private querySnapshot(input:ArchiveQuery) {
-    const q=ArchiveQuerySchema.parse(input),clauses=["workflow=?","state='published'"],values:(string|number)[]=[q.workflow];
+  private queryConditions(q: ArchiveGroupQuery & { after?: ArchiveQuery["after"] }) {
+    const clauses = ["state='published'"], values: (string | number)[] = [];
+    if (q.workflow !== undefined) { clauses.push("workflow=?"); values.push(q.workflow); }
     if(q.title!==undefined){clauses.push("title=?");values.push(q.title);}
     if(q.search!==undefined){clauses.push("(instr(lower(title),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(report_json,'$.content.files') AS file WHERE instr(lower(json_extract(file.value,'$.name')),lower(?))>0))");values.push(q.search,q.search);}
     if(q.capturedFrom!==undefined){clauses.push("captured_at>=?");values.push(q.capturedFrom);}
@@ -185,10 +182,50 @@ export class ArchiveDatabase {
       else {clauses.push("json_extract(report_json,'$.content.runtimeVersion.state')=?");values.push(q.versionState);}
     }
     if(q.after!==undefined){clauses.push("(completed_at,run_id)>(?,?)");values.push(q.after.completedAt,q.after.runId);}
+    return { clauses, values };
+  }
+  query(input:ArchiveQuery) {
+    this.#database.exec("BEGIN");
+    try { const result=this.querySnapshot(input);this.#database.exec("COMMIT");return result; }
+    catch(error){this.#database.exec("ROLLBACK");throw error;}
+  }
+  private querySnapshot(input:ArchiveQuery) {
+    const q=ArchiveQuerySchema.parse(input),{clauses,values}=this.queryConditions(q);
     const rows=this.#database.prepare(`SELECT run_id FROM archive_records WHERE ${clauses.join(" AND ")} ORDER BY completed_at,run_id LIMIT ?`).all(...values,q.limit+1);
     const reports=rows.map(raw=>{const id=z.object({run_id:z.string()}).parse(raw).run_id;const report=this.readPublishedReport(id);if(report===undefined)throw new Error("archive-query-state-changed");return report;});
     const items=reports.slice(0,q.limit),last=items.at(-1);
     return {items,next:reports.length>q.limit && last!==undefined ? {completedAt:last.content.completedAt,runId:last.content.runId}:null};
+  }
+  groups(input: ArchiveGroupQuery, excludedRunIds: readonly string[] = []) {
+    const q = ArchiveGroupQuerySchema.parse(input);
+    this.#database.exec("BEGIN");
+    try {
+      const { clauses, values } = this.queryConditions(q);
+      if (excludedRunIds.length > 0) { clauses.push("run_id NOT IN (SELECT value FROM json_each(?))"); values.push(JSON.stringify(excludedRunIds)); }
+      const rows = this.#database.prepare(`SELECT workflow,
+        json_extract(report_json,'$.content.runtimeVersion.dashboard.major') AS dashboard_major,
+        json_extract(report_json,'$.content.runtimeVersion.dashboard.minor') AS dashboard_minor,
+        json_extract(report_json,'$.content.runtimeVersion.workflow.major') AS workflow_major,
+        json_extract(report_json,'$.content.runtimeVersion.workflow.minor') AS workflow_minor,
+        count(*) AS report_count, max(completed_at) AS latest_completed_at
+        FROM archive_records WHERE ${clauses.join(" AND ")}
+        GROUP BY workflow,dashboard_major,dashboard_minor,workflow_major,workflow_minor
+        ORDER BY dashboard_major DESC,dashboard_minor DESC,workflow,workflow_major DESC,workflow_minor DESC`).all(...values);
+      const groups = rows.map(raw => {
+        const row = z.strictObject({ workflow: z.string().min(1), dashboard_major: z.number().int().nullable(),
+          dashboard_minor: z.number().int().nullable(), workflow_major: z.number().int().nullable(),
+          workflow_minor: z.number().int().nullable(), report_count: z.number().int().positive(),
+          latest_completed_at: z.string().datetime() }).parse(raw);
+        if ((row.dashboard_major === null) !== (row.dashboard_minor === null)
+          || (row.workflow_major === null) !== (row.workflow_minor === null)
+          || (row.dashboard_major === null) !== (row.workflow_major === null)) throw new Error("archive-group-version-invalid");
+        return { dashboardVersion: row.dashboard_major === null ? null : { major: row.dashboard_major, minor: row.dashboard_minor! },
+          workflow: row.workflow, workflowVersion: row.workflow_major === null ? null : { major: row.workflow_major, minor: row.workflow_minor! },
+          reportCount: row.report_count, latestCompletedAt: row.latest_completed_at };
+      });
+      this.#database.exec("COMMIT");
+      return groups;
+    } catch (error) { this.#database.exec("ROLLBACK"); throw error; }
   }
   state(runId:string):"captured"|"verified"|"published"|"deleting"|"deleted"|undefined{
     const row=this.#database.prepare("SELECT state FROM archive_records WHERE run_id=?").get(runId);

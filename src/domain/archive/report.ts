@@ -60,3 +60,5 @@ export const ArchiveQuerySchema=z.strictObject({workflow:z.string().min(1),limit
   versionState:z.enum(["stamped","adopted","unrecorded"]).optional(),
   after:z.strictObject({completedAt:z.string().datetime(),runId:RunIdSchema}).optional()});
 export type ArchiveQuery=z.infer<typeof ArchiveQuerySchema>;
+export const ArchiveGroupQuerySchema = ArchiveQuerySchema.omit({ limit: true, after: true }).partial({ workflow: true });
+export type ArchiveGroupQuery = z.infer<typeof ArchiveGroupQuerySchema>;

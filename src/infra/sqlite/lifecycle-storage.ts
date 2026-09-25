@@ -19,6 +19,7 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
     readPendingReport: (runId:string,transferId:string) => database.readPendingArchiveReport(runId,transferId),
     archiveWorkflows: () => database.archiveWorkflows(),
     listReports: (query: import("../../domain/archive/report.js").ArchiveQuery) => database.queryArchiveReports(query),
+    archiveGroups: (query: import("../../domain/archive/report.js").ArchiveGroupQuery) => database.archiveGroups(query),
     readVersionChange: (id: string) => database.readVersionChange(id),
     runtimeVersionIndex: () => database.readRuntimeVersionIndex(),
     writeVersionChange: (change: VersionChange) => database.writeVersionChange(change),

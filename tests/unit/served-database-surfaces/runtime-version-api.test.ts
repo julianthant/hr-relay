@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 
 import { CommandResultSchema } from "../../../src/domain/commands.js";
-import { SavedArchiveIndexWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveIndexWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { id, NOW } from "../database-foundation/fixtures.js";
 import { savedHttpFixture } from "./fixtures.js";
 
@@ -27,6 +27,9 @@ it("serves a reviewed workflow bump, applies its exact command and filters the s
     };
     const initial = await read();
     assert.deepEqual(initial.dashboard, { major: 1, minor: 0 });
+    const emptyGroups = await app.request("http://localhost/api/v1/archive/groups", { headers });
+    assert.equal(emptyGroups.status, 200);
+    assert.deepEqual(SavedArchiveGroupsWireSchema.parse(await emptyGroups.json()), { groups: [] });
     const allAsMinor = await post({ commandId: id(88900), requestedAt: NOW, requestedBy: "local-operator", source: "archive",
       family: "version-archive", type: "plan-runtime-version",
       target: { scope: { kind: "workflows", workflowIds: ["person-lookup", "other-workflow"] } } });
@@ -58,5 +61,27 @@ it("serves a reviewed workflow bump, applies its exact command and filters the s
     assert.equal(index.items.length, 1);
     assert.equal(index.items[0]?.state, "available");
     assert.equal(index.next, null);
+    const groupQuery = new URLSearchParams(query);
+    groupQuery.delete("limit");
+    const grouped = await app.request(`http://localhost/api/v1/archive/groups?${groupQuery}`, { headers });
+    assert.equal(grouped.status, 200);
+    const groups = SavedArchiveGroupsWireSchema.parse(await grouped.json());
+    assert.deepEqual(groups.groups.map(({dashboardVersion, workflow, workflowVersion, reportCount}) =>
+      ({dashboardVersion, workflow, workflowVersion, reportCount})), [{
+        dashboardVersion: {major:1, minor:0}, workflow: "person-lookup",
+        workflowVersion: {major:1, minor:0}, reportCount:1,
+      }]);
+    const unmatched = await app.request("http://localhost/api/v1/archive/groups?outcome=failed", { headers });
+    assert.equal(unmatched.status, 200);
+    assert.deepEqual(SavedArchiveGroupsWireSchema.parse(await unmatched.json()), {groups:[]});
+    const report = index.items[0];
+    assert.ok(report?.state === "available");
+    const deleted = await post({ commandId: id(88903), requestedAt: NOW, requestedBy: "local-operator", source: "archive",
+      family: "version-archive", type: "delete-archived-run",
+      target: { archivedRunId: report.runId, archiveFingerprint: report.archiveFingerprint } });
+    assert.equal(deleted.result.state, "applied");
+    const afterDelete = await app.request("http://localhost/api/v1/archive/groups", { headers });
+    assert.equal(afterDelete.status, 200);
+    assert.deepEqual(SavedArchiveGroupsWireSchema.parse(await afterDelete.json()), {groups:[]});
   } finally { f.dispose(); }
 });

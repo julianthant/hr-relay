@@ -5,7 +5,8 @@ import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../domain/ids.
 import { SavedVersionIndexWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../domain/dashboard/archive.js";
 import type { createRunLifecycleStorage } from "../../../infra/sqlite/lifecycle-storage.js";
 import { readArchiveReport, queryArchiveReports } from "./archive-reports.js";
-import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, type SavedArchiveQuery } from "../../../domain/dashboard/archive.js";
+import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, SavedArchiveGroupsWireSchema, type SavedArchiveQuery } from "../../../domain/dashboard/archive.js";
+import type { ArchiveGroupQuery } from "../../../domain/archive/report.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "./canonical-runs.js";
 import { requireCanonicalRun } from "./run-read.js";
@@ -916,6 +917,12 @@ export function savedArchiveIndex(deps: ArchiveQueryDeps, query: SavedArchiveQue
   if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
   const storage = deps.storage;
   return savedArchiveRead(() => SavedArchiveIndexWireSchema.parse(queryArchiveReports(storage, query)));
+}
+
+export function savedArchiveGroups(deps: ArchiveQueryDeps, query: ArchiveGroupQuery) {
+  if (deps.storage === undefined) throw new Error("saved-archive-storage-unavailable");
+  const storage = deps.storage;
+  return savedArchiveRead(() => SavedArchiveGroupsWireSchema.parse({groups:storage.archiveGroups(query)}));
 }
 
 function savedAttachment(deps: ArchiveQueryDeps, runId: string, artifactId: string, byDigest: boolean) {
