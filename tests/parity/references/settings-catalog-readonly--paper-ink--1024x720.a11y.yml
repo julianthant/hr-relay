@@ -16,8 +16,8 @@
   - button "Activity"
   - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
-  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
-  - button "Today is the newest day" [disabled]
+  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
+  - button "No later day" [disabled]
   - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
@@ -64,14 +64,16 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Deployment" [level=2]
-    - paragraph: "Source: active process configuration. Read-only here; changes apply after restart."
+    - text: Code-owned configuration for this process.
+    - paragraph: Deployment facts change through config/runtime-isolation.json, runtime-paths.ts and configuration code.
+    - heading "Runtime paths and routes" [level=3]
     - region "Operator":
-      - heading "Operator" [level=3]
+      - heading "Operator" [level=4]
       - term: Local operator ID
       - definition: local-operator
       - group: Configuration key
     - region "Production routes":
-      - heading "Production routes" [level=3]
+      - heading "Production routes" [level=4]
       - term: Kuali production routes
       - definition:
         - term: Entry URL
@@ -136,7 +138,7 @@
         - definition: https://ucsdcloud.sharepoint.com
       - group: Configuration key
     - region "Runtime paths":
-      - heading "Runtime paths" [level=3]
+      - heading "Runtime paths" [level=4]
       - term: Runtime state folder
       - definition: /tmp/settings-fixture/state
       - group:

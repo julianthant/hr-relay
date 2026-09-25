@@ -73,10 +73,11 @@ describe("typed Settings catalog controls", () => {
     assert.match(mounted.host.textContent ?? "", /Running operator/u);
     assert.match(mounted.host.textContent ?? "", /Local operator/u);
     const field = mounted.host.querySelector('[data-settings-path="actor.label"]'); assert.ok(field);
-    const identity = field.querySelector('details > summary');
-    assert.equal(identity?.textContent, "Setting identity");
+    const group = field.closest(".settings-group"); assert.ok(group);
+    const identity = group.querySelector('details > summary');
+    assert.equal(identity?.textContent, "Setting identities");
     assert.equal(identity?.parentElement?.querySelector("code")?.textContent, "actor.label");
-    assert.equal(field.querySelectorAll("details").length, 1);
+    assert.equal(field.querySelectorAll("details").length, 0);
   });
   it("shows saved, active and default host values plus their process-lifetime source", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
@@ -212,7 +213,7 @@ describe("typed Settings catalog controls", () => {
   it("renders the source's field type and safe defaults, without environment provenance", async () => {
     const h = await setup("providers");
     assert.ok(h.host.querySelector('input[type="number"]')); assert.ok(h.host.querySelector("textarea"));
-    assert.equal(h.host.querySelector('input[type="number"]')?.getAttribute("aria-label"), null);
+    assert.equal(h.host.querySelector('input[type="number"]')?.getAttribute("aria-label"), "OCR Extract budget: Timeout (ms)");
     assert.doesNotMatch(h.host.textContent ?? "", /Environment:/u);
     const leaf = settingsLeaves(h.authority.read()).find(candidate => candidate.path === "providers.gemini.models"); assert.ok(leaf); assert.equal(settingInput(leaf), "");
   });

@@ -15,9 +15,9 @@
   - button "Explorer"
   - button "Activity"
   - button "Search runs across dates": Search runs… /
-  - button "No earlier day in the tracker" [disabled]
-  - button "Pick a day — showing Wed, Sep 9 · today, 0 rows": Wed, Sep 9 · today 0
-  - button "Today is the newest day" [disabled]
+  - button "Previous day — Tue, Sep 8"
+  - button "Pick a day — showing Wed, Sep 9, 0 rows": Wed, Sep 9 0
+  - button "No later day" [disabled]
   - 'button "Preflight: unavailable"'
   - button "Notifications — 0 unread"
   - button "Switch to Paper Ink"
@@ -64,23 +64,20 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Display" [level=2]
-    - text: Revision 5
+    - text: Display dimensions used by new browser sessions. Revision 5
     - paragraph: Saved values apply to new runs.
     - text: "Observed host: 2560 × 1440"
-    - button "Clear override" [disabled]
-    - region "Primary display":
-      - heading "Primary display" [level=3]
-      - separator
-      - text: Screen width px
-      - spinbutton "Screen width": "2560"
-      - text: Using default Screen height px
-      - spinbutton "Screen height": "1440"
-      - text: Using default
-      - group: Setting identities
+    - heading "Display size" [level=3]
+    - text: Screen width px
+    - spinbutton "Screen width": "2560"
+    - text: Using default Screen height px
+    - spinbutton "Screen height": "1440"
+    - text: Using default
+    - group: Setting identities
     - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
-    - text: No unsaved changes
-    - button "Discard all" [disabled]
-    - button "Save 0" [disabled]
+    - text: All changes saved
+    - button "Discard" [disabled]
+    - button "Save changes" [disabled]
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
   - button "Add workers"

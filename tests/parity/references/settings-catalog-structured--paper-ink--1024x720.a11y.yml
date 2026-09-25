@@ -16,8 +16,8 @@
   - button "Activity"
   - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
-  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
-  - button "Today is the newest day" [disabled]
+  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
+  - button "No later day" [disabled]
   - 'button "Preflight: unavailable"'
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"
@@ -64,123 +64,86 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "Provider budgets & models" [level=2]
-    - text: Revision 2
+    - text: Provider limits and model order for newly created jobs. Revision 2
     - paragraph: Saved values apply to new runs.
-    - region "OCR extraction":
-      - heading "OCR extraction" [level=3]
-      - separator
-      - group "Budget and request limits":
-        - text: Budget and request limits Request timeout (required) milliseconds
-        - spinbutton "Request timeout (required)": "120000"
-        - text: Parallel requests (required)
-        - spinbutton "Parallel requests (required)": "4"
-        - text: Requests per minute (required)
-        - spinbutton "Requests per minute (required)": "10"
-        - text: Daily request limit (required)
-        - spinbutton "Daily request limit (required)": "250"
-        - text: Daily cost ceiling (required) USD micro-units
-        - spinbutton "Daily cost ceiling (required)": "0"
-      - text: Using default
-      - button "Clear providers · ocr Extract" [disabled]: Clear
-      - group: Setting identity
-    - region "Census geocoding":
-      - heading "Census geocoding" [level=3]
-      - separator
-      - group "Budget and request limits":
-        - text: Budget and request limits Request timeout (required) milliseconds
-        - spinbutton "Request timeout (required)": "15000"
-        - text: Parallel requests (required)
-        - spinbutton "Parallel requests (required)": "2"
-        - text: Requests per minute (required)
-        - spinbutton "Requests per minute (required)": "30"
-        - text: Daily request limit (required)
-        - spinbutton "Daily request limit (required)": "5000"
-        - text: Daily cost ceiling (required) USD micro-units
-        - spinbutton "Daily cost ceiling (required)": "0"
-      - text: Using default
-      - button "Clear providers · geocode Census" [disabled]: Clear
-      - group: Setting identity
-    - region "Nominatim geocoding":
-      - heading "Nominatim geocoding" [level=3]
-      - separator
-      - group "Budget and request limits":
-        - text: Budget and request limits Request timeout (required) milliseconds
-        - spinbutton "Request timeout (required)": "15000"
-        - text: Parallel requests (required)
-        - spinbutton "Parallel requests (required)": "1"
-        - text: Requests per minute (required)
-        - spinbutton "Requests per minute (required)": "1"
-        - text: Daily request limit (required)
-        - spinbutton "Daily request limit (required)": "1000"
-        - text: Daily cost ceiling (required) USD micro-units
-        - spinbutton "Daily cost ceiling (required)": "0"
-      - text: Using default
-      - button "Clear providers · geocode Nominatim" [disabled]: Clear
-      - group: Setting identity
-    - region "AI advisory":
-      - heading "AI advisory" [level=3]
-      - separator
-      - group "Budget and request limits":
-        - text: Budget and request limits Request timeout (required) milliseconds
-        - spinbutton "Request timeout (required)": "90000"
-        - text: Parallel requests (required)
-        - spinbutton "Parallel requests (required)": "2"
-        - text: Requests per minute (required)
-        - spinbutton "Requests per minute (required)": "10"
-        - text: Daily request limit (required)
-        - spinbutton "Daily request limit (required)": "250"
-        - text: Daily cost ceiling (required) USD micro-units
-        - spinbutton "Daily cost ceiling (required)": "0"
-      - text: Using default
-      - button "Clear providers · ai Advisory" [disabled]: Clear
-      - group: Setting identity
-    - region "Gemini":
-      - heading "Gemini" [level=3]
-      - separator
-      - text: providers · gemini · models One model per line; order is fallback priority.
-      - textbox "providers · gemini · models": model-second model-first
-      - text: Saved
-      - button "Clear providers · gemini · models": Clear
-      - term: Saved and Active
-      - definition: "[\"model-second\",\"model-first\"]"
-      - term: Default
-      - definition: not set
-      - group: Setting identity
-    - region "Groq":
-      - heading "Groq" [level=3]
-      - separator
-      - text: providers · groq · models One model per line; order is fallback priority.
-      - textbox "providers · groq · models"
-      - text: Using default Not set
-      - button "Clear providers · groq · models" [disabled]: Clear
-      - group: Setting identity
-    - region "Mistral":
-      - heading "Mistral" [level=3]
-      - separator
-      - text: providers · mistral · models One model per line; order is fallback priority.
-      - textbox "providers · mistral · models"
-      - text: Using default Not set
-      - button "Clear providers · mistral · models" [disabled]: Clear
-      - group: Setting identity
-    - region "OpenRouter":
-      - heading "OpenRouter" [level=3]
-      - separator
-      - text: providers · open Router · models One model per line; order is fallback priority.
-      - textbox "providers · open Router · models"
-      - text: Using default Not set
-      - button "Clear providers · open Router · models" [disabled]: Clear
-      - group: Setting identity
-    - region "SambaNova":
-      - heading "SambaNova" [level=3]
-      - separator
-      - text: providers · sambanova · models One model per line; order is fallback priority.
-      - textbox "providers · sambanova · models"
-      - text: Using default Not set
-      - button "Clear providers · sambanova · models" [disabled]: Clear
-      - group: Setting identity
-    - text: No unsaved changes
-    - button "Discard all" [disabled]
-    - button "Save 0" [disabled]
+    - heading "Provider budgets" [level=3]
+    - group "OCR Extract budget":
+      - text: OCR Extract budget Timeout (ms) (required) milliseconds
+      - 'spinbutton "OCR Extract budget: Timeout (ms)"': "120000"
+      - text: Concurrent requests (required)
+      - 'spinbutton "OCR Extract budget: Concurrent requests"': "4"
+      - text: Requests per minute (required)
+      - 'spinbutton "OCR Extract budget: Requests per minute"': "10"
+      - text: Daily request limit (required)
+      - 'spinbutton "OCR Extract budget: Daily request limit"': "250"
+      - text: Cost limit (USD micros) (required) USD micro-units
+      - 'spinbutton "OCR Extract budget: Cost limit (USD micros)"': "0"
+    - text: Using default
+    - group "Geocode Census budget":
+      - text: Geocode Census budget Timeout (ms) (required) milliseconds
+      - 'spinbutton "Geocode Census budget: Timeout (ms)"': "15000"
+      - text: Concurrent requests (required)
+      - 'spinbutton "Geocode Census budget: Concurrent requests"': "2"
+      - text: Requests per minute (required)
+      - 'spinbutton "Geocode Census budget: Requests per minute"': "30"
+      - text: Daily request limit (required)
+      - 'spinbutton "Geocode Census budget: Daily request limit"': "5000"
+      - text: Cost limit (USD micros) (required) USD micro-units
+      - 'spinbutton "Geocode Census budget: Cost limit (USD micros)"': "0"
+    - text: Using default
+    - group "Geocode Nominatim budget":
+      - text: Geocode Nominatim budget Timeout (ms) (required) milliseconds
+      - 'spinbutton "Geocode Nominatim budget: Timeout (ms)"': "15000"
+      - text: Concurrent requests (required)
+      - 'spinbutton "Geocode Nominatim budget: Concurrent requests"': "1"
+      - text: Requests per minute (required)
+      - 'spinbutton "Geocode Nominatim budget: Requests per minute"': "1"
+      - text: Daily request limit (required)
+      - 'spinbutton "Geocode Nominatim budget: Daily request limit"': "1000"
+      - text: Cost limit (USD micros) (required) USD micro-units
+      - 'spinbutton "Geocode Nominatim budget: Cost limit (USD micros)"': "0"
+    - text: Using default
+    - group "AI Advisory budget":
+      - text: AI Advisory budget Timeout (ms) (required) milliseconds
+      - 'spinbutton "AI Advisory budget: Timeout (ms)"': "90000"
+      - text: Concurrent requests (required)
+      - 'spinbutton "AI Advisory budget: Concurrent requests"': "2"
+      - text: Requests per minute (required)
+      - 'spinbutton "AI Advisory budget: Requests per minute"': "10"
+      - text: Daily request limit (required)
+      - 'spinbutton "AI Advisory budget: Daily request limit"': "250"
+      - text: Cost limit (USD micros) (required) USD micro-units
+      - 'spinbutton "AI Advisory budget: Cost limit (USD micros)"': "0"
+    - text: Using default
+    - group: Setting identities
+    - heading "Model order" [level=3]
+    - text: Gemini model order One model per line; order is fallback priority.
+    - textbox "Gemini model order":
+      - /placeholder: One model per line, in order
+      - text: model-second model-first
+    - text: Saved
+    - term: Saved and Active
+    - definition: "[\"model-second\",\"model-first\"]"
+    - term: Default
+    - definition: not set
+    - button "Restore standard"
+    - text: Groq model order One model per line; order is fallback priority.
+    - textbox "Groq model order":
+      - /placeholder: One model per line, in order
+    - text: Using default Not set Mistral model order One model per line; order is fallback priority.
+    - textbox "Mistral model order":
+      - /placeholder: One model per line, in order
+    - text: Using default Not set Open Router model order One model per line; order is fallback priority.
+    - textbox "Open Router model order":
+      - /placeholder: One model per line, in order
+    - text: Using default Not set Sambanova model order One model per line; order is fallback priority.
+    - textbox "Sambanova model order":
+      - /placeholder: One model per line, in order
+    - text: Using default Not set
+    - group: Setting identities
+    - text: All changes saved
+    - button "Discard" [disabled]
+    - button "Save changes" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

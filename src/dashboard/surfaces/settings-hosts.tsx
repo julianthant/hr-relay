@@ -21,7 +21,7 @@ import { SYSTEM_HOST_PRESENTATION,systemHostsMeta } from "./settings-hosts-model
 export function SystemHostsSection() {
   const facts = useSettingsFacts();
   return (
-    <Panel className="min-h-0 flex-1">
+    <Panel className="settings-page-panel">
       <PanelHeader
         title="System hosts"
         headingLevel={2}

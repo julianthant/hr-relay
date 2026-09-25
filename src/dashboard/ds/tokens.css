@@ -416,6 +416,8 @@
   --ds-space-loose: 16px;
   --ds-space-section: 24px;
   --ds-space-page: 32px;
+  --ds-w-settings-content: 850px;
+  --ds-w-settings-control: 310px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
      region all hang off this one inset. It used to be three different numbers
      (`cozy` / `base` / bare `p-3`), so the three bands' content started on

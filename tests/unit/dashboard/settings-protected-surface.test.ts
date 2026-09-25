@@ -15,7 +15,7 @@ function savedText(host: HTMLElement): string {
 describe("independent protected Settings surface", () => {
   it("starts empty, validates all five names, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
-    assert.equal(h.host.querySelectorAll('input[type="text"]').length, 5);
+    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 5);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
     for (const name of ProtectedSettingsNameSchema.options) {

@@ -4,12 +4,17 @@
  */
 import {
   forwardRef,
+  useImperativeHandle,
+  useLayoutEffect,
+  useRef,
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
+  type ComponentProps,
   type HTMLAttributes,
   type ReactNode,
 } from "react";
 import { cva, type VariantProps } from "class-variance-authority";
+import { Button as HeroButton } from "@heroui/react";
 import { Loader2, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
@@ -137,17 +142,28 @@ export interface DsButtonProps
 
 export const Button = forwardRef<HTMLButtonElement, DsButtonProps>(
   function Button(
-    { className, variant, size, block, icon, iconAfter, loading, children, disabled, ...props },
+    { className, variant, size, block, icon, iconAfter, loading, children, disabled, value, onClick, "aria-busy": ariaBusy, ...props },
     ref,
   ) {
+    const innerRef = useRef<HTMLButtonElement>(null);
+    const busy = loading || ariaBusy === true || ariaBusy === "true";
+    useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
+    useLayoutEffect(() => {
+      if (busy) innerRef.current?.setAttribute("aria-busy", "true");
+      else innerRef.current?.removeAttribute("aria-busy");
+    }, [busy]);
     return (
-      <button
-        ref={ref}
+      <HeroButton
+        ref={innerRef}
         type={props.type ?? "button"}
-        aria-busy={loading || undefined}
-        disabled={disabled ?? loading}
+        aria-busy={busy ? "true" : undefined}
+        isDisabled={disabled || loading}
+        value={value === undefined ? undefined : String(value)}
+        onClick={onClick as ComponentProps<typeof HeroButton>["onClick"]}
+        size={size === "toolbar" ? "sm" : size ?? "md"}
+        variant={variant === "brand" ? "primary" : variant === "dangerGhost" ? "danger" : variant ?? "secondary"}
         className={cn(buttonVariants({ variant, size, block }), className)}
-        {...props}
+        {...(props as unknown as ComponentProps<typeof HeroButton>)}
       >
         {loading ? (
           <Loader2 aria-hidden className={cn(dsIcon.md, "animate-spin motion-reduce:animate-none")} />
@@ -156,7 +172,7 @@ export const Button = forwardRef<HTMLButtonElement, DsButtonProps>(
         )}
         {children}
         {iconAfter}
-      </button>
+      </HeroButton>
     );
   },
 );

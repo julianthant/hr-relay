@@ -16,8 +16,8 @@
   - button "Activity"
   - button "Search runs across dates": Search runs… /
   - button "Previous day — Sun, Aug 2"
-  - button "Pick a day — showing Mon, Aug 3 · today, 14 rows": Mon, Aug 3 · today 14
-  - button "Today is the newest day" [disabled]
+  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
+  - button "No later day" [disabled]
   - 'button "Preflight: fail" [expanded]'
   - button "Notifications — 1 unread"
   - button "Switch to Graphite Warm"

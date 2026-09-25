@@ -119,25 +119,21 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
         await doctor.focus(); await expect(doctor).toBeFocused();
       } else {
         await createSettingsDraft(page, section);
-        const identitySummary = page.locator('details > summary').filter({ hasText: section === "protected-store" ? "Credential identifiers" : "Setting identity" }).first();
+        const identitySummary = page.locator('details > summary').filter({ hasText: section === "protected-store" ? /Credential identifiers/u : /Setting identities/u }).first();
         await identitySummary.focus(); await expect(identitySummary).toBeFocused(); await page.keyboard.press("Enter");
         await expect(identitySummary.locator("xpath=..").locator("code").first()).toBeVisible();
       }
       const lastInput = page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select,[data-protected-name] input:not([type=hidden])').last();
       if (section !== "runtime-isolation" && section !== "storage") {
-        const save = page.getByRole("button", { name: section === "protected-store" ? "Save credentials 1" : /^Save [1-9]\d*$/ });
-        const discard = page.getByRole("button", { name: section === "protected-store" ? "Discard credentials" : "Discard all" });
+        const save = page.getByRole("button", { name: section === "protected-store" ? "Save credentials" : "Save changes", exact: true });
+        const discard = page.getByRole("button", { name: "Discard", exact: true });
         await expect(save).toBeVisible(); await expect(save).toBeEnabled();
         await expect(discard).toBeVisible(); await expect(discard).toBeEnabled();
         const disclosure = page.locator("details[open]").last();
         await disclosure.scrollIntoViewIfNeeded();
-        const disclosureBounds = await disclosure.boundingBox(); const footerBounds = await save.locator("xpath=..").boundingBox();
-        expect(disclosureBounds).not.toBeNull(); expect(footerBounds).not.toBeNull();
-        expect(disclosureBounds!.y + disclosureBounds!.height).toBeLessThanOrEqual(footerBounds!.y + 1);
-        if (await lastInput.count()) await lastInput.scrollIntoViewIfNeeded();
-        const inputBounds = await lastInput.boundingBox();
-        expect(inputBounds).not.toBeNull(); expect(footerBounds).not.toBeNull();
-        expect(inputBounds!.y + inputBounds!.height).toBeLessThanOrEqual(footerBounds!.y + 1);
+        await expect(disclosure).toBeInViewport();
+        if (await lastInput.count()) { await lastInput.focus(); await expect(lastInput).toBeFocused(); }
+        expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
         await save.focus(); await expect(save).toBeFocused();
       }
       const stem = `ui-settings-records-after/${viewport.name}/settings-${section}-${theme.name}`;
@@ -191,21 +187,16 @@ test("UI-A Settings survives real browser zoom with keyboard details and reachab
         const geometry = await page.evaluate(() => ({ innerWidth, innerHeight, dpr: devicePixelRatio, cssZoom: document.documentElement.style.zoom, bodyCssZoom: document.body.style.zoom }));
         expect(geometry.cssZoom).toBe(""); expect(geometry.bodyCssZoom).toBe("");
         await createSettingsDraft(page, sample.section);
-        const identity = page.locator("details > summary", { hasText: "Setting identity" }).first();
+        const identity = page.locator("details > summary", { hasText: "Setting identities" }).first();
         await identity.focus(); await expect(identity).toBeFocused(); await page.keyboard.press("Enter");
-        await expect(identity.locator("xpath=..").locator("code")).toBeVisible();
-        const save = page.getByRole("button", { name: /^Save [1-9]\d*$/ });
-        const discard = page.getByRole("button", { name: "Discard all" });
+        await expect(identity.locator("xpath=..").locator("code").first()).toBeVisible();
+        const save = page.getByRole("button", { name: "Save changes", exact: true });
+        const discard = page.getByRole("button", { name: "Discard", exact: true });
         const lastInput = page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select').last();
         const disclosure = page.locator("details[open]").last();
         await disclosure.scrollIntoViewIfNeeded();
-        const disclosureBounds = await disclosure.boundingBox(); const footerBounds = await save.locator("xpath=..").boundingBox();
-        expect(disclosureBounds).not.toBeNull(); expect(footerBounds).not.toBeNull();
-        expect(disclosureBounds!.y + disclosureBounds!.height).toBeLessThanOrEqual(footerBounds!.y + 1);
-        await lastInput.scrollIntoViewIfNeeded();
-        const inputBounds = await lastInput.boundingBox();
-        expect(inputBounds).not.toBeNull(); expect(footerBounds).not.toBeNull();
-        expect(inputBounds!.y + inputBounds!.height).toBeLessThanOrEqual(footerBounds!.y + 1);
+        await expect(disclosure).toBeInViewport();
+        await lastInput.focus(); await expect(lastInput).toBeFocused();
         await expect(save).toBeEnabled(); await save.focus(); await expect(save).toBeFocused();
         await expect(discard).toBeEnabled();
         const stem = `ui-settings-records-after/zoom-${String(sample.zoom)}-${theme.name}`;

@@ -15,9 +15,9 @@
   - button "Explorer"
   - button "Activity"
   - button "Search runs across dates": Search runs… /
-  - button "No earlier day in the tracker" [disabled]
-  - button "Pick a day — showing Mon, Aug 3 · today, 8 rows": Mon, Aug 3 · today 8
-  - button "Today is the newest day" [disabled]
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3, 8 rows": Mon, Aug 3 8
+  - button "No later day" [disabled]
   - 'button "Preflight: unavailable"'
   - button "Notifications — 0 unread"
   - button "Switch to Paper Ink"

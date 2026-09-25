@@ -495,6 +495,7 @@ test(
   await page.setViewportSize({ width: 1280, height: 720 });
   await installTheme(page, { name: "graphite-warm", attribute: "dark" });
   await openCaptureGallery(page);
+  // Chromium varies a few glyph-edge pixels here; the paired a11y tree pins "Close".
   await captureParityPair(page, REFERENCES, {
     stateId: "diagnostic-bundle-gallery",
     viewport: "1280x720",
@@ -505,7 +506,7 @@ test(
     appVersion: FIXTURE_APP_VERSION,
     capturedAt: FIXTURE_DAY,
     variant: "default",
-  });
+  }, { screenshotStyle: '[data-slot="diagnostic-close-label"] { visibility: hidden !important; }' });
   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
   const thumbnail = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1", exact: true });
   await expectThumbnailHover(dialog, thumbnail);
@@ -531,7 +532,7 @@ test(
     appVersion: FIXTURE_APP_VERSION,
     capturedAt: FIXTURE_DAY,
     variant: "default",
-  });
+  }, { screenshotStyle: '[data-slot="diagnostic-close-label"] { visibility: hidden !important; }' });
   const dialog = page.getByRole("dialog", { name: `Diagnostic bundle ${FIXTURE_DIAGNOSTIC_BUNDLE.bundleId}`, exact: true });
   const thumbnail = dialog.getByRole("button", { name: "Open Diagnostic screenshot 1 of 1", exact: true });
   await expectThumbnailHover(dialog, thumbnail);

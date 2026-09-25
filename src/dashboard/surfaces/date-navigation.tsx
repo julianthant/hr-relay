@@ -38,6 +38,7 @@ function DateCalendar({
   const [focusedDay, setFocusedDay] = useState<string>();
   // HeroUI renders one year cell per permitted year; keep that grid out of the closed calendar.
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  const yearPickerMonth = useRef(month);
   const calendarFocus = parseDate(focusedDay?.startsWith(month)
     ? focusedDay
     : day.startsWith(month) ? day : `${month}-15`);
@@ -48,11 +49,12 @@ function DateCalendar({
         aria-label="Pick a day"
         className="ds-hero-calendar"
         isYearPickerOpen={yearPickerOpen}
-        onYearPickerOpenChange={setYearPickerOpen}
+        onYearPickerOpenChange={open => { if (open) yearPickerMonth.current = month; setYearPickerOpen(open); }}
         value={parseDate(day)}
         onChange={next => { if (next !== null) onPick(next.toString()); }}
         focusedValue={calendarFocus}
         onFocusChange={next => {
+          if (yearPickerOpen) return;
           const focused = next.toString();
           setFocusedDay(focused);
           const focusedMonth = monthOfDay(focused);
@@ -88,7 +90,11 @@ function DateCalendar({
         </HeroCalendar.Grid>
         {yearPickerOpen && <HeroCalendar.YearPickerGrid>
           <HeroCalendar.YearPickerGridBody>
-            {({ year }) => <HeroCalendar.YearPickerCell year={year} />}
+            {({ year }) => <HeroCalendar.YearPickerCell year={year} onPress={() => {
+              const selectedMonth = `${String(year).padStart(4, "0")}-${yearPickerMonth.current.slice(5)}`;
+              setFocusedDay(`${selectedMonth}-15`);
+              setMonth(selectedMonth);
+            }} />}
           </HeroCalendar.YearPickerGridBody>
         </HeroCalendar.YearPickerGrid>}
       </HeroCalendar>

@@ -15,6 +15,7 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
+import { Input as HeroInput, TextArea as HeroTextArea } from "@heroui/react";
 import { Check, ChevronDown, Lock, Minus, Pencil, Search, TriangleAlert, Upload, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
@@ -154,10 +155,11 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   function Input({ className, ...props }, ref) {
     const field = useFieldControl();
     return (
-      <input
+      <HeroInput
         ref={ref}
         {...field}
         {...props}
+        variant="secondary"
         className={cn(
           controlShell,
           "h-[var(--ds-h-md)] px-[var(--ds-space-base)]",
@@ -173,11 +175,12 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   function Textarea({ className, rows = 4, ...props }, ref) {
     const field = useFieldControl();
     return (
-      <textarea
+      <HeroTextArea
         ref={ref}
         rows={rows}
         {...field}
         {...props}
+        variant="secondary"
         className={cn(controlShell, "resize-y p-[var(--ds-space-base)]", dsText.body, className)}
       />
     );

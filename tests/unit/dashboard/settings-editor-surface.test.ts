@@ -145,7 +145,7 @@ describe("editable Settings surface", () => {
     assert.equal(beforeUnload.defaultPrevented, true, "a dirty draft protects against browser unload");
     await act(async () => { overlayButton("Keep editing").click(); });
     assert.equal(closeCount, 0);
-    const save = button("Save 2");
+    const save = button("Save changes");
     save.focus();
     assert.equal(document.activeElement, save, "the atomic save action accepts keyboard focus");
     const form = host.querySelector("form");
@@ -211,7 +211,7 @@ describe("editable Settings surface", () => {
       pageConcurrency.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.match(host.textContent ?? "", /Enter a whole number of at least 0\./u);
-    assert.equal(button("Save 1").disabled, true);
+    assert.equal(button("Save changes").disabled, true);
     assert.equal(applied.length, 0);
     await act(async () => { button("Back to the dashboard").click(); });
     await act(async () => { overlayButton("Discard changes").click(); });

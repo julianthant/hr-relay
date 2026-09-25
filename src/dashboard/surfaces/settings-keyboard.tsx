@@ -19,7 +19,7 @@ import { DemoShortcutsLegend } from "./shortcuts.js";
  */
 export function KeyboardSection() {
   return (
-    <Panel className="min-h-0 flex-1">
+    <Panel className="settings-page-panel">
       <PanelHeader
         title="Keyboard"
         headingLevel={2}

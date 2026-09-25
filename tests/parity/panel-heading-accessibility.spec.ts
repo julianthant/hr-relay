@@ -36,7 +36,7 @@ test.afterAll(async () => {
   await server.close();
 });
 
-test("every production PanelHeader is an explicit level-two heading", async ({ page }) => {
+test("production PanelHeaders use explicit semantic heading levels", async ({ page }) => {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
   await expectPanelHeading(page, "Saved reports");
 
@@ -44,13 +44,13 @@ test("every production PanelHeader is an explicit level-two heading", async ({ p
   await expectPanelHeading(page, FIXTURE_SAVED_REPORT.title);
 
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
-  await expectPanelHeading(page, "Review a version change");
+  await expect(page.getByRole("heading", { name: "Review a version change", level: 3 })).toBeVisible();
 
   await gotoAppState(page, server.baseUrl, {
     day: FIXTURE_DAY,
     activity: `${FIXTURE_ACTIVITY_RANGE.from}..${FIXTURE_ACTIVITY_RANGE.to}`,
   });
-  await expectPanelHeading(page, "Automation activity");
+  await expectPanelHeading(page, "Activity results");
 
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, explore: FIXTURE_EXPLORER_WORKFLOW_ID });
   await expectPanelHeading(page, "Workflows");
