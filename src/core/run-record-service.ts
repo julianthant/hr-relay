@@ -6,6 +6,7 @@ import { localDatePart } from "../domain/clock.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
 import { archivedRunReferenceFingerprint } from "../domain/archive/model.js";
+import { RUNTIME_VERSION_SCHEMA_VERSION, runtimeVersionForNewRun } from "../infra/sqlite/runtime-versions.js";
 import {
   RunExistenceSchema,
   type RunExistence,
@@ -26,6 +27,7 @@ import {
   CommandIdSchema,
   FingerprintSchema,
   RunIdSchema,
+  WorkflowIdSchema,
 } from "../domain/ids.js";
 import { nextAttemptEnvelope } from "../domain/run/envelope.js";
 import { RunRecordSchema, runClaim, runTransitionViolation, type RunRecord } from "../domain/run/record.js";
@@ -169,6 +171,18 @@ export class RunRecordService {
 
   lifecycleStorage() { return Object.freeze({ ...createRunLifecycleStorage(this.dependencies.database), deleteArchive: (input: unknown): RunDeletionOutcome => this.deleteArchived(input) }); }
 
+  private runtimeStamp(repositories: AuthorityRepositories, workflowId: string) {
+    if (this.dependencies.database.getMeta().schemaVersion < RUNTIME_VERSION_SCHEMA_VERSION) return undefined;
+    const registeredWorkflowId = WorkflowIdSchema.parse(workflowId);
+    let authority = repositories.runtimeVersions.get();
+    if (authority.claim?.workflowIds.includes(registeredWorkflowId)) return null;
+    if (!authority.state.workflows.some(row => row.workflowId === registeredWorkflowId)) {
+      if (authority.claim !== undefined) return null;
+      authority = this.dependencies.database.registerRuntimeVersionWorkflows([registeredWorkflowId]);
+    }
+    return runtimeVersionForNewRun(authority, registeredWorkflowId);
+  }
+
   read(input: string): RunExistence {
     const runId = RunIdSchema.parse(input);
     return this.dependencies.database.withAuthorityReadSnapshot(() => {
@@ -271,6 +285,8 @@ export class RunRecordService {
         }
       }
       const now = this.dependencies.clock.now().toISOString();
+      const runtimeVersion = this.runtimeStamp(repositories, request.workflow);
+      if (runtimeVersion === null) return refused({ reason: "policy-refused" });
       const { commandId, code, matchKey, runtimeConfig, input: storedInput, sessionId, appVersion, ...envelope } = request;
       // These inputs govern admission/minting and are never copied into the envelope.
       void commandId; void matchKey; void runtimeConfig;
@@ -284,6 +300,7 @@ export class RunRecordService {
         runNumber: repositories.runs.nextWorkflowRunNumber(request.workflow),
         ...(sessionId === undefined ? {} : { sessionId }),
         ...(appVersion === undefined ? {} : { appVersion }),
+        ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
         version: 1, createdAt: now, updatedAt: now,
       });
       this.hooks?.afterCreateReservation?.();
@@ -818,6 +835,8 @@ export class RunRecordService {
       if (repositories.deletedRuns.get(runId) !== undefined) return refused({ reason: "tombstoned" });
       if (repositories.runs.get(runId) !== undefined || this.dependencies.database.transferredRun(runId) !== undefined) return refused({ reason: "identity-conflict", field: "runId" });
       const now = this.dependencies.clock.now().toISOString();
+      const runtimeVersion = this.runtimeStamp(repositories, run.envelope.workflow);
+      if (runtimeVersion === null) return refused({ reason: "policy-refused" });
       const envelope = nextAttemptEnvelope(run.envelope, repositories.runs.nextItemAttempt({
         workflow: run.envelope.workflow, itemId: run.envelope.itemId,
       }));
@@ -832,6 +851,7 @@ export class RunRecordService {
         runNumber: repositories.runs.nextWorkflowRunNumber(run.envelope.workflow),
         ...(run.sessionId === undefined ? {} : { sessionId: run.sessionId }),
         ...(request.appVersion === undefined ? {} : { appVersion: request.appVersion }),
+        ...(runtimeVersion === undefined ? {} : { runtimeVersion }),
         version: 1, createdAt: now, updatedAt: now,
       });
       this.dependencies.admitQueuedRun?.(next);

@@ -1,4 +1,15 @@
 import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
+import {
+  RuntimeVersionAdoptionSchema,
+  readRuntimeVersionAuthority as readStoredRuntimeVersionAuthority,
+  registerRuntimeVersionWorkflows as registerStoredRuntimeVersionWorkflows,
+  claimRuntimeVersionTransition as claimStoredRuntimeVersionTransition,
+  publishRuntimeVersionTransition as publishStoredRuntimeVersionTransition,
+  type RuntimeVersionAuthority,
+} from "./runtime-versions.js";
+import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVersionState } from "../../domain/archive/runtime-version.js";
+import { reviewRuntimeVersionTransition } from "../../domain/archive/runtime-version-review.js";
+import { RuntimeVersionChangeSchema, type RuntimeVersionChange } from "../../domain/archive/runtime-version-change.js";
 import { createRunSearchIndex } from "./run-search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../domain/run/worker.js";
@@ -7,7 +18,7 @@ import { createExplorerOverrideRepository, validateExplorerOverrides } from "./e
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { ArchiveReportSchema, ArchiveQuerySchema, type ArchiveQuery, type ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema, type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
@@ -943,6 +954,7 @@ export type AuthorityRepositories = Readonly<{
   configSnapshots: ImmutableRepository<z.infer<typeof ConfigSnapshotRecordSchema>>;
   settingsCurrent: SettingsCurrentRepository;
   runtimeConfig: RuntimeConfigRepository;
+  runtimeVersions: Readonly<{ get(): RuntimeVersionAuthority }>;
   versionPlans: VersionPlanRepository;
   versionBumpApplications: ImmutableRepository<VersionBumpApplicationStorageRecord> & Readonly<{
     list(): readonly VersionBumpApplicationStorageRecord[];
@@ -1064,6 +1076,9 @@ const INVARIANT_QUERIES = Object.freeze([
     OR workflow IS NOT json_extract(record_json,'$.workflow') OR local_day IS NOT json_extract(record_json,'$.localDay')
     OR state IS NOT json_extract(record_json,'$.lifecycle.state') OR parent_run_id IS NOT json_extract(record_json,'$.parentRunId')`},
   {name:"version-change-key-match",sql:"SELECT count(*) AS count FROM version_changes WHERE record_key IS NOT json_extract(record_json,'$.changeId')"},
+  {name:"runtime-version-singleton",sql:"SELECT count(*) AS count FROM runtime_versions WHERE record_key IS NOT 'current' OR json_extract(record_json,'$.revision') < 1"},
+  {name:"runtime-version-adoption-key-match",sql:"SELECT count(*) AS count FROM runtime_version_adoptions WHERE record_key IS NOT json_extract(record_json,'$.runId')"},
+  {name:"runtime-version-change-key-match",sql:"SELECT count(*) AS count FROM runtime_version_changes WHERE record_key IS NOT json_extract(record_json,'$.changeId')"},
   {
     name: "run-completion-revisions",
     sql: `SELECT count(*) AS count FROM workflow_runs AS run
@@ -3156,6 +3171,20 @@ export class AuthorityDatabase implements Disposable {
     });
   }
 
+  archiveGroups(query:ArchiveGroupQuery) {
+    query=ArchiveGroupQuerySchema.parse(query);
+    return this.withAuthorityReadSnapshot(()=>{
+      const path=join(dirname(this.#path),"archive.sqlite");
+      if(!existsSync(path)){
+        if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");
+        return [];
+      }
+      const deletedRunIds=this.#database.prepare("SELECT record_key FROM deleted_runs WHERE origin='archive'").all()
+        .map(row=>z.strictObject({record_key:RunIdSchema}).parse(row).record_key);
+      return this.lifecycleArchive(true).groups(query,deletedRunIds);
+    });
+  }
+
   readArchiveDeletion(runIdInput: string) {
     const runId = RunIdSchema.parse(runIdInput);
     return this.withAuthorityReadSnapshot(() => {
@@ -3236,7 +3265,10 @@ export class AuthorityDatabase implements Disposable {
       const pendingDigests = new Set(this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
         const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
         return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
-      }));
+      }).concat(this.#database.prepare("SELECT record_json FROM runtime_version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+        const change = RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+        return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files.map(file => file.digest));
+      })));
       archive.settleDelete(runId, undefined, pendingDigests);
     });
   }
@@ -3245,6 +3277,143 @@ export class AuthorityDatabase implements Disposable {
     const row = this.#readRecord("version_changes", changeId, VersionChangeSchema);
     if (row !== undefined) for (const capture of row.pendingCaptures ?? []) parsePendingCapture(row, capture);
     return row;
+  }
+
+  readRuntimeVersionAuthority(): RuntimeVersionAuthority {
+    return this.withAuthorityReadSnapshot(() => readStoredRuntimeVersionAuthority(this.#database));
+  }
+
+  readRuntimeVersionAdoption(runId: string) {
+    return this.withAuthorityReadSnapshot(() => this.#readRecord("runtime_version_adoptions", RunIdSchema.parse(runId), RuntimeVersionAdoptionSchema));
+  }
+
+  readRuntimeVersionChange(changeId: string): RuntimeVersionChange | undefined {
+    return this.withAuthorityReadSnapshot(() => this.#readRecord("runtime_version_changes", changeId, RuntimeVersionChangeSchema));
+  }
+
+  readRuntimeVersionIndex() {
+    return this.withAuthorityReadSnapshot(() => ({
+      authority: readStoredRuntimeVersionAuthority(this.#database),
+      changes: this.#database.prepare("SELECT record_json FROM runtime_version_changes ORDER BY created_at DESC, record_key DESC").all()
+        .map(raw => RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json))),
+    }));
+  }
+
+  writeRuntimeVersionChange(input: RuntimeVersionChange): RuntimeVersionChange {
+    const change = RuntimeVersionChangeSchema.parse(input);
+    return this.#authorityWrite("runtime_version_changes", () => {
+      const previous = this.#readRecord("runtime_version_changes", change.changeId, RuntimeVersionChangeSchema);
+      if (previous === undefined) {
+        if (change.state !== "planned") throw new Error("runtime-version-review-required");
+        const review = this.reviewRuntimeVersionTransition(change.scope);
+        if (review.revision !== change.authorityRevision
+          || review.review.membershipDigest !== change.membershipDigest
+          || canonicalJsonStringify(review.transition.after) !== canonicalJsonStringify(change.after)) {
+          throw new Error("runtime-version-review-stale");
+        }
+      } else {
+        if (previous.reviewFingerprint !== change.reviewFingerprint
+          || previous.state === "applied"
+          || (previous.state === "planned" && change.state === "planned")
+          || (previous.state === "applying" && change.state === "planned")
+          || previous.completedRunIds.some(id => !change.completedRunIds.includes(id))) {
+          throw new Error("runtime-version-change-conflict");
+        }
+        if (previous.claimedAt !== undefined && previous.claimedAt !== change.claimedAt) {
+          throw new Error("runtime-version-change-conflict");
+        }
+        if (previous.applicationCommandId !== undefined && previous.applicationCommandId !== change.applicationCommandId) {
+          throw new Error("runtime-version-application-command-conflict");
+        }
+        if (previous.applicationRequestFingerprint !== undefined && previous.applicationRequestFingerprint !== change.applicationRequestFingerprint) {
+          throw new Error("runtime-version-application-command-conflict");
+        }
+        for (const capture of previous.pendingCaptures ?? []) {
+          const nextCapture = change.pendingCaptures?.find(row => row.runId === capture.runId);
+          if (nextCapture === undefined && !change.completedRunIds.includes(capture.runId)) {
+            throw new Error("runtime-version-capture-lost");
+          }
+          if (nextCapture !== undefined && nextCapture.reportJson !== capture.reportJson) {
+            throw new Error("runtime-version-capture-conflict");
+          }
+        }
+      }
+      if (change.state === "applying") {
+        const authority = readStoredRuntimeVersionAuthority(this.#database);
+        if (authority.claim?.changeId !== change.changeId) throw new Error("runtime-version-claim-mismatch");
+      }
+      for (const capture of change.pendingCaptures ?? []) {
+        const report = ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
+        const member = change.members.find(row => row.runId === capture.runId);
+        const expected = change.before.workflows.find(row => row.workflowId === member?.workflowId);
+        if (member === undefined || expected === undefined || member.state !== "terminal"
+          || report.content.runId !== capture.runId
+          || report.content.transferId !== deriveStableUuid("archive-transfer", `${change.changeId}:${capture.runId}`)
+          || report.content.runtimeVersion?.state !== member.attribution
+          || canonicalJsonStringify(report.content.runtimeVersion.dashboard) !== canonicalJsonStringify(change.before.dashboard)
+          || canonicalJsonStringify(report.content.runtimeVersion.workflow) !== canonicalJsonStringify(expected.version)) {
+          throw new Error("runtime-version-capture-member-mismatch");
+        }
+        const old = previous?.pendingCaptures?.find(row => row.runId === capture.runId);
+        if (old === undefined) for (const file of report.content.files) this.lifecycleArchive(true).readFile(file);
+      }
+      for (const runId of change.completedRunIds) {
+        const report = this.lifecycleArchive(true).readPublished(runId);
+        const transfer = this.transferredRun(runId);
+        if (report === undefined || transfer === undefined || report.content.runId !== runId
+          || report.content.runtimeVersion === undefined
+          || report.content.transferId !== deriveStableUuid("archive-transfer", `${change.changeId}:${runId}`)
+          || report.digest !== transfer.reportDigest || report.content.sourceDigest !== transfer.sourceDigest) {
+          throw new Error("runtime-version-progress-unverified");
+        }
+      }
+      const result = this.#database.prepare("INSERT INTO runtime_version_changes VALUES (?,?,?) ON CONFLICT(record_key) DO UPDATE SET record_json=excluded.record_json")
+        .run(change.changeId, canonicalJsonStringify(change), change.reviewedAt);
+      return { result: change, changes: sqliteChanges(result.changes) };
+    });
+  }
+
+  reviewRuntimeVersionTransition(scope: z.input<typeof RuntimeVersionScopeSchema>) {
+    return this.withAuthorityReadSnapshot(() => {
+      const authority = readStoredRuntimeVersionAuthority(this.#database);
+      if (authority.claim !== undefined) throw new Error("runtime-version-claim-active");
+      if (this.#database.prepare("SELECT record_key FROM version_changes WHERE json_extract(record_json,'$.state')='applying' LIMIT 1").get() !== undefined) {
+        throw new Error("runtime-version-legacy-change-active");
+      }
+      const transition = planRuntimeVersionTransition(authority.state, scope);
+      const runs = transition.affectedWorkflowIds.flatMap(workflowId => this.authority.runs.listByWorkflow(workflowId));
+      const review = reviewRuntimeVersionTransition({ transition, runs,
+        adoption: runId => this.#readRecord("runtime_version_adoptions", RunIdSchema.parse(runId), RuntimeVersionAdoptionSchema),
+      });
+      return Object.freeze({ revision: authority.revision, transition, review });
+    });
+  }
+
+  registerRuntimeVersionWorkflows(workflowIds: readonly string[]): RuntimeVersionAuthority {
+    return this.#authorityWrite("runtime_versions", () => {
+      const before = readStoredRuntimeVersionAuthority(this.#database);
+      const result = registerStoredRuntimeVersionWorkflows(this.#database, workflowIds, this.#now());
+      return { result, changes: result.revision === before.revision ? 0 : 1 };
+    });
+  }
+
+  claimRuntimeVersionTransition(input: { changeId: string; expectedRevision: number; workflowIds: readonly string[]; after: RuntimeVersionState; expectedMembershipDigest: string }): RuntimeVersionAuthority {
+    return this.#authorityWrite("runtime_versions", () => {
+      const review = this.reviewRuntimeVersionTransition(input.workflowIds.length === this.authority.runtimeVersions.get().state.workflows.length
+        ? { kind: "dashboard" }
+        : { kind: "workflows", workflowIds: [...input.workflowIds] });
+      if (review.revision !== input.expectedRevision || review.review.membershipDigest !== input.expectedMembershipDigest) {
+        throw new Error("runtime-version-review-stale");
+      }
+      if (review.review.blockers.length > 0) throw new Error("runtime-version-active-blockers");
+      return { result: claimStoredRuntimeVersionTransition(this.#database, { ...input, now: this.#now() }), changes: 1 };
+    });
+  }
+
+  publishRuntimeVersionTransition(input: { changeId: string; expectedRevision: number; next: RuntimeVersionState }): RuntimeVersionAuthority {
+    return this.#authorityWrite("runtime_versions", () => ({
+      result: publishStoredRuntimeVersionTransition(this.#database, { ...input, now: this.#now() }), changes: 1,
+    }));
   }
 
   writeVersionChange(input: VersionChange) {
@@ -3304,6 +3473,7 @@ export class AuthorityDatabase implements Disposable {
 
   claimVersionChange(input:{changeId:string;reviewFingerprint:string;application:NonNullable<VersionChange["application"]>;pendingCaptures?:VersionChange["pendingCaptures"]}) {
     return this.withAuthorityTransaction(()=>{
+      if (readStoredRuntimeVersionAuthority(this.#database).claim !== undefined) throw new Error("runtime-version-claim-active");
       const row=this.readVersionChange(input.changeId);
       if(row===undefined||row.reviewFingerprint!==input.reviewFingerprint)throw new Error("version-change-review-required");
       if(row.state==="superseded")throw new Error("version-change-fence-conflict");
@@ -4328,6 +4498,27 @@ export class AuthorityDatabase implements Disposable {
             }
           }
         }
+        const runtimeApplying = this.#database.prepare("SELECT record_json FROM runtime_version_changes WHERE json_extract(record_json,'$.state')='applying'").all();
+        for (const raw of runtimeApplying) {
+          const change = RuntimeVersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
+          for (const member of change.members) {
+            if (this.authority.runs.get(member.runId) === undefined) {
+              if (this.#readRecord("archive_transfers", member.runId, ArchiveTransferIdentitySchema) === undefined) {
+                throw new Error("runtime-version-source-applying");
+              }
+              continue;
+            }
+            const capture = change.pendingCaptures?.find(row => row.runId === member.runId);
+            if (capture === undefined) throw new Error("runtime-version-capture-missing");
+            const report = ArchiveReportSchema.parse(JSON.parse(capture.reportJson));
+            const source = report.content.sources.find(value => value.kind === "authority-snapshot");
+            if (source === undefined) throw new Error("runtime-version-source-snapshot-missing");
+            const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+            if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(member.runId)) !== lifecycleOwnedSourceDigest(frozen)) {
+              throw new Error("runtime-version-source-applying");
+            }
+          }
+        }
       }
       if (this.#explorerOverridesDirty) validateExplorerOverrides(this.#database);
       if (this.#authorityDirty) {
@@ -5267,6 +5458,7 @@ export class AuthorityDatabase implements Disposable {
       }),
       settingsCurrent: settings.settingsCurrent,
       runtimeConfig: settings.runtimeConfig,
+      runtimeVersions: Object.freeze({ get: () => readStoredRuntimeVersionAuthority(this.#database) }),
       versionPlans: Object.freeze({
         insert: (input: unknown) => {
           const record = VersionPlanStorageRecordSchema.parse(input);

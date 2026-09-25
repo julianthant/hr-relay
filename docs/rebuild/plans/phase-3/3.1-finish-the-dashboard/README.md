@@ -34,6 +34,12 @@ uses 3.1.23 as its real common prerequisite, 3.1.23.1/UI-A and 3.1.23.2/UI-B as 
 workers, then 3.1.23.3 Finalization. Scope is authorized; implementation remains blocked on
 the common-base release; feature work through 3.1.15 is integrated and capacity is available.
 
+**Approved Archive redesign (2026-09-24).** [Task 3.1.24](task-24-archive-runtime-versions.md)
+adds durable dashboard and workflow runtime versions, version-bound archival and grouped Archive
+browsing. It follows 3.1.23.3 and precedes 3.1.16–3.1.19. D348 amends D80/D274's minor-bump rule;
+the completed 3.1.9.7 delivery remains historical evidence. Isolated backend implementation may
+start before 3.1.23.3; Archive UI changes and integration wait for its accepted output.
+
 <!-- roadmap: dash-defaults -->
 
 <!-- roadmap-status: dash-defaults -->
@@ -83,7 +89,7 @@ identity map; older doc-04 deferral references below are historical, not release
 ### The order of work
 
 Work from the current task table below in numeric order, with the admitted UI side-group
-exception: execute 3.1.23 and its children after 3.1.15 and before 3.1.16. Historical 3.1.1–3.1.8 keep their
+exception: execute 3.1.23 and its children, then 3.1.24, after 3.1.15 and before 3.1.16. Historical 3.1.1–3.1.8 keep their
 numbers and completion evidence. Each prerequisite is followed by its independent children,
 then **Finalization** as its last child. After that group is accepted, continue to the next
 whole-number task. The last mandatory task is **3.1.19 · Final repairs, acceptance, and close Phase 3.1**.
@@ -234,6 +240,7 @@ under their approved ownership and worktree limits. Finalization waits for every
 | **3.1.23.1** | [UI-A: Settings and records](ui-refinement/settings-and-records.md) | `dash-ui-settings-records` |
 | **3.1.23.2** | [UI-B: Workflow interactions](ui-refinement/workflow-interactions.md) | `dash-ui-workflow-interactions` |
 | **3.1.23.3** | [Finalization: UI refinement](ui-refinement/README.md#proof-and-finalization) | `dash-ui-finalizer` |
+| **3.1.24** | [Archive and runtime version redesign](task-24-archive-runtime-versions.md) | `dash-archive-runtime-versions` |
 | **3.1.16** | [Prove realtime convergence and reconnect](task-16-prove-realtime-convergence-and-reconnect.md) | `dash-realtime` |
 | **3.1.17** | [Meet large-data and responsiveness budgets](task-17-meet-large-data-and-responsiveness-budgets.md) | `dash-performance` |
 | **3.1.18** | [Build the complete dashboard proof infrastructure](task-18-build-the-complete-dashboard-proof-infrastructure.md) | `dash-proof-infrastructure` |
@@ -251,7 +258,7 @@ owners. The current roadmap grammar does not accept nested-directory document to
 | 3.1.23.2 / UI-B | [Workflow interactions](ui-refinement/workflow-interactions.md) |
 | 3.1.23.3 | [Proof and finalization](ui-refinement/README.md#proof-and-finalization) |
 
-3.1.16–3.1.19 require the accepted 3.1.23.3 output as well as their existing inputs. The side group
+3.1.16–3.1.19 require accepted 3.1.23.3 and 3.1.24 outputs as well as their existing inputs. The side group
 is required; optional 3.1.20–3.1.22 remain outside the mandatory sequence. All launch prerequisites
 and the accepted common SHA must be verified in the shared release record, not inferred from this map.
 

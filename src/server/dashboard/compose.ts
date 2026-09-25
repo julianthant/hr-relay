@@ -100,6 +100,7 @@ import {
   type WorkerProcessSpawner,
 } from "./worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../core/run-record-service.js";
+import { createRuntimeVersionChanges } from "../../core/archive-runtime-version-changes.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -546,6 +547,7 @@ async function composeDashboardRuntimeStartup(
     database.close();
     databaseClosed = true;
   });
+  database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
   const protectedSettingsAuthority = createCredentialStore({ stateRoot });
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
@@ -810,6 +812,8 @@ async function composeDashboardRuntimeStartup(
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
+  const archiveSnapshots = createArchiveSnapshotSource(runDetailDeps);
+  const runtimeVersionChanges = createRuntimeVersionChanges({ database, clock, ids, archiveSnapshots });
 
   const explorerBoundary = composeExplorer({ database, clock, descriptorSetHash: setHash });
 
@@ -833,7 +837,8 @@ async function composeDashboardRuntimeStartup(
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
-    archiveSnapshots: createArchiveSnapshotSource(runDetailDeps),
+    archiveSnapshots,
+    runtimeVersionChanges,
     explorerEdits: explorerBoundary.executor,
   });
 

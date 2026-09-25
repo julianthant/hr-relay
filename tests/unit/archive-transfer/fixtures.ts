@@ -7,6 +7,7 @@ import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixture
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
+import { createRuntimeVersionChanges } from "../../../src/core/archive-runtime-version-changes.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
@@ -36,6 +37,11 @@ export function archiveFixture(options: Parameters<typeof foundationFixture>[0] 
         return result;
       };
     } });
+    const archiveSnapshots: CommandKernelDependencies["archiveSnapshots"] = { snapshot: runId => {
+      const source = ARCHIVED_RUN_WITH_SECTIONS;
+      assert.ok(source.sections);
+      return { row: QueueSurfaceWireSchema.parse({ ...source.row, session: {state:"absent",reason:"Historical archive fixture predates run batches"}, runId: RunIdSchema.parse(runId) }), detail: { ...source.detail, header: { ...source.detail.header, runId: RunIdSchema.parse(runId) } }, failure: source.failure, sections: source.sections };
+    }, snapshotBatch(runIds) { return new Map(runIds.map(runId => [runId, this.snapshot(runId)])); } };
     const deps: CommandKernelDependencies = {
       lifecycle, authority: { withAuthorityTransaction: work => database.withAuthorityTransaction(repos => work({ ...repos,
         commandAudits: { ...repos.commandAudits, insert(value) {
@@ -48,11 +54,8 @@ export function archiveFixture(options: Parameters<typeof foundationFixture>[0] 
       intakeParser: UNWIRED_INTAKE_PARSER, intakeProjections: NO_INTAKE_PROJECTIONS,
       writeResolution: { resolveAbsent: () => { throw new Error("unused"); }, resolvePresent: () => { throw new Error("unused"); } },
       workerRuntime: { planWorkerCount: () => { throw new Error("unused"); }, spawnWorker: () => { throw new Error("unused"); }, refreshBrowser: () => { throw new Error("unused"); }, reopenBrowser: () => { throw new Error("unused"); } },
-      archiveSnapshots: { snapshot: runId => {
-        const source = ARCHIVED_RUN_WITH_SECTIONS;
-        assert.ok(source.sections);
-        return { row: QueueSurfaceWireSchema.parse({ ...source.row, session: {state:"absent",reason:"Historical archive fixture predates run batches"}, runId: RunIdSchema.parse(runId) }), detail: { ...source.detail, header: { ...source.detail.header, runId: RunIdSchema.parse(runId) } }, failure: source.failure, sections: source.sections };
-      }, snapshotBatch(runIds) { return new Map(runIds.map(runId => [runId, this.snapshot(runId)])); } },
+      archiveSnapshots,
+      runtimeVersionChanges: createRuntimeVersionChanges({ database, clock: base.clock, ids: { uuid: () => id(++sequence) }, archiveSnapshots }),
     };
     return createCommandKernel(deps);
   };

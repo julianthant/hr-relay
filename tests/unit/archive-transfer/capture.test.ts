@@ -8,6 +8,31 @@ import { projectArchiveReport } from "../../../src/server/dashboard/queries/arch
 import { ArchiveReportSchema } from "../../../src/domain/archive/report.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 
+it("freezes stamped and adopted runtime versions while old reports keep no recorded version", () => {
+  const f = foundationFixture();
+  try {
+    f.db.authority.runs.transition({ runId: f.run.envelope.runId, expectedVersion: f.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW }, now: NOW });
+    const snapshot = createRunLifecycleStorage(f.db).capture(f.run.envelope.runId);
+    const stamp = { dashboard: { major: 1, minor: 0 }, workflow: { major: 1, minor: 2 } };
+    const stamped = captureArchiveReport({ snapshot: { ...snapshot,
+      run: RunRecordSchema.parse({ ...snapshot.run, runtimeVersion: stamp }),
+    }, transferId: id(9308), capturedAt: NOW, files: [], sections: [] });
+    assert.equal(stamped.content.schemaVersion, 2);
+    assert.deepEqual(stamped.content.runtimeVersion, { state: "stamped", ...stamp });
+    const adopted = captureArchiveReport({ snapshot, adoptedRuntimeVersion: stamp,
+      transferId: id(9309), capturedAt: NOW, files: [], sections: [] });
+    assert.equal(adopted.content.runtimeVersion?.state, "adopted");
+    assert.equal(captureArchiveReport({ snapshot, transferId: id(9310), capturedAt: NOW,
+      files: [], sections: [] }).content.schemaVersion, 1);
+    assert.equal(projectArchiveReport(stamped).state, "available");
+    assert.throws(() => captureArchiveReport({ snapshot: { ...snapshot,
+      run: RunRecordSchema.parse({ ...snapshot.run, runtimeVersion: stamp }),
+    }, adoptedRuntimeVersion: stamp, transferId: id(9311), capturedAt: NOW,
+    files: [], sections: [] }), /attribution-conflict/u);
+  } finally { f.dispose(); }
+});
+
 it("captures every source group as generic typed values or explicit absence, with separate source integrity", () => {
   const f = foundationFixture();
   try {

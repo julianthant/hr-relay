@@ -440,6 +440,8 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-snooze": "notification target, not a run row",
   "plan-version-bump": "D179's archive planning surface targets the application/workflow scope",
   "apply-version-bump": "archive scope target, not a run row",
+  "plan-runtime-version": "Archive runtime version planning targets selected workflows or the dashboard",
+  "apply-runtime-version": "Archive runtime version publication targets a reviewed change",
   "relaunch-archived-run": "V retains historical request parsing; current HTTP and internal producers refuse creation",
   "delete-archived-run": "D308 serves the delete from the ARCHIVED detail, which is not a live run row",
   "apply-explorer-edit": "D283's reviewed Explorer draft targets a workflow override revision, not a run row",

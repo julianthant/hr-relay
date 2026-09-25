@@ -1,4 +1,6 @@
 import { VersionChangeSchema } from "../../domain/archive/change-record.js";
+import { RuntimeVersionChangeSchema } from "../../domain/archive/runtime-version-change.js";
+import { ArchiveReportSchema } from "../../domain/archive/report.js";
 import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { ArchiveRelaunchStorageRecordSchema } from "../sqlite/storage-records.js";
 import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
@@ -38,7 +40,7 @@ import {
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -133,6 +135,9 @@ const RELEASED_AUTHORITY_TABLE_ORDER = Object.freeze([
   "database_upgrades",
   "timeline_events",
   "timeline_operation_sources",
+  "runtime_versions",
+  "runtime_version_adoptions",
+  "runtime_version_changes",
 ] as const);
 
 const IntPragmaRowSchema = z.record(z.string(), z.number().int());
@@ -659,23 +664,30 @@ export function openAuthorityBackupSourceReadOnly(
  */
 export function backupHasArchiveTransferCustody(path: string): boolean {
   return withAuthorityDatabaseReadOnly(path, database => {
-    const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('archive_transfers','version_changes')").all()
+    const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('archive_transfers','version_changes','runtime_version_changes')").all()
       .map(row => z.object({ name: z.string() }).parse(row).name));
     if (tables.has("archive_transfers") && database.prepare("SELECT 1 FROM archive_transfers LIMIT 1").get() !== undefined) return true;
-    return tables.has("version_changes") && database.prepare("SELECT 1 FROM version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_array_length(record_json,'$.members')>0 LIMIT 1").get() !== undefined;
+    if (tables.has("version_changes") && database.prepare("SELECT 1 FROM version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_array_length(record_json,'$.members')>0 LIMIT 1").get() !== undefined) return true;
+    return tables.has("runtime_version_changes") && database.prepare("SELECT 1 FROM runtime_version_changes WHERE json_extract(record_json,'$.state')='applying' AND json_array_length(record_json,'$.members')>0 LIMIT 1").get() !== undefined;
   });
 }
 
 /** Claim-owned bytes are recovery assets before archive report publication. */
 export function backupPendingCaptureFiles(path: string) {
   return withAuthorityDatabaseReadOnly(path, database => {
-    if (database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='version_changes'").get() === undefined) return [];
-    return database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+    const legacy = database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='version_changes'").get() === undefined ? []
+      : database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
       const change = VersionChangeSchema.parse(JSON.parse(z.object({record_json:z.string()}).parse(raw).record_json));
       return (change.pendingCaptures ?? []).flatMap(capture => {
         const report = parsePendingCapture(change, capture);
         return report.content.files;
       });
     });
+    const runtime = database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='runtime_version_changes'").get() === undefined ? []
+      : database.prepare("SELECT record_json FROM runtime_version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
+        const change = RuntimeVersionChangeSchema.parse(JSON.parse(z.object({record_json:z.string()}).parse(raw).record_json));
+        return (change.pendingCaptures ?? []).flatMap(capture => ArchiveReportSchema.parse(JSON.parse(capture.reportJson)).content.files);
+      });
+    return [...legacy, ...runtime];
   });
 }

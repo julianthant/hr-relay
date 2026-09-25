@@ -75,6 +75,7 @@ const RELEASED_MIGRATION_DIGESTS = Object.freeze([
   { version: 52, sha256: "360f6b9bb5725cc9df6e48202cb2900dd9870270c332782d3377453445b81bb5" },
   { version: 53, sha256: "90d7da54887f7de4df17862bb471b79e2c3c883fe6c67755bf62d56176e9584c" },
   { version: 54, sha256: "035c9266968a48e8c48869306d2438987bacfdc0b55081159b39900f6e8277e2" },
+  { version: 55, sha256: "d9c254b567d06650536587f9d03a7562952ad2a9980ccbf295ec44798cebe534" },
 ] as const);
 
 const DCC1_SOURCE_SUFFIX_DIGESTS = Object.freeze([

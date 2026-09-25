@@ -208,6 +208,41 @@ cross-referenced rather than re-litigated.
 9. Use review checkbox/disabled Run/courtesy reason; B advertises a known refusal, C hides work.
 10. Add non-byte capture viewer and archivable-run list; B leaves capture inert, C asks action on counts alone.
 
+### D348 — dashboard and workflow runtime versions (2026-09-24)
+
+The operator approved an Archive redesign with independent **dashboard** and **workflow** runtime
+version counters. Both use `major.minor` display and durable run identity. They are distinct from
+the package/build semver, integer descriptor version and contract fingerprint, which continue to
+govern code compatibility. A controlled upgrade initializes dashboard and registered workflow
+counters at 1.0. It records adoption of currently live runs into that baseline without changing
+their immutable historical envelopes; older saved reports with no proven version retain an explicit
+“Version not recorded” state. Neither read path may infer a runtime version from current code.
+
+A workflow change selects one or several workflows. Each selected workflow advances its own minor
+counter exactly once, and the dashboard and unselected workflows stay at their existing counters.
+The operator reviews every before/after identity and affected run. Applying archives each selected
+workflow's terminal runs of its old version. An all-workflow dashboard change advances the dashboard
+major counter and resets **every** registered workflow to that major's `.0` version; it archives
+all affected terminal old-version runs. A workflow selection containing every registered workflow
+is the all-workflow major action, not a minor action disguised as one. This supersedes D274 item 2
+and §9.5.1's minor-archives-nothing rule for new version changes; old change records remain readable
+under their original meaning.
+
+Nonterminal affected runs, including unresolved possible-submit states, block publication. Review
+membership and version basis are rechecked at apply. Claiming the transfer fences new enqueues for
+affected workflows; exact frozen reports/files and interrupted progress resume under the original
+command identity. Publish the new counters only after every selected old run transfers and verifies.
+A failed or partial transfer cannot expose a new version. Every subsequent start, intake-created run,
+retry and restart stamps both current runtime counters from durable authority within its creation
+transaction. Historical code/build identity remains separately stamped and validated.
+
+Archive browsing groups saved reports by dashboard version, workflow, then workflow version.
+Search and filters cover dashboard version, workflow, workflow version, outcome and dates with
+bounded, deterministic pagination. New reports freeze both runtime versions; old report bytes are
+never rewritten. Existing report integrity, attachment custody, deletion/disposition, export and
+descriptor-independent rendering remain binding. The approved [3.1.24 task plan](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md)
+owns implementation and focused proof. The 3.1.23 UI finalizer remains its prerequisite.
+
 ### D275 — standing conventions
 
 1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract. **Amended by D295 (2026-09-01): the `UI catalog` entry is deleted along with the takeover it opened, and the catalog is reached from `Settings -> Help`. Deep links are retained on both — the catalog's are now `?settings=ui-catalog`, with `?catalog=`/`?catalogView=` subordinate to it (§9.5.3). SUPERSEDED IN FULL by D296 (2026-09-01): `Workflow explorer` is deleted too, on the same rule — the Explorer is a Top Bar view-switcher segment, so the button was a second door onto a takeover that already has one. Every deep link still stands; the objection this item was written against was navigation that leads NOWHERE.**
@@ -5579,6 +5614,10 @@ parity references for all three.
 <!-- /roadmap-status -->
 
 #### 9.5.1 The Archive — a record that needs no old code to read (D80)
+
+**Current amendment:** D348 above replaces the historical major/minor behavior below for new
+runtime version changes. The following text records D80/D274's earlier contract and its code/build
+identity; it is not permission to keep minor bumps without archival after 3.1.24 lands.
 
 **No archive folders, no compat shims — git is the archive.** Descriptors carry a version + content
 fingerprint; a guard forces a bump on behavior change; **every run permanently stamps the workflow

@@ -55,6 +55,9 @@ it("retains shared live and archive file owners and pages equal timestamps witho
     const snapshot = storage.capture(second.envelope.runId);
     const report2 = captureArchiveReport({ snapshot, transferId: id(9941), capturedAt: NOW, files: [firstFile.file], sections: [] });
     transferArchiveReport(storage, report2, snapshot.run.version);
+    assert.equal(queryArchiveReports(storage, { limit: 10, versionState: "unrecorded" }).items.length, 2);
+    assert.deepEqual(queryArchiveReports(storage, { limit: 10, dashboardVersion: { major: 1, minor: 0 } }).items, []);
+    assert.equal(queryArchiveReports(storage, { limit: 10, search: firstFile.file.name }).items.length, 2);
     const page = queryArchiveReports(storage, { limit: 1 }); assert.ok(page.next);
     const next = queryArchiveReports(storage, { limit: 1, after: page.next });
     assert.deepEqual([...page.items, ...next.items].map(value => value.state === "available" ? value.runId : "missing").sort(), [report1.content.runId, report2.content.runId].sort());
@@ -245,8 +248,7 @@ it("pages past an unsettled deletion tombstone to surviving reports", () => {
       target: { archivedRunId: first.runId, archiveFingerprint: first.archiveFingerprint } }), /injected-settlement/u);
     const page = queryArchiveReports(storage, { limit: 1 });
     assert.deepEqual(page.items, [before.items[1]]);
-    assert.ok(page.next);
-    assert.deepEqual(queryArchiveReports(storage, { limit: 1, after: page.next }).items, []);
+    assert.equal(page.next, null);
     assert.equal(storage.listReports({ workflow: "person-lookup", limit: 1 }).next, null);
   } finally { f.dispose(); }
 });

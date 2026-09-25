@@ -44,6 +44,7 @@ import { AppVersionSchema } from "../dashboard/primitives.js";
 import { SchemaBoundCanonicalValueSchema } from "../schema-bound-value.js";
 import { VerdictKeySchema } from "../workflow/presentation.js";
 import { RunEnvelopeSchema } from "./envelope.js";
+import { RunRuntimeVersionStampSchema } from "../archive/runtime-version.js";
 
 /**
  * Ref dashboard-surfaces §1.1's outcome union. `cancelled`, `discarded`, `interrupted`, and
@@ -356,6 +357,7 @@ export const HistoricalRunRecordV40Schema = z.strictObject({
 });
 export const RunRecordSchema = HistoricalRunRecordV40Schema.safeExtend({
   completion: RunCompletionSchema.optional(),
+  runtimeVersion: RunRuntimeVersionStampSchema.optional(),
 }).superRefine((run, context) => {
   const completion = run.completion;
   const settled = run.lifecycle.state === "terminal" && ["done", "failed"].includes(run.lifecycle.outcome);

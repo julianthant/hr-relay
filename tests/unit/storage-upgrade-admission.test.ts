@@ -251,7 +251,7 @@ function readUpgradeRecords(path: string) {
 function assertOnlyExpectedRowsRemain(fixture: HistoricalFixture): void {
   const counts = tableCounts(fixture.path);
   for (const [table, count] of counts) {
-    const expected = table === "database_state" || table === "commands" || table === "command_audits"
+    const expected = table === "database_state" || table === "commands" || table === "command_audits" || table === "runtime_versions"
       ? 1
       : table === "database_upgrades" ? 2 : ["summary_publication","run_search_publication"].includes(table) ? 1 : 0;
     assert.equal(count, expected, `${table} must retain exactly ${String(expected)} row(s)`);

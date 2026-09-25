@@ -16,6 +16,7 @@ import type { Clock } from "../../domain/clock.js";
 import { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
 import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
+import { ArchiveDatabase } from "../../infra/sqlite/archive-database.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
 
 export const StorageUpgradeReportSchema = z.strictObject({
@@ -46,6 +47,13 @@ function requireStopped(input: StorageUpgradeInput, clock: Clock): void {
   const snapshot = observeRuntimeLockSnapshot({ processLockRoot: input.processLockRoot,
     sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(join(input.stateRoot, "state.db")) }, clock);
   if (Object.values(snapshot.processLocks).some((lock) => lock.state === "active")) throw new Error("runtime-active: stop server and workers before storage upgrade");
+}
+
+function archiveNeedsIndexUpgrade(stateRoot: string): boolean {
+  const path = join(stateRoot, "archive.sqlite");
+  if (!existsSync(path)) return false;
+  const archive = new ArchiveDatabase(path, { readOnly: true });
+  try { return archive.schemaVersion === 1; } finally { archive.close(); }
 }
 
 /** Read-only legacy source for the existing explicit backup writer. No credential access. */
@@ -115,6 +123,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock, a
     if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("upgrade-pending: finish the interrupted database conversion with its original compatible release");
   }
   if (from === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    const archiveNeedsUpgrade = archiveNeedsIndexUpgrade(input.stateRoot);
     if (archiveJournal !== undefined) {
       if (prior === undefined || !("format" in prior)) throw new Error("archive-conversion-resume-mismatch");
       const backup = await verifyBackupManifestAtPath(prior.backupManifest, AuthorityDatabase.sourceDatabaseIdentity(path));
@@ -124,17 +133,29 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock, a
       const backup = await verifyBackupManifestAtPath(prior.backupManifest, AuthorityDatabase.sourceDatabaseIdentity(path));
       readPreservedTimelineSources(prior.timelineImport.copyDirectory, prior.timelineImport.manifestDigest, backup);
     }
-    if (!input.plan && (prior?.phase === "committed" || archiveJournal !== undefined)) {
+    const archiveBackup = archiveNeedsUpgrade && prior?.phase !== "committed" && inspection !== undefined
+      ? await requiredBackup(input.stateRoot, inspection.authorityGeneration, inspection.authorityContentFingerprint, input.backupManifest)
+      : undefined;
+    if (archiveNeedsUpgrade && prior?.phase === "committed") {
+      if (!("format" in prior) || prior.backupManifest === "fresh") throw new Error("paired-lifecycle-backup-required");
+      await verifyLifecyclePair(`${prior.backupManifest}.lifecycle.json`);
+    }
+    if (!input.plan && (prior?.phase === "committed" || archiveJournal !== undefined || archiveNeedsUpgrade)) {
       const admission = acquireAdmission({ processLockRoot: input.processLockRoot, pid: process.pid }, clock);
       try {
         requireStopped(input, clock);
         const again = inspectAuthorityBackupReadOnly(path);
         if (again.authorityContentFingerprint !== inspection?.authorityContentFingerprint) throw new Error("source-changed: re-plan upgrade");
+        if (archiveNeedsUpgrade) {
+          if (archiveBackup === undefined && prior?.phase !== "committed") throw new Error("paired-lifecycle-backup-required");
+          ArchiveDatabase.upgradeStopped(join(input.stateRoot, "archive.sqlite"));
+        }
         if (prior?.phase === "committed") settleDatabaseUpgrade(path, prior, clock.now().toISOString());
         finishArchiveUpgrade(input.stateRoot);
       } finally { admission.release(); }
     }
-    return reportFor(prior?.phase === "committed" && !input.plan ? "converted" : "already-upgraded", from);
+    return reportFor(!input.plan && (prior?.phase === "committed" || archiveNeedsUpgrade) ? "converted"
+      : input.plan && archiveNeedsUpgrade ? "planned" : "already-upgraded", from);
   }
   const backupEvidence = inspection === undefined ? undefined : await requiredBackup(input.stateRoot, inspection.authorityGeneration, inspection.authorityContentFingerprint, input.backupManifest);
   const timelineSources = backupEvidence === undefined ? undefined : timelineSourcesForUpgrade(input.stateRoot, backupEvidence, input.timelineSourceDirectory);
@@ -154,6 +175,7 @@ export async function upgradeStorage(input: StorageUpgradeInput, clock: Clock, a
     if (backupEvidence !== undefined && hasHistoricalArchiveSources(path)) beginArchiveUpgrade(input.stateRoot, { schemaVersion: 1,
       sourceIdentity: AuthorityDatabase.sourceDatabaseIdentity(path), backupSha256: backupEvidence.manifest.sha256, recordedAt: args.archiveRecordedAt });
     const pending = convertStoppedDatabase(args, clock);
+    if (archiveNeedsIndexUpgrade(input.stateRoot)) ArchiveDatabase.upgradeStopped(join(input.stateRoot, "archive.sqlite"));
     settleDatabaseUpgrade(path, pending, clock.now().toISOString());
     finishArchiveUpgrade(input.stateRoot);
     return { ...report, state: "converted" };

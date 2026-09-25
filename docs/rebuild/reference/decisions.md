@@ -1,4 +1,17 @@
-# `reference/decisions.md` — the decision ledger (D1–D347, 2026-07-17 → 2026-09-24)
+# `reference/decisions.md` — the decision ledger (D1–D348, 2026-07-17 → 2026-09-24)
+
+**D348 — Dashboard and workflow runtime versions (operator-approved, 2026-09-24):**
+An approved Archive redesign adds independent durable dashboard and per-workflow `major.minor`
+versions, initialized at 1.0 through controlled upgrade. A selected one-or-several workflow bump
+advances only those workflows' minor versions and archives their terminal old-version runs. An
+all-workflow dashboard bump advances the dashboard major version, moves every workflow to that
+major's `.0`, and archives their terminal old-version runs. Nonterminal affected runs block;
+publication follows a fenced, verified and resumable transfer. Future runs stamp both versions.
+Existing code semver/descriptor identities and immutable historical reports remain distinct;
+unproven historical versions stay explicitly unknown. This supersedes D274 item 2's
+minor-archives-nothing rule for new changes. Owners:
+[dashboard-surfaces D348](dashboard-surfaces.md#d348--dashboard-and-workflow-runtime-versions-2026-09-24),
+[approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 
 **D347 — Remember the selected workflow and simplify the rail heading (operator direction, 2026-09-24):**
 The Workflow Panel remembers the last selected workflow across page visits and refreshes in local
