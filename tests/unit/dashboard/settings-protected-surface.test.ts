@@ -56,7 +56,7 @@ describe("independent protected Settings surface", () => {
     const before = structuredClone(h.controller().protectedEditor.draft);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "conflict"); assert.deepEqual(h.controller().protectedEditor.draft, before); assert.equal(h.commands.length, 1);
-    assert.match(h.host.textContent ?? "", /Revision 2/u);
+    assert.match(h.host.textContent ?? "", /Current presence is refreshed/u);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(ProtectedSettingsCommandRequestSchema.parse(h.commands[1]).target.expectedRevision, 2);
     assert.equal(h.controller().protectedEditor.save.state, "applied");
@@ -128,8 +128,8 @@ it.each([
   [{ state: "conflict", message: "Current revision changed" }, "Credentials changed", false],
   [{ state: "unconfirmed", message: "Readback unavailable" }, "Credentials write unconfirmed", true],
   [{ state: "refused", message: "Draft refused" }, "Credentials were not applied", false],
-  [{ state: "applied", replayed: false }, "Credentials applied", false],
-  [{ state: "applied", replayed: true }, "Credentials already applied", false],
+  [{ state: "applied", replayed: false }, "Saved", false],
+  [{ state: "applied", replayed: true }, "Already saved", false],
 ] satisfies [SettingsSaveState, string, boolean][])("preserves the feedback title and retry affordance for %j", (save, title, retry) => {
   const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {} }));
   assert.ok(html.includes(title));

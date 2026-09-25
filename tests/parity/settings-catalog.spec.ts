@@ -52,19 +52,18 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
     await expect(page.getByText("synthetic-visible-credential", { exact: true })).toBeVisible();
   } else if (scene.id === "readonly") {
     await expect(page.locator("input,textarea,select")).toHaveCount(0);
-    await page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator("details > summary").click();
-    await expect(page.getByText("paths.stateRoot", { exact: true })).toBeVisible();
+    await expect(page.getByText("Runtime state folder", { exact: true })).toBeVisible();
+    await expect(page.getByText("Configuration key", { exact: true })).toHaveCount(0);
   } else if (scene.id === "annual") {
     await expect(page.locator('[data-settings-path^="annualDates.FY2027."]')).toHaveCount(3);
   } else {
-    await page.getByRole("textbox", { name: "Operator label" }).fill("Retained operator draft");
     await page.route("**/api/v1/commands", async route => {
       const request = SettingsCommandRequestSchema.parse(route.request().postDataJSON());
       document = { ...fixtureSettingsDocument({ actor: { label: "Competing operator" } }, 3), protectedSettings: document.protectedSettings };
       await route.fulfill({ json: { state: "conflict", commandId: request.commandId, currentVersion: 3, message: "synthetic diagnostic must not render" } });
     });
-    await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(page.getByText(/Current values are refreshed beside your retained draft/u)).toBeVisible();
+    await page.getByRole("textbox", { name: "Operator label" }).fill("Retained operator draft");
+    await expect(page.getByText(/Current values are refreshed beside your retained edit/u)).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Operator label" })).toHaveValue("Retained operator draft");
     await expect(page.getByText("Current value: Competing operator", { exact: true })).toBeVisible();
     expect(await page.locator("body").innerText()).not.toContain("synthetic diagnostic");
@@ -86,7 +85,6 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     const client = createDashboardClient({ baseUrl: server.url });
     await page.setViewportSize({ width: 1024, height: 720 }); await installTheme(page, theme);
     await page.goto(`${server.url}/?settings=general`);
-    await page.getByRole("textbox", { name: "Operator label" }).fill("Retained ordinary draft");
     await page.getByRole("link", { name: "Credentials", exact: true }).click();
     const password = page.getByLabel("UCPath password", { exact: true });
     await expect(password).toHaveAttribute("type", "password"); await expect(password).toHaveValue("");
@@ -97,7 +95,6 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
       if (attempts.length === 1) { const response = await route.fetch(); expect(response.ok()).toBe(true); await route.abort("failed"); }
       else await route.continue();
     });
-    await page.getByRole("button", { name: "Save credentials", exact: true }).click();
     await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
     await expect(password).toBeDisabled();
     const afterLost = await client.editableSettings(); expect(afterLost.revision).toBe(1);
@@ -105,42 +102,39 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
     expect(afterLost.protectedSettings.readback.revision).toBe(2);
     expect(afterLost.protectedSettings.entries.ucpathPassword?.value).toBe(secret);
     await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
-    await expect(page.getByText("Credentials already applied", { exact: true })).toBeVisible();
+    await expect(page.getByText("Already saved", { exact: true })).toBeVisible();
     expect(JSON.stringify(attempts[1]) === JSON.stringify(attempts[0])).toBe(true);
     const original = ProtectedSettingsCommandRequestSchema.parse(attempts[0]);
     expect(ProtectedSettingsCommandRequestSchema.parse(attempts[1]).payload.writeId).toBe(original.payload.writeId);
     await expect(password).toHaveValue("");
     await expect(page.getByText(secret, { exact: true })).toBeVisible();
     await page.getByRole("link", { name: "General", exact: true }).click();
-    await expect(page.getByRole("textbox", { name: "Operator label" })).toHaveValue("Retained ordinary draft");
     const patch = { "actor.label": { set: "Competing ordinary writer" } } as const;
     await client.applySettings({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: "2026-09-09T12:00:00.000Z", requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: 1 }, payload: { settingsSchemaHash: afterLost.settingsSchemaHash, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
-    await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(page.getByText(/Current values are refreshed beside your retained draft/u)).toBeVisible();
+    await page.getByRole("textbox", { name: "Operator label" }).fill("Retained ordinary draft");
+    await expect(page.getByText(/Current values are refreshed beside your retained edit/u)).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Operator label" })).toHaveValue("Retained ordinary draft");
-    await page.getByRole("button", { name: "Save changes", exact: true }).click();
-    await expect(page.getByText("Settings applied", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Retry edit", exact: true }).click();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
     expect((await client.editableSettings()).revision).toBe(3);
     await page.getByRole("link", { name: "Credentials", exact: true }).click();
     await page.getByRole("button", { name: "Clear UCPath password", exact: true }).click();
-    await page.getByRole("button", { name: "Save credentials", exact: true }).click();
-    await expect(page.getByText("Credentials applied", { exact: true })).toBeVisible();
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
     const cleared = await client.editableSettings(); expect(cleared.revision).toBe(3);
     if (cleared.protectedSettings.state !== "available") throw new Error("protected-readback-unavailable");
     expect(cleared.protectedSettings.readback.entries.ucpathPassword.present).toBe(false); expect(cleared.protectedSettings.readback.revision).toBe(3);
     // A real competing protected writer advances only that authority.
     await password.fill(secret);
     await client.executeCommand({ ...original, commandId: randomUUID(), target: { expectedRevision: 3 }, payload: { ...original.payload, writeId: randomUUID(), entries: { timekeeperName: { set: "synthetic-competing-timekeeper" } } } });
-    await page.getByRole("button", { name: "Save credentials", exact: true }).click();
-    await expect(page.getByText(/Current presence is refreshed beside your retained draft/u)).toBeVisible();
+    await expect(page.getByText(/Current presence is refreshed beside your retained edit/u)).toBeVisible();
     expect(await password.inputValue() === secret).toBe(true);
     // Lose the confirming GET after the next real effect; retry must keep its identity.
     await page.route("**/api/v1/settings/editable", route => route.abort("failed"), { times: 1 });
-    await page.getByRole("button", { name: "Save credentials", exact: true }).click();
+    await page.getByRole("button", { name: "Retry edit", exact: true }).click();
     await expect(page.getByText("Credentials write unconfirmed", { exact: true })).toBeVisible();
     const beforeRetry = JSON.stringify(attempts.at(-1));
     await page.getByRole("button", { name: "Retry exact attempt", exact: true }).click();
-    await expect(page.getByText("Credentials already applied", { exact: true })).toBeVisible();
+    await expect(page.getByText("Already saved", { exact: true })).toBeVisible();
     expect(JSON.stringify(attempts.at(-1)) === beforeRetry).toBe(true);
     await expect(password).toHaveValue("");
     const readback = await client.editableSettings();

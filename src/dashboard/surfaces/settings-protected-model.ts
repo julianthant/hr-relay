@@ -1,5 +1,5 @@
 import { settleCommandResult } from "../app/command-result.js";
-import { useRef, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { systemClock } from "../../domain/clock.js";
 import { deepFreeze } from "../../domain/immutability.js";
 import { ProtectedSettingsCommandRequestSchema } from "../../domain/commands.js";
@@ -39,6 +39,7 @@ export function useProtectedSettings(input: {
     if (busy.current || pending.current !== undefined) return;
     setDraft(previous => { const next = { ...previous }; delete next[name]; return next; });
     setErrors(previous => ({ ...previous, [name]: undefined }));
+    setSave({ state: "idle" });
   };
   const discard = (): void => {
     if (busy.current) return;
@@ -52,8 +53,8 @@ export function useProtectedSettings(input: {
       const settled = settleCommandResult(result);
       if (settled.kind === "refused" && settled.reason === "conflict") {
         pending.current = undefined;
-        try { await input.refresh(); setSave({ state: "conflict", message: "Credentials changed. Current presence is refreshed beside your retained draft. Review it, then save deliberately." }); }
-        catch { setSave({ state: "conflict", message: "Credentials changed, but current presence could not be read. Refresh before saving the retained draft." }); }
+        try { await input.refresh(); setSave({ state: "conflict", message: "Credentials changed. Current presence is refreshed beside your retained edit. Review it before retrying." }); }
+        catch { setSave({ state: "conflict", message: "Credentials changed, but current presence could not be read. Refresh before retrying the retained edit." }); }
         return;
       }
       if (settled.kind === "refused") {
@@ -82,6 +83,13 @@ export function useProtectedSettings(input: {
       void perform(command);
     } catch { setSave({ state: "refused", message: "Check the credential draft. No request was sent." }); }
   };
+  const autosave = useEffectEvent(submit);
+  useEffect(() => {
+    if (!input.readReady || available?.state !== "available" || save.state !== "idle"
+      || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
+    const timer = window.setTimeout(() => autosave(), 1200);
+    return () => window.clearTimeout(timer);
+  }, [available, draft, errors, input.readReady, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   return { draft, errors, save, dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
     update, clear, reset, discard, submit, retry };
