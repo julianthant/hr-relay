@@ -224,6 +224,27 @@
   }
 }
 
+.settings-takeover {
+  --ds-surface-1: var(--ds-settings-card);
+  --ds-surface-2: var(--ds-settings-control);
+  --ds-surface-3: var(--ds-settings-hover);
+  --ds-border: var(--ds-settings-border);
+  --ds-border-subtle: var(--ds-settings-border);
+  --ds-border-loud: var(--ds-settings-control-border);
+  --ds-control-border: var(--ds-settings-control-border);
+  --ds-control-bg: var(--ds-settings-control);
+  --ds-control-bg-hover: var(--ds-settings-hover);
+  --ds-control-fg: var(--ds-settings-fg);
+  --ds-fg: var(--ds-settings-fg);
+  --ds-fg-secondary: var(--ds-settings-fg-secondary);
+  --ds-fg-muted: var(--ds-settings-fg-muted);
+  --ds-fg-faint: var(--ds-settings-fg-muted);
+  background: var(--ds-settings-canvas);
+  color: var(--ds-settings-fg);
+}
+.settings-takeover > nav {
+  background: var(--ds-settings-sidebar);
+}
 .settings-content > * {
   width: min(100%, var(--ds-w-settings-content));
   margin-inline: auto;
@@ -250,6 +271,7 @@
 .settings-page-panel > header h2 {
   font-size: var(--ds-text-display);
   line-height: var(--ds-lh-display);
+  font-weight: 500;
 }
 .settings-page-panel > header h2 + span {
   font-size: var(--ds-text-body);
@@ -260,9 +282,9 @@
 }
 .settings-group-rows {
   overflow: hidden;
-  border: 1px solid var(--ds-border);
+  border: 1px solid var(--ds-settings-border);
   border-radius: var(--ds-radius-lg);
-  background: var(--ds-surface-1);
+  background: var(--ds-settings-card);
 }
 .settings-fact-row {
   display: grid;
@@ -306,7 +328,7 @@
 .settings-row-field > :first-child label {
   color: var(--ds-fg);
   font-size: var(--ds-text-ui);
-  font-weight: 600;
+  font-weight: 500;
 }
 .settings-row-field > :nth-child(2) {
   grid-column: 2;
@@ -356,15 +378,6 @@
 .settings-object-subfield > :nth-child(2) {
   grid-column: 2;
 }
-.settings-savebar {
-  position: sticky;
-  bottom: 0;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--ds-space-base);
-  padding: var(--ds-space-cozy) var(--ds-space-loose);
-  border: 1px solid var(--ds-border);
-  border-radius: var(--ds-radius-lg);
-  background: var(--ds-surface-1);
+.settings-page-body [role="status"] {
+  color: var(--ds-fg-muted);
 }

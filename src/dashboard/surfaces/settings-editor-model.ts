@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
 import { systemClock } from "../../domain/clock.js";
 import { deepFreeze } from "../../domain/immutability.js";
 import { SettingsCommandRequestSchema } from "../../domain/commands.js";
@@ -91,7 +91,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       const newLeaves = fiscalYearLeaves(editor.document, year);
       if (newLeaves.some(leaf => added.some(existing => existing.path === leaf.path))) throw new Error("duplicate-year");
       setAdded(previous => [...previous, ...newLeaves]);
-      setDraft(previous => ({ ...previous, ...Object.fromEntries(newLeaves.map(leaf => [leaf.path, { kind: "set" as const, raw: "" }])) })); setYearError(undefined);
+      setDraft(previous => ({ ...previous, ...Object.fromEntries(newLeaves.map(leaf => [leaf.path, { kind: "set" as const, raw: "" }])) })); setYearError(undefined); setSave({ state: "idle" });
     } catch { setYearError("Enter a new fiscal year as FY followed by four digits."); }
   };
   const perform = async (command: OrdinarySettingsAttempt): Promise<void> => {
@@ -101,8 +101,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       const result = checkedSettingsResult(command, await client.applySettings(command));
       if (result.state === "conflict") {
         pending.current = undefined;
-        try { await refresh(); setSave({ state: "conflict", message: "Settings changed. Current values are refreshed beside your retained draft. Review them, then save deliberately." }); }
-        catch { setSave({ state: "conflict", message: "Settings changed, but current values could not be read. Refresh before saving the retained draft." }); }
+        try { await refresh(); setSave({ state: "conflict", message: "Settings changed. Current values are refreshed beside your retained edit. Review them before retrying." }); }
+        catch { setSave({ state: "conflict", message: "Settings changed, but current values could not be read. Refresh before retrying the retained edit." }); }
         return;
       }
       if (result.state === "rejected") {
@@ -127,6 +127,13 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       void perform(command);
     } catch { setSave({ state: "refused", message: "Check the draft values. No request was sent." }); }
   };
+  const autosave = useEffectEvent(submit);
+  useEffect(() => {
+    if (editor.state !== "loaded" || save.state !== "idle" || readProblem !== undefined
+      || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
+    const timer = window.setTimeout(() => autosave(), 700);
+    return () => window.clearTimeout(timer);
+  }, [draft, editor, errors, readProblem, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   const reload = (): void => { void refresh().catch(() => undefined); };
   return Object.freeze({ editor, draft, errors, save, preflight, protectedEditor, leaves, yearError, readProblem,

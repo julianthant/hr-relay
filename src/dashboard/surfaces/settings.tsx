@@ -261,7 +261,7 @@ export function SettingsPage({
   };
 
   return (
-    <TakeoverFrame label="Settings" direction="row">
+    <TakeoverFrame label="Settings" direction="row" className="settings-takeover">
       <nav
         aria-label="Settings sections"
         className={cn(

@@ -14,15 +14,6 @@ const NOTES: Readonly<Record<string, string>> = {
   "features.debugScreenshots": "Capture extra diagnostic images",
   "features.duoWebAuthn": "Use WebAuthn for Duo sign-in",
 };
-const SUBTITLES: Readonly<Record<string, string>> = {
-  general: "Saved changes apply to new jobs; existing jobs keep their settings.",
-  display: "Display dimensions used by new browser sessions.",
-  performance: "Timeouts, retries, OCR, and worker capacity for new jobs.",
-  paths: "Folders and files used by newly created jobs.",
-  routes: "Optional test endpoints. A missing route never falls back to production.",
-  "annual-dates": "Fiscal dates used by newly created jobs.",
-  providers: "Provider limits and model order for newly created jobs.",
-};
 
 function humanize(value: string): string {
   return value.replace(/([a-z])([A-Z])/gu, "$1 $2").replace(/\b(ms|dir|url|ocr|ukg|crm|i9|ai)\b/giu, word => ({
@@ -58,8 +49,4 @@ export function settingTitle(leaf: EditableSettingsLeafWire): string {
 
 export function settingNote(leaf: EditableSettingsLeafWire): string | undefined {
   return NOTES[leaf.path] ?? (leaf.description === leaf.label ? undefined : leaf.description);
-}
-
-export function settingsSubtitle(sectionId: string, served: string): string {
-  return SUBTITLES[sectionId] ?? served;
 }

@@ -83,7 +83,7 @@ describe("editable Settings surface", () => {
     assert.ok(duplicateSectionResult.error.issues.some((issue) => issue.message.includes("repeats section general")));
   });
 
-  it("keeps one keyboard-submittable atomic leaf-operation draft", async () => {
+  it("autosaves one atomic leaf-operation draft after a settled edit", async () => {
     const applied: unknown[] = [];
     let closeCount = 0;
     const client = {
@@ -119,6 +119,8 @@ describe("editable Settings surface", () => {
       }));
     });
     await act(async () => undefined);
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
 
     const inputs = host.querySelectorAll("input");
     assert.equal(inputs.length, 2);
@@ -136,7 +138,7 @@ describe("editable Settings surface", () => {
       width.dispatchEvent(new Event("input", { bubbles: true }));
       width.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    assert.match(host.textContent ?? "", /2 unsaved changes/u);
+    assert.match(host.textContent ?? "", /Undo edit/u);
     await act(async () => { button("Back to the dashboard").click(); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
@@ -145,14 +147,10 @@ describe("editable Settings surface", () => {
     assert.equal(beforeUnload.defaultPrevented, true, "a dirty draft protects against browser unload");
     await act(async () => { overlayButton("Keep editing").click(); });
     assert.equal(closeCount, 0);
-    const save = button("Save changes");
-    save.focus();
-    assert.equal(document.activeElement, save, "the atomic save action accepts keyboard focus");
+    assert.throws(() => button("Save changes"));
     const form = host.querySelector("form");
     if (!(form instanceof HTMLFormElement)) throw new Error("editable Settings did not render an atomic form");
-    vi.useFakeTimers();
-    vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
-    await act(async () => { form.requestSubmit(); });
+    await act(async () => { await vi.advanceTimersByTimeAsync(701); });
     assert.equal(applied.length, 1);
     const command = applied[0] as { target: { expectedRevision: number }; payload: { patch: unknown } };
     assert.equal(command.target.expectedRevision, 1);
@@ -160,7 +158,7 @@ describe("editable Settings surface", () => {
       "display.screenHeight": { set: 1440 },
       "display.screenWidth": { set: 1980 },
     });
-    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.000Z");
+    assert.equal((applied[0] as { requestedAt: string }).requestedAt, "2026-08-28T18:00:00.700Z");
   });
 
   it("refuses a cleared zero-allowed OCR field instead of converting it to zero", async () => {
@@ -199,6 +197,7 @@ describe("editable Settings surface", () => {
       }));
     });
     await act(async () => undefined);
+    vi.useFakeTimers();
     const pageConcurrency = host.querySelector('[data-settings-path="ocr.pageConcurrency"] input');
     if (!(pageConcurrency instanceof HTMLInputElement)) throw new Error("missing OCR page concurrency input");
     await act(async () => {
@@ -211,7 +210,7 @@ describe("editable Settings surface", () => {
       pageConcurrency.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.match(host.textContent ?? "", /Enter a whole number of at least 0\./u);
-    assert.equal(button("Save changes").disabled, true);
+    await act(async () => { await vi.advanceTimersByTimeAsync(701); });
     assert.equal(applied.length, 0);
     await act(async () => { button("Back to the dashboard").click(); });
     await act(async () => { overlayButton("Discard changes").click(); });

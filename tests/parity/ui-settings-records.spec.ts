@@ -111,30 +111,21 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
         expect(budget!.width).toBeGreaterThan(page.viewportSize()!.width * 0.6);
       }
       if (section === "runtime-isolation") {
-        const identitySummary = page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator("details > summary");
-        await identitySummary.focus(); await expect(identitySummary).toBeFocused(); await page.keyboard.press("Enter");
-        await expect(identitySummary.locator("xpath=..").locator("code")).toHaveText("paths.stateRoot");
+        await expect(page.getByText("Runtime state folder", { exact: true })).toBeVisible();
+        await expect(page.getByText("Configuration key", { exact: true })).toHaveCount(0);
       } else if (section === "storage") {
         const doctor = page.getByRole("button", { name: "Run the read-only storage doctor" });
         await doctor.focus(); await expect(doctor).toBeFocused();
       } else {
         await createSettingsDraft(page, section);
-        const identitySummary = page.locator('details > summary').filter({ hasText: section === "protected-store" ? /Credential identifiers/u : /Setting identities/u }).first();
-        await identitySummary.focus(); await expect(identitySummary).toBeFocused(); await page.keyboard.press("Enter");
-        await expect(identitySummary.locator("xpath=..").locator("code").first()).toBeVisible();
+        await expect(page.getByText("Setting identities", { exact: true })).toHaveCount(0);
+        await expect(page.getByText("Credential identifiers", { exact: true })).toHaveCount(0);
       }
       const lastInput = page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select,[data-protected-name] input:not([type=hidden])').last();
       if (section !== "runtime-isolation" && section !== "storage") {
-        const save = page.getByRole("button", { name: section === "protected-store" ? "Save credentials" : "Save changes", exact: true });
-        const discard = page.getByRole("button", { name: "Discard", exact: true });
-        await expect(save).toBeVisible(); await expect(save).toBeEnabled();
-        await expect(discard).toBeVisible(); await expect(discard).toBeEnabled();
-        const disclosure = page.locator("details[open]").last();
-        await disclosure.scrollIntoViewIfNeeded();
-        await expect(disclosure).toBeInViewport();
+        await expect(page.getByRole("button", { name: section === "protected-store" ? "Save credentials" : "Save changes", exact: true })).toHaveCount(0);
         if (await lastInput.count()) { await lastInput.focus(); await expect(lastInput).toBeFocused(); }
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-        await save.focus(); await expect(save).toBeFocused();
       }
       const stem = `ui-settings-records-after/${viewport.name}/settings-${section}-${theme.name}`;
       const screenshot = info.outputPath(`${stem}.png`); mkdirSync(dirname(screenshot), { recursive: true });
@@ -146,7 +137,7 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
   }
 });
 
-test("UI-A Settings survives real browser zoom with keyboard details and reachable Save", async ({ browserName }, info) => {
+test("UI-A Settings survives real browser zoom with reachable controls", async ({ browserName }, info) => {
   expect(browserName).toBe("chromium");
   const root = join(tmpdir(), `settings-zoom-${process.pid}-${Date.now()}`);
   mkdirSync(root, { recursive: true });
@@ -187,18 +178,10 @@ test("UI-A Settings survives real browser zoom with keyboard details and reachab
         const geometry = await page.evaluate(() => ({ innerWidth, innerHeight, dpr: devicePixelRatio, cssZoom: document.documentElement.style.zoom, bodyCssZoom: document.body.style.zoom }));
         expect(geometry.cssZoom).toBe(""); expect(geometry.bodyCssZoom).toBe("");
         await createSettingsDraft(page, sample.section);
-        const identity = page.locator("details > summary", { hasText: "Setting identities" }).first();
-        await identity.focus(); await expect(identity).toBeFocused(); await page.keyboard.press("Enter");
-        await expect(identity.locator("xpath=..").locator("code").first()).toBeVisible();
-        const save = page.getByRole("button", { name: "Save changes", exact: true });
-        const discard = page.getByRole("button", { name: "Discard", exact: true });
+        await expect(page.getByText("Setting identities", { exact: true })).toHaveCount(0);
+        await expect(page.getByRole("button", { name: "Save changes", exact: true })).toHaveCount(0);
         const lastInput = page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select').last();
-        const disclosure = page.locator("details[open]").last();
-        await disclosure.scrollIntoViewIfNeeded();
-        await expect(disclosure).toBeInViewport();
         await lastInput.focus(); await expect(lastInput).toBeFocused();
-        await expect(save).toBeEnabled(); await save.focus(); await expect(save).toBeFocused();
-        await expect(discard).toBeEnabled();
         const stem = `ui-settings-records-after/zoom-${String(sample.zoom)}-${theme.name}`;
         const screenshot = info.outputPath(`${stem}.png`); mkdirSync(dirname(screenshot), { recursive: true });
         await page.screenshot({ path: screenshot });

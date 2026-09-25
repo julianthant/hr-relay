@@ -793,6 +793,17 @@ body[data-demo-theme="dark"] {
   --input: rgba(255, 255, 255, 0.16);
   --ring: #a1a1aa;
 
+  --ds-settings-canvas: #1c1e20;
+  --ds-settings-sidebar: #222426;
+  --ds-settings-card: #282a2c;
+  --ds-settings-control: #2e3032;
+  --ds-settings-hover: #35383a;
+  --ds-settings-border: #3c4145;
+  --ds-settings-control-border: #747b80;
+  --ds-settings-fg: #eceeef;
+  --ds-settings-fg-secondary: #c7cbce;
+  --ds-settings-fg-muted: #b1b8bd;
+
   /* The categorical log accents are RETIRED to a neutral ramp. The log stream
      used to paint four hues on top of four status hues at once — the noisiest
      surface in the product. Reads and writes are now told apart by direction
@@ -1001,6 +1012,17 @@ body[data-demo-theme="light"] {
   --border: #e4e7ec;
   --input: #d0d5dd;
   --ring: #667085;
+
+  --ds-settings-canvas: #f5f6f7;
+  --ds-settings-sidebar: #edf0f2;
+  --ds-settings-card: #ffffff;
+  --ds-settings-control: #f8f9fa;
+  --ds-settings-hover: #e9edf0;
+  --ds-settings-border: #dce1e5;
+  --ds-settings-control-border: #78838c;
+  --ds-settings-fg: #252b30;
+  --ds-settings-fg-secondary: #4f5a64;
+  --ds-settings-fg-muted: #606c76;
 
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */

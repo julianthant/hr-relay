@@ -66,20 +66,15 @@ describe("typed Settings catalog controls", () => {
       { label: "Saved and Active", value: "Saved" }, { label: "Default", value: undefined },
     ]);
   });
-  it("renders saved, active and default differences and keeps raw setting identity disclosed", async () => {
+  it("renders the current setting without redundant source or identity labels", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general", settingsWithDistinctRuntimeValues); cleanups.push(mounted.close);
-    assert.match(mounted.host.textContent ?? "", /Saved operator/u);
-    assert.match(mounted.host.textContent ?? "", /Running operator/u);
-    assert.match(mounted.host.textContent ?? "", /Local operator/u);
     const field = mounted.host.querySelector('[data-settings-path="actor.label"]'); assert.ok(field);
-    const group = field.closest(".settings-group"); assert.ok(group);
-    const identity = group.querySelector('details > summary');
-    assert.equal(identity?.textContent, "Setting identities");
-    assert.equal(identity?.parentElement?.querySelector("code")?.textContent, "actor.label");
+    assert.equal(field.querySelector("input")?.value, "Saved operator");
+    assert.doesNotMatch(mounted.host.textContent ?? "", /Setting identities|Using default|Revision 2/u);
     assert.equal(field.querySelectorAll("details").length, 0);
   });
-  it("shows saved, active and default host values plus their process-lifetime source", async () => {
+  it("shows current host values without source comparisons", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const applied = authority.apply({
       "display.screenWidth": { set: 1800 },
@@ -87,25 +82,19 @@ describe("typed Settings catalog controls", () => {
     });
     assert.equal(applied.state, "applied");
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
-    assert.match(mounted.host.textContent ?? "", /Source: active process observation\. Values describe this process lifetime\./u);
     const width = mounted.host.querySelector('[data-settings-path="display.screenWidth"]'); assert.ok(width);
-    const widthLabels = [...width.querySelectorAll("dt")].map(node => node.textContent);
-    const widthValues = [...width.querySelectorAll("dd")].map(node => node.textContent);
-    assert.deepEqual(widthLabels, ["Saved and Active", "Default"]);
-    assert.deepEqual(widthValues, ["1800", "1920"]);
+    assert.match(width.textContent ?? "", /1800/u);
+    assert.doesNotMatch(width.textContent ?? "", /Saved|Active|Default|1920/u);
     const height = mounted.host.querySelector('[data-settings-path="display.screenHeight"]'); assert.ok(height);
-    const heightLabels = [...height.querySelectorAll("dt")].map(node => node.textContent);
-    const heightValues = [...height.querySelectorAll("dd")].map(node => node.textContent);
-    assert.deepEqual(heightLabels, ["Saved and Active", "Default"]);
-    assert.deepEqual(heightValues, ["1000", "1080"]);
+    assert.match(height.textContent ?? "", /1000/u);
+    assert.doesNotMatch(height.textContent ?? "", /Saved|Active|Default|1080/u);
   });
-  it("marks observed host values as using defaults when no saved override exists", async () => {
+  it("shows the effective host value when no override exists", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
     const width = mounted.host.querySelector('[data-settings-path="display.screenWidth"]'); assert.ok(width);
-    assert.match(width.textContent ?? "", /Using default/u);
-    assert.deepEqual([...width.querySelectorAll("dt")].map(node => node.textContent), ["Active and Default"]);
-    assert.deepEqual([...width.querySelectorAll("dd")].map(node => node.textContent), ["1920"]);
+    assert.match(width.textContent ?? "", /1920/u);
+    assert.doesNotMatch(width.textContent ?? "", /Using default|Active/u);
   });
   it("preserves text, zero/nonzero integers, booleans, routes, complete budgets and ordered chains", () => {
     const document = fixtureSettingsDocument(); const leaves = settingsLeaves(document);
@@ -223,6 +212,6 @@ describe("typed Settings catalog controls", () => {
     assert.match(text, /Source: \.env\.providers/u);
     assert.match(text, /Read-only at process start/u);
     assert.match(text, /restart after changing a provider key/u);
-    assert.match(text, /Environment key family/u);
+    assert.match(text, /Provider keys/u);
   });
 });
