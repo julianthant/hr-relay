@@ -183,6 +183,7 @@ export function stampOperatorCommand(
   clock: Clock,
   journal: CommandJournalRead,
   protectedCommandAcceptedAt: (commandId: string) => string | undefined,
+  runtimeVersionAcceptedAt?: (commandId: string) => string | undefined,
 ): CommandRequest {
   const intent = CommandRequestSchema.parse(withOperatorProvenance(input, clock));
   const accepted = journal.get(intent.commandId);
@@ -190,6 +191,7 @@ export function stampOperatorCommand(
     ...intent,
     requestedAt: accepted?.requestedAt
       ?? (intent.family === "settings" && intent.type === "apply-protected-settings" ? protectedCommandAcceptedAt(intent.commandId) : undefined)
+      ?? (intent.type === "apply-runtime-version" ? runtimeVersionAcceptedAt?.(intent.commandId) : undefined)
       ?? clock.now().toISOString(),
     requestedBy: LOCAL_OPERATOR_ACTOR_ID,
     source: "dashboard",
@@ -268,6 +270,7 @@ export function createOperatorCommandIngress(input: Readonly<{
   clock: Clock;
   journal: CommandJournalRead;
   protectedCommandAcceptedAt: (commandId: string) => string | undefined;
+  runtimeVersionAcceptedAt?: (commandId: string) => string | undefined;
   bulkAcceptances: BulkCommandAcceptanceAuthority;
 }>): OperatorCommandIngress {
   const tails = new Map<string, Promise<void>>();
@@ -303,7 +306,7 @@ export function createOperatorCommandIngress(input: Readonly<{
       if (ingress.state === "refused") return Promise.resolve(ingress.response);
       return serialize([`command:${ingress.request.commandId}`], async () => {
         try {
-          return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt));
+          return await execute(stampOperatorCommand(ingress.request, input.clock, input.journal, input.protectedCommandAcceptedAt, input.runtimeVersionAcceptedAt));
         } catch (error) {
           if (!(error instanceof CommandIdentityConflictError)) throw error;
           return CommandResultSchema.parse({ state: "rejected", commandId: ingress.request.commandId, code: "command-divergent", message: error.message });

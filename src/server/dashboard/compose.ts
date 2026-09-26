@@ -961,6 +961,8 @@ async function composeDashboardRuntimeStartup(
     commands,
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
+    runtimeVersionAcceptedAt: (commandId) => database.readRuntimeVersionIndex().changes
+      .find(change => change.applicationCommandId === commandId)?.applicationRequest?.requestedAt,
     bulkCommandAcceptances: {
       withTransaction: (work) => database.withAuthorityTransaction((repositories) =>
         work({ get: repositories.commands.getBulk, insert: repositories.commands.acceptBulk })),

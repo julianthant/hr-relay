@@ -993,8 +993,9 @@ export function savedArchiveRuntimeVersions(deps: Pick<ArchiveQueryDeps, "storag
     dashboard: authority.state.dashboard,
     workflows: authority.state.workflows.map(row => ({ ...row, label: labels.get(row.workflowId) ?? row.workflowId })),
     ...(authority.claim === undefined ? {} : { applyingChangeId: authority.claim.changeId }),
-    changes: changes.map(({ changeId, actorId, reviewedAt, reviewFingerprint, scope, before, after, state, members, completedRunIds }) =>
-      ({ changeId, actorId, reviewedAt, reviewFingerprint, scope, before, after, state, members, completedRunIds })),
+    changes: changes.map(({ changeId, actorId, reviewedAt, reviewFingerprint, scope, before, after, state, members, completedRunIds, applicationRequest }) =>
+      ({ changeId, actorId, reviewedAt, reviewFingerprint, scope, before, after, state, members, completedRunIds,
+        ...(state === "applying" && applicationRequest !== undefined ? { resumeRequest: applicationRequest } : {}) })),
   });
 }
 

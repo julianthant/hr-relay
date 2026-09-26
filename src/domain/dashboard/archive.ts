@@ -457,6 +457,7 @@ export const SavedRuntimeVersionIndexWireSchema = z.strictObject({
     scope: RuntimeVersionScopeSchema, before: RuntimeVersionStateSchema, after: RuntimeVersionStateSchema,
     state: z.enum(["planned", "applying", "applied"]), members: z.array(RuntimeVersionMemberSchema),
     completedRunIds: z.array(RunIdSchema),
+    resumeRequest: VersionArchiveCommandRequestSchema.options[3].optional(),
   })),
 });
 export type SavedRuntimeVersionIndexWire = z.infer<typeof SavedRuntimeVersionIndexWireSchema>;

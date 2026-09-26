@@ -9,6 +9,7 @@ import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../domain/ids.
 import { RuntimeVersionChangeSchema, runtimeVersionChangeReviewFingerprint } from "../domain/archive/runtime-version-change.js";
 import { RuntimeVersionScopeSchema } from "../domain/archive/runtime-version.js";
 import { ArchiveReportSchema } from "../domain/archive/report.js";
+import type { CommandRequest } from "../domain/commands.js";
 import type { AuthorityDatabase } from "../infra/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../infra/sqlite/storage-records.js";
 import { createRunLifecycleStorage } from "../infra/sqlite/lifecycle-storage.js";
@@ -23,6 +24,7 @@ export function createRuntimeVersionChanges(deps: Readonly<{
   archiveSnapshots: ArchiveSnapshotSource;
   afterTransferStep?: (runId: string, step: "captured" | "verified" | "cleaned" | "published") => void;
 }>) {
+  type ApplyRequest = Extract<CommandRequest, { type: "apply-runtime-version" }>;
   const storage = createRunLifecycleStorage(deps.database);
   const plan = (scopeInput: z.input<typeof RuntimeVersionScopeSchema>, actorId: string, changeId = deps.ids.uuid(),
     commandFingerprint = sha256Hex(canonicalJsonStringify({ scope: scopeInput, actorId, changeId }))) =>
@@ -50,11 +52,13 @@ export function createRuntimeVersionChanges(deps: Readonly<{
       return deps.database.writeRuntimeVersionChange(change);
     });
 
-  const claim = (changeId: string, commandId: string, requestFingerprint: string) => deps.database.withAuthorityTransaction(() => {
+  const claim = (changeId: string, commandId: string, requestFingerprint: string, request?: ApplyRequest) => deps.database.withAuthorityTransaction(() => {
     const row = deps.database.readRuntimeVersionChange(changeId);
     if (row === undefined) throw new Error("runtime-version-change-missing");
     if (row.state !== "planned") {
-      if (row.applicationCommandId !== commandId || row.applicationRequestFingerprint !== requestFingerprint) {
+      if (row.applicationCommandId !== commandId || row.applicationRequestFingerprint !== requestFingerprint
+        || (row.applicationRequest !== undefined && request !== undefined
+          && canonicalJsonStringify(row.applicationRequest) !== canonicalJsonStringify(request))) {
         throw new Error("runtime-version-application-command-conflict");
       }
       return row;
@@ -122,12 +126,13 @@ export function createRuntimeVersionChanges(deps: Readonly<{
       .map(({ runId, reportJson }) => ({ runId, reportJson }));
     return deps.database.writeRuntimeVersionChange({ ...row, state: "applying", applicationCommandId: commandId,
       applicationRequestFingerprint: FingerprintSchema.parse(requestFingerprint),
+      ...(request === undefined ? {} : { applicationRequest: request }),
       claimedAt: IsoInstantSchema.parse(deps.clock.now().toISOString()), pendingCaptures });
   });
 
   const apply = (changeId: string, commandId = changeId,
-    requestFingerprint = sha256Hex(canonicalJsonStringify({ changeId, commandId }))) => {
-    let row = claim(changeId, commandId, requestFingerprint);
+    requestFingerprint = sha256Hex(canonicalJsonStringify({ changeId, commandId })), request?: ApplyRequest) => {
+    let row = claim(changeId, commandId, requestFingerprint, request);
     if (row.state === "applied") return row;
     if (deps.database.readRuntimeVersionAuthority().claim?.changeId !== changeId) throw new Error("runtime-version-claim-mismatch");
     for (const capture of row.pendingCaptures ?? []) {
