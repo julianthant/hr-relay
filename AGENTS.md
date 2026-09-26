@@ -30,7 +30,7 @@ production authority and rollback asset until the approved all-at-once cutover (
 - Keep existing AGENTS.md / CLAUDE.md twins byte-identical. Change instructions for changed rules;
   do not add historical lessons or retrospective comments. Comments explain necessary current behavior
   or constraints only. Keep complete project instruction chains below 32,768 bytes.
-- `/sol-orchestrator` owns execution. Combine it with `/plan` or `/phase-plan` when planning is needed;
+- `/astra-orchestrator` owns execution. Combine it with `/plan` or `/phase-plan` when planning is needed;
   planning-only, roadmap recording and execution remain separate choices. An explicit plan-and-execute
   request can continue in the same root after required approval and verified prerequisites.
 - The operator launches tasks and chooses integration. No automatic sibling/next-task dispatch or
