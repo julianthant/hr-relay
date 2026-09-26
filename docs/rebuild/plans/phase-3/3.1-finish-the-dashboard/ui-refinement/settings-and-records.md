@@ -227,6 +227,16 @@ focused kit proof now, with broad obligations recorded. Use playwright-cli for b
 Integration owner is the user. Completion here produces an accepted local candidate; no merge,
 push, new worktree, automatic next-task launch, or cleanup of peers is authorized.
 
+### Category 3 provider-key persistence — 2026-09-26
+
+D351 owns the private `.env.providers` writer and recovery protocol for the approved editable
+Credentials provider keys. The first Category 3 outcome is the bounded private file store and
+synthetic-file proof in `src/infra/config/provider-key-store.ts` and
+`tests/unit/config/provider-key-store.test.ts`. Its journal verifier is injected; it does not yet
+register a Settings command, capture parent-environment provenance at bootstrap, serve saved
+values or recovery state, or connect the Credentials UI. Those remain in the subsequent Category 3
+integration outcome. The provider file is never read or written with real credentials in tests.
+
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->
 

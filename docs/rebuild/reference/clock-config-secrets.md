@@ -1766,6 +1766,49 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D351 — Revisioned provider-key file and exact pending recovery · 2026-09-26
+
+The fixed `.env.providers` remains the sole saved provider-key authority. Five registered
+families admit stable sparse slots 1–8. Settings may set or clear a named slot, but no key value
+or value-derived binding enters ordinary Config, snapshots, SQLite, command audit, diagnostics,
+or logs. The protected credential store stays independent. Parent environment bindings retain
+precedence in the active process; a saved file change takes effect at a later startup only for
+slots not shadowed by the parent environment.
+
+The private provider writer uses a separate 0600 metadata sidecar with a bounded settled anchor
+and at most one pending reservation. It stores nonsecret command fields and operation markers,
+plus private SHA-256 bindings of the complete original request and postwrite body; it stores no
+key values. The source version token derives only from bigint file metadata
+`dev, ino, size, mtimeNs, ctimeNs, birthtimeNs`. The writer checks a stable no-follow descriptor
+read and final path identity under its private lock, stages a 0600 same-directory replacement,
+fsyncs the stage, durably records pending metadata, then renames the stage over `.env.providers`
+and fsyncs the parent directory. The existing strict environment grammar and closed provider
+key set remain admission rules. A noncooperating same-UID editor can still race the final
+stat-to-rename interval; all application writers must use the private lock.
+
+The previous settled anchor must have its matching durable marked command and audit before
+recovering pending work or admitting another write. The latest durable provider journal head
+must be that settled anchor or, after rename, the exact pending command; a restored older
+file/sidecar pair cannot become current merely because its older audit still exists. An exact retry checks private request/body
+bindings and the marked public fingerprint before applying a pre-rename stage or reconciling an
+already renamed file. The pending reservation remains until the caller confirms the matching
+durable command and audit, after which the sidecar becomes settled. No cancellation follows a
+durable pending reservation. Missing, corrupt, divergent, or rewound evidence is unknown and
+blocks writes. A headerless file is revision 1 only if no managed history exists; a missing or
+rewound managed header is unknown. Manual file edits after a fully journaled write are admitted
+through a fresh source token, while pending recovery requires exact body identity. GET and
+startup classify recovery state without mutating the file.
+
+The store receives the command family's canonical marked-envelope fingerprint function. It
+preserves the original admitted source surface and returns only value-free pending identity from
+its public classification read. A server-private pending read verifies and reconstructs the
+original request without changing the file; command admission then calls `apply`, which repeats
+the checks under the lock before completing any rename.
+
+`src/infra/config/provider-key-store.ts` implements this bounded private file protocol. The
+Settings command, boot provenance, wire, and UI integration must supply the durable journal
+checks and explicit retry path; the store alone does not make provider keys editable.
+
 ### D350 — Single current-fiscal-year job-end date and historical backup compatibility · 2026-09-26
 
 Settings exposes one employment-date control: `annualDates.FY<year>.jobEndDate`, where the server

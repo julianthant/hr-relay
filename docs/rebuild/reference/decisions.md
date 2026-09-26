@@ -1,4 +1,14 @@
-# `reference/decisions.md` — the decision ledger (D1–D350, 2026-07-17 → 2026-09-26)
+# `reference/decisions.md` — the decision ledger (D1–D351, 2026-07-17 → 2026-09-26)
+
+**D351 — Revisioned provider-key file and exact pending recovery (operator-approved, 2026-09-26):**
+`.env.providers` remains the saved key authority for five sparse eight-slot families. A private
+value-free sidecar anchors the latest settled write and one pending reservation; private request
+and body bindings permit exact retry across a file rename and SQLite audit failure. A prior settled
+write requires its durable command and audit before recovery or another write. Missing or divergent
+evidence is unknown, and a durable pending reservation cannot be canceled. GET and startup only
+classify recovery state. The initial provider-file store does not yet wire the Settings command,
+boot provenance, or UI. Owner: [clock-config-secrets §D351](clock-config-secrets.md#d351--revisioned-provider-key-file-and-exact-pending-recovery--2026-09-26),
+[Settings and records Category 3](../plans/phase-3/3.1-finish-the-dashboard/ui-refinement/settings-and-records.md#category-3-provider-key-persistence--2026-09-26).
 
 **D350 — Single current-fiscal-year job-end date and historical backup compatibility (operator-approved, 2026-09-26):** Settings serves one required `annualDates.FY<Clock.fiscalYear()>.jobEndDate` control. It does not expose year management or the two Kronos dates; all stored fiscal-year values remain intact. The live entry schema makes only the Kronos fields optional, while `jobEndDate` remains required and runtime admission still fails loud when the current date is missing. This changes the live Settings schema hash without an authority version bump, current-value rewrite, or journal rewrite. The v2 backup reader accepts the pinned pre-change hash `b8cd5d1b0056fceb020df20e0682762b2de53d8efa8dd9109c835d0fc0e9908a` only through a strict frozen historical record/root shape with its original value fingerprint and root-tuple checks. Live-root admission stays strict. Owner: [clock-config-secrets §D350](clock-config-secrets.md#d350--single-current-fiscal-year-job-end-date-and-historical-backup-compatibility--2026-09-26), [Settings and records task amendment](../plans/phase-3/3.1-finish-the-dashboard/ui-refinement/settings-and-records.md#category-2-settings-shell-and-ordinary-forms--2026-09-26).
 
