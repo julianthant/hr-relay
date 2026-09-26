@@ -3,11 +3,12 @@ import { Field, Input, Select, Textarea, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { settingInput, type SettingsDraftInput, type SettingsDraftOperation } from "./settings-draft-model.js";
 import { settingNote, settingObjectFieldTitle, settingTitle } from "./settings-presentation.js";
+import { timeoutDisplayUnit, timeoutInput, timeoutSetting, timeoutValue, type TimeoutUnit } from "./settings-timeouts-model.js";
 import { providerFieldPresentation } from "./ui-settings-records-labels.js";
 
 export function SettingsValueControl({ leaf, operation, error, disabled, update }: {
   leaf: EditableSettingsLeafWire; operation: SettingsDraftOperation | undefined; error: string | undefined;
-  disabled: boolean; update: (raw: SettingsDraftInput) => void;
+  disabled: boolean; update: (raw: SettingsDraftInput, unit?: TimeoutUnit) => void;
 }) {
   const raw = operation?.kind === "set" ? operation.raw : settingInput(leaf, operation?.kind === "clear" ? leaf.defaultValue ?? "" : leaf.effectiveValue);
   if (leaf.control.input === "object") {
@@ -25,6 +26,29 @@ export function SettingsValueControl({ leaf, operation, error, disabled, update 
     </fieldset>;
   }
   if (typeof raw !== "string") throw new Error("settings-scalar-draft-invalid");
+  const timeout = timeoutSetting(leaf.path);
+  if (timeout !== undefined) {
+    const unit = operation?.kind === "set" ? operation.timeoutUnit ?? timeoutDisplayUnit(leaf) : timeoutDisplayUnit(leaf);
+    let minuteValue: string | undefined;
+    if (error === undefined) {
+      try { minuteValue = timeoutInput(leaf, timeoutValue(leaf, raw, unit), "minutes"); }
+      catch { minuteValue = undefined; }
+    }
+    return <Field label={timeout.title} description={timeout.description} error={error} disabled={disabled} className="settings-row-field">
+      <div className="settings-timeout-input">
+        <Input type="text" inputMode="decimal" aria-label={`${timeout.title} in ${unit}`} value={raw} onChange={event => update(event.target.value, unit)} />
+        <select aria-label={`${timeout.title} unit`} value={unit} disabled={disabled || error !== undefined}
+          onChange={event => {
+            const nextUnit = event.target.value as TimeoutUnit;
+            const value = timeoutValue(leaf, raw, unit);
+            update(nextUnit === "minutes" && minuteValue !== undefined ? minuteValue : timeoutInput(leaf, value, nextUnit), nextUnit);
+          }}>
+          <option value="seconds">seconds</option>
+          <option value="minutes" disabled={minuteValue === undefined}>minutes</option>
+        </select>
+      </div>
+    </Field>;
+  }
   return <Field label={settingTitle(leaf)} description={settingNote(leaf)} error={error} disabled={disabled} hint={leaf.input === "number" ? leaf.unit : leaf.input === "date" ? "M/D/YYYY" : leaf.input === "models" ? "One model per line; order is fallback priority." : undefined} className="settings-row-field">
     {leaf.input === "boolean" ? <Select value={raw} onChange={event => update(event.target.value)}><option value="true">Enabled</option><option value="false">Disabled</option></Select>
       : leaf.input === "models" ? <Textarea value={raw} rows={3} placeholder="One model per line, in order" onChange={event => update(event.target.value)} />

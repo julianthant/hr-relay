@@ -259,6 +259,73 @@
   border-radius: 0;
   background: transparent;
 }
+.settings-page-panel.settings-performance {
+  width: min(100%, var(--ds-w-settings-performance));
+  font-family: var(--ds-font-settings);
+}
+.settings-page-panel.settings-performance > header h2 {
+  font-size: var(--ds-text-settings-page);
+  line-height: normal;
+  font-weight: 650;
+}
+.settings-group-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--ds-space-base);
+  margin-bottom: var(--ds-space-cozy);
+}
+.settings-group-heading h3 {
+  margin: 0;
+}
+.settings-performance .settings-group-heading h3 {
+  font-size: var(--ds-text-settings-section);
+  line-height: normal;
+}
+.settings-performance .settings-row-field > :first-child label {
+  font-size: var(--ds-text-settings-row);
+}
+.settings-performance .settings-row-field > p {
+  font-size: var(--ds-text-settings-description);
+  line-height: normal;
+}
+.settings-performance-scope {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--ds-space-base);
+  padding: var(--ds-space-cozy) var(--ds-space-loose);
+  border: var(--ds-border-w) solid var(--ds-settings-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-settings-card);
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-settings-description);
+}
+.settings-timeout-input {
+  display: flex;
+  min-width: 0;
+}
+.settings-timeout-input input {
+  min-width: 0;
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  font-size: var(--ds-text-settings-value);
+  font-variant-numeric: tabular-nums;
+}
+.settings-timeout-input > select {
+  display: flex;
+  align-items: center;
+  flex: none;
+  padding-inline: var(--ds-space-cozy);
+  border: var(--ds-border-w) solid var(--ds-control-border);
+  border-left: 0;
+  border-radius: 0 var(--ds-radius-md) var(--ds-radius-md) 0;
+  background: var(--ds-control-bg);
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-settings-description);
+  cursor: pointer;
+}
 .settings-page-panel > header {
   min-height: 0;
   margin-bottom: var(--ds-space-page);

@@ -1,0 +1,175 @@
+# performance-settings--paper-ink--1024x720
+# adapter: fixture
+# fixture: performance-settings
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
+# appVersion: 0.1.0
+# viewport: 1024x720  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
+  - button "No later day" [disabled]
+  - 'button "Preflight: unavailable"'
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Test routes":
+        - /url: "?settings=routes"
+      - link "Annual dates":
+        - /url: "?settings=annual-dates"
+      - link "Provider budgets & models":
+        - /url: "?settings=providers"
+      - text: Authorities
+      - link "Credentials":
+        - /url: "?settings=protected-store"
+      - link "Provider availability":
+        - /url: "?settings=provider-env"
+      - link "Observed host":
+        - /url: "?settings=derived-host"
+      - link "Deployment":
+        - /url: "?settings=runtime-isolation"
+      - text: Status
+      - link "Storage health":
+        - /url: "?settings=storage"
+      - link "System hosts":
+        - /url: "?settings=system-hosts"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
+    - heading "Performance" [level=2]
+    - text: Timeout changes apply to new runs Durations shown in seconds or minutes
+    - heading "Navigation" [level=3]
+    - text: 3 settings Standard navigation
+    - textbox "Standard navigation in seconds": "15"
+    - combobox "Standard navigation unit":
+      - option "seconds" [selected]
+      - option "minutes"
+    - paragraph: Maximum wait for a regular page change.
+    - text: Long navigation
+    - textbox "Long navigation in seconds": "30"
+    - combobox "Long navigation unit":
+      - option "seconds" [selected]
+      - option "minutes"
+    - paragraph: Maximum wait for a page known to load slowly.
+    - text: UKG navigation
+    - textbox "UKG navigation in seconds": "60"
+    - combobox "UKG navigation unit":
+      - option "seconds" [selected]
+      - option "minutes"
+    - paragraph: Maximum wait for a UKG page change.
+    - heading "Work" [level=3]
+    - text: 3 settings Task
+    - textbox "Task in minutes": "3"
+    - combobox "Task unit":
+      - option "seconds"
+      - option "minutes" [selected]
+    - paragraph: Maximum time for one worker task after a session is ready.
+    - text: Transaction
+    - textbox "Transaction in minutes": "5"
+    - combobox "Transaction unit":
+      - option "seconds"
+      - option "minutes" [selected]
+    - paragraph: Maximum time allowed for a transaction operation.
+    - text: Retry delay
+    - textbox "Retry delay in seconds": "5"
+    - combobox "Retry delay unit":
+      - option "seconds" [selected]
+      - option "minutes" [disabled]
+    - paragraph: Wait before retrying an eligible operation.
+    - heading "Sign-in & Duo" [level=3]
+    - text: 4 settings Session acquisition
+    - textbox "Session acquisition in seconds": "60"
+    - combobox "Session acquisition unit":
+      - option "seconds" [selected]
+      - option "minutes"
+    - paragraph: Maximum time to open a browser session and sign in.
+    - text: Duo lease grace
+    - textbox "Duo lease grace in seconds": "20"
+    - combobox "Duo lease grace unit":
+      - option "seconds" [selected]
+      - option "minutes" [disabled]
+    - paragraph: Extra time reserved for Duo session cleanup.
+    - text: Duo approval
+    - textbox "Duo approval in minutes": "3"
+    - combobox "Duo approval unit":
+      - option "seconds"
+      - option "minutes" [selected]
+    - paragraph: Maximum wait for a standard Duo approval.
+    - text: CRM Duo approval
+    - textbox "CRM Duo approval in seconds": "60"
+    - combobox "CRM Duo approval unit":
+      - option "seconds" [selected]
+      - option "minutes"
+    - paragraph: Maximum wait for Duo approval during CRM sign-in.
+    - heading "Retries and limits" [level=3]
+    - text: Navigation Retries
+    - spinbutton "Navigation Retries": "10"
+    - text: Separation Termination Window Days
+    - spinbutton "Separation Termination Window Days": "14"
+    - heading "OCR" [level=3]
+    - text: Second Opinion Max
+    - spinbutton "Second Opinion Max": "5"
+    - text: Page Max Wait ms
+    - spinbutton "Page Max Wait ms": "120000"
+    - text: Tier1Patience ms
+    - spinbutton "Tier1Patience ms": "90000"
+    - text: OCR page concurrency
+    - spinbutton "OCR page concurrency": "0"
+    - text: Disambig Concurrency
+    - spinbutton "Disambig Concurrency": "4"
+    - text: Suggest Concurrency
+    - spinbutton "Suggest Concurrency": "4"
+    - text: Backoff Base ms
+    - spinbutton "Backoff Base ms": "2000"
+    - text: Backoff Cap ms
+    - spinbutton "Backoff Cap ms": "60000"
+    - text: OCR validation retries
+    - spinbutton "OCR validation retries": "1"
+    - heading "Browser health" [level=3]
+    - text: Monitor Tick ms
+    - spinbutton "Monitor Tick ms": "30000"
+    - text: Max Auto Refresh
+    - spinbutton "Max Auto Refresh": "10"
+    - text: Max Reopen
+    - spinbutton "Max Reopen": "3"
+    - text: Close Proof ms
+    - spinbutton "Close Proof ms": "15000"
+    - heading "Worker capacity" [level=3]
+    - text: Default workers
+    - spinbutton "Default workers": "4"
+    - text: Review capacity for new worker pools. Idle ms
+    - spinbutton "Idle ms": "900000"
+    - text: Idle Repoll ms
+    - spinbutton "Idle Repoll ms": "30000"
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live

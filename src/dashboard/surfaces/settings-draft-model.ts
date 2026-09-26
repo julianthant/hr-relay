@@ -1,9 +1,10 @@
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { SettingsPatchSchema, type SettingsPatch } from "../../domain/config/settings.js";
 import type { EditableSettingsLeafWire, EditableSettingsWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
+import { timeoutInput, timeoutSetting, timeoutValue, type TimeoutUnit } from "./settings-timeouts-model.js";
 
 export type SettingsDraftInput = string | Readonly<Record<string, string>>;
-export type SettingsDraftOperation = { readonly kind: "set"; readonly raw: SettingsDraftInput; readonly companion?: true } | { readonly kind: "clear" };
+export type SettingsDraftOperation = { readonly kind: "set"; readonly raw: SettingsDraftInput; readonly companion?: true; readonly timeoutUnit?: TimeoutUnit } | { readonly kind: "clear" };
 export type SettingsDraft = Readonly<Record<string, SettingsDraftOperation>>;
 export function formatSetting(value: EditorValue | undefined): string {
   if (value === undefined) return "not set";
@@ -16,13 +17,18 @@ export function settingInput(leaf: EditableSettingsLeafWire, value = leaf.effect
   }
   if (leaf.input === "models") return Array.isArray(value) ? value.join("\n") : "";
   if (value !== undefined && typeof value === "object") throw new Error("settings-scalar-value-invalid");
+  if (timeoutSetting(leaf.path) !== undefined && value !== undefined) {
+    if (typeof value !== "number") throw new Error("settings-timeout-value-invalid");
+    return timeoutInput(leaf, value);
+  }
   return value === undefined ? "" : String(value);
 }
 export function settingsSectionGroups(sectionId: string, leaves: readonly EditableSettingsLeafWire[]): readonly { title: string; leaves: readonly EditableSettingsLeafWire[] }[] {
   const groupTitle = (path: string): string => {
     if (sectionId === "general") return path.startsWith("features.") ? "Features" : "Everyday operation";
     if (sectionId === "performance") {
-      if (path.startsWith("timeouts.")) return "Timeouts";
+      const timeout = timeoutSetting(path);
+      if (timeout !== undefined) return timeout.group;
       if (path.startsWith("ocr.")) return "OCR";
       if (path.startsWith("browserHealth.") || path.startsWith("browser.")) return "Browser health";
       if (path.startsWith("daemon.") || path.startsWith("concurrency.")) return "Worker capacity";
@@ -45,7 +51,7 @@ function integer(raw: string): number {
   if (!/^(?:0|[1-9]\d*)$/u.test(raw) || !Number.isSafeInteger(Number(raw))) throw new Error("invalid-number");
   return Number(raw);
 }
-export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: SettingsDraftInput): EditorValue {
+export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: SettingsDraftInput, timeoutUnit?: TimeoutUnit): EditorValue {
   if (leaf.control.input === "object") {
     if (typeof raw === "string") throw new Error("invalid-object");
     return Object.fromEntries(leaf.control.fields.flatMap(field => {
@@ -56,6 +62,7 @@ export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: Setti
     }));
   }
   if (typeof raw !== "string") throw new Error("invalid-scalar");
+  if (timeoutSetting(leaf.path) !== undefined) return timeoutValue(leaf, raw, timeoutUnit);
   if (leaf.input === "number") return integer(raw);
   if (leaf.input === "boolean") {
     if (raw !== "true" && raw !== "false") throw new Error("invalid-boolean");
@@ -67,10 +74,12 @@ export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: Setti
 export function draftError(leaf: EditableSettingsLeafWire, operation: SettingsDraftOperation): string | undefined {
   if (operation.kind === "clear") return undefined;
   try {
-    const value = valueFromSettingInput(leaf, operation.raw);
+    const value = valueFromSettingInput(leaf, operation.raw, operation.timeoutUnit);
     if (!SettingsPatchSchema.safeParse({ [leaf.path]: { set: value } }).success) throw new Error("invalid-value");
     return undefined;
   } catch {
+    const timeout = timeoutSetting(leaf.path);
+    if (timeout !== undefined) return `Enter a positive duration that resolves to a whole ${timeout.storedUnit === "milliseconds" ? "millisecond" : "second"}.`;
     if (leaf.input === "number") return `Enter a whole number of at least ${String(leaf.minimum)}.`;
     if (leaf.input === "date") return "Enter a date as M/D/YYYY or MM/DD/YYYY.";
     if (leaf.input === "models") return "Enter one model per line, in order; no blank lines, spaces or commas.";
@@ -92,7 +101,7 @@ export function patchFromSettingsDraft(leaves: readonly EditableSettingsLeafWire
   const patch = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
     const leaf = leaves.find(candidate => candidate.path === path);
     if (leaf === undefined) throw new Error("settings-draft-path-not-served");
-    return [path, operation.kind === "clear" ? { clear: true } : { set: valueFromSettingInput(leaf, operation.raw) }];
+    return [path, operation.kind === "clear" ? { clear: true } : { set: valueFromSettingInput(leaf, operation.raw, operation.timeoutUnit) }];
   }));
   return SettingsPatchSchema.parse(patch);
 }

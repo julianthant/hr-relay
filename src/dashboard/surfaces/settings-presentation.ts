@@ -1,4 +1,5 @@
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import { timeoutSetting } from "./settings-timeouts-model.js";
 
 const TITLES: Readonly<Record<string, string>> = {
   "actor.label": "Operator label",
@@ -32,6 +33,8 @@ export function settingObjectFieldTitle(name: string): string {
 }
 
 export function settingTitle(leaf: EditableSettingsLeafWire): string {
+  const timeout = timeoutSetting(leaf.path);
+  if (timeout !== undefined) return timeout.title;
   if (TITLES[leaf.path] !== undefined) return TITLES[leaf.path];
   if (leaf.control.input === "object" && leaf.path.startsWith("providers.")) return `${humanize(leaf.path.split(".")[1] ?? "Provider")} budget`;
   if (!leaf.label.includes(" · ")) return leaf.label;
@@ -48,5 +51,7 @@ export function settingTitle(leaf: EditableSettingsLeafWire): string {
 }
 
 export function settingNote(leaf: EditableSettingsLeafWire): string | undefined {
+  const timeout = timeoutSetting(leaf.path);
+  if (timeout !== undefined) return timeout.description;
   return NOTES[leaf.path] ?? (leaf.description === leaf.label ? undefined : leaf.description);
 }
