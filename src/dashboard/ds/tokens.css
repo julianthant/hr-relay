@@ -384,6 +384,7 @@
      --------------------------------------------------------------------- */
   --ds-font-sans: var(--font-sans);
   --ds-font-mono: var(--font-mono);
+  --ds-font-settings: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --ds-text-micro: 10px; /* count badges, kbd, uppercase group labels */
   --ds-lh-micro: 13px;
@@ -399,6 +400,11 @@
   --ds-lh-section: 22px;
   --ds-text-display: 20px; /* the one big number on a summary surface */
   --ds-lh-display: 26px;
+  --ds-text-settings-page: 30px;
+  --ds-text-settings-section: 19px;
+  --ds-text-settings-row: 15px;
+  --ds-text-settings-description: 13px;
+  --ds-text-settings-value: 16px;
 
   --ds-tracking-caps: 0.14em; /* uppercase micro labels only */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
@@ -417,6 +423,7 @@
   --ds-space-section: 24px;
   --ds-space-page: 32px;
   --ds-w-settings-content: 850px;
+  --ds-w-settings-performance: 1090px;
   --ds-w-settings-control: 310px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
      region all hang off this one inset. It used to be three different numbers

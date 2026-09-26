@@ -1,0 +1,11 @@
+{
+  "stateId": "performance-settings",
+  "viewport": "1024x720",
+  "theme": "graphite-warm",
+  "adapter": "fixture",
+  "fixtureId": "performance-settings",
+  "descriptorHash": "a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-08-03",
+  "variant": "default"
+}

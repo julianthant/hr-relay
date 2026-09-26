@@ -72,6 +72,22 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: real
       adapter: "real-settings", fixtureId: "settings-activation", descriptorHash: "settings-activation-v1",
       appVersion: "0.1.0", capturedAt: "2026-09-09T12:00:00.000Z", variant: "zoom125",
     });
+    await page.goto(`${server.url}/?settings=performance`);
+    const task = page.getByRole("textbox", { name: "Task in minutes" });
+    await expect(task).toHaveValue("1.5");
+    await task.fill("3.000016");
+    await expect(page.getByText("Enter a positive duration that resolves to a whole millisecond.")).toBeVisible();
+    expect((await client.editableSettings()).revision).toBe(5);
+    await task.fill("3.5");
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    const savedTimeout = await client.editableSettings();
+    expect(savedTimeout.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "timeouts.taskMs")?.settingsValue).toBe(210_000);
+    await expect(task).toHaveValue("3.5");
+    await page.getByRole("combobox", { name: "Task unit" }).selectOption("seconds");
+    await expect(page.getByRole("textbox", { name: "Task in seconds" })).toHaveValue("210");
+    await page.getByRole("textbox", { name: "Task in seconds" }).fill("210.001");
+    await expect(page.getByText("Saved", { exact: true })).toBeVisible();
+    expect((await client.editableSettings()).sections.flatMap(section => section.leaves).find(leaf => leaf.path === "timeouts.taskMs")?.settingsValue).toBe(210_001);
     expect(pageErrors).toEqual([]);
     const tree = await page.locator("body").ariaSnapshot();
     const a11yName = `settings-activation-${theme.name}.a11y.yml`;

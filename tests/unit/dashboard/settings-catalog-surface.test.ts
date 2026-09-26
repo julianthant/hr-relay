@@ -89,6 +89,23 @@ describe("typed Settings catalog controls", () => {
     assert.match(height.textContent ?? "", /1000/u);
     assert.doesNotMatch(height.textContent ?? "", /Saved|Active|Default|1080/u);
   });
+  it("renders Performance timeouts as grouped, described controls with visible units", async () => {
+    const { host } = await setup("performance");
+    const groups = [...host.querySelectorAll(".settings-group-heading h3")].map(heading => heading.textContent);
+    assert.deepEqual(groups, ["Navigation", "Work", "Sign-in & Duo"]);
+    const navigation = host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(navigation);
+    assert.match(navigation.textContent ?? "", /Standard navigation/u);
+    assert.match(navigation.textContent ?? "", /Maximum wait for a regular page change/u);
+    assert.equal(navigation.querySelector<HTMLSelectElement>(".settings-timeout-input > select")?.value, "seconds");
+    assert.equal(navigation.querySelector("input")?.value, "15");
+    const task = host.querySelector('[data-settings-path="timeouts.taskMs"]'); assert.ok(task);
+    assert.equal(task.querySelector("input")?.value, "3");
+    assert.equal(task.querySelector<HTMLSelectElement>(".settings-timeout-input > select")?.value, "minutes");
+    const crm = host.querySelector('[data-settings-path="timeouts.duoApprovalCrmSeconds"]'); assert.ok(crm);
+    assert.equal(crm.querySelector("input")?.value, "60");
+    assert.equal(crm.querySelector<HTMLSelectElement>(".settings-timeout-input > select")?.value, "seconds");
+    assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
+  });
   it("shows the effective host value when no override exists", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "derived-host"); cleanups.push(mounted.close);
@@ -99,7 +116,7 @@ describe("typed Settings catalog controls", () => {
   it("preserves text, zero/nonzero integers, booleans, routes, complete budgets and ordered chains", () => {
     const document = fixtureSettingsDocument(); const leaves = settingsLeaves(document);
     for (const [path, raw, value] of [
-      ["actor.label", "New label", "New label"], ["ocr.pageConcurrency", "0", 0], ["timeouts.taskMs", "42", 42], ["browser.headless", "false", false],
+      ["actor.label", "New label", "New label"], ["ocr.pageConcurrency", "0", 0], ["timeouts.taskMs", "42", 2_520_000], ["browser.headless", "false", false],
       ["paths.downloadsDir", "/tmp/new-downloads", "/tmp/new-downloads"], ["urls.kuali.test", { entry: "https://test.example/entry" }, { entry: "https://test.example/entry" }],
       ["providers.gemini.models", "second\nfirst", ["second", "first"]],
       ["providers.ocrExtract", { timeoutMs: "100", concurrency: "2", requestsPerMinute: "3", dailyRequestLimit: "4", costLimitUsdMicros: "0" }, { timeoutMs: 100, concurrency: 2, requestsPerMinute: 3, dailyRequestLimit: 4, costLimitUsdMicros: 0 }],

@@ -9,6 +9,7 @@ import { useSettingsPreflight } from "./settings-preflight-model.js";
 import { useProtectedSettings } from "./settings-protected-model.js";
 import { beforeEffectRefusal, checkedSettingsResult, settingsRefusal, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { coupledSettingsLeaves, draftError, fiscalYearLeaves, ordinaryReadbackConfirms, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
+import type { TimeoutUnit } from "./settings-timeouts-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
 export type { SettingsSaveState } from "./settings-attempt-model.js";
@@ -50,7 +51,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     const leaf = leaves.find(candidate => candidate.path === path);
     return [path, leaf === undefined ? "This setting is no longer served. Reset its draft." : draftError(leaf, operation)];
   }));
-  const update = (path: string, raw: SettingsDraftInput): void => {
+  const update = (path: string, raw: SettingsDraftInput, timeoutUnit?: TimeoutUnit): void => {
     if (busy.current || pending.current !== undefined) return;
     const leaf = leaves.find(candidate => candidate.path === path); if (leaf === undefined) return;
     setDraft(previous => {
@@ -58,7 +59,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       for (const coupled of coupledSettingsLeaves(leaf, leaves)) {
         if (next[coupled.path] === undefined || next[coupled.path]?.kind === "clear") next[coupled.path] = { kind: "set", raw: settingInput(coupled), companion: true };
       }
-      next[path] = { kind: "set", raw }; return next;
+      next[path] = timeoutUnit === undefined ? { kind: "set", raw } : { kind: "set", raw, timeoutUnit }; return next;
     });
     setSave({ state: "idle" });
   };
