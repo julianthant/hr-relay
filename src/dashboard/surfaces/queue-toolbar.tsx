@@ -49,10 +49,12 @@ import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, 
 import { cn } from "../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../domain/commands.js";
 import {
+  BareButton,
   Button,
   Dialog,
   DialogContent,
   DialogFooter,
+  Disclosure,
   IconButton,
   Select,
   dsBorder,
@@ -284,7 +286,7 @@ export function QueueToolbar({
           ))}
         </Select>
 
-        <button
+        <BareButton
           type="button"
           aria-pressed={selectMode}
           title="Act on several rows at once"
@@ -306,7 +308,7 @@ export function QueueToolbar({
             <Square aria-hidden className={dsIcon.sm} />
           )}
           Select
-        </button>
+        </BareButton>
       </div>
 
       {/* SELECT MODE IS A MODE, so it gets its own band rather than six more
@@ -501,7 +503,7 @@ export function QueueToolbar({
               {vector.results.map((entry) => {
                 const tone = OUTCOME_TONE[entry.outcome];
                 return (
-                  <button
+                  <BareButton
                     key={entry.runId}
                     type="button"
                     onClick={() => onSelectRun(entry.runId)}
@@ -538,7 +540,7 @@ export function QueueToolbar({
                         {entry.code}
                       </span>
                     )}
-                  </button>
+                  </BareButton>
                 );
               })}
             </div>
@@ -549,12 +551,11 @@ export function QueueToolbar({
               with three outcomes is a discrepancy the operator would otherwise
               have to reconstruct from memory. */}
           {bulkOutcome.plan.skipped.length > 0 && (
-            <details className="mt-[var(--ds-space-snug)]">
-              <summary className={cn(dsText.meta, dsFocus, "cursor-pointer text-[color:var(--ds-fg-muted)]")}>
+            <Disclosure className="mt-[var(--ds-space-snug)]" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary={<>
                 <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
                 {bulkOutcome.plan.skipped.length === 1 ? "row" : "rows"} never offered {bulkOutcome.plan.label.toLowerCase()} —
                 nothing was attempted for {bulkOutcome.plan.skipped.length === 1 ? "it" : "them"}
-              </summary>
+              </>}>
               <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
                 {bulkOutcome.plan.skipped.map((row) => (
                   <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
@@ -563,7 +564,7 @@ export function QueueToolbar({
                   </span>
                 ))}
               </div>
-            </details>
+            </Disclosure>
           )}
 
           {/* AND THE THIRD BUCKET SURVIVES THE SEND TOO. It has no titles to

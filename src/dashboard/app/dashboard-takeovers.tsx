@@ -4,7 +4,7 @@ type FrontendBootstrapWire
 } from "../../domain/dashboard/bootstrap.js";
 import { ActivityReport } from "../surfaces/activity.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { SavedArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-report.js";
+import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-runtime.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";

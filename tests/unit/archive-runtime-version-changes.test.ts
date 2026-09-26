@@ -96,6 +96,34 @@ describe("runtime version change transfer", () => {
     } finally { f.dispose(); }
   });
 
+  it("serves the exact retained apply request after an interrupted transfer and restart", () => {
+    const f = archiveFixture({ registeredRuntimeVersion: true });
+    try {
+      f.terminal();
+      const planRequest = CommandRequestSchema.parse({ commandId: id(9984), requestedAt: NOW,
+        requestedBy: "local-operator", source: "archive", family: "version-archive", type: "plan-runtime-version",
+        target: { scope: { kind: "dashboard" } } });
+      assert.equal(f.kernel.execute(planRequest).state, "applied");
+      const change = f.database.readRuntimeVersionChange(planRequest.commandId);
+      assert.ok(change);
+      const applyRequest = CommandRequestSchema.parse({ commandId: id(9985), requestedAt: NOW,
+        requestedBy: "local-operator", source: "archive", family: "version-archive", type: "apply-runtime-version",
+        target: { changeId: change.changeId, reviewFingerprint: change.reviewFingerprint } });
+      f.failAfter("verified");
+      assert.throws(() => f.kernel.execute(applyRequest), /injected-verified/u);
+      const read = () => savedArchiveRuntimeVersions({ storage: createRunLifecycleStorage(f.database),
+        descriptors: { list: () => [{ id: "person-lookup", label: "Person lookup", code: "PL", version: 1,
+          contractFingerprint: "a".repeat(64) }] } });
+      const applying = read().changes.find(row => row.changeId === change.changeId);
+      assert.equal(applying?.state, "applying");
+      assert.deepEqual(applying?.resumeRequest, applyRequest);
+      f.reopen();
+      assert.deepEqual(read().changes.find(row => row.changeId === change.changeId)?.resumeRequest, applyRequest);
+      assert.equal(f.kernel.execute(applyRequest).state, "applied");
+      assert.equal(read().changes.find(row => row.changeId === change.changeId)?.resumeRequest, undefined);
+    } finally { f.dispose(); }
+  });
+
   it("rejects a changed apply command after transfer finishes before audit", () => {
     const f = archiveFixture({ registeredRuntimeVersion: true });
     try {

@@ -313,6 +313,13 @@ export const ArchiveDeleteCommandRequestSchema = z.strictObject({
   target: z.strictObject({ archivedRunId: RunIdSchema, archiveFingerprint: FingerprintSchema }),
 });
 
+export const ApplyRuntimeVersionCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("version-archive"),
+  type: z.literal("apply-runtime-version"),
+  target: z.strictObject({ changeId: z.string().uuid(), reviewFingerprint: FingerprintSchema }),
+});
+
 export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
   z.strictObject({
     ...CommandEnvelopeFields,
@@ -344,12 +351,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
     type: z.literal("plan-runtime-version"),
     target: z.strictObject({ scope: RuntimeVersionScopeSchema }),
   }),
-  z.strictObject({
-    ...CommandEnvelopeFields,
-    family: z.literal("version-archive"),
-    type: z.literal("apply-runtime-version"),
-    target: z.strictObject({ changeId: z.string().uuid(), reviewFingerprint: FingerprintSchema }),
-  }),
+  ApplyRuntimeVersionCommandRequestSchema,
   z.strictObject({
     ...CommandEnvelopeFields,
     family: z.literal("version-archive"),

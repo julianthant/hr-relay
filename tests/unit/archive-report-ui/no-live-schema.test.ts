@@ -7,7 +7,8 @@ import { savedFilterQuery } from "../../../src/dashboard/surfaces/archive-report
 it("renders retained document with no provider, descriptors, live records, or files", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...H_REPORT, files: [] } }));
   expect(html).toContain("retired-v7"); expect(html).toContain("Captured approval"); expect(html).toContain("No attachment was retained");
-  expect(html).not.toContain("<button"); expect(html.match(/<a /gu)).toHaveLength(1);
+  expect(html.match(/<button\b/gu)).toHaveLength(1); expect(html).toContain("Report identity"); expect(html).toContain('aria-expanded="false"');
+  expect(html.match(/<a /gu)).toHaveLength(1);
   expect(html).toContain(`download="archive-${H_REPORT.runId}.json"`);
 });
 it.each(["workflow", "title", "descriptorVersion", "outcome", "from", "to", "capturedFrom", "capturedTo"] as const)("resets cursor for %s while preserving other query facts", key => {

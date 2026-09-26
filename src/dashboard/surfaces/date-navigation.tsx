@@ -9,7 +9,7 @@ ChevronLeft,
 ChevronRight
 } from "lucide-react";
 import { type ReactElement,useMemo,useRef,useState } from "react";
-import { Button,CountBadge,Popover,PopoverContent,PopoverTrigger,Tooltip,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
+import { BareButton, Button,CountBadge,Popover,PopoverContent,PopoverTrigger,Tooltip,dsFocus,dsIcon,dsMotion,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { type DayCountWire,monthOfDay } from "./date-navigation-model.js";
 import { dayLabel,plural } from "./format.js";
@@ -128,7 +128,7 @@ function DateStep({
   onClick: () => void;
 }): ReactElement {
   return (
-    <button
+    <BareButton
       type="button"
       aria-label={label}
       title={label}
@@ -145,7 +145,7 @@ function DateStep({
       )}
     >
       {icon}
-    </button>
+    </BareButton>
   );
 }
 
@@ -203,7 +203,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
           side="bottom"
         >
         <PopoverTrigger asChild>
-          <button
+          <BareButton
             ref={triggerRef}
             type="button"
             aria-label={`Pick a day — showing ${dayLabel(day)}, ${countLabel}`}
@@ -224,7 +224,7 @@ export function DateNav({ day, today, monthCounts, onDay, onToday,
             <Calendar aria-hidden className={cn(dsIcon.sm, "text-[color:var(--ds-fg-muted)]")} />
             {dayLabel(day)}
             {count === undefined ? <span className={dsText.meta}>{dayState === "failed" ? "Unavailable" : "Loading…"}</span> : <CountBadge value={count} tone={day === today ? "info" : "neutral"} />}
-          </button>
+          </BareButton>
         </PopoverTrigger>
         </Tooltip>
         <PopoverContent title="Pick a day" hideTitle width="md" align="center" side="bottom" className="ds-date-popover">

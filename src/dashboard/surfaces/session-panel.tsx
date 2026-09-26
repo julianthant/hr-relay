@@ -17,7 +17,7 @@ X
 import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 import type { CommandSettlement } from "../app/command-result.js";
 import { type SubscriptionState } from "../client/subscription.js";
-import { Banner,Button,Dialog,DialogBody,DialogContent,DialogFooter,Field,IconButton,MetaLine,Popover,PopoverContent,PopoverTrigger,Select,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
+import { BareButton, Banner,Button,Dialog,DialogBody,DialogContent,DialogFooter,Field,IconButton,MetaLine,Popover,PopoverContent,PopoverTrigger,Select,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { appVersionTag,elapsedSecondsBetween,fmtAppVersion,fmtElapsed,plural } from "./format.js";
 import { ALWAYS_TALLIED,SESSION_POOL_MAX_WORKERS,WORKER_STATE_ORDER,WORKER_STOP_REASON_LABEL,WORKER_TONE,WORKER_TIMELINE_TONE,buildSessionPanelView,canStopWorker,capacityChip,connectionTone,planPoolIntent,poolSlotIsUnmet,sessionPoolGroupFor,workerBrowserView,workerDirectiveNote,workerElapsedSeconds,workerTimelineView,type PoolPlanIntent,type SessionPoolGroup,type SessionPoolMemberSlot,type WorkerBrowserSlot,type WorkerCardWire,type WorkerPoolWire,type WorkerSessionMembership,type WorkerState } from "./session-panel-model.js";
@@ -1097,7 +1097,7 @@ export function SessionPanel({
   return (
     <section aria-label="Session Panel" className={cn("shrink-0 border-t", dsBorder.base, dsSurface.card)}>
       <div className={cn("flex items-center", dsSize.hBar, "gap-[var(--ds-space-base)] px-[var(--ds-shell-inset)]")}>
-        <button
+        <BareButton
           type="button"
           onClick={() => setOpen((value) => !value)}
           aria-expanded={open}
@@ -1164,7 +1164,7 @@ export function SessionPanel({
               {attention.length} workers need attention
             </span>
           )}
-        </button>
+        </BareButton>
         <span className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">
           {/* N AT ONCE, never one at a time. The dialog owns the count and the
               per-member answer; this is only its door (the demo's `+`,
@@ -1190,7 +1190,7 @@ export function SessionPanel({
               a third digit under a tooltip that explains exactly two is a claim
               the operator cannot check. */}
           <span
-            title={`App ${fmtAppVersion(appVersion)} — MAJOR moves when a dashboard change reaches some or all workflows (prior-version runs archive); MINOR when it reaches none. A run that RAN under a different version carries its own, which is a fact about the run and stays on the run.`}
+            title={`App ${fmtAppVersion(appVersion)} is the build version. Dashboard and workflow runtime versions are managed in Archive and recorded on runs.`}
             className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}
           >
             {appVersionTag(appVersion)}

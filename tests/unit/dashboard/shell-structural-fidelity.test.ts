@@ -50,7 +50,7 @@ describe("DCF2 shell and queue structural fidelity", () => {
     const countCluster = sourceSlice(
       workflowEntry,
       "title={`${workflow.label}: ${active} active",
-      "</span>\n      </button>",
+      "</span>\n      </BareButton>",
       "the workflow count cluster",
     );
     assert.match(countCluster, /gap-\[var\(--ds-space-hair\)\]/u);

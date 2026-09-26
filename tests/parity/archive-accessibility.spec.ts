@@ -23,8 +23,8 @@ async function expectExactSearch(page: Page, search: string): Promise<void> {
 
 async function expectVersionRegistry(page: Page, search: string): Promise<void> {
   await expectExactSearch(page, search);
-  await expect(page.getByRole("region", { name: "Versions and saved changes" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Versions & bumps" }))
+  await expect(page.getByRole("region", { name: "Plan a version bump" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Plan a bump", exact: true }).first())
     .toHaveAttribute("aria-pressed", "true");
 }
 
@@ -59,18 +59,34 @@ for (const warning of [
 }
 
 test("archive outcome filter uses terminal outcomes and retains warning facts in the report", async ({page})=>{
-  const failed=SavedArchiveReportWireSchema.parse({...FIXTURE_SAVED_REPORT,runId:PARTIAL_RUN_ID,outcome:"failed"});
+  const failed=SavedArchiveReportWireSchema.parse({...FIXTURE_SAVED_REPORT,runId:PARTIAL_RUN_ID,title:"Failed saved lookup",outcome:"failed"});
   const requests:string[]=[];
+  const groupRequests:string[]=[];
+  await page.route("**/api/v1/archive/groups?*",route=>{
+    const outcome=new URL(route.request().url()).searchParams.get("outcome");groupRequests.push(outcome??"");
+    return route.fulfill({json:{groups:[{dashboardVersion:null,workflow:failed.workflow,workflowVersion:null,
+      reportCount:outcome==="failed"?1:2,latestCompletedAt:failed.completedAt}]}});
+  });
   await page.route("**/api/v1/archive/reports?*",route=>{
     const outcome=new URL(route.request().url()).searchParams.get("outcome");requests.push(outcome??"");
     return route.fulfill({json:{items:outcome==="failed"?[failed]:[FIXTURE_SAVED_REPORT,failed],next:null}});
   });
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
   const filter=page.getByRole("combobox",{name:"Outcome",exact:true});
-  await expect(filter.getByRole("option")).toHaveText(["All outcomes","done","failed","cancelled","discarded","interrupted","superseded"]);
+  await expect(filter.getByRole("option")).toHaveText(["All","Done","Failed","Cancelled","Discarded","Interrupted","Superseded"]);
   await filter.selectOption("failed");
+  await expect.poll(()=>groupRequests.at(-1)).toBe("failed");
   await expect.poll(()=>requests.at(-1)).toBe("failed");
-  await expect(page.getByRole("table",{name:"Saved reports"}).getByRole("row")).toHaveCount(2);
+  await expect(page.getByRole("button",{name:new RegExp(failed.title,"u")})).toBeVisible();
+  await expect(page.getByRole("button",{name:new RegExp(FIXTURE_SAVED_REPORT.title,"u")})).toHaveCount(0);
+});
+
+test("one-workflow dashboard permits that workflow's minor bump review", async ({ page }) => {
+  await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
+  const bump = page.getByRole("region", { name: "Plan a version bump" });
+  await expect(bump.getByRole("checkbox", { name: /Person lookup/u })).toBeChecked();
+  await expect(bump.getByRole("button", { name: "Review affected runs" })).toBeEnabled();
+  await expect(bump.getByText("For every workflow, choose Dashboard version.")).toHaveCount(0);
 });
 
 test("Explorer's Version registry door restores the route-owned view through links and history", async ({ page }) => {

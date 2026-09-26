@@ -18,6 +18,7 @@ import { cn } from "../lib/utils.js";
 import {
   Badge,
   BulletList,
+  Disclosure,
   EmptyState,
   IconButton,
   LockedValue,
@@ -295,17 +296,16 @@ function ObservedFactValue({ fact }: { fact: LogLedgerFact }) {
   if (fact.items === undefined) {
     return <span title={fact.value} className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>{fact.value}</span>;
   }
-  return <details className="min-w-0" title={fact.value}>
-    <summary className={cn(dsText.body, dsText.nums, "min-w-0 cursor-pointer text-[color:var(--ds-fg)]")}>
+  return <Disclosure className="min-w-0" title={fact.value} summaryClassName={cn(dsText.body, dsText.nums, "text-[color:var(--ds-fg)]")} summary={<>
       {fact.items.length} {fact.items.length === 1 ? "value" : "values"}
       <span className="ml-[var(--ds-space-tight)] inline-block max-w-full truncate align-bottom text-[color:var(--ds-fg-muted)]">
         {fact.items.slice(0, 2).join(" · ")}
       </span>
-    </summary>
+    </>}>
     <ul className="m-0 list-none p-0 pt-[var(--ds-space-tight)]">
       {fact.items.map((item, index) => <li key={`${String(index)}:${item}`} className={cn(dsText.body, dsText.nums, "break-all")}>{item}</li>)}
     </ul>
-  </details>;
+  </Disclosure>;
 }
 
 function ContextSection({

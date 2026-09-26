@@ -6,7 +6,7 @@ ShieldAlert
 import { useState } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
-import { IconButton,Popover,PopoverContent,PopoverTrigger,Banner,Button,dsFocus,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,Separator,StatusDot,type DsStatus } from "../ds/ui.js";
+import { IconButton,Popover,PopoverContent,PopoverTrigger,Banner,Button,Disclosure,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,Separator,StatusDot,type DsStatus } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useStorageClient as useDashboardClient } from "../state/storage-client.js";
 import { fmtClock,fmtInstantDay,plural } from "./format.js";
@@ -143,10 +143,7 @@ type SpanAuthorityWithAccounting = Exclude<StorageDoctorWire["spanAuthority"], {
 
 function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccounting["archived"] }) {
   return (
-    <details>
-      <summary className={cn(dsText.meta, dsFocus, "cursor-pointer text-[color:var(--ds-fg-secondary)]")}>
-        {plural(archived.length, "archived run")}
-      </summary>
+    <Disclosure summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")} summary={plural(archived.length, "archived run")}>
       {archived.length === 0 ? (
         <span className={cn(dsText.meta, "mt-[var(--ds-space-tight)] block text-[color:var(--ds-fg-muted)]")}>
           No archived runs account for this corpus.
@@ -167,7 +164,7 @@ function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccoun
           ))}
         </ul>
       )}
-    </details>
+    </Disclosure>
   );
 }
 

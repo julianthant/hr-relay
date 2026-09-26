@@ -82,7 +82,8 @@ import { ActivityReportSelectionSchema } from "../../../../src/domain/dashboard/
 import { RunSearchIndexRecordSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../../../src/domain/dashboard/search-index.js";
 import { RunAdvisoryWireSchema } from "../../../../src/domain/dashboard/advisory.js";
 import {
-  SavedArchiveDeletionStatusWireSchema, SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, SavedVersionIndexWireSchema,
+  SavedArchiveDeletionStatusWireSchema, SavedArchiveDetailWireSchema, SavedArchiveGroupsWireSchema, SavedArchiveIndexWireSchema,
+  SavedRuntimeVersionIndexWireSchema, SavedVersionIndexWireSchema,
   ArchivedCaptureResourceWireSchema,
   ArchivedRunDetailWireSchema,
   ArchiveIndexWireSchema,
@@ -896,6 +897,8 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/explorer-edit-apply", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditApplyResultSchema },
   { id: "wire/ui-catalog", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: UiCatalogWireSchema },
   { id: "wire/saved-archive-index", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: SavedArchiveIndexWireSchema },
+  { id: "wire/saved-archive-groups", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: SavedArchiveGroupsWireSchema },
+  { id: "wire/saved-runtime-version-index", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: SavedRuntimeVersionIndexWireSchema },
   { id: "wire/saved-archive-deletion-status", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: SavedArchiveDeletionStatusWireSchema },
   { id: "wire/saved-archive-detail", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: SavedArchiveDetailWireSchema },
   { id: "wire/saved-version-index", egress: "operator-loopback", module: "src/domain/dashboard/archive.ts", schema: SavedVersionIndexWireSchema },
@@ -1644,6 +1647,11 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/saved-archive-index", path: "items[].versionChange.change.commit.value", origin: "external-text" },
   { surface: "wire/saved-archive-index", path: "items[].versionChange.change.what", origin: "external-text" },
   { surface: "wire/saved-archive-index", path: "items[].versionChange.change.why", origin: "external-text" },
+  { surface: "wire/saved-archive-groups", path: "groups[].workflow", origin: "repository-authored" },
+  { surface: "wire/saved-runtime-version-index", path: "changes[].actorId", origin: "repository-authored" },
+  { surface: "wire/saved-runtime-version-index", path: "changes[].members[].state", origin: "repository-authored" },
+  { surface: "wire/saved-runtime-version-index", path: "changes[].resumeRequest.reason", origin: "operator-authored" },
+  { surface: "wire/saved-runtime-version-index", path: "workflows[].label", origin: "repository-authored" },
   { surface: "wire/saved-archive-deletion-status", path: "cleanup.reason", origin: "repository-authored" },
   { surface: "wire/saved-archive-deletion-status", path: "command.reason", origin: "repository-authored" },
   { surface: "wire/saved-archive-deletion-status", path: "command.resumeRequest.reason", origin: "operator-authored" },

@@ -1,4 +1,5 @@
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
+import { Input as HeroInput } from "@heroui/react";
 import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
 import { candidateText, defaultRerunSteps, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
@@ -69,6 +70,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type
 import { ArrowRight, FileSpreadsheet, Keyboard, Play, Search } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
+  BareButton,
   Banner,
   Button,
   Checkbox,
@@ -469,7 +471,7 @@ function PickerRow({
   const workflow = node.entry;
   const selected = workflow.workflowId === value;
   return (
-    <button
+    <BareButton
       type="button"
       aria-current={selected ? "true" : undefined}
       onClick={() => onChange(workflow.workflowId)}
@@ -493,7 +495,7 @@ function PickerRow({
           {workflow.code}
         </span>
       )}
-    </button>
+    </BareButton>
   );
 }
 
@@ -525,12 +527,12 @@ function WorkflowPicker({
         <label className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
           <Search aria-hidden className={cn(dsIcon.sm, "shrink-0", dsFg.muted)} />
           <span className="sr-only">Filter workflows</span>
-          <input
+          <HeroInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Filter"
             className={cn(
-              "min-w-0 flex-1 border-none bg-transparent outline-none",
+              "min-w-0 flex-1 border-none bg-transparent p-0 outline-none",
               dsText.ui,
               "text-[color:var(--ds-fg)] placeholder:text-[color:var(--ds-fg-faint)]",
             )}
@@ -766,7 +768,7 @@ function MethodTabs({
       {methods.map((method) => {
         const selected = method === value;
         return (
-          <button
+          <BareButton
             key={method}
             type="button"
             role="tab"
@@ -787,7 +789,7 @@ function MethodTabs({
           >
             {METHOD_ICON[method]}
             {START_METHOD_LABEL[method]}
-          </button>
+          </BareButton>
         );
       })}
     </div>

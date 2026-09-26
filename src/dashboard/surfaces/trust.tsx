@@ -29,6 +29,7 @@ import { useCallback, useRef, useState, type ReactNode } from "react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
+  BareButton,
   Field,
   Textarea,
   Badge,
@@ -498,7 +499,7 @@ export function FailureDetailBody({ detail, liveContext }: { detail: FailureDeta
         a disclosure trigger is a control (the timeline segment's own lesson,
         `src/dashboard/CLAUDE.md` 2026-08-26).
       */}
-      <button
+      <BareButton
         type="button"
         aria-expanded={diagnosticOpen}
         onClick={() => setDiagnosticOpen(!diagnosticOpen)}
@@ -515,7 +516,7 @@ export function FailureDetailBody({ detail, liveContext }: { detail: FailureDeta
       >
         {diagnosticOpen ? "Hide the diagnostic record" : "Show the diagnostic record"}
         <ChevronDown aria-hidden className={cn(dsIcon.sm, dsMotion.fast, diagnosticOpen && "rotate-180")} />
-      </button>
+      </BareButton>
 
       {diagnosticOpen && (
       <div className="flex flex-col gap-[var(--ds-space-base)]">

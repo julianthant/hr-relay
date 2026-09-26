@@ -34,8 +34,10 @@ import type { ReactNode } from "react";
 import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
+  BareButton,
   Chip,
   IconButton,
+  Checkbox,
   MetaLine,
   Popover,
   PopoverTrigger,
@@ -818,7 +820,7 @@ function MemberLine({
       >
         {/* Selection and local triage are sibling controls: nesting the latter
             in a row button would create an invalid interactive hierarchy. */}
-        <button
+        <BareButton
           type="button"
           title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
           aria-label={selectionLabel}
@@ -826,7 +828,7 @@ function MemberLine({
           className={cn("min-w-0 truncate text-left", dsFocus)}
         >
           {queueRowTitle(surface)}
-        </button>
+        </BareButton>
         <QueueAttemptSelector
           title={queueRowTitle(surface)}
           item={item}
@@ -932,7 +934,7 @@ function GroupMemberList({
   const disclosures = (
     <>
       {canExpand && onToggleWell !== undefined && (
-        <button
+        <BareButton
           type="button"
           aria-expanded={wellOpen}
           onClick={(event) => {
@@ -943,13 +945,13 @@ function GroupMemberList({
         >
           {wellOpen ? <ChevronUp aria-hidden className={dsIcon.sm} /> : <ChevronDown aria-hidden className={dsIcon.sm} />}
           {wellOpen ? "Collapse" : "Expand"}
-        </button>
+        </BareButton>
       )}
       {/* A stable route to the dedicated roster, beside Expand even when the
           expanded well fits everyone: the two do different jobs — inspect
           inline vs work in the full-list surface. */}
       {canOpenRoster && onOpenRoster !== undefined && (
-        <button
+        <BareButton
           type="button"
           onClick={(event) => {
             event.stopPropagation();
@@ -959,7 +961,7 @@ function GroupMemberList({
         >
           <ArrowRight aria-hidden className={dsIcon.sm} />
           View full list
-        </button>
+        </BareButton>
       )}
     </>
   );
@@ -1108,7 +1110,7 @@ function PanelRedirectChip({
   onOpen: () => void;
 }) {
   return (
-    <button
+    <BareButton
       type="button"
       data-demo-row-link
       onClick={(event) => {
@@ -1123,7 +1125,7 @@ function PanelRedirectChip({
         {label} · {statusText(status).toLowerCase()}
       </span>
       <ArrowUpRight aria-hidden className="size-3 shrink-0" />
-    </button>
+    </BareButton>
   );
 }
 
@@ -1224,7 +1226,7 @@ function QueueAttemptSelector({
       else setClosedSelection(undefined);
     }}>
       <PopoverTrigger asChild>
-        <button
+        <BareButton
           type="button"
           aria-label={`Attempts for ${title}`}
           aria-expanded={open}
@@ -1240,7 +1242,7 @@ function QueueAttemptSelector({
           )}
         >
           Attempts · {item.attempts.length}
-        </button>
+        </BareButton>
       </PopoverTrigger>
       <PopoverContent title={`Attempts for ${title}`} width="md" className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
         <ol className="flex flex-col divide-y divide-[color:var(--ds-border-subtle)]">
@@ -1249,7 +1251,7 @@ function QueueAttemptSelector({
             const selected = String(attempt.runId) === selectedRunId;
             return (
               <li key={attempt.runId}>
-                <button
+                <BareButton
                   type="button"
                   aria-label={`Open ${title} — attempt ${String(attempt.attempt)} — ${statusAccessibleName(status).toLowerCase()}`}
                   aria-current={selected ? "true" : undefined}
@@ -1269,7 +1271,7 @@ function QueueAttemptSelector({
                   <StatusBadge status={status} />
                   <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{attempt.traceId}</span>
                   <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>{fmtClock(attempt.startedAt)}</span>
-                </button>
+                </BareButton>
               </li>
             );
           })}
@@ -1428,13 +1430,12 @@ export function QueueRow({
                     through its group or on its own row, never half-selected
                     inside one. */}
                 {state.selectMode === true && onToggleBulk !== undefined && (
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={bulkIds?.has(surface.runId) ?? false}
-                    aria-label={`Select ${queueRowTitle(surface)} for a bulk command`}
+                    label={<span className="sr-only">Select {queueRowTitle(surface)} for a bulk command</span>}
                     onClick={(event) => event.stopPropagation()}
-                    onChange={() => onToggleBulk(surface.runId)}
-                    className={cn("size-3.5 shrink-0 accent-[var(--ds-accent)]", dsFocus)}
+                    onCheckedChange={() => onToggleBulk(surface.runId)}
+                    className="shrink-0"
                   />
                 )}
                 <span

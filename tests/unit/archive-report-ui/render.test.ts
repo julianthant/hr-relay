@@ -57,16 +57,16 @@ it("confirms exact deletion, preserves uncertain request identity, and refreshes
   let deleted = false;
   const execute = vi.fn().mockRejectedValueOnce(new Error("Connection lost")).mockImplementationOnce(async () => { deleted = true; return { state: "applied" }; });
   const calls = await mount({ executeCommand: execute, savedArchiveReport: async () => deleted ? deletedDetail() : H_REPORT }); await click("Delete saved report"); expect(execute).not.toHaveBeenCalled();
-  await click("Confirm deletion"); expect(document.querySelector("article")).not.toBeNull(); expect(document.body.textContent).toContain("Connection lost");
-  await click("Confirm deletion"); expect(execute.mock.calls[1][0]).toEqual(execute.mock.calls[0][0]); expect(execute.mock.calls[0][0]).toMatchObject({ target: { archivedRunId: H_REPORT.runId, archiveFingerprint: H_REPORT.archiveFingerprint } });
+  await click("Delete this report"); expect(document.querySelector("article")).not.toBeNull(); expect(document.body.textContent).toContain("Connection lost");
+  await click("Delete this report"); expect(execute.mock.calls[1][0]).toEqual(execute.mock.calls[0][0]); expect(execute.mock.calls[0][0]).toMatchObject({ target: { archivedRunId: H_REPORT.runId, archiveFingerprint: H_REPORT.archiveFingerprint } });
   expect(document.querySelector("article")).toBeNull(); expect(document.body.textContent).toContain("Saved report deleted"); expect(calls.savedArchiveIndex).toHaveBeenCalledTimes(2);
 });
 it("late deletion settlement cannot clear a replacement selection", async () => {
   const result = deferred<unknown>(); const second = { ...H_REPORT, runId: "00000000-0000-4000-8000-000000000083", title: "Second report" };
   const index = vi.fn(async () => ({ items: [H_REPORT, second], next: null }));
   await mount({ savedArchiveIndex: index, savedArchiveReport: async (id: string) => id === H_REPORT.runId ? H_REPORT : second, executeCommand: () => result.promise });
-  await click("Delete saved report"); await click("Confirm deletion"); await click("Second report"); await act(async () => result.resolve({ state: "applied" }));
-  expect(document.querySelector("article")!.textContent).toContain("Second report"); expect(document.body.textContent).not.toContain("Confirm deletion"); expect(index).toHaveBeenCalledTimes(2);
+  await click("Delete saved report"); await click("Delete this report"); await click("Second report"); await act(async () => result.resolve({ state: "applied" }));
+  expect(document.querySelector("article")!.textContent).toContain("Second report"); expect(document.body.textContent).not.toContain("Delete this report"); expect(index).toHaveBeenCalledTimes(2);
 });
 
 const reviewedChange = { changeId: "00000000-0000-4000-8000-000000009500", state: "planned", targetVersion: "2.0.0",

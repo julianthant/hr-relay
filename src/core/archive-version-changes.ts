@@ -264,7 +264,7 @@ export function runArchiveCommand(request: Request, deps: ArchiveCommandDependen
       const row = deps.lifecycle.lifecycleStorage().runtimeVersionIndex().changes.find(change => change.changeId === request.target.changeId);
       if (row === undefined) refuse(request, "target-not-found", "Runtime version review is unavailable.");
       if (row.reviewFingerprint !== request.target.reviewFingerprint) refuse(request, "schema-mismatch", "Runtime version review fingerprint differs.");
-      deps.runtimeVersionChanges.apply(row.changeId, request.commandId, sha256Hex(canonicalJsonStringify(request)));
+      deps.runtimeVersionChanges.apply(row.changeId, request.commandId, sha256Hex(canonicalJsonStringify(request)), request);
     } else if (request.type === "apply-version-bump") {
       const refusal = prepareApply(deps, request);
       if (refusal !== undefined) return refusal;

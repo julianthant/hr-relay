@@ -32,7 +32,8 @@ function unexpected(): never {
 }
 
 export async function startArchiveAuthorityServer(options: { seed?: "saved" | "live"; reportCount?: number } = {}) {
-  const fixture = archiveFixture();
+  const fixture = archiveFixture({ registeredRuntimeVersion: options.seed === "live" });
+  if (options.seed === "live") fixture.database.registerRuntimeVersionWorkflows(["other-workflow"]);
   const runId = fixture.base.run.envelope.runId;
   const bytes = Buffer.from(FIXTURE_ARCHIVE_EVIDENCE_BYTES);
   const digest = createHash("sha256").update(bytes).digest("hex");
@@ -82,6 +83,14 @@ export async function startArchiveAuthorityServer(options: { seed?: "saved" | "l
       if (result.state !== "applied") throw new Error("fixture terminalization refused");
     }
     return run.envelope.runId;
+  };
+  const finishRun = (selectedRunId: string) => {
+    const run = fixture.database.authority.runs.get(selectedRunId);
+    if (run === undefined) throw new Error("fixture run missing");
+    const result = fixture.database.authority.runs.transition({ runId: selectedRunId,
+      expectedVersion: run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: fixture.base.clock.now().toISOString() },
+      now: fixture.base.clock.now().toISOString() });
+    if (result.state !== "applied") throw new Error("fixture terminalization refused");
   };
   for (let index = 1; index < (options.reportCount ?? 1); index += 1) addRun(91000 + index);
   if (options.seed !== "live") {
@@ -151,6 +160,8 @@ export async function startArchiveAuthorityServer(options: { seed?: "saved" | "l
       commandJournal: fixture.database.authority.commands,
       bulkCommandAcceptances: { withTransaction: unexpected },
       protectedCommandAcceptedAt: unexpected,
+      runtimeVersionAcceptedAt: commandId => fixture.database.readRuntimeVersionIndex().changes
+        .find(change => change.applicationCommandId === commandId)?.applicationRequest?.requestedAt,
       intake: { prepare: async () => {} },
     });
 
@@ -201,6 +212,7 @@ export async function startArchiveAuthorityServer(options: { seed?: "saved" | "l
     bytes,
     get database() { return fixture.database; },
     addRun,
+    finishRun,
     delayNextResponse,
     interruptTransfer: (step: string, occurrence = 1) => fixture.failAfter(step, occurrence),
     async restart() {

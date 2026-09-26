@@ -55,7 +55,10 @@ export function archiveFixture(options: Parameters<typeof foundationFixture>[0] 
       writeResolution: { resolveAbsent: () => { throw new Error("unused"); }, resolvePresent: () => { throw new Error("unused"); } },
       workerRuntime: { planWorkerCount: () => { throw new Error("unused"); }, spawnWorker: () => { throw new Error("unused"); }, refreshBrowser: () => { throw new Error("unused"); }, reopenBrowser: () => { throw new Error("unused"); } },
       archiveSnapshots,
-      runtimeVersionChanges: createRuntimeVersionChanges({ database, clock: base.clock, ids: { uuid: () => id(++sequence) }, archiveSnapshots }),
+      runtimeVersionChanges: createRuntimeVersionChanges({ database, clock: base.clock, ids: { uuid: () => id(++sequence) }, archiveSnapshots,
+        afterTransferStep: (_runId, step) => {
+          if (fail === step && --failCount === 0) { fail = undefined; throw new Error(`injected-${step}`); }
+        } }),
     };
     return createCommandKernel(deps);
   };

@@ -257,6 +257,12 @@ for (const theme of PARITY_THEMES) {
       resource: { state: "available", downloadUrl },
     } }));
     await page.route("**/api/v1/archive/versions", route => route.fulfill({ json: RECORDS_SAVED_VERSIONS }));
+    await page.route("**/api/v1/archive/groups?*", route => {
+      const from = new URL(route.request().url()).searchParams.get("from");
+      const groups = from !== null && H_REPORT.completedAt < from ? [] : [{ dashboardVersion: null,
+        workflow: H_REPORT.workflow, workflowVersion: null, reportCount: 2, latestCompletedAt: H_REPORT.completedAt }];
+      return route.fulfill({ json: { groups } });
+    });
     await page.route("**/api/v1/archive/reports?*", route => route.fulfill({ json: { items: [H_REPORT, second], next: null } }));
     await installTheme(page, theme);
 
@@ -266,9 +272,8 @@ for (const theme of PARITY_THEMES) {
       await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, archive: H_REPORT.runId });
       await assertThemeApplied(page, theme);
       await expect(page.getByRole("main").getByText("Archive", { exact: true })).toBeVisible();
-      const selectedButton = page.getByRole("button", { name: H_REPORT.title, exact: true });
-      await expect(selectedButton).toHaveAttribute("aria-pressed", "true");
-      await expect(page.getByRole("row", { name: new RegExp(H_REPORT.title, "u") })).toHaveAttribute("aria-selected", "true");
+      const selectedButton = page.getByRole("button", { name: new RegExp(H_REPORT.title, "u") });
+      await expect(selectedButton).toBeVisible();
       const report = page.getByRole("article", { name: "Saved archive report" });
       await expect(report).toContainText(H_REPORT.workflow);
       await expect(report.getByText("Saved record · read-only", { exact: true })).toBeVisible();
@@ -282,20 +287,18 @@ for (const theme of PARITY_THEMES) {
       writeFileSync(info.outputPath(`${stem}.a11y.yml`), finalTree);
 
       if (viewport.name === "1440x900") {
-        const dateFilters = page.locator("details").filter({ hasText: "Date filters" });
-        await dateFilters.locator("summary").click();
+        await page.getByRole("button", { name: /Date Any/u }).click();
+        const dateFilters = page.getByRole("dialog", { name: "Completed date filters" });
         const completedFrom = dateFilters.getByRole("group", { name: "Completed from (UTC)" });
         await completedFrom.locator('[data-type="month"]').fill("08");
         await completedFrom.locator('[data-type="day"]').fill("01");
         await completedFrom.locator('[data-type="year"]').fill("2026");
-        await expect(dateFilters).toContainText("Active: Completed from 2026-08-01");
-        await expect(selectedButton).toHaveAttribute("aria-pressed", "false");
-        await expect(page.getByText("Select a saved report.", { exact: true })).toBeVisible();
-        await dateFilters.locator("summary").click();
-        await expect(dateFilters).not.toHaveAttribute("open");
+        await expect(page.getByRole("button", { name: /Date Set/u })).toBeVisible();
+        await page.keyboard.press("Escape");
+        await expect(dateFilters).toHaveCount(0);
         await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-        await page.getByRole("button", { name: H_REPORT.title, exact: true }).click();
-        await expect(page.getByRole("button", { name: H_REPORT.title, exact: true })).toHaveAttribute("aria-pressed", "true");
+        await page.getByRole("button", { name: new RegExp(H_REPORT.title, "u") }).click();
+        await expect(page.getByRole("article", { name: "Saved archive report" })).toBeVisible();
       }
 
       if (viewport.name === "1024x720") {
@@ -326,20 +329,12 @@ for (const theme of PARITY_THEMES) {
       }
 
       if (viewport.name === "1440x900") {
-        await page.getByRole("button", { name: "Versions & bumps", exact: true }).click();
-        const versions = page.getByRole("region", { name: "Versions and saved changes" });
+        await page.getByRole("button", { name: "Plan a bump", exact: true }).first().click();
+        const versions = page.getByRole("region", { name: "Plan a version bump" });
         await expect(versions).toBeVisible();
-        await expect(versions.getByRole("heading", { name: "Review a version change", exact: true })).toBeVisible();
-        await expect(versions).toContainText("A major change archives reviewed terminal prior-version runs. A minor change archives none.");
-        await expect(versions).toContainText("1 historical version record retained.");
-        const planned = versions.getByRole("region", { name: `Version change ${RECORDS_VERSION_CHANGE.changeId}` });
-        await expect(planned).toContainText("Synthetic major version review");
-        await expect(planned).toContainText("planned");
-        await expect(planned).toContainText("Target version");
-        await expect(planned).toContainText(RECORDS_VERSION_CHANGE.memberRunIds.join(", "));
-        await expect(planned.locator("dt", { hasText: "Blockers" })).toBeVisible();
-        await expect(planned).toContainText(RECORDS_VERSION_CHANGE.blockerRunIds.join(", "));
-        await expect(planned.getByRole("button", { name: "Apply reviewed change", exact: true })).toBeDisabled();
+        await expect(versions.getByRole("heading", { name: "What is changing?", exact: true })).toBeVisible();
+        await versions.getByRole("button", { name: /Dashboard version Advance every workflow/u }).click();
+        await expect(versions).toContainText("Dashboard and every workflow advance to 2.0.");
         const versionStem = `ui-settings-records-records-matrix/${viewport.name}/archive-versions-${theme.name}`;
         const versionScreenshot = info.outputPath(`${versionStem}.png`);
         mkdirSync(dirname(versionScreenshot), { recursive: true });
@@ -347,15 +342,14 @@ for (const theme of PARITY_THEMES) {
         await info.attach(`records-archive-versions-${viewport.name}-${theme.name}`, { path: versionScreenshot, contentType: "image/png" });
         const versionTree = await page.locator("body").ariaSnapshot();
         writeFileSync(info.outputPath(`${versionStem}.a11y.yml`), versionTree);
-        await planned.scrollIntoViewIfNeeded();
-        await expect(planned).toBeInViewport();
+        await versions.getByRole("button", { name: "Review affected runs" }).scrollIntoViewIfNeeded();
         const activeVersionStem = `ui-settings-records-records-matrix/${viewport.name}/archive-versions-active-${theme.name}`;
         const activeVersionScreenshot = info.outputPath(`${activeVersionStem}.png`);
         mkdirSync(dirname(activeVersionScreenshot), { recursive: true });
         await page.screenshot({ path: activeVersionScreenshot });
         await info.attach(`records-archive-versions-active-${viewport.name}-${theme.name}`, { path: activeVersionScreenshot, contentType: "image/png" });
-        await page.getByRole("button", { name: "Saved reports", exact: true }).click();
-        await expect(page.getByRole("region", { name: "Versions and saved changes" })).toHaveCount(0);
+        await page.getByRole("button", { name: "Version archives", exact: true }).first().click();
+        await expect(page.getByRole("region", { name: "Plan a version bump" })).toHaveCount(0);
         await expect(page.getByRole("article", { name: "Saved archive report" })).toBeVisible();
       }
 
@@ -415,6 +409,8 @@ for (const theme of PARITY_THEMES) {
         runId: H_REPORT.runId, digest, resource: { state: "available", downloadUrl },
       } }));
       await page.route("**/api/v1/archive/reports?*", route => route.fulfill({ json: { items: [H_REPORT], next: null } }));
+      await page.route("**/api/v1/archive/groups?*", route => route.fulfill({ json: { groups: [{ dashboardVersion: null,
+        workflow: H_REPORT.workflow, workflowVersion: null, reportCount: 1, latestCompletedAt: H_REPORT.completedAt }] } }));
       await installTheme(page, theme);
 
       const receipts: Array<Record<string, unknown>> = [];
@@ -435,7 +431,7 @@ for (const theme of PARITY_THEMES) {
           expect(zoomResult.value).toBe(sample.zoom);
           await expect.poll(() => page.evaluate(() => ({ width: innerWidth, height: innerHeight }))).toEqual(sample.css);
           if (surface === "archive") {
-            await expect(page.getByRole("button", { name: H_REPORT.title, exact: true })).toHaveAttribute("aria-pressed", "true");
+            await expect(page.getByRole("button", { name: new RegExp(H_REPORT.title, "u") })).toBeVisible();
             await expect(page.getByRole("article", { name: "Saved archive report" }).getByText("Saved record · read-only", { exact: true })).toBeVisible();
           } else if (surface === "activity") {
             const activity = page.getByRole("region", { name: "Activity report" });
@@ -443,10 +439,9 @@ for (const theme of PARITY_THEMES) {
             await expect(activity.getByRole("button", { name: /^Select report dates:/u })).toBeVisible();
             await expect(activity.getByRole("group", { name: "Export activity report" })).toBeVisible();
           } else {
-            const versions = page.getByRole("region", { name: "Versions and saved changes" });
-            await expect(versions.getByRole("heading", { name: "Review a version change", exact: true })).toBeVisible();
-            await expect(versions).toContainText("A major change archives reviewed terminal prior-version runs. A minor change archives none.");
-            await expect(versions.getByRole("region", { name: `Version change ${RECORDS_VERSION_CHANGE.changeId}` })).toContainText("planned");
+            const versions = page.getByRole("region", { name: "Plan a version bump" });
+            await expect(versions.getByRole("heading", { name: "What is changing?", exact: true })).toBeVisible();
+            await expect(versions).toContainText("Workflow version");
           }
           const geometry = await page.evaluate(() => ({
             width: innerWidth, height: innerHeight, dpr: devicePixelRatio,
@@ -497,27 +492,23 @@ for (const theme of PARITY_THEMES) {
             await expect(deleteTrigger).toBeFocused();
           } else {
             if (surface === "versions") {
-              const versions = page.getByRole("region", { name: "Versions and saved changes" });
-              for (const field of ["Scope", "Change kind", "What changed", "Why"]) {
-                const control = field === "Scope" || field === "Change kind"
-                  ? versions.getByRole("combobox", { name: field, exact: true })
-                  : versions.getByRole("textbox", { name: field, exact: true });
+              const versions = page.getByRole("region", { name: "Plan a version bump" });
+              for (const control of [
+                versions.getByRole("button", { name: /Workflow version Advance one or several/u }),
+                versions.getByRole("button", { name: /Dashboard version Advance every workflow/u }),
+              ]) {
                 await expect(control).toHaveCount(1);
                 await control.scrollIntoViewIfNeeded();
                 await expect(control).toBeInViewport();
                 await control.focus();
                 await expect(control).toBeFocused();
               }
-              const createReview = versions.getByRole("button", { name: "Create review", exact: true });
-              await createReview.scrollIntoViewIfNeeded();
-              await expect(createReview).toBeInViewport();
-              await createReview.focus();
-              await expect(createReview).toBeFocused();
-              const planned = versions.getByRole("region", { name: `Version change ${RECORDS_VERSION_CHANGE.changeId}` });
-              const applyBlocked = planned.getByRole("button", { name: "Apply reviewed change", exact: true });
-              await applyBlocked.scrollIntoViewIfNeeded();
-              await expect(applyBlocked).toBeInViewport();
-              await expect(applyBlocked).toBeDisabled();
+              await versions.getByRole("button", { name: /Dashboard version Advance every workflow/u }).click();
+              const review = versions.getByRole("button", { name: "Review affected runs" });
+              await review.scrollIntoViewIfNeeded();
+              await expect(review).toBeEnabled();
+              await review.focus();
+              await expect(review).toBeFocused();
             } else {
               const activity = page.getByRole("region", { name: "Activity report" });
               const dateControl = activity.getByRole("button", { name: /^Select report dates:/u });

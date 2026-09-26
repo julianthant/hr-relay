@@ -38,13 +38,13 @@ test.afterAll(async () => {
 
 test("production PanelHeaders use explicit semantic heading levels", async ({ page }) => {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
-  await expectPanelHeading(page, "Saved reports");
+  await expectPanelHeading(page, "Archived dashboard versions");
 
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: FIXTURE_ARCHIVED_RUN_ID });
-  await expectPanelHeading(page, FIXTURE_SAVED_REPORT.title);
+  await expect(page.getByRole("article", { name: "Saved archive report" })).toContainText(FIXTURE_SAVED_REPORT.title);
 
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
-  await expect(page.getByRole("heading", { name: "Review a version change", level: 3 })).toBeVisible();
+  await expectPanelHeading(page, "What is changing?");
 
   await gotoAppState(page, server.baseUrl, {
     day: FIXTURE_DAY,

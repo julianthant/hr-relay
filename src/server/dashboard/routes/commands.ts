@@ -10,6 +10,7 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     clock: deps.clock,
     journal: deps.commandJournal,
     protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
+    runtimeVersionAcceptedAt: deps.runtimeVersionAcceptedAt,
     bulkAcceptances: deps.bulkCommandAcceptances,
   });
 

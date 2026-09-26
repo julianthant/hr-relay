@@ -1,5 +1,5 @@
 import { Hono } from "hono";
-import { ArchivedCaptureResourceWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { ArchivedCaptureResourceWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
 import {
 archiveEvidenceResponseBody,
 FIXTURE_ARCHIVE_EVIDENCE_BYTES,
@@ -26,6 +26,18 @@ export function registerFixtureArchiveRoutes({ app, archiveEvidence, archivedRun
     resource: { state: "missing", reason: "The retained synthetic attachment is missing. Saved report remains readable." } }));
 
   app.get("/api/v1/archive/reports", c => c.json({ items: c.req.query("workflow") && c.req.query("workflow") !== FIXTURE_SAVED_REPORT.workflow ? [] : [FIXTURE_SAVED_REPORT], next: null }));
+
+  app.get("/api/v1/archive/groups", c => c.json(SavedArchiveGroupsWireSchema.parse({ groups:
+    (c.req.query("workflow") && c.req.query("workflow") !== FIXTURE_SAVED_REPORT.workflow)
+      || (c.req.query("outcome") && c.req.query("outcome") !== FIXTURE_SAVED_REPORT.outcome)
+      ? [] : [{ dashboardVersion: null, workflow: FIXTURE_SAVED_REPORT.workflow, workflowVersion: null,
+        reportCount: 1, latestCompletedAt: FIXTURE_SAVED_REPORT.completedAt }] })));
+
+  app.get("/api/v1/archive/runtime-versions", c => c.json(SavedRuntimeVersionIndexWireSchema.parse({
+    revision: 1, dashboard: { major: 1, minor: 0 },
+    workflows: [{ workflowId: "person-lookup", label: "Person lookup", version: { major: 1, minor: 0 } }],
+    changes: [],
+  })));
 
   app.get("/api/v1/archive/versions", c => c.json(FIXTURE_SAVED_VERSIONS));
 

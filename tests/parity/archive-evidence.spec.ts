@@ -32,6 +32,9 @@ test.beforeAll(async()=>{ensureParityBundle();server=await startFixtureServer({d
 test.afterAll(async()=>{await server.close();});
 async function routes(page:Page) {
   respondBytes=fileResponse;
+  await page.route("**/api/v1/archive/groups?*",route=>route.fulfill({json:{groups:[{
+    dashboardVersion:null,workflow:REPORT.workflow,workflowVersion:null,reportCount:1,latestCompletedAt:REPORT.completedAt,
+  }]}}));
   await page.route("**/api/v1/archive/reports?*",route=>route.fulfill({json:{items:[REPORT],next:null}}));
   await page.route(`**/api/v1/archive/reports/${RUN_ID}`,route=>route.fulfill({json:REPORT}));
   await page.route(`**${RESOURCE_PATH}`,route=>route.fulfill({json:{runId:RUN_ID,digest:CAPTURE.digest,resource:{state:"available",downloadUrl:BYTE_PATH}}}));
@@ -71,7 +74,7 @@ for(const view of [
     await assertThemeApplied(page,view.theme);await frozenFacts(report);
     const link=report.getByRole("link",{name:FILE_NAME});await expect(link).toHaveAttribute("href",BYTE_PATH);
     await download(page,link);
-    await page.evaluate(()=>window.scrollTo(0,0));
+    await page.getByRole("group",{name:"Filter version archives"}).scrollIntoViewIfNeeded();
     await captureParityPair(page,REFERENCES,{stateId:"archive-evidence",viewport:view.viewport.name,theme:view.theme.name,
       adapter:"fixture",fixtureId:"archive-evidence-verified",descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:"default"});
   });
@@ -93,7 +96,7 @@ for(const view of [
 test("desktop keyboard downloads natively and inspects an image with dialog focus restoration",async({page})=>{
   await routes(page);await page.setViewportSize({width:1280,height:720});
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
-  const select=page.getByRole("button",{name:REPORT.title,exact:true});await select.focus();await page.keyboard.press("Enter");
+  const select=page.getByRole("button",{name:new RegExp(REPORT.title,"u")});await select.focus();await page.keyboard.press("Enter");
   const report=page.getByRole("article",{name:"Saved archive report"});await frozenFacts(report);
   const link=report.getByRole("link",{name:FILE_NAME});await link.focus();
   const pending=page.waitForEvent("download");await page.keyboard.press("Enter");await downloadedBytes(await pending);

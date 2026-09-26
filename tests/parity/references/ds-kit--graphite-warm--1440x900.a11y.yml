@@ -76,14 +76,10 @@
   - text: Keys j k ⌘K Esc Loading
   - status "Loading"
   - text: Progress
-  - progressbar "Records approved"
-  - text: 64%
-  - progressbar "Pages verified"
-  - text: 100%
-  - progressbar "Retries used"
-  - text: 80%
-  - progressbar "Failed writes"
-  - text: 22%
+  - progressbar "Records approved": 64%
+  - progressbar "Pages verified": 100%
+  - progressbar "Retries used": 80%
+  - progressbar "Failed writes": 22%
   - progressbar "Waiting on UCPath"
   - text: The last bar is indeterminate — never fake a denominator you do not have. Timeline
   - 'img "Progress: 2 of 5 steps done, now UCPath transaction"'
@@ -157,6 +153,10 @@
   - list:
     - listitem: Every run already on disk still opens, read-only.
     - listitem: Nothing new can be enqueued until the volume is writable.
+  - text: Disclosure
+  - button "Closed workflow history"
+  - button "Open workflow history" [expanded]
+  - paragraph: Earlier attempts remain available.
   - text: ChipRow — a wrapping row of peer facts wage $18.50/hr effective 07/01 dept 000482 txn TXN-0891245 EID 10084412 wage $18.50/hr effective 07/01 dept 000482 txn TXN-0891245 EID 10084412 CardBase — a trailing control on the row's bottom edge, not on its own card's On the input record Marisol Alvarez Read off the separation document.
   - button "See this candidate"
   - text: Name match (proposed) Marisol Alvarez-Ruiz Resolved in UCPath on last name plus department, which is a different person than the document names.
@@ -221,7 +221,7 @@
   - text: Capture a screenshot at each write
   - checkbox "Auto-retry parked writes" [disabled]
   - text: Auto-retry parked writes Never available — a parked write is resolved by a human
-  - group "Run mode":
+  - radiogroup "Run mode":
     - text: Run mode
     - radio "Dry run No transaction is submitted" [checked]
     - text: Dry run No transaction is submitted

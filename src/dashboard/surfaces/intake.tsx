@@ -1,4 +1,5 @@
 import { observeResource } from "../state/async-resource.js";
+import { Checkbox as HeroCheckbox } from "@heroui/react";
 /**
  * The spreadsheet intake workspace — ref data-intake-and-edit-data §2.2's upload → map → validate →
  * run, and ref dashboard-surfaces §11's surface contract (2i-E3, D173).
@@ -1430,15 +1431,10 @@ function OutcomeBand({
       <span className="flex-1" />
 
       {supportsDryRun && (
-        <label className="flex cursor-pointer items-center gap-[var(--ds-space-tight)]">
-          <input
-            type="checkbox"
-            checked={dryRun}
-            disabled={busy}
-            onChange={(event) => onDryRun(event.currentTarget.checked)}
-          />
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>Dry run</span>
-        </label>
+        <HeroCheckbox isSelected={dryRun} isDisabled={busy} onChange={onDryRun} className="flex cursor-pointer items-center gap-[var(--ds-space-tight)]">
+          <HeroCheckbox.Control><HeroCheckbox.Indicator /></HeroCheckbox.Control>
+          <HeroCheckbox.Content className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>Dry run</HeroCheckbox.Content>
+        </HeroCheckbox>
       )}
 
       <Button

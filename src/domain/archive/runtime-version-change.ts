@@ -6,6 +6,7 @@ import { sha256Hex } from "../sha256.js";
 import { RuntimeVersionMemberSchema } from "./runtime-version-review.js";
 import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, RuntimeVersionStateSchema } from "./runtime-version.js";
 import { ArchiveReportSchema } from "./report.js";
+import { ApplyRuntimeVersionCommandRequestSchema } from "../commands.js";
 
 export const RuntimeVersionChangeReviewSchema = z.strictObject({
   schemaVersion: z.literal(3),
@@ -36,6 +37,7 @@ export const RuntimeVersionChangeSchema = RuntimeVersionChangeReviewSchema.exten
   completedRunIds: z.array(RunIdSchema),
   applicationCommandId: z.string().uuid().optional(),
   applicationRequestFingerprint: FingerprintSchema.optional(),
+  applicationRequest: ApplyRuntimeVersionCommandRequestSchema.optional(),
   claimedAt: IsoInstantSchema.optional(),
   completedAt: IsoInstantSchema.optional(),
   pendingCaptures: z.array(z.strictObject({ runId: RunIdSchema, reportJson: z.string().min(1) })).optional(),
@@ -58,11 +60,18 @@ export const RuntimeVersionChangeSchema = RuntimeVersionChangeReviewSchema.exten
     || new Set(pendingIds).size !== pendingIds.length
     || pendingIds.some(id => !candidates.includes(id) || change.completedRunIds.includes(id))
     || (change.state === "planned" && (change.applicationCommandId !== undefined || change.applicationRequestFingerprint !== undefined || change.claimedAt !== undefined || change.completedAt !== undefined
-      || change.completedRunIds.length > 0 || change.pendingCaptures !== undefined))
+      || change.completedRunIds.length > 0 || change.pendingCaptures !== undefined || change.applicationRequest !== undefined))
     || (change.state === "applying" && (change.applicationCommandId === undefined || change.applicationRequestFingerprint === undefined || change.claimedAt === undefined || change.completedAt !== undefined
       || pendingIds.length + change.completedRunIds.length !== candidates.length))
     || (change.state === "applied" && (change.applicationCommandId === undefined || change.applicationRequestFingerprint === undefined || change.claimedAt === undefined || change.completedAt === undefined
       || change.completedRunIds.length !== candidates.length || change.pendingCaptures !== undefined));
+  const request = change.applicationRequest;
+  if (request !== undefined && (request.commandId !== change.applicationCommandId
+    || request.requestedBy !== change.actorId || request.target.changeId !== change.changeId
+    || request.target.reviewFingerprint !== change.reviewFingerprint
+    || sha256Hex(canonicalJsonStringify(request)) !== change.applicationRequestFingerprint)) {
+    context.addIssue({ code: "custom", message: "runtime-version-application-request-invalid" });
+  }
   if (invalid) context.addIssue({ code: "custom", message: "runtime-version-change-invalid" });
   for (const capture of change.pendingCaptures ?? []) {
     try {

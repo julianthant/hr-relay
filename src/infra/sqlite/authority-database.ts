@@ -1896,7 +1896,8 @@ function authorityContentFingerprint(database: DatabaseSync): string {
     && (name !== "explorer_overrides" || readIntPragma(database, "user_version") >= 51)
     && (!["notification_publications", "notification_health"].includes(name) || readIntPragma(database, "user_version") >= 52)
     && (!["worker_controls", "worker_browsers"].includes(name) || readIntPragma(database, "user_version") >= 53)
-    && (!["transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name) || readIntPragma(database, "user_version") >= 54)).entries()) {
+    && (!["transaction_selection", "run_search_index", "run_search_grams", "run_search_publication", "run_search_declarations", "run_search_actors"].includes(name) || readIntPragma(database, "user_version") >= 54)
+    && (!["runtime_versions", "runtime_version_adoptions", "runtime_version_changes"].includes(name) || readIntPragma(database, "user_version") >= 55)).entries()) {
     if (tableIndex > 0) hash.update(",");
     hash.update(`[${canonicalJsonStringify(name)},`);
     if (name === "database_state") {

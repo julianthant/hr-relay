@@ -24,53 +24,31 @@
   - button "Settings"
 - main:
   - text: Archive
-  - group "Archive view":
-    - button "Saved reports"
-    - button "Versions & bumps" [pressed]
-  - button "Refresh"
-  - region "Versions and saved changes":
-    - heading "Versions and saved changes" [level=2]
-    - text: Application 0.1.0
-    - region "Review a version change":
-      - heading "Review a version change" [level=3]
-      - text: Create a saved record before applying a version change.
-      - paragraph: A major change archives reviewed terminal prior-version runs. A minor change archives none.
-      - text: Scope
-      - combobox "Scope":
-        - option "Dashboard update · every workflow"
-        - option "Person lookup · v2" [selected]
-      - text: Change kind
-      - combobox "Change kind":
-        - option "Major" [selected]
-        - option "Minor"
-      - text: What changed
-      - textbox "What changed"
-      - text: Why
-      - textbox "Why"
-      - button "Create review"
-    - region "Saved version changes":
-      - heading "Saved changes" [level=3]
-      - paragraph: 1 historical version record retained.
-      - region "Version change 00000000-0000-4000-8000-000000000098":
-        - heading "Synthetic blocked version change" [level=4]
-        - paragraph: A current run must finish before this reviewed archive transfer
-        - term: Change kind
-        - definition: Major change
-        - term: Version state
-        - definition: planned
-        - term: Target version
-        - definition: 0.2.0
-        - term: Scope
-        - definition: person-lookup
-        - term: Reviewed membership
-        - definition: No runs are part of this change.
-        - term: Blockers
-        - definition: 00000000-0000-4000-8000-000000000099
-        - term: Archived runs
-        - definition: None
-        - term: Progress
-        - definition: "Progress: 0 reviewed runs · 0 archived."
-        - button "Apply reviewed change" [disabled]
+  - button "Version archives"
+  - button "Plan a bump" [pressed]
+  - region "Plan a version bump":
+    - text: Version change
+    - heading "What is changing?" [level=2]
+    - paragraph: Dashboard 1.2 · 2 workflows
+    - button "Workflow version Advance one or several workflows. Their completed runs stay with the version that produced them. 1.1 → 1.2" [pressed]:
+      - strong: Workflow version
+      - text: Advance one or several workflows. Their completed runs stay with the version that produced them. 1.1 → 1.2
+    - button "Dashboard version Advance every workflow together to the next major version. 1.2 → 2.0":
+      - strong: Dashboard version
+      - text: Advance every workflow together to the next major version. 1.2 → 2.0
+    - group "Workflows":
+      - text: Workflows
+      - checkbox "Person lookup · 1.1 → 1.2" [checked]
+      - text: Person lookup · 1.1 → 1.2
+      - checkbox "Separation documents · 1.2 → 1.3"
+      - text: Separation documents · 1.2 → 1.3
+    - paragraph: Review the affected runs before applying this change.
+    - button "Review affected runs"
+    - heading "Reviewed workflow change" [level=3]
+    - paragraph: person-lookup · 1 affected runs · 1 blockers · 0 archived
+    - paragraph: "person-lookup: 1.1 → 1.2"
+    - status: "Blocked: person-lookup · 00000000-0000-4000-8000-000000000099 · running"
+    - button "Apply reviewed change" [disabled]
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

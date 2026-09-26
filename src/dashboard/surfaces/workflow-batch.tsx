@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
-import { Button, dsBorder, dsFocus, dsIcon, dsRadius, dsSurface, dsText } from "../ds/ui.js";
+import { BareButton, Button, Disclosure, dsBorder, dsFocus, dsIcon, dsRadius, dsSurface, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { fmtClock } from "./format.js";
 import { statusAccessibleName, dsStatusOf } from "./status-model.js";
@@ -27,10 +27,10 @@ export function WorkflowBatchGroup({ batch, label, selected, children, history, 
   return (
     <section aria-label={`${label} batch`} className={cn("mx-[var(--ds-space-cozy)] mt-[var(--ds-space-base)] border", dsBorder.base, dsRadius.md, dsSurface.card)}>
       <div className="flex items-center gap-[var(--ds-space-snug)] p-[var(--ds-space-snug)]">
-        <button type="button" aria-expanded={open} onClick={() => { setExpanded(!open); setCollapsedSelection(open ? selected : undefined); }} className={cn("flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)] text-left", dsFocus, dsText.ui)}>
+        <BareButton type="button" aria-expanded={open} onClick={() => { setExpanded(!open); setCollapsedSelection(open ? selected : undefined); }} className={cn("flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)] text-left", dsFocus, dsText.ui)}>
           <ChevronDown aria-hidden className={cn(dsIcon.sm, !open && "-rotate-90")} />
           <span className="min-w-0 truncate font-semibold">{label} · {batch.members.length} {batch.members.length === 1 ? "item" : "items"}</span>
-        </button>
+        </BareButton>
         {onGrouping !== undefined && <Button size="sm" variant="ghost" disabled={pending} onClick={() => {
           setPending(true); setError(undefined);
           onGrouping(batch, false).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught))).finally(() => setPending(false));
@@ -40,7 +40,7 @@ export function WorkflowBatchGroup({ batch, label, selected, children, history, 
         Started {fmtClock(batch.startedAt)} · {[...counts].map(([status, count]) => `${count} ${status}`).join(" · ")}
       </p>
       {error !== undefined && <p role="alert" className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-danger)]")}>{error}</p>}
-      {open && <div>{children}{batch.history.length > 0 && <details open={selected !== undefined || undefined} className="pb-[var(--ds-space-base)]"><summary className={cn(dsText.meta, dsFocus, "cursor-pointer px-[var(--ds-space-cozy)]")}>Previous attempts ({batch.history.length})</summary>{history}</details>}</div>}
+      {open && <div>{children}{batch.history.length > 0 && <Disclosure key={selected ?? "none"} defaultOpen={selected !== undefined} className="pb-[var(--ds-space-base)]" summaryClassName={cn(dsText.meta, "px-[var(--ds-space-cozy)]")} summary={`Previous attempts (${batch.history.length})`}>{history}</Disclosure>}</div>}
     </section>
   );
 }

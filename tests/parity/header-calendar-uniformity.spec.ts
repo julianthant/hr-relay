@@ -38,7 +38,13 @@ for (const theme of PARITY_THEMES) {
         expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
         if (tab !== 'Activity') {
           const header = page.getByText(title, { exact: true }).last().locator('xpath=ancestor::header');
-          await expect(header.getByRole('button')).toHaveCount(0);
+          if (tab === 'Archive') {
+            await expect(header.getByRole('button', { name: 'Version archives' })).toHaveCount(1);
+            await expect(header.getByRole('button', { name: 'Plan a bump' })).toHaveCount(1);
+            await expect(header.getByRole('button', { name: 'Refresh' })).toHaveCount(0);
+          } else {
+            await expect(header.getByRole('button')).toHaveCount(0);
+          }
           await expect(header).not.toContainText('read-only');
         }
       }

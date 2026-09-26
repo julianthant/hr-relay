@@ -821,14 +821,23 @@ it("keeps generic loading, empty, deleted and failed responses distinct, and dis
   assert.match(container.textContent ?? "", /Loading saved report/);
   await render(second);
   const resolve = (id: string, body: unknown, status = 200) => { const reply = pending.get(`/api/v1/archive/reports/${id}`); assert.ok(reply); reply(new Response(JSON.stringify(body), { status })); };
-  await act(async () => resolve(second, { state: "deleted", runId: second, reason: "This run was explicitly deleted." }));
+  await act(async () => resolve(second, {
+    state: "deleted", runId: second, reason: "This run was explicitly deleted.",
+    deletion: {
+      state: "deleted", runId: second, deletedAt: "2026-09-10T00:00:00.000Z",
+      removed: [{ table: "workflow_runs", rows: 1 }],
+      cleanup: { state: "complete", fileCount: 0 },
+      command: { state: "complete", commandId: "00000000-0000-4000-8000-000000009801", completedAt: "2026-09-10T00:00:01.000Z" },
+    },
+  }));
   await act(async () => resolve(first, FIXTURE_SAVED_REPORT));
-  assert.match(container.textContent ?? "", /explicitly deleted/);
+  assert.match(container.textContent ?? "", /Saved report deleted/);
+  assert.match(container.textContent ?? "", /Canonical removal recorded/);
   assert.doesNotMatch(container.textContent ?? "", /Synthetic saved lookup/);
   await render(first);
   await act(async () => resolve(first, { state: "error", code: "STALE_REPORT", message: "Saved report authority is stale.", retryable: false }, 409));
   assert.match(container.textContent ?? "", /Saved report authority is stale/);
-  assert.doesNotMatch(container.textContent ?? "", /explicitly deleted/);
+  assert.doesNotMatch(container.textContent ?? "", /Canonical removal recorded/);
 });
 
 // H: filtering retains indexed fields, never reconstructs an old page locally.

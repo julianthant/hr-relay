@@ -121,6 +121,7 @@ import { timelineEventDuration,type NoteWireSchema } from "../../domain/dashboar
 import { settleCommandResult } from "../app/command-result.js";
 import { DashboardClientError } from "../client/errors.js";
 import {
+BareButton,
 Badge,
 Banner,
 BulletList,
@@ -533,7 +534,7 @@ function ArchiveRow({
             name cell holds the only real button, so a screen reader gets one
             command per row rather than five.
           */}
-          <button
+          <BareButton
             type="button"
             onClick={(event) => {
               event.stopPropagation();
@@ -547,7 +548,7 @@ function ArchiveRow({
               {" "}
               · {workflowToken(entry)} v{entry.archivedIdentity.descriptorVersion}
             </span>
-          </button>
+          </BareButton>
           {/*
             The one hazard this wire can name on a LIST row: a run whose app
             build was never stamped (D179 reads it forward, never back-fills).
@@ -649,7 +650,7 @@ function SweepSectionRow({
       aria-rowindex={rowIndex}
     >
       <TD className={cn(cell, "align-middle")}>
-        <button
+        <BareButton
           type="button"
           aria-expanded={!collapsed}
           onClick={(event) => {
@@ -680,7 +681,7 @@ function SweepSectionRow({
               kind unrecorded
             </span>
           )}
-        </button>
+        </BareButton>
       </TD>
 
       {/* the NAME column — what every swept run was moved off, and onto */}

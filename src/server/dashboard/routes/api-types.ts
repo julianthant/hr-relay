@@ -28,6 +28,7 @@ export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, Settin
   readonly commandJournal: { get(commandId: string): CommandRequest | undefined };
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
+  readonly runtimeVersionAcceptedAt?: (commandId: string) => string | undefined;
   readonly startPlans: StartPlanService;
   readonly staticBundle?: StaticBundle;
 }

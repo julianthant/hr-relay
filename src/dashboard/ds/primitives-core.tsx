@@ -4,19 +4,19 @@
  */
 import {
   forwardRef,
-  useImperativeHandle,
-  useLayoutEffect,
-  useRef,
   type AnchorHTMLAttributes,
   type ButtonHTMLAttributes,
   type ComponentProps,
   type HTMLAttributes,
   type ReactNode,
 } from "react";
+import { Button as HeroButton, Chip as HeroChip, Kbd as HeroKbd, Separator as HeroSeparator, Skeleton as HeroSkeleton, Spinner as HeroSpinner } from "@heroui/react";
+import { Root as RadixVisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cva, type VariantProps } from "class-variance-authority";
-import { Button as HeroButton } from "@heroui/react";
 import { Loader2, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { ShadcnButton } from "./shadcn-button.js";
+import { ShadcnBadge } from "./shadcn-badge.js";
 import { dsClip, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /**
@@ -145,25 +145,17 @@ export const Button = forwardRef<HTMLButtonElement, DsButtonProps>(
     { className, variant, size, block, icon, iconAfter, loading, children, disabled, value, onClick, "aria-busy": ariaBusy, ...props },
     ref,
   ) {
-    const innerRef = useRef<HTMLButtonElement>(null);
     const busy = loading || ariaBusy === true || ariaBusy === "true";
-    useImperativeHandle(ref, () => innerRef.current as HTMLButtonElement);
-    useLayoutEffect(() => {
-      if (busy) innerRef.current?.setAttribute("aria-busy", "true");
-      else innerRef.current?.removeAttribute("aria-busy");
-    }, [busy]);
     return (
-      <HeroButton
-        ref={innerRef}
+      <ShadcnButton
+        ref={ref}
         type={props.type ?? "button"}
         aria-busy={busy ? "true" : undefined}
-        isDisabled={disabled || loading}
+        disabled={disabled || loading}
         value={value === undefined ? undefined : String(value)}
-        onClick={onClick as ComponentProps<typeof HeroButton>["onClick"]}
-        size={size === "toolbar" ? "sm" : size ?? "md"}
-        variant={variant === "brand" ? "primary" : variant === "dangerGhost" ? "danger" : variant ?? "secondary"}
+        onClick={onClick}
         className={cn(buttonVariants({ variant, size, block }), className)}
-        {...(props as unknown as ComponentProps<typeof HeroButton>)}
+        {...props}
       >
         {loading ? (
           <Loader2 aria-hidden className={cn(dsIcon.md, "animate-spin motion-reduce:animate-none")} />
@@ -172,10 +164,13 @@ export const Button = forwardRef<HTMLButtonElement, DsButtonProps>(
         )}
         {children}
         {iconAfter}
-      </HeroButton>
+      </ShadcnButton>
     );
   },
 );
+
+/** shadcn Button variant for dense surface controls whose layout is supplied by the caller. */
+export const BareButton = ShadcnButton;
 
 export interface DsButtonLinkProps
   extends Omit<AnchorHTMLAttributes<HTMLAnchorElement>, "color">,
@@ -193,15 +188,13 @@ export const ButtonLink = forwardRef<HTMLAnchorElement, DsButtonLinkProps>(
     ref,
   ) {
     return (
-      <a
-        ref={ref}
-        className={cn(buttonVariants({ variant, size, block }), className)}
-        {...props}
-      >
-        {icon}
-        {children}
-        {iconAfter}
-      </a>
+      <ShadcnButton asChild className={cn(buttonVariants({ variant, size, block }), className)}>
+        <a ref={ref} {...props}>
+          {icon}
+          {children}
+          {iconAfter}
+        </a>
+      </ShadcnButton>
     );
   },
 );
@@ -265,7 +258,7 @@ export const IconButton = forwardRef<HTMLButtonElement, DsIconButtonProps>(
     ref,
   ) {
     return (
-      <button
+      <ShadcnButton
         ref={ref}
         type={props.type ?? "button"}
         aria-label={label}
@@ -280,7 +273,7 @@ export const IconButton = forwardRef<HTMLButtonElement, DsIconButtonProps>(
         ) : (
           icon
         )}
-      </button>
+      </ShadcnButton>
     );
   },
 );
@@ -335,12 +328,12 @@ const badgeVariants = cva(
 );
 
 export interface DsBadgeProps
-  extends HTMLAttributes<HTMLSpanElement>,
+  extends Omit<HTMLAttributes<HTMLSpanElement>, "color">,
     VariantProps<typeof badgeVariants> {}
 
 /** A small labelled marker. For a bare number use `CountBadge`. */
-export function Badge({ className, tone, ...props }: DsBadgeProps) {
-  return <span className={cn(badgeVariants({ tone }), className)} {...props} />;
+export function Badge({ className, tone, children, ...props }: DsBadgeProps) {
+  return <ShadcnBadge className={cn(badgeVariants({ tone }), className)} {...props}>{children}</ShadcnBadge>;
 }
 
 /**
@@ -362,9 +355,9 @@ export function CountBadge({
 }) {
   if (value === 0 && zeroStyle === "hide") return null;
   return (
-    <span
+    <Badge
+      tone={tone}
       className={cn(
-        badgeVariants({ tone }),
         dsText.nums,
         "justify-center px-[var(--ds-space-tight)] tabular-nums",
         value === 0 && "opacity-40",
@@ -373,7 +366,7 @@ export function CountBadge({
       {...props}
     >
       {value > max ? `${max}+` : value}
-    </span>
+    </Badge>
   );
 }
 
@@ -471,7 +464,7 @@ export function Chip({
     dsRadius.sm,
     dsText.meta,
     dsText.flush,
-    "h-[var(--ds-h-xs)] gap-[var(--ds-space-tight)] px-[var(--ds-space-snug)]",
+    "h-[var(--ds-h-xs)] gap-[var(--ds-space-tight)] px-[var(--ds-space-snug)] font-normal",
     CHIP_TONE[tone],
     selected && "bg-[var(--ds-surface-selected)] text-[color:var(--ds-fg)]",
     className,
@@ -479,11 +472,12 @@ export function Chip({
 
   if (interactive) {
     return (
-      <button
+      <HeroButton
         type="button"
         aria-pressed={selected ?? false}
         onClick={onSelect}
-        title={hoverText}
+        {...(hoverText === undefined ? {} : { title: hoverText } as ComponentProps<typeof HeroButton>)}
+        variant="ghost"
         className={cn(
           shell,
           "cursor-pointer",
@@ -496,18 +490,20 @@ export function Chip({
         )}
       >
         {body}
-      </button>
+      </HeroButton>
     );
   }
 
   return (
-    <span className={shell} title={hoverText}>
+    <HeroChip className={shell} title={hoverText}>
       {body}
       {onRemove && (
-        <button
+        <HeroButton
           type="button"
           aria-label={`${removeLabel} ${typeof children === "string" ? children : ""}`.trim()}
           onClick={onRemove}
+          isIconOnly
+          variant="ghost"
           className={cn(
             "-mr-0.5 inline-flex size-3.5 cursor-pointer items-center justify-center rounded-full",
             dsFocus,
@@ -516,9 +512,9 @@ export function Chip({
           )}
         >
           <X aria-hidden className="size-2.5" />
-        </button>
+        </HeroButton>
       )}
-    </span>
+    </HeroChip>
   );
 }
 
@@ -529,7 +525,7 @@ export function Chip({
 /** A keyboard hint. Shortcuts are first-class in this product — show them. */
 export function Kbd({ children, className }: { children: ReactNode; className?: string }) {
   return (
-    <kbd
+    <HeroKbd
       className={cn(
         // KEPT OUTLINED, deliberately, while every other `surface-2 + border`
         // token moved to the recessed plane: this one is drawing a KEY. The
@@ -546,16 +542,17 @@ export function Kbd({ children, className }: { children: ReactNode; className?: 
       )}
     >
       {children}
-    </kbd>
+    </HeroKbd>
   );
 }
 
 export function Spinner({ className, label = "Loading" }: { className?: string; label?: string }) {
   return (
-    <Loader2
+    <HeroSpinner
       role="status"
+      aria-hidden={false}
       aria-label={label}
-      className={cn(dsIcon.md, "animate-spin motion-reduce:animate-none text-[color:var(--ds-fg-muted)]", className)}
+      className={cn(dsIcon.md, "text-[color:var(--ds-fg-muted)]", className)}
     />
   );
 }
@@ -567,7 +564,7 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
  */
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <span
+    <HeroSkeleton
       aria-hidden
       className={cn(
         "block animate-pulse motion-reduce:animate-none bg-[var(--ds-surface-3)]",
@@ -587,9 +584,8 @@ export function Separator({
   className?: string;
 }) {
   return (
-    <span
-      role="separator"
-      aria-orientation={orientation}
+    <HeroSeparator
+      orientation={orientation}
       className={cn(
         "block shrink-0 bg-[var(--ds-border)]",
         orientation === "horizontal" ? "h-px w-full" : "h-full w-px",
@@ -601,5 +597,5 @@ export function Separator({
 
 /** Text for screen readers only — the accessible name for an icon-only region. */
 export function VisuallyHidden({ children }: { children: ReactNode }) {
-  return <span className="sr-only">{children}</span>;
+  return <RadixVisuallyHidden>{children}</RadixVisuallyHidden>;
 }

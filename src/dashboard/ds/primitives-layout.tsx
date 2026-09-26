@@ -14,22 +14,40 @@
  * that shape to the app-wide storage hazard while the default card stays the
  * original primitive everywhere else.
  */
+import { Alert as HeroAlert, Card as HeroCard, EmptyState as HeroEmptyState, Surface as HeroSurface } from "@heroui/react";
 import {
-  createContext,
   forwardRef,
-  useCallback,
-  useContext,
   useEffect,
-  useId,
   useRef,
   useState,
   type HTMLAttributes,
-  type KeyboardEvent,
   type ReactNode,
 } from "react";
-import { CircleAlert, Info, ShieldAlert, TriangleAlert, CheckCircle2 } from "lucide-react";
+import { CircleAlert, Info, ShieldAlert, TriangleAlert, CheckCircle2, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { ShadcnCard, ShadcnCardContent, ShadcnCardFooter, ShadcnCardHeader } from "./shadcn-card.js";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./shadcn-collapsible.js";
+import { ShadcnTabs, ShadcnTabsContent, ShadcnTabsList, ShadcnTabsTrigger } from "./shadcn-tabs.js";
 import { dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
+
+/** A compact disclosure composed from shadcn's Radix Collapsible parts. */
+export function Disclosure({ summary, children, defaultOpen, className, summaryClassName, contentClassName, title }: {
+  summary: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  summaryClassName?: string;
+  contentClassName?: string;
+  title?: string;
+}) {
+  return <Collapsible defaultOpen={defaultOpen} className={cn("group", className)} title={title}>
+    <CollapsibleTrigger className={cn("flex w-full cursor-pointer items-center gap-[var(--ds-space-tight)] text-left", dsFocus, summaryClassName)}>
+      <ChevronRight aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)] transition-transform group-data-[state=open]:rotate-90")} />
+      <span className="min-w-0 flex-1">{summary}</span>
+    </CollapsibleTrigger>
+    <CollapsibleContent className={contentClassName}>{children}</CollapsibleContent>
+  </Collapsible>;
+}
 
 /**
  * Containers, structure and navigation.
@@ -61,7 +79,7 @@ export function Panel({
   ...props
 }: HTMLAttributes<HTMLElement> & { children: ReactNode }) {
   return (
-    <section
+    <ShadcnCard asChild
       className={cn(
         "flex min-h-0 min-w-0 flex-col overflow-hidden border",
         "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
@@ -70,8 +88,8 @@ export function Panel({
       )}
       {...props}
     >
-      {children}
-    </section>
+      <section>{children}</section>
+    </ShadcnCard>
   );
 }
 
@@ -102,7 +120,7 @@ export function PanelHeader({
   const Title = headingLevel === undefined ? "span" : PANEL_HEADING_TAG[headingLevel];
 
   return (
-    <header
+    <ShadcnCardHeader asChild
       className={cn(
         "flex shrink-0 items-center gap-[var(--ds-space-base)] border-b px-[var(--ds-space-cozy)]",
         "min-h-[var(--ds-h-bar)] border-[color:var(--ds-border)]",
@@ -110,6 +128,7 @@ export function PanelHeader({
         className,
       )}
     >
+      <header>
       {icon && <span className="shrink-0 text-[color:var(--ds-fg-muted)]">{icon}</span>}
       <span className={cn("flex min-w-0 flex-col", subtitle && "gap-[var(--ds-space-hair)]")}>
         <Title className={cn(subtitle ? dsText.section : dsText.title, dsText.flush, "truncate font-semibold text-[color:var(--ds-fg)]")}>
@@ -131,7 +150,8 @@ export function PanelHeader({
           {actions}
         </span>
       )}
-    </header>
+      </header>
+    </ShadcnCardHeader>
   );
 }
 
@@ -147,7 +167,7 @@ export function PanelToolbar({
   children: ReactNode;
 }) {
   return (
-    <div
+    <ShadcnCardContent asChild
       role="group"
       aria-label={label}
       className={cn(
@@ -156,19 +176,19 @@ export function PanelToolbar({
         className,
       )}
     >
-      {children}
-    </div>
+      <div>{children}</div>
+    </ShadcnCardContent>
   );
 }
 
 /** The scrolling region of a Panel. Exactly one per Panel. */
 export function PanelBody({ className, children }: { className?: string; children: ReactNode }) {
-  return <div className={cn("min-h-0 flex-1 overflow-y-auto", className)}>{children}</div>;
+  return <ShadcnCardContent className={cn("min-h-0 flex-1 overflow-y-auto", className)}>{children}</ShadcnCardContent>;
 }
 
 export function PanelFooter({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <footer
+    <ShadcnCardFooter asChild
       className={cn(
         "flex shrink-0 items-center gap-[var(--ds-space-base)] border-t px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
         // The recessed plane, the same solid band the queue row's own footer
@@ -179,8 +199,8 @@ export function PanelFooter({ className, children }: { className?: string; child
         className,
       )}
     >
-      {children}
-    </footer>
+      <footer>{children}</footer>
+    </ShadcnCardFooter>
   );
 }
 
@@ -203,9 +223,9 @@ export function Card({
   tone?: "default" | "attention" | "danger";
 }) {
   return (
-    <div
+    <HeroCard
       className={cn(
-        "relative flex min-w-0 flex-col border bg-[var(--ds-surface-1)]",
+        "relative flex min-w-0 flex-col gap-0 border bg-[var(--ds-surface-1)] p-0 shadow-none",
         dsRadius.lg,
         dsMotion.base,
         "border-[color:var(--ds-border)]",
@@ -220,15 +240,15 @@ export function Card({
       {...props}
     >
       {children}
-    </div>
+    </HeroCard>
   );
 }
 
 export function CardHeader({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div className={cn("flex items-center gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-base)]", className)}>
+    <HeroCard.Header className={cn("flex flex-row items-center gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-base)]", className)}>
       {children}
-    </div>
+    </HeroCard.Header>
   );
 }
 
@@ -258,9 +278,9 @@ export function CardBody({
   children: ReactNode;
 }) {
   return (
-    <div className={cn("px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]", grow && "grow", className)}>
+    <HeroCard.Content className={cn("block min-w-0 flex-none gap-0 px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]", grow && "grow", className)}>
       {children}
-    </div>
+    </HeroCard.Content>
   );
 }
 
@@ -396,7 +416,7 @@ export function CompareCard({
 
 export function CardFooter({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div
+    <HeroCard.Footer
       className={cn(
         "flex items-center gap-[var(--ds-space-tight)] border-t px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
         "border-[color:var(--ds-border-subtle)]",
@@ -404,7 +424,7 @@ export function CardFooter({ className, children }: { className?: string; childr
       )}
     >
       {children}
-    </div>
+    </HeroCard.Footer>
   );
 }
 
@@ -477,26 +497,26 @@ export function Banner({
   const spec = BANNER_TONE[tone];
   const Icon = spec.Icon;
   return (
-    <div
+    <HeroAlert.Root
       role={spec.live}
       className={cn(
-        "flex items-start gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]",
-        shape === "card" ? cn("border", dsRadius.md) : "border-b",
+        "flex w-auto items-start gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] shadow-none",
+        shape === "card" ? cn("border", dsRadius.md) : "rounded-none border-b",
         spec.shell,
         className,
       )}
     >
-      <span className={cn("mt-px shrink-0", spec.icon)}>
+      <HeroAlert.Indicator className={cn("mt-px shrink-0 p-0", spec.icon)}>
         {icon ?? <Icon aria-hidden className={dsIcon.lg} />}
-      </span>
-      <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-tight)]">
+      </HeroAlert.Indicator>
+      <HeroAlert.Content className="flex min-w-0 flex-1 flex-col items-stretch gap-[var(--ds-space-tight)]">
         <div className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>{title}</div>
         {children && (
           <div className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{children}</div>
         )}
-      </div>
+      </HeroAlert.Content>
       {action && <div className="shrink-0">{action}</div>}
-    </div>
+    </HeroAlert.Root>
   );
 }
 
@@ -905,7 +925,7 @@ export function EmptyState({
   className?: string;
 }) {
   return (
-    <div
+    <HeroEmptyState
       className={cn(
         "flex flex-col items-center justify-center gap-[var(--ds-space-base)] p-[var(--ds-space-section)] text-center",
         className,
@@ -919,27 +939,13 @@ export function EmptyState({
         </span>
       )}
       {action && <span className="mt-[var(--ds-space-tight)]">{action}</span>}
-    </div>
+    </HeroEmptyState>
   );
 }
 
 /* =========================================================================
  * Tabs — roving tabindex, arrow keys, Home/End, correct ARIA wiring
  * ====================================================================== */
-
-interface TabsContextValue {
-  value: string;
-  setValue: (v: string) => void;
-  baseId: string;
-}
-
-const TabsContext = createContext<TabsContextValue | null>(null);
-
-function useTabsContext(component: string): TabsContextValue {
-  const ctx = useContext(TabsContext);
-  if (!ctx) throw new Error(`<${component}> must be rendered inside <Tabs>`);
-  return ctx;
-}
 
 /**
  * ```tsx
@@ -967,11 +973,14 @@ export function Tabs({
   className?: string;
   children: ReactNode;
 }) {
-  const baseId = useId();
   return (
-    <TabsContext.Provider value={{ value, setValue: onValueChange, baseId }}>
-      <div className={cn("flex min-h-0 min-w-0 flex-col", className)}>{children}</div>
-    </TabsContext.Provider>
+    <ShadcnTabs
+      value={value}
+      onValueChange={onValueChange}
+      className={cn("flex min-h-0 min-w-0 flex-col", className)}
+    >
+      {children}
+    </ShadcnTabs>
   );
 }
 
@@ -985,32 +994,9 @@ export function TabList({
   className?: string;
   children: ReactNode;
 }) {
-  const listRef = useRef<HTMLDivElement>(null);
-
-  const onKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    const keys = ["ArrowRight", "ArrowLeft", "Home", "End"];
-    if (!keys.includes(event.key)) return;
-    const list = listRef.current;
-    if (!list) return;
-    const tabs = Array.from(list.querySelectorAll<HTMLButtonElement>('[role="tab"]:not([disabled])'));
-    if (tabs.length === 0) return;
-    const current = tabs.findIndex((t) => t === document.activeElement);
-    let next: number;
-    if (event.key === "ArrowRight") next = (current + 1) % tabs.length;
-    else if (event.key === "ArrowLeft") next = (current - 1 + tabs.length) % tabs.length;
-    else if (event.key === "Home") next = 0;
-    else next = tabs.length - 1;
-    event.preventDefault();
-    tabs[next]?.focus();
-    tabs[next]?.click();
-  }, []);
-
   return (
-    <div
-      ref={listRef}
-      role="tablist"
+    <ShadcnTabsList
       aria-label={label}
-      onKeyDown={onKeyDown}
       className={cn(
         "flex shrink-0 items-center gap-[var(--ds-space-tight)] border-b",
         "border-[color:var(--ds-border)] px-[var(--ds-space-base)]",
@@ -1018,7 +1004,7 @@ export function TabList({
       )}
     >
       {children}
-    </div>
+    </ShadcnTabsList>
   );
 }
 
@@ -1038,20 +1024,12 @@ export function Tab({
   className?: string;
   children: ReactNode;
 }) {
-  const { value: active, setValue, baseId } = useTabsContext("Tab");
-  const selected = active === value;
   return (
-    <button
-      type="button"
-      role="tab"
-      id={`${baseId}-tab-${value}`}
-      aria-controls={`${baseId}-panel-${value}`}
-      aria-selected={selected}
-      tabIndex={selected ? 0 : -1}
+    <ShadcnTabsTrigger
+      value={value}
       disabled={disabled}
-      onClick={() => setValue(value)}
       className={cn(
-        "relative inline-flex cursor-pointer items-center gap-[var(--ds-space-snug)]",
+        "relative inline-flex w-auto flex-none cursor-pointer items-center gap-[var(--ds-space-snug)]",
         "h-[var(--ds-h-bar)] px-[var(--ds-space-base)]",
         dsText.ui,
         dsText.flush,
@@ -1059,9 +1037,8 @@ export function Tab({
         dsMotion.fast,
         "active:translate-y-px",
         "border-b-2 border-transparent -mb-px",
-        selected
-          ? "border-b-[color:var(--ds-accent)] font-semibold text-[color:var(--ds-fg)]"
-          : "text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
+        "text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
+        "data-[state=active]:border-b-[color:var(--ds-accent)] data-[state=active]:font-semibold data-[state=active]:text-[color:var(--ds-fg)]",
         "disabled:cursor-not-allowed disabled:opacity-45",
         className,
       )}
@@ -1071,7 +1048,7 @@ export function Tab({
       {typeof count === "number" && count > 0 && (
         <span className={cn(dsText.nums, dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{count}</span>
       )}
-    </button>
+    </ShadcnTabsTrigger>
   );
 }
 
@@ -1084,18 +1061,13 @@ export function TabPanel({
   className?: string;
   children: ReactNode;
 }) {
-  const { value: active, baseId } = useTabsContext("TabPanel");
-  if (active !== value) return null;
   return (
-    <div
-      role="tabpanel"
-      id={`${baseId}-panel-${value}`}
-      aria-labelledby={`${baseId}-tab-${value}`}
-      tabIndex={0}
+    <ShadcnTabsContent
+      value={value}
       className={cn("min-h-0 flex-1 overflow-y-auto", dsFocus, className)}
     >
       {children}
-    </div>
+    </ShadcnTabsContent>
   );
 }
 
@@ -1115,7 +1087,7 @@ export function TabPanel({
  */
 export function Well({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <div
+    <HeroSurface variant="transparent"
       className={cn(
         "min-w-0 border bg-[var(--ds-recess-bg)] p-[var(--ds-space-base)]",
         "border-[color:var(--ds-recess-border)]",
@@ -1125,7 +1097,7 @@ export function Well({ className, children }: { className?: string; children: Re
       )}
     >
       {children}
-    </div>
+    </HeroSurface>
   );
 }
 
@@ -1186,7 +1158,7 @@ export function useDsEnterTransition(): { "data-demo-enter": "from" | "to" } {
 export const FloatingSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDivElement>>(
   function FloatingSurface({ className, children, ...rest }, ref) {
     return (
-      <div
+      <HeroSurface variant="transparent"
         ref={ref}
         {...rest}
         className={cn(
@@ -1198,7 +1170,7 @@ export const FloatingSurface = forwardRef<HTMLDivElement, HTMLAttributes<HTMLDiv
         )}
       >
         {children}
-      </div>
+      </HeroSurface>
     );
   },
 );

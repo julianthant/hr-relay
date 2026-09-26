@@ -20,6 +20,7 @@ import {
 import { cn } from "../lib/utils.js";
 import {
   Badge,
+  BareButton,
   Button,
   Chip,
   Dialog,
@@ -265,7 +266,7 @@ export function CorpusSearchOutcomeView({
             const tone = result.state === "done" ? "success" : result.state === "failed" ? "danger" : "warning";
             return (
               <li key={String(result.runId)}>
-                <button
+                <BareButton
                   type="button"
                   data-corpus-search-result
                   aria-label={`Open ${(result.registration.state==="registered"?result.registration.label:result.workflowId)} ${runLabel} from ${result.partitionDay}`}
@@ -297,7 +298,7 @@ export function CorpusSearchOutcomeView({
                   <span className={cn(dsText.meta, "basis-full text-[color:var(--ds-fg-muted)]")}>
                     {resource.query === "" ? "Matches selected filters" : `Matched ${result.match.field} · ${result.match.strength}`}
                   </span>
-                </button>
+                </BareButton>
               </li>
             );
           })}
@@ -456,7 +457,7 @@ export function DaySearchControl({
 
   return (
     <>
-      <button
+      <BareButton
         ref={triggerRef}
         type="button"
         onClick={openCorpusSearch}
@@ -483,7 +484,7 @@ export function DaySearchControl({
           Search runs…
         </span>
         <Kbd>/</Kbd>
-      </button>
+      </BareButton>
 
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent
@@ -497,7 +498,7 @@ export function DaySearchControl({
             className="max-h-[45vh] shrink-0 overflow-y-auto border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)]"
           >
             <div role="group" aria-label="Search scope" className="mb-[var(--ds-space-base)] inline-flex border p-[var(--ds-space-hair)]">
-              <button
+              <BareButton
                 type="button"
                 aria-pressed={mode === "corpus"}
                 onClick={() => {setAcceptedKey("");setCorpus({state:"idle"});setMode("corpus");}}
@@ -511,8 +512,8 @@ export function DaySearchControl({
                 )}
               >
                 Across dates
-              </button>
-              <button
+              </BareButton>
+              <BareButton
                 type="button"
                 aria-pressed={mode === "day"}
                 onClick={() => {setAcceptedKey("");setCorpus({state:"idle"});setMode("day");}}
@@ -526,7 +527,7 @@ export function DaySearchControl({
                 )}
               >
                 This day
-              </button>
+              </BareButton>
             </div>
             <SearchInput
               ref={inputRef}

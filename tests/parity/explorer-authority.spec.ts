@@ -129,7 +129,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of PARITY_THEMES) {
       await page.keyboard.press("Escape");
       await page.getByRole("button", { name: "Version registry", exact: true }).click();
       await expect(page).toHaveURL(/archiveView=versions/u);
-      await expect(page.getByText("Versions & bumps", { exact: true }).first()).toBeVisible();
+      await expect(page.getByRole("region", { name: "Plan a version bump" })).toBeVisible();
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("link", { name: "UI catalog", exact: true }).click();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();

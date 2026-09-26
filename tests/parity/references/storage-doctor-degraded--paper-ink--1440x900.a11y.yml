@@ -82,10 +82,9 @@
       - img "Review"
       - heading "Span authority degraded" [level=3]
       - text: 11 stream runs 7 live authority runs
-      - group:
-        - text: 1 archived run
-        - list "Archived span-authority runs":
-          - listitem "2026-08-03T08:00:00.000-07:00": 00000000-0401-4000-8000-000000000401 · archived Mon, Aug 3 · 8:00 AM
+      - button "1 archived run" [expanded]
+      - list "Archived span-authority runs":
+        - listitem "2026-08-03T08:00:00.000-07:00": 00000000-0401-4000-8000-000000000401 · archived Mon, Aug 3 · 8:00 AM
       - list "Span authority problems":
         - listitem: missing run 00000000-0402-4000-8000-000000000402
         - listitem: missing-span run 00000000-0403-4000-8000-000000000403

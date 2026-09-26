@@ -2,6 +2,7 @@ import { Download, Expand } from "lucide-react";
 import { useMemo } from "react";
 import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
 import {
+  BareButton,
   Banner, Button, ButtonLink, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger,
   SectionLabel, dsFocus, dsIcon, dsRadius, dsText,
 } from "../ds/ui.js";
@@ -52,7 +53,7 @@ function ScreenshotResource({ bundle, screenshot, index, total, url, readBundle 
   return (
     <Dialog open={state.lightbox !== "closed"} onOpenChange={(open) => dispatch({ type: open ? "open" : "close" })}>
       <DialogTrigger asChild>
-        <button
+        <BareButton
           ref={triggerRef}
           type="button"
           aria-label={`Open ${label}`}
@@ -86,7 +87,7 @@ function ScreenshotResource({ bundle, screenshot, index, total, url, readBundle 
             <span>{label}</span>
             <Expand aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
           </span>
-        </button>
+        </BareButton>
       </DialogTrigger>
       {state.lightbox !== "closed" && (
         <DialogContent size="lg" hideClose title={label} description={`${String(screenshot.width)} × ${String(screenshot.height)} px · ${screenshot.sensitivity} at capture`}>
