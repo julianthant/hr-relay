@@ -26,6 +26,10 @@ import { composeDataQueries } from "./compose/data.js";
 export { dataOriginViewsOf } from "./compose/run-detail-descriptors.js";
 export { readGateParks } from "./compose/notifications.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
+import { createProviderKeyStore } from "../../infra/config/provider-key-store.js";
+import { normalizeProviderBootProvenance, providerBootProvenance, type ProviderBootProvenance } from "../../domain/config/provider-boot-provenance.js";
+import { createProviderKeyJournal } from "./commands/provider-key-journal.js";
+import { providerMarkedFingerprint } from "./commands/provider-key-projection.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { ActorIdSchema } from "../../domain/ids.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
@@ -175,6 +179,7 @@ export interface DashboardComposeInput {
   readonly ids?: IdFactory;
   /** Where package.json and the state root resolve from. */
   readonly repoRoot?: string;
+  readonly providerBoot?: ProviderBootProvenance;
   /**
    * Who serves the frontend bytes (ref frontend-backend-integration §6.9). `vite-dev` — the
    * default and the development path — leaves that to the Vite dev server on the
@@ -550,6 +555,9 @@ async function composeDashboardRuntimeStartup(
   });
   database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
   const protectedSettingsAuthority = createCredentialStore({ stateRoot });
+  const providerKeysAuthority = createProviderKeyStore({ envPath: join(repoRoot, ".env.providers"),
+    journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint });
+  const providerBoot = input.providerBoot === undefined ? providerBootProvenance() : normalizeProviderBootProvenance(input.providerBoot);
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => {
@@ -573,7 +581,7 @@ async function composeDashboardRuntimeStartup(
   })();
   const { persistedSettings, resolved } = bootConfig;
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
-    environment: env, credentials: protectedSettingsAuthority });
+    environment: env, credentials: protectedSettingsAuthority, providerKeys: providerKeysAuthority, providerBoot });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
@@ -962,6 +970,8 @@ async function composeDashboardRuntimeStartup(
     commands,
     commandJournal: database.authority.commands,
     protectedCommandAcceptedAt: (commandId) => protectedSettingsAuthority.acceptedAt(commandId),
+    readPendingProviderRequest: (identity) => providerKeysAuthority.readPendingRequest(identity),
+    providerCommandAcceptedAt: (commandId, writeId) => providerKeysAuthority.pendingAcceptedAt(commandId, writeId),
     runtimeVersionAcceptedAt: (commandId) => database.readRuntimeVersionIndex().changes
       .find(change => change.applicationCommandId === commandId)?.applicationRequest?.requestedAt,
     bulkCommandAcceptances: {

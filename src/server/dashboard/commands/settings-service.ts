@@ -14,6 +14,8 @@ import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
 import { readSettings } from "../../settings-runtime.js";
 import { z } from "zod";
+import { ProviderKeyStoreConflictError, type createProviderKeyStore } from "../../../infra/config/provider-key-store.js";
+import { providerStoreRequest } from "./provider-key-projection.js";
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);
@@ -45,14 +47,34 @@ function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply
 export function createSettingsApplicationExecutor(
   resolveCandidate: (settings: SettingsFileRecord["settings"]) => ResolvedConfig,
   credentials: CredentialStore,
+  provider?: Readonly<{ store: ReturnType<typeof createProviderKeyStore>; bootKnown: boolean;
+    restartRequired(slots: Readonly<Record<string, string>>): boolean }>,
 ): SettingsApplicationExecutor {
   return Object.freeze({
     prepare(command: SettingsCommand) {
+      if (command.type === "apply-provider-keys") {
+        if (provider === undefined) throw new Error("provider-key-store-unavailable");
+        if (!provider.bootKnown) throw new Error("provider-boot-provenance-unavailable");
+        try { provider.store.apply(providerStoreRequest(command)); }
+        catch (error) {
+          if (error instanceof ProviderKeyStoreConflictError) return SettingsApplyRefusalSchema.parse({
+            state: "conflict", currentRevision: error.currentRevision, message: "provider key source changed; reload saved keys",
+          });
+          throw error;
+        }
+        return undefined;
+      }
       if (command.type !== "apply-protected-settings") return ordinaryRequestRefusal(command);
       const outcome = credentials.apply(protectedInput(command));
       return outcome.state === "applied" ? undefined : outcome;
     },
     apply(command: SettingsCommand, repositories: AuthorityRepositories) {
+      if (command.type === "apply-provider-keys") {
+        if (provider === undefined) throw new Error("provider-key-store-unavailable");
+        const result = provider.store.apply(providerStoreRequest(command));
+        return { state: "applied", revision: result.revision, receiptId: result.receiptId,
+          sourceVersionToken: result.sourceVersionToken, restartRequired: provider.restartRequired(result.slots) };
+      }
       if (command.type === "apply-protected-settings") {
         const outcome = credentials.verifyReplay(protectedInput(command));
         if (outcome.state !== "applied") return outcome;
@@ -92,10 +114,20 @@ export function createSettingsApplicationExecutor(
       // The kernel journals the audit and saved row before committing this same transaction.
       return { state: "applied", revision, settings, restartRequired: false, settingsFingerprint };
     },
-    reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>) {
+    reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>) {
+      if (command.type === "apply-provider-keys") {
+        if (provider === undefined) throw new Error("provider-key-store-unavailable");
+        const result = provider.store.apply(providerStoreRequest(command));
+        return { state: "applied", revision: result.revision, receiptId: result.receiptId,
+          sourceVersionToken: result.sourceVersionToken, restartRequired: provider.restartRequired(result.slots) };
+      }
       const outcome = credentials.verifyReplay(protectedInput(command));
       if (outcome.state !== "applied") throw new Error("credential-replay-refused");
       return protectedSettingsReadback(outcome.record);
+    },
+    confirmProvider(command: Extract<SettingsCommand, { type: "apply-provider-keys" }>) {
+      if (provider === undefined) throw new Error("provider-key-store-unavailable");
+      provider.store.confirmCommitted(command.commandId, command.payload.writeId);
     },
   });
 }

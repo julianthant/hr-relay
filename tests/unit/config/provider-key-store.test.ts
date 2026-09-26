@@ -6,8 +6,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
-import { SourceSurfaceIdSchema } from "../../../src/domain/ids.js";
-import { createProviderKeyStore, ProviderKeyStoreUnknownError, type ProviderKeyJournal, type ProviderKeyWriteRequest } from "../../../src/infra/config/provider-key-store.js";
+import { ActorIdSchema, SourceSurfaceIdSchema } from "../../../src/domain/ids.js";
+import { createProviderKeyStore, ProviderKeyStoreConflictError, ProviderKeyStoreUnknownError, type ProviderKeyJournal, type ProviderKeyWriteRequest } from "../../../src/infra/config/provider-key-store.js";
 import { observeProcessIdentity } from "../../../src/infra/sqlite/runtime-process-locks.js";
 
 const roots: string[] = [];
@@ -45,7 +45,7 @@ function fixture(hooks?: Parameters<typeof createProviderKeyStore>[0]["hooks"]) 
     writeId: `${String(identity).repeat(8)}-2222-4222-8222-222222222222`,
     expectedRevision: 1, expectedSourceVersionToken: store().read().sourceVersionToken!,
     schemaHash: "a".repeat(64), requestedAt: "2026-09-26T12:00:00.000Z",
-    requestedBy: "local-operator", source: SourceSurfaceIdSchema.parse("settings-surface"), operations,
+    requestedBy: ActorIdSchema.parse("local-operator"), source: SourceSurfaceIdSchema.parse("settings-surface"), operations,
   });
   const settle = (commandId: string, writeId: string, revision: number) => {
     committed.add(`${commandId}:${writeId}:${revision}`);
@@ -116,7 +116,7 @@ describe("private provider key store", () => {
     assert.deepEqual(f.store().retryPending(pendingIdentity(f.envPath)).request, request);
     refusal(() => f.store().apply({ ...request, operations: { SAMBANOVA_API_KEY4: { set: "different" } } }), "pending-command-divergent");
     f.settle(request.commandId, request.writeId, 2);
-    refusal(() => f.store().apply({ ...request, commandId: "33333333-1111-4111-8111-111111111111", writeId: "33333333-2222-4222-8222-222222222222" }), "source-conflict");
+    assert.throws(() => f.store().apply({ ...request, commandId: "33333333-1111-4111-8111-111111111111", writeId: "33333333-2222-4222-8222-222222222222" }), ProviderKeyStoreConflictError);
     refusal(() => f.store().apply({ ...request, expectedRevision: 2, expectedSourceVersionToken: f.store().read().sourceVersionToken!, writeId: "44444444-2222-4222-8222-222222222222" }), "latest-replay-divergent");
   });
 

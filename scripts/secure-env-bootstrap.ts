@@ -3,6 +3,7 @@ import {
   admitLocalEnvironmentFile,
   assertNoMigratedEnvironmentKeys,
 } from "../src/domain/secrets.js";
+import { publishProviderBootProvenance } from "../src/domain/config/provider-boot-provenance.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -38,9 +39,12 @@ export async function runSecureEnvironmentBootstrap(
   if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
     (dependencies.assertEnvironment ?? (() => assertNoMigratedEnvironmentKeys()))();
     const environmentFilePath = repositoryEnvironmentFilePath();
-    (dependencies.admitEnvironmentFile ?? ((path) => admitLocalEnvironmentFile(path)))(
-      environmentFilePath,
-    );
+    if (dependencies.admitEnvironmentFile !== undefined) dependencies.admitEnvironmentFile(environmentFilePath);
+    else {
+      const provenance = admitLocalEnvironmentFile(environmentFilePath);
+      if (provenance === undefined) throw new Error("provider boot provenance missing after admission");
+      publishProviderBootProvenance(provenance);
+    }
   }
 
   if (entrypoint === "cli") {

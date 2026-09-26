@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { spawnSync } from "node:child_process";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { CommandIdentityConflictError } from "../../src/domain/commands.js";
 import { afterEach, describe, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
@@ -21,6 +21,10 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { requireSecret } from "../../src/domain/secrets.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
+import { createProviderKeyStore } from "../../src/infra/config/provider-key-store.js";
+import { createProviderKeyJournal } from "../../src/server/dashboard/commands/provider-key-journal.js";
+import { providerCommandFromStore, providerMarkedFingerprint } from "../../src/server/dashboard/commands/provider-key-projection.js";
+import { PROVIDER_KEYS_SCHEMA_HASH } from "../../src/domain/config/provider-keys.js";
 
 import { RunRecordService } from "../../src/core/run-record-service.js";
 import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
@@ -59,6 +63,70 @@ function failAudit(database: AuthorityDatabase): CommandAuthority {
 }
 
 describe("D336 SQLite settings authority", () => {
+  it("recovers a provider SQL rollback in a fresh process from private pending evidence", () => {
+    const f = fixture();
+    const envPath = join(f.repoRoot, ".env.providers");
+    writeFileSync(envPath, "GEMINI_API_KEY='synthetic-boot'\n", { mode: 0o600 });
+    const firstStore = createProviderKeyStore({ envPath, journal: createProviderKeyJournal(f.database),
+      markedFingerprint: providerMarkedFingerprint });
+    const request = { commandId: randomUUID(), requestedAt: f.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "settings-surface", family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: 1, sourceVersionToken: firstStore.read().sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId: randomUUID(),
+        operations: { GROQ_API_KEY2: { set: "synthetic-child-private" } } } };
+    f.database.close();
+    databases.splice(databases.indexOf(f.database), 1);
+    const moduleUrl = (name: string) => JSON.stringify(pathToFileURL(join(process.cwd(), name)).href);
+    const childPath = join(f.repoRoot, "provider-sql-rollback.mjs");
+    writeFileSync(childPath, `
+import { randomUUID } from 'node:crypto';
+import { join } from 'node:path';
+import { AuthorityDatabase } from ${moduleUrl("src/infra/sqlite/authority-database.ts")};
+import { createProviderKeyStore } from ${moduleUrl("src/infra/config/provider-key-store.ts")};
+import { createProviderKeyJournal } from ${moduleUrl("src/server/dashboard/commands/provider-key-journal.ts")};
+import { providerMarkedFingerprint } from ${moduleUrl("src/server/dashboard/commands/provider-key-projection.ts")};
+import { createCredentialStore } from ${moduleUrl("src/infra/config/credential-store.ts")};
+import { createSettingsApplicationExecutor } from ${moduleUrl("src/server/dashboard/commands/settings-service.ts")};
+import { executeSettingsCommand } from ${moduleUrl("src/core/command-kernel.ts")};
+import { manualClock } from ${moduleUrl("src/domain/clock.ts")};
+const [root, raw] = process.argv.slice(2);
+const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
+const database = AuthorityDatabase.open({ path: join(root, '.tracker', 'state.db'), busyTimeoutMs: 250,
+  migrationOwner: 'provider-child' }, clock);
+const store = createProviderKeyStore({ envPath: join(root, '.env.providers'),
+  journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint });
+const settings = createSettingsApplicationExecutor(() => { throw new Error('ordinary settings unavailable'); },
+  createCredentialStore({ stateRoot: join(root, '.tracker') }),
+  { store, bootKnown: true, restartRequired: () => true });
+try {
+  executeSettingsCommand({ authority: { withAuthorityTransaction: work => database.withAuthorityTransaction(repositories => {
+    work(repositories); throw new Error('synthetic-sql-failure');
+  }) }, clock, ids: { uuid: randomUUID }, settings }, JSON.parse(raw));
+  process.exitCode = 74;
+} catch (error) {
+  process.exitCode = String(error).includes('provider-audit-uncertain') ? 71 : 75;
+} finally { database.close(); }
+`);
+    const child = spawnSync(process.execPath, ["--import", "tsx", childPath, f.repoRoot, JSON.stringify(request)],
+      { encoding: "utf8" });
+    assert.equal(child.status, 71, child.stderr);
+    const restored = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "provider-parent" }, f.clock);
+    databases.push(restored);
+    const store = createProviderKeyStore({ envPath, journal: createProviderKeyJournal(restored),
+      markedFingerprint: providerMarkedFingerprint });
+    const pending = store.read();
+    assert.equal(pending.state, "pending-after-rename");
+    if (pending.state !== "pending-after-rename") throw new Error("pending provider evidence missing");
+    const recovered = providerCommandFromStore(store.readPendingRequest(pending.pending));
+    assert.equal(recovered.requestedAt, request.requestedAt);
+    const settings = createSettingsApplicationExecutor(() => { throw new Error("ordinary settings unavailable"); },
+      createCredentialStore({ stateRoot: f.root }), { store, bootKnown: true, restartRequired: () => true });
+    const applied = executeSettingsCommand({ authority: restored, clock: f.clock, ids: { uuid: randomUUID }, settings }, recovered);
+    assert.equal(applied.state, "applied");
+    assert.equal(store.read().state, "settled");
+    assert.equal(restored.authority.commandAudits.findByCommand(request.commandId)?.request.requestedAt, request.requestedAt);
+    assert.equal(readFileSync(f.path).includes(Buffer.from("synthetic-child-private")), false);
+  });
   it("represents empty revision one without a file or current row", () => {
     const f = fixture();
     assert.equal(f.database.authority.settingsCurrent.get(), undefined);

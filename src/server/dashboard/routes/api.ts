@@ -85,6 +85,8 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   registerIntakeRoutes(app, deps);
   registerCommandsRoutes(app, { clock: deps.bootstrap.clock, commands: deps.commands, commandJournal: deps.commandJournal,
     bulkCommandAcceptances: deps.bulkCommandAcceptances, protectedCommandAcceptedAt: deps.protectedCommandAcceptedAt,
+    readPendingProviderRequest: deps.readPendingProviderRequest,
+    providerCommandAcceptedAt: deps.providerCommandAcceptedAt,
     runtimeVersionAcceptedAt: deps.runtimeVersionAcceptedAt, intake: deps.intake });
   if (deps.staticBundle !== undefined) app.use("*", staticBundleHandler(deps.staticBundle));
 

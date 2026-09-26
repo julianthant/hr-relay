@@ -3,10 +3,12 @@ import {
   closeSync,
   constants,
   fstatSync,
+  lstatSync,
   openSync,
   readFileSync,
   statSync,
   type Stats,
+  type BigIntStats,
 } from "node:fs";
 import { parseEnv } from "node:util";
 import { z } from "zod";
@@ -20,12 +22,17 @@ import type { Config } from "./config/schema.js";
 import { establishHostPrimaryDisplay, hostPrimaryDisplayEnvironment, type HostDisplayProbe } from "./config/host-display.js";
 import { FingerprintSchema, type Fingerprint } from "./ids.js";
 import { deepFreeze } from "./immutability.js";
+import { SECRET_FAMILY_SPECS } from "./config/provider-family-specs.js";
+export { SECRET_FAMILY_SPECS, SecretFamilySpecSchema } from "./config/provider-family-specs.js";
+import { ProviderKeySlotSchema } from "./config/provider-keys.js";
+import { parseProviderKeyHeaderRevision } from "./config/provider-key-header.js";
+import { normalizeProviderBootProvenance, type ProviderBootProvenance } from "./config/provider-boot-provenance.js";
+import { sha256Hex } from "./sha256.js";
 import {
   type ActivityPersonPseudonymDomain,
 } from "./trust/activity-person-pseudonym.js";
 import {
   EnvironmentSecretNameSchema,
-  SecretFamilyNameSchema,
   SecretFileNameSchema,
   SecretNameSchema,
 } from "./secret-names.js";
@@ -55,14 +62,6 @@ export const SecretSpecSchema = z.strictObject({
   requiredAtBoot: z.boolean(),
   classification: z.enum(["secret", "direct-identifier"]),
 });
-export const SecretFamilySpecSchema = z.strictObject({
-  name: SecretFamilyNameSchema,
-  envPrefix: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-  modelsConfigKey: z.enum(["gemini", "groq", "mistral", "openRouter", "sambanova"]),
-  maximum: z.number().int().positive(),
-  requiredAtBoot: z.boolean(),
-  classification: z.literal("secret"),
-});
 export const SecretFileSpecSchema = z.strictObject({
   name: SecretFileNameSchema,
   configPath: z.literal("paths.duoCredential"),
@@ -86,13 +85,6 @@ export const SECRET_SPECS = deepFreeze(SecretSpecSchema.array().parse([
   { name: "timekeeperName", source: "protected-store", requiredAtBoot: false, classification: "direct-identifier" },
   { name: "sharepointOnboardingRosterUrl", source: "protected-store", requiredAtBoot: false, classification: "secret" },
 ]));
-export const SECRET_FAMILY_SPECS = deepFreeze(SecretFamilySpecSchema.array().parse([
-  { name: "geminiApiKeys", envPrefix: "GEMINI_API_KEY", modelsConfigKey: "gemini", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "groqApiKeys", envPrefix: "GROQ_API_KEY", modelsConfigKey: "groq", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "mistralApiKeys", envPrefix: "MISTRAL_API_KEY", modelsConfigKey: "mistral", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "openRouterApiKeys", envPrefix: "OPEN_ROUTER_API_KEY", modelsConfigKey: "openRouter", maximum: 8, requiredAtBoot: false, classification: "secret" },
-  { name: "sambaNovaApiKeys", envPrefix: "SAMBANOVA_API_KEY", modelsConfigKey: "sambanova", maximum: 8, requiredAtBoot: false, classification: "secret" },
-]));
 export const SECRET_FILE_SPECS = deepFreeze(SecretFileSpecSchema.array().parse([
   { name: "duoWebauthnCredential", configPath: "paths.duoCredential", classification: "credential-file", maximumBytes: REGISTERED_SECRET_FILE_MAXIMUM_BYTES },
 ]));
@@ -101,6 +93,8 @@ type SecretFileMetadata = Pick<Stats, "isFile" | "mode" | "size">;
 interface LocalEnvironmentAdmissionAccess {
   readonly open: (path: string, flags: number) => number;
   readonly inspectDescriptor: (descriptor: number) => SecretFileMetadata;
+  readonly inspectIdentity?: (descriptor: number) => BigIntStats;
+  readonly inspectPathIdentity?: (path: string) => BigIntStats;
   readonly readBytes: (descriptor: number) => Buffer;
   readonly close: (descriptor: number) => void;
 }
@@ -108,6 +102,8 @@ interface LocalEnvironmentAdmissionAccess {
 const DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS: LocalEnvironmentAdmissionAccess = {
   open: openSync,
   inspectDescriptor: fstatSync,
+  inspectIdentity: (descriptor) => fstatSync(descriptor, { bigint: true }),
+  inspectPathIdentity: (path) => lstatSync(path, { bigint: true }),
   readBytes: (descriptor) => readFileSync(descriptor),
   close: closeSync,
 };
@@ -352,8 +348,9 @@ export function admitLocalEnvironmentFile(
   environmentFilePath: string,
   env: NodeJS.ProcessEnv = process.env,
   access: LocalEnvironmentAdmissionAccess = DEFAULT_LOCAL_ENVIRONMENT_ADMISSION_ACCESS,
-): void {
+): ProviderBootProvenance | undefined {
   assertNoMigratedEnvironmentKeys(env);
+  const parentSlotNames = Object.keys(env).filter(key => ProviderKeySlotSchema.safeParse(key).success);
   let descriptor: number;
   try {
     descriptor = access.open(
@@ -365,6 +362,7 @@ export function admitLocalEnvironmentFile(
   }
 
   let parsed: NodeJS.Dict<string> | undefined;
+  let provenance: ProviderBootProvenance | undefined;
   let admissionFailure: SecretSourceError | undefined;
   try {
     const metadata = access.inspectDescriptor(descriptor);
@@ -373,7 +371,23 @@ export function admitLocalEnvironmentFile(
       "local environment file .env.providers",
       REGISTERED_SECRET_FILE_MAXIMUM_BYTES,
     );
+    const before = access.inspectIdentity?.(descriptor);
+    if (before !== undefined && (!before.isFile() || (before.mode & 0o777n) !== 0o600n
+      || before.uid !== BigInt(process.getuid?.() ?? -1) || before.nlink !== 1n)) {
+      throw new SecretSourceError("local environment file .env.providers identity is invalid");
+    }
     const bytes = access.readBytes(descriptor);
+    const after = access.inspectIdentity?.(descriptor);
+    const token = (stat: BigIntStats): string => sha256Hex(
+      [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, stat.birthtimeNs].map(String).join(":"));
+    if (before !== undefined && (after === undefined || token(before) !== token(after)
+      || bytes.length !== Number(after.size))) throw new SecretSourceError("local environment file .env.providers changed during admission");
+    if (after !== undefined && access.inspectPathIdentity !== undefined) {
+      const named = access.inspectPathIdentity(environmentFilePath);
+      if (!named.isFile() || token(named) !== token(after)) {
+        throw new SecretSourceError("local environment file .env.providers path changed during admission");
+      }
+    }
     if (bytes.byteLength > REGISTERED_SECRET_FILE_MAXIMUM_BYTES) {
       throw new SecretSourceError("local environment file .env.providers exceeds its registered size limit");
     }
@@ -389,6 +403,12 @@ export function admitLocalEnvironmentFile(
         "local environment file .env.providers parser did not preserve the validated binding sequence",
       );
     }
+    if (after !== undefined) provenance = normalizeProviderBootProvenance({
+      parentSlotNames: ProviderKeySlotSchema.array().parse(parentSlotNames),
+      fileSlotNames: ProviderKeySlotSchema.array().parse(keys),
+      fileRevision: parseProviderKeyHeaderRevision(text),
+      fileSourceVersionToken: token(after),
+    });
   } catch (error) {
     admissionFailure = error instanceof SecretSourceError
       ? error
@@ -421,6 +441,7 @@ export function admitLocalEnvironmentFile(
     }
     if (!explicitParentKeys.has(key)) env[key] = value;
   }
+  return provenance;
 }
 
 /**
@@ -561,10 +582,24 @@ export function optionalSecretFamily(name: SecretFamilyName, env: NodeJS.Process
   const values: string[] = [];
   for (let index = 1; index <= spec.maximum; index += 1) {
     const key = index === 1 ? spec.envPrefix : `${spec.envPrefix}${String(index)}`;
-    const value = env[key]?.trim();
+    const value = normalizedProviderSlotValue(env[key]);
     if (value !== undefined && value !== "") values.push(value);
   }
   return values;
+}
+
+function normalizedProviderSlotValue(value: string | undefined): string | undefined {
+  const normalized = value?.trim();
+  return normalized === "" ? undefined : normalized;
+}
+
+export function activeProviderKeySlots(env: Readonly<Record<string, string | undefined>> = process.env): Readonly<Partial<Record<z.infer<typeof ProviderKeySlotSchema>, string>>> {
+  const slots: Partial<Record<z.infer<typeof ProviderKeySlotSchema>, string>> = {};
+  for (const slot of ProviderKeySlotSchema.options) {
+    const value = normalizedProviderSlotValue(env[slot]);
+    if (value !== undefined) slots[slot] = value;
+  }
+  return Object.freeze(slots);
 }
 
 export function requireSecretFamily(name: SecretFamilyName, env: NodeJS.ProcessEnv = process.env): readonly [string, ...string[]] {

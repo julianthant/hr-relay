@@ -88,6 +88,13 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
       entries: { ucpathPassword: { clear: true } },
     },
   },
+  {
+    commandId: "cccccccc-cccc-4ccc-8ccc-cccccccccccc", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard", family: "settings", type: "apply-provider-keys",
+    target: { expectedRevision: 1, sourceVersionToken: HASH_B },
+    payload: { providerSchemaHash: HASH_B, writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+      operations: { GROQ_API_KEY: { set: "synthetic-guard" } } },
+  },
 ]);
 
 /* ── the ratified Phase-1f partition (ref dashboard-surfaces §Phase-1f authority) ────────── */
@@ -120,7 +127,7 @@ const EXPECTED_ACTIVE = {
     "inspect-intake", "confirm-intake-mapping", "correct-intake-row",
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
-  settings: ["apply-settings", "apply-protected-settings"],
+  settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   // D308: the Archive's delete door.
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
@@ -202,7 +209,8 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       reopenBrowser: seamFailure("reopen-browser"),
     },
     settings: {
-      prepare: (command) => command.type === "apply-protected-settings" ? { state: "conflict", currentRevision: PositiveIntSchema.parse(1), message: "guard fixture has no mutable credential target" } : undefined,
+      prepare: (command) => command.type === "apply-protected-settings" || command.type === "apply-provider-keys"
+        ? { state: "conflict", currentRevision: PositiveIntSchema.parse(1), message: "guard fixture has no mutable private target" } : undefined,
       reconcileReplay: () => {
         throw new Error("guard fixture has no persisted settings replay target");
       },
@@ -292,6 +300,7 @@ describe("control-command-single-path", () => {
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
       ["src/server/settings-runtime.ts", 1],
+      ["src/server/dashboard/commands/provider-key-journal.ts", 3],
       ["src/infra/compat/d331-protected-journal.ts", 1],
       ["src/infra/sqlite/backup-service.ts", 0],
     ]);

@@ -11,6 +11,7 @@ import type { Hono } from "hono";
 import type { DashboardCommandService } from "../commands/command-service.js";
 import type { BulkCommandAcceptanceAuthority } from "../commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../domain/commands.js";
+import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../infra/config/provider-key-store.js";
 import type { StartPlanService } from "../commands/start-plan-service.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
@@ -28,6 +29,8 @@ export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, Settin
   readonly commandJournal: { get(commandId: string): CommandRequest | undefined };
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
+  readonly readPendingProviderRequest?: (identity: ProviderKeyPendingIdentity) => ProviderKeyWriteRequest;
+  readonly providerCommandAcceptedAt?: (commandId: string, writeId: string) => string | undefined;
   readonly runtimeVersionAcceptedAt?: (commandId: string) => string | undefined;
   readonly startPlans: StartPlanService;
   readonly staticBundle?: StaticBundle;

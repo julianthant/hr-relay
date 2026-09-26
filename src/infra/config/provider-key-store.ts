@@ -8,9 +8,10 @@ import { basename, dirname, join } from "node:path";
 import { parseEnv } from "node:util";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { SourceSurfaceIdSchema } from "../../domain/ids.js";
+import { ActorIdSchema, SourceSurfaceIdSchema } from "../../domain/ids.js";
 import { sha256Hex } from "../../domain/sha256.js";
-import { SECRET_FAMILY_SPECS, strictlyValidateLocalEnvironment } from "../../domain/secrets.js";
+import { strictlyValidateLocalEnvironment } from "../../domain/secrets.js";
+import { SECRET_FAMILY_SPECS } from "../../domain/config/provider-family-specs.js";
 import { observeProcessIdentity, ProcessStartIdentitySchema } from "../sqlite/runtime-process-locks.js";
 
 const MAX_ENV_BYTES = 64_000;
@@ -30,8 +31,8 @@ const ReceiptSchema = z.strictObject({
 const RequestShellSchema = z.strictObject({
   commandId: UuidSchema, writeId: UuidSchema, expectedRevision: z.number().int().positive(),
   expectedSourceVersionToken: FingerprintSchema, schemaHash: FingerprintSchema,
-  requestedAt: z.iso.datetime({ offset: true }), requestedBy: z.string().min(1),
-  source: SourceSurfaceIdSchema,
+  requestedAt: z.iso.datetime({ offset: true }), requestedBy: ActorIdSchema,
+  source: SourceSurfaceIdSchema, reason: z.string().min(1).max(500).optional(),
 });
 const AnchorSchema = z.strictObject({
   revision: z.number().int().min(2), receiptId: UuidSchema, commandId: UuidSchema,
@@ -64,7 +65,7 @@ export type ProviderKeyPendingIdentity = Readonly<{ commandId: string; writeId: 
 export interface ProviderKeyJournal {
   /** Must attest to both the matching durable marked command and its audit. */
   committed(anchor: Anchor): boolean;
-  latestCommitted(): Readonly<{ commandId: string; writeId: string; revision: number }> | undefined;
+  latestCommitted(inFlight?: Readonly<{ commandId: string; writeId: string }>): Readonly<{ commandId: string; writeId: string; revision: number }> | undefined;
   identityUsed(commandId: string, writeId: string): boolean;
   hasHistory(): boolean;
 }
@@ -75,10 +76,16 @@ export interface ProviderKeyStoreHooks {
   beforeRename?: () => void;
   afterRename?: () => void;
   afterRead?: () => void;
+  beforeSettle?: () => void;
 }
 
 export class ProviderKeyStoreUnknownError extends Error {
   constructor(reason: string) { super(`provider-key-store-unknown: ${reason}`); }
+}
+export class ProviderKeyStoreConflictError extends Error {
+  constructor(readonly currentRevision: number, readonly sourceVersionToken: string) {
+    super("provider-key-source-conflict");
+  }
 }
 
 interface ObservedFile {
@@ -276,7 +283,7 @@ export function createProviderKeyStore(input: Readonly<{
       throw error;
     }
   };
-  const observe = () => {
+  const observe = (inFlight?: Readonly<{ commandId: string; writeId: string }>) => {
     const file = readEnv(input.envPath);
     input.hooks?.afterRead?.();
     if (readPrivate(input.envPath, "env", MAX_ENV_BYTES).token !== file.token) unknown("env-read-race");
@@ -292,7 +299,7 @@ export function createProviderKeyStore(input: Readonly<{
     if (metadata.settled !== null) {
       if (!input.journal.committed(metadata.settled)) unknown("settled-journal-missing");
     }
-    const latest = input.journal.latestCommitted();
+    const latest = input.journal.latestCommitted(inFlight);
     const matches = (identity: Readonly<{ commandId: string; writeId: string; revision: number }> | null): boolean =>
       identity === null ? latest === undefined
         : latest?.commandId === identity.commandId && latest.writeId === identity.writeId && latest.revision === identity.revision;
@@ -331,11 +338,13 @@ export function createProviderKeyStore(input: Readonly<{
         || current.file.bodyHash !== latest.bodyHash
         || sha256Hex(canonicalJsonStringify(request)) !== latest.requestHash
         || input.markedFingerprint(request) !== latest.markedFingerprint) unknown("latest-replay-divergent");
-      return { revision: latest.revision, sourceVersionToken: current.file.token };
+      return { revision: latest.revision, sourceVersionToken: current.file.token, receiptId: latest.receiptId, slots: current.file.slots };
     }
     if (input.journal.identityUsed(request.commandId, request.writeId)) unknown("identity-reused");
     const revision = current.revision;
-    if (request.expectedRevision !== revision || request.expectedSourceVersionToken !== current.file.token) unknown("source-conflict");
+    if (request.expectedRevision !== revision || request.expectedSourceVersionToken !== current.file.token) {
+      throw new ProviderKeyStoreConflictError(revision, current.file.token);
+    }
     const nextRevision = (current.metadata?.highWaterMark ?? 1) + 1;
     const receipt = ReceiptSchema.parse({ revision: nextRevision, receiptId: randomUUID(), commandId: request.commandId,
       writeId: request.writeId, expectedRevision: request.expectedRevision, schemaHash: request.schemaHash,
@@ -380,10 +389,10 @@ export function createProviderKeyStore(input: Readonly<{
     fsyncDirectory(directory);
     const finalFile = readEnv(input.envPath);
     reconstruct(pending, finalFile, input.markedFingerprint);
-    return { revision: nextRevision, sourceVersionToken: finalFile.token };
+    return { revision: nextRevision, sourceVersionToken: finalFile.token, receiptId: receipt.receiptId, slots: finalFile.slots };
   };
   const retryUnderLock = (expected: ProviderKeyPendingIdentity) => {
-    const current = observe();
+    const current = observe({ commandId: expected.commandId, writeId: expected.writeId });
     if (current.state !== "pending-before-rename" && current.state !== "pending-after-rename") unknown("no-pending-command");
     const receipt = current.metadata.pending!.receipt;
     if (expected.commandId !== receipt.commandId || expected.writeId !== receipt.writeId
@@ -402,7 +411,8 @@ export function createProviderKeyStore(input: Readonly<{
     }
     const finalFile = readEnv(input.envPath);
     reconstruct(current.metadata.pending!, finalFile, input.markedFingerprint);
-    return { request, revision: current.metadata.pending!.receipt.revision, sourceVersionToken: finalFile.token };
+    return { request, revision: current.metadata.pending!.receipt.revision, sourceVersionToken: finalFile.token, slots: finalFile.slots,
+      receiptId: current.metadata.pending!.receipt.receiptId };
   };
   return Object.freeze({
     read() {
@@ -413,6 +423,17 @@ export function createProviderKeyStore(input: Readonly<{
           pending: { commandId: current.metadata.pending!.receipt.commandId,
             writeId: current.metadata.pending!.receipt.writeId, receiptId: current.metadata.pending!.receipt.receiptId } };
     },
+    /** Local-operator editable projection; never use this as a public receipt. */
+    readEditableFile() {
+      const current = observe();
+      return { state: current.state, revision: current.state === "virgin" || current.state === "settled"
+        ? current.revision : current.file.receipt?.revision ?? current.metadata.pending!.receipt.expectedRevision,
+        sourceVersionToken: current.file.token, slots: current.file.slots,
+        ...(current.state === "pending-before-rename" || current.state === "pending-after-rename"
+          ? { pending: { commandId: current.metadata.pending!.receipt.commandId,
+            writeId: current.metadata.pending!.receipt.writeId, receiptId: current.metadata.pending!.receipt.receiptId } }
+          : {}) };
+    },
     /** Server-private read for admitted retry. apply revalidates under the lock before any rename. */
     readPendingRequest(expected: ProviderKeyPendingIdentity): ProviderKeyWriteRequest {
       const current = observe();
@@ -422,15 +443,21 @@ export function createProviderKeyStore(input: Readonly<{
         || expected.receiptId !== receipt.receiptId) unknown("pending-identity-divergent");
       return current.request;
     },
+    pendingAcceptedAt(commandId: string, writeId: string): string | undefined {
+      const current = observe();
+      if (current.state !== "pending-before-rename" && current.state !== "pending-after-rename") return undefined;
+      const receipt = current.metadata.pending!.receipt;
+      return receipt.commandId === commandId && receipt.writeId === writeId ? current.request.requestedAt : undefined;
+    },
     apply(raw: ProviderKeyWriteRequest) {
       const request = ProviderKeyWriteRequestSchema.parse(raw);
       return withLock(() => {
-        const current = observe();
+        const current = observe({ commandId: request.commandId, writeId: request.writeId });
         if (current.state === "pending-before-rename" || current.state === "pending-after-rename") {
           if (sha256Hex(canonicalJsonStringify(request)) !== current.metadata.pending!.requestHash) unknown("pending-command-divergent");
           const result = retryUnderLock({ commandId: request.commandId, writeId: request.writeId,
             receiptId: current.metadata.pending!.receipt.receiptId });
-          return { revision: result.revision, sourceVersionToken: result.sourceVersionToken };
+          return { revision: result.revision, sourceVersionToken: result.sourceVersionToken, receiptId: result.receiptId, slots: result.slots };
         }
         return stage(request, current);
       });
@@ -441,6 +468,10 @@ export function createProviderKeyStore(input: Readonly<{
     confirmCommitted(commandId: string, writeId: string) {
       return withLock(() => {
         const current = observe();
+        if (current.state === "settled" && current.metadata.settled?.commandId === commandId
+          && current.metadata.settled.writeId === writeId) {
+          return { revision: current.revision, sourceVersionToken: current.file.token };
+        }
         if (current.state !== "pending-after-rename") unknown("commit-without-renamed-file");
         const pending = current.metadata.pending!;
         if (pending.receipt.commandId !== commandId || pending.receipt.writeId !== writeId) unknown("commit-identity-divergent");
@@ -450,6 +481,7 @@ export function createProviderKeyStore(input: Readonly<{
           request: pending.request, operationMarks: pending.operationMarks,
           requestHash: pending.requestHash, bodyHash: pending.stagedBodyHash });
         if (!input.journal.committed(anchor)) unknown("commit-audit-missing");
+        input.hooks?.beforeSettle?.();
         writePrivate(metaPath, Buffer.from(canonicalJsonStringify({ version: 1, highWaterMark: anchor.revision,
           settled: anchor })), true);
         return { revision: anchor.revision, sourceVersionToken: current.file.token };

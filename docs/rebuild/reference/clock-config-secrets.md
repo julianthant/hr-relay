@@ -1805,9 +1805,29 @@ its public classification read. A server-private pending read verifies and recon
 original request without changing the file; command admission then calls `apply`, which repeats
 the checks under the lock before completing any rename.
 
-`src/infra/config/provider-key-store.ts` implements this bounded private file protocol. The
-Settings command, boot provenance, wire, and UI integration must supply the durable journal
-checks and explicit retry path; the store alone does not make provider keys editable.
+`src/infra/config/provider-key-store.ts` implements this bounded private file protocol.
+`settings/apply-provider-keys` now admits the provider schema and actor before private reads,
+uses the real marked command fingerprint, commits its marked command and value-free audit in
+the kernel's authority transaction, and settles the sidecar only after SQLite commits. The
+SQLite journal adapter verifies the latest head, matching audit and receipt, and both command
+and write identities across provider and protected history. A typed source conflict leaves the
+draft intact; an uncertain postwrite audit or sidecar settlement reports
+`PROVIDER_AUDIT_UNCERTAIN`. Missing or divergent private/journal evidence reports
+`PROVIDER_STORE_UNKNOWN`. The same command route accepts a strict value-free retry intent bound
+to the pending command, write and receipt IDs. Ingress reconstructs the original request
+read-only and passes it through normal command admission; an ordinary exact resend preserves
+the original pending timestamp. Neither retry intent nor raw values enter the journal.
+
+The secure bootstrap records parent slot names, file slot names, revision and source token from
+the same stable no-follow descriptor whose bytes populate the process environment. The current
+editable GET serves saved file slots, revision and token separately from active provider values
+keyed by stable slot ID. Active slots use the secret owner's trim/blank normalization and are
+captured at composition; later environment mutation cannot change their identity or restart decision.
+The read reports parent-shadowed slots and a restart decision based on unshadowed active-versus-saved
+values after the same normalization of the saved candidate, while preserving raw saved readback.
+It exposes only safe pending identity. Missing boot provenance or unverifiable file
+evidence is explicit `unknown`. GET and startup do not settle a pending write. The Credentials
+editor UI remains the following Category 3 outcome.
 
 ### D350 — Single current-fiscal-year job-end date and historical backup compatibility · 2026-09-26
 

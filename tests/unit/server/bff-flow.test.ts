@@ -4,7 +4,7 @@ import {captureArchiveReport} from "../../../src/services/archive/report-capture
 import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
 import { RunIdSchema } from "../../../src/domain/ids.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { CommandResultSchema } from "../../../src/domain/commands.js";
+import { CommandResultSchema, markSettingsCommand } from "../../../src/domain/commands.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
@@ -87,6 +87,11 @@ import {
 import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
 import type { AdvisoryQueryDeps } from "../../../src/server/dashboard/queries/advisory.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
+import { createProviderKeyStore, type ProviderKeyStoreHooks } from "../../../src/infra/config/provider-key-store.js";
+import { createProviderKeyJournal } from "../../../src/server/dashboard/commands/provider-key-journal.js";
+import { providerMarkedFingerprint } from "../../../src/server/dashboard/commands/provider-key-projection.js";
+import { activeProviderKeySlots, admitLocalEnvironmentFile } from "../../../src/domain/secrets.js";
+import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../../../src/domain/config/provider-keys.js";
 import { createStartPlanService, type StartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import {
@@ -143,6 +148,9 @@ interface Harness {
   readonly artifacts: ReturnType<typeof createContentAddressedArtifactWriter>;
   readonly preflight: ReturnType<typeof createPreflightHarness>;
   readonly artifactSourceReads: number[];
+  readonly providerEnvPath?: string;
+  readonly providerStore?: ReturnType<typeof createProviderKeyStore>;
+  readonly providerEnvironment: NodeJS.ProcessEnv;
 }
 
 type DiagnosticBundleHarnessDeps = DiagnosticBundleQueryDeps
@@ -218,6 +226,11 @@ afterEach(() => {
 });
 
 function harness(options: {
+  readonly providerKeys?: boolean;
+  readonly providerParentValue?: string;
+  readonly providerParentSlots?: NodeJS.ProcessEnv;
+  readonly providerFileBody?: string;
+  readonly providerHooks?: ProviderKeyStoreHooks;
   readonly protectedCommandAcceptedAt?: DashboardAppDeps["protectedCommandAcceptedAt"];
   readonly requestIdentity?: RequestIdentityCheckpoint;
   readonly intake?: IntakeService;
@@ -254,6 +267,16 @@ function harness(options: {
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 1000, migrationOwner: "bff-flow-test" },
     clock,
   );
+  const providerEnvPath = options.providerKeys ? join(root, ".env.providers") : undefined;
+  if (providerEnvPath !== undefined) writeFileSync(providerEnvPath, options.providerFileBody ?? "GEMINI_API_KEY='synthetic-boot'\n", { mode: 0o600 });
+  const providerEnvironment: NodeJS.ProcessEnv = { ...options.providerParentSlots,
+    ...(options.providerParentValue === undefined ? {} : { GEMINI_API_KEY: options.providerParentValue }) };
+  const providerBoot = providerEnvPath === undefined ? undefined : admitLocalEnvironmentFile(providerEnvPath, providerEnvironment);
+  const activeProviderSlots = activeProviderKeySlots(providerEnvironment);
+  const providerStore = providerEnvPath === undefined ? undefined : createProviderKeyStore({
+    envPath: providerEnvPath, journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint,
+    hooks: options.providerHooks,
+  });
 
   seedSyntheticRuntimeConfig(database);
   assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
@@ -387,7 +410,13 @@ function harness(options: {
       refreshBrowser: () => ({ state: "accepted" }),
       reopenBrowser: () => ({ state: "accepted" }),
     },
-    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials),
+    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials,
+      providerStore === undefined ? undefined : { store: providerStore, bootKnown: providerBoot !== undefined,
+        restartRequired: slots => {
+          const candidateSlots = activeProviderKeySlots(slots);
+          return ProviderKeySlotSchema.options.some(slot => !providerBoot?.parentSlotNames.includes(slot)
+            && activeProviderSlots[slot] !== candidateSlots[slot]);
+        } }),
   });
   const commands = createDashboardCommandService({ kernel, projection });
   const startPlans = (options.startPlans ?? ((real: StartPlanService) => real))(createStartPlanService({
@@ -425,6 +454,8 @@ function harness(options: {
   const activity = composeActivity({ database, clock, descriptors, ledger: createTransactionHistory(database.authority) });
   const app = createDashboardApp({
     protectedCommandAcceptedAt: options.protectedCommandAcceptedAt ?? ((commandId) => credentials.acceptedAt(commandId)),
+    ...(providerStore === undefined ? {} : { readPendingProviderRequest: providerStore.readPendingRequest }),
+    ...(providerStore === undefined ? {} : { providerCommandAcceptedAt: providerStore.pendingAcceptedAt }),
     requestIdentity: options.requestIdentity ?? createSoloRequestIdentityCheckpoint({
       id: "local-operator",
       label: "Local operator",
@@ -492,7 +523,8 @@ function harness(options: {
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
     settings: { config: resolveConfigWithProvenance({}, hostConfigFacts({}), clock).config, descriptors: [fixtureDescriptor] },
-    settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials), environment: {}, clock },
+    settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
+      environment: providerEnvironment, clock, providerKeys: providerStore, providerBoot, activeProviderSlots },
     storage: {
       doctorOptions: {
         stateRootTrustAnchor: root,
@@ -523,8 +555,12 @@ function harness(options: {
     artifacts,
     preflight,
     artifactSourceReads,
+    providerEnvPath,
+    providerStore,
+    providerEnvironment,
   };
 }
+
 
 function optionalFileBytes(path: string): Buffer | undefined {
   return existsSync(path) ? readFileSync(path) : undefined;
@@ -3517,6 +3553,323 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.equal(persistedWidth?.source, "settings");
     assert.equal(persistedWidth?.effectiveValue, 1980);
     assert.equal(persistedWidth?.settingsValue, 1980);
+  });
+
+  it("applies provider keys through the BFF with marked durable evidence and exact readback", async () => {
+    const h = harness({ providerKeys: true, providerParentValue: "synthetic-parent" });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(initial.providerKeys?.state, "available");
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    assert.equal(initial.providerKeys.slots.GEMINI_API_KEY, "synthetic-boot");
+    assert.equal(initial.providerKeys.activeSlots.GEMINI_API_KEY, "synthetic-parent");
+    assert.deepEqual(initial.providerKeys.overriddenSlots, ["GEMINI_API_KEY"]);
+    const commandId = "00000000-0000-4000-8000-000000000961";
+    const writeId = "00000000-0000-4000-8000-000000000962";
+    const request = { commandId, family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: initial.providerKeys.revision, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId,
+        operations: { GROQ_API_KEY3: { set: "synthetic-provider-private" } } } };
+    const response = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(request) });
+    assert.equal(response.status, 200, JSON.stringify(await json(response.clone())));
+    const result = CommandResultSchema.parse(await json(response));
+    assert.equal(result.state, "applied");
+    const saved = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(saved.providerKeys?.state, "available");
+    if (saved.providerKeys?.state !== "available") throw new Error("provider readback unavailable");
+    assert.equal(saved.providerKeys.revision, 2);
+    assert.equal(saved.providerKeys.slots.GROQ_API_KEY3, "synthetic-provider-private");
+    assert.equal(saved.providerKeys.restartRequired, true);
+    assert.deepEqual(saved.providerKeys.overriddenSlots, ["GEMINI_API_KEY"]);
+    const marked = h.database.authority.commands.get(commandId);
+    const audit = h.database.authority.commandAudits.findByCommand(commandId);
+    assert.equal(marked?.type, "apply-provider-keys");
+    assert.equal(audit?.result.state, "applied");
+    assert.equal(JSON.stringify({ marked, audit }).includes("synthetic-provider-private"), false);
+    assert.equal(JSON.stringify(marked).includes('"<set>"'), true);
+    const sqlite = new DatabaseSync(join(h.stateRoot, "state.db"), { readOnly: true });
+    try {
+      for (const table of ["commands", "command_audits", "settings_snapshots"]) {
+        const rows = sqlite.prepare(`SELECT record_json FROM ${table}`).all();
+        assert.equal(JSON.stringify(rows).includes("synthetic-provider-private"), false);
+      }
+    } finally { sqlite.close(); }
+  });
+
+  it("keeps sparse normalized active provider slots pinned to boot values", async () => {
+    const h = harness({ providerKeys: true, providerParentSlots: {
+      GROQ_API_KEY3: "  synthetic-parent-sparse  ", MISTRAL_API_KEY2: "  ",
+    } });
+    h.providerEnvironment.GROQ_API_KEY3 = "synthetic-mutated";
+    h.providerEnvironment.GEMINI_API_KEY = "synthetic-mutated-file-key";
+    const read = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (read.providerKeys.state !== "available") throw new Error("provider fixture unavailable");
+    assert.deepEqual(read.providerKeys.activeSlots, {
+      GEMINI_API_KEY: "synthetic-boot", GROQ_API_KEY3: "synthetic-parent-sparse",
+    });
+    assert.equal(Object.hasOwn(read.providerKeys.activeSlots, "GROQ_API_KEY"), false);
+    assert.equal(Object.hasOwn(read.providerKeys.activeSlots, "MISTRAL_API_KEY2"), false);
+    assert.deepEqual(read.providerKeys.parentSlotNames, ["GROQ_API_KEY3", "MISTRAL_API_KEY2"]);
+    assert.equal(read.providerKeys.restartRequired, false);
+  });
+
+  it("compares normalized file candidates without changing raw saved readback", async () => {
+    for (const raw of ["  synthetic-boot  ", "   "]) {
+      const h = harness({ providerKeys: true, providerFileBody: `GEMINI_API_KEY='${raw}'\n` });
+      const read = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+      if (read.providerKeys.state !== "available") throw new Error("provider fixture unavailable");
+      assert.equal(read.providerKeys.slots.GEMINI_API_KEY, raw);
+      assert.equal(read.providerKeys.activeSlots.GEMINI_API_KEY, raw.trim() || undefined);
+      assert.equal(read.providerKeys.restartRequired, false);
+    }
+  });
+
+  it("recovers a provider file write after SQLite rollback with a value-free lost-browser retry", async () => {
+    const h = harness({ providerKeys: true });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const commandId = "00000000-0000-4000-8000-000000000963";
+    const writeId = "00000000-0000-4000-8000-000000000964";
+    const request = { commandId, family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: initial.providerKeys.revision, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId,
+        operations: { GROQ_API_KEY4: { set: "synthetic-rollback-private" } } } };
+    const acceptedAt = h.clock.now().toISOString();
+    const send = (body: unknown) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(body) });
+    const transaction = h.database.withAuthorityTransaction.bind(h.database);
+    vi.spyOn(h.database, "withAuthorityTransaction").mockImplementationOnce(work => transaction(repositories => {
+      work(repositories);
+      throw new Error("synthetic-sql-commit-failure");
+    }));
+    const failed = await send(request);
+    assert.equal(failed.status, 409);
+    assert.equal((await json(failed)).code, "PROVIDER_AUDIT_UNCERTAIN");
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+    const pending = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (pending.providerKeys?.state !== "pending") throw new Error("provider pending identity unavailable");
+    assert.equal(pending.providerKeys.slots.GROQ_API_KEY4, "synthetic-rollback-private");
+    const unchangedFile = readFileSync(h.providerEnvPath!);
+    const retry = { family: "settings", type: "apply-provider-keys", requestedBy: "local-operator",
+      retry: { commandId, writeId, pendingReceiptId: pending.providerKeys.pending.receiptId,
+        providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH } };
+    const wrong = await send({ ...retry, retry: { ...retry.retry,
+      pendingReceiptId: "00000000-0000-4000-8000-000000000965" } });
+    assert.equal(wrong.status, 409);
+    assert.equal((await json(wrong)).code, "PROVIDER_STORE_UNKNOWN");
+    assert.deepEqual(readFileSync(h.providerEnvPath!), unchangedFile);
+    h.clock.advanceWall(1000);
+    const recovered = await send(retry);
+    assert.equal(recovered.status, 200, JSON.stringify(await json(recovered.clone())));
+    assert.equal((await json(recovered)).state, "applied");
+    assert.deepEqual(readFileSync(h.providerEnvPath!), unchangedFile);
+    const audit = h.database.authority.commandAudits.findByCommand(commandId);
+    assert.equal(audit?.request.type, "apply-provider-keys");
+    assert.equal(audit?.request.requestedAt, acceptedAt);
+    assert.equal(JSON.stringify(audit).includes("synthetic-rollback-private"), false);
+    const settled = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(settled.providerKeys?.state, "available");
+  });
+
+  it("keeps the original admitted timestamp for a normal provider retry after SQLite rollback", async () => {
+    const h = harness({ providerKeys: true });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const commandId = "00000000-0000-4000-8000-000000000976";
+    const writeId = "00000000-0000-4000-8000-000000000977";
+    const request = { commandId, family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: 1, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId,
+        operations: { OPEN_ROUTER_API_KEY2: { set: "synthetic-normal-retry" } } } };
+    const send = () => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(request) });
+    const acceptedAt = h.clock.now().toISOString();
+    const transaction = h.database.withAuthorityTransaction.bind(h.database);
+    vi.spyOn(h.database, "withAuthorityTransaction").mockImplementationOnce(work => transaction(repositories => {
+      work(repositories);
+      throw new Error("synthetic-sql-commit-failure");
+    }));
+    assert.equal((await send()).status, 409);
+    h.clock.advanceWall(2000);
+    const retried = await send();
+    assert.equal(retried.status, 200, JSON.stringify(await json(retried.clone())));
+    assert.equal((await json(retried)).state, "applied");
+    assert.equal(h.database.authority.commandAudits.findByCommand(commandId)?.request.requestedAt, acceptedAt);
+  });
+
+  it("settles a committed provider audit after sidecar settlement fails", async () => {
+    let failSettle = true;
+    const h = harness({ providerKeys: true, providerHooks: { beforeSettle: () => {
+      if (failSettle) { failSettle = false; throw new Error("synthetic-sidecar-failure"); }
+    } } });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const commandId = "00000000-0000-4000-8000-000000000966";
+    const writeId = "00000000-0000-4000-8000-000000000967";
+    const send = (body: unknown) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(body) });
+    const failed = await send({ commandId, family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: initial.providerKeys.revision, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId,
+        operations: { MISTRAL_API_KEY2: { set: "synthetic-sidecar-private" } } } });
+    assert.equal(failed.status, 409);
+    assert.equal((await json(failed)).code, "PROVIDER_AUDIT_UNCERTAIN");
+    assert.equal(h.database.authority.commandAudits.findByCommand(commandId)?.result.state, "applied");
+    const pending = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (pending.providerKeys?.state !== "pending") throw new Error("provider pending identity unavailable");
+    const retry = await send({ family: "settings", type: "apply-provider-keys", requestedBy: "local-operator",
+      retry: { commandId, writeId, pendingReceiptId: pending.providerKeys.pending.receiptId,
+        providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH } });
+    assert.equal(retry.status, 200, JSON.stringify(await json(retry.clone())));
+    assert.equal((await json(retry)).state, "already-applied");
+    const settled = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.equal(settled.providerKeys?.state, "available");
+  });
+
+  it("refuses invalid provider schema, values and actor before private reads", async () => {
+    let reads = 0;
+    const h = harness({ providerKeys: true, providerHooks: { afterRead: () => { reads += 1; } } });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    reads = 0;
+    const commandId = "00000000-0000-4000-8000-000000000968";
+    const request = { commandId, family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: initial.providerKeys.revision, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH,
+        writeId: "00000000-0000-4000-8000-000000000969", operations: { GROQ_API_KEY: { set: "synthetic" } } } };
+    for (const [body, status] of [
+      [{ ...request, payload: { ...request.payload, providerSchemaHash: "0".repeat(64) } }, 422],
+      [{ ...request, payload: { ...request.payload, operations: { GROQ_API_KEY: { set: 42 } } } }, 400],
+      [{ ...request, requestedBy: "foreign-actor" }, 403],
+    ] as const) {
+      const response = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+        body: JSON.stringify(body) });
+      assert.equal(response.status, status);
+    }
+    assert.equal(reads, 0);
+    assert.equal(h.database.authority.commands.get(commandId), undefined);
+  });
+
+  it("keeps provider source conflicts typed and rejects a different value on exact replay", async () => {
+    const h = harness({ providerKeys: true });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const commandId = "00000000-0000-4000-8000-000000000970";
+    const writeId = "00000000-0000-4000-8000-000000000971";
+    const request = { commandId, family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: 1, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId,
+        operations: { GROQ_API_KEY: { set: "synthetic-first" } } } };
+    const send = (body: unknown) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(body) });
+    assert.equal((await json(await send(request))).state, "applied");
+    const saved = readFileSync(h.providerEnvPath!);
+    h.clock.advanceWall(1000);
+    assert.equal((await json(await send(request))).state, "already-applied");
+    const divergent = await send({ ...request, payload: { ...request.payload,
+      operations: { GROQ_API_KEY: { set: "synthetic-different" } } } });
+    assert.equal(divergent.status, 409);
+    assert.equal((await json(divergent)).code, "PROVIDER_STORE_UNKNOWN");
+    const stale = await send({ ...request, commandId: "00000000-0000-4000-8000-000000000972",
+      payload: { ...request.payload, writeId: "00000000-0000-4000-8000-000000000973" } });
+    assert.equal(stale.status, 409);
+    assert.equal((await json(stale)).state, "conflict");
+    assert.deepEqual(readFileSync(h.providerEnvPath!), saved);
+    assert.equal(h.database.authority.commands.get("00000000-0000-4000-8000-000000000972"), undefined);
+  });
+
+  it("reports a parent-shadowed saved key without claiming restart can activate it", async () => {
+    const h = harness({ providerKeys: true, providerParentValue: "synthetic-parent" });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const response = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId: "00000000-0000-4000-8000-000000000974", family: "settings", type: "apply-provider-keys",
+        target: { expectedRevision: 1, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+        payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH,
+          writeId: "00000000-0000-4000-8000-000000000975", operations: { GEMINI_API_KEY: { set: "synthetic-saved" } } } }) });
+    assert.equal(response.status, 200);
+    const result = CommandResultSchema.parse(await json(response));
+    assert.equal(result.state, "applied");
+    if (result.state === "applied") assert.equal(result.restartRequired, false);
+    const saved = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (saved.providerKeys?.state !== "available") throw new Error("provider readback unavailable");
+    assert.equal(saved.providerKeys.slots.GEMINI_API_KEY, "synthetic-saved");
+    assert.deepEqual(saved.providerKeys.overriddenSlots, ["GEMINI_API_KEY"]);
+    assert.equal(saved.providerKeys.restartRequired, false);
+    assert.deepEqual(saved.providers.geminiApiKeys, { state: "present", count: 1, values: ["synthetic-parent"] });
+  });
+
+  it("refuses restored older provider file and metadata behind the durable journal head", async () => {
+    const h = harness({ providerKeys: true });
+    const send = (body: unknown) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(body) });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const first = await send({ commandId: "00000000-0000-4000-8000-000000000978", family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: 1, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000979",
+        operations: { GROQ_API_KEY: { set: "synthetic-one" } } } });
+    assert.equal(first.status, 200);
+    const oldFile = readFileSync(h.providerEnvPath!);
+    const oldMetadata = readFileSync(`${h.providerEnvPath!}.meta`);
+    const current = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (current.providerKeys?.state !== "available") throw new Error("provider readback unavailable");
+    const second = await send({ commandId: "00000000-0000-4000-8000-000000000980", family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: 2, sourceVersionToken: current.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000981",
+        operations: { MISTRAL_API_KEY: { set: "synthetic-two" } } } });
+    assert.equal(second.status, 200);
+    writeFileSync(h.providerEnvPath!, oldFile, { mode: 0o600 });
+    writeFileSync(`${h.providerEnvPath!}.meta`, oldMetadata, { mode: 0o600 });
+    assert.throws(() => h.providerStore!.read(), /provider-journal-head-divergent/u);
+    const after = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    assert.deepEqual(after.providerKeys, { state: "unknown", reason: "provider-store-unavailable" });
+  });
+
+  it("refuses an unaudited later provider journal row instead of accepting an older audit", async () => {
+    const h = harness({ providerKeys: true });
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const first = await h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId: "00000000-0000-4000-8000-000000000982", family: "settings", type: "apply-provider-keys",
+        target: { expectedRevision: 1, sourceVersionToken: initial.providerKeys.sourceVersionToken },
+        payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000983",
+          operations: { GROQ_API_KEY: { set: "synthetic-audited" } } } }) });
+    assert.equal(first.status, 200);
+    const current = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (current.providerKeys?.state !== "available") throw new Error("provider readback unavailable");
+    const currentToken = current.providerKeys.sourceVersionToken;
+    h.database.withAuthorityTransaction(repositories => repositories.commands.insert(markSettingsCommand({
+      commandId: "00000000-0000-4000-8000-000000000984", requestedAt: h.clock.now().toISOString(),
+      requestedBy: "local-operator", source: "dashboard", family: "settings", type: "apply-provider-keys",
+      target: { expectedRevision: 2, sourceVersionToken: currentToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId: "00000000-0000-4000-8000-000000000985",
+        operations: { MISTRAL_API_KEY: { set: "synthetic-unaudited" } } },
+    })));
+    assert.throws(() => h.providerStore!.read(), /provider-journal-audit-missing/u);
+  });
+
+  it("does not reuse a protected durable writeId for provider keys", async () => {
+    const h = harness({ providerKeys: true });
+    const writeId = "00000000-0000-4000-8000-000000000986";
+    const send = (body: unknown) => h.app.request("/api/v1/commands", { method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify(body) });
+    const protectedResult = await send({ commandId: "00000000-0000-4000-8000-000000000987", family: "settings",
+      type: "apply-protected-settings", target: { expectedRevision: 1 },
+      payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId,
+        entries: { ucpathPassword: { set: "synthetic-protected" } } } });
+    assert.equal(protectedResult.status, 200);
+    const initial = EditableSettingsWireSchema.parse(await json(await h.app.request("/api/v1/settings/editable")));
+    if (initial.providerKeys?.state !== "available") throw new Error("provider fixture unavailable");
+    const before = readFileSync(h.providerEnvPath!);
+    const providerResult = await send({ commandId: "00000000-0000-4000-8000-000000000988", family: "settings",
+      type: "apply-provider-keys", target: { expectedRevision: 1,
+        sourceVersionToken: initial.providerKeys.sourceVersionToken },
+      payload: { providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, writeId,
+        operations: { GROQ_API_KEY: { set: "synthetic-provider" } } } });
+    assert.equal(providerResult.status, 409);
+    assert.equal((await json(providerResult)).code, "PROVIDER_STORE_UNKNOWN");
+    assert.deepEqual(readFileSync(h.providerEnvPath!), before);
   });
 
   it("refuses an unavailable run-detail section by name and serves failure only when real", async () => {

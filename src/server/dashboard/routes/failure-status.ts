@@ -22,6 +22,8 @@ import {
 } from "../../failures.js";
 import { StartStepOmissionRefusedError } from "../../../services/start/step-selection.js";
 import { errorText } from "../support.js";
+import { ProviderAuditUncertainError } from "../../../core/command-kernel.js";
+import { ProviderKeyStoreUnknownError } from "../../../infra/config/provider-key-store.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
 
@@ -89,6 +91,12 @@ export function failureStatus(
   }
   if (error instanceof RequestIdentityRefusedError) {
     return { status: 403, body: wireError("REQUEST_IDENTITY_REFUSED", message, false) };
+  }
+  if (error instanceof ProviderAuditUncertainError) {
+    return { status: 409, body: wireError("PROVIDER_AUDIT_UNCERTAIN", message, true) };
+  }
+  if (error instanceof ProviderKeyStoreUnknownError) {
+    return { status: 409, body: wireError("PROVIDER_STORE_UNKNOWN", message, false) };
   }
   if (error instanceof ProjectionDegradedError) {
     return { status: 500, body: wireError("PROJECTION_DEGRADED", message, true) };

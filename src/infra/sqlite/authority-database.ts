@@ -402,6 +402,7 @@ type CommandRepository = Readonly<{
   get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
+  listProviderSettingsCommands(): readonly z.infer<typeof CommandRequestSchema>[];
 }>;
 
 /**
@@ -5161,6 +5162,11 @@ export class AuthorityDatabase implements Disposable {
             ? undefined
             : CommandIdSchema.parse(RecordKeyRowSchema.parse(row).record_key);
         },
+        listProviderSettingsCommands: () => this.#database.prepare(`
+          SELECT record_json FROM commands
+          WHERE family = 'settings' AND json_extract(record_json, '$.type') = 'apply-provider-keys'
+          ORDER BY rowid
+        `).all().map(row => parseJsonRecord(CommandRequestSchema, JsonRowSchema.parse(row).record_json)),
         parentId: (commandId: string) => {
           const row = this.#database.prepare("SELECT parent_command_id FROM commands WHERE record_key = ?").get(commandId);
           return row === undefined ? undefined : z.strictObject({ parent_command_id: z.string().nullable() }).parse(row).parent_command_id;

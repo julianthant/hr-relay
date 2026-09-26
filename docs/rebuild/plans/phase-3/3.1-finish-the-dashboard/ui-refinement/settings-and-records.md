@@ -232,10 +232,10 @@ push, new worktree, automatic next-task launch, or cleanup of peers is authorize
 D351 owns the private `.env.providers` writer and recovery protocol for the approved editable
 Credentials provider keys. The first Category 3 outcome is the bounded private file store and
 synthetic-file proof in `src/infra/config/provider-key-store.ts` and
-`tests/unit/config/provider-key-store.test.ts`. Its journal verifier is injected; it does not yet
-register a Settings command, capture parent-environment provenance at bootstrap, serve saved
-values or recovery state, or connect the Credentials UI. Those remain in the subsequent Category 3
-integration outcome. The provider file is never read or written with real credentials in tests.
+`tests/unit/config/provider-key-store.test.ts`. The second bounded outcome wires the admitted
+`settings/apply-provider-keys` command, marked journal/audit verifier, exact pending retry,
+same-descriptor boot provenance, and saved/active/recovery GET. The Credentials UI remains the
+next Category 3 outcome. Tests use synthetic temporary provider files only.
 
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->

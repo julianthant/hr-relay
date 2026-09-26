@@ -4,6 +4,7 @@ import { z } from "zod";
 
 import { canonicalJsonStringify } from "./canonical-json.js";
 import { SettingsPatchSchema } from "./config/settings.js";
+import { MarkedProviderKeyOperationsSchema, ProviderKeyOperationsSchema, markProviderKeyOperations } from "./config/provider-keys.js";
 import {
   MarkedProtectedSettingsPatchSchema,
   ProtectedSettingsPatchSchema,
@@ -86,6 +87,7 @@ export const CommandActionSchema = z.enum([
   "reopen-browser",
   "apply-settings",
   "apply-protected-settings",
+  "apply-provider-keys",
   "plan-version-bump",
   "apply-version-bump",
   "plan-runtime-version",
@@ -244,6 +246,27 @@ export const ProtectedSettingsCommandRequestSchema = z.strictObject({
   }),
 });
 
+export const ProviderKeysCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("settings"), type: z.literal("apply-provider-keys"),
+  target: z.strictObject({ expectedRevision: PositiveIntSchema, sourceVersionToken: FingerprintSchema }),
+  payload: z.strictObject({ providerSchemaHash: FingerprintSchema, writeId: z.uuid(), operations: ProviderKeyOperationsSchema }),
+});
+/** Value-free transport for recovery; it is never a durable command. */
+export const ProviderKeysRetryIntentSchema = z.strictObject({
+  family: z.literal("settings"), type: z.literal("apply-provider-keys"),
+  requestedBy: ActorIdSchema,
+  retry: z.strictObject({ commandId: CommandIdSchema, writeId: z.uuid(), pendingReceiptId: z.uuid(),
+    providerSchemaHash: FingerprintSchema }),
+});
+
+export const MarkedProviderKeysCommandRequestSchema = z.strictObject({
+  ...CommandEnvelopeFields,
+  family: z.literal("settings"), type: z.literal("apply-provider-keys"),
+  target: z.strictObject({ expectedRevision: PositiveIntSchema, sourceVersionToken: FingerprintSchema }),
+  payload: z.strictObject({ providerSchemaHash: FingerprintSchema, writeId: z.uuid(), operations: MarkedProviderKeyOperationsSchema }),
+});
+
 /** The only protected command shape permitted in the durable journal and audit. */
 export const MarkedProtectedSettingsCommandRequestSchema =
   z.strictObject({
@@ -263,6 +286,8 @@ export const MarkedProtectedSettingsCommandRequestSchema =
  * the marked form because command/audit rows must never retain protected data.
  */
 const SettingsCommandFamilyRequestSchema = z.union([
+  ProviderKeysCommandRequestSchema,
+  MarkedProviderKeysCommandRequestSchema,
   ProtectedSettingsCommandRequestSchema,
   MarkedProtectedSettingsCommandRequestSchema,
   SettingsCommandRequestSchema,
@@ -271,6 +296,13 @@ const SettingsCommandFamilyRequestSchema = z.union([
 export function markSettingsCommand(command: unknown): z.infer<typeof SettingsCommandFamilyRequestSchema> {
   const parsed = SettingsCommandFamilyRequestSchema.parse(command);
   if (parsed.type === "apply-settings") return deepFreeze(parsed);
+  if (parsed.type === "apply-provider-keys") {
+    const alreadyMarked = MarkedProviderKeysCommandRequestSchema.safeParse(parsed);
+    if (alreadyMarked.success) return deepFreeze(alreadyMarked.data);
+    const providerCommand = ProviderKeysCommandRequestSchema.parse(parsed);
+    return deepFreeze(MarkedProviderKeysCommandRequestSchema.parse({ ...providerCommand,
+      payload: { ...providerCommand.payload, operations: markProviderKeyOperations(providerCommand.payload.operations) } }));
+  }
   const alreadyMarked = MarkedProtectedSettingsCommandRequestSchema.safeParse(parsed);
   if (alreadyMarked.success) return deepFreeze(alreadyMarked.data);
   const protectedCommand = ProtectedSettingsCommandRequestSchema.parse(parsed);
@@ -411,6 +443,8 @@ export const CommandRequestSchema = z.union([
   SettingsCommandRequestSchema,
   ProtectedSettingsCommandRequestSchema,
   MarkedProtectedSettingsCommandRequestSchema,
+  ProviderKeysCommandRequestSchema,
+  MarkedProviderKeysCommandRequestSchema,
   VersionArchiveCommandRequestSchema,
   RunCommandRequestSchema,
   GateCommandRequestSchema,
@@ -433,6 +467,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   z.strictObject({ family: z.literal("worker-pool"), workflowId: WorkflowIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("protected-settings"), revision: PositiveIntSchema }),
+  z.strictObject({ family: z.literal("provider-keys"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("version-archive"), versionPlanId: VersionPlanIdSchema }),
   z.strictObject({ family: z.literal("run"), runId: RunIdSchema }),
   z.strictObject({ family: z.literal("gate"), runId: RunIdSchema, gateId: GateIdSchema }),
@@ -481,16 +516,22 @@ const CommandLandingResultSchema = z.strictObject({
   // D341 carries the legacy seven-name readback (value-free presence). Both parse;
   // nothing in between does, so an audit is never reinterpreted as another family.
   entries: z.union([ProtectedSettingsReadbackSchema.shape.entries, LegacyProtectedSettingsReadbackSchema.shape.entries]).optional(),
+  providerRevision: PositiveIntSchema.optional(),
+  providerReceiptId: z.uuid().optional(),
+  providerSourceVersionToken: FingerprintSchema.optional(),
 }).superRefine((result, context) => {
   const settingsTargets = result.affectedTargets.filter((target) => target.family === "settings");
   const protectedTargets = result.affectedTargets.filter((target) => target.family === "protected-settings");
+  const providerTargets = result.affectedTargets.filter((target) => target.family === "provider-keys");
   const hasOrdinaryResult = result.restartRequired !== undefined
     || result.settingsRevision !== undefined
     || result.settingsFingerprint !== undefined;
   const hasProtectedResult = result.revision !== undefined
     || result.entries !== undefined;
-  if (settingsTargets.length === 0 && protectedTargets.length === 0) {
-    if (hasOrdinaryResult || hasProtectedResult) {
+  const hasProviderResult = result.providerRevision !== undefined || result.providerReceiptId !== undefined
+    || result.providerSourceVersionToken !== undefined;
+  if (settingsTargets.length === 0 && protectedTargets.length === 0 && providerTargets.length === 0) {
+    if (hasOrdinaryResult || hasProtectedResult || hasProviderResult) {
       context.addIssue({
         code: "custom",
         message: "settings result fields require one settings or protected-settings target",
@@ -504,6 +545,7 @@ const CommandLandingResultSchema = z.strictObject({
       || result.restartRequired === undefined
       || result.settingsRevision !== target.revision
       || result.settingsFingerprint === undefined
+      || hasProviderResult
       || result.revision !== undefined
       || result.entries !== undefined) {
       context.addIssue({
@@ -511,6 +553,15 @@ const CommandLandingResultSchema = z.strictObject({
         message: "an ordinary settings result requires an explicit restart decision and its exact revision/fingerprint only",
       });
     }
+    return;
+  }
+  if (providerTargets.length === 1) {
+    const target = providerTargets[0];
+    if (result.affectedTargets.length !== 1 || target === undefined
+      || result.providerRevision !== target.revision || result.providerReceiptId === undefined
+      || result.providerSourceVersionToken === undefined || result.restartRequired === undefined
+      || result.settingsRevision !== undefined || result.settingsFingerprint !== undefined
+      || hasProtectedResult) context.addIssue({ code: "custom", message: "provider result requires exact revision, receipt, source token and restart decision" });
     return;
   }
   const target = protectedTargets[0];
@@ -526,7 +577,7 @@ const CommandLandingResultSchema = z.strictObject({
     || result.revision !== target.revision
     || result.entries === undefined
     || result.settingsRevision !== undefined
-    || result.settingsFingerprint !== undefined) {
+    || result.settingsFingerprint !== undefined || hasProviderResult) {
     context.addIssue({
       code: "custom",
       message: "a protected settings result requires restartRequired=false and its exact revision/presence entries only",
@@ -549,9 +600,10 @@ export const CommandResultSchema = z.discriminatedUnion("state", [
   if (result.state !== "applied" && result.state !== "already-applied") return;
   const affectsSettings = result.affectedTargets.some((target) => target.family === "settings");
   const affectsProtected = result.affectedTargets.some((target) => target.family === "protected-settings");
-  if ((affectsSettings && result.restartRequired === undefined)
+  const affectsProviders = result.affectedTargets.some((target) => target.family === "provider-keys");
+  if (((affectsSettings || affectsProviders) && result.restartRequired === undefined)
     || (affectsProtected && result.restartRequired !== false)
-    || (!affectsSettings && !affectsProtected && result.restartRequired !== undefined)) {
+    || (!affectsSettings && !affectsProtected && !affectsProviders && result.restartRequired !== undefined)) {
     context.addIssue({ code: "custom", path: ["restartRequired"], message: "restart decision requires its exact settings target" });
   }
 });
@@ -802,7 +854,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   start: ["start-run"],
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
-  settings: ["apply-settings", "apply-protected-settings"],
+  settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
@@ -834,7 +886,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "start", actions: ["start-run"] },
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
-  { family: "settings", actions: ["apply-settings", "apply-protected-settings"] },
+  { family: "settings", actions: ["apply-settings", "apply-protected-settings", "apply-provider-keys"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },

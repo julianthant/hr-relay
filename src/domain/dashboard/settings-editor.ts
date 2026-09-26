@@ -6,6 +6,7 @@ import { SettingsPatchSchema, SettingsRuntimeStatusSchema } from "../config/sett
 import { HostConfigFactsSchema } from "../config/host-display.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsNameSchema, ProtectedSettingsReadbackSchema, ProtectedStoreEntriesSchema } from "../config/protected-settings.js";
 import { FingerprintSchema, PositiveIntSchema } from "../ids.js";
+import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../config/provider-keys.js";
 import { EditableSettingsSectionIdSchema, SettingsCatalogWireSchema, SettingsControlSchema, deploymentLeafSchema, catalogKeyForEditorPath, settingsControlFor, settingsSectionFor } from "./settings-catalog.js";
 export { EditableSettingsPathSchema, EditableSettingsSectionIdSchema } from "./settings-catalog.js";
 export type { EditableSettingsPath, EditableSettingsSectionId } from "./settings-catalog.js";
@@ -85,6 +86,24 @@ export const SettingsProviderWireSchema = z.discriminatedUnion("state", [
   }
 });
 const ProviderKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClass === "provider-env").map(row => row.key));
+export const SettingsProviderKeysWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), providerSchemaHash: z.literal(PROVIDER_KEYS_SCHEMA_HASH),
+    revision: PositiveIntSchema, sourceVersionToken: FingerprintSchema,
+    slots: z.partialRecord(ProviderKeySlotSchema, z.string().min(1)),
+    activeSlots: z.partialRecord(ProviderKeySlotSchema, z.string().min(1)),
+    parentSlotNames: z.array(ProviderKeySlotSchema), fileSlotNamesAtBoot: z.array(ProviderKeySlotSchema),
+    bootFileRevision: PositiveIntSchema, bootFileSourceVersionToken: FingerprintSchema,
+    overriddenSlots: z.array(ProviderKeySlotSchema), restartRequired: z.boolean() }),
+  z.strictObject({ state: z.literal("pending"), providerSchemaHash: z.literal(PROVIDER_KEYS_SCHEMA_HASH),
+    revision: PositiveIntSchema, sourceVersionToken: FingerprintSchema,
+    slots: z.partialRecord(ProviderKeySlotSchema, z.string().min(1)),
+    activeSlots: z.partialRecord(ProviderKeySlotSchema, z.string().min(1)),
+    parentSlotNames: z.array(ProviderKeySlotSchema), fileSlotNamesAtBoot: z.array(ProviderKeySlotSchema),
+    bootFileRevision: PositiveIntSchema, bootFileSourceVersionToken: FingerprintSchema,
+    overriddenSlots: z.array(ProviderKeySlotSchema), restartRequired: z.boolean(),
+    pending: z.strictObject({ commandId: z.uuid(), writeId: z.uuid(), receiptId: z.uuid() }) }),
+  z.strictObject({ state: z.literal("unknown"), reason: z.enum(["provider-store-unavailable", "boot-provenance-unavailable"]) }),
+]);
 const DeploymentKeySchema = z.enum(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => row.key));
 export const EditableSettingsWireSchema = z.strictObject({
   revision: PositiveIntSchema, settingsSchemaHash: FingerprintSchema, settingsFingerprint: FingerprintSchema,
@@ -94,6 +113,7 @@ export const EditableSettingsWireSchema = z.strictObject({
   currentFiscalYear: PositiveIntSchema,
   protectedSettings: SettingsProtectedWireSchema,
   providers: z.record(ProviderKeySchema, SettingsProviderWireSchema),
+  providerKeys: SettingsProviderKeysWireSchema,
   host: HostConfigFactsSchema,
   deployment: z.record(DeploymentKeySchema, EditorValueSchema),
 }).superRefine((document, context) => {

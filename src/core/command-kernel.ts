@@ -77,6 +77,7 @@ import {
 } from "../domain/ids.js";
 import { EditableSettingsOverrideSchema } from "../domain/config/schema.js";
 import { SettingsApplyRefusalSchema } from "../domain/config/settings.js";
+import { PROVIDER_KEYS_SCHEMA_HASH } from "../domain/config/provider-keys.js";
 import {
   IntakeParseSchema,
   resolveInspectSelection,
@@ -157,7 +158,7 @@ const PHASE1_ACTIVE = {
     "validate-intake",
     "enqueue-intake-manifest",
   ],
-  settings: ["apply-settings", "apply-protected-settings"],
+  settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
@@ -267,12 +268,19 @@ export const ProtectedSettingsApplicationOutcomeSchema = z.union([
   ...SettingsApplicationRefusalSchemas,
 ]);
 
+export const ProviderKeysApplicationOutcomeSchema = z.union([
+  z.strictObject({ state: z.literal("applied"), revision: z.number().int().positive(),
+    receiptId: z.uuid(), sourceVersionToken: FingerprintSchema, restartRequired: z.boolean() }),
+  ...SettingsApplicationRefusalSchemas,
+]);
+
 export interface SettingsApplicationExecutor {
   prepare(
     command: SettingsCommand,
   ): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
   apply(command: SettingsCommand, repositories: AuthorityRepositories): unknown;
-  reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" }>): unknown;
+  reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>): unknown;
+  confirmProvider?(command: Extract<SettingsCommand, { type: "apply-provider-keys" }>): void;
 }
 
 const OrdinarySettingsReplayVerificationSchema = z.strictObject({
@@ -499,6 +507,12 @@ function reject(request: CommandRequest, code: string, message: string): never {
  */
 export { rejectCommandRequest } from "./command-refusal.js";
 
+export class ProviderAuditUncertainError extends Error {
+  constructor(cause: unknown) {
+    super("provider-audit-uncertain: provider file committed; retry the exact command to verify its audit", { cause });
+  }
+}
+
 function conflict(request: CommandRequest, currentVersion: number, message: string): never {
   throw new CommandRefusal({ state: "conflict", commandId: request.commandId, currentVersion, message });
 }
@@ -513,6 +527,7 @@ function applied(
   settingsResult?: Readonly<
     | { kind: "ordinary"; revision: number; settingsFingerprint: string; restartRequired: boolean }
     | { kind: "protected"; readback: ProtectedSettingsReadback }
+    | { kind: "provider"; revision: number; receiptId: string; sourceVersionToken: string; restartRequired: boolean }
   >,
 ): CommandApplication {
   return Object.freeze({
@@ -528,6 +543,11 @@ function applied(
         restartRequired: false,
         revision: settingsResult.readback.revision,
         entries: settingsResult.readback.entries,
+      } : settingsResult?.kind === "provider" ? {
+        restartRequired: settingsResult.restartRequired,
+        providerRevision: settingsResult.revision,
+        providerReceiptId: settingsResult.receiptId,
+        providerSourceVersionToken: settingsResult.sourceVersionToken,
       } : {}),
     }),
     versionChanges,
@@ -2704,6 +2724,16 @@ function executeSettings(
       }),
     });
   }
+  if (request.type === "apply-provider-keys") {
+    const outcome = ProviderKeysApplicationOutcomeSchema.parse(dependencies.settings.apply(request, repositories));
+    if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
+    if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
+    requireExpectedRevision(outcome.revision);
+    const target = { family: "provider-keys" as const, revision: outcome.revision };
+    return applied(request, [target], [{ target, before: request.target.expectedRevision, after: outcome.revision }],
+      [], undefined, undefined, { kind: "provider", revision: outcome.revision, receiptId: outcome.receiptId,
+        sourceVersionToken: outcome.sourceVersionToken, restartRequired: outcome.restartRequired });
+  }
   const outcome = ProtectedSettingsApplicationOutcomeSchema.parse(
     dependencies.settings.apply(request, repositories),
   );
@@ -2872,6 +2902,7 @@ function replay(
   let settingsVerification:
     | Readonly<{ kind: "ordinary"; value: z.infer<typeof OrdinarySettingsReplayVerificationSchema> }>
     | Readonly<{ kind: "protected"; value: z.infer<typeof ProtectedSettingsReplayVerificationSchema> }>
+    | Readonly<{ kind: "provider"; value: z.infer<typeof ProviderKeysApplicationOutcomeSchema> }>
     | undefined;
   if (request.family === "settings") {
     if (dependencies.settings === undefined) {
@@ -2887,18 +2918,32 @@ function replay(
       ? OrdinarySettingsReplayVerificationSchema.parse(
           { revision: audit.result.settingsRevision, settingsFingerprint: audit.result.settingsFingerprint },
         )
+      : request.type === "apply-provider-keys"
+      ? ProviderKeysApplicationOutcomeSchema.parse(dependencies.settings.reconcileReplay(request))
       : ProtectedSettingsReplayVerificationSchema.parse(
           dependencies.settings.reconcileReplay(request),
         );
     const expectedRevision = request.target.expectedRevision + 1;
-    if (verified.revision !== expectedRevision) {
+    const verifiedRevision = "revision" in verified ? verified.revision : undefined;
+    if (("state" in verified && verified.state !== "applied") || verifiedRevision !== expectedRevision) {
       throw new Error(
-        `settings replay ${request.commandId} verified revision ${String(verified.revision)}; `
+        `settings replay ${request.commandId} verified revision ${String(verifiedRevision)}; `
         + `exactly ${String(expectedRevision)} was required`,
       );
     }
+    if (request.type === "apply-provider-keys") {
+      if (!("state" in verified) || verified.state !== "applied"
+        || !("receiptId" in verified) || audit.result.state !== "applied"
+        || audit.result.providerReceiptId !== verified.receiptId
+        || audit.result.providerRevision !== verified.revision
+        || deriveSettingsCommandFingerprint(audit.request) !== deriveSettingsCommandFingerprint(request)) {
+        throw new Error(`provider settings replay ${request.commandId} does not match its durable audit`);
+      }
+    }
     settingsVerification = request.type === "apply-settings"
       ? { kind: "ordinary", value: verified as z.infer<typeof OrdinarySettingsReplayVerificationSchema> }
+      : request.type === "apply-provider-keys"
+      ? { kind: "provider", value: verified as z.infer<typeof ProviderKeysApplicationOutcomeSchema> }
       : { kind: "protected", value: verified as z.infer<typeof ProtectedSettingsReplayVerificationSchema> };
   }
   return CommandResultSchema.parse({
@@ -2913,6 +2958,11 @@ function replay(
       restartRequired: false,
       revision: settingsVerification.value.revision,
       entries: settingsVerification.value.entries,
+    } : settingsVerification?.kind === "provider" && settingsVerification.value.state === "applied" ? {
+      restartRequired: settingsVerification.value.restartRequired,
+      providerRevision: settingsVerification.value.revision,
+      providerReceiptId: settingsVerification.value.receiptId,
+      providerSourceVersionToken: settingsVerification.value.sourceVersionToken,
     } : {}),
   });
 }
@@ -2931,13 +2981,18 @@ export function executeSettingsCommand(
     return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
       code: "schema-mismatch", message: "credential schema does not match the current catalog" });
   }
+  if (request.type === "apply-provider-keys" && request.payload.providerSchemaHash !== PROVIDER_KEYS_SCHEMA_HASH) {
+    return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
+      code: "schema-mismatch", message: "provider schema does not match the current catalog" });
+  }
   const refusal = request.type === "apply-settings" ? executor.prepare(request) : undefined;
   if (refusal !== undefined) return CommandResultSchema.parse(refusal.state === "conflict"
     ? { state: "conflict", commandId: request.commandId, currentVersion: refusal.currentRevision, message: refusal.message }
     : { ...refusal, commandId: request.commandId });
   let credentialsCommitted = false;
+  let providerCommitted = false;
   try {
-    return dependencies.authority.withAuthorityTransaction((repositories) => {
+    const result = dependencies.authority.withAuthorityTransaction((repositories) => {
       const now = dependencies.clock.now().toISOString();
       const journalRequest = markSettingsCommand(request);
       repositories.commands.assertIdentity(journalRequest);
@@ -2953,6 +3008,13 @@ export function executeSettingsCommand(
         }
         credentialsCommitted = true;
       }
+      if (request.type === "apply-provider-keys") {
+        const providerRefusal = executor.prepare(request);
+        if (providerRefusal !== undefined) throw new CommandRefusal(CommandResultSchema.parse(providerRefusal.state === "conflict"
+          ? { state: "conflict", commandId: request.commandId, currentVersion: providerRefusal.currentRevision, message: providerRefusal.message }
+          : { ...providerRefusal, commandId: request.commandId }));
+        providerCommitted = true;
+      }
       const journal = repositories.commands.insert(journalRequest);
       if (journal.state === "existing") return replay(dependencies, repositories, request, now);
       const application = executeSettings(dependencies, repositories, request);
@@ -2964,10 +3026,16 @@ export function executeSettingsCommand(
       });
       return application.result;
     });
+    if (request.type === "apply-provider-keys" && (result.state === "applied" || result.state === "already-applied")) {
+      if (executor.confirmProvider === undefined) throw new Error("provider-key-confirmation-unavailable");
+      executor.confirmProvider(request);
+    }
+    return result;
   } catch (error) {
     if (credentialsCommitted) {
       throw new Error("credential-audit-uncertain: credentials committed; retry the exact command to verify its audit", { cause: error });
     }
+    if (providerCommitted) throw new ProviderAuditUncertainError(error);
     if (error instanceof CommandIdentityConflictError) return CommandResultSchema.parse({
       state: "rejected", commandId: request.commandId, code: "command-divergent", message: error.message,
     });

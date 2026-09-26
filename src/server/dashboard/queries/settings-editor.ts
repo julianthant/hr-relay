@@ -1,4 +1,5 @@
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import type { z } from "zod";
 import { sha256Hex } from "../../../domain/sha256.js";
 /** One ordinary snapshot plus explicitly independent auxiliary authority reads. */
 import { SETTINGS_CATALOG } from "../../../domain/config/catalog.js";
@@ -11,8 +12,11 @@ import { ProtectedSettingsNameSchema } from "../../../domain/config/protected-se
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../domain/dashboard/settings-editor.js";
 import { EditableSettingsSectionIdSchema, settingsCatalogEntry, settingsControlFor, settingsSectionFor } from "../../../domain/dashboard/settings-catalog.js";
 import type { Clock } from "../../../domain/clock.js";
-import { optionalSecretFamily, SecretFamilyNameSchema } from "../../../domain/secrets.js";
+import { activeProviderKeySlots, optionalSecretFamily, SecretFamilyNameSchema } from "../../../domain/secrets.js";
 import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../settings-runtime.js";
+import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../../../domain/config/provider-keys.js";
+import type { ProviderBootProvenance } from "../../../domain/config/provider-boot-provenance.js";
+import type { createProviderKeyStore } from "../../../infra/config/provider-key-store.js";
 
 const SECTION_LABELS = { general: "General", display: "Display", performance: "Performance", paths: "Paths", routes: "Routes", "annual-dates": "Annual dates", providers: "Provider budgets & models" } as const;
 const LABELS: Readonly<Record<string, string>> = {
@@ -39,6 +43,9 @@ export interface SettingsEditorQueryDeps {
   readonly protectedSettings: { read(): ProtectedSettingsRuntimeSnapshot };
   readonly environment: NodeJS.ProcessEnv;
   readonly clock: Clock;
+  readonly providerKeys?: ReturnType<typeof createProviderKeyStore>;
+  readonly providerBoot?: ProviderBootProvenance;
+  readonly activeProviderSlots?: Readonly<Partial<Record<z.infer<typeof ProviderKeySlotSchema>, string>>>;
   /** Injected resolution stays Settings-local; tests supply deterministic synthetic path facts. */
   readonly resolve?: (settings: SettingsOverride) => ResolvedConfig;
 }
@@ -100,6 +107,30 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
       return [row.key, values.length === 0 ? { state: "missing" } : { state: "present", count: values.length, values }];
     } catch { return [row.key, { state: "unknown" }]; }
   }));
+  const providerKeys = (() => {
+    if (deps.providerKeys === undefined || deps.providerBoot === undefined || deps.activeProviderSlots === undefined) return {
+      state: "unknown", reason: deps.providerBoot === undefined || deps.activeProviderSlots === undefined
+        ? "boot-provenance-unavailable" : "provider-store-unavailable",
+    };
+    try {
+      const saved = deps.providerKeys.readEditableFile();
+      const candidateSlots = activeProviderKeySlots(saved.slots);
+      const parent = new Set(deps.providerBoot.parentSlotNames);
+      const overriddenSlots = ProviderKeySlotSchema.options.filter(slot => saved.slots[slot] !== undefined && parent.has(slot));
+      const restartRequired = ProviderKeySlotSchema.options.some(slot => !parent.has(slot)
+        && deps.activeProviderSlots?.[slot] !== candidateSlots[slot]);
+      const pending = "pending" in saved;
+      return { state: pending ? "pending" : "available",
+        providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision: saved.revision,
+        sourceVersionToken: saved.sourceVersionToken, slots: saved.slots, activeSlots: deps.activeProviderSlots,
+        parentSlotNames: deps.providerBoot.parentSlotNames,
+        fileSlotNamesAtBoot: deps.providerBoot.fileSlotNames,
+        bootFileRevision: deps.providerBoot.fileRevision,
+        bootFileSourceVersionToken: deps.providerBoot.fileSourceVersionToken,
+        overriddenSlots, restartRequired,
+        ...(pending ? { pending: saved.pending } : {}) };
+    } catch { return { state: "unknown", reason: "provider-store-unavailable" }; }
+  })();
   const deployment = Object.fromEntries(SETTINGS_CATALOG.filter(row => row.sourceClass === "runtime-isolation").map(row => {
     const value = atPath(activeConfig, row.key === "duoWebauthnCredential" ? "paths.duoCredential" : row.key);
     if (value === undefined) throw new Error("settings-editor-deployment-fact-missing");
@@ -111,6 +142,6 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     catalog: SETTINGS_CATALOG.map(settingsCatalogEntry),
     sections: EditableSettingsSectionIdSchema.options.map(id => ({ id, label: SECTION_LABELS[id], description: "Ordinary settings · SQLite", leaves: leaves.filter(value => settingsSectionFor(value.path) === id) })),
     currentFiscalYear,
-    protectedSettings, providers, host: hostConfigFacts(deps.environment), deployment,
+    protectedSettings, providers, providerKeys, host: hostConfigFacts(deps.environment), deployment,
   });
 }

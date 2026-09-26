@@ -1281,7 +1281,7 @@ same way still fails.
 
 <!-- roadmap: p1-kernel -->
 <!-- roadmap-status: p1-kernel -->
-- [x] D67/D95/D283 — ten closed target families over 37 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
+- [x] D67/D95/D283/D351 — ten closed target families over 38 actions, one idempotent actor-stamped envelope, one exhaustive dispatcher, one durable command journal (`src/domain/commands.ts`, `src/core/command-kernel.ts`)
 - [x] the Phase-1 arm partition is checked against the D95 registry in BOTH directions at module load — an action neither list carries, or both, throws before any command can dispatch (`command-kernel.ts`)
 - [x] D233/D234 — CAS on every run verb, `bump` included; `hide`/`unhide` are retired from the whole stack
 - [x] D253 — `CommandResultSchema` has three arms and TWO are refusals; every dashboard module settles through the one exhaustive fold (`src/dashboard/app/command-result.ts`, guarded by `command-result-exhaustive`)
@@ -1305,7 +1305,7 @@ descriptors. What follows is what they MEAN; the schemas are the contract.
 command arm carries exactly one closed target family; an id valid for one family cannot be erased
 to a generic string target. The registry is a frozen `Record<family, actions>` whose refinement
 refuses a family that is missing, duplicated or carries a different action set —
-`COMMAND_FAMILY_REGISTRY`, currently ten families over 37 actions; D334's Task-1.6.4 target is 36
+`COMMAND_FAMILY_REGISTRY`, currently ten families over 38 actions; D334's Task-1.6.4 target was 36
 after the one `edit-checkpoint` removal below:
 
 | Target family | Actions | Authoritative target |
@@ -1313,7 +1313,7 @@ after the one `edit-checkpoint` removal below:
 | `start` | `start-run` | an exact workflow/start-plan token plus its pre-consume revision and bound descriptor/config/input fingerprints |
 | `intake` | `inspect-intake`, `confirm-intake-mapping`, `correct-intake-row`, `exclude-intake-row`, `validate-intake`, `enqueue-intake-manifest` | an exact intake artifact/session/manifest id plus observed version |
 | `worker-browser` | `plan-worker-count`, `spawn-worker`, `stop-worker`, `pause-worker`, `resume-worker`, `refresh-browser`, `reopen-browser` | an exact worker id, or worker id + browser session id, plus observed version where authority is mutable |
-| `settings` | `apply-settings` | one expected config revision plus one strict atomic multi-leaf patch — never per-field route writes |
+| `settings` | `apply-settings`, `apply-protected-settings`, `apply-provider-keys` | independent ordinary revision, protected revision, or provider-file revision plus opaque source token; each command binds its own strict patch and private authority |
 | `version-archive` | `plan-version-bump`, `apply-version-bump`, `relaunch-archived-run` | plan names an exact workflow/app scope and its fingerprints; apply consumes one immutable plan id/version and refuses blockers or drift |
 | `run` | `retry`, `cancel`, `bump`, `rename`, `edit-checkpoint`, `resolve-write-present`, `resolve-write-absent` | exact run id + observed version |
 | `gate` | `resolve-gate` | one exact `(runId, gateId)` with a schema-hash-bound result + observed version |

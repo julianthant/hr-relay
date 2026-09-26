@@ -3,9 +3,11 @@ import assert from "node:assert/strict";
 import {
   closeSync,
   fstatSync,
+  lstatSync,
   mkdtempSync,
   openSync,
   readFileSync,
+  statSync,
   rmSync,
   symlinkSync,
   writeFileSync,
@@ -39,6 +41,7 @@ import {
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 import { runTestTargetDocumentNumberSmoke } from "../../scripts/smoke-test-target-document-number.js";
 import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 import { testDataInputSource } from "./helpers/test-data-source.js";
@@ -46,6 +49,53 @@ import { RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../src/domain/config/ca
 import { TestDataLocalConfigError } from "../../src/domain/test-data.js";
 
 describe("closed secret access", () => {
+  it("records boot slot provenance from the exact admitted descriptor", () => {
+    const root = mkdtempSync(join(tmpdir(), "provider-boot-proof-"));
+    const path = join(root, ".env.providers");
+    const env: NodeJS.ProcessEnv = { GEMINI_API_KEY: "synthetic-parent" };
+    try {
+      const receipt = { revision: 3, receiptId: "00000000-0000-4000-8000-000000000931",
+        commandId: "00000000-0000-4000-8000-000000000932", writeId: "00000000-0000-4000-8000-000000000933",
+        expectedRevision: 2, schemaHash: "a".repeat(64), markedFingerprint: "b".repeat(64) };
+      const header = Buffer.from(canonicalJsonStringify(receipt)).toString("base64url");
+      writeFileSync(path, `# hrauto-provider-keys-v1 ${header}\nGEMINI_API_KEY='synthetic-file'\nGROQ_API_KEY3='synthetic-file-three'\n`, { mode: 0o600 });
+      const provenance = admitLocalEnvironmentFile(path, env);
+      assert.ok(provenance);
+      assert.deepEqual(provenance.parentSlotNames, ["GEMINI_API_KEY"]);
+      assert.deepEqual(provenance.fileSlotNames, ["GEMINI_API_KEY", "GROQ_API_KEY3"]);
+      assert.equal(provenance.fileRevision, 3);
+      assert.equal(Object.isFrozen(provenance.parentSlotNames), true);
+      assert.equal(Object.isFrozen(provenance.fileSlotNames), true);
+      assert.equal(env.GEMINI_API_KEY, "synthetic-parent");
+      assert.equal(env.GROQ_API_KEY3, "synthetic-file-three");
+      const stat = statSync(path, { bigint: true });
+      assert.equal(provenance.fileSourceVersionToken, sha256Hex(
+        [stat.dev, stat.ino, stat.size, stat.mtimeNs, stat.ctimeNs, stat.birthtimeNs].map(String).join(":")));
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
+  it("refuses a provider descriptor changed after its admitted bytes are read", () => {
+    const root = mkdtempSync(join(tmpdir(), "provider-boot-race-"));
+    const path = join(root, ".env.providers");
+    const env: NodeJS.ProcessEnv = {};
+    try {
+      writeFileSync(path, "GROQ_API_KEY='one'\n", { mode: 0o600 });
+      assert.throws(() => admitLocalEnvironmentFile(path, env, {
+        open: (name, flags) => openSync(name, flags),
+        inspectDescriptor: fstatSync,
+        inspectIdentity: descriptor => fstatSync(descriptor, { bigint: true }),
+        inspectPathIdentity: name => lstatSync(name, { bigint: true }),
+        readBytes: descriptor => {
+          const bytes = readFileSync(descriptor);
+          writeFileSync(path, "GROQ_API_KEY='two'\n", { mode: 0o600 });
+          return bytes;
+        },
+        close: closeSync,
+      }), /changed during admission/u);
+      assert.deepEqual(env, {});
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  });
+
   it("admits parsed local environment bytes without overriding an explicit parent value", () => {
     const env: NodeJS.ProcessEnv = { GEMINI_API_KEY: "parent" };
     const descriptor = 17;
