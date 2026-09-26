@@ -1,6 +1,6 @@
 import { Settings as SettingsIcon } from "lucide-react";
 import { useState } from "react";
-import { Badge, Banner, Button, dsIcon, dsText, Field, Input, Panel, PanelBody, PanelFooter, PanelHeader, Separator, Spinner } from "../ds/ui.js";
+import { Badge, Banner, Button, Disclosure, dsIcon, dsText, Field, Input, Panel, PanelBody, PanelFooter, PanelHeader, Separator, Spinner } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { plural } from "./format.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
@@ -65,19 +65,17 @@ export function EditableSettingsSection({ editor, sectionId }: { editor: ReturnT
                   {valueDifferences.map(source => <div key={source.label} className="min-w-0"><dt className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{source.label}</dt><dd className={cn(dsText.meta, "m-0 break-words [overflow-wrap:anywhere] text-[color:var(--ds-fg)]")}>{formatSetting(source.value)}</dd></div>)}
                 </dl>}
                 {leaf.hazard !== undefined && <p className={cn(dsText.meta, "text-[color:var(--ds-status-waiting-fg)]")}>{leaf.hazard}</p>}
-                {!leaf.path.startsWith("display.") && <details className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                  <summary className="cursor-pointer">Setting identity</summary>
+                {!leaf.path.startsWith("display.") && <Disclosure className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary="Setting identity">
                   <code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{leaf.path}</code>
-                </details>}
+                </Disclosure>}
               </div>;
             })}
           </div>
-          {group.leaves.some(leaf => leaf.path.startsWith("display.")) && <details className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-            <summary className="cursor-pointer">Setting identities</summary>
+          {group.leaves.some(leaf => leaf.path.startsWith("display.")) && <Disclosure className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary="Setting identities">
             <dl className="mt-[var(--ds-space-tight)] grid min-w-0 grid-cols-1 gap-x-[var(--ds-space-base)] sm:grid-cols-2">
               {group.leaves.map(leaf => <div key={leaf.path} className="min-w-0"><dt>{leaf.label}</dt><dd className="m-0 break-all"><code className={cn(dsText.micro, dsText.nums)}>{leaf.path}</code></dd></div>)}
             </dl>
-          </details>}
+          </Disclosure>}
         </section>)}
         <div aria-hidden="true" className="h-[var(--ds-space-section)] shrink-0" />
       </PanelBody>

@@ -73,10 +73,13 @@ describe("typed Settings catalog controls", () => {
     assert.match(mounted.host.textContent ?? "", /Running operator/u);
     assert.match(mounted.host.textContent ?? "", /Local operator/u);
     const field = mounted.host.querySelector('[data-settings-path="actor.label"]'); assert.ok(field);
-    const identity = field.querySelector('details > summary');
+    const identity = field.querySelector<HTMLButtonElement>('[data-slot="collapsible-trigger"]');
     assert.equal(identity?.textContent, "Setting identity");
+    assert.equal(identity?.getAttribute("aria-expanded"), "false");
+    assert.equal(field.querySelectorAll('[data-slot="collapsible"]').length, 1);
+    await settingsAction(() => identity?.click());
+    assert.equal(identity?.getAttribute("aria-expanded"), "true");
     assert.equal(identity?.parentElement?.querySelector("code")?.textContent, "actor.label");
-    assert.equal(field.querySelectorAll("details").length, 1);
   });
   it("shows saved, active and default host values plus their process-lifetime source", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);

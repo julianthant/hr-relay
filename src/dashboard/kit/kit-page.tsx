@@ -67,6 +67,7 @@ import {
   ContextMenuTrigger,
   CountBadge,
   DateInput,
+  Disclosure,
   MetaLine,
   Refusal,
   DS_STATUS,
@@ -625,6 +626,13 @@ function ContainersSection() {
                 "Nothing new can be enqueued until the volume is writable.",
               ]}
             />
+            <SectionLabel>Disclosure</SectionLabel>
+            <Disclosure summary="Closed workflow history">
+              <p className={dsText.meta}>Earlier attempts remain available.</p>
+            </Disclosure>
+            <Disclosure summary="Open workflow history" defaultOpen>
+              <p className={dsText.meta}>Earlier attempts remain available.</p>
+            </Disclosure>
           </Well>
 
           {/* ChipRow — the same five facts twice. The top row is a bare

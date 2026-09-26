@@ -19,7 +19,7 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: real
     await width.focus(); await expect(width).toBeFocused(); await page.keyboard.press("Tab");
     await expect(height).toBeFocused();
     await page.keyboard.press("Tab");
-    const identities = page.getByText("Setting identities", { exact: true });
+    const identities = page.getByRole("button", { name: "Setting identities", exact: true });
     await expect(identities).toBeFocused(); await page.keyboard.press("Enter");
     await expect(page.getByText("display.screenWidth", { exact: true })).toBeVisible();
     await expect(page.getByText("display.screenHeight", { exact: true })).toBeVisible();

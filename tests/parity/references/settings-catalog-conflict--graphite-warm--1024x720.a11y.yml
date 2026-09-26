@@ -78,28 +78,28 @@
       - definition: Competing operator
       - term: Default
       - definition: Local operator
-      - group: Setting identity
+      - button "Setting identity"
       - text: browser · headless
       - combobox "browser · headless":
         - option "Enabled" [selected]
         - option "Disabled"
       - text: Using default
       - button "Clear browser · headless" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
       - text: features · debug Screenshots
       - combobox "features · debug Screenshots":
         - option "Enabled"
         - option "Disabled" [selected]
       - text: Using default
       - button "Clear features · debug Screenshots" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
       - text: features · duo Web Authn
       - combobox "features · duo Web Authn":
         - option "Enabled" [selected]
         - option "Disabled"
       - text: Using default
       - button "Clear features · duo Web Authn" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - status: Settings changed Settings changed. Current values are refreshed beside your retained draft. Review them, then save deliberately.
     - text: 1 unsaved change
     - button "Discard all"

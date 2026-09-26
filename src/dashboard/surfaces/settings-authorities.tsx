@@ -1,5 +1,5 @@
 import { KeyRound, Monitor, Server, ShieldCheck } from "lucide-react";
-import { Badge, Banner, Button, Field, Input, Panel, PanelBody, PanelFooter, PanelHeader, Spinner, dsIcon, dsText } from "../ds/ui.js";
+import { Badge, Banner, Button, Disclosure, Field, Input, Panel, PanelBody, PanelFooter, PanelHeader, Spinner, dsIcon, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -35,13 +35,12 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
                 <Button size="sm" variant="ghost" aria-label={`Clear ${row.label}`} disabled={credentials.locked || authority.state !== "available"} onClick={() => credentials.clear(row.name)}>Clear</Button>
                 {operation !== undefined && <Button size="sm" variant="ghost" disabled={credentials.locked} onClick={() => credentials.reset(row.name)}>Reset</Button>}
               </div>
-              <details className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-                <summary className="cursor-pointer">Credential identifiers</summary>
+              <Disclosure className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary="Credential identifiers">
                 <code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{row.name}</code>
                 {presence?.present === true && <dl className="mt-[var(--ds-space-tight)] grid grid-cols-1 gap-[var(--ds-space-tight)] sm:grid-cols-2">
                   <div><dt>Stored write identity</dt><dd className="m-0 break-all">{presence.valueId}</dd></div><div><dt>Last updated</dt><dd className="m-0 break-words">{presence.updatedAt}</dd></div>
                 </dl>}
-              </details>
+              </Disclosure>
               {stored !== undefined && <dl className={cn(dsText.body, "min-w-0")}><dt>Current value</dt><dd className="m-0 break-all [overflow-wrap:anywhere]">{formatSetting(stored.value)}</dd></dl>}
             </section>;
           })}</div>
@@ -58,7 +57,7 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
   if (sectionId === "provider-env") return <Panel className="min-h-0 flex-1"><PanelHeader title="Provider availability" headingLevel={2} icon={<ShieldCheck aria-hidden className={dsIcon.lg} />} />
     <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
       <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Source: .env.providers. Read-only at process start; restart after changing a provider key.</p>
-      <div className="grid grid-cols-1 gap-x-[var(--ds-space-section)] min-[840px]:grid-cols-2">{Object.entries(document.providers).map(([name, availability]) => <div key={name} className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] py-[var(--ds-space-snug)]"><div className="flex min-w-0 items-center justify-between gap-[var(--ds-space-base)]"><span className={cn(dsText.ui, "truncate")}>{providerName(name)}</span><Badge tone={availability.state === "unknown" ? "warning" : "neutral"}>{availability.state === "present" ? `${String(availability.count)} ${availability.count === 1 ? "key configured" : "keys configured"}` : availability.state === "missing" ? "Missing" : "Unknown"}</Badge></div><details className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}><summary className="cursor-pointer">Environment key family</summary><code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{name}</code></details>{availability.state === "present" && <ul className={cn(dsText.body, "m-0 list-none p-0")}>{availability.values.map((value, index) => <li key={String(index)} className="break-all [overflow-wrap:anywhere]">Key {String(index + 1)}: {value}</li>)}</ul>}</div>)}</div>
+      <div className="grid grid-cols-1 gap-x-[var(--ds-space-section)] min-[840px]:grid-cols-2">{Object.entries(document.providers).map(([name, availability]) => <div key={name} className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] py-[var(--ds-space-snug)]"><div className="flex min-w-0 items-center justify-between gap-[var(--ds-space-base)]"><span className={cn(dsText.ui, "truncate")}>{providerName(name)}</span><Badge tone={availability.state === "unknown" ? "warning" : "neutral"}>{availability.state === "present" ? `${String(availability.count)} ${availability.count === 1 ? "key configured" : "keys configured"}` : availability.state === "missing" ? "Missing" : "Unknown"}</Badge></div><Disclosure className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary="Environment key family"><code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{name}</code></Disclosure>{availability.state === "present" && <ul className={cn(dsText.body, "m-0 list-none p-0")}>{availability.values.map((value, index) => <li key={String(index)} className="break-all [overflow-wrap:anywhere]">Key {String(index + 1)}: {value}</li>)}</ul>}</div>)}</div>
     </PanelBody></Panel>;
   if (sectionId === "derived-host") {
     const display = document.host.primaryDisplay;
@@ -78,7 +77,7 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
             <dl className="grid min-w-0 grid-cols-1 gap-x-[var(--ds-space-base)] sm:grid-cols-3">
               {values.map(source => <div key={source.label} className="min-w-0"><dt className={cn(dsText.micro, "text-[color:var(--ds-fg-muted)]")}>{source.label}</dt><dd className={cn(dsText.meta, "m-0 break-words [overflow-wrap:anywhere] text-[color:var(--ds-fg)]")}>{formatSetting(source.value)}</dd></div>)}
             </dl>
-            <details className={cn(dsText.meta, "w-full text-[color:var(--ds-fg-muted)]")}><summary className="cursor-pointer">Setting identity</summary><code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{leaf.path}</code></details>
+            <Disclosure className={cn(dsText.meta, "w-full text-[color:var(--ds-fg-muted)]")} summary="Setting identity"><code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{leaf.path}</code></Disclosure>
           </div>;
         })}
         <Button size="sm" variant="secondary" disabled={editor.locked || overrides?.every(leaf => leaf.settingsValue === undefined)} onClick={() => editor.clear("display.screenWidth")}>Clear override</Button>
@@ -98,7 +97,7 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
               ? <dl className="grid min-w-0 grid-cols-1 gap-x-[var(--ds-space-base)] min-[840px]:grid-cols-2">{Object.entries(value).map(([property, endpoint]) => <div key={property} className="min-w-0"><dt className="text-[color:var(--ds-fg-muted)]">{settingsFactLabel(property)}</dt><dd className="m-0 break-words [overflow-wrap:anywhere]">{formatSetting(endpoint)}</dd></div>)}</dl>
               : formatSetting(value)}
           </dd>
-          <details className="mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]"><summary className="cursor-pointer">Configuration key</summary><code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{key}</code></details>
+          <Disclosure className="mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]" summary="Configuration key"><code className={cn(dsText.micro, dsText.nums, "mt-[var(--ds-space-tight)] block break-all")}>{key}</code></Disclosure>
         </div>)}</dl>
       </section>)}
     </PanelBody></Panel>;

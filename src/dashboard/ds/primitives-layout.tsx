@@ -23,11 +23,31 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react";
-import { CircleAlert, Info, ShieldAlert, TriangleAlert, CheckCircle2 } from "lucide-react";
+import { CircleAlert, Info, ShieldAlert, TriangleAlert, CheckCircle2, ChevronRight } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { ShadcnCard, ShadcnCardContent, ShadcnCardFooter, ShadcnCardHeader } from "./shadcn-card.js";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./shadcn-collapsible.js";
 import { ShadcnTabs, ShadcnTabsContent, ShadcnTabsList, ShadcnTabsTrigger } from "./shadcn-tabs.js";
 import { dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
+
+/** A compact disclosure composed from shadcn's Radix Collapsible parts. */
+export function Disclosure({ summary, children, defaultOpen, className, summaryClassName, contentClassName, title }: {
+  summary: ReactNode;
+  children: ReactNode;
+  defaultOpen?: boolean;
+  className?: string;
+  summaryClassName?: string;
+  contentClassName?: string;
+  title?: string;
+}) {
+  return <Collapsible defaultOpen={defaultOpen} className={cn("group", className)} title={title}>
+    <CollapsibleTrigger className={cn("flex w-full cursor-pointer items-center gap-[var(--ds-space-tight)] text-left", dsFocus, summaryClassName)}>
+      <ChevronRight aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)] transition-transform group-data-[state=open]:rotate-90")} />
+      <span className="min-w-0 flex-1">{summary}</span>
+    </CollapsibleTrigger>
+    <CollapsibleContent className={contentClassName}>{children}</CollapsibleContent>
+  </Collapsible>;
+}
 
 /**
  * Containers, structure and navigation.

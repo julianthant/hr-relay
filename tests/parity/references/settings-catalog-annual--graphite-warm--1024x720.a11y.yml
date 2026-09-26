@@ -81,7 +81,7 @@
       - definition: 6/30/2027
       - term: Default
       - definition: not set
-      - group: Setting identity
+      - button "Setting identity"
       - text: annual Dates · FY2027 · kronos Default End Date M/D/YYYY
       - textbox "annual Dates · FY2027 · kronos Default End Date": 6/30/2027
       - text: Saved
@@ -90,7 +90,7 @@
       - definition: 6/30/2027
       - term: Default
       - definition: not set
-      - group: Setting identity
+      - button "Setting identity"
       - text: annual Dates · FY2027 · kronos Default Start Date M/D/YYYY
       - textbox "annual Dates · FY2027 · kronos Default Start Date": 7/1/2026
       - text: Saved
@@ -99,7 +99,7 @@
       - definition: 7/1/2026
       - term: Default
       - definition: not set
-      - group: Setting identity
+      - button "Setting identity"
     - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]

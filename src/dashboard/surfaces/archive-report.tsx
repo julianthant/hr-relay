@@ -3,7 +3,7 @@ import { useCallback,useEffect,useRef,useState } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
+import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
 import { savedCell,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,savedReportExport,useSavedResource } from "./archive-report-model.js";
@@ -25,7 +25,7 @@ export function SavedArchiveReport({ report }: { report: SavedArchiveReportWire 
         <div><dt>Captured</dt><dd className="m-0 break-words text-[color:var(--ds-fg)]">{report.capturedAt}</dd></div>
       </dl>
       <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Saved record · read-only</p>
-      <details className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}><summary className="cursor-pointer">Report identity</summary><p className="mb-0 break-all">{report.runId}</p></details>
+      <Disclosure className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary="Report identity"><p className="mb-0 break-all">{report.runId}</p></Disclosure>
       <ButtonLink variant="secondary" className="self-start" href={exported.href} download={exported.filename} icon={<Download aria-hidden />}>Export report</ButtonLink>
     </header>
     {report.sections.map((section, index) => <section key={`${String(index)}:${section.title}`} aria-label={section.title} className={cn("min-w-0 pt-[var(--ds-space-cozy)]", index > 0 && "border-t border-[color:var(--ds-border)]")}>
@@ -181,11 +181,11 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
               <label>Version<Input value={query.descriptorVersion ?? ""} onChange={event => filter("descriptorVersion", event.target.value)} /></label>
               <label>Outcome<Select value={query.outcome ?? ""} onChange={event => filter("outcome", event.target.value)}><option value="">All outcomes</option>{["done", "failed", "cancelled", "discarded", "interrupted", "superseded"].map(outcome => <option key={outcome} value={outcome}>{outcome}</option>)}</Select></label>
             </div>
-            <details><summary className={cn(dsText.meta, "cursor-pointer text-[color:var(--ds-fg-secondary)]")}>Date filters{dateFilterSummary !== "" && <span className="ml-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">Active: {dateFilterSummary}</span>}</summary>
+            <Disclosure summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")} summary={<>Date filters{dateFilterSummary !== "" && <span className="ml-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">Active: {dateFilterSummary}</span>}</>}>
               <div className="mt-[var(--ds-space-base)] grid grid-cols-1 gap-[var(--ds-space-base)] min-[840px]:grid-cols-2">
                 {([ ["from", "Completed from (UTC)"], ["to", "Completed through (UTC)"], ["capturedFrom", "Captured from (UTC)"], ["capturedTo", "Captured through (UTC)"]] as const).map(([key, label]) => <DateInput key={key} label={label} value={query[key]?.slice(0, 10) ?? ""} onChange={date => filter(key, date === "" ? "" : `${date}${key === "to" || key === "capturedTo" ? "T23:59:59.999Z" : "T00:00:00.000Z"}`)} />)}
               </div>
-            </details>
+            </Disclosure>
             <Button type="button" variant="secondary" onClick={() => changeQuery({ limit: 50 })}>Clear filters</Button>
           </form>
           {index.state === "loading" ? <p role="status">Loading saved reports…</p> : index.state === "error" ? <p role="alert">{index.message}</p>

@@ -16,7 +16,7 @@
     - button "This day"
   - searchbox "Search run history": separations
   - button "Clear search"
-  - group: Filters · 0 selected
+  - button "Filters · 0 selected"
   - button "Refresh search"
   - button "CSV"
   - button "XLSX"

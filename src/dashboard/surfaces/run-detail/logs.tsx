@@ -14,6 +14,9 @@ import type { z } from "zod";
 import { cn } from "../../lib/utils.js";
 import {
   Button,
+  Collapsible,
+  CollapsibleContent,
+  CollapsibleTrigger,
   EmptyState,
   SearchInput,
   Skeleton,
@@ -106,7 +109,7 @@ function anchorIndex(rows: readonly LogRow[], at: string): number {
  *    per fact (the parity spec reads the token colour off that label);
  *  - a nested field is a caps sub-head over keys shown without the repeated
  *    field prefix; a field that IS its single key is a plain row;
- *  - a served list renders as a native `<details>`: a count plus a clipped
+ *  - a served list renders as a Radix Collapsible: a count plus a clipped
  *    preview closed, one item per line open. The full rendered value stays
  *    on the row's `title`, exactly the string the chip used to carry, so
  *    nothing the old surface exposed is lost;
@@ -118,10 +121,10 @@ function LedgerValue({ fact }: { fact: LogLedgerFact }) {
     return <span className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>{fact.value}</span>;
   }
   return (
-    <details className="group min-w-0">
-      <summary
+    <Collapsible className="group min-w-0">
+      <CollapsibleTrigger
         className={cn(
-          "flex min-w-0 cursor-pointer list-none items-center gap-[var(--ds-space-snug)] [&::-webkit-details-marker]:hidden",
+          "flex min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)] text-left",
           dsRadius.xs,
           dsFocus,
         )}
@@ -129,22 +132,22 @@ function LedgerValue({ fact }: { fact: LogLedgerFact }) {
         <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-secondary)]")}>
           {fact.items.length} {fact.items.length === 1 ? "value" : "values"}
         </span>
-        <span className={cn(dsText.meta, dsClip.text, "text-[color:var(--ds-fg-muted)] group-open:hidden")}>
+        <span className={cn(dsText.meta, dsClip.text, "text-[color:var(--ds-fg-muted)] group-data-[state=open]:hidden")}>
           {fact.items.join(" · ")}
         </span>
         <ChevronRight
           aria-hidden
-          className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]", dsMotion.base, "group-open:rotate-90")}
+          className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]", dsMotion.base, "group-data-[state=open]:rotate-90")}
         />
-      </summary>
-      <ul className="m-0 flex list-none flex-col gap-[var(--ds-space-hair)] p-0 pt-[var(--ds-space-tight)]">
+      </CollapsibleTrigger>
+      <CollapsibleContent><ul className="m-0 flex list-none flex-col gap-[var(--ds-space-hair)] p-0 pt-[var(--ds-space-tight)]">
         {fact.items.map((item, index) => (
           <li key={`${String(index)}:${item}`} className={cn(dsText.body, dsText.nums, "break-all text-[color:var(--ds-fg)]")}>
             {item}
           </li>
         ))}
-      </ul>
-    </details>
+      </ul></CollapsibleContent>
+    </Collapsible>
   );
 }
 

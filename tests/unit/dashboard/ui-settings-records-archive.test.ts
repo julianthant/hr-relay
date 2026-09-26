@@ -197,9 +197,12 @@ describe("Saved Archive records presentation", () => {
     assert.match(article.textContent ?? "", /Saved record · read-only/u);
     assert.ok(article.querySelector("dl"), "structured report values remain a definition list");
     assert.ok(article.querySelector('table[aria-label="Retained work"]'));
-    const identity = article.querySelector("details");
-    assert.ok(identity instanceof HTMLDetailsElement);
-    assert.equal(identity.open, false);
+    const identity = article.querySelector('[data-slot="collapsible"]');
+    assert.ok(identity instanceof HTMLElement);
+    assert.equal(identity.getAttribute("data-state"), "closed");
+    assert.equal(identity.querySelector("button")?.getAttribute("aria-expanded"), "false");
+    await archive.click("Report identity");
+    assert.equal(identity.getAttribute("data-state"), "open");
     assert.equal(identity.querySelectorAll("p").length, 1, "the raw run id stays the only value inside its disclosure");
     assert.equal(document.querySelector(`tr[aria-selected="true"] button[aria-pressed="true"]`)?.textContent?.trim(), REPORT.title);
     assert.ok(article.querySelector('a[download="archive-00000000-0000-4000-8000-000000000081.json"]'));

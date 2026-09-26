@@ -24,6 +24,8 @@
 
 import "./tokens.css";
 
+export { Collapsible, CollapsibleTrigger, CollapsibleContent } from "./shadcn-collapsible.js";
+
 export {
   dsText,
   dsSurface,
@@ -126,6 +128,7 @@ export {
    */
   TakeoverFrame,
   Banner,
+  Disclosure,
   MetaLine,
   /**
    * A wrapping row of PEER facts. Reach for it instead of `flex flex-wrap`

@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
-import { BareButton, Button, dsBorder, dsFocus, dsIcon, dsRadius, dsSurface, dsText } from "../ds/ui.js";
+import { BareButton, Button, Disclosure, dsBorder, dsFocus, dsIcon, dsRadius, dsSurface, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { fmtClock } from "./format.js";
 import { statusAccessibleName, dsStatusOf } from "./status-model.js";
@@ -40,7 +40,7 @@ export function WorkflowBatchGroup({ batch, label, selected, children, history, 
         Started {fmtClock(batch.startedAt)} · {[...counts].map(([status, count]) => `${count} ${status}`).join(" · ")}
       </p>
       {error !== undefined && <p role="alert" className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-danger)]")}>{error}</p>}
-      {open && <div>{children}{batch.history.length > 0 && <details open={selected !== undefined || undefined} className="pb-[var(--ds-space-base)]"><summary className={cn(dsText.meta, dsFocus, "cursor-pointer px-[var(--ds-space-cozy)]")}>Previous attempts ({batch.history.length})</summary>{history}</details>}</div>}
+      {open && <div>{children}{batch.history.length > 0 && <Disclosure key={selected ?? "none"} defaultOpen={selected !== undefined} className="pb-[var(--ds-space-base)]" summaryClassName={cn(dsText.meta, "px-[var(--ds-space-cozy)]")} summary={`Previous attempts (${batch.history.length})`}>{history}</Disclosure>}</div>}
     </section>
   );
 }

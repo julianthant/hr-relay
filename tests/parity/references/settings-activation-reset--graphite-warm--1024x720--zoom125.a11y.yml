@@ -76,7 +76,7 @@
       - text: Using default Screen height px
       - spinbutton "Screen height": "1440"
       - text: Using default
-      - group: Setting identities
+      - button "Setting identities"
     - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
     - text: No unsaved changes
     - button "Discard all" [disabled]

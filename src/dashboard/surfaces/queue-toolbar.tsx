@@ -54,6 +54,7 @@ import {
   Dialog,
   DialogContent,
   DialogFooter,
+  Disclosure,
   IconButton,
   Select,
   dsBorder,
@@ -550,12 +551,11 @@ export function QueueToolbar({
               with three outcomes is a discrepancy the operator would otherwise
               have to reconstruct from memory. */}
           {bulkOutcome.plan.skipped.length > 0 && (
-            <details className="mt-[var(--ds-space-snug)]">
-              <summary className={cn(dsText.meta, dsFocus, "cursor-pointer text-[color:var(--ds-fg-muted)]")}>
+            <Disclosure className="mt-[var(--ds-space-snug)]" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")} summary={<>
                 <span className={dsText.nums}>{bulkOutcome.plan.skipped.length}</span> selected{" "}
                 {bulkOutcome.plan.skipped.length === 1 ? "row" : "rows"} never offered {bulkOutcome.plan.label.toLowerCase()} —
                 nothing was attempted for {bulkOutcome.plan.skipped.length === 1 ? "it" : "them"}
-              </summary>
+              </>}>
               <div className="mt-[var(--ds-space-tight)] flex max-h-28 flex-col gap-[var(--ds-space-hair)] overflow-y-auto pl-[var(--ds-space-cozy)]">
                 {bulkOutcome.plan.skipped.map((row) => (
                   <span key={row.runId} className={cn(dsText.meta, "flex min-w-0 items-center gap-[var(--ds-space-base)]")}>
@@ -564,7 +564,7 @@ export function QueueToolbar({
                   </span>
                 ))}
               </div>
-            </details>
+            </Disclosure>
           )}
 
           {/* AND THE THIRD BUCKET SURVIVES THE SEND TOO. It has no titles to

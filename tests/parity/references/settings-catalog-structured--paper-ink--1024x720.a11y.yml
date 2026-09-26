@@ -82,7 +82,7 @@
         - spinbutton "Daily cost ceiling (required)": "0"
       - text: Using default
       - button "Clear providers · ocr Extract" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "Census geocoding":
       - heading "Census geocoding" [level=3]
       - separator
@@ -99,7 +99,7 @@
         - spinbutton "Daily cost ceiling (required)": "0"
       - text: Using default
       - button "Clear providers · geocode Census" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "Nominatim geocoding":
       - heading "Nominatim geocoding" [level=3]
       - separator
@@ -116,7 +116,7 @@
         - spinbutton "Daily cost ceiling (required)": "0"
       - text: Using default
       - button "Clear providers · geocode Nominatim" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "AI advisory":
       - heading "AI advisory" [level=3]
       - separator
@@ -133,7 +133,7 @@
         - spinbutton "Daily cost ceiling (required)": "0"
       - text: Using default
       - button "Clear providers · ai Advisory" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "Gemini":
       - heading "Gemini" [level=3]
       - separator
@@ -145,7 +145,7 @@
       - definition: "[\"model-second\",\"model-first\"]"
       - term: Default
       - definition: not set
-      - group: Setting identity
+      - button "Setting identity"
     - region "Groq":
       - heading "Groq" [level=3]
       - separator
@@ -153,7 +153,7 @@
       - textbox "providers · groq · models"
       - text: Using default Not set
       - button "Clear providers · groq · models" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "Mistral":
       - heading "Mistral" [level=3]
       - separator
@@ -161,7 +161,7 @@
       - textbox "providers · mistral · models"
       - text: Using default Not set
       - button "Clear providers · mistral · models" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "OpenRouter":
       - heading "OpenRouter" [level=3]
       - separator
@@ -169,7 +169,7 @@
       - textbox "providers · open Router · models"
       - text: Using default Not set
       - button "Clear providers · open Router · models" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - region "SambaNova":
       - heading "SambaNova" [level=3]
       - separator
@@ -177,7 +177,7 @@
       - textbox "providers · sambanova · models"
       - text: Using default Not set
       - button "Clear providers · sambanova · models" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]

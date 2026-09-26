@@ -85,14 +85,13 @@
       - definition: "1080"
       - term: Default
       - definition: "1440"
-      - group:
-        - text: Setting identities
-        - term: Screen width
-        - definition:
-          - code: display.screenWidth
-        - term: Screen height
-        - definition:
-          - code: display.screenHeight
+      - button "Setting identities" [expanded]
+      - term: Screen width
+      - definition:
+        - code: display.screenWidth
+      - term: Screen height
+      - definition:
+        - code: display.screenHeight
     - status: Settings applied Saved settings are active for new runs. Existing runs keep their original settings.
     - text: No unsaved changes
     - button "Discard all" [disabled]

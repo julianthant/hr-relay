@@ -1,11 +1,10 @@
 import { CrossDateSearchScopeSchema, CrossDateSearchStateFacetSchema, CrossDateSearchShapeFacetSchema, CrossDateSearchSystemFacetSchema } from "../../domain/dashboard/search.js";
-import { Button, DateInput, Field, Input, Select, dsText } from "../ds/ui.js";
+import { Button, DateInput, Disclosure, Field, Input, Select, dsText } from "../ds/ui.js";
 import type { SearchFilterDraft } from "./search-filters-model.js";
 
 export function SearchFilters({value,onChange}:{value:SearchFilterDraft;onChange:(value:SearchFilterDraft)=>void}) {
   const set=(key:keyof SearchFilterDraft,next:string)=>onChange({...value,[key]:next});
-  return <details className="mt-[var(--ds-space-base)]">
-    <summary className={dsText.ui}>Filters · {Object.values(value).filter(Boolean).length} selected</summary>
+  return <Disclosure className="mt-[var(--ds-space-base)]" summaryClassName={dsText.ui} summary={`Filters · ${Object.values(value).filter(Boolean).length} selected`}>
     <div className="grid grid-cols-3 gap-[var(--ds-space-base)] py-[var(--ds-space-base)]">
       <Field label="Search field"><Select value={value.scope} onChange={event=>set("scope",event.target.value)}><option value="">All metadata</option>{CrossDateSearchScopeSchema.options.filter(scope=>scope!=="all").map(scope=><option key={scope} value={scope}>{scope}</option>)}</Select></Field>
       <DateInput label="From" value={value.from} onChange={next=>set("from",next)}/>
@@ -22,5 +21,5 @@ export function SearchFilters({value,onChange}:{value:SearchFilterDraft;onChange
       <Field label="System"><Select value={value.system} onChange={event=>set("system",event.target.value)}><option value="">Any system</option>{CrossDateSearchSystemFacetSchema.options.map(system=><option key={system}>{system}</option>)}</Select></Field>
       <div className="self-end"><Button variant="secondary" size="sm" onClick={()=>onChange(Object.fromEntries(Object.keys(value).map(key=>[key,""])) as SearchFilterDraft)}>Clear filters</Button></div>
     </div>
-  </details>;
+  </Disclosure>;
 }

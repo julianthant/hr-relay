@@ -111,7 +111,7 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
         expect(budget!.width).toBeGreaterThan(page.viewportSize()!.width * 0.6);
       }
       if (section === "runtime-isolation") {
-        const identitySummary = page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator("details > summary");
+        const identitySummary = page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator('[data-slot="collapsible-trigger"]');
         await identitySummary.focus(); await expect(identitySummary).toBeFocused(); await page.keyboard.press("Enter");
         await expect(identitySummary.locator("xpath=..").locator("code")).toHaveText("paths.stateRoot");
       } else if (section === "storage") {
@@ -119,7 +119,7 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
         await doctor.focus(); await expect(doctor).toBeFocused();
       } else {
         await createSettingsDraft(page, section);
-        const identitySummary = page.locator('details > summary').filter({ hasText: section === "protected-store" ? "Credential identifiers" : "Setting identity" }).first();
+        const identitySummary = page.locator('[data-slot="collapsible-trigger"]').filter({ hasText: section === "protected-store" ? "Credential identifiers" : "Setting identity" }).first();
         await identitySummary.focus(); await expect(identitySummary).toBeFocused(); await page.keyboard.press("Enter");
         await expect(identitySummary.locator("xpath=..").locator("code").first()).toBeVisible();
       }
@@ -129,7 +129,7 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
         const discard = page.getByRole("button", { name: section === "protected-store" ? "Discard credentials" : "Discard all" });
         await expect(save).toBeVisible(); await expect(save).toBeEnabled();
         await expect(discard).toBeVisible(); await expect(discard).toBeEnabled();
-        const disclosure = page.locator("details[open]").last();
+        const disclosure = page.locator('[data-slot="collapsible"][data-state="open"]').last();
         await disclosure.scrollIntoViewIfNeeded();
         const disclosureBounds = await disclosure.boundingBox(); const footerBounds = await save.locator("xpath=..").boundingBox();
         expect(disclosureBounds).not.toBeNull(); expect(footerBounds).not.toBeNull();
@@ -191,13 +191,13 @@ test("UI-A Settings survives real browser zoom with keyboard details and reachab
         const geometry = await page.evaluate(() => ({ innerWidth, innerHeight, dpr: devicePixelRatio, cssZoom: document.documentElement.style.zoom, bodyCssZoom: document.body.style.zoom }));
         expect(geometry.cssZoom).toBe(""); expect(geometry.bodyCssZoom).toBe("");
         await createSettingsDraft(page, sample.section);
-        const identity = page.locator("details > summary", { hasText: "Setting identity" }).first();
+        const identity = page.locator('[data-slot="collapsible-trigger"]', { hasText: "Setting identity" }).first();
         await identity.focus(); await expect(identity).toBeFocused(); await page.keyboard.press("Enter");
         await expect(identity.locator("xpath=..").locator("code")).toBeVisible();
         const save = page.getByRole("button", { name: /^Save [1-9]\d*$/ });
         const discard = page.getByRole("button", { name: "Discard all" });
         const lastInput = page.locator('[data-settings-path] input:not([type=hidden]),[data-settings-path] textarea,[data-settings-path] select').last();
-        const disclosure = page.locator("details[open]").last();
+        const disclosure = page.locator('[data-slot="collapsible"][data-state="open"]').last();
         await disclosure.scrollIntoViewIfNeeded();
         const disclosureBounds = await disclosure.boundingBox(); const footerBounds = await save.locator("xpath=..").boundingBox();
         expect(disclosureBounds).not.toBeNull(); expect(footerBounds).not.toBeNull();

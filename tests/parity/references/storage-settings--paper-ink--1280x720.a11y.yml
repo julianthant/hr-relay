@@ -76,28 +76,28 @@
       - textbox "Operator label": Local operator
       - text: Using default
       - button "Clear Operator label" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
       - text: browser · headless
       - combobox "browser · headless":
         - option "Enabled" [selected]
         - option "Disabled"
       - text: Using default
       - button "Clear browser · headless" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
       - text: features · debug Screenshots
       - combobox "features · debug Screenshots":
         - option "Enabled"
         - option "Disabled" [selected]
       - text: Using default
       - button "Clear features · debug Screenshots" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
       - text: features · duo Web Authn
       - combobox "features · duo Web Authn":
         - option "Enabled" [selected]
         - option "Disabled"
       - text: Using default
       - button "Clear features · duo Web Authn" [disabled]: Clear
-      - group: Setting identity
+      - button "Setting identity"
     - text: No unsaved changes
     - button "Discard all" [disabled]
     - button "Save 0" [disabled]

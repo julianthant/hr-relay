@@ -56,7 +56,7 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
     await expect(page.getByRole("heading", { name: "Production routes", exact: true })).toBeVisible();
     await expect(page.getByText("Runtime state folder", { exact: true })).toBeVisible();
     await expect(page.getByText("Login URL", { exact: true })).toBeVisible();
-    const identity = page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator("details > summary");
+    const identity = page.getByText("Runtime state folder", { exact: true }).locator("xpath=..").locator('[data-slot="collapsible-trigger"]');
     await identity.focus(); await page.keyboard.press("Enter");
     await expect(page.getByText("paths.stateRoot", { exact: true })).toBeVisible();
   } else if (scene.id === "annual") {
