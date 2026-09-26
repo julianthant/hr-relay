@@ -133,6 +133,39 @@ the shared-kit Category 1 errors in `src/dashboard/kit/kit-page.tsx` and
 assigned to root. Exact logs and renders are retained in the evidence directory above. Full parity,
 repository-wide gates and real desktop browser zoom were not run.
 
+### General, Paths, and Routes fidelity checkpoint — 2026-09-26
+
+Commit `0794a443ec5ceb0c4e0d6377dac0a6fb1ec48a54` replaces the rejected partial General and
+Paths layouts with the approved revision-3 groups and copy. General shows the current fiscal year's
+required job end date, operator name, three browser switches, and one coupled width/height viewport
+row. Paths shows five served deployment locations as read-only facts, followed by four editable file
+paths. Both pages use the shared body primitives, including a canonical calendar with retained raw
+M/D/YYYY drafts. Routes uses the shared disclosure and the existing 700 ms valid-draft autosave;
+the explicit Save button is gone. The exact retry, conflict, readback, and dirty-exit models remain
+in use. The shared Switch thumb now stays inside its track in both themes. Performance is unchanged
+in this checkpoint and still needs its approved revision-3 presentation alignment.
+
+Real application captures at 100% for General, Paths, Routes, and diagnostic Performance in dark
+and light themes at 1440×900 and 1024×720 are retained under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/`.
+The `interactions.mjs` fixture probe retained an invalid `6/` date draft after autosave delay, then
+tabbed from the single named date textbox to its calendar and selected a date. The subsequent
+`date-focus.mjs` probe confirmed its wrapper has a visible 2 px solid focus ring while the textbox
+is focused, and Tab reaches the named calendar trigger. The Routes probe retained invalid `https://`
+and operated the disclosure by keyboard; the focused unit test confirms that invalid draft causes
+no save request. Runtime locations remain read-only
+pending the separately owned verified relocation work. All zoom tests were waived by the operator.
+
+Retained gate logs, all passing: [84 focused dashboard tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/vitest-focused.log),
+[17 architecture tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/architecture-focused.log),
+[2 theme Switch geometry parity tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/switch-parity.log),
+[scoped ESLint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/eslint-scoped.log),
+[typecheck](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/typecheck.log),
+[web build](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/web-build.log), and
+[date keyboard focus](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/fidelity/logs/date-focus.log).
+The build retains its existing >500 kB chunk warning. `git diff --check` passed; full repository
+gates and broad parity remain deferred under the Phase 3.1 cadence.
+
 ### Category assignments and gates
 
 Root owns design, behavior decisions, acceptance, and combined verification. Native Luna xhigh
