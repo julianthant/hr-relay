@@ -7,6 +7,67 @@ acceptance; Luna xhigh assignments own implementation and focused repairs.
 Read the [shared brief](README.md), particularly the frozen base, design rules, file allowlists,
 gate cadence and finalization conditions. This plan never waits for UI-B's implementation.
 
+## Approved Settings design-system implementation — 2026-09-26
+
+The operator approved the revision-3 Settings designs in this session and explicitly authorized
+implementation, with one final correction: the Add key button needs normal horizontal padding.
+This amendment supersedes the earlier Settings-only freezes on shared primitives, settings section
+membership, provider editing, and runtime-path editing for this assigned change. It does not reopen
+Archive, Activity, Sessions, Calendar, or unrelated workflow behavior. Settings begins the common UI
+update; future pages will reuse the same primitives.
+
+- Candidate checkout: `/Users/julianhein/.codex/worktrees/9d88/hr-automation-rebuild`.
+- Dedicated branch: `codex/settings-design-system`; accepted input: `8cdf38b2a` (master including
+  System hosts retirement). This chat owns the checkout; sequential category workers reuse it.
+- Visual authority and implementation brief:
+  `/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/prototypes/tabs/`.
+  Read `ui-kit-replacement-brief.md`, `revision-2-brief.md`, current HTML, and current screenshots.
+  The latest user direction and this amendment override superseded prototype caveats.
+- Body density is 90% of revision 2: 828px maximum width, 27px title, 13.5px labels, approximately
+  32.4px controls and 62.5px two-line rows. Sidebar stays 288px and keeps its approved typography.
+  No CSS zoom/transform. Both themes and 1024px desktop/zoom access remain required.
+- Consolidate to 11 tabs: General (Display and single Job end date included), Performance, Paths
+  (editable runtime locations included), Routes, Provider budgets & models, Credentials (provider
+  keys included), Storage checks, Preflight, Workflow capabilities, Keyboard, UI catalog. Remove
+  Observed host; preserve retired System hosts. Remove annual-year management and Kronos-period UI,
+  not historical stored data. Navigation durations use fixed seconds with correct stored-unit mapping.
+- Replace old DS primitives/specimens through the existing `ds/ui.tsx` barrel and real `kit-page.tsx`;
+  do not fork a Settings-only kit. Shared forms, rows, grouped surfaces, search, disclosures, secret
+  fields, ranked lists and confirmations use existing HeroUI/shadcn foundations. Retire superseded
+  local styles after their consumers migrate. Keep unrelated page layouts stable during this phase.
+- Credentials/provider keys are masked by default with individual eye and trash controls. Provider
+  groups follow selected concept B from referenced chat `01a0db65-9bcc-7f13-98fb-0fef9bb34de3`:
+  editable keys, autosave, Add key, and centered icon-free removal confirmation. Preserve false/unknown
+  save states and saved-versus-active restart semantics. Use supported authenticated BFF contracts;
+  never edit real credentials or move live state during verification.
+- Paths editing must preserve runtime isolation and coupled settings/database authority. Resolve
+  persistence/activation against current boot authority before implementation; an unsafe direct path
+  rewrite is not an acceptable shortcut. Record consequential contract changes at their owner and
+  decision index in the same logical commit.
+
+### Category assignments and gates
+
+Root owns design, behavior decisions, acceptance, and combined verification. Native Luna xhigh
+workers own all implementation and repairs. No nested dispatch or independent review in Phase 3.1.
+Writers run sequentially in this owned checkout; read-only investigation may overlap a disjoint writer.
+
+1. Shared DS primitives and real UI kit, including the Add key padding correction.
+2. Settings shell, General/Paths/Routes/Performance and section consolidation.
+3. Credential/provider persistence and UI, including activation and deletion behavior.
+4. Provider budgets/model ranking.
+5. Diagnostics/reference tabs, cohesive cleanup and final focused render/interaction proof.
+
+Each category stops with focused tests, scoped ESLint, diff checks, a logical commit, and retained
+before/after evidence. Root inspects actual diffs and results before releasing dependent work.
+Match tests to behavior, preserve assertions/membership/timeouts, and deliberately attribute changed
+visual references. Run affected architecture/static checks and combined typecheck as appropriate.
+Full repository coverage/lint/broad parity remain at 3.1.19 under the phase cadence; no claim they
+passed is permitted here. Shared-primitives changes require representative consumer inspection and
+focused kit proof now, with broad obligations recorded. Use playwright-cli for browser operation.
+
+Integration owner is the user. Completion here produces an accepted local candidate; no merge,
+push, new worktree, automatic next-task launch, or cleanup of peers is authorized.
+
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->
 
