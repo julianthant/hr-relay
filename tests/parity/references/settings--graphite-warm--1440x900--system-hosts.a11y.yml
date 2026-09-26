@@ -1,7 +1,7 @@
 # settings--graphite-warm--1440x900--system-hosts
 # adapter: fixture
 # fixture: settings
-# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
+# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: system-hosts
 # capturedAt: 2026-08-03
@@ -36,7 +36,7 @@
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
-      - link "Test routes":
+      - link "Routes":
         - /url: "?settings=routes"
       - link "Annual dates":
         - /url: "?settings=annual-dates"
@@ -49,7 +49,7 @@
         - /url: "?settings=provider-env"
       - link "Observed host":
         - /url: "?settings=derived-host"
-      - link "Deployment":
+      - link "Runtime paths":
         - /url: "?settings=runtime-isolation"
       - text: Status
       - link "Storage checks":
@@ -66,51 +66,34 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "System hosts" [level=2]
-    - text: 0 of 9 have a test host
-    - status: Each run selects its host Current deployment. Production is the default. A test request without a distinct test host is refused; it never falls through to production. A standing override here would redirect every future run with no expiry.
-    - table "System entry hosts":
-      - rowgroup:
-        - row "System Production Test":
-          - columnheader "System"
-          - columnheader "Production"
-          - columnheader "Test"
-      - rowgroup:
-        - row "UCPath A UCPath write on the test host files nothing real and reads a stale copy of the roster. https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y none provisioned":
-          - cell "UCPath A UCPath write on the test host files nothing real and reads a stale copy of the roster."
-          - cell "https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y"
-          - cell "none provisioned"
-        - row "CRM Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write. https://crm.ucsd.edu/hr none provisioned":
-          - cell "CRM Read-only for the download workflow, so the risk of the wrong host here is a wrong answer, not a wrong write."
-          - cell "https://crm.ucsd.edu/hr"
-          - cell "none provisioned"
-        - row "OnBase No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production. https://ucsd.hylandcloud.com/251ids/NavPanel.aspx none provisioned":
-          - cell "OnBase No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production."
-          - cell "https://ucsd.hylandcloud.com/251ids/NavPanel.aspx"
-          - cell "none provisioned"
-        - row "Kuali Staging holds its own documents — a doc ID from production will not resolve there. https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb none provisioned":
-          - cell "Kuali Staging holds its own documents — a doc ID from production will not resolve there."
-          - cell "https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb"
-          - cell "none provisioned"
-        - row "ServiceNow A ticket filed on the dev host is real and visible — it just goes to nobody. https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf none provisioned":
-          - cell "ServiceNow A ticket filed on the dev host is real and visible — it just goes to nobody."
-          - cell "https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf"
-          - cell "none provisioned"
-        - row "I-9 No test host is provisioned. The doctor's I-9 test-instance check reports the same thing. https://i9complete.ucop.edu none provisioned":
-          - cell "I-9 No test host is provisioned. The doctor's I-9 test-instance check reports the same thing."
-          - cell "https://i9complete.ucop.edu"
-          - cell "none provisioned"
-        - row "New Kronos Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total. https://ucsd-sso.prd.mykronos.com/wfd/home none provisioned":
-          - cell "New Kronos Workforce Dimensions, and where the separation timecard is read — a sandbox keeps its own punches, so the wrong host answers with a plausible wrong total."
-          - cell "https://ucsd-sso.prd.mykronos.com/wfd/home"
-          - cell "none provisioned"
-        - row "Old Kronos Workforce Central, kept for the reports the new tenant did not carry across. https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/ none provisioned":
-          - cell "Old Kronos Workforce Central, kept for the reports the new tenant did not carry across."
-          - cell "https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/"
-          - cell "none provisioned"
-        - row "SharePoint A download source, so the wrong host here yields the wrong file rather than the wrong write. https://ucsdcloud.sharepoint.com none provisioned":
-          - cell "SharePoint A download source, so the wrong host here yields the wrong file rather than the wrong write."
-          - cell "https://ucsdcloud.sharepoint.com"
-          - cell "none provisioned"
+    - heading "Production endpoints" [level=3]
+    - text: UCPath
+    - term: Production
+    - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y
+    - text: CRM
+    - term: Production
+    - definition: https://crm.ucsd.edu/hr
+    - text: OnBase
+    - term: Production
+    - definition: https://ucsd.hylandcloud.com/251ids/NavPanel.aspx
+    - text: Kuali
+    - term: Production
+    - definition: https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb
+    - text: ServiceNow
+    - term: Production
+    - definition: https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf
+    - text: I-9
+    - term: Production
+    - definition: https://i9complete.ucop.edu
+    - text: New Kronos
+    - term: Production
+    - definition: https://ucsd-sso.prd.mykronos.com/wfd/home
+    - text: Old Kronos
+    - term: Production
+    - definition: https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/
+    - text: SharePoint
+    - term: Production
+    - definition: https://ucsdcloud.sharepoint.com
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

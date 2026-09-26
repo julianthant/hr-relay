@@ -1,7 +1,7 @@
 # settings-catalog-annual--paper-ink--1024x720
 # adapter: fixture
 # fixture: settings-catalog
-# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
+# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
 # appVersion: 0.1.0
 # viewport: 1024x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -73,15 +73,15 @@
     - heading "FY2027" [level=3]
     - text: Job End Date M/D/YYYY
     - textbox "Job End Date": 6/30/2027
-    - paragraph: M/D/YYYY or MM/DD/YYYY
+    - paragraph: End date used in annual job records
     - button "Restore standard"
     - text: Kronos Default End Date M/D/YYYY
     - textbox "Kronos Default End Date": 6/30/2027
-    - paragraph: M/D/YYYY or MM/DD/YYYY
+    - paragraph: Default end date for Kronos reports
     - button "Restore standard"
     - text: Kronos Default Start Date M/D/YYYY
     - textbox "Kronos Default Start Date": 7/1/2026
-    - paragraph: M/D/YYYY or MM/DD/YYYY
+    - paragraph: Default start date for Kronos reports
     - button "Restore standard"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"

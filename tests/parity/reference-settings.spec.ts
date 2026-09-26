@@ -19,8 +19,8 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
  * THE OTHER TWO SETTINGS PANES (D274 item 6, ledger 3 SE40–SE42).
  *
  * `settings` above opens on Storage, which is served by the bootstrap and needs
- * nothing else. These two are the `settings/facts` panes — the resolved config's
- * System hosts table, and the descriptor registry's Workflow capabilities table
+ * nothing else. These are the `settings/facts` panes — the resolved production
+ * endpoints and the descriptor registry's Workflow capabilities
  * — and each is a projection of an authority the process already composed, so
  * what they print is what a run would actually do. They are photographed
  * because a capability row that claims a dry run a descriptor does not declare
@@ -30,8 +30,9 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
  * pixels at every width, and the nav that reaches them is already in `settings`.
  */
 test.describe("settings panes", () => {
-  const PANES: readonly { variant: string; section: string; table: string }[] = [
-    { variant: "capabilities", section: "workflow-capabilities", table: "Dry-run posture by workflow" },
+  const PANES: readonly { variant: string; section: string; heading: string }[] = [
+    { variant: "system-hosts", section: "system-hosts", heading: "Production endpoints" },
+    { variant: "capabilities", section: "workflow-capabilities", heading: "Where a dry run stops" },
   ];
   for (const pane of PANES) {
     const a11yName = `settings-pane-${pane.variant}.a11y.yml`;
@@ -45,21 +46,7 @@ test.describe("settings panes", () => {
       await dismissWorkflowWindow(page);
       await assertThemeApplied(page, PARITY_THEMES[0]);
 
-      /*
-        `useSettingsFacts` draws THREE states and only one of them is this
-        reference. Waiting on the pane's own SERVED table — a table that exists
-        on the `loaded` arm and on neither of the others — is what keeps a
-        `loading` skeleton, or the `failed` arm the corpus would have
-        photographed before the route existed, from being frozen here as if it
-        were the loaded page. Named, not `.first()`: an unnamed wait would be
-        satisfied by any table the takeover happened to draw.
-
-        Deliberately NOT `getByRole("heading")`: `PanelHeader` renders its title
-        as a styled `<span>`, so no Settings pane has a heading at all. That is
-        a real finding and it belongs in a fidelity unit, not in a re-freeze —
-        this reference photographs the surface as it ships.
-      */
-      await expect(page.getByRole("table", { name: pane.table })).toBeVisible();
+      await expect(page.getByRole("heading", { name: pane.heading, exact: true })).toBeVisible();
       await page.waitForTimeout(120);
       expect(errors, `page errors while rendering the ${pane.variant} pane`).toEqual([]);
       const snapshot = await page.locator("body").ariaSnapshot();

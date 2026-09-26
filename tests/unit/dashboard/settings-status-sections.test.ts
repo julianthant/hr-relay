@@ -166,57 +166,23 @@ function pending(): Promise<SettingsFactsWire> {
 }
 
 describe("System hosts (SE40)", () => {
-  it("prints the configured production host and names the absence of a test one", async () => {
+  it("summarizes configured production endpoints only", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
     assert.ok(text.includes("https://kuali.example/prod"), text);
-    assert.ok(text.includes("https://kuali.example/sbx"), text);
-    // The absence is a WORD, not a blank cell: a run cannot ask for a test
-    // instance that is not provisioned, and an empty cell says nothing.
-    assert.ok(text.includes("none provisioned"), text);
+    assert.ok(text.includes("https://crm.example/hr"), text);
+    const panelText = mounted().querySelector(".settings-page-panel")?.textContent ?? "";
+    assert.ok(!panelText.includes("https://kuali.example/sbx"), panelText);
+    assert.doesNotMatch(panelText, /\btest\b|sandbox|per-run host|each run selects its host/iu);
   });
 
   /**
-   * Unit F11b finding 2: a test host configured IDENTICAL to production must
-   * read differently from one nobody provisioned at all — both are refused a
-   * run, but only one of them is a config mistake worth surfacing by name.
-   */
-  it("names a test host configured identical to production as refused, not as unprovisioned", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("provisioned identical to production — refused"), text);
-    // OnBase is the not-distinct row and CRM is the genuinely unprovisioned
-    // one — both must be on screen, and they must be distinguishable words.
-    // Named, not id'd: UF-SET-25 replaced the raw wire key with the system's
-    // own name, so `onbase` is now `OnBase`.
-    assert.ok(text.includes("OnBase"), text);
-    assert.ok(text.includes("CRM"), text);
-  });
-
-  it("counts the systems that have a test host", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    // Only `kuali` is `provisioned`; `onbase`'s `not-distinct` test host does
-    // NOT count — it is refused at run time, not a usable test host.
-    assert.ok(text.includes("1 of 3 have a test host"), text);
-  });
-
-  it("shows the current deployment source beside the per-run host decision", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("Current deployment. Production is the default."), text);
-    assert.ok(text.includes("Each run selects its host"), text);
-    assert.ok(text.includes("never falls through to production"), text);
-  });
-
-  /**
-   * UF-SET-25 — the SYSTEM column printed the raw wire id (`ucpath`,
-   * `new-kronos`), which is a KEY. The demo prints the system's own name off a
-   * client constant, and so does this now.
+   * The summary presents the system's name, not its wire id.
    */
   it("names each system rather than printing its wire id", async () => {
     await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    // Read the SYSTEM cell itself rather than the panel's text: the host URLs
-    // in the two columns beside it contain `crm` and `onbase` as substrings, so
-    // a whole-panel search cannot tell a name from a hostname.
-    const names = [...mounted().querySelectorAll("tbody tr")].map(
-      (row) => row.querySelector("td")?.textContent ?? "",
+    // Read the name itself because hostnames can contain system ids.
+    const names = [...mounted().querySelectorAll(".settings-host-row")].map(
+      (row) => row.querySelector(".settings-host-heading > span")?.textContent ?? "",
     );
     assert.equal(names.length, 3);
     assert.ok(names[0]?.startsWith("Kuali"), names.join(" | "));
@@ -227,56 +193,14 @@ describe("System hosts (SE40)", () => {
     }
   });
 
-  /**
-   * UF-SET-26 — every row carries one sentence saying why the instance choice
-   * matters for THAT system. Absent entirely before this.
-   */
-  it("carries the per-system sentence under each name", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.kuali.note), text);
-    assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.crm.note), text);
-    assert.ok(text.includes(SYSTEM_HOST_PRESENTATION.onbase.note), text);
-  });
-
-  it("keeps host source and refusal beside the facts after removing the subtitle", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("Current deployment."), text);
-    assert.ok(text.includes("test request without a distinct test host is refused"), text);
-    assert.doesNotMatch(text, /Which machine each system resolves to/u);
-  });
-
-  /**
-   * The map is `Record<BrowserSystemId, …>`, so a MISSING system is already a
-   * compile error. This pins the other direction — a key the enum no longer
-   * carries, which compiles fine and is dead presentation nobody will notice.
-   */
-  it("presents exactly the closed system enum, no more and no less", () => {
+  it("presents exactly the closed system enum with names", () => {
     assert.deepEqual(
       Object.keys(SYSTEM_HOST_PRESENTATION).sort(),
       [...BrowserSystemIdSchema.options].sort(),
     );
     for (const [system, presentation] of Object.entries(SYSTEM_HOST_PRESENTATION)) {
       assert.ok(presentation.name.length > 0, `${system} has no name`);
-      assert.ok(presentation.note.length > 0, `${system} has no note`);
     }
-  });
-
-  /**
-   * The demo is the design authority for every system it covers, so its note is
-   * the note — byte for byte (operator's ruling, unit U4b). U3 re-authored the
-   * two that restate provisioning state and a `/provisioned/i` rule test was
-   * added to hold the re-authoring in place; both are gone. This pins the port
-   * itself instead, for the two the re-authoring had replaced.
-   */
-  it("carries the demo's own sentence for the systems the demo covers", () => {
-    assert.equal(
-      SYSTEM_HOST_PRESENTATION.onbase.note,
-      "No test host is provisioned — a test run here is refused at enqueue rather than silently sent to production.",
-    );
-    assert.equal(
-      SYSTEM_HOST_PRESENTATION.i9.note,
-      "No test host is provisioned. The doctor's I-9 test-instance check reports the same thing.",
-    );
   });
 });
 
@@ -388,7 +312,7 @@ describe("the F11b review fixes", () => {
 describe("the async arms (D275 item 4)", () => {
   it("says it is reading, rather than drawing an empty table", async () => {
     const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, pending);
-    assert.ok(text.includes("Reading what this deployment is configured with"), text);
+    assert.ok(text.includes("Loading deployment facts"), text);
     assert.ok(!text.includes("none provisioned"), text);
   });
 

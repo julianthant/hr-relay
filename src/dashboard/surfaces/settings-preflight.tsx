@@ -59,8 +59,8 @@ export function PreflightReportContent({ preflight, onRerun }: { preflight: Pref
         Scope: {completed.report.requestedCapabilities.join(" · ")}<br />
         Checked <time dateTime={completed.report.checkedAt}>{completed.report.checkedAt}</time>
       </span>
-      <div className="preflight-check-list flex min-w-0 flex-col gap-[var(--ds-space-base)]">
-        {completed.checks.map(check => <div key={check.id} className="preflight-check-row flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+      <div className="settings-preflight-list">
+        {completed.checks.map(check => <div key={check.id} className="settings-preflight-item">
           <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>{check.verdict}</Badge>
             <span className={cn(dsText.ui, "break-words font-medium")}>{checkCopy(check.id).name}</span>

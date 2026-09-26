@@ -15,6 +15,7 @@ export function SettingsValueControl({ leaf, operation, error, disabled, update 
     if (typeof raw === "string") throw new Error("settings-object-draft-invalid");
     return <fieldset disabled={disabled} className="settings-object-field flex min-w-0 flex-col gap-[var(--ds-space-base)]">
       <legend className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>{settingTitle(leaf)}</legend>
+      {settingNote(leaf) !== undefined && <p className={cn(dsText.body, "m-0 text-[color:var(--ds-fg-muted)]")}>{settingNote(leaf)}</p>}
       <div className="settings-object-fields grid grid-cols-2 gap-[var(--ds-space-base)]">
         {leaf.control.fields.map(field => <Field key={field.name} label={settingObjectFieldTitle(field.name)} hint={providerFieldPresentation(field.name).unit} required={field.required} className="settings-object-subfield">
           <Input type={field.input === "number" ? "number" : "url"} min={field.minimum} step={field.input === "number" ? 1 : undefined}

@@ -14,6 +14,10 @@ const NOTES: Readonly<Record<string, string>> = {
   "browser.headless": "Run browser sessions without a visible window",
   "features.debugScreenshots": "Capture extra diagnostic images",
   "features.duoWebAuthn": "Use WebAuthn for Duo sign-in",
+  "paths.reportsDir": "Where generated reports are written",
+  "paths.downloadsDir": "Where browser downloads are kept",
+  "paths.onboardingDocsDir": "Where onboarding documents are stored",
+  "paths.i9CheckTrackerPath": "File used to track I-9 checks",
 };
 
 function humanize(value: string): string {
@@ -50,5 +54,8 @@ export function settingTitle(leaf: EditableSettingsLeafWire): string {
 export function settingNote(leaf: EditableSettingsLeafWire): string | undefined {
   const timeout = timeoutSetting(leaf.path);
   if (timeout !== undefined) return timeout.description;
+  if (leaf.path.endsWith(".jobEndDate")) return "End date used in annual job records";
+  if (leaf.path.endsWith(".kronosDefaultEndDate")) return "Default end date for Kronos reports";
+  if (leaf.path.endsWith(".kronosDefaultStartDate")) return "Default start date for Kronos reports";
   return NOTES[leaf.path] ?? (leaf.description === leaf.label ? undefined : leaf.description);
 }

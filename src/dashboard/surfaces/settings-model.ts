@@ -222,7 +222,7 @@ export { useEditableSettings } from "./settings-editor-model.js";
 export type { EditableSettingsState,PreflightRerunState,SettingsSaveState } from "./settings-editor-model.js";
 export { useSettingsFacts } from "./settings-facts-model.js";
 export type { SettingsFactsState } from "./settings-facts-model.js";
-export { SYSTEM_HOST_PRESENTATION,systemHostsMeta } from "./settings-hosts-model.js";
+export { SYSTEM_HOST_PRESENTATION } from "./settings-hosts-model.js";
 export type { SystemHostPresentation } from "./settings-hosts-model.js";
 export { spanAuthorityProblemDetail,storageNeedsAttention } from "./storage-settings-model.js";
 export type { SpanAuthorityProblem,StorageHealthSummary } from "./storage-settings-model.js";

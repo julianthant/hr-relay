@@ -18,7 +18,7 @@ import { useSettingsFacts } from "./settings-facts-model.js";
  * the failed arm names the failure, in an `alert`, instead of rendering an
  * honest-looking page of nothing.
  */
-const FACTS_LOADING = "Reading what this deployment is configured with";
+const FACTS_LOADING = "Loading deployment facts";
 
 
 export function FactsPane({
@@ -60,7 +60,6 @@ export function FactsPane({
       >
         <span className="flex flex-col gap-[var(--ds-space-tight)]">
           <span>{facts.message}</span>
-          <span>Nothing below is missing — nothing below was asked for.</span>
         </span>
       </Banner>
     );

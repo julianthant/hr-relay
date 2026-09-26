@@ -1,7 +1,7 @@
 # setup-preflight--paper-ink--1280x720--stale-doctor
 # adapter: production-preflight-services
 # fixture: stale
-# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
+# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: stale-doctor
 # capturedAt: 2026-08-03
