@@ -12,7 +12,7 @@ TriangleAlert
 import { useEffect, useState } from "react";
 import { systemClock } from "../../domain/clock.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { Badge,Button,Chip,Drawer,DrawerContent,DrawerTrigger,EmptyState,MetaLine,Refusal,dsFocus,dsIcon,dsMotion,dsText } from "../ds/ui.js";
+import { BareButton, Badge,Button,Chip,Drawer,DrawerContent,DrawerTrigger,EmptyState,MetaLine,Refusal,dsFocus,dsIcon,dsMotion,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useNotificationClient as useDashboardClient } from "../state/notification-client.js";
 import {
@@ -121,7 +121,7 @@ export function NotificationBell({
   return (
     <Drawer open={open} onOpenChange={setOpen}>
       <DrawerTrigger asChild>
-      <button
+      <BareButton
         type="button"
         aria-label={`Notifications — ${unread} unread`}
         className={cn(
@@ -152,7 +152,7 @@ export function NotificationBell({
             {unread}
           </span>
         )}
-      </button>
+      </BareButton>
       </DrawerTrigger>
         <DrawerContent
           title="Notifications"

@@ -15,6 +15,7 @@ import {
   UserRoundSearch,
 } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { ShadcnBadge } from "./shadcn-badge.js";
 import { dsClip, dsIcon, dsRadius, dsText } from "./tokens.js";
 import { DISPLAY_STATUS_LABELS } from "../../domain/dashboard/status-vocabulary.js";
 import type { displayStatusOf } from "../../domain/dashboard/status-vocabulary.js";
@@ -344,7 +345,7 @@ export function StatusPill({
   const spec = DS_STATUS[status];
   const Icon = spec.icon;
   return (
-    <span
+    <ShadcnBadge
       title={spec.meaning}
       className={cn(
         // `dsClip.token` gives the pill a ceiling of its parent's width. Without
@@ -389,7 +390,7 @@ export function StatusPill({
           · {age}
         </span>
       )}
-    </span>
+    </ShadcnBadge>
   );
 }
 

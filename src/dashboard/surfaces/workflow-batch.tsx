@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { ChevronDown } from "lucide-react";
-import { Button, dsBorder, dsFocus, dsIcon, dsRadius, dsSurface, dsText } from "../ds/ui.js";
+import { BareButton, Button, dsBorder, dsFocus, dsIcon, dsRadius, dsSurface, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { fmtClock } from "./format.js";
 import { statusAccessibleName, dsStatusOf } from "./status-model.js";
@@ -27,10 +27,10 @@ export function WorkflowBatchGroup({ batch, label, selected, children, history, 
   return (
     <section aria-label={`${label} batch`} className={cn("mx-[var(--ds-space-cozy)] mt-[var(--ds-space-base)] border", dsBorder.base, dsRadius.md, dsSurface.card)}>
       <div className="flex items-center gap-[var(--ds-space-snug)] p-[var(--ds-space-snug)]">
-        <button type="button" aria-expanded={open} onClick={() => { setExpanded(!open); setCollapsedSelection(open ? selected : undefined); }} className={cn("flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)] text-left", dsFocus, dsText.ui)}>
+        <BareButton type="button" aria-expanded={open} onClick={() => { setExpanded(!open); setCollapsedSelection(open ? selected : undefined); }} className={cn("flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)] text-left", dsFocus, dsText.ui)}>
           <ChevronDown aria-hidden className={cn(dsIcon.sm, !open && "-rotate-90")} />
           <span className="min-w-0 truncate font-semibold">{label} · {batch.members.length} {batch.members.length === 1 ? "item" : "items"}</span>
-        </button>
+        </BareButton>
         {onGrouping !== undefined && <Button size="sm" variant="ghost" disabled={pending} onClick={() => {
           setPending(true); setError(undefined);
           onGrouping(batch, false).catch((caught: unknown) => setError(caught instanceof Error ? caught.message : String(caught))).finally(() => setPending(false));

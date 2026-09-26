@@ -2,9 +2,11 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-data.tsx
  */
+import { Button as HeroButton, ProgressBar as HeroProgressBar } from "@heroui/react";
 import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
 import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { ShadcnTable, ShadcnTableBody, ShadcnTableCell, ShadcnTableHead, ShadcnTableHeader, ShadcnTableRow } from "./shadcn-table.js";
 import { dsFocus, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /**
@@ -57,7 +59,7 @@ export function Table({
   children: ReactNode;
 }) {
   return (
-    <table
+    <ShadcnTable
       aria-label={label}
       aria-rowcount={rowCount}
       className={cn(
@@ -68,21 +70,21 @@ export function Table({
       )}
     >
       {children}
-    </table>
+    </ShadcnTable>
   );
 }
 
 /** Sticky by default — the header must survive scrolling a long queue. */
 export function THead({ className, children }: { className?: string; children: ReactNode }) {
   return (
-    <thead className={cn("sticky top-0", dsLayer.sticky, "bg-[var(--ds-surface-2)]", className)}>
+    <ShadcnTableHeader className={cn("sticky top-0", dsLayer.sticky, "bg-[var(--ds-surface-2)]", className)}>
       {children}
-    </thead>
+    </ShadcnTableHeader>
   );
 }
 
 export function TBody({ className, children }: { className?: string; children: ReactNode }) {
-  return <tbody className={className}>{children}</tbody>;
+  return <ShadcnTableBody className={className}>{children}</ShadcnTableBody>;
 }
 
 export function TR({
@@ -98,7 +100,7 @@ export function TR({
   children: ReactNode;
 } & HTMLAttributes<HTMLTableRowElement>) {
   return (
-    <tr
+    <ShadcnTableRow
       aria-selected={selected}
       className={cn(
         "h-[var(--ds-h-row)]",
@@ -119,7 +121,7 @@ export function TR({
       {...props}
     >
       {children}
-    </tr>
+    </ShadcnTableRow>
   );
 }
 
@@ -140,7 +142,7 @@ export function TH({
 }) {
   const SortIcon = sort === "ascending" ? ArrowUp : sort === "descending" ? ArrowDown : ChevronsUpDown;
   return (
-    <th
+    <ShadcnTableHead
       scope="col"
       aria-sort={sort}
       className={cn(
@@ -154,11 +156,12 @@ export function TH({
       {...props}
     >
       {onSort ? (
-        <button
+        <HeroButton
           type="button"
+          variant="ghost"
           onClick={onSort}
           className={cn(
-            "inline-flex cursor-pointer items-center gap-[var(--ds-space-tight)] whitespace-nowrap",
+            "inline-flex h-auto w-auto min-w-0 cursor-pointer items-center gap-[var(--ds-space-tight)] whitespace-nowrap border-0 bg-transparent p-0 shadow-none",
             dsFocus,
             dsMotion.fast,
             "hover:text-[color:var(--ds-fg)]",
@@ -167,11 +170,11 @@ export function TH({
         >
           {children}
           <SortIcon aria-hidden className={cn(dsIcon.sm, sort === "none" && "opacity-40")} />
-        </button>
+        </HeroButton>
       ) : (
         children
       )}
-    </th>
+    </ShadcnTableHead>
   );
 }
 
@@ -187,7 +190,7 @@ export function TD({
   numeric?: boolean;
 }) {
   return (
-    <td
+    <ShadcnTableCell
       className={cn(
         "border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)]",
         "text-[color:var(--ds-fg-secondary)]",
@@ -199,7 +202,7 @@ export function TD({
       {...props}
     >
       {children}
-    </td>
+    </ShadcnTableCell>
   );
 }
 
@@ -242,16 +245,17 @@ export function ProgressBar({
           : "bg-[var(--ds-accent)]";
 
   return (
-    <div className={cn("flex min-w-0 items-center gap-[var(--ds-space-base)]", className)}>
-      <div
-        role="progressbar"
-        aria-label={label}
-        aria-valuemin={indeterminate ? undefined : 0}
-        aria-valuemax={indeterminate ? undefined : max}
-        aria-valuenow={indeterminate ? undefined : value}
+    <HeroProgressBar
+      value={value}
+      maxValue={max}
+      isIndeterminate={indeterminate}
+      aria-label={label}
+      className={cn("flex min-w-0 items-center gap-[var(--ds-space-base)]", className)}
+    >
+      <HeroProgressBar.Track
         className={cn("h-1 min-w-0 flex-1 overflow-hidden bg-[var(--ds-surface-3)]", dsRadius.pill)}
       >
-        <div
+        <HeroProgressBar.Fill
           className={cn(
             "h-full",
             fill,
@@ -262,13 +266,13 @@ export function ProgressBar({
           )}
           style={indeterminate ? undefined : { width: `${pct}%` }}
         />
-      </div>
+      </HeroProgressBar.Track>
       {showValue && !indeterminate && (
         <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
           {Math.round(pct)}%
         </span>
       )}
-    </div>
+    </HeroProgressBar>
   );
 }
 

@@ -61,7 +61,7 @@ for(const viewport of PARITY_VIEWPORTS)for(const theme of PARITY_THEMES) {
       const report=ActivityReportSelectionSchema.parse(await (await reportResponse).json());expect(report.totalRuns).toBe(23);
       await expect(page.getByRole("button",{name:"Export CSV",exact:true})).toBeVisible();
       const activityCsv=await bytes(await download(page,"Export CSV"));expect(activityCsv.toString()).toContain("Runs in range,23");
-      const activityXlsx=await bytes(await download(page,"XLSX")),activitySheets=await readXlsxFile(activityXlsx);
+      const activityXlsx=await bytes(await download(page,"Export XLSX")),activitySheets=await readXlsxFile(activityXlsx);
       expect(activitySheets.find(sheet=>sheet.sheet==="Summary")?.data.find(row=>row[0]==="Total runs")?.[1]).toBe(report.totalRuns);
       for(const size of [{width:1024,height:720},{width:viewport.width,height:viewport.height}]) {
         await page.setViewportSize(size);await page.getByRole("button",{name:"Refresh report"}).focus();await expect(page.getByRole("button",{name:"Refresh report"})).toBeFocused();

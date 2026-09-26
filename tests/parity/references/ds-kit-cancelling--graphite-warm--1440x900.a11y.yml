@@ -76,14 +76,10 @@
   - text: Keys j k ⌘K Esc Loading
   - status "Loading"
   - text: Progress
-  - progressbar "Records approved"
-  - text: 64%
-  - progressbar "Pages verified"
-  - text: 100%
-  - progressbar "Retries used"
-  - text: 80%
-  - progressbar "Failed writes"
-  - text: 22%
+  - progressbar "Records approved": 64%
+  - progressbar "Pages verified": 100%
+  - progressbar "Retries used": 80%
+  - progressbar "Failed writes": 22%
   - progressbar "Waiting on UCPath"
   - text: The last bar is indeterminate — never fake a denominator you do not have. Timeline
   - 'img "Progress: 2 of 5 steps done, now UCPath transaction"'
@@ -187,6 +183,12 @@
   - text: Employee ID
   - textbox "Employee ID" [invalid]: 10084412X
   - alert: No UCPath record matches 10084412X.
+  - text: Date
+  - group "Date":
+    - spinbutton "month, Date": "7"
+    - spinbutton "day, Date": "16"
+    - spinbutton "year, Date": "2026"
+    - button "Choose date date Date"
   - text: Workflow 8 available
   - combobox "Workflow":
     - option "Separations" [selected]
@@ -215,7 +217,7 @@
   - text: Capture a screenshot at each write
   - checkbox "Auto-retry parked writes" [disabled]
   - text: Auto-retry parked writes Never available — a parked write is resolved by a human
-  - group "Run mode":
+  - radiogroup "Run mode":
     - text: Run mode
     - radio "Dry run No transaction is submitted" [checked]
     - text: Dry run No transaction is submitted

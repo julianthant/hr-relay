@@ -79,6 +79,7 @@ WorkflowExplorerWire,
 import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
 import { settleCommandResult } from "../app/command-result.js";
 import {
+BareButton,
 Badge,
 Banner,
 Button,
@@ -423,7 +424,7 @@ function WorkflowListPanel({
     const id = String(workflow.id);
     const active = id === selected;
     return (
-      <button
+      <BareButton
         type="button"
         aria-current={active ? "true" : undefined}
         onClick={() => onSelect(id)}
@@ -450,7 +451,7 @@ function WorkflowListPanel({
         <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
           {workflow.nodes.length}
         </span>
-      </button>
+      </BareButton>
     );
   };
 
@@ -674,7 +675,7 @@ function GraphNodeRow({
   const bindings = nodeBindings(node);
   const contracts = node.tasks.length;
   return (
-    <button
+    <BareButton
       type="button"
       aria-current={selected ? "true" : undefined}
       onClick={onSelect}
@@ -755,7 +756,7 @@ function GraphNodeRow({
           )}
         </span>
       </span>
-    </button>
+    </BareButton>
   );
 }
 

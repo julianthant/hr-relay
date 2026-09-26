@@ -52,6 +52,7 @@ import {
   parkResolutions,
 } from "./actions-model.js";
 import {
+  BareButton,
   Button,
   ContextMenu,
   ContextMenuContent,
@@ -281,7 +282,7 @@ export function BannerActions({
   return (
     <div className="mt-[var(--ds-space-base)] flex flex-wrap gap-[var(--ds-space-snug)]">
       {pills.map((a) => (
-        <button
+        <BareButton
           key={a.key}
           type="button"
           onClick={(e) => {
@@ -291,7 +292,7 @@ export function BannerActions({
           className={intentPill(a.intent, "md")}
         >
           {a.label}
-        </button>
+        </BareButton>
       ))}
     </div>
   );
@@ -333,7 +334,7 @@ export function ParkResolutions({
         const present = a.kind === "command" && a.command === "resolve-write-present";
         const Icon = present ? CheckCircle2 : CircleSlash;
         return (
-          <button
+          <BareButton
             key={a.key}
             type="button"
             onClick={(e) => {
@@ -365,7 +366,7 @@ export function ParkResolutions({
             {a.detail !== undefined && (
               <span className={cn(dsText.meta, "leading-snug text-[color:var(--ds-fg-muted)]")}>{a.detail}</span>
             )}
-          </button>
+          </BareButton>
         );
       })}
     </div>
@@ -403,7 +404,7 @@ export function OutcomeActionButton({
   // for any surface that still asks for the icon-only Review jump.
   if (action.key === "open-gate") {
     return (
-      <button
+      <BareButton
         type="button"
         onClick={(e) => {
           e.stopPropagation();
@@ -424,12 +425,12 @@ export function OutcomeActionButton({
         )}
       >
         <ArrowUpRight aria-hidden className={dsIcon.sm} />
-      </button>
+      </BareButton>
     );
   }
 
   return (
-    <button
+    <BareButton
       type="button"
       onClick={(e) => {
         e.stopPropagation();
@@ -438,7 +439,7 @@ export function OutcomeActionButton({
       className={cn(intentPill(action.intent, "sm"), "font-sans", className)}
     >
       {action.label}
-    </button>
+    </BareButton>
   );
 }
 

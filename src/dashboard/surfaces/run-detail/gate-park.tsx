@@ -3,6 +3,7 @@ import { CornerDownRight, UserRoundSearch, X } from "lucide-react";
 import type { z } from "zod";
 import { cn } from "../../lib/utils.js";
 import {
+  BareButton,
   IconButton,
   Chip,
   MetaLine,
@@ -295,7 +296,7 @@ export function DecisionNotice({
       <div
         className={cn("flex items-start gap-[var(--ds-space-tight)] p-[var(--ds-space-snug)]", paint.bg)}
       >
-        <button
+        <BareButton
           type="button"
           onClick={onGo}
           className={cn(
@@ -331,7 +332,7 @@ export function DecisionNotice({
               {`open ${decisionAge(since, nowIso)}`}
             </span>
           </span>
-        </button>
+        </BareButton>
         <IconButton
           size="xs"
           label={dismissLabel}

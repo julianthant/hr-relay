@@ -6,7 +6,7 @@ Sun
 } from "lucide-react";
 import { type ReactElement,memo } from "react";
 import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
-import { DEMO_THEME_LABEL,type DemoTheme,IconButton,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
+import { BareButton,DEMO_THEME_LABEL,type DemoTheme,IconButton,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { type DayCountWire } from "./date-navigation-model.js";
 import { DateNav } from "./date-navigation.js";
@@ -53,7 +53,7 @@ function ShellViewSwitcher({
   return (
     <div className={SEGMENTED_FRAME}>
       {SHELL_VIEWS.map((candidate) => (
-        <button
+        <BareButton
           key={candidate}
           type="button"
           aria-pressed={view === candidate}
@@ -70,7 +70,7 @@ function ShellViewSwitcher({
           )}
         >
           {SHELL_VIEW_LABEL[candidate]}
-        </button>
+        </BareButton>
       ))}
     </div>
   );

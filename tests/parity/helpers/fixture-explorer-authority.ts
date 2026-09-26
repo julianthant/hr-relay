@@ -4,7 +4,7 @@
  * shell, Settings, Archive and SSE responses use the existing reference BFF.
  */
 import { Hono } from "hono";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
@@ -33,7 +33,7 @@ import { fixtureHelloEnvelope, fixtureSnapshotEnvelope, fixtureHealthEnvelope, s
 function unexpected(): never { throw new Error("Explorer acceptance reached an unrelated effect"); }
 
 export async function startExplorerAuthorityServer(fault?: "empty-registry" | "unresolved-sources" | "stale-catalog" | "malformed-catalog") {
-  const root = mkdtempSync(join(tmpdir(), "explorer-browser-"));
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "explorer-browser-"));
   const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "explorer-browser" }, clock);
   const composition = composeExplorer({ database, clock, descriptorSetHash: FIXTURE_DESCRIPTOR_HASH });

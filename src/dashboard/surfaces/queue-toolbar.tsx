@@ -49,6 +49,7 @@ import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, 
 import { cn } from "../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../domain/commands.js";
 import {
+  BareButton,
   Button,
   Dialog,
   DialogContent,
@@ -284,7 +285,7 @@ export function QueueToolbar({
           ))}
         </Select>
 
-        <button
+        <BareButton
           type="button"
           aria-pressed={selectMode}
           title="Act on several rows at once"
@@ -306,7 +307,7 @@ export function QueueToolbar({
             <Square aria-hidden className={dsIcon.sm} />
           )}
           Select
-        </button>
+        </BareButton>
       </div>
 
       {/* SELECT MODE IS A MODE, so it gets its own band rather than six more
@@ -501,7 +502,7 @@ export function QueueToolbar({
               {vector.results.map((entry) => {
                 const tone = OUTCOME_TONE[entry.outcome];
                 return (
-                  <button
+                  <BareButton
                     key={entry.runId}
                     type="button"
                     onClick={() => onSelectRun(entry.runId)}
@@ -538,7 +539,7 @@ export function QueueToolbar({
                         {entry.code}
                       </span>
                     )}
-                  </button>
+                  </BareButton>
                 );
               })}
             </div>

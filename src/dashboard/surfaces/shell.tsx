@@ -8,7 +8,7 @@ PanelLeftOpen,
 PictureInPicture2
 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ComponentType,type ReactElement,type SVGProps } from "react";
-import { IconButton,Tooltip,dsBorder,dsElev,dsFocus,dsIcon,dsLayer,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
+import { BareButton, IconButton,Tooltip,dsBorder,dsElev,dsFocus,dsIcon,dsLayer,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { plural } from "./format.js";
 import {
@@ -120,7 +120,7 @@ export function WorkflowPanelToggle({
   const showing = mode !== "icon";
   const scope = `${dayActive} of ${plural(dayCount, "row")} across every workflow are ${dayActiveWords} today`;
   return (
-    <button
+    <BareButton
       id={WORKFLOW_PANEL_TOGGLE_ID}
       type="button"
       aria-expanded={showing}
@@ -164,7 +164,7 @@ export function WorkflowPanelToggle({
       >
         {dayActive}
       </span>
-    </button>
+    </BareButton>
   );
 }
 
@@ -192,7 +192,7 @@ function WorkflowEntryList({
       ? "font-semibold text-[color:var(--ds-fg)]"
       : "font-medium text-[color:var(--ds-fg-secondary)]";
     return (
-      <button
+      <BareButton
         type="button"
         aria-current={on ? "page" : undefined}
         onClick={() => onActive(id)}
@@ -267,7 +267,7 @@ function WorkflowEntryList({
             {total}
           </span>
         </span>
-      </button>
+      </BareButton>
     );
   };
 
@@ -509,7 +509,7 @@ export function StatusFilters({
     const on = active === key;
     return (
       <Tooltip key={key} content={title} side="top">
-      <button
+      <BareButton
         type="button"
         aria-pressed={on}
         onClick={() => onSelect(on ? "all" : key)}
@@ -531,7 +531,7 @@ export function StatusFilters({
         <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", tone)} />
         {label}
         <span className={dsText.nums}>{value}</span>
-      </button>
+      </BareButton>
       </Tooltip>
     );
   };
@@ -544,7 +544,7 @@ export function StatusFilters({
     const Icon = spec.icon;
     return (
       <Tooltip key={status} content={spec.meaning} side="top">
-      <button
+      <BareButton
         type="button"
         aria-pressed={on}
         // The ACCESSIBLE name, not the drawn word: `verifiedDone` and
@@ -588,7 +588,7 @@ export function StatusFilters({
             word. The word is still its accessible name. */}
         {!empty && spec.label}
         <span className={dsText.nums}>{value}</span>
-      </button>
+      </BareButton>
       </Tooltip>
     );
   };

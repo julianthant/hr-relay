@@ -65,7 +65,7 @@ import { createReceiptService } from "../../../src/server/trust/receipt-service.
 import type { RunDetailQueryDeps } from "../../../src/server/dashboard/queries/run-detail-types.js";
 
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
@@ -79,7 +79,7 @@ import { id } from "../database-foundation/fixtures.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 function diagnosticFoundation(){
- const root=mkdtempSync(join(tmpdir(),"foundation-baseline-"));const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
+ const root=mkdtempSync(join(realpathSync(tmpdir()),"foundation-baseline-"));const path=join(root,"state.db");const clock=manualClock(new Date(NOW));
  const db=AuthorityDatabase.open({path,busyTimeoutMs:250,migrationOwner:"foundation-proof"},clock);
  const config=ConfigSchema.parse({paths:defaultRuntimePaths()});
  const snapshot=ConfigSnapshotRecordSchema.parse({configSnapshotId:id(90),revision:1,fingerprint:sha256Hex(canonicalJsonStringify(config)),capturedAt:NOW,capturedBy:"local-operator",config,provenance:{}});

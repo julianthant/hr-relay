@@ -1,7 +1,7 @@
 import { useId, useState } from "react";
 import { z } from "zod";
 import { cn } from "../../lib/utils.js";
-import { dsBorder, dsClip, dsFocus, dsMotion, dsRadius, dsText } from "../../ds/ui.js";
+import { BareButton, dsBorder, dsClip, dsFocus, dsMotion, dsRadius, dsText } from "../../ds/ui.js";
 import { fmtClock, fmtElapsed } from "../format.js";
 import { timelineEventDuration, RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
 import {
@@ -267,7 +267,7 @@ function StepStrip({
               user tabbing the strip hears "button" with no way to tell this
               one discloses something, or which element it discloses.
             */}
-            <button
+            <BareButton
               type="button"
               aria-label={stepAriaLabel(step, openedAt)}
               aria-expanded={focusedStep === step.label}

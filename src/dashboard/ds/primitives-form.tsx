@@ -2,6 +2,7 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-form.tsx
  */
+import { Input as HeroInput, InputGroup as HeroInputGroup, Radio as HeroRadio, RadioGroup as HeroRadioGroup, Switch as HeroSwitch, TextArea as HeroTextArea } from "@heroui/react";
 import {
   createContext,
   forwardRef,
@@ -17,6 +18,8 @@ import {
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check, ChevronDown, Lock, Minus, Pencil, Search, TriangleAlert, Upload, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { NativeSelect } from "./shadcn-native-select.js";
+import { ShadcnButton } from "./shadcn-button.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /**
@@ -154,7 +157,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   function Input({ className, ...props }, ref) {
     const field = useFieldControl();
     return (
-      <input
+      <HeroInput
         ref={ref}
         {...field}
         {...props}
@@ -173,7 +176,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   function Textarea({ className, rows = 4, ...props }, ref) {
     const field = useFieldControl();
     return (
-      <textarea
+      <HeroTextArea
         ref={ref}
         rows={rows}
         {...field}
@@ -185,9 +188,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
 );
 
 /**
- * A native `<select>` — deliberately. The OS picker is keyboard-perfect, works
- * on a touch device, and never traps focus. Reach for a custom listbox only
- * when you need multi-select or per-option rendering, and say why.
+ * A themed shadcn NativeSelect. The OS picker preserves native keyboard behavior.
  *
  * **The wrapper is a FLEX box, and that is load-bearing.** A `<select>` is
  * `inline-block` with `vertical-align: baseline`, so in a normal-flow wrapper
@@ -214,23 +215,14 @@ export const Select = forwardRef<
   const field = useFieldControl();
   const toolbar = variant === "toolbar";
   return (
-    <span className={cn("relative flex min-w-0 items-center", toolbar && "shrink-0")}>
-      {icon && (
-        <span
-          aria-hidden
-          className={cn(
-            "pointer-events-none absolute left-[var(--ds-space-snug)] flex items-center",
-            "text-[color:var(--ds-fg-muted)]",
-          )}
-        >
-          {icon}
-        </span>
-      )}
-      <select
-        ref={ref}
-        {...field}
-        {...props}
-        className={cn(
+    <NativeSelect
+      ref={ref}
+      {...field}
+      {...props}
+      wrapperClassName={toolbar ? "shrink-0" : undefined}
+      leading={icon && <span className="text-[color:var(--ds-fg-muted)]">{icon}</span>}
+      trailing={!toolbar && <ChevronDown className={cn(dsIcon.sm, "text-[color:var(--ds-fg-muted)]")} />}
+      className={cn(
           toolbar
             ? cn(
                 "w-full min-w-0 border bg-[var(--ds-surface-1)]",
@@ -243,27 +235,13 @@ export const Select = forwardRef<
                 dsText.meta,
               )
             : cn(controlShell, "h-[var(--ds-h-md)]", dsText.ui),
-          "cursor-pointer appearance-none",
           icon ? "pl-[var(--ds-space-section)]" : "pl-[var(--ds-space-base)]",
           toolbar ? "pr-[var(--ds-space-base)]" : "pr-[var(--ds-space-section)]",
           className,
-        )}
-      >
-        {children}
-      </select>
-      {/* The toolbar variant carries its meaning in the LEADING icon, so a
-          trailing chevron would be a second glyph on a 24px control saying
-          nothing the first one did not. */}
-      {!toolbar && (
-        <ChevronDown
-          aria-hidden
-          className={cn(
-            dsIcon.sm,
-            "pointer-events-none absolute right-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]",
-          )}
-        />
       )}
-    </span>
+    >
+      {children}
+    </NativeSelect>
   );
 });
 
@@ -321,10 +299,7 @@ export function Checkbox({
   );
 }
 
-/**
- * Radio group over native inputs — one tab stop, arrow keys between options,
- * for free, in every browser.
- */
+/** Radio group with library-owned selection and arrow-key navigation. */
 export function RadioGroup<T extends string>({
   label,
   name,
@@ -340,46 +315,49 @@ export function RadioGroup<T extends string>({
   options: { value: T; label: ReactNode; description?: ReactNode; disabled?: boolean }[];
   className?: string;
 }) {
+  const labelId = useId();
   return (
-    <fieldset className={cn("flex min-w-0 flex-col gap-[var(--ds-space-snug)]", className)}>
-      <legend className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]")}>
+    <HeroRadioGroup
+      name={name}
+      value={value}
+      onChange={(next) => onValueChange(next as T)}
+      aria-labelledby={labelId}
+      className={cn("flex min-w-0 flex-col gap-[var(--ds-space-snug)]", className)}
+    >
+      <span id={labelId} className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]")}>
         {label}
-      </legend>
+      </span>
       {options.map((option) => (
-        <label
+        <HeroRadio
           key={option.value}
+          value={option.value}
+          isDisabled={option.disabled}
           className={cn(
-            "flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)]",
+            "group m-0 flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)]",
             option.disabled && "cursor-not-allowed opacity-50",
           )}
         >
-          <input
-            type="radio"
-            name={name}
-            value={option.value}
-            checked={value === option.value}
-            disabled={option.disabled}
-            onChange={() => onValueChange(option.value)}
+          <HeroRadio.Control
             className={cn(
               "mt-px size-4 shrink-0 cursor-pointer appearance-none rounded-full border",
               "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
-              "checked:border-[length:var(--ds-border-w-emphasis)] checked:border-[color:var(--ds-accent)]",
-              "checked:bg-[var(--ds-surface-page)]",
+              "group-data-[selected]:border-[length:var(--ds-border-w-emphasis)] group-data-[selected]:border-[color:var(--ds-accent)]",
+              "group-data-[selected]:bg-[var(--ds-surface-page)]",
               dsFocus,
               dsMotion.fast,
             )}
-          />
-          <span className="flex min-w-0 flex-col">
+          ><HeroRadio.Indicator /></HeroRadio.Control>
+          <HeroRadio.Content className="flex min-w-0 flex-col">
             <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{option.label}</span>
             {option.description && (
               <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
                 {option.description}
               </span>
             )}
-          </span>
-        </label>
+          </HeroRadio.Content>
+        </HeroRadio>
       ))}
-    </fieldset>
+    </HeroRadioGroup>
   );
 }
 
@@ -402,43 +380,24 @@ export function Switch({
   disabled?: boolean;
   className?: string;
 }) {
-  const id = useId();
   return (
-    <div className={cn("flex items-start gap-[var(--ds-space-base)]", className)}>
-      <button
-        type="button"
-        id={id}
-        role="switch"
-        aria-checked={checked}
-        disabled={disabled}
-        onClick={() => onCheckedChange(!checked)}
-        className={cn(
-          "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border",
-          checked
-            ? "border-transparent bg-[var(--ds-accent)]"
-            : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
-          "disabled:cursor-not-allowed disabled:opacity-50",
-          dsFocus,
-          dsMotion.fast,
-        )}
-      >
-        <span
-          aria-hidden
-          className={cn(
-            "block size-3 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
-            checked
-              ? "translate-x-3.5 bg-[var(--ds-accent-fg)]"
-              : "translate-x-0.5 bg-[var(--ds-fg-muted)]",
-          )}
-        />
-      </button>
-      <label htmlFor={id} className="flex min-w-0 cursor-pointer flex-col">
+    <HeroSwitch isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("flex items-start gap-[var(--ds-space-base)]", className)}>
+      <HeroSwitch.Control className={cn(
+        "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border",
+        checked ? "border-transparent bg-[var(--ds-accent)]" : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
+        dsFocus,
+        dsMotion.fast,
+      )}><HeroSwitch.Thumb className={cn(
+        "block size-3 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
+        checked ? "translate-x-3.5 bg-[var(--ds-accent-fg)]" : "translate-x-0.5 bg-[var(--ds-fg-muted)]",
+      )} /></HeroSwitch.Control>
+      <HeroSwitch.Content className="flex min-w-0 flex-col">
         <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
         {description && (
           <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>
         )}
-      </label>
-    </div>
+      </HeroSwitch.Content>
+    </HeroSwitch>
   );
 }
 
@@ -448,41 +407,42 @@ export const SearchInput = forwardRef<
   InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode }
 >(function SearchInput({ className, onClear, shortcut, value, ...props }, ref) {
   return (
-    <span
+    <HeroInputGroup
+      role="presentation"
       className={cn(
         "flex min-w-0 items-center gap-[var(--ds-space-snug)] border bg-[var(--ds-surface-2)]",
-        "h-[var(--ds-h-md)] border-[color:var(--ds-control-border)] px-[var(--ds-space-base)]",
+        "h-[var(--ds-h-md)] min-h-0 border-[color:var(--ds-control-border)] px-[var(--ds-space-base)]",
         dsRadius.md,
         dsFocusWithin,
         className,
       )}
     >
-      <Search aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
-      <input
+      <HeroInputGroup.Prefix className="h-full p-0"><Search aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} /></HeroInputGroup.Prefix>
+      <HeroInputGroup.Input
         ref={ref}
         type="search"
         value={value}
         {...props}
         className={cn(
-          "min-w-0 flex-1 bg-transparent outline-none",
+          "min-w-0 flex-1 bg-transparent p-0 outline-none",
           dsText.ui,
           "text-[color:var(--ds-fg)] placeholder:text-[color:var(--ds-fg-faint)]",
           "[&::-webkit-search-cancel-button]:hidden",
         )}
       />
-      {value && onClear ? (
-        <button
+      <HeroInputGroup.Suffix className="h-full p-0">{value && onClear ? (
+        <ShadcnButton
           type="button"
           aria-label="Clear search"
           onClick={onClear}
           className={cn("shrink-0 cursor-pointer text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]", dsFocus)}
         >
           <X aria-hidden className={dsIcon.sm} />
-        </button>
+        </ShadcnButton>
       ) : (
         shortcut
-      )}
-    </span>
+      )}</HeroInputGroup.Suffix>
+    </HeroInputGroup>
   );
 });
 
@@ -554,7 +514,7 @@ export function ValueField({
   const selectOnRelease = useRef(false);
   return (
     <span className={cn("relative flex min-w-0 items-center", className)}>
-      <input
+      <HeroInput
         id={id}
         aria-label={ariaLabel}
         title={title}
@@ -730,7 +690,7 @@ export function Dropzone({
         className,
       )}
     >
-      <input
+      <HeroInput
         type="file"
         accept={accept}
         disabled={busy}

@@ -2,6 +2,7 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-overlay.tsx
  */
+import { Button as HeroButton } from "@heroui/react";
 import {
   createContext,
   useCallback,
@@ -11,6 +12,7 @@ import {
   useRef,
   useState,
   useSyncExternalStore,
+  type ComponentProps,
   type Ref,
   type ReactNode,
 } from "react";
@@ -1151,15 +1153,16 @@ function ToastCard({
           "py-[var(--ds-space-tight)] pl-[var(--ds-space-base)] pr-[var(--ds-space-hair)]",
         )}
       >
-        <button
+        <HeroButton
           ref={toggleRef}
           type="button"
-          disabled={inert}
+          isDisabled={inert}
+          variant="ghost"
           aria-expanded={false}
-          title={inert ? "Show the full alert — available once the dialog is closed" : "Show the full alert"}
+          {...({ title: inert ? "Show the full alert — available once the dialog is closed" : "Show the full alert" } as ComponentProps<typeof HeroButton>)}
           onClick={() => setCollapsedByOperator(false)}
           className={cn(
-            "flex min-w-0 flex-1 cursor-pointer items-center gap-[var(--ds-space-tight)]",
+            "flex h-auto min-w-0 flex-1 cursor-pointer items-center gap-[var(--ds-space-tight)] border-0 bg-transparent p-0 shadow-none",
             "disabled:cursor-default",
             dsRadius.sm,
             dsFocus,
@@ -1168,7 +1171,7 @@ function ToastCard({
           <Icon aria-hidden className={cn(dsIcon.md, "shrink-0", spec.accent)} />
           <span className={cn(dsText.ui, "truncate font-medium text-[color:var(--ds-fg)]")}>{toast.title}</span>
           <ChevronUp aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
-        </button>
+        </HeroButton>
         <IconButton
           label="Dismiss"
           size="sm"
@@ -1206,9 +1209,10 @@ function ToastCard({
           <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>{toast.description}</span>
         )}
         {toast.action && (
-          <button
+          <HeroButton
             type="button"
-            disabled={inert}
+            isDisabled={inert}
+            variant="ghost"
             onClick={(e) => {
               // The card behind this dismisses on click; without stopping here
               // the action would fire and the card would dismiss twice.
@@ -1217,7 +1221,7 @@ function ToastCard({
               onDismiss(toast.id);
             }}
             className={cn(
-              "mt-[var(--ds-space-tight)] w-fit cursor-pointer underline underline-offset-2",
+              "mt-[var(--ds-space-tight)] h-auto w-fit min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left underline underline-offset-2 shadow-none",
               dsText.meta,
               "text-[color:var(--ds-fg)]",
               "disabled:cursor-default disabled:opacity-45",
@@ -1225,7 +1229,7 @@ function ToastCard({
             )}
           >
             {toast.action.label}
-          </button>
+          </HeroButton>
         )}
       </div>
       <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">

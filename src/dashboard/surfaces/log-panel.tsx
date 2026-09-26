@@ -55,6 +55,7 @@ import {
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import {
+  BareButton,
   EmptyState,
   IconButton,
   MetaLine,
@@ -814,7 +815,7 @@ export const LogPanel = memo(function LogPanel({
                 const Icon = meta.icon;
                 return (
                   <Tooltip key={key} content={`${meta.label} — press ${String(index + 1)}`} side="top">
-                    <button
+                    <BareButton
                       type="button"
                       role="tab"
                       aria-selected={active}
@@ -831,7 +832,7 @@ export const LogPanel = memo(function LogPanel({
                     >
                       <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
                       {meta.label}
-                    </button>
+                    </BareButton>
                   </Tooltip>
                 );
               })}

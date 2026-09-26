@@ -53,6 +53,7 @@ export type { DemoTheme } from "./theme.js";
 
 export {
   Button,
+  BareButton,
   ButtonLink,
   IconButton,
   Badge,

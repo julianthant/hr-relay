@@ -98,7 +98,10 @@ export async function archiveBrowserRouteReferences(input: ArchiveBrowserProbe):
     assert.equal(tabs.length, 1, "Archive browser observation cannot reach the Evidence tab");
     const evidenceTab = tabs[0];
     assert.ok(evidenceTab instanceof HTMLButtonElement, "Archive browser observation lost the Evidence tab");
-    await act(async () => { evidenceTab.click(); });
+    await act(async () => {
+      evidenceTab.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, button: 0 }));
+      evidenceTab.click();
+    });
     await act(async () => { onlyButton(host, "What it was").click(); });
 
     assert.deepEqual(requested.map(({ runId: run, artifactId: artifact }) => ({ runId: run, artifactId: artifact })),
