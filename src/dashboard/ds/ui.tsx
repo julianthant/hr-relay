@@ -124,6 +124,7 @@ export {
   DsBodyScope,
   PageHeading,
   FormGroup,
+  BodySection,
   ResultRow,
   /**
    * The root a full-page takeover wears: full-bleed under the top bar, and the

@@ -418,8 +418,10 @@
   --ds-w-body-switch: 35.1px;
   --ds-h-body-switch: 21.6px;
   --ds-size-body-switch-thumb: 16.2px;
-  --ds-body-switch-thumb-off-x: 2.7px;
+  --ds-body-switch-thumb-off-x: 1.8px;
   --ds-body-switch-thumb-on-x: 16.2px;
+  --ds-body-switch-thumb-bg: #ffffff;
+  --ds-body-switch-checked-bg: #3b82f6;
 
   --ds-tracking-caps: 0.14em; /* uppercase micro labels only */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
@@ -439,7 +441,18 @@
   --ds-space-page: 32px;
   --ds-w-body-content: 828px;
   --ds-w-body-performance: 1090px;
+  --ds-w-body-control-standard: 237px;
+  --ds-w-body-control-wide: 378px;
+  --ds-w-body-unit: 147.6px;
   --ds-w-body-control: 280px;
+  --ds-space-body-group-inline: 18px;
+  --ds-space-body-section-gap: 32.4px;
+  --ds-space-body-section-heading-gap: 9.9px;
+  --ds-space-body-caption-gap: 10px;
+  --ds-text-body-caption: 12.6px;
+  --ds-lh-body-caption: 19px;
+  --ds-text-body-section: 16.2px;
+  --ds-lh-body-section: 21px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
      region all hang off this one inset. It used to be three different numbers
      (`cozy` / `base` / bare `p-3`), so the three bands' content started on
@@ -1395,6 +1408,27 @@ body[data-demo-theme="light"] {
   color: var(--ds-fg-secondary);
 }
 
+.ds-body-scope .ds-page-heading-description {
+  margin-top: var(--ds-space-body-caption-gap);
+  font-size: var(--ds-text-body-caption);
+  line-height: var(--ds-lh-body-caption);
+}
+
+.ds-body-stack > * + * {
+  margin-top: var(--ds-space-loose);
+}
+
+.ds-body-stack > .ds-body-section + .ds-body-section {
+  margin-top: var(--ds-space-body-section-gap);
+}
+
+.ds-body-section-heading {
+  margin: 0 0 var(--ds-space-body-section-heading-gap);
+  font-size: var(--ds-text-body-section);
+  line-height: var(--ds-lh-body-section);
+  font-weight: 550;
+}
+
 .ds-body-scope .ds-form-group {
   container-type: inline-size;
   min-width: 0;
@@ -1402,7 +1436,8 @@ body[data-demo-theme="light"] {
   border: var(--ds-border-w) solid var(--ds-border);
   border-radius: var(--ds-radius-lg);
   background: var(--ds-surface-1);
-  padding: var(--ds-space-base) var(--ds-space-loose);
+  padding-block: 0;
+  padding-inline: var(--ds-space-body-group-inline);
 }
 
 .ds-body-scope .ds-form-group > * + * {
@@ -1411,12 +1446,16 @@ body[data-demo-theme="light"] {
 
 .ds-body-scope .ds-body-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control));
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control-standard));
   align-items: center;
   gap: var(--ds-space-loose);
   min-width: 0;
   min-height: var(--ds-h-body-row);
   padding-block: var(--ds-space-base);
+}
+
+.ds-body-scope .ds-body-row[data-control-width="wide"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control-wide));
 }
 
 .ds-body-scope .ds-result-row {
@@ -1464,6 +1503,15 @@ body[data-demo-theme="light"] {
 .ds-body-scope .ds-field-control-slot > * {
   width: 100%;
   min-width: 0;
+}
+
+.ds-body-scope .ds-unit-field {
+  width: min(100%, var(--ds-w-body-unit));
+  margin-inline-start: auto;
+}
+
+.ds-body-scope .ds-unit-field[data-body-width="stretch"] {
+  width: 100%;
 }
 
 .ds-unit-field {
@@ -1582,6 +1630,31 @@ body[data-demo-theme="light"] {
   padding-inline: var(--ds-space-base);
 }
 
+.ds-body-scope .ds-disclosure-body .ds-disclosure-trigger {
+  min-height: var(--ds-h-body-row);
+  padding-inline: 0;
+}
+
+.ds-disclosure-body-copy {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-tight);
+}
+
+.ds-body-scope .ds-disclosure-body-title {
+  color: var(--ds-fg);
+  font-size: var(--ds-text-body-row);
+  line-height: var(--ds-lh-body-row);
+  font-weight: 500;
+}
+
+.ds-body-scope .ds-disclosure-body-description,
+.ds-body-scope .ds-disclosure-body-meta {
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-body-description);
+  line-height: var(--ds-lh-body-description);
+}
+
 .ds-body-scope .ds-result-row-side {
   grid-area: control;
   display: flex;
@@ -1614,6 +1687,15 @@ body[data-demo-theme="light"] {
   flex: 1;
   align-items: flex-start;
   text-align: left;
+  gap: var(--ds-space-tight);
+}
+
+.ds-body-scope .ds-switch-content .ds-text-ui {
+  line-height: var(--ds-lh-body-row);
+}
+
+.ds-body-scope .ds-switch-content .ds-text-meta {
+  line-height: var(--ds-lh-body-description);
 }
 
 .ds-switch-control {
@@ -1624,6 +1706,31 @@ body[data-demo-theme="light"] {
 .ds-switch-thumb {
   width: var(--ds-size-switch-thumb);
   height: var(--ds-size-switch-thumb);
+}
+
+.ds-body-scope .ds-switch-row {
+  --switch-control-bg-checked: var(--ds-body-switch-checked-bg);
+  --switch-control-bg-checked-hover: var(--ds-body-switch-checked-bg);
+}
+
+.ds-body-scope .ds-switch-row .ds-switch-thumb {
+  margin-inline-start: var(--ds-body-switch-thumb-off-x);
+  background-color: var(--ds-body-switch-thumb-bg);
+  transform: none;
+  translate: none;
+}
+
+.ds-body-scope .ds-switch-row[data-selected="true"] .ds-switch-control {
+  background-color: var(--ds-body-switch-checked-bg);
+}
+
+.ds-body-scope .ds-switch-row:not([data-selected="true"]) .ds-switch-control {
+  background-color: var(--ds-surface-2);
+}
+
+.ds-body-scope .ds-switch-row[data-selected="true"] .ds-switch-thumb {
+  margin-inline-start: var(--ds-body-switch-thumb-on-x);
+  background-color: var(--ds-body-switch-thumb-bg);
 }
 
 .ds-body-scope .ds-ranked-list {

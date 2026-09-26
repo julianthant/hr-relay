@@ -45,6 +45,18 @@ update; future pages will reuse the same primitives.
   rewrite is not an acceptable shortcut. Record consequential contract changes at their owner and
   decision index in the same logical commit.
 
+### Current Settings amendments — 2026-09-26
+
+- All editable Settings fields autosave. The Routes explicit Save control is obsolete; the next
+  Settings consumer task owns its removal and the matching dirty-exit behavior. This shared-kit
+  repair does not change Settings consumers.
+- The current General and Paths Category 2 renderings are partial and rejected visually. Their
+  existing implementation and captures are evidence of the partial candidate, not acceptance.
+- The operator waived all zoom tests for this Settings design-system work. Verify normal 100%
+  desktop viewports, including 1024×720, in both themes. Do not claim waived zoom proof passed.
+- The shared-kit repair owns body-scale primitives and the real kit specimen only. General,
+  Paths and Routes consumer layout repair, plus DateInput, remain with the following task.
+
 ### Category 2 Settings shell and ordinary forms — 2026-09-26
 
 The operator approved Category 2 implementation in the existing candidate checkout after the shared
@@ -53,7 +65,7 @@ body tokens and contrast corrections; Category 2 consumes them through `ds/ui.ts
 use the same 828px maximum body scope. General folds in Display and shows only the server Clock's
 current-fiscal-year `jobEndDate`; Performance shows fixed seconds while preserving millisecond values;
 Paths groups ordinary editable paths with runtime-path facts in their existing truthful
-read-only state; Routes keeps its explicit Save; Credentials temporarily combines the existing
+read-only state; Routes still has its now-obsolete explicit Save in that Category 2 commit; Credentials temporarily combines the existing
 credential authority with read-only provider-key facts. Provider-key persistence, budget/model
 internals and diagnostics remain with later categories. Existing 700ms ordinary autosave, separate
 protected editing, revision/conflict/refusal/readback behavior and dirty-exit protection remain.

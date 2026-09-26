@@ -82,6 +82,7 @@ import {
   EmptyState,
   Field,
   FormGroup,
+  BodySection,
   DsBodyScope,
   IconButton,
   Input,
@@ -137,6 +138,7 @@ import {
   dsRadius,
   dsText,
   useToasts,
+  type DsRankedItem,
   type DsStatus,
 } from "../ds/ui.js";
 
@@ -816,7 +818,8 @@ function FormsSection() {
     { id: "ucpath-fallback", label: "UCPath backup", value: "sk_specimen_fallback_917", role: "Fallback" },
   ]);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
-  const [priorities, setPriorities] = useState([
+  const [fallbackOpen, setFallbackOpen] = useState(false);
+  const [priorities, setPriorities] = useState<DsRankedItem[]>([
     { id: "ucpath", label: "UCPath", description: "Primary connection", role: "Primary" },
     { id: "hrms", label: "Legacy HRMS", description: "Fallback connection", role: "Fallback" },
   ]);
@@ -828,7 +831,7 @@ function FormsSection() {
       title="Forms"
       note="Shared controls compose one body density, grouped fields, units, private values, results and ranked choices."
     >
-      <DsBodyScope className="flex flex-col gap-[var(--ds-space-loose)]">
+      <DsBodyScope className="ds-body-stack flex flex-col">
         <PageHeading
           as="h2"
           title="Shared controls"
@@ -859,66 +862,72 @@ function FormsSection() {
           shortcut={<Kbd>/</Kbd>}
         />
 
-        <FormGroup label="Connection settings">
-          <Field label="Employee ID" description="9 digits, no dashes" required orientation="horizontal">
-            <Input placeholder="100844120" defaultValue="100844120" />
-          </Field>
-          <Field label="Employee ID" error="No UCPath record matches 10084412X." orientation="horizontal">
-            <Input defaultValue="10084412X" />
-          </Field>
-          <Field label="Read timeout" description="How long to wait for a response" orientation="horizontal">
-            <UnitField aria-label="Read timeout" type="number" min={1} value={timeout} onChange={(event) => setTimeout(event.target.value)} unit="seconds" />
-          </Field>
-          <Field label="Workflow" hint="8 available" orientation="horizontal">
-            <Select defaultValue="specimen-separations">
-              <option value="specimen-separations">Separations</option>
-              <option value="specimen-onboarding">Onboarding</option>
-              <option value="specimen-oath">Oath Signature</option>
-            </Select>
-          </Field>
-          <Field label="Disabled" description="Locked while a run is in flight" disabled orientation="horizontal">
-            <Input defaultValue="se-140211-9f3a" />
-          </Field>
-          <Switch
-            checked={notify}
-            onCheckedChange={setNotify}
-            label="Desktop notifications"
-            description="Applies immediately"
-          />
-          <Field label="Note for the receipt" description="Why this run was started" orientation="horizontal">
-            <Textarea rows={2} placeholder="Add a note…" />
-          </Field>
-          <DateInput label="Start date" value={date} onChange={setDate} inline />
-        </FormGroup>
-
-        <FormGroup label="API credentials">
-          {keys.filter((key) => key.role === "Primary").map((key) => (
-            <Field key={key.id} label={key.label} description="Primary connection" orientation="horizontal">
-              <SecretField
-                label={`${key.label} key`}
-                value={key.value}
-                onChange={(event) => setKeys((current) => current.map((entry) => entry.id === key.id ? { ...entry, value: event.target.value } : entry))}
-                onRemove={() => setPendingKey(key.id)}
-              />
+        <BodySection title="Connection settings">
+          <FormGroup label="Connection settings">
+            <Field label="Employee ID" description="9 digits, no dashes" required orientation="horizontal">
+              <Input placeholder="100844120" defaultValue="100844120" />
             </Field>
-          ))}
-          {keys.some((key) => key.role === "Fallback") && (
-            <Disclosure summary={`${keys.filter((key) => key.role === "Fallback").length} fallback key(s)`}>
-              <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)] pb-[var(--ds-space-base)]">
-                {keys.filter((key) => key.role === "Fallback").map((key) => (
-                  <Field key={key.id} label={key.label} description="Fallback connection" orientation="horizontal">
-                    <SecretField
-                      label={`${key.label} key`}
-                      value={key.value}
-                      onChange={(event) => setKeys((current) => current.map((entry) => entry.id === key.id ? { ...entry, value: event.target.value } : entry))}
-                      onRemove={() => setPendingKey(key.id)}
-                    />
-                  </Field>
-                ))}
-              </div>
-            </Disclosure>
-          )}
-        </FormGroup>
+            <Field label="Employee ID" error="No UCPath record matches 10084412X." orientation="horizontal">
+              <Input defaultValue="10084412X" />
+            </Field>
+            <Field label="Read timeout" description="How long to wait for a response" orientation="horizontal">
+              <UnitField aria-label="Read timeout" type="number" min={1} value={timeout} onChange={(event) => setTimeout(event.target.value)} unit="seconds" />
+            </Field>
+            <Field label="Workflow" hint="8 available" orientation="horizontal" controlWidth="wide">
+              <Select defaultValue="specimen-separations">
+                <option value="specimen-separations">Separations</option>
+                <option value="specimen-onboarding">Onboarding</option>
+                <option value="specimen-oath">Oath Signature</option>
+              </Select>
+            </Field>
+            <Field label="Disabled" description="Locked while a run is in flight" disabled orientation="horizontal">
+              <Input defaultValue="se-140211-9f3a" />
+            </Field>
+            <Switch
+              checked={notify}
+              onCheckedChange={setNotify}
+              label="Desktop notifications"
+              description="Applies immediately"
+            />
+            <Switch checked={false} onCheckedChange={() => undefined} label="Notifications off" />
+            <Switch checked disabled onCheckedChange={() => undefined} label="Locked notification" description="Unavailable while a run is in flight" />
+            <Field label="Note for the receipt" description="Why this run was started" orientation="horizontal">
+              <Textarea rows={2} placeholder="Add a note…" />
+            </Field>
+            <DateInput label="Start date" value={date} onChange={setDate} inline />
+          </FormGroup>
+        </BodySection>
+
+        <BodySection title="API credentials">
+          <FormGroup label="API credentials">
+            {keys.filter((key) => key.role === "Primary").map((key) => (
+              <Field key={key.id} label={key.label} description="Primary connection" orientation="horizontal">
+                <SecretField
+                  label={`${key.label} key`}
+                  value={key.value}
+                  onChange={(event) => setKeys((current) => current.map((entry) => entry.id === key.id ? { ...entry, value: event.target.value } : entry))}
+                  onRemove={() => setPendingKey(key.id)}
+                />
+              </Field>
+            ))}
+            {keys.some((key) => key.role === "Fallback") && (
+              <Disclosure summary="Fallback keys" description="Secondary connections" meta={keys.filter((key) => key.role === "Fallback").length} variant="body" open={fallbackOpen} onOpenChange={setFallbackOpen}>
+                <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)] pb-[var(--ds-space-base)]">
+                  {keys.filter((key) => key.role === "Fallback").map((key) => (
+                    <Field key={key.id} label={key.label} description="Fallback connection" orientation="horizontal">
+                      <SecretField
+                        label={`${key.label} key`}
+                        value={key.value}
+                        onChange={(event) => setKeys((current) => current.map((entry) => entry.id === key.id ? { ...entry, value: event.target.value } : entry))}
+                        onRemove={() => setPendingKey(key.id)}
+                      />
+                    </Field>
+                  ))}
+                </div>
+              </Disclosure>
+            )}
+          </FormGroup>
+        </BodySection>
 
         <FormGroup label="Preflight result">
           <ResultRow

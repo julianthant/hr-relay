@@ -5,7 +5,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { RankedList, type DsRankedItem } from "../../../src/dashboard/ds/primitives-data.js";
 import { SecretField } from "../../../src/dashboard/ds/primitives-form.js";
-import { DsBodyScope } from "../../../src/dashboard/ds/primitives-layout.js";
+import { Disclosure, DsBodyScope } from "../../../src/dashboard/ds/primitives-layout.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;
@@ -94,7 +94,34 @@ function RankedHarness({ disabled = false }: { disabled?: boolean }) {
   );
 }
 
+function DisclosureHarness() {
+  const [open, setOpen] = useState(false);
+  return createElement(DsBodyScope, null,
+    createElement(Disclosure, {
+      summary: "Fallback keys",
+      description: "Secondary connections",
+      meta: "1",
+      variant: "body",
+      open,
+      onOpenChange: setOpen,
+      children: createElement("div", null, "Backup key"),
+    }),
+  );
+}
+
 describe("shared body interactions", () => {
+  it("opens and closes a controlled body disclosure with its detail", async () => {
+    mount(createElement(DisclosureHarness));
+    const trigger = host?.querySelector<HTMLButtonElement>(".ds-disclosure-trigger");
+    assert.ok(trigger);
+    assert.equal(trigger.getAttribute("data-state"), "closed");
+    await act(async () => trigger.click());
+    assert.equal(trigger.getAttribute("data-state"), "open");
+    assert.match(host?.textContent ?? "", /Backup key/u);
+    await act(async () => trigger.click());
+    assert.equal(trigger.getAttribute("data-state"), "closed");
+  });
+
   it("hides a revealed value as soon as its identity or externally supplied value changes", async () => {
     mount(createElement(SecretHarness));
     await act(async () => revealButton().click());

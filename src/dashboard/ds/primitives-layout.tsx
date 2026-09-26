@@ -31,19 +31,55 @@ import { ShadcnTabs, ShadcnTabsContent, ShadcnTabsList, ShadcnTabsTrigger } from
 import { dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /** A compact disclosure composed from shadcn's Radix Collapsible parts. */
-export function Disclosure({ summary, children, defaultOpen, className, summaryClassName, contentClassName, title }: {
+export function Disclosure({
+  summary,
+  description,
+  meta,
+  children,
+  defaultOpen,
+  open,
+  onOpenChange,
+  variant = "default",
+  className,
+  summaryClassName,
+  contentClassName,
+  title,
+}: {
   summary: ReactNode;
+  /** A quiet second line, shown by the compact body disclosure variant. */
+  description?: ReactNode;
+  /** Optional right-aligned value, such as a count, in the body variant. */
+  meta?: ReactNode;
   children: ReactNode;
   defaultOpen?: boolean;
+  /** Controlled open state; omit both `open` and `onOpenChange` for default behavior. */
+  open?: boolean;
+  onOpenChange?: (open: boolean) => void;
+  variant?: "default" | "body";
   className?: string;
   summaryClassName?: string;
   contentClassName?: string;
   title?: string;
 }) {
-  return <Collapsible defaultOpen={defaultOpen} className={cn("group", className)} title={title}>
+  const bodyVariant = variant === "body";
+  return <Collapsible
+    defaultOpen={defaultOpen}
+    open={open}
+    onOpenChange={onOpenChange}
+    className={cn("group", bodyVariant && "ds-disclosure-body", className)}
+    title={title}
+  >
     <CollapsibleTrigger className={cn("ds-disclosure-trigger flex w-full cursor-pointer items-center gap-[var(--ds-space-tight)] text-left", dsFocus, summaryClassName)}>
       <ChevronRight aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)] transition-transform group-data-[state=open]:rotate-90")} />
-      <span className="min-w-0 flex-1">{summary}</span>
+      {bodyVariant ? (
+        <span className="ds-disclosure-body-copy min-w-0 flex-1">
+          <span className="ds-disclosure-body-title">{summary}</span>
+          {description && <span className="ds-disclosure-body-description">{description}</span>}
+        </span>
+      ) : (
+        <span className="min-w-0 flex-1">{summary}</span>
+      )}
+      {bodyVariant && meta && <span className="ds-disclosure-body-meta">{meta}</span>}
     </CollapsibleTrigger>
     <CollapsibleContent className={contentClassName}>{children}</CollapsibleContent>
   </Collapsible>;
@@ -108,22 +144,45 @@ export function FormGroup({
   );
 }
 
+/** A titled section for shared body pages, with consistent heading and group rhythm. */
+export function BodySection({
+  title,
+  as: Heading = "h2",
+  className,
+  children,
+}: {
+  title: ReactNode;
+  as?: "h2" | "h3";
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className={cn("ds-body-section", className)}>
+      <Heading className="ds-body-section-heading">{title}</Heading>
+      {children}
+    </section>
+  );
+}
+
 /** A shared result row for checks, storage summaries and evidence. */
 export function ResultRow({
   label,
   description,
   value,
   evidence,
+  controlWidth = "standard",
   className,
 }: {
   label: ReactNode;
   description?: ReactNode;
   value: ReactNode;
   evidence?: ReactNode;
+  /** Preferred value column for body rows; ignored outside DsBodyScope. */
+  controlWidth?: "standard" | "wide";
   className?: string;
 }) {
   return (
-    <div className={cn("ds-body-row ds-result-row", className)}>
+    <div data-control-width={controlWidth} className={cn("ds-body-row ds-result-row", className)}>
       <div className="ds-result-row-copy min-w-0">
         <div className="ds-field-label">{label}</div>
         {description && <p className="ds-field-description">{description}</p>}

@@ -79,6 +79,7 @@ export function Field({
   disabled,
   className,
   orientation = "vertical",
+  controlWidth = "standard",
   children,
 }: {
   label: ReactNode;
@@ -92,6 +93,8 @@ export function Field({
   className?: string;
   /** Horizontal rows place the label and description beside the control. */
   orientation?: "vertical" | "horizontal";
+  /** Preferred control column for horizontal body rows; ignored outside DsBodyScope. */
+  controlWidth?: "standard" | "wide";
   children: ReactNode;
 }) {
   const base = useId();
@@ -144,7 +147,10 @@ export function Field({
       value={{ inputId, descriptionId, errorId, invalid: Boolean(error), disabled }}
     >
       {orientation === "horizontal" ? (
-        <div className={cn("ds-body-row ds-field-layout-horizontal min-w-0", className)}>
+        <div
+          data-control-width={controlWidth}
+          className={cn("ds-body-row ds-field-layout-horizontal min-w-0", className)}
+        >
           <div className="ds-field-copy">
             <div className="flex items-baseline gap-[var(--ds-space-base)]">
               {fieldLabel}
@@ -211,18 +217,20 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
 export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby"> & {
   unit: string;
   "aria-describedby"?: string;
+  /** Body-scope width. Use `stretch` for a unit control inside a paired wide field. */
+  bodyWidth?: "compact" | "stretch";
 };
 
 /** A text or numeric control with a fixed, announced unit inside its shell. */
 export const UnitField = forwardRef<HTMLInputElement, UnitFieldProps>(function UnitField(
-  { unit, className, id, "aria-describedby": describedBy, ...props },
+  { unit, bodyWidth = "compact", className, id, "aria-describedby": describedBy, ...props },
   ref,
 ) {
   const field = useFieldControl();
   const unitId = useId();
   const mergedDescription = [field["aria-describedby"], describedBy, unitId].filter(Boolean).join(" ");
   return (
-    <div className="ds-unit-field">
+    <div className="ds-unit-field" data-body-width={bodyWidth}>
       <Input
         ref={ref}
         {...props}
@@ -520,13 +528,15 @@ export function Switch({
     <HeroSwitch isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row flex items-start gap-[var(--ds-space-base)]", className)}>
       <HeroSwitch.Control className={cn(
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
-        checked ? "border-transparent bg-[var(--ds-accent)]" : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
+        checked
+          ? "ds-switch-control-checked border-transparent bg-[var(--ds-accent)]"
+          : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
         dsFocus,
         dsMotion.fast,
       )}><HeroSwitch.Thumb className={cn(
         "ds-switch-thumb block shrink-0 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
         checked
-          ? "translate-x-[var(--ds-switch-thumb-on-x)] bg-[var(--ds-accent-fg)]"
+          ? "ds-switch-thumb-checked translate-x-[var(--ds-switch-thumb-on-x)] bg-[var(--ds-accent-fg)]"
           : "translate-x-[var(--ds-switch-thumb-off-x)] bg-[var(--ds-fg-muted)]",
       )} /></HeroSwitch.Control>
       <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-col">
