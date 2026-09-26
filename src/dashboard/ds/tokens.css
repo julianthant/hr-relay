@@ -1568,6 +1568,10 @@ body[data-demo-theme="light"] {
   padding-block: var(--ds-space-base);
 }
 
+.ds-body-scope .ds-date-picker--inline .date-picker__trigger-indicator {
+  color: var(--ds-fg-secondary);
+}
+
 .ds-body-scope .ds-date-label {
   font-size: var(--ds-text-body-row);
   line-height: var(--ds-lh-body-row);
