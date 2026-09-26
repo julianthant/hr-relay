@@ -946,7 +946,7 @@ function FormsSection() {
           />
         </FormGroup>
 
-        <div className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-loose)] md:grid-cols-2">
+        <div className="grid min-w-0 grid-cols-1 items-start gap-[var(--ds-space-loose)] md:grid-cols-2">
           <FormGroup label="Recorded values">
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-base)] py-[var(--ds-space-base)]">
               <SectionLabel>Correctable and locked</SectionLabel>
@@ -988,14 +988,14 @@ function FormsSection() {
 
         <div className="flex flex-col gap-[var(--ds-space-tight)]">
           <span className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]")}>Toolbar variant</span>
-          <div className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-base)]">
+          <PanelToolbar label="Form actions" variant="body">
             <Button size="sm" variant="ghost">Filter</Button>
             <Select variant="toolbar" aria-label="Sort" defaultValue="attention" icon={<ArrowUpDown className={dsIcon.sm} />}>
               <option value="attention">Attention first</option>
               <option value="newest">Newest first</option>
             </Select>
             <Button size="sm" variant="ghost">Select</Button>
-          </div>
+          </PanelToolbar>
         </div>
       </DsBodyScope>
 

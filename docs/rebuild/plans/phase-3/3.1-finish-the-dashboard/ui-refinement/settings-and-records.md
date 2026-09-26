@@ -57,6 +57,26 @@ update; future pages will reuse the same primitives.
 - The shared-kit repair owns body-scale primitives and the real kit specimen only. General,
   Paths and Routes consumer layout repair, plus DateInput, remain with the following task.
 
+### Shared kit implementation and correction record — 2026-09-26
+
+The first shared-kit commit, `7409de3ca`, added the compact body fields, control widths,
+section/disclosure composition and Switch fix. Focused body and architecture tests passed
+17/17, body interaction tests passed 4/4, and typecheck, scoped ESLint, `web:build` and
+`git diff --check` passed. The 100% dark/light kit captures at 1440×900 and 1024×720,
+including checked/off/disabled Switch states and the open disclosure, are under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-1-logs/shared-kit-final/`.
+
+The lower kit correction accompanying this record sets ResultRow values and evidence,
+RankedList items, Checkbox and RadioGroup copy and controls, and recorded values to the
+shared body scale. Radio options now place the control beside its copy; the two specimen
+cards use natural heights. `PanelToolbar` has a reusable body variant. Focused tests pass
+26/26 across body primitives/interactions, checkbox naming and specimen closure; typecheck,
+scoped ESLint and `web:build` pass. Dark/light 100% captures at 1440×900 and 1024×720
+are under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-1-logs/lower-kit-correction/`.
+The dev kit reports 403 responses for IBM Plex Mono files outside Vite's allowed file
+root; the production build passes. No Settings consumer layout or DateInput work is claimed.
+
 ### Category 2 Settings shell and ordinary forms — 2026-09-26
 
 The operator approved Category 2 implementation in the existing candidate checkout after the shared

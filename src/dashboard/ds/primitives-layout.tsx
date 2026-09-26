@@ -188,7 +188,7 @@ export function ResultRow({
         {description && <p className="ds-field-description">{description}</p>}
       </div>
       <div className="ds-result-row-side">
-        <div>{value}</div>
+        <div className="ds-result-row-value">{value}</div>
         {evidence && <div className="ds-result-row-evidence">{evidence}</div>}
       </div>
     </div>
@@ -304,11 +304,13 @@ export function PanelHeader({
 /** A secondary bar under a PanelHeader: filters, search, view switches. */
 export function PanelToolbar({
   label,
+  variant = "default",
   className,
   children,
 }: {
   /** accessible name — a toolbar without one is a mystery to a screen reader */
   label: string;
+  variant?: "default" | "body";
   className?: string;
   children: ReactNode;
 }) {
@@ -317,8 +319,9 @@ export function PanelToolbar({
       role="group"
       aria-label={label}
       className={cn(
-        "flex shrink-0 items-center gap-[var(--ds-space-tight)] overflow-x-auto border-b px-[var(--ds-space-base)]",
-        "min-h-[var(--ds-h-bar)] border-[color:var(--ds-border-subtle)]",
+        variant === "body"
+          ? "ds-body-toolbar flex min-w-0 items-center gap-[var(--ds-space-snug)] overflow-x-auto rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]"
+          : "flex shrink-0 items-center gap-[var(--ds-space-tight)] overflow-x-auto border-b px-[var(--ds-space-base)] min-h-[var(--ds-h-bar)] border-[color:var(--ds-border-subtle)]",
         className,
       )}
     >

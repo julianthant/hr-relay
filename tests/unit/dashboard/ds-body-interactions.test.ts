@@ -4,7 +4,7 @@ import { act, createElement, useState } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { RankedList, type DsRankedItem } from "../../../src/dashboard/ds/primitives-data.js";
-import { SecretField } from "../../../src/dashboard/ds/primitives-form.js";
+import { Checkbox, RadioGroup, SecretField } from "../../../src/dashboard/ds/primitives-form.js";
 import { Disclosure, DsBodyScope } from "../../../src/dashboard/ds/primitives-layout.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -109,7 +109,73 @@ function DisclosureHarness() {
   );
 }
 
+function RadioHarness() {
+  const [mode, setMode] = useState("dry");
+  return createElement(DsBodyScope, null,
+    createElement(RadioGroup, {
+      label: "Run mode",
+      name: "test-run-mode",
+      value: mode,
+      onValueChange: setMode,
+      options: [
+        { value: "dry", label: "Dry run", description: "No transaction" },
+        { value: "live", label: "Live", description: "Submit transaction" },
+        { value: "locked", label: "Locked", disabled: true },
+      ],
+    }),
+  );
+}
+
+function CheckboxHarness() {
+  const [checked, setChecked] = useState<boolean | "indeterminate">("indeterminate");
+  return createElement(DsBodyScope, null,
+    createElement(Checkbox, {
+      label: "Select all rows",
+      description: "Only some are checked",
+      checked,
+      onCheckedChange: setChecked,
+    }),
+    createElement(Checkbox, {
+      label: "Unavailable choice",
+      checked: false,
+      disabled: true,
+    }),
+  );
+}
+
 describe("shared body interactions", () => {
+  it("keeps checkbox naming and advances indeterminate selection by its label", async () => {
+    mount(createElement(CheckboxHarness));
+    const boxes = [...(host?.querySelectorAll<HTMLButtonElement>('.ds-checkbox-control[role="checkbox"]') ?? [])];
+    assert.equal(boxes.length, 2);
+    assert.equal(boxes[0]?.getAttribute("aria-checked"), "mixed");
+    assert.equal(boxes[0]?.getAttribute("aria-labelledby"), host?.querySelector(".ds-checkbox-label")?.id);
+    const label = host?.querySelector<HTMLLabelElement>(".ds-checkbox-copy");
+    assert.ok(label);
+    await act(async () => label.click());
+    assert.equal(boxes[0]?.getAttribute("aria-checked"), "true");
+    assert.equal(boxes[1]?.disabled, true);
+    assert.equal(boxes[1]?.getAttribute("aria-checked"), "false");
+  });
+
+  it("selects a radio by its label, follows arrow keys and ignores disabled options", async () => {
+    mount(createElement(RadioHarness));
+    const inputs = [...(host?.querySelectorAll<HTMLInputElement>('.ds-radio-option input[type="radio"]') ?? [])];
+    assert.equal(inputs.length, 3);
+    assert.equal(inputs[0]?.checked, true);
+    assert.equal(inputs[2]?.disabled, true);
+    const liveLabel = host?.querySelectorAll<HTMLElement>(".ds-radio-copy")[1];
+    assert.ok(liveLabel);
+    await act(async () => liveLabel.click());
+    assert.equal(inputs[1]?.checked, true);
+    await act(async () => inputs[1]?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })));
+    assert.equal(inputs[0]?.checked, true);
+    const lockedLabel = host?.querySelectorAll<HTMLElement>(".ds-radio-copy")[2];
+    assert.ok(lockedLabel);
+    await act(async () => lockedLabel.click());
+    assert.equal(inputs[0]?.checked, true);
+  });
+
   it("opens and closes a controlled body disclosure with its detail", async () => {
     mount(createElement(DisclosureHarness));
     const trigger = host?.querySelector<HTMLButtonElement>(".ds-disclosure-trigger");

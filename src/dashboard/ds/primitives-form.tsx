@@ -407,13 +407,13 @@ export function Checkbox({
   // 2026-08-26). The description is deliberately outside it — a name, not a paragraph.
   const labelId = `${id}-label`;
   return (
-    <div className={cn("flex items-start gap-[var(--ds-space-base)]", className)}>
+    <div data-disabled={props.disabled || undefined} className={cn("ds-checkbox-row flex items-start gap-[var(--ds-space-base)]", className)}>
       <CheckboxPrimitive.Root
         id={id}
         {...props}
         aria-labelledby={labelId}
         className={cn(
-          "mt-px inline-flex size-4 shrink-0 cursor-pointer items-center justify-center border",
+          "ds-checkbox-control mt-px inline-flex size-4 shrink-0 cursor-pointer items-center justify-center border",
           "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
           "data-[state=checked]:border-transparent data-[state=checked]:bg-[var(--ds-accent)]",
           "data-[state=indeterminate]:border-transparent data-[state=indeterminate]:bg-[var(--ds-accent)]",
@@ -431,12 +431,12 @@ export function Checkbox({
           )}
         </CheckboxPrimitive.Indicator>
       </CheckboxPrimitive.Root>
-      <label htmlFor={id} className="flex min-w-0 cursor-pointer flex-col">
-        <span id={labelId} className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>
+      <label htmlFor={id} className="ds-checkbox-copy flex min-w-0 cursor-pointer flex-col">
+        <span id={labelId} className={cn("ds-checkbox-label", dsText.ui, "text-[color:var(--ds-fg)]")}>
           {label}
         </span>
         {description && (
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>
+          <span className={cn("ds-checkbox-description", dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>
         )}
       </label>
     </div>
@@ -466,9 +466,9 @@ export function RadioGroup<T extends string>({
       value={value}
       onChange={(next) => onValueChange(next as T)}
       aria-labelledby={labelId}
-      className={cn("flex min-w-0 flex-col gap-[var(--ds-space-snug)]", className)}
+      className={cn("ds-radio-group flex min-w-0 flex-col gap-[var(--ds-space-snug)]", className)}
     >
-      <span id={labelId} className={cn(dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]")}>
+      <span id={labelId} className={cn("ds-radio-legend", dsText.meta, "mb-[var(--ds-space-tight)] font-medium text-[color:var(--ds-fg-secondary)]")}>
         {label}
       </span>
       {options.map((option) => (
@@ -477,13 +477,13 @@ export function RadioGroup<T extends string>({
           value={option.value}
           isDisabled={option.disabled}
           className={cn(
-            "group m-0 flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)]",
+            "ds-radio-option group m-0 flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)]",
             option.disabled && "cursor-not-allowed opacity-50",
           )}
         >
           <HeroRadio.Control
             className={cn(
-              "mt-px size-4 shrink-0 cursor-pointer appearance-none rounded-full border",
+              "ds-radio-control mt-px size-4 shrink-0 cursor-pointer appearance-none rounded-full border",
               "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
               "group-data-[selected]:border-[length:var(--ds-border-w-emphasis)] group-data-[selected]:border-[color:var(--ds-accent)]",
               "group-data-[selected]:bg-[var(--ds-surface-page)]",
@@ -491,10 +491,10 @@ export function RadioGroup<T extends string>({
               dsMotion.fast,
             )}
           ><HeroRadio.Indicator /></HeroRadio.Control>
-          <HeroRadio.Content className="flex min-w-0 flex-col">
-            <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{option.label}</span>
+          <HeroRadio.Content className="ds-radio-copy flex min-w-0 flex-col">
+            <span className={cn("ds-radio-label", dsText.ui, "text-[color:var(--ds-fg)]")}>{option.label}</span>
             {option.description && (
-              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+              <span className={cn("ds-radio-description", dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
                 {option.description}
               </span>
             )}
@@ -684,7 +684,7 @@ export function ValueField({
           // The right padding is the pencil's 12px plus its 4px offset plus 4px of
           // air, composed from tokens rather than guessed — at `loose` the value
           // ran straight into the glyph on a narrow column.
-          "w-full min-w-0 border pl-[var(--ds-space-snug)] pr-[calc(var(--ds-space-loose)+var(--ds-space-tight))]",
+          "ds-value-field-input w-full min-w-0 border pl-[var(--ds-space-snug)] pr-[calc(var(--ds-space-loose)+var(--ds-space-tight))]",
           "h-[var(--ds-h-sm)] rounded-[var(--ds-radius-md)]",
           dsText.body,
           dsText.nums,
@@ -744,7 +744,7 @@ export function LockedValue({
         className={cn(
           dsText.body,
           dsText.nums,
-          "min-w-0 flex-1 break-words",
+          "ds-locked-value-text min-w-0 flex-1 break-words",
           tone === "warning" ? "text-[color:var(--ds-status-waiting-fg)]" : "text-[color:var(--ds-fg)]",
         )}
       >
