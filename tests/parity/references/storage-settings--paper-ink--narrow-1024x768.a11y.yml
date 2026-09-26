@@ -59,8 +59,6 @@
         - /url: "?settings=storage"
       - link "Preflight":
         - /url: "?settings=preflight"
-      - link "System hosts":
-        - /url: "?settings=system-hosts"
       - link "Workflow capabilities":
         - /url: "?settings=workflow-capabilities"
       - text: Help

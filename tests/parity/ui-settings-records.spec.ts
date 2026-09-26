@@ -50,7 +50,6 @@ const SETTINGS = [
   ["derived-host", "Observed host"],
   ["runtime-isolation", "Runtime paths"],
   ["storage", "Storage checks"],
-  ["system-hosts", "System hosts"],
   ["workflow-capabilities", "Workflow capabilities"],
   ["keyboard", "Keyboard"],
   ["ui-catalog", "UI catalog"],

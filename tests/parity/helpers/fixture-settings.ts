@@ -29,11 +29,10 @@ import { FIXTURE_NOW } from "./fixture-identity.js";
  * builds its packet rather than spelling one.
  *
  * The inputs are the DEFAULTS and the day corpus's one descriptor: an empty
- * env and empty settings resolve to `ConfigSchema`'s shipped hosts, so the
- * System hosts table is the deployment every developer starts from, and the
- * capability row joins the single `workflows[]` entry the bootstrap above
- * serves. `manualClock` pins the resolution instant so nothing here can be
- * dated by the wall clock.
+ * env and empty settings resolve to `ConfigSchema`'s shipped hosts for the
+ * compatibility facts wire, and the capability row joins the single
+ * `workflows[]` entry the bootstrap above serves. `manualClock` pins the
+ * resolution instant so nothing here can be dated by the wall clock.
  */
 export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
   config: resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date(FIXTURE_NOW))).config,

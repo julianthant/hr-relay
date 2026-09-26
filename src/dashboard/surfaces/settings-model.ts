@@ -7,7 +7,6 @@ import type {
 EditableSettingsWire
 } from "../../domain/dashboard/settings-editor.js";
 import {
-SETTINGS_SYSTEM_HOSTS_SECTION_ID,
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../domain/dashboard/settings.js";
 
@@ -30,7 +29,6 @@ export type SettingsNavIcon =
   | "storage"
   | "preflight"
   | "routes"
-  | "system-hosts"
   | "capabilities"
   | "keyboard"
   | "ui-catalog"
@@ -56,7 +54,6 @@ const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze
   "derived-host": "display",
   "runtime-isolation": "paths",
   storage: "storage",
-  [SETTINGS_SYSTEM_HOSTS_SECTION_ID]: "system-hosts",
   [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "capabilities",
 });
 

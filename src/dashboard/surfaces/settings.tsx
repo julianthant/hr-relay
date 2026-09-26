@@ -18,7 +18,6 @@ Table2
 import { useCallback,useEffect,useState } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import {
-SETTINGS_SYSTEM_HOSTS_SECTION_ID,
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../domain/dashboard/settings.js";
 import { Banner,Button,Dialog,DialogContent,DialogFooter,IconButton,SectionLabel,Separator,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsText } from "../ds/ui.js";
@@ -29,7 +28,6 @@ import { CapabilitiesSection } from "./settings-capabilities.js";
 import { useEditableSettings } from "./settings-editor-model.js";
 import { EditableSettingsSection } from "./settings-editor.js";
 import { RoutesSection } from "./settings-routes.js";
-import { SystemHostsSection } from "./settings-hosts.js";
 import { KeyboardSection } from "./settings-keyboard.js";
 import { PreflightSection } from "./settings-preflight.js";
 import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
@@ -50,7 +48,6 @@ const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
   ...EditableSettingsSectionIdSchema.options,
   "protected-store", "provider-env", "derived-host", "runtime-isolation",
   "storage",
-  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 ]);
 
@@ -63,7 +60,6 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   storage: Database,
   preflight: ClipboardCheck,
   routes: Link2,
-  "system-hosts": Link2,
   capabilities: Table2,
   keyboard: KeyboardIcon,
   "ui-catalog": BookMarked,
@@ -335,7 +331,6 @@ export function SettingsPage({
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
         )}
         {resolution.state === "open" && ["protected-store", "provider-env", "derived-host", "runtime-isolation"].includes(resolution.entry.id) && <SettingsAuthoritySection editor={editor} sectionId={resolution.entry.id} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID && <SystemHostsSection />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <CapabilitiesSection workflowLabels={workflowLabels} />
         )}

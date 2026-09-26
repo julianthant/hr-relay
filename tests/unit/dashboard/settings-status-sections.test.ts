@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 /**
- * D274 item 6 (ledger 3 SE40–SE42) — the two READ-ONLY Settings sections, as an
+ * D274 item 6 (ledger 3 SE40–SE42) — the Workflow capabilities Settings section, as an
  * operator actually meets them.
  *
  * `settings-facts.test.ts` pins what the SERVER says. What no fold on either
@@ -35,8 +35,7 @@ import {
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
-import { SYSTEM_HOST_PRESENTATION } from "../../../src/dashboard/surfaces/settings-model.js";
-import { BrowserSystemIdSchema } from "../../../src/domain/ids.js";
+import { buildSettingsNav } from "../../../src/dashboard/surfaces/settings-model.js";
 import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
 
 class MeasurementFreeResizeObserver {
@@ -105,6 +104,11 @@ const LABELS = new Map<string, string>([
 ]);
 
 const SECTIONS = SettingsSectionPrimitiveSchema.array().parse([
+  { id: "storage", label: "Storage checks", revision: 1 },
+  { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
+]);
+const LEGACY_SECTIONS = SettingsSectionPrimitiveSchema.array().parse([
+  { id: "storage", label: "Storage checks", revision: 1 },
   { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
   { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
 ]);
@@ -120,7 +124,11 @@ afterEach(() => {
 });
 
 /** Mounts the real takeover on one section against a stub `settingsFacts`. */
-async function mount(section: string, settingsFacts: () => Promise<SettingsFactsWire>): Promise<string> {
+async function mount(
+  section: string,
+  settingsFacts: () => Promise<SettingsFactsWire>,
+  sections = SECTIONS,
+): Promise<string> {
   host = document.createElement("div");
   document.body.append(host);
   const client = {
@@ -137,7 +145,7 @@ async function mount(section: string, settingsFacts: () => Promise<SettingsFacts
       onCatalogQuery: () => undefined,
       onCatalogView: () => undefined,
       storage: HEALTHY_STORAGE,
-      sections: SECTIONS,
+      sections,
       workflowLabels: LABELS,
       section,
       actorId: "local-operator",
@@ -165,42 +173,30 @@ function pending(): Promise<SettingsFactsWire> {
   return new Promise<SettingsFactsWire>(() => undefined);
 }
 
-describe("System hosts (SE40)", () => {
-  it("summarizes configured production endpoints only", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("https://kuali.example/prod"), text);
-    assert.ok(text.includes("https://crm.example/hr"), text);
-    const panelText = mounted().querySelector(".settings-page-panel")?.textContent ?? "";
-    assert.ok(!panelText.includes("https://kuali.example/sbx"), panelText);
-    assert.doesNotMatch(panelText, /\btest\b|sandbox|per-run host|each run selects its host/iu);
-  });
+describe("D349 System hosts page retirement", () => {
+  it("leaves a stale served id as a named build gap without rendering the retired page", async () => {
+    const entries = buildSettingsNav(LEGACY_SECTIONS).flatMap((group) => group.entries);
+    const retiredEntry = entries.find((entry) => entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID);
+    assert.equal(retiredEntry?.icon, "unrendered");
 
-  /**
-   * The summary presents the system's name, not its wire id.
-   */
-  it("names each system rather than printing its wire id", async () => {
-    await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, () => Promise.resolve(FACTS));
-    // Read the name itself because hostnames can contain system ids.
-    const names = [...mounted().querySelectorAll(".settings-host-row")].map(
-      (row) => row.querySelector(".settings-host-heading > span")?.textContent ?? "",
+    const text = await mount(
+      SETTINGS_SYSTEM_HOSTS_SECTION_ID,
+      () => Promise.resolve(FACTS),
+      LEGACY_SECTIONS,
     );
-    assert.equal(names.length, 3);
-    assert.ok(names[0]?.startsWith("Kuali"), names.join(" | "));
-    assert.ok(names[1]?.startsWith("CRM"), names.join(" | "));
-    assert.ok(names[2]?.startsWith("OnBase"), names.join(" | "));
-    for (const name of names) {
-      assert.ok(!/\b(?:crm|onbase|kuali)\b/.test(name), `the raw wire id is still on screen: ${name}`);
-    }
+    assert.ok(text.includes("This build has no renderer for the served section “system-hosts”"), text);
+    assert.equal(mounted().querySelector(".settings-host-row"), null);
+    assert.ok(!text.includes("Production endpoints"), text);
+    assert.ok(!text.includes("https://kuali.example/prod"), text);
   });
+});
 
-  it("presents exactly the closed system enum with names", () => {
-    assert.deepEqual(
-      Object.keys(SYSTEM_HOST_PRESENTATION).sort(),
-      [...BrowserSystemIdSchema.options].sort(),
-    );
-    for (const [system, presentation] of Object.entries(SYSTEM_HOST_PRESENTATION)) {
-      assert.ok(presentation.name.length > 0, `${system} has no name`);
-    }
+describe("System hosts wire compatibility", () => {
+  it("still refuses a facts wire that omits system hosts", () => {
+    assert.throws(() => SettingsFactsWireSchema.parse({
+      systemHosts: [],
+      workflowCapabilities: [],
+    }));
   });
 });
 
@@ -256,17 +252,6 @@ describe("Workflow capabilities (SE41/SE42)", () => {
 });
 
 describe("the F11b review fixes", () => {
-  it("announces a refusal ONCE — the danger Banner is the only alert", async () => {
-    await mount(
-      SETTINGS_SYSTEM_HOSTS_SECTION_ID,
-      () => Promise.reject(new Error("boom")),
-    );
-    // The defect this pins: an inner `role="alert"` inside a `danger` Banner
-    // that already carries one, so the sentence is read twice and every
-    // `getByRole("alert")` on this pane goes ambiguous (D273 items 9-10).
-    assert.equal(mounted().querySelectorAll("[role=\"alert\"]").length, 1);
-  });
-
   it("keeps a capability detail out of a clipping chip", async () => {
     await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
     const dom = mounted();
@@ -299,33 +284,13 @@ describe("the F11b review fixes", () => {
     assert.ok(!text.includes("0 of 0"), text);
   });
 
-  it("refuses a document that serves zero system hosts", () => {
-    // Not an empty state to draw: the system list is a closed enum and every
-    // member has a production default, so zero is a broken producer.
-    assert.throws(() => SettingsFactsWireSchema.parse({
-      systemHosts: [],
-      workflowCapabilities: [],
-    }));
-  });
 });
 
 describe("the async arms (D275 item 4)", () => {
-  it("says it is reading, rather than drawing an empty table", async () => {
-    const text = await mount(SETTINGS_SYSTEM_HOSTS_SECTION_ID, pending);
+  it("says facts are loading instead of drawing an empty matrix", async () => {
+    const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, pending);
     assert.ok(text.includes("Loading deployment facts"), text);
-    assert.ok(!text.includes("none provisioned"), text);
-  });
-
-  it("names a refusal and says nothing below is missing", async () => {
-    const text = await mount(
-      SETTINGS_SYSTEM_HOSTS_SECTION_ID,
-      () => Promise.reject(new Error("GET /api/v1/settings/facts failed: 500")),
-    );
-    assert.ok(text.includes("These facts could not be read"), text);
-    assert.ok(text.includes("GET /api/v1/settings/facts failed: 500"), text);
-    // The negative control: a refusal that rendered an empty table would look
-    // exactly like a deployment that provisions nothing.
-    assert.ok(!text.includes("none provisioned"), text);
+    assert.ok(!text.includes("Where a dry run stops"), text);
   });
 
   it("refuses in the capabilities section too, rather than an empty matrix", async () => {
@@ -334,6 +299,8 @@ describe("the async arms (D275 item 4)", () => {
       () => Promise.reject(new Error("boom")),
     );
     assert.ok(text.includes("These facts could not be read"), text);
+    assert.ok(text.includes("boom"), text);
     assert.ok(!text.includes("Where a dry run stops"), text);
+    assert.equal(mounted().querySelectorAll('[role="alert"]').length, 1);
   });
 });

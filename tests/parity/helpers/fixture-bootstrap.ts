@@ -3,7 +3,6 @@ FrontendBootstrapWireSchema,
 type FrontendBootstrapWire,
 } from "../../../src/domain/dashboard/bootstrap.js";
 import {
-  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../../src/domain/dashboard/settings.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
@@ -76,7 +75,6 @@ export const FIXTURE_BOOTSTRAP: FrontendBootstrapWire = FrontendBootstrapWireSch
   */
   settingsSections: [
     { id: "storage", label: "Storage checks", revision: 1 },
-    { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
     { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
   ],
   featureAvailability: [

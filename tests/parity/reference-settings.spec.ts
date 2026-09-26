@@ -16,11 +16,11 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
 
 
 /**
- * THE OTHER TWO SETTINGS PANES (D274 item 6, ledger 3 SE40–SE42).
+ * THE WORKFLOW CAPABILITIES SETTINGS PANE (D274 item 6, ledger 3 SE40–SE42).
  *
  * `settings` above opens on Storage, which is served by the bootstrap and needs
  * nothing else. These are the `settings/facts` panes — the resolved production
- * endpoints and the descriptor registry's Workflow capabilities
+ * descriptor registry's Workflow capabilities
  * — and each is a projection of an authority the process already composed, so
  * what they print is what a run would actually do. They are photographed
  * because a capability row that claims a dry run a descriptor does not declare
@@ -31,7 +31,6 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
  */
 test.describe("settings panes", () => {
   const PANES: readonly { variant: string; section: string; heading: string }[] = [
-    { variant: "system-hosts", section: "system-hosts", heading: "Production endpoints" },
     { variant: "capabilities", section: "workflow-capabilities", heading: "Where a dry run stops" },
   ];
   for (const pane of PANES) {
