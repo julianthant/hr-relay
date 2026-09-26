@@ -8,10 +8,12 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { timeoutReadableValue, timeoutSetting } from "./settings-timeouts-model.js";
 import { CompactSettingsSection } from "./ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "./ui-settings-records-performance.js";
+import { ProviderSettingsSection } from "./settings-provider.js";
 
 export function EditableSettingsSection({ editor, sectionId }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string }) {
   if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} />;
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
+  if (sectionId === "providers") return <ProviderSettingsSection editor={editor} />;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;

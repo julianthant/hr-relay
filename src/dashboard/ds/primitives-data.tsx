@@ -210,6 +210,9 @@ export function TD({
 export interface DsRankedItem {
   id: string;
   label: string;
+  /** Editable content keeps the plain label available for move announcements. */
+  content?: ReactNode;
+  actions?: ReactNode;
   /** Optional quiet detail shown below or beside the primary label. */
   description?: string;
   /** A product-defined role such as Primary or Fallback. */
@@ -323,10 +326,11 @@ export function RankedList({
               className="ds-ranked-handle"
             />
             <span className="ds-ranked-label">
-              {item.label}
+              {item.content ?? item.label}
               {item.description && <span className="ds-field-description block">{item.description}</span>}
             </span>
             {item.role && <span className="ds-ranked-role">{item.role}</span>}
+            {item.actions}
           </li>
         ))}
       </ol>

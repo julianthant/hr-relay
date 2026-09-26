@@ -266,8 +266,10 @@ describe("typed Settings catalog controls", () => {
   }
   it("renders the source's field type and safe defaults, without environment provenance", async () => {
     const h = await setup("providers");
-    assert.ok(h.host.querySelector('input[type="number"]')); assert.ok(h.host.querySelector("textarea"));
-    assert.equal(h.host.querySelector('input[type="number"]')?.getAttribute("aria-label"), "OCR Extract budget: Timeout (ms)");
+    assert.ok(h.host.querySelector('input[type="number"]'));
+    assert.equal(h.host.querySelector('input[type="number"]')?.getAttribute("aria-label"), "OCR extraction: Request timeout");
+    assert.ok(h.host.querySelector('ol[aria-label="Gemini model priority"]'));
+    assert.equal(h.host.querySelector("textarea"), null);
     assert.doesNotMatch(h.host.textContent ?? "", /Environment:/u);
     const leaf = settingsLeaves(h.authority.read()).find(candidate => candidate.path === "providers.gemini.models"); assert.ok(leaf); assert.equal(settingInput(leaf), "");
   });
