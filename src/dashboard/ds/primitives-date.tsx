@@ -34,7 +34,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
       isInvalid={value !== "" && dateValue(value) === null}
       className={cn("ds-date-picker min-w-0", inline && "ds-date-picker--inline", className)}
     >
-      <Label className={cn(dsText.meta, "whitespace-nowrap font-medium text-[color:var(--ds-fg-secondary)]")}>{label}</Label>
+      <Label className={cn("ds-date-label", dsText.meta, "whitespace-nowrap font-medium text-[color:var(--ds-fg-secondary)]")}>{label}</Label>
       <DateField.Group className={cn(
         "h-[var(--ds-h-md)] min-w-0 rounded-[var(--ds-radius-md)] border",
         "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg)]",

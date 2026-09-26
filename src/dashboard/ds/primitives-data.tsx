@@ -3,9 +3,10 @@
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-data.tsx
  */
 import { Button as HeroButton, ProgressBar as HeroProgressBar } from "@heroui/react";
-import type { HTMLAttributes, ReactNode, TdHTMLAttributes, ThHTMLAttributes } from "react";
-import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
+import { useState, type DragEvent, type HTMLAttributes, type KeyboardEvent, type ReactNode, type TdHTMLAttributes, type ThHTMLAttributes } from "react";
+import { ArrowDown, ArrowUp, ChevronsUpDown, GripVertical } from "lucide-react";
 import { cn } from "../lib/utils.js";
+import { IconButton } from "./primitives-core.js";
 import { ShadcnTable, ShadcnTableBody, ShadcnTableCell, ShadcnTableHead, ShadcnTableHeader, ShadcnTableRow } from "./shadcn-table.js";
 import { dsFocus, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "./tokens.js";
 
@@ -203,6 +204,136 @@ export function TD({
     >
       {children}
     </ShadcnTableCell>
+  );
+}
+
+export interface DsRankedItem {
+  id: string;
+  label: string;
+  /** Optional quiet detail shown below or beside the primary label. */
+  description?: string;
+  /** A product-defined role such as Primary or Fallback. */
+  role?: string;
+}
+
+/** A controlled ordered list with pointer drag and keyboard reordering. */
+export function RankedList({
+  label,
+  items,
+  onReorder,
+  disabled = false,
+  className,
+}: {
+  label: string;
+  items: readonly DsRankedItem[];
+  onReorder: (items: DsRankedItem[]) => void;
+  /** Keep visible order readable while reordering is unavailable. */
+  disabled?: boolean;
+  className?: string;
+}) {
+  const [draggedId, setDraggedId] = useState<string | null>(null);
+  const [dropTargetId, setDropTargetId] = useState<string | null>(null);
+  const [announcement, setAnnouncement] = useState("");
+
+  const move = (fromId: string, toIndex: number) => {
+    if (disabled) return;
+    const fromIndex = items.findIndex((item) => item.id === fromId);
+    if (fromIndex < 0 || toIndex < 0 || toIndex >= items.length || fromIndex === toIndex) return;
+    const next = [...items];
+    const [item] = next.splice(fromIndex, 1);
+    if (!item) return;
+    next.splice(toIndex, 0, item);
+    onReorder(next);
+    setAnnouncement(`${item.label} moved to position ${toIndex + 1} of ${items.length}.`);
+  };
+
+  const onHandleKeyDown = (event: KeyboardEvent<HTMLButtonElement>, id: string, index: number) => {
+    if (event.key === "ArrowUp") {
+      event.preventDefault();
+      move(id, index - 1);
+    } else if (event.key === "ArrowDown") {
+      event.preventDefault();
+      move(id, index + 1);
+    }
+  };
+
+  const onHandleDragStart = (event: DragEvent<HTMLButtonElement>, id: string) => {
+    if (disabled) {
+      event.preventDefault();
+      return;
+    }
+    setDraggedId(id);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", id);
+  };
+
+  const onItemDrop = (event: DragEvent<HTMLLIElement>, targetId: string) => {
+    event.preventDefault();
+    if (disabled) {
+      setDraggedId(null);
+      setDropTargetId(null);
+      return;
+    }
+    const sourceId = event.dataTransfer.getData("text/plain") || draggedId;
+    if (!sourceId || sourceId === targetId) {
+      setDraggedId(null);
+      setDropTargetId(null);
+      return;
+    }
+    const fromIndex = items.findIndex((item) => item.id === sourceId);
+    const targetIndex = items.findIndex((item) => item.id === targetId);
+    const targetRect = event.currentTarget.getBoundingClientRect();
+    const afterTarget = event.clientY >= targetRect.top + targetRect.height / 2;
+    const finalIndex = targetIndex + Number(afterTarget) - Number(fromIndex < targetIndex);
+    move(sourceId ?? "", finalIndex);
+    setDraggedId(null);
+    setDropTargetId(null);
+  };
+
+  return (
+    <>
+      <ol aria-label={label} aria-disabled={disabled || undefined} className={cn("ds-ranked-list", className)}>
+        {items.map((item, index) => (
+          <li
+            key={item.id}
+            className="ds-ranked-item"
+            data-dragging={draggedId === item.id ? "true" : undefined}
+            data-drop-target={dropTargetId === item.id ? "true" : undefined}
+            onDragOver={(event) => {
+              if (!disabled && draggedId) {
+                event.preventDefault();
+                setDropTargetId(item.id);
+              }
+            }}
+            onDrop={(event) => onItemDrop(event, item.id)}
+          >
+            <span className="ds-ranked-position" aria-hidden="true">{index + 1}</span>
+            <IconButton
+              type="button"
+              label={`Move ${item.label}. Position ${index + 1} of ${items.length}. Use arrow keys to reorder.`}
+              aria-keyshortcuts="ArrowUp ArrowDown"
+              disabled={disabled}
+              variant="ghost"
+              size="sm"
+              draggable={!disabled}
+              onKeyDown={(event) => onHandleKeyDown(event, item.id, index)}
+              onDragStart={(event) => onHandleDragStart(event, item.id)}
+              onDragEnd={() => { setDraggedId(null); setDropTargetId(null); }}
+              icon={<GripVertical aria-hidden className={dsIcon.sm} />}
+              className="ds-ranked-handle"
+            />
+            <span className="ds-ranked-label">
+              {item.label}
+              {item.description && <span className="ds-field-description block">{item.description}</span>}
+            </span>
+            {item.role && <span className="ds-ranked-role">{item.role}</span>}
+          </li>
+        ))}
+      </ol>
+      <span className="ds-ranked-live" role="status" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </span>
+    </>
   );
 }
 

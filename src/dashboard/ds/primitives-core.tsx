@@ -219,6 +219,10 @@ const iconButtonVariants = cva(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
         ),
+        input: cn(
+          "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
+          "hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+        ),
         outline: cn(
           "bg-transparent text-[color:var(--ds-fg-secondary)]",
           "border-[color:var(--ds-border-strong)]",

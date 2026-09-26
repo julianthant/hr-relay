@@ -6,6 +6,7 @@ import { Input as HeroInput, InputGroup as HeroInputGroup, Radio as HeroRadio, R
 import {
   createContext,
   forwardRef,
+  useEffect,
   useContext,
   useId,
   useRef,
@@ -16,10 +17,11 @@ import {
   type TextareaHTMLAttributes,
 } from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { Check, ChevronDown, Lock, Minus, Pencil, Search, TriangleAlert, Upload, X } from "lucide-react";
+import { Check, ChevronDown, Eye, EyeOff, Lock, Minus, Pencil, Search, Trash2, TriangleAlert, Upload, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { NativeSelect } from "./shadcn-native-select.js";
 import { ShadcnButton } from "./shadcn-button.js";
+import { IconButton } from "./primitives-core.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /**
@@ -76,6 +78,7 @@ export function Field({
   hint,
   disabled,
   className,
+  orientation = "vertical",
   children,
 }: {
   label: ReactNode;
@@ -87,6 +90,8 @@ export function Field({
   hint?: ReactNode;
   disabled?: boolean;
   className?: string;
+  /** Horizontal rows place the label and description beside the control. */
+  orientation?: "vertical" | "horizontal";
   children: ReactNode;
 }) {
   const base = useId();
@@ -94,49 +99,79 @@ export function Field({
   const descriptionId = description ? `${base}-description` : undefined;
   const errorId = error ? `${base}-error` : undefined;
 
+  const fieldLabel = (
+    <label
+      htmlFor={inputId}
+      className={cn(
+        "ds-field-label",
+        dsText.meta,
+        "font-medium text-[color:var(--ds-fg-secondary)]",
+      )}
+    >
+      {label}
+      {required && (
+        <span aria-hidden className="ml-0.5 text-[color:var(--ds-danger)]">
+          *
+        </span>
+      )}
+      {required && <span className="sr-only"> (required)</span>}
+    </label>
+  );
+  const fieldMessage = error ? (
+    <p
+      id={errorId}
+      role="alert"
+      className={cn(
+        "ds-field-error",
+        dsText.meta,
+        "flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-danger)]",
+      )}
+    >
+      <TriangleAlert aria-hidden className={dsIcon.sm} />
+      {error}
+    </p>
+  ) : description ? (
+    <p
+      id={descriptionId}
+      className={cn("ds-field-description", dsText.meta, "text-[color:var(--ds-fg-muted)]")}
+    >
+      {description}
+    </p>
+  ) : null;
+
   return (
     <FieldContext.Provider
       value={{ inputId, descriptionId, errorId, invalid: Boolean(error), disabled }}
     >
-      <div className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)]", className)}>
-        <div className="flex items-baseline gap-[var(--ds-space-base)]">
-          <label
-            htmlFor={inputId}
-            className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]")}
-          >
-            {label}
-            {required && (
-              <span aria-hidden className="ml-0.5 text-[color:var(--ds-danger)]">
-                *
+      {orientation === "horizontal" ? (
+        <div className={cn("ds-body-row ds-field-layout-horizontal min-w-0", className)}>
+          <div className="ds-field-copy">
+            <div className="flex items-baseline gap-[var(--ds-space-base)]">
+              {fieldLabel}
+              {hint && (
+                <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-faint)]")}>
+                  {hint}
+                </span>
+              )}
+            </div>
+            {fieldMessage}
+          </div>
+          <div className="ds-field-control-slot">{children}</div>
+        </div>
+      ) : (
+        <div className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)]", className)}>
+          <div className="flex items-baseline gap-[var(--ds-space-base)]">
+            {fieldLabel}
+            {hint && (
+              <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-faint)]")}>
+                {hint}
               </span>
             )}
-            {required && <span className="sr-only"> (required)</span>}
-          </label>
-          {hint && (
-            <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-faint)]")}>{hint}</span>
-          )}
+          </div>
+          {children}
+          {fieldMessage}
         </div>
-        {children}
-        {error ? (
-          <p
-            id={errorId}
-            role="alert"
-            className={cn(
-              dsText.meta,
-              "flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-danger)]",
-            )}
-          >
-            <TriangleAlert aria-hidden className={dsIcon.sm} />
-            {error}
-          </p>
-        ) : (
-          description && (
-            <p id={descriptionId} className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-              {description}
-            </p>
-          )
-        )}
-      </div>
+      )}
     </FieldContext.Provider>
   );
 }
@@ -164,7 +199,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
         variant="secondary"
         className={cn(
           controlShell,
-          "h-[var(--ds-h-md)] px-[var(--ds-space-base)]",
+          "ds-control-input h-[var(--ds-h-md)] px-[var(--ds-space-base)]",
           dsText.ui,
           className,
         )}
@@ -172,6 +207,105 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     );
   },
 );
+
+export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby"> & {
+  unit: string;
+  "aria-describedby"?: string;
+};
+
+/** A text or numeric control with a fixed, announced unit inside its shell. */
+export const UnitField = forwardRef<HTMLInputElement, UnitFieldProps>(function UnitField(
+  { unit, className, id, "aria-describedby": describedBy, ...props },
+  ref,
+) {
+  const field = useFieldControl();
+  const unitId = useId();
+  const mergedDescription = [field["aria-describedby"], describedBy, unitId].filter(Boolean).join(" ");
+  return (
+    <div className="ds-unit-field">
+      <Input
+        ref={ref}
+        {...props}
+        id={field.id ?? id}
+        aria-describedby={mergedDescription}
+        className={cn("ds-unit-input", className)}
+      />
+      <span id={unitId} className="ds-unit-label">{unit}</span>
+    </div>
+  );
+});
+
+export type SecretFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "type"> & {
+  /** Accessible name when the control is used without a surrounding Field. */
+  label: string;
+  /** Stable credential identity. Changing it immediately hides a revealed value. */
+  identity?: string;
+  /** A distinct trailing removal action. It is omitted when removal is unavailable. */
+  onRemove?: () => void;
+  removeLabel?: string;
+};
+
+/** A masked value with an in-control reveal action and a separate remove action. */
+export const SecretField = forwardRef<HTMLInputElement, SecretFieldProps>(function SecretField(
+  { label, identity: explicitIdentity, onRemove, removeLabel, onChange, className, "aria-describedby": describedBy, ...props },
+  ref,
+) {
+  const field = useFieldControl();
+  const [revealedFor, setRevealedFor] = useState<{ identity: string; value: string } | null>(null);
+  const identity = explicitIdentity ?? field.id ?? props.id ?? props.name ?? label;
+  const controlled = props.value !== undefined;
+  const currentValue = String(props.value ?? "");
+  const effectiveDisabled = props.disabled === true || field.disabled === true;
+  const visible = revealedFor?.identity === identity && (!controlled || revealedFor.value === currentValue);
+  useEffect(() => {
+    setRevealedFor((current) => current && (
+      current.identity !== identity || (controlled && current.value !== currentValue)
+    ) ? null : current);
+  }, [identity, controlled, currentValue]);
+  const handleChange: NonNullable<InputHTMLAttributes<HTMLInputElement>["onChange"]> = (event) => {
+    if (visible) setRevealedFor({ identity, value: event.currentTarget.value });
+    onChange?.(event);
+  };
+  const mergedDescription = [field["aria-describedby"], describedBy].filter(Boolean).join(" ") || undefined;
+  return (
+    <div className={cn("ds-secret-field", className)}>
+      <div className="ds-secret-input flex h-[var(--ds-h-md)] min-w-0 flex-1 items-center">
+        <Input
+          ref={ref}
+          {...props}
+          disabled={effectiveDisabled}
+          onChange={handleChange}
+          type={visible ? "text" : "password"}
+          aria-label={field.id ? props["aria-label"] : props["aria-label"] ?? label}
+          aria-describedby={mergedDescription}
+          className="ds-secret-control h-full rounded-none border-0 bg-transparent px-0 shadow-none focus-visible:outline-none"
+        />
+        <IconButton
+          type="button"
+          label={`${visible ? "Hide" : "Show"} ${label}`}
+          aria-pressed={visible}
+          disabled={effectiveDisabled}
+          onClick={() => setRevealedFor(visible ? null : { identity, value: currentValue })}
+          variant="input"
+          size="xs"
+          icon={visible ? <EyeOff aria-hidden className={dsIcon.sm} /> : <Eye aria-hidden className={dsIcon.sm} />}
+          className="ml-[var(--ds-space-tight)]"
+        />
+      </div>
+      {onRemove && (
+        <IconButton
+          type="button"
+          label={removeLabel ?? `Remove ${label}`}
+          disabled={effectiveDisabled || props.readOnly}
+          variant="danger"
+          size="sm"
+          icon={<Trash2 aria-hidden className={dsIcon.sm} />}
+          onClick={onRemove}
+        />
+      )}
+    </div>
+  );
+});
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<HTMLTextAreaElement>>(
   function Textarea({ className, rows = 4, ...props }, ref) {
@@ -383,17 +517,19 @@ export function Switch({
   className?: string;
 }) {
   return (
-    <HeroSwitch isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("flex items-start gap-[var(--ds-space-base)]", className)}>
+    <HeroSwitch isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row flex items-start gap-[var(--ds-space-base)]", className)}>
       <HeroSwitch.Control className={cn(
-        "relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center rounded-full border",
+        "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
         checked ? "border-transparent bg-[var(--ds-accent)]" : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
         dsFocus,
         dsMotion.fast,
       )}><HeroSwitch.Thumb className={cn(
-        "block size-3 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
-        checked ? "translate-x-3.5 bg-[var(--ds-accent-fg)]" : "translate-x-0.5 bg-[var(--ds-fg-muted)]",
+        "ds-switch-thumb block shrink-0 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
+        checked
+          ? "translate-x-[var(--ds-switch-thumb-on-x)] bg-[var(--ds-accent-fg)]"
+          : "translate-x-[var(--ds-switch-thumb-off-x)] bg-[var(--ds-fg-muted)]",
       )} /></HeroSwitch.Control>
-      <HeroSwitch.Content className="flex min-w-0 flex-col">
+      <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-col">
         <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
         {description && (
           <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>
@@ -408,10 +544,12 @@ export const SearchInput = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode }
 >(function SearchInput({ className, onClear, shortcut, value, ...props }, ref) {
+  const field = useFieldControl();
   return (
     <HeroInputGroup
       role="presentation"
       className={cn(
+        "ds-search-input-group",
         "flex min-w-0 items-center gap-[var(--ds-space-snug)] border bg-[var(--ds-surface-2)]",
         "h-[var(--ds-h-md)] min-h-0 border-[color:var(--ds-control-border)] px-[var(--ds-space-base)]",
         dsRadius.md,
@@ -422,6 +560,7 @@ export const SearchInput = forwardRef<
       <HeroInputGroup.Prefix className="h-full p-0"><Search aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} /></HeroInputGroup.Prefix>
       <HeroInputGroup.Input
         ref={ref}
+        {...field}
         type="search"
         value={value}
         {...props}

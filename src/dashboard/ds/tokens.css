@@ -384,7 +384,7 @@
      --------------------------------------------------------------------- */
   --ds-font-sans: var(--font-sans);
   --ds-font-mono: var(--font-mono);
-  --ds-font-settings: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ds-font-body: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 
   --ds-text-micro: 10px; /* count badges, kbd, uppercase group labels */
   --ds-lh-micro: 13px;
@@ -400,11 +400,26 @@
   --ds-lh-section: 22px;
   --ds-text-display: 20px; /* the one big number on a summary surface */
   --ds-lh-display: 26px;
-  --ds-text-settings-page: 30px;
-  --ds-text-settings-section: 19px;
-  --ds-text-settings-row: 15px;
-  --ds-text-settings-description: 13px;
-  --ds-text-settings-value: 16px;
+  --ds-text-body-page: 27px;
+  --ds-lh-body-page: 33px;
+  --ds-text-body-section: 16.2px;
+  --ds-lh-body-section: 21px;
+  --ds-text-body-row: 13.5px;
+  --ds-lh-body-row: 18px;
+  --ds-text-body-description: 11.7px;
+  --ds-lh-body-description: 15px;
+  --ds-text-body-value: 13.5px;
+  --ds-lh-body-value: 18px;
+  --ds-h-body-control: 32.4px;
+  --ds-h-body-row: 62.5px;
+  --ds-radius-body-control: 8.1px;
+  --ds-radius-body-group: 12.6px;
+  --ds-radius-body-dialog: 14.4px;
+  --ds-w-body-switch: 35.1px;
+  --ds-h-body-switch: 21.6px;
+  --ds-size-body-switch-thumb: 16.2px;
+  --ds-body-switch-thumb-off-x: 2.7px;
+  --ds-body-switch-thumb-on-x: 16.2px;
 
   --ds-tracking-caps: 0.14em; /* uppercase micro labels only */
   --ds-tracking-tight: -0.006em; /* section/display sizes only */
@@ -422,9 +437,9 @@
   --ds-space-loose: 16px;
   --ds-space-section: 24px;
   --ds-space-page: 32px;
-  --ds-w-settings-content: 850px;
-  --ds-w-settings-performance: 1090px;
-  --ds-w-settings-control: 310px;
+  --ds-w-body-content: 828px;
+  --ds-w-body-performance: 1090px;
+  --ds-w-body-control: 280px;
   /* THE SHELL'S LEFT AND RIGHT EDGE — Top Bar, Queue Toolbar, and the panel
      region all hang off this one inset. It used to be three different numbers
      (`cozy` / `base` / bare `p-3`), so the three bands' content started on
@@ -442,6 +457,11 @@
   --ds-h-lg: 32px; /* primary dialog actions, search fields */
   --ds-h-row: 32px; /* one queue/table row */
   --ds-h-bar: 36px; /* status bar, panel toolbar */
+  --ds-w-switch: 28px;
+  --ds-h-switch: 16px;
+  --ds-switch-thumb-off-x: 2px;
+  --ds-switch-thumb-on-x: 14px;
+  --ds-size-switch-thumb: 12px;
   /* EVERY control in the queue's action bar is this tall — the launcher, the
      run starter, the eight status pills, the two composites' container, the
      sort select and the select toggle. Operator: "all of these should have the
@@ -816,6 +836,19 @@ body[data-demo-theme="dark"] {
   --ds-settings-fg-secondary: #c7cbce;
   --ds-settings-fg-muted: #b1b8bd;
 
+  /* Shared content-body surfaces. The app shell keeps its own palette. */
+  --ds-body-surface-page: #181818;
+  --ds-body-surface-group: #222222;
+  --ds-body-surface-control: #2b2b2b;
+  --ds-body-surface-hover: #303030;
+  --ds-body-surface-selected: #323232;
+  --ds-body-border: #363636;
+  --ds-body-border-subtle: #303030;
+  --ds-body-control-border: #515151;
+  --ds-body-fg: #efefef;
+  --ds-body-fg-secondary: #b2b2b2;
+  --ds-body-fg-muted: #a0a0a0;
+
   /* The categorical log accents are RETIRED to a neutral ramp. The log stream
      used to paint four hues on top of four status hues at once — the noisiest
      surface in the product. Reads and writes are now told apart by direction
@@ -1036,6 +1069,18 @@ body[data-demo-theme="light"] {
   --ds-settings-fg-secondary: #4f5a64;
   --ds-settings-fg-muted: #606c76;
 
+  --ds-body-surface-page: #fafafa;
+  --ds-body-surface-group: #ffffff;
+  --ds-body-surface-control: #f7f7f7;
+  --ds-body-surface-hover: #ededed;
+  --ds-body-surface-selected: #e4e4e4;
+  --ds-body-border: #dedede;
+  --ds-body-border-subtle: #e8e8e8;
+  --ds-body-control-border: #a0a0a0;
+  --ds-body-fg: #202020;
+  --ds-body-fg-secondary: #626262;
+  --ds-body-fg-muted: #6b6b6b;
+
   --log-teal: #0b0f19; /* a WRITE */
   --log-cyan: #334155; /* a READ */
   --log-slate: #475569; /* navigation, search, inert chrome */
@@ -1243,6 +1288,11 @@ body[data-demo-theme="light"] {
   letter-spacing: var(--ds-tracking-tight);
   font-variant-numeric: tabular-nums;
 }
+.ds-text-page-title {
+  font-size: var(--ds-text-body-page);
+  line-height: var(--ds-lh-body-page);
+  letter-spacing: var(--ds-tracking-tight);
+}
 /* Uppercase micro label — group headers, table column heads, tile captions. */
 .ds-text-caps {
   font-size: var(--ds-text-micro);
@@ -1258,6 +1308,404 @@ body[data-demo-theme="light"] {
    it can beat the size class (same origin, later in this file). */
 .ds-leading-flush {
   line-height: 1;
+}
+
+/* Content-body palette aliases. Apply to page content and portalled body dialogs,
+   leaving app-shell and navigation tokens untouched. */
+.ds-body-scope,
+.ds-body-overlay {
+  --ds-surface-page: var(--ds-body-surface-page);
+  --ds-surface-1: var(--ds-body-surface-group);
+  --ds-surface-2: var(--ds-body-surface-control);
+  --ds-surface-3: var(--ds-body-surface-hover);
+  --ds-surface-overlay: var(--ds-body-surface-group);
+  --ds-surface-selected: var(--ds-body-surface-selected);
+  --ds-surface-disabled: color-mix(in srgb, var(--ds-body-surface-control) 60%, transparent);
+  --ds-recess-bg: var(--ds-body-surface-control);
+  --ds-recess-fg: var(--ds-body-fg-secondary);
+  --ds-recess-fg-quiet: var(--ds-body-fg-muted);
+  --ds-recess-border: var(--ds-body-border);
+  --ds-border-subtle: var(--ds-body-border-subtle);
+  --ds-border: var(--ds-body-border);
+  --ds-border-strong: var(--ds-body-control-border);
+  --ds-border-loud: var(--ds-body-control-border);
+  --ds-control-border: var(--ds-body-control-border);
+  --ds-fg: var(--ds-body-fg);
+  --ds-fg-secondary: var(--ds-body-fg-secondary);
+  --ds-fg-muted: var(--ds-body-fg-muted);
+  --ds-fg-faint: color-mix(in srgb, var(--ds-body-fg-muted) 70%, transparent);
+  --ds-control-bg: var(--ds-body-surface-control);
+  --ds-control-bg-hover: var(--ds-body-surface-hover);
+  --ds-control-bg-active: var(--ds-body-surface-selected);
+  --ds-control-fg: var(--ds-body-fg);
+}
+
+/* A body scope refines shared primitives without changing the app shell or nav. */
+.ds-body-scope {
+  width: 100%;
+  max-width: var(--ds-w-body-content);
+  min-width: 0;
+  container-type: inline-size;
+  background: var(--ds-surface-page);
+  --ds-text-ui: var(--ds-text-body-row);
+  --ds-lh-ui: var(--ds-lh-body-row);
+  --ds-text-body: var(--ds-text-body-description);
+  --ds-lh-body: var(--ds-lh-body-description);
+  --ds-text-meta: var(--ds-text-body-description);
+  --ds-lh-meta: var(--ds-lh-body-description);
+  --ds-h-md: var(--ds-h-body-control);
+  --ds-h-lg: var(--ds-h-body-control);
+  --ds-h-toolbar: var(--ds-h-body-control);
+  --ds-h-row: var(--ds-h-body-row);
+  --ds-radius-md: var(--ds-radius-body-control);
+  --ds-radius-lg: var(--ds-radius-body-group);
+  --ds-radius-xl: var(--ds-radius-body-dialog);
+  --ds-w-switch: var(--ds-w-body-switch);
+  --ds-h-switch: var(--ds-h-body-switch);
+  --ds-size-switch-thumb: var(--ds-size-body-switch-thumb);
+  --ds-switch-thumb-off-x: var(--ds-body-switch-thumb-off-x);
+  --ds-switch-thumb-on-x: var(--ds-body-switch-thumb-on-x);
+  --ds-space-hair: 1.8px;
+  --ds-space-tight: 3.6px;
+  --ds-space-snug: 5.4px;
+  --ds-space-base: 7.2px;
+  --ds-space-cozy: 10.8px;
+  --ds-space-loose: 14.4px;
+  --ds-space-section: 21.6px;
+  --ds-space-page: 25.2px;
+  font-family: var(--ds-font-body);
+  color: var(--ds-fg);
+}
+
+.ds-page-heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--ds-space-loose);
+}
+
+.ds-page-heading-title {
+  margin: 0;
+  font-weight: 600;
+}
+
+.ds-page-heading-description {
+  max-width: 65ch;
+  margin: var(--ds-space-tight) 0 0;
+  color: var(--ds-fg-secondary);
+}
+
+.ds-body-scope .ds-form-group {
+  container-type: inline-size;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--ds-border-w) solid var(--ds-border);
+  border-radius: var(--ds-radius-lg);
+  background: var(--ds-surface-1);
+  padding: var(--ds-space-base) var(--ds-space-loose);
+}
+
+.ds-body-scope .ds-form-group > * + * {
+  border-top: var(--ds-border-w) solid var(--ds-border-subtle);
+}
+
+.ds-body-scope .ds-body-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control));
+  align-items: center;
+  gap: var(--ds-space-loose);
+  min-width: 0;
+  min-height: var(--ds-h-body-row);
+  padding-block: var(--ds-space-base);
+}
+
+.ds-body-scope .ds-result-row {
+  grid-template-areas: "copy control";
+}
+
+.ds-body-scope .ds-field-layout-horizontal {
+  grid-template-areas: "copy control";
+}
+
+.ds-body-scope .ds-field-copy {
+  grid-area: copy;
+  min-width: 0;
+}
+
+.ds-body-scope .ds-field-label {
+  display: block;
+  color: var(--ds-fg);
+  font-size: var(--ds-text-body-row);
+  line-height: var(--ds-lh-body-row);
+  font-weight: 500;
+}
+
+.ds-body-scope .ds-field-description {
+  margin: var(--ds-space-tight) 0 0;
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-body-description);
+  line-height: var(--ds-lh-body-description);
+}
+
+.ds-body-scope .ds-field-error {
+  margin: var(--ds-space-tight) 0 0;
+  color: var(--ds-danger);
+  font-size: var(--ds-text-body-description);
+  line-height: var(--ds-lh-body-description);
+}
+
+.ds-body-scope .ds-field-control-slot {
+  grid-area: control;
+  display: flex;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+.ds-body-scope .ds-field-control-slot > * {
+  width: 100%;
+  min-width: 0;
+}
+
+.ds-unit-field {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: stretch;
+  min-width: 0;
+  overflow: hidden;
+  border: var(--ds-border-w) solid var(--ds-control-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-2);
+  transition: border-color var(--ds-dur-1) var(--ds-ease-out), outline-color var(--ds-dur-1) var(--ds-ease-out);
+}
+
+.ds-unit-field:focus-within {
+  outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+.ds-unit-field:has(input[aria-invalid="true"]) {
+  border-color: var(--ds-danger);
+}
+
+.ds-unit-field .ds-unit-input {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+}
+
+.ds-unit-field .ds-unit-input:focus-visible {
+  outline: none;
+}
+
+.ds-unit-label {
+  display: flex;
+  align-items: center;
+  border-left: var(--ds-border-w) solid var(--ds-border);
+  padding-inline: var(--ds-space-base);
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-meta);
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.ds-secret-field {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-snug);
+  min-width: 0;
+}
+
+.ds-secret-input {
+  flex: 1;
+  min-width: 0;
+  border: var(--ds-border-w) solid var(--ds-control-border);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-2);
+  padding-inline: var(--ds-space-base);
+  transition: border-color var(--ds-dur-1) var(--ds-ease-out), outline-color var(--ds-dur-1) var(--ds-ease-out);
+}
+
+.ds-secret-input:focus-within {
+  outline: var(--ds-focus-ring-w) solid var(--ds-focus-ring);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+.ds-secret-input:has(input[aria-invalid="true"]) {
+  border-color: var(--ds-danger);
+}
+
+.ds-secret-input input {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+}
+
+.ds-secret-input input:focus-visible {
+  outline: none;
+}
+
+.ds-secret-input .ds-secret-control {
+  border-color: transparent;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.ds-search-input-group {
+  min-width: 0;
+}
+
+.ds-body-scope .ds-search-input-group {
+  width: 100%;
+  border-radius: var(--ds-radius-pill);
+}
+
+.ds-body-scope .ds-date-picker--inline {
+  display: flex;
+  width: 100%;
+  min-height: var(--ds-h-body-row);
+  justify-content: space-between;
+  padding-block: var(--ds-space-base);
+}
+
+.ds-body-scope .ds-date-label {
+  font-size: var(--ds-text-body-row);
+  line-height: var(--ds-lh-body-row);
+}
+
+.ds-body-scope .ds-disclosure-trigger {
+  min-height: var(--ds-h-md);
+  padding-inline: var(--ds-space-base);
+}
+
+.ds-body-scope .ds-result-row-side {
+  grid-area: control;
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: var(--ds-space-tight);
+  text-align: right;
+}
+
+.ds-body-scope .ds-result-row-copy {
+  grid-area: copy;
+}
+
+.ds-body-scope .ds-result-row-evidence {
+  color: var(--ds-fg-muted);
+  font-size: var(--ds-text-meta);
+  line-height: var(--ds-lh-meta);
+}
+
+.ds-body-scope .ds-switch-row {
+  flex-direction: row-reverse;
+  align-items: center;
+  justify-content: space-between;
+  min-height: var(--ds-h-body-row);
+  padding-block: var(--ds-space-base);
+}
+
+.ds-body-scope .ds-switch-content {
+  flex: 1;
+  align-items: flex-start;
+  text-align: left;
+}
+
+.ds-switch-control {
+  width: var(--ds-w-switch);
+  height: var(--ds-h-switch);
+}
+
+.ds-switch-thumb {
+  width: var(--ds-size-switch-thumb);
+  height: var(--ds-size-switch-thumb);
+}
+
+.ds-body-scope .ds-ranked-list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: var(--ds-space-snug);
+  margin: 0;
+  padding: var(--ds-space-loose);
+  list-style: none;
+}
+
+.ds-body-scope .ds-ranked-item {
+  display: flex;
+  align-items: center;
+  gap: var(--ds-space-base);
+  min-width: 0;
+  min-height: var(--ds-h-bar);
+  border: var(--ds-border-w) solid var(--ds-border-subtle);
+  border-radius: var(--ds-radius-md);
+  background: var(--ds-surface-2);
+  padding: var(--ds-space-tight) var(--ds-space-base);
+  transition: border-color var(--ds-dur-1) var(--ds-ease-out), opacity var(--ds-dur-1) var(--ds-ease-out);
+}
+
+.ds-body-scope .ds-ranked-item[data-dragging="true"] {
+  opacity: 0.55;
+}
+
+.ds-body-scope .ds-ranked-item[data-drop-target="true"] {
+  border-color: var(--ds-fg-muted);
+}
+
+.ds-body-scope .ds-ranked-handle {
+  cursor: grab;
+}
+
+.ds-body-scope .ds-ranked-handle:active {
+  cursor: grabbing;
+}
+
+.ds-body-scope .ds-ranked-position {
+  min-width: 1.5em;
+  color: var(--ds-fg-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: center;
+}
+
+.ds-body-scope .ds-ranked-label {
+  min-width: 0;
+  flex: 1;
+  overflow-wrap: anywhere;
+  color: var(--ds-fg);
+}
+
+.ds-body-scope .ds-ranked-role {
+  flex: none;
+  color: var(--ds-fg-muted);
+  font-size: var(--ds-text-meta);
+}
+
+.ds-ranked-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  clip-path: inset(50%);
+}
+
+@container (max-width: 620px) {
+  .ds-body-scope .ds-body-row {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "copy" "control";
+    gap: var(--ds-space-snug);
+  }
+
+  .ds-body-scope .ds-field-control-slot {
+    justify-content: stretch;
+  }
+
+  .ds-body-scope .ds-result-row-side {
+    align-items: flex-start;
+    text-align: left;
+  }
 }
 
 /* Elevation */

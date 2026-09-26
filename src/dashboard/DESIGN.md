@@ -160,6 +160,24 @@ import { Panel, PanelHeader, Button, StatusPill, dsText } from "../demo-ui";
 - The specimen page `DemoUiKit.tsx` shows every primitive in every state. Skim
   it before choosing a component.
 
+### Shared content-body primitives
+
+Use `DsBodyScope` around a content body that needs the compact form density. It
+caps the body at 828px, scopes the 27px page heading, 13.5px labels, 11.7px
+supporting copy, 32.4px controls and 62.5px rows, and leaves the app shell and
+sidebar outside that scale. Put `dsSurface.bodyPage` on the full-width main
+canvas, then keep `DsBodyScope` as its 828px content column. Compose the shared
+`PageHeading`, `FormGroup` and horizontal `Field` with the existing `Input`, `Select`, `SearchInput`, `Switch`
+and `Button`; do not add a second Settings-only control family. `UnitField`
+announces its fixed unit, `SecretField` starts masked and keeps removal separate
+from reveal (supply a stable `identity` when it can switch records; read-only
+values remain revealable but cannot be removed), `ResultRow` pairs a result
+with evidence, and `RankedList` provides keyboard and pointer reordering with a
+`disabled` state while movement is unavailable. Portalled body dialogs pass
+`className="ds-body-overlay"` to `DialogContent` so their palette follows the
+same dark/light body tokens. These are in the existing `ds/ui.tsx` barrel and
+are demonstrated together in the Forms section of the current kit page.
+
 ---
 
 ## Tokens — what to reach for

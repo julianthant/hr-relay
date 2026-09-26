@@ -121,6 +121,10 @@ export {
   CardFooter,
   SectionLabel,
   PageHeader,
+  DsBodyScope,
+  PageHeading,
+  FormGroup,
+  ResultRow,
   /**
    * The root a full-page takeover wears: full-bleed under the top bar, and the
    * one place the shared arrival lives (D275 item 2). Never wrap it in a
@@ -165,6 +169,8 @@ export {
   RadioGroup,
   Switch,
   SearchInput,
+  UnitField,
+  SecretField,
   /**
    * The correctable/locked value pair. Reach for these anywhere a surface shows
    * a value the run OBSERVED — never re-draw a bare `<input>` for one, or it
@@ -181,6 +187,7 @@ export {
    */
   Dropzone,
 } from "./primitives-form.js";
+export type { UnitFieldProps, SecretFieldProps } from "./primitives-form.js";
 
 export { DateInput } from "./primitives-date.js";
 
@@ -239,5 +246,6 @@ export {
   ProgressBar,
   TimelineSteps,
   KeyValueList,
+  RankedList,
 } from "./primitives-data.js";
-export type { DsSortDirection, DsStep, DsStepState } from "./primitives-data.js";
+export type { DsRankedItem, DsSortDirection, DsStep, DsStepState } from "./primitives-data.js";

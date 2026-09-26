@@ -38,6 +38,7 @@ import {
   Info,
   Pencil,
   Play,
+  Plus,
   RotateCcw,
   ShieldCheck,
   Trash2,
@@ -80,6 +81,8 @@ import {
   DrawerContent,
   EmptyState,
   Field,
+  FormGroup,
+  DsBodyScope,
   IconButton,
   Input,
   Kbd,
@@ -89,9 +92,13 @@ import {
   PanelFooter,
   PanelHeader,
   PanelToolbar,
+  PageHeading,
   ProgressBar,
   RadioGroup,
+  RankedList,
+  ResultRow,
   SearchInput,
+  SecretField,
   ValueField,
   LockedValue,
   SectionLabel,
@@ -113,6 +120,7 @@ import {
   Table,
   Tabs,
   Textarea,
+  UnitField,
   TimelineSteps,
   ToastProvider,
   Popover,
@@ -802,144 +810,202 @@ function FormsSection() {
   const [corrected, setCorrected] = useState("07/16/2026");
   const [proposed, setProposed] = useState("07/18/2026");
   const [date, setDate] = useState("2026-07-16");
+  const [timeout, setTimeout] = useState("45");
+  const [keys, setKeys] = useState([
+    { id: "ucpath-primary", label: "UCPath API", value: "sk_specimen_primary_428", role: "Primary" },
+    { id: "ucpath-fallback", label: "UCPath backup", value: "sk_specimen_fallback_917", role: "Fallback" },
+  ]);
+  const [pendingKey, setPendingKey] = useState<string | null>(null);
+  const [priorities, setPriorities] = useState([
+    { id: "ucpath", label: "UCPath", description: "Primary connection", role: "Primary" },
+    { id: "hrms", label: "Legacy HRMS", description: "Fallback connection", role: "Fallback" },
+  ]);
+  const selectedKey = keys.find((key) => key.id === pendingKey);
+
   return (
     <Section
       id="forms"
       title="Forms"
-      note="Every control has a visible label; errors are announced, not just coloured. Field wires the ids — never hand-roll aria-describedby."
+      note="Shared controls compose one body density, grouped fields, units, private values, results and ranked choices."
     >
-      <div className="grid grid-cols-3 gap-[var(--ds-space-loose)]">
-        <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-          <Field label="Employee ID" description="9 digits, no dashes" required>
+      <DsBodyScope className="flex flex-col gap-[var(--ds-space-loose)]">
+        <PageHeading
+          as="h2"
+          title="Shared controls"
+          description="Settings, records and search share the same field and result primitives."
+          actions={(
+            <Button
+              variant="ghost"
+              size="md"
+              icon={<Plus aria-hidden className={dsIcon.sm} />}
+              onClick={() => setKeys((current) => [...current, {
+                id: `specimen-key-${current.length + 1}`,
+                label: "New API key",
+                value: "sk_specimen_new_611",
+                role: "Fallback",
+              }])}
+            >
+              Add key
+            </Button>
+          )}
+        />
+
+        <SearchInput
+          aria-label="Search form specimens"
+          value={search}
+          onChange={(event) => setSearch(event.target.value)}
+          onClear={() => setSearch("")}
+          placeholder="Search people, files, trace ids…"
+          shortcut={<Kbd>/</Kbd>}
+        />
+
+        <FormGroup label="Connection settings">
+          <Field label="Employee ID" description="9 digits, no dashes" required orientation="horizontal">
             <Input placeholder="100844120" defaultValue="100844120" />
           </Field>
-          <Field label="Employee ID" error="No UCPath record matches 10084412X.">
+          <Field label="Employee ID" error="No UCPath record matches 10084412X." orientation="horizontal">
             <Input defaultValue="10084412X" />
           </Field>
-          <DateInput label="Date" value={date} onChange={setDate} />
-          {/* The three LABELS are the legacy page's, verbatim; the three option
-              VALUES are not. Legacy's are the demo's real workflow ids, and
-              `dashboard-wire-boundary` arm (3) forbids a registered id as a
-              string literal anywhere under `src/dashboard` — workflow identity
-              reaches a surface as served data or not at all. Nothing here
-              branches on the value, but the arm is deliberately literal-based
-              and exempting a page for being a specimen is how the rule stops
-              meaning anything. A `specimen-` prefix also cannot collide as more
-              workflows register: `onboarding` and `oath` are not ids today and
-              both are on the plan. */}
-          <Field label="Workflow" hint="8 available">
+          <Field label="Read timeout" description="How long to wait for a response" orientation="horizontal">
+            <UnitField aria-label="Read timeout" type="number" min={1} value={timeout} onChange={(event) => setTimeout(event.target.value)} unit="seconds" />
+          </Field>
+          <Field label="Workflow" hint="8 available" orientation="horizontal">
             <Select defaultValue="specimen-separations">
               <option value="specimen-separations">Separations</option>
               <option value="specimen-onboarding">Onboarding</option>
               <option value="specimen-oath">Oath Signature</option>
             </Select>
           </Field>
-          <Field label="Disabled" description="Locked while a run is in flight" disabled>
+          <Field label="Disabled" description="Locked while a run is in flight" disabled orientation="horizontal">
             <Input defaultValue="se-140211-9f3a" />
           </Field>
-          {/* The toolbar variant, shown on a bar with two `--ds-h-toolbar`
-              siblings — because the defect it exists to prevent is only visible
-              beside them: a bare `<select>` sits on a baseline, so it lands
-              1.25px below controls it shares a height token with. */}
-          <div className="flex flex-col gap-[var(--ds-space-tight)]">
-            <span className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]")}>
-              Toolbar variant
-            </span>
-            <div className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-base)] rounded-[var(--ds-radius-md)]">
-              <Button size="sm" variant="ghost">
-                Filter
-              </Button>
-              <Select variant="toolbar" aria-label="Sort" defaultValue="attention" icon={<ArrowUpDown className={dsIcon.sm} />}>
-                <option value="attention">Attention first</option>
-                <option value="newest">Newest first</option>
-              </Select>
-              <Button size="sm" variant="ghost">
-                Select
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-          <Field label="Note for the receipt">
-            <Textarea rows={4} placeholder="Why this run was started…" />
-          </Field>
-          <SearchInput
-            value={search}
-            onChange={(event) => setSearch(event.target.value)}
-            onClear={() => setSearch("")}
-            placeholder="Search people, files, trace ids…"
-            shortcut={<Kbd>/</Kbd>}
-          />
-
-          {/* A RECORDED value, which is a different thing from a form input:
-              the run observed it, and the only question is whether the operator
-              may correct it. The pair is told apart by SHAPE — a box takes
-              typing, flat text with a lock does not — because on a surface that
-              files real HR transactions, "you may change this" and "you may
-              not" is the load-bearing distinction. Both the Data ledger and the
-              OCR review draw these; do not hand-roll a third. */}
-          <SectionLabel>Recorded value</SectionLabel>
-          <div className="flex flex-col gap-[var(--ds-space-base)]">
-            <ValueField ariaLabel="Separation date — correctable" value={corrected} onChange={setCorrected} />
-            {/* The dirty arm is a REAL controlled field here, not the legacy
-                page's `onChange={() => {}}`. A specimen of "typed over and not
-                yet committed" that discards what you type is a specimen of a
-                broken control, and this tree's fail-loud rule reads a
-                swallowing handler the same way whether or not it is a demo. */}
-            <ValueField
-              ariaLabel="Separation date — corrected, not yet saved"
-              value={proposed}
-              dirty
-              onChange={setProposed}
-            />
-            <LockedValue
-              value="Voluntary termination"
-              reason="A write is a record of what happened, not a form. It is shown here and never edited."
-            />
-            <LockedValue
-              value="never read back"
-              tone="warning"
-              reason="Sent, but never read back — the outcome is unknown until you resolve the park."
-            />
-          </div>
-        </div>
-
-        <div className="flex flex-col gap-[var(--ds-space-loose)]">
-          <div className="flex flex-col gap-[var(--ds-space-base)]">
-            <SectionLabel>Checkbox</SectionLabel>
-            <Checkbox
-              checked={checked}
-              onCheckedChange={(value) => setChecked(value)}
-              label="Select all rows"
-              description="Indeterminate when only some are checked"
-            />
-            <Checkbox defaultChecked label="Capture a screenshot at each write" />
-            <Checkbox
-              checked={false}
-              disabled
-              label="Auto-retry parked writes"
-              description="Never available — a parked write is resolved by a human"
-            />
-          </div>
-          <RadioGroup
-            label="Run mode"
-            name="kit-mode"
-            value={mode}
-            onValueChange={setMode}
-            options={[
-              { value: "dry", label: "Dry run", description: "No transaction is submitted" },
-              { value: "live", label: "Live", description: "Files a real HR transaction" },
-            ]}
-          />
           <Switch
             checked={notify}
             onCheckedChange={setNotify}
             label="Desktop notifications"
             description="Applies immediately"
           />
+          <Field label="Note for the receipt" description="Why this run was started" orientation="horizontal">
+            <Textarea rows={2} placeholder="Add a note…" />
+          </Field>
+          <DateInput label="Start date" value={date} onChange={setDate} inline />
+        </FormGroup>
+
+        <FormGroup label="API credentials">
+          {keys.filter((key) => key.role === "Primary").map((key) => (
+            <Field key={key.id} label={key.label} description="Primary connection" orientation="horizontal">
+              <SecretField
+                label={`${key.label} key`}
+                value={key.value}
+                onChange={(event) => setKeys((current) => current.map((entry) => entry.id === key.id ? { ...entry, value: event.target.value } : entry))}
+                onRemove={() => setPendingKey(key.id)}
+              />
+            </Field>
+          ))}
+          {keys.some((key) => key.role === "Fallback") && (
+            <Disclosure summary={`${keys.filter((key) => key.role === "Fallback").length} fallback key(s)`}>
+              <div className="flex min-w-0 flex-col gap-[var(--ds-space-snug)] pb-[var(--ds-space-base)]">
+                {keys.filter((key) => key.role === "Fallback").map((key) => (
+                  <Field key={key.id} label={key.label} description="Fallback connection" orientation="horizontal">
+                    <SecretField
+                      label={`${key.label} key`}
+                      value={key.value}
+                      onChange={(event) => setKeys((current) => current.map((entry) => entry.id === key.id ? { ...entry, value: event.target.value } : entry))}
+                      onRemove={() => setPendingKey(key.id)}
+                    />
+                  </Field>
+                ))}
+              </div>
+            </Disclosure>
+          )}
+        </FormGroup>
+
+        <FormGroup label="Preflight result">
+          <ResultRow
+            label="Credential check"
+            description="UCPath API responds"
+            value={<span className="text-[color:var(--ds-success-fg)]">Ready</span>}
+            evidence="Last checked today · synthetic specimen"
+          />
+        </FormGroup>
+
+        <FormGroup label="Provider priority">
+          <RankedList
+            label="Provider priority"
+            items={priorities}
+            onReorder={setPriorities}
+          />
+        </FormGroup>
+
+        <div className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-loose)] md:grid-cols-2">
+          <FormGroup label="Recorded values">
+            <div className="flex min-w-0 flex-col gap-[var(--ds-space-base)] py-[var(--ds-space-base)]">
+              <SectionLabel>Correctable and locked</SectionLabel>
+              <ValueField ariaLabel="Separation date — correctable" value={corrected} onChange={setCorrected} />
+              <ValueField
+                ariaLabel="Separation date — corrected, not yet saved"
+                value={proposed}
+                dirty
+                onChange={setProposed}
+              />
+              <LockedValue value="Voluntary termination" reason="A write records what happened; it is not edited here." />
+              <LockedValue value="never read back" tone="warning" reason="The outcome is unknown until resolved." />
+            </div>
+          </FormGroup>
+
+          <FormGroup label="Selection controls">
+            <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)] py-[var(--ds-space-base)]">
+              <Checkbox
+                checked={checked}
+                onCheckedChange={(value) => setChecked(value)}
+                label="Select all rows"
+                description="Indeterminate when only some are checked"
+              />
+              <Checkbox defaultChecked label="Capture a screenshot at each write" />
+              <Checkbox checked={false} disabled label="Auto-retry parked writes" description="Unavailable for a parked write" />
+              <RadioGroup
+                label="Run mode"
+                name="kit-mode"
+                value={mode}
+                onValueChange={setMode}
+                options={[
+                  { value: "dry", label: "Dry run", description: "No transaction is submitted" },
+                  { value: "live", label: "Live", description: "Files a real HR transaction" },
+                ]}
+              />
+            </div>
+          </FormGroup>
         </div>
-      </div>
+
+        <div className="flex flex-col gap-[var(--ds-space-tight)]">
+          <span className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]")}>Toolbar variant</span>
+          <div className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-base)]">
+            <Button size="sm" variant="ghost">Filter</Button>
+            <Select variant="toolbar" aria-label="Sort" defaultValue="attention" icon={<ArrowUpDown className={dsIcon.sm} />}>
+              <option value="attention">Attention first</option>
+              <option value="newest">Newest first</option>
+            </Select>
+            <Button size="sm" variant="ghost">Select</Button>
+          </div>
+        </div>
+      </DsBodyScope>
+
+      <Dialog open={pendingKey !== null} onOpenChange={(open) => { if (!open) setPendingKey(null); }}>
+        <DialogContent
+          size="sm"
+          className="ds-body-overlay"
+          title={`Remove ${selectedKey?.label ?? "API key"}?`}
+          description="This key will no longer be available to use."
+        >
+          <DialogFooter>
+            <Button variant="secondary" onClick={() => setPendingKey(null)}>Cancel</Button>
+            <Button variant="danger" onClick={() => {
+              setKeys((current) => current.filter((key) => key.id !== pendingKey));
+              setPendingKey(null);
+            }}>Remove key</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Section>
   );
 }

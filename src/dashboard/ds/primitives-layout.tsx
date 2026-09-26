@@ -41,12 +41,99 @@ export function Disclosure({ summary, children, defaultOpen, className, summaryC
   title?: string;
 }) {
   return <Collapsible defaultOpen={defaultOpen} className={cn("group", className)} title={title}>
-    <CollapsibleTrigger className={cn("flex w-full cursor-pointer items-center gap-[var(--ds-space-tight)] text-left", dsFocus, summaryClassName)}>
+    <CollapsibleTrigger className={cn("ds-disclosure-trigger flex w-full cursor-pointer items-center gap-[var(--ds-space-tight)] text-left", dsFocus, summaryClassName)}>
       <ChevronRight aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)] transition-transform group-data-[state=open]:rotate-90")} />
       <span className="min-w-0 flex-1">{summary}</span>
     </CollapsibleTrigger>
     <CollapsibleContent className={contentClassName}>{children}</CollapsibleContent>
   </Collapsible>;
+}
+
+/** Scope the shared content-body density while leaving the product shell untouched. */
+export function DsBodyScope({
+  className,
+  children,
+  ...props
+}: HTMLAttributes<HTMLDivElement> & { children: ReactNode }) {
+  return (
+    <div className={cn("ds-body-scope", className)} {...props}>
+      {children}
+    </div>
+  );
+}
+
+/** A content-page heading sized for the shared body scope. */
+export function PageHeading({
+  title,
+  description,
+  actions,
+  as: Heading = "h1",
+  className,
+}: {
+  title: ReactNode;
+  description?: ReactNode;
+  actions?: ReactNode;
+  as?: "h1" | "h2";
+  className?: string;
+}) {
+  return (
+    <header className={cn("ds-page-heading", className)}>
+      <div className="min-w-0">
+        <Heading className={cn("ds-page-heading-title", dsText.pageTitle, "text-[color:var(--ds-fg)]")}>
+          {title}
+        </Heading>
+        {description && (
+          <p className={cn("ds-page-heading-description", dsText.meta)}>{description}</p>
+        )}
+      </div>
+      {actions && <div className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">{actions}</div>}
+    </header>
+  );
+}
+
+/** A labeled, rounded group of related body fields. */
+export function FormGroup({
+  label,
+  className,
+  children,
+}: {
+  label: string;
+  className?: string;
+  children: ReactNode;
+}) {
+  return (
+    <div role="group" aria-label={label} className={cn("ds-form-group", className)}>
+      {children}
+    </div>
+  );
+}
+
+/** A shared result row for checks, storage summaries and evidence. */
+export function ResultRow({
+  label,
+  description,
+  value,
+  evidence,
+  className,
+}: {
+  label: ReactNode;
+  description?: ReactNode;
+  value: ReactNode;
+  evidence?: ReactNode;
+  className?: string;
+}) {
+  return (
+    <div className={cn("ds-body-row ds-result-row", className)}>
+      <div className="ds-result-row-copy min-w-0">
+        <div className="ds-field-label">{label}</div>
+        {description && <p className="ds-field-description">{description}</p>}
+      </div>
+      <div className="ds-result-row-side">
+        <div>{value}</div>
+        {evidence && <div className="ds-result-row-evidence">{evidence}</div>}
+      </div>
+    </div>
+  );
 }
 
 /**

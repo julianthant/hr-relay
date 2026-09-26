@@ -36,6 +36,8 @@ export const dsText = {
   section: "ds-text-section",
   /** 20px — the single big number on a summary surface */
   display: "ds-text-display",
+  /** 27px — page title within a scoped product body */
+  pageTitle: "ds-text-page-title",
   /** 10px uppercase 600 — group headers, column heads. Never for sentences. */
   caps: "ds-text-caps",
   /** tabular monospace — every number that can change while you look at it */
@@ -53,6 +55,8 @@ export const dsText = {
  * ---------------------------------------------------------------------- */
 export const dsSurface = {
   page: "bg-[var(--ds-surface-page)]",
+  /** content-body canvas; apply to the full main area around the 828px body scope */
+  bodyPage: "bg-[var(--ds-body-surface-page)]",
   /** the default plane: panels, cards, bars */
   card: "bg-[var(--ds-surface-1)]",
   /**
@@ -204,11 +208,14 @@ export const dsSize = {
   hMd: "h-[var(--ds-h-md)]",
   hLg: "h-[var(--ds-h-lg)]",
   hRow: "h-[var(--ds-h-row)]",
+  hBodyControl: "h-[var(--ds-h-body-control)]",
+  hBodyRow: "min-h-[var(--ds-h-body-row)]",
   hBar: "h-[var(--ds-h-bar)]",
   hTopbar: "h-[var(--ds-h-topbar)]",
   /** the Session Card's reserved micro-pipeline band — see the token's note */
   hMicroPipeline: "h-[var(--ds-h-micro-pipeline)]",
   wRail: "w-[var(--ds-w-rail)]",
+  wBodyContent: "max-w-[var(--ds-w-body-content)]",
 } as const;
 
 export const dsGap = {
