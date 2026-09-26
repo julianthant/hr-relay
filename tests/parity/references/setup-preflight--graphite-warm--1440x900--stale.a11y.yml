@@ -1,7 +1,7 @@
 # setup-preflight--graphite-warm--1440x900--stale
 # adapter: production-preflight-services
 # fixture: stale
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: stale
 # capturedAt: 2026-08-03
@@ -25,32 +25,20 @@
 - main:
   - region "Settings":
     - navigation "Settings sections":
-      - button "Back to the dashboard"
-      - separator
+      - heading "Settings" [level=2]
       - text: Settings
       - link "General":
         - /url: "?settings=general"
-      - link "Display":
-        - /url: "?settings=display"
       - link "Performance":
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
       - link "Routes":
         - /url: "?settings=routes"
-      - link "Annual dates":
-        - /url: "?settings=annual-dates"
       - link "Provider budgets & models":
         - /url: "?settings=providers"
-      - text: Authorities
       - link "Credentials":
-        - /url: "?settings=protected-store"
-      - link "Provider availability":
-        - /url: "?settings=provider-env"
-      - link "Observed host":
-        - /url: "?settings=derived-host"
-      - link "Runtime paths":
-        - /url: "?settings=runtime-isolation"
+        - /url: "?settings=credentials"
       - text: Status
       - link "Storage checks":
         - /url: "?settings=storage"
@@ -63,14 +51,15 @@
         - /url: "?settings=keyboard"
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
-    - heading "Preflight" [level=2]
-    - text: Check whether the dashboard or a workflow is ready to run.
     - region "Preflight":
+      - heading "Preflight" [level=2]
+      - paragraph: Readiness for the dashboard and its workflows.
       - text: Check readiness for
       - combobox "Check readiness for":
         - option "Dashboard" [selected]
         - option "Person Lookup"
-      - button "Rerun preflight"
+      - text: No current check
+      - button "Run checks again"
       - status: Readiness unavailable Preflight evidence expired; re-check readiness.
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"

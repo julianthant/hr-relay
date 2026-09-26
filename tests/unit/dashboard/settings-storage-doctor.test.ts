@@ -116,7 +116,7 @@ describe("loaded Settings storage doctor", () => {
       spanAuthority: { state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
         problems: [{ state, runId, possibleExternalWrite: true }] } });
     const dom = await mountDoctor(report);
-    const row = [...dom.querySelectorAll(".storage-check-row")].find((candidate) => candidate.textContent?.includes("Run record consistency"));
+    const row = [...dom.querySelectorAll(".diagnostic-check-entry")].find((candidate) => candidate.textContent?.includes("Run record consistency"));
     assert.ok(row);
     assert.match(row.textContent ?? "", /possible external write/u);
     assert.ok(row.textContent?.includes(runId));
@@ -160,13 +160,11 @@ describe("loaded Settings storage doctor", () => {
     assert.match(text, /11 stream runs/u);
     assert.match(text, /7 live runs/u);
     assert.match(text, /1 archived run/u);
-    const archived = [...dom.querySelectorAll("details")].find(
-      (candidate) => candidate.querySelector("summary")?.textContent === "1 archived run",
-    );
-    assert.ok(archived instanceof HTMLDetailsElement, "archived accounting has no reachable disclosure");
-    await act(async () => { archived.querySelector("summary")?.click(); });
-    assert.equal(archived.open, true);
-    assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000101/u);
+    const archived = [...dom.querySelectorAll("button")].find((candidate) => candidate.textContent?.includes("1 archived run"));
+    assert.ok(archived instanceof HTMLButtonElement, "archived accounting has no reachable disclosure");
+    await act(async () => { archived.click(); });
+    assert.equal(archived.getAttribute("aria-expanded"), "true");
+    assert.match(archived.parentElement?.textContent ?? "", /00000000-0000-4000-8000-000000000101/u);
     assert.match(text, /4 run record issues/u);
     assert.match(text, /Run missing.*00000000-0000-4000-8000-000000000102/u);
     assert.match(text, /Activity history missing.*00000000-0000-4000-8000-000000000103/u);
@@ -200,17 +198,15 @@ describe("loaded Settings storage doctor", () => {
     assert.match(text, /Run record consistency.*Reconciled/u);
     assert.match(text, /4 stream runs/u);
     assert.match(text, /2 live runs/u);
-    const archived = [...dom.querySelectorAll("details")].find(
-      (candidate) => candidate.querySelector("summary")?.textContent === "2 archived runs",
-    );
-    assert.ok(archived instanceof HTMLDetailsElement, "reconciled archive accounting has no reachable disclosure");
-    await act(async () => { archived.querySelector("summary")?.click(); });
-    assert.equal(archived.open, true);
-    assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000201/u);
-    assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000202/u);
-    assert.match(archived.textContent ?? "", /Aug 31/u);
-    assert.match(archived.textContent ?? "", /Aug 30/u);
-    const archivedRows = archived.querySelectorAll("li");
+    const archived = [...dom.querySelectorAll("button")].find((candidate) => candidate.textContent?.includes("2 archived runs"));
+    assert.ok(archived instanceof HTMLButtonElement, "reconciled archive accounting has no reachable disclosure");
+    await act(async () => { archived.click(); });
+    assert.equal(archived.getAttribute("aria-expanded"), "true");
+    assert.match(archived.parentElement?.textContent ?? "", /00000000-0000-4000-8000-000000000201/u);
+    assert.match(archived.parentElement?.textContent ?? "", /00000000-0000-4000-8000-000000000202/u);
+    assert.match(archived.parentElement?.textContent ?? "", /Aug 31/u);
+    assert.match(archived.parentElement?.textContent ?? "", /Aug 30/u);
+    const archivedRows = archived.parentElement?.querySelectorAll("li") ?? [];
     assert.equal(archivedRows[0]?.title, "2026-08-31T14:00:00.000Z");
     assert.equal(archivedRows[1]?.title, "2026-08-30T14:00:00.000Z");
     assert.doesNotMatch(text, /run record issues/u);

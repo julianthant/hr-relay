@@ -1,10 +1,11 @@
-import { Database, ShieldAlert } from "lucide-react";
+import { ShieldAlert } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
-import { Banner, Button, Panel, PanelBody, PanelHeader, dsIcon } from "../ds/ui.js";
+import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, StatusDot, dsIcon } from "../ds/ui.js";
 import { useStorageClient } from "../state/storage-client.js";
 import { fmtClock, fmtInstantDay, plural } from "./format.js";
 import { spanAuthorityProblemDetail, type StorageHealthSummary } from "./storage-settings-model.js";
+import "./diagnostic-presentation.css";
 
 const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
 
@@ -32,27 +33,25 @@ interface CheckResult { tone: CheckTone; value: string; evidence?: string; detai
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
 
 function CheckRow({ name, description, result }: { name: string; description: string; result: CheckResult }) {
-  return <div className="storage-check-row" role="listitem">
-    <div className="storage-check-copy">
-      <span className="storage-check-name">{name}</span>
-      <span className="storage-check-description">{description}</span>
+  const badgeTone = result.tone === "pass" ? "success" : result.tone === "attention" ? "warning" : result.tone === "unavailable" ? "danger" : "neutral";
+  return <div className="diagnostic-check-entry" role="listitem">
+    <ResultRow label={name} description={description}
+      value={<Badge tone={badgeTone}>{result.value}</Badge>}
+      evidence={result.evidence} />
+    {(result.detail !== undefined || result.extra !== undefined) && <div className="diagnostic-check-detail">
       {result.detail !== undefined && (result.detailLabel === undefined
-        ? <span className="storage-check-detail">{result.detail}</span>
-        : <details className="storage-check-detail"><summary>{result.detailLabel}</summary><span>{result.detail}</span></details>)}
+        ? <span>{result.detail}</span>
+        : <span><strong>{result.detailLabel}:</strong> {result.detail}</span>)}
       {result.extra}
-    </div>
-    <div className="storage-check-result">
-      <span className={`storage-check-badge storage-check-badge--${result.tone}`}>{result.value}</span>
-      {result.evidence !== undefined && <span className="storage-check-evidence">{result.evidence}</span>}
-    </div>
+    </div>}
   </div>;
 }
 
 function CheckGroup({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
-  return <section className="storage-check-group" aria-label={title}>
-    <h3>{title}</h3><p>{subtitle}</p>
-    <div className="settings-group-rows" role="list">{children}</div>
-  </section>;
+  return <BodySection title={title}>
+    <p className="diagnostic-section-description">{subtitle}</p>
+    <FormGroup label={title}><div role="list">{children}</div></FormGroup>
+  </BodySection>;
 }
 
 const COUNT_CHECKS = [
@@ -105,12 +104,11 @@ function spanResult(report?: StorageDoctorWire): CheckResult {
       }[problem.state];
       return `${label}: ${spanAuthorityProblemDetail(problem)}`;
     }).join(" · ") : undefined,
-    extra: span.archived.length > 0 ? <details className="storage-check-detail">
-      <summary>{plural(span.archived.length, "archived run")}</summary>
+    extra: span.archived.length > 0 ? <Disclosure summary={plural(span.archived.length, "archived run")}>
       <ul>{span.archived.map((run) => <li key={run.runId} title={run.archivedAt}>
         {run.runId} · {fmtInstantDay(run.archivedAt)} {fmtClock(run.archivedAt)}
       </li>)}</ul>
-    </details> : undefined,
+    </Disclosure> : undefined,
   };
 }
 function upgradeResult(report?: StorageDoctorWire): CheckResult {
@@ -146,23 +144,23 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
       (caught: unknown) => setDoctor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }),
     );
   };
-  return <Panel className="settings-page-panel storage-checks-page">
-    <PanelHeader title="Storage checks" headingLevel={2}
-      subtitle="Read-only checks of the data store, unfinished work, and independent credentials."
-      icon={<Database aria-hidden className={dsIcon.lg} />} />
-    <PanelBody className="settings-page-body">
-      <div className="storage-check-toolbar">
+  return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks">
+    <PageHeading as="h2" title="Storage checks" description="Data store health, diagnostics, and recovery." />
+    <div className="diagnostic-toolbar">
         <span>{report === undefined ? `Summary checked ${fmtClock(storage.checkedAt)}` : `Checks completed ${fmtClock(report.checkedAt)}`}</span>
-        <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+        <Button onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
           {doctor.state === "loading" ? "Running checks…" : report === undefined ? "Run storage checks" : "Run checks again"}
         </Button>
-      </div>
-      <Banner tone={authority === "healthy" ? "success" : "danger"}
-        title={authority === "healthy" ? "Data store available" : "Data store unavailable"}>
-        {authority !== "healthy" ? AUTHORITY_HAZARD : report === undefined
-          ? "The latest summary can read the data store. Run the checks below for detailed results."
-          : "The read-only check verified the current database."}
-      </Banner>
+    </div>
+      {authority === "healthy"
+        ? <FormGroup label="Data store summary" className="diagnostic-summary">
+          <ResultRow label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
+            description={report === undefined
+              ? "The latest summary can read the data store. Run the checks below for detailed results."
+              : "The read-only check verified the current database."}
+            value={<span className="diagnostic-summary-meta">{report === undefined ? "Detailed checks not run" : "Read-only check complete"}</span>} />
+        </FormGroup>
+        : <Banner tone="danger" title="Data store unavailable">{AUTHORITY_HAZARD}</Banner>}
       {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">{doctor.message}</Banner>}
       <CheckGroup title="Data store and recovery" subtitle="Integrity, interrupted work, run records, and upgrades.">
         <CheckRow name="Database integrity" description="Can the current data store be read and verified?" result={authorityResult(report)} />
@@ -176,6 +174,5 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
       <CheckGroup title="Independent credentials" subtitle="Presence only. Unset credentials affect their workflows, not data store integrity.">
         {CREDENTIAL_CHECKS.map((check) => <CheckRow key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
       </CheckGroup>
-    </PanelBody>
-  </Panel>;
+  </section>;
 }

@@ -66,3 +66,30 @@ it("remedies navigate to their owner and never repair through rendering",async()
   assert.equal(storage+sessions+settings,0);for(const button of host.querySelectorAll("button"))if(button.textContent?.startsWith("Open "))await act(async()=>button.click());
   assert.deepEqual([storage,sessions,settings],[1,1,1]);assert.match(host.textContent??"",/Blocks: executor.run/u);
 });
+
+it("Settings groups served checks and keeps failures, blocks, and only exact remedies visible",async()=>{
+  const served=await report();let storage=0,sessions=0,settings=0,reruns=0;
+  const checks=["fiscal.current","authority.health","process.orphans","browser.assets"].map(id=>({
+    id:PreflightCheckIdSchema.parse(id),label:id,verdict:"fail" as const,
+    detail:`Synthetic ${id} unavailable`,blocks:["executor.run"],remediation:`Repair ${id}`,checkedAt:served.checkedAt,
+  }));
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,
+    showSettings(section?:"storage"){if(section==="storage")storage++;else settings++;},showSessions(){sessions++;}};
+  const client={preflightScopes:()=>Promise.resolve([])} as unknown as DashboardClient;
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:{state:"completed",report:served,checks},onRerun(){reruns++;}})})}));});
+  assert.match(host.textContent??"",/Readiness for the dashboard and its workflows/u);
+  const workflow=host.querySelector('[role="group"][aria-label="Workflow readiness"]');
+  const runtime=host.querySelector('[role="group"][aria-label="Runtime"]');
+  assert.ok(workflow?.textContent?.includes("Current fiscal year"));
+  assert.ok(runtime?.textContent?.includes("Data store readiness"));
+  assert.ok(runtime?.textContent?.includes("Browser tools"));
+  assert.match(host.textContent??"",/Blocks: executor.run/u);
+  assert.match(host.textContent??"",/Remedy: Repair browser.assets/u);
+  const buttons=[...host.querySelectorAll("button")].filter(button=>button.textContent?.startsWith("Open "));
+  assert.equal(buttons.length,3);
+  for(const button of buttons)await act(async()=>button.click());
+  assert.deepEqual([storage,sessions,settings],[1,1,1]);
+  const rerun=[...host.querySelectorAll("button")].find(button=>button.textContent==="Run checks again");
+  assert.ok(rerun);await act(async()=>rerun.click());assert.equal(reruns,1);
+});

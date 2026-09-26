@@ -186,9 +186,8 @@ for (const state of ["current", "stale", "missing", "invalid"] as const) it(`omi
 it("shows every check before running and keeps Preflight on a separate destination", async () => {
   let doctorCalls = 0;
   const dom = await mountDoctor(HEALTHY, () => {doctorCalls++; return Promise.resolve(HEALTHY);}, false);
-  assert.equal(dom.querySelectorAll('.storage-check-row').length, 14);
-  assert.equal(dom.querySelectorAll('.storage-check-badge').length, 14);
-  assert.equal(dom.querySelectorAll('.storage-check-badge--neutral').length, 14);
+  assert.equal(dom.querySelectorAll('.diagnostic-check-entry').length, 14);
+  assert.equal([...dom.querySelectorAll('.diagnostic-check-entry')].filter((row) => row.textContent?.includes("Not checked")).length, 14);
   assert.match(dom.textContent ?? "", /Data store and recovery/u);
   assert.match(dom.textContent ?? "", /Work in progress/u);
   assert.doesNotMatch(dom.textContent ?? "", /Check readiness for|Rerun preflight/iu);
