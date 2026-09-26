@@ -71,7 +71,8 @@ gates under the Phase 3.1 cadence. Root owns candidate acceptance and combined v
 
 ### Category 2 execution record — 2026-09-26
 
-The candidate is based on `ac6bb8ec7` on `codex/settings-design-system` in
+The candidate commit is `5d2f606ab0a6f325332c5577616e344dbea51af7`, based on `ac6bb8ec7` on
+`codex/settings-design-system` in
 `/Users/julianhein/.codex/worktrees/9d88/hr-automation-rebuild`. The shell now has the eleven
 canonical tabs and legacy aliases, with all page bodies using the shared 828px scope. The retained
 render captures are `settings/general-dark-1440x900.png`, `settings/general-light-1024x768.png`,
