@@ -15,7 +15,6 @@ import {
   type FrontendBootstrapWire,
 } from "../../../domain/dashboard/bootstrap.js";
 import {
-  SETTINGS_SYSTEM_HOSTS_SECTION_ID,
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 } from "../../../domain/dashboard/settings.js";
 import { LOCAL_OPERATOR_ACTOR_ID, type Fingerprint } from "../../../domain/ids.js";
@@ -199,7 +198,6 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     // authored in the surface, so this list is where it is spelled.
     settingsSections: [
       { id: "storage", label: "Storage health", revision: 1 },
-      { id: SETTINGS_SYSTEM_HOSTS_SECTION_ID, label: "System hosts", revision: 1 },
       { id: SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, label: "Workflow capabilities", revision: 1 },
     ],
     featureAvailability: [

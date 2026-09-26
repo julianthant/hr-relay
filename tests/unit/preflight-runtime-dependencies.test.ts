@@ -935,7 +935,7 @@ describe("preflight selection and reports", () => {
   it.each([
     ["missing browser", ["executor.run"], "browser.assets", "executor.run"],
     ["stale fiscal year", ["workflow.kuali-fill"], "fiscal.current", "workflow.kuali-fill"],
-    ["bad test URL", ["system.ucpath.test"], "endpoint.ucpath.test", "system.ucpath.test"],
+    ["bad route URL", ["system.ucpath.prod"], "endpoint.ucpath.prod", "system.ucpath.prod"],
     ["low disk", ["dashboard.serve"], "filesystem.health", "dashboard.serve"],
     ["corrupt DB", ["dashboard.serve"], "authority.health", "dashboard.serve"],
     ["missing workflow secret", ["workflow.sharepoint-download"], "secrets.sharepoint-roster", "workflow.sharepoint-download"],

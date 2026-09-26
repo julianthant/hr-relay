@@ -6,7 +6,6 @@
  */
 import { expect,test,type Page } from "@playwright/test";
 import {
-SETTINGS_SYSTEM_HOSTS_SECTION_ID,
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 } from "../../src/domain/dashboard/settings.js";
 import { gotoAppState } from "./helpers/app-driver.js";
@@ -65,7 +64,6 @@ test("production PanelHeaders use explicit semantic heading levels", async ({ pa
     ["", "General"],
     ["storage", "Storage health"],
     ["keyboard", "Keyboard"],
-    [SETTINGS_SYSTEM_HOSTS_SECTION_ID, "System hosts"],
     [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, "Workflow capabilities"],
   ] as const) {
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: section });

@@ -29,6 +29,11 @@ export const ConfigSnapshotRecordSchema = z.strictObject({
  * would quietly become a licence to persist a hole.
  */
 export const ConfigSnapshotWriteSchema = ConfigSnapshotRecordSchema.superRefine((record, context) => {
+  for (const [system, endpoints] of Object.entries(record.config.urls)) {
+    if (Object.hasOwn(endpoints, "test")) {
+      context.addIssue({ code: "custom", path: ["config", "urls", system, "test"], message: `new config snapshots cannot mint retired ${system} test routes` });
+    }
+  }
   if (Object.hasOwn(record.config, "operator")) {
     context.addIssue({ code: "custom", path: ["config", "operator"], message: "new config snapshots cannot mint retired operator.timekeeperName" });
   }

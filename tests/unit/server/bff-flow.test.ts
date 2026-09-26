@@ -3395,7 +3395,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // ported (D276 item 4).
     assert.deepEqual(sections, [
       { id: "storage", label: "Storage health", revision: 1 },
-      { id: "system-hosts", label: "System hosts", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
     ]);
   });

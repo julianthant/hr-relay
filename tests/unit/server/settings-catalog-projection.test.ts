@@ -9,6 +9,9 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
+import { StoredConfigSchema } from "../../../src/domain/config/snapshot-generations.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { sha256Hex } from "../../../src/domain/sha256.js";
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
 
 function fixture() {
@@ -21,7 +24,7 @@ function fixture() {
   return { deps, snapshot };
 }
 describe("complete Settings catalog projection", () => {
-  it("serves exactly the 86 canonical rows in both directions, including three templates and all five source classes", () => {
+  it("serves exactly the 77 canonical rows in both directions, including three templates and all five source classes", () => {
     const document = fixtureSettingsDocument();
     assert.deepEqual(document.catalog.map(row => row.key).sort(), SETTINGS_CATALOG.map(row => row.key).sort());
     assert.deepEqual(document.sections.flatMap(section => section.leaves.map(leaf => leaf.catalogKey)).concat(document.fiscalYearTemplate.leaves.map(leaf => leaf.catalogKey)).sort(), SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings").map(row => row.key).sort());
@@ -37,6 +40,24 @@ describe("complete Settings catalog projection", () => {
     assert.deepEqual(document.host.primaryDisplay, { screenWidth: 1920, screenHeight: 1080 });
     assert.equal(JSON.stringify(document).includes("synthetic-secret"), false);
     assert.throws(() => buildSettingsEditor({ ...deps, settings: { read: () => ({ ...snapshot, record: { ...snapshot.record, settings: { actor: { label: "changed without identity" } } } }) } }), /snapshot-mismatch/u);
+  });
+  it("shows production Routes from a historical active snapshot while keeping its exact identity", () => {
+    const { deps, snapshot } = fixture();
+    const current = resolveConfigWithProvenance({}, hostConfigFacts(deps.environment), deps.clock);
+    const activeConfig = StoredConfigSchema.parse({ ...current.config,
+      urls: { ...current.config.urls, crm: { ...current.config.urls.crm,
+        test: { entry: "https://retired.example.test/hr" } } },
+    });
+    const historicalFingerprint = sha256Hex(canonicalJsonStringify(activeConfig));
+    const document = buildSettingsEditor({ ...deps, settings: { read: () => ({
+      ...snapshot, activeConfig, runtimeStatus: { state: "restart-required" as const,
+        active: settingsRuntimeIdentity(snapshot.record, historicalFingerprint),
+        persisted: settingsRuntimeIdentity(snapshot.record, current.fingerprint) },
+    }) } });
+    const crm = document.sections.find(section => section.id === "routes")?.leaves.find(leaf => leaf.path === "urls.crm.prod");
+    assert.equal(document.activeConfigFingerprint, historicalFingerprint);
+    assert.equal((crm?.activeValue as { entry?: string } | undefined)?.entry, current.config.urls.crm.prod.entry);
+    assert.equal(JSON.stringify(document).includes("retired.example.test"), false);
   });
   it("projects provider values with their counts, missing or unknown", () => {
     const { deps } = fixture();
@@ -72,7 +93,7 @@ describe("complete Settings catalog projection", () => {
   }
   it("retains optional/unset rows and expands fiscal years without redefining catalog membership", () => {
     const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } }, providers: { gemini: { models: ["first", "second"] } } }, 2);
-    assert.equal(document.catalog.length, 86);
+    assert.equal(document.catalog.length, 77);
     assert.equal(document.sections.flatMap(section => section.leaves).length, 59);
     const model = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "providers.gemini.models");
     assert.deepEqual(model?.settingsValue, ["first", "second"]);

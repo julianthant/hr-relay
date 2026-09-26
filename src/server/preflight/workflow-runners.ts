@@ -60,19 +60,11 @@ export function createWorkflowPreflightRunners(input: RuntimePreflightRunnerInpu
       return result(check, presence.every(leaf => leaf.state === "present"), presence.map(leaf => `${leaf.name}: ${leaf.state}`).join("; "));
     };
     if (check.startsWith("endpoint.")) inspect = () => {
-      const system = SYSTEM_RUNTIME_SPECS.find(candidate => check === `endpoint.${candidate.system}.prod` || check === `endpoint.${candidate.system}.test`);
+      const system = SYSTEM_RUNTIME_SPECS.find(candidate => check === `endpoint.${candidate.system}.prod`);
       if (system === undefined) throw new Error(`preflight registry has no endpoint owner for ${check}`);
-      const instance = check.endsWith(".test") ? "test" : "prod";
-      const endpoints = input.config.urls[system.configKey];
-      const selected = CONFIG_ROUTE_SCHEMAS[system.configKey].safeParse(endpoints[instance]);
-      if (!selected.success) return result(check, false, `${system.system} ${instance} route set is missing or invalid.`);
-      if (instance === "test") {
-        const selectedRoutes: Readonly<Record<string, string>> = selected.data;
-        const productionRoutes: Readonly<Record<string, string>> = endpoints.prod;
-        const duplicated = system.routes.filter(route => selectedRoutes[route] === productionRoutes[route]);
-        if (duplicated.length > 0) return result(check, false, `${system.system} test routes are not distinct from production: ${duplicated.join(", ")}.`);
-      }
-      return result(check, true, `${system.system} ${instance} route set is complete${instance === "test" ? " and distinct from production" : ""}.`);
+      const selected = CONFIG_ROUTE_SCHEMAS[system.configKey].safeParse(input.config.urls[system.configKey].prod);
+      if (!selected.success) return result(check, false, `${system.system} route set is missing or invalid.`);
+      return result(check, true, `${system.system} route set is complete.`);
     };
     if (inspect === undefined) return [];
     const detector = inspect;

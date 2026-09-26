@@ -19,9 +19,10 @@ async function attachTree(page: Page, name: string): Promise<void> {
   await test.info().attach(name, { body, contentType: "text/yaml" });
 }
 const scenes = [
+  { id: "routes", section: "routes", title: "Routes" },
   { id: "structured", section: "providers", title: "Provider budgets & models" },
   { id: "credentials", section: "protected-store", title: "Credentials" },
-  { id: "readonly", section: "runtime-isolation", title: "Deployment" },
+  { id: "readonly", section: "runtime-isolation", title: "Runtime paths" },
   { id: "annual", section: "annual-dates", title: "Annual dates" },
   { id: "conflict", section: "general", title: "General" },
 ] as const;
@@ -44,6 +45,10 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
   if (scene.id === "structured") {
     await expect(page.locator('[data-settings-path="providers.gemini.models"] textarea')).toHaveValue("model-second\nmodel-first");
     expect(await page.locator('input[type="number"]').count()).toBeGreaterThan(5);
+  } else if (scene.id === "routes") {
+    await expect(page.locator('[data-settings-path="urls.crm.prod"] input')).toHaveCount(5);
+    await expect(page.locator('[data-settings-path="urls.crm.prod"] input').first()).toHaveValue(/^https:\/\//u);
+    await expect(page.getByRole("button", { name: "Save routes" })).toHaveCount(2);
   } else if (scene.id === "credentials") {
     await expect(page.locator('input[type="password"]')).toHaveCount(5);
     for (const input of await page.locator('input[type="password"]').all()) await expect(input).toHaveValue("");

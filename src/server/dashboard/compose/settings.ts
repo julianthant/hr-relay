@@ -1,4 +1,5 @@
 import { DESCRIPTORS } from "../../../control/workflow-registry.js";
+import { selectActiveRunSettings } from "../../../core/run-settings.js";
 import { resolveConfigWithProvenance } from "../../../domain/config/resolve.js";
 import type { createCredentialStore } from "../../../infra/config/credential-store.js";
 import { activeSettingsConfig, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader } from "../../settings-runtime.js";
@@ -13,7 +14,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   const routes: SettingsRouteDeps = {
     settings: { get config() { return database.withAuthorityTransaction(activeSettingsConfig); }, descriptors: DESCRIPTORS },
     settingsEditor: {
-      settings: { read: () => database.withAuthorityTransaction(repositories => ({ ...reader.read(), activeConfig: activeSettingsConfig(repositories) })) },
+      settings: { read: () => database.withAuthorityTransaction(repositories => ({ ...reader.read(), activeConfig: selectActiveRunSettings(repositories).config })) },
       protectedSettings: createProtectedSettingsRuntimeReader(input.credentials), environment: input.environment, clock,
     },
   };

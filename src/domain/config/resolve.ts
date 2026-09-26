@@ -46,17 +46,11 @@ function parsed(config: unknown): Config {
   return ConfigSchema.parse(config);
 }
 
-function mergeOptional<Base extends object>(base: Partial<Base> | undefined, override: Partial<Base> | undefined): Partial<Base> | undefined {
-  if (base === undefined && override === undefined) return undefined;
-  return { ...base, ...override };
-}
-
-function endpointWithTest<Prod extends object, Test extends object>(
-  base: { readonly prod: Prod; readonly test?: Partial<Test> },
-  test: Partial<Test> | undefined,
-): { readonly prod: Prod; readonly test?: Partial<Test> } {
-  if (test === undefined) return { prod: base.prod };
-  return { prod: base.prod, test };
+function endpointWithOverride<Routes extends object>(
+  base: { readonly prod: Routes },
+  override: Routes | undefined,
+): { readonly prod: Routes } {
+  return { prod: override ?? base.prod };
 }
 
 function mergeAnnualDates(
@@ -107,15 +101,15 @@ function mergeSettings(defaults: Config, override: SettingsOverride): Config {
     ...defaults,
     actor: { ...defaults.actor, ...groups.actor },
     urls: {
-      kuali: endpointWithTest(defaults.urls.kuali, mergeOptional(defaults.urls.kuali.test, groups.urls?.kuali?.test)),
-      newKronos: endpointWithTest(defaults.urls.newKronos, mergeOptional(defaults.urls.newKronos.test, groups.urls?.newKronos?.test)),
-      crm: endpointWithTest(defaults.urls.crm, mergeOptional(defaults.urls.crm.test, groups.urls?.crm?.test)),
-      onbase: endpointWithTest(defaults.urls.onbase, mergeOptional(defaults.urls.onbase.test, groups.urls?.onbase?.test)),
-      ucpath: endpointWithTest(defaults.urls.ucpath, mergeOptional(defaults.urls.ucpath.test, groups.urls?.ucpath?.test)),
-      i9: endpointWithTest(defaults.urls.i9, mergeOptional(defaults.urls.i9.test, groups.urls?.i9?.test)),
-      oldKronos: endpointWithTest(defaults.urls.oldKronos, mergeOptional(defaults.urls.oldKronos.test, groups.urls?.oldKronos?.test)),
-      servicenow: endpointWithTest(defaults.urls.servicenow, mergeOptional(defaults.urls.servicenow.test, groups.urls?.servicenow?.test)),
-      sharepoint: endpointWithTest(defaults.urls.sharepoint, mergeOptional(defaults.urls.sharepoint.test, groups.urls?.sharepoint?.test)),
+      kuali: endpointWithOverride(defaults.urls.kuali, groups.urls?.kuali?.prod),
+      newKronos: endpointWithOverride(defaults.urls.newKronos, groups.urls?.newKronos?.prod),
+      crm: endpointWithOverride(defaults.urls.crm, groups.urls?.crm?.prod),
+      onbase: endpointWithOverride(defaults.urls.onbase, groups.urls?.onbase?.prod),
+      ucpath: endpointWithOverride(defaults.urls.ucpath, groups.urls?.ucpath?.prod),
+      i9: endpointWithOverride(defaults.urls.i9, groups.urls?.i9?.prod),
+      oldKronos: endpointWithOverride(defaults.urls.oldKronos, groups.urls?.oldKronos?.prod),
+      servicenow: endpointWithOverride(defaults.urls.servicenow, groups.urls?.servicenow?.prod),
+      sharepoint: endpointWithOverride(defaults.urls.sharepoint, groups.urls?.sharepoint?.prod),
     },
     timeouts: { ...defaults.timeouts, ...groups.timeouts },
     paths: { ...defaults.paths, ...groups.paths },

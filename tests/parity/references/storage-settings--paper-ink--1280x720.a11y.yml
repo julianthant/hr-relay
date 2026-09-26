@@ -39,7 +39,7 @@
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
-      - link "Test routes":
+      - link "Routes":
         - /url: "?settings=routes"
       - link "Annual dates":
         - /url: "?settings=annual-dates"
@@ -52,13 +52,11 @@
         - /url: "?settings=provider-env"
       - link "Observed host":
         - /url: "?settings=derived-host"
-      - link "Deployment":
+      - link "Runtime paths":
         - /url: "?settings=runtime-isolation"
       - text: Status
       - link "Storage health":
         - /url: "?settings=storage"
-      - link "System hosts":
-        - /url: "?settings=system-hosts"
       - link "Workflow capabilities":
         - /url: "?settings=workflow-capabilities"
       - text: Help

@@ -41,8 +41,8 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
   writeFileSync(config.paths.duoCredential, "private-marker", {mode: 0o600});
   const executable = join(root, "chromium"); writeFileSync(executable, "synthetic executable asset", {mode: 0o700});
   config.annualDates.FY2027 = {jobEndDate:"6/30/2027", kronosDefaultStartDate:"7/1/2026", kronosDefaultEndDate:"6/30/2027"};
-  for (const system of SYSTEM_RUNTIME_SPECS) for (const instance of ["prod", "test"]) Reflect.set(config.urls[system.configKey], instance,
-    Object.fromEntries(system.routes.map(route => [route, `https://${instance}.example.invalid/${route}`])));
+  for (const system of SYSTEM_RUNTIME_SPECS) Reflect.set(config.urls[system.configKey], "prod",
+    Object.fromEntries(system.routes.map(route => [route, `https://prod.example.invalid/${route}`])));
   const providerAvailability: Record<string, boolean> = {};
   for (const provider of PROVIDER_ADAPTER_SPECS) {
     if (provider.modelsConfigKey !== undefined) Reflect.set(config.providers, provider.modelsConfigKey, {models:["synthetic-model"]});

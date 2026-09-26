@@ -1,20 +1,4 @@
-/**
- * The Settings status projection (D274 item 6, ledger 3 SE40–SE42): *System
- * hosts* and *Workflow capabilities*, both READ-ONLY.
- *
- * Neither section has an authority of its own. Every fact here is re-read from
- * something this process ALREADY composed — the resolved config, and the
- * descriptor tuple the kernel plans with — so there is no table to keep up to
- * date and no snapshot to go stale. That is the whole claim SE42's banner makes
- * to the operator, and it holds only as long as this file derives rather than
- * enumerates: nothing below branches on a workflow id, and a capability that
- * cannot be derived gets a descriptor field, never a special case here.
- *
- * There is deliberately NO mutating counterpart. Editable settings are the
- * deferred `apply-settings` command family (doc 04) and D274 item 6's rejected
- * option C was exactly "couple these reads to the writes" — so the wire has
- * nowhere to send one and the surface cannot offer one.
- */
+/** Read-only descriptor facts and retained system-host wire compatibility. */
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
 import { listSystemEntryHosts } from "../../../domain/config/instance.js";

@@ -6,6 +6,7 @@ import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
 import { SETTINGS_CATALOG } from "./catalog.js";
 import {
+  CONFIG_ROUTE_SCHEMAS,
   EditableSettingsOverrideSchema,
   type EditableSettingsOverride,
 } from "./schema.js";
@@ -35,6 +36,17 @@ function catalogKeyForPath(path: string): string {
 function isOrdinarySettingsPath(path: string): boolean {
   const key = catalogKeyForPath(path);
   return SETTINGS_CATALOG.some((row) => row.key === key && row.sourceClass === "ordinary-settings");
+}
+
+function isRetiredTestRoutePath(path: string): boolean {
+  const parts = path.split(".");
+  return parts.length === 3 && parts[0] === "urls" && parts[2] === "test"
+    && Object.hasOwn(CONFIG_ROUTE_SCHEMAS, parts[1] ?? "");
+}
+
+/** Old journal commands must remain parseable; the application boundary refuses these paths. */
+export function containsRetiredTestRoutePatch(patch: Readonly<Record<string, unknown>>): boolean {
+  return Object.keys(patch).some(isRetiredTestRoutePath);
 }
 
 function unwrappedSchema(schema: z.core.$ZodType): z.core.$ZodType {
@@ -119,7 +131,7 @@ export const SettingsPatchSchema = z.record(z.string().min(1), SettingsLeafOpera
   .refine((patch) => Object.keys(patch).length > 0, "settings patch must contain at least one leaf operation")
   .superRefine((patch, context) => {
     for (const [path, operation] of Object.entries(patch)) {
-      if (!isOrdinarySettingsPath(path)) {
+      if (!isOrdinarySettingsPath(path) && !isRetiredTestRoutePath(path)) {
         context.addIssue({ code: "custom", path: [path], message: `settings path ${path} is not an editable ordinary setting` });
         continue;
       }
@@ -328,7 +340,19 @@ export function mergeSettingsPatch(
   patchInput: SettingsPatch,
 ): EditableSettingsOverride {
   const patch = SettingsPatchSchema.parse(patchInput);
+  if (containsRetiredTestRoutePatch(patch)) throw new Error("retired test routes cannot be edited");
   const candidate = MutableSettingsObjectSchema.parse(structuredClone(current));
+  const existingUrls = MutableSettingsObjectSchema.safeParse(candidate.urls);
+  if (existingUrls.success) {
+    for (const [system, value] of Object.entries(existingUrls.data)) {
+      const endpoints = MutableSettingsObjectSchema.safeParse(value);
+      if (endpoints.success) {
+        delete endpoints.data.test;
+        existingUrls.data[system] = endpoints.data;
+      }
+    }
+    candidate.urls = existingUrls.data;
+  }
   for (const [path, operation] of Object.entries(patch)) {
     if ("set" in operation) setNestedLeaf(candidate, path, operation.set);
     else deleteNestedLeaf(candidate, path);

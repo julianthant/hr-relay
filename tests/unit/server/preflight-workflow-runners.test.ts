@@ -64,7 +64,7 @@ describe("registered workflow detectors", () => {
     });
   }
   for (const system of SYSTEM_RUNTIME_SPECS) {
-    for (const instance of ["prod", "test"] as const) {
+    for (const instance of ["prod"] as const) {
       for (const route of system.routes) it(`verifies ${system.system} ${instance} ${route} and refuses missing evidence`, async () => {
         const f = fixture([`system.${system.system}.${instance}`]);
         const endpoints = f.config.urls[system.configKey];
@@ -77,10 +77,7 @@ describe("registered workflow detectors", () => {
         Reflect.set(good, route, "SYNTHETIC_PRIVATE_SECRET");
         const invalid = await f.observe(check);
         assert.equal(invalid.state, "unhealthy"); assert.doesNotMatch(JSON.stringify(invalid), /SYNTHETIC_PRIVATE/u);
-        if (instance === "test") {
-          Reflect.set(good, route, Reflect.get(endpoints.prod, route));
-          assert.match((await f.observe(check, true)).summary, /not distinct/u);
-        }
+
       });
     }
   }

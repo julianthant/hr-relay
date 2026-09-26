@@ -1766,6 +1766,29 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D349 — Editable Routes and retirement of test-instance runs · 2026-09-25
+
+The operator's Routes page owns the nine production system route sets. Each set is
+an ordinary Settings value, edited as a complete URL object and saved through the
+existing revision-checked settings command. A confirmed save activates routes
+for new runs; retained runs keep their captured configuration. Runtime paths
+remain a separate read-only page. The Test routes
+and System hosts pages are retired. New run plans refuse every requested test
+instance before admission; preflight advertises only production endpoint checks.
+Dry run remains a separate workflow behavior and still uses the selected production
+route set. Historical run envelopes and config snapshots retain their original
+test labels and route values for readback; new snapshots cannot mint test routes.
+
+This supersedes D331's production-route deployment classification and editable
+test-route rows. Old `urls.*.test` values and their authenticated command and
+snapshot records remain readable. The resolver ignores those values; the Routes
+page does not expose them; new commands cannot edit them; and the first later
+settings write removes them from the saved override. The original command,
+audit and snapshot bytes stay intact. A historical snapshot used for a retained
+production run projects the production routes without changing its stored
+fingerprint. Historical test-instance runs refuse execution. No missing or
+corrupt saved settings may fall back to defaults.
+
 ### D346 — Settings values on the local operator surface · 2026-09-24
 
 The independent protected store remains the authority for credentials and

@@ -205,28 +205,16 @@ export const RuntimeDependencySpecSchema = z.strictObject({
 });
 
 function endpointDependencies() {
-  return SYSTEM_RUNTIME_SPECS.flatMap(({ system, consumer }) => ([
-    {
-      id: `endpoint.${system}.prod`,
-      kind: "endpoint",
-      requirement: "blocking",
-      capabilities: [`system.${system}.prod`],
-      check: `endpoint.${system}.prod`,
-      consumer,
-      scenario: "preflight/endpoint-prod",
-      justification: `the ${system} production driver requires its complete registered production route set`,
-    },
-    {
-      id: `endpoint.${system}.test`,
-      kind: "endpoint",
-      requirement: "blocking",
-      capabilities: [`system.${system}.test`],
-      check: `endpoint.${system}.test`,
-      consumer,
-      scenario: "preflight/endpoint-test",
-      justification: `an explicitly selected ${system} test instance requires a complete route set distinct from production`,
-    },
-  ]));
+  return SYSTEM_RUNTIME_SPECS.map(({ system, consumer }) => ({
+    id: `endpoint.${system}.prod`,
+    kind: "endpoint",
+    requirement: "blocking",
+    capabilities: [`system.${system}.prod`],
+    check: `endpoint.${system}.prod`,
+    consumer,
+    scenario: "preflight/endpoint-prod",
+    justification: `the ${system} production driver requires its complete registered route set`,
+  }));
 }
 
 function providerDependencies() {
@@ -270,9 +258,9 @@ export const RUNTIME_DEPENDENCIES = deepFreeze(RuntimeDependencySpecSchema.array
   { id: "port.backend", kind: "port", requirement: "blocking", capabilities: ["dashboard.serve"], check: "ports.available", consumer: "dashboard-startup", scenario: "preflight/port-busy", justification: "the isolated dashboard backend cannot serve on an occupied reserved port" },
   { id: "port.frontend", kind: "port", requirement: "blocking", capabilities: ["dashboard.serve"], check: "ports.available", consumer: "dashboard-startup", scenario: "preflight/port-busy", justification: "the isolated dashboard frontend cannot serve on an occupied reserved port" },
   { id: "fiscal.current", kind: "config", requirement: "blocking", capabilities: ["workflow.kuali-fill"], check: "fiscal.current", consumer: "workflow-enqueue", scenario: "preflight/fiscal-stale", justification: "Kuali date fills require the current fiscal-year values and must never reuse stale dates" },
-  { id: "secret.ucpath-sso", kind: "secret", requirement: "blocking", capabilities: ["system.ucpath.prod", "system.ucpath.test", "system.crm.prod", "system.crm.test", "system.onbase.prod", "system.onbase.test", "system.kuali.prod", "system.kuali.test", "system.servicenow.prod", "system.servicenow.test", "system.i9.prod", "system.i9.test", "system.new-kronos.prod", "system.new-kronos.test", "system.old-kronos.prod", "system.old-kronos.test"], check: "secrets.ucpath-sso", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "selected SSO-backed system instances require both UCPath SSO credential fields", secretNames: ["ucpathUserId", "ucpathPassword"] },
+  { id: "secret.ucpath-sso", kind: "secret", requirement: "blocking", capabilities: ["system.ucpath.prod", "system.crm.prod", "system.onbase.prod", "system.kuali.prod", "system.servicenow.prod", "system.i9.prod", "system.new-kronos.prod", "system.old-kronos.prod"], check: "secrets.ucpath-sso", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "selected SSO-backed system instances require both UCPath SSO credential fields", secretNames: ["ucpathUserId", "ucpathPassword"] },
   { id: "secret.timekeeper", kind: "secret", requirement: "blocking", capabilities: ["workflow.kuali-fill"], check: "secrets.timekeeper", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "Kuali fill descriptors require an operator timekeeper identity", secretNames: ["timekeeperName"] },
-  { id: "secret.sharepoint-roster", kind: "secret", requirement: "blocking", capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod", "system.sharepoint.test"], check: "secrets.sharepoint-roster", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "the selected roster download requires its registered SharePoint source URL", secretNames: ["sharepointOnboardingRosterUrl"] },
+  { id: "secret.sharepoint-roster", kind: "secret", requirement: "blocking", capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod"], check: "secrets.sharepoint-roster", consumer: "workflow-enqueue", scenario: "preflight/workflow-secret-missing", justification: "the selected roster download requires its registered SharePoint source URL", secretNames: ["sharepointOnboardingRosterUrl"] },
   { id: "process.orphans", kind: "process", requirement: "optional", capabilities: ["dashboard.serve"], check: "process.orphans", consumer: "cli-doctor", scenario: "preflight/orphan-process", justification: "stale processes are operator-visible health debt but do not make authority unreadable" },
   ...featureDependencies(),
   ...endpointDependencies(),
@@ -294,19 +282,19 @@ export const PreflightCheckSpecSchema = z.strictObject({
 });
 
 function endpointChecks() {
-  return SYSTEM_RUNTIME_SPECS.flatMap(({ system, consumer }) => (["prod", "test"] as const).map((instance) => ({
-    id: `endpoint.${system}.${instance}`,
+  return SYSTEM_RUNTIME_SPECS.map(({ system, consumer }) => ({
+    id: `endpoint.${system}.prod`,
     scope: "system",
     severity: "error",
     runner: "pure",
-    dependencies: [`endpoint.${system}.${instance}`],
-    capabilities: [`system.${system}.${instance}`],
+    dependencies: [`endpoint.${system}.prod`],
+    capabilities: [`system.${system}.prod`],
     consumer,
-    scenarios: [`preflight/endpoint-${instance}`],
+    scenarios: ["preflight/endpoint-prod"],
     timeoutMs: 1_000,
     redaction: "safe-summary",
-    remediation: instance === "prod" ? "repair the registered production endpoint" : "configure a complete test route set distinct from production",
-  })));
+    remediation: "repair the registered endpoint",
+  }));
 }
 
 function providerChecks() {
@@ -355,9 +343,9 @@ export const PREFLIGHT_CHECKS = deepFreeze(PreflightCheckSpecSchema.array().pars
   { id: "authority.health", scope: "dashboard", severity: "error", runner: "io", dependencies: ["storage.sqlite", "storage.backup"], capabilities: ["dashboard.serve", "executor.run"], consumer: "authority-storage", scenarios: ["preflight/corrupt-db"], timeoutMs: 10_000, redaction: "path-basename", remediation: "run the explicit authority recovery procedure" },
   { id: "ports.available", scope: "dashboard", severity: "error", runner: "io", dependencies: ["port.backend", "port.frontend"], capabilities: ["dashboard.serve"], consumer: "dashboard-startup", scenarios: ["preflight/port-busy"], timeoutMs: 1_000, redaction: "safe-summary", remediation: "free the reserved rebuild ports" },
   { id: "fiscal.current", scope: "workflow", severity: "error", runner: "pure", dependencies: ["fiscal.current"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/fiscal-stale"], timeoutMs: 1_000, redaction: "safe-summary", remediation: "configure a non-stale current-fiscal-year entry" },
-  { id: "secrets.ucpath-sso", scope: "system", severity: "error", runner: "pure", dependencies: ["secret.ucpath-sso"], capabilities: ["system.ucpath.prod", "system.ucpath.test", "system.crm.prod", "system.crm.test", "system.onbase.prod", "system.onbase.test", "system.kuali.prod", "system.kuali.test", "system.servicenow.prod", "system.servicenow.test", "system.i9.prod", "system.i9.test", "system.new-kronos.prod", "system.new-kronos.test", "system.old-kronos.prod", "system.old-kronos.test"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure ucpathUserId and ucpathPassword in protected Settings" },
+  { id: "secrets.ucpath-sso", scope: "system", severity: "error", runner: "pure", dependencies: ["secret.ucpath-sso"], capabilities: ["system.ucpath.prod", "system.crm.prod", "system.onbase.prod", "system.kuali.prod", "system.servicenow.prod", "system.i9.prod", "system.new-kronos.prod", "system.old-kronos.prod"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure ucpathUserId and ucpathPassword in protected Settings" },
   { id: "secrets.timekeeper", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.timekeeper"], capabilities: ["workflow.kuali-fill"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure timekeeperName in protected Settings" },
-  { id: "secrets.sharepoint-roster", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.sharepoint-roster"], capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod", "system.sharepoint.test"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure sharepointOnboardingRosterUrl in protected Settings" },
+  { id: "secrets.sharepoint-roster", scope: "workflow", severity: "error", runner: "pure", dependencies: ["secret.sharepoint-roster"], capabilities: ["workflow.sharepoint-download", "system.sharepoint.prod"], consumer: "workflow-enqueue", scenarios: ["preflight/workflow-secret-missing"], timeoutMs: 1_000, redaction: "presence-only", remediation: "configure sharepointOnboardingRosterUrl in protected Settings" },
   { id: "process.orphans", scope: "dashboard", severity: "warning", runner: "io", dependencies: ["process.orphans"], capabilities: ["dashboard.serve"], consumer: "cli-doctor", scenarios: ["preflight/orphan-process"], timeoutMs: 2_000, redaction: "safe-summary", remediation: "review and explicitly clear stale rebuild processes or leases" },
   ...featureChecks(),
   ...endpointChecks(),
@@ -463,7 +451,7 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     for (const route of configRoutes) {
       if (!spec.routes.includes(route)) violations.push(`system ${system} omits ConfigSchema route ${route}`);
     }
-    for (const instance of ["prod", "test"] as const) {
+    for (const instance of ["prod"] as const) {
       if (!registry.dependencies.some(({ id }) => id === `endpoint.${system}.${instance}`)) {
         violations.push(`system ${system} has no ${instance} endpoint dependency`);
       }
@@ -539,7 +527,7 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
   for (const system of registry.systems) {
     const credentialDependencyId = system.credential === "ucpath-sso" ? "secret.ucpath-sso" : "secret.sharepoint-roster";
     const credentialDependency = dependencies.get(RuntimeDependencyIdSchema.parse(credentialDependencyId));
-    for (const instance of ["prod", "test"] as const) {
+    for (const instance of ["prod"] as const) {
       const capability = RuntimeCapabilitySchema.parse(`system.${system.system}.${instance}`);
       if (!credentialDependency?.capabilities.includes(capability)) {
         violations.push(`system ${system.system} ${instance} capability is not covered by credential dependency ${credentialDependencyId}`);
