@@ -166,10 +166,48 @@ Retained gate logs, all passing: [84 focused dashboard tests](/Users/julianhein/
 The build retains its existing >500 kB chunk warning. `git diff --check` passed; full repository
 gates and broad parity remain deferred under the Phase 3.1 cadence.
 
+### Performance fidelity checkpoint — 2026-09-26
+
+Commit `0b598bbb21a359e75bd1de4c50e09f9c28221c91` replaces Performance's generic open
+groups with the approved Navigation, Work, and Sign-in & Duo body sections, followed by one
+Additional limits surface containing four initially collapsed shared disclosures: Worker scheduling,
+Retry & termination, OCR processing, and Browser recovery. The current served projection has 28
+leaves, all represented once. Eight additional millisecond durations now display fixed seconds and
+convert exactly back to stored integers; malformed and sub-millisecond drafts remain invalid. Saved
+custom values keep Restore standard and Undo edit inside the same row. Retained draft errors reopen
+their additional disclosure on remount. The shared body disclosure places its chevron at the right;
+the settled open state rotates it downward.
+
+The operator's later amendment removed setting-count labels from all Performance section headings
+and disclosure headers. No count API was added to `BodySection`; Routes and other existing counts
+are unchanged. General, Paths, Routes, providers, Credentials, runtime authority, and the sidebar
+were not changed by this Performance composition except for the shared disclosure chevron rule.
+
+Final [dark/light captures at 1440×900 and 1024×720, including closed and open Additional limits](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/)
+use the fixture application at 100%. Browser interaction evidence in that directory confirms a
+62.5 px row and 147.6 px unit field for both default and saved-custom values; a keyboard-opened
+disclosure; `900` and `120` second conversions; retained invalid `0.0001` with no command POST;
+Undo edit; and an accessible saved-custom Restore standard action. The browser's settled chevron
+probe reported CSS order 3 and 90-degree rotation when open. Synthetic Settings controller tests
+verify Restore standard then Undo edit without a write. A discarded probe clicked Restore standard
+against the read-only fixture BFF, whose missing command POST returned an unconfirmed state; it
+made no real settings write. The earlier date-focus console count was a fixture favicon 404; older
+5190 event-stream errors in that long-lived browser session came from a stopped prior fixture.
+
+Retained focused gates: [49 dashboard tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/vitest-focused.log),
+[17 architecture tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/architecture-focused.log),
+[scoped ESLint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/eslint-scoped.log),
+[typecheck](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/typecheck.log),
+[web build](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/web-build.log), and
+[diff check](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/performance-fidelity/diff-check.log) all passed. The build retains the
+existing >500 kB chunk warning. Broad parity, repository-wide gates, and zoom tests were not run
+under the Phase 3.1 cadence and operator zoom waiver.
+
 ### Category assignments and gates
 
-Root owns design, behavior decisions, acceptance, and combined verification. Native Luna xhigh
-workers own all implementation and repairs. No nested dispatch or independent review in Phase 3.1.
+Root owns design, behavior decisions, acceptance, and combined verification. Native Sol medium
+workers own longer iterative implementation with retained feedback context; fresh Luna max workers
+handle bounded short tasks. No nested dispatch or independent review in Phase 3.1.
 Writers run sequentially in this owned checkout; read-only investigation may overlap a disjoint writer.
 
 1. Shared DS primitives and real UI kit, including the Add key padding correction.
