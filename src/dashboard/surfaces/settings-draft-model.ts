@@ -36,7 +36,7 @@ export function settingsSectionGroups(sectionId: string, leaves: readonly Editab
     }
     if (sectionId === "providers") return path.endsWith(".models") ? "Model order" : "Provider budgets";
     if (sectionId === "annual-dates") return path.split(".")[1] ?? "Annual dates";
-    return { display: "Display size", paths: "Working locations", routes: "System entry points" }[sectionId] ?? "Settings";
+    return { display: "Display size", paths: "Working locations", routes: "System destinations" }[sectionId] ?? "Settings";
   };
   const groups = new Map<string, EditableSettingsLeafWire[]>();
   for (const leaf of leaves) {

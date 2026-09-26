@@ -50,10 +50,6 @@
       "injection": "endpoint-prod"
     },
     {
-      "scenario": "preflight/endpoint-test",
-      "injection": "endpoint-test"
-    },
-    {
       "scenario": "preflight/provider-unavailable",
       "injection": "provider-unavailable"
     }

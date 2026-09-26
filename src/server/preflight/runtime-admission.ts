@@ -4,8 +4,7 @@ import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { selectActiveRunSettings, selectRunSettings } from "../../core/run-settings.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import type { Clock } from "../../domain/clock.js";
-import { ConfigSchema } from "../../domain/config/schema.js";
-import { configSnapshotAbsentLeaves } from "../../domain/config/snapshot-generations.js";
+import { configSnapshotAbsentLeaves, executionConfigFromStored } from "../../domain/config/snapshot-generations.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmissionScopeSchema, type PreflightAdmissionScope } from "../../domain/preflight-admission.js";
@@ -30,8 +29,7 @@ export function composeRuntimePreflight(input: Readonly<{
     if (sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint || configSnapshotAbsentLeaves(snapshot.config).length > 0) {
       throw new PreflightAdmissionRefusal("scope-mismatch", "Preflight retained configuration is unavailable.");
     }
-    const { capture: _capture, operator: _operator, ...config } = snapshot.config as typeof snapshot.config & { capture?: unknown; operator?: unknown };
-    return ConfigSchema.parse(config);
+    return executionConfigFromStored(snapshot.config);
   };
   const admission = createPreflightAdmission({
     clock, scheduler: createTimeoutDeadlineScheduler(clock),
@@ -64,6 +62,9 @@ export function composeRuntimePreflight(input: Readonly<{
     return found;
   };
   const currentScope = (workflowId?: string, requestedInstance?: InstanceSelection): PreflightAdmissionScope => {
+    if (requestedInstance !== undefined && Object.values(requestedInstance).includes("test")) {
+      throw new PreflightAdmissionRefusal("scope-mismatch", "Test-instance targets are retired.");
+    }
     const snapshot = database.withAuthorityTransaction(repositories => {
       repositories.runtimeConfig.requireSettingsCurrent();
       return selectActiveRunSettings(repositories);

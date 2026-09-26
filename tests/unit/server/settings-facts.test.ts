@@ -1,11 +1,11 @@
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
- * D274 item 6 (ledger 3 SE40–SE42) — the two READ-ONLY Settings status sections
- * state facts this process already holds, and nothing else.
+ * D274 item 6 (ledger 3 SE40–SE42) — the retained Settings facts wire
+ * states runtime facts this process already holds.
  *
  * The claim under test is not "the projection compiles". It is the one SE42's
  * banner makes to the operator — *read from the descriptors, not from a list
- * somebody kept up to date* — plus its host half: a host on that page is a host
+ * somebody kept up to date* — plus its host half: a production host is a host
  * a run would navigate to. So the pins here are LITERAL expectations against the
  * real registry and the real config chain, never a re-derivation of the
  * production expression (which would pass no matter what either side said).
@@ -117,39 +117,27 @@ describe("settings facts — system hosts (SE40)", () => {
     );
   });
 
-  it("serves a DISTINCT configured test host", () => {
+  it("does not offer an old configured test host for new runs", () => {
     const kuali = facts({ urls: { kuali: { test: { entry: KUALI_TEST } } } }).systemHosts
       .find(({ system }) => system === "kuali");
     assert.deepEqual(kuali, {
       system: "kuali",
       production: KUALI_PROD,
-      test: { state: "provisioned", url: KUALI_TEST },
+      test: { state: "not-provisioned" },
     });
   });
 
-  /**
-   * The negative control, and the reason `listSystemEntryHosts` exists rather
-   * than a second read of `config.urls`: `resolveSystemEntryUrl` REFUSES a test
-   * instance whose URL is not distinct from production, so a page advertising
-   * one would be promising a sandbox every run asking for it is refused from.
-   *
-   * `not-distinct` is asserted BY NAME, not merely as an absence: unit F11b
-   * finding 2 is that a test host configured identical to production used to
-   * collapse into the exact same "no test host" shape as a deployment that
-   * never configured one — a config mistake indistinguishable from an
-   * ordinary unconfigured system.
-   */
-  it("reports a test host configured identical to production as `not-distinct`, exactly as a run refuses it", () => {
+  it("refuses an old test target even when it matched production", () => {
     const config = resolveConfigWithProvenance({
       urls: { kuali: { test: { entry: KUALI_PROD } } },
     }, hostConfigFacts({}), CLOCK).config;
     assert.deepEqual(
       listSystemEntryHosts(config).find(({ system }) => system === "kuali")?.test,
-      { state: "not-distinct" },
+      { state: "not-provisioned" },
     );
     assert.throws(
       () => resolveSystemEntryUrl(config, "kuali", "test", "settings-facts.test"),
-      /no distinct test URL is configured/,
+      /retired test instance/,
     );
   });
 });

@@ -23,16 +23,14 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
  * System hosts table, and the descriptor registry's Workflow capabilities table
  * — and each is a projection of an authority the process already composed, so
  * what they print is what a run would actually do. They are photographed
- * because they are exactly the pages that can go quietly wrong: a hosts table
- * that omits a `not-distinct` verdict, or a capability row that claims a dry
- * run a descriptor does not declare, is a screen that reads correct and is not.
+ * because a capability row that claims a dry run a descriptor does not declare
+ * can quietly mislead the operator.
  *
  * One viewport and one theme apiece: these are tables of served facts, the same
  * pixels at every width, and the nav that reaches them is already in `settings`.
  */
 test.describe("settings panes", () => {
   const PANES: readonly { variant: string; section: string; table: string }[] = [
-    { variant: "system-hosts", section: "system-hosts", table: "System entry hosts" },
     { variant: "capabilities", section: "workflow-capabilities", table: "Dry-run posture by workflow" },
   ];
   for (const pane of PANES) {

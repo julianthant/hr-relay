@@ -29,6 +29,7 @@ import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config
 import { CONFIG_ENV_BINDINGS, ConfigEnvBindingRegistrySchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
+import { SettingsCurrentRecordSchema } from "../../src/domain/config/settings-current.js";
 import { settingsRootAuthority } from "../../src/infra/compat/d331-settings-root.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -1247,7 +1248,7 @@ describe("strict config resolution", () => {
     );
     const resolved = resolveConfigWithProvenance({
       actor: { label: "Settings actor" },
-      urls: { kuali: { test: { entry: "https://kuali-test.example.test" } } },
+      urls: { kuali: { prod: { entry: "https://kuali.example.test" } } },
       timeouts: { navigationMs: 12_345 },
       paths: { reportsDir: "/tmp/settings-reports" },
       annualDates: {
@@ -1277,7 +1278,7 @@ describe("strict config resolution", () => {
     }, hostConfigFacts({}), CLOCK);
 
     for (const path of [
-      "actor.label", "urls.kuali.test.entry", "timeouts.navigationMs", "paths.reportsDir",
+      "actor.label", "urls.kuali.prod.entry", "timeouts.navigationMs", "paths.reportsDir",
       "annualDates.FY2027.jobEndDate", "display.screenWidth",
       "performance.navigationRetries", "ocr.secondOpinionMax",
       "browserHealth.maxAutoRefresh", "browser.headless", "concurrency.defaultWorkers",
@@ -1432,15 +1433,56 @@ describe("strict config resolution", () => {
     assert.equal(ConfigSchema.safeParse({ actor: { id: "someone-else", label: "Other" } }).success, false);
   });
 
+  it("accepts complete production route edits and rejects retired test routes", () => {
+    const defaults = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
+    const crm = { ...defaults.urls.crm.prod, entry: "https://crm.example.test/hr" };
+    const patch = { "urls.crm.prod": { set: crm } };
+    assert.equal(SettingsPatchSchema.safeParse(patch).success, true);
+    const saved = mergeSettingsPatch({}, patch);
+    assert.equal(resolveConfigWithProvenance(saved, hostConfigFacts({}), CLOCK).config.urls.crm.prod.entry, crm.entry);
+    assert.equal(SettingsPatchSchema.safeParse({ "urls.crm.prod": { set: { entry: crm.entry } } }).success, false);
+    assert.equal(SettingsPatchSchema.safeParse({ "urls.crm.test": { set: { entry: crm.entry } } }).success, true);
+    assert.throws(() => mergeSettingsPatch({}, { "urls.crm.test": { set: { entry: crm.entry } } }), /retired test routes/u);
+  });
+
+  it("reads old saved test URLs without using them and removes them on the next settings write", () => {
+    const historical = SettingsOverrideSchema.parse({
+      urls: { crm: { test: { entry: "https://retired.example.test/hr" } } },
+    });
+    const oldFingerprint = derivePersistedSettingsFingerprint(historical);
+    assert.match(oldFingerprint, /^[0-9a-f]{64}$/u);
+    const resolved = resolveConfigWithProvenance(historical, hostConfigFacts({}), CLOCK);
+    assert.equal(Object.hasOwn(resolved.config.urls.crm, "test"), false);
+    assert.equal(resolved.config.urls.crm.prod.entry, "https://crm.ucsd.edu/hr");
+    const next = mergeSettingsPatch(historical, { "urls.crm.prod": { set: {
+      ...resolved.config.urls.crm.prod, entry: "https://new-crm.example.test/hr",
+    } } });
+    assert.equal(Object.hasOwn(next.urls?.crm ?? {}, "test"), false);
+    assert.equal(next.urls?.crm?.prod?.entry, "https://new-crm.example.test/hr");
+    const oldCommand = SettingsCommandRequestSchema.safeParse({
+      commandId: SETTINGS_COMMAND_1, requestedAt: "2026-08-28T12:00:00.000Z",
+      requestedBy: "local-operator", source: "dashboard", family: "settings",
+      type: "apply-settings", target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: "a".repeat(64), patchFingerprint: "b".repeat(64),
+        patch: { "urls.crm.test": { set: { entry: "https://retired.example.test/hr" } } } },
+    });
+    assert.equal(oldCommand.success, true);
+    assert.equal(SettingsCurrentRecordSchema.safeParse({
+      revision: 2, settings: historical, settingsFingerprint: oldFingerprint,
+      commandId: SETTINGS_COMMAND_1, commandFingerprint: "c".repeat(64),
+      auditId: SETTINGS_COMMAND_2, committedAt: "2026-08-28T12:00:00.000Z",
+    }).success, true);
+  });
+
   it("P4/P6/P10 applies settings over defaults with complete value-free provenance", () => {
     const settings = {
       ocr: { secondOpinionMax: 7 },
       timeouts: { ukgNavigationMs: 75_000 },
-      urls: { ucpath: { test: { smartHr: "https://settings-ucpath.example.test" } } },
+      urls: { ucpath: { prod: { login: "https://login.example.test", smartHr: "https://settings-ucpath.example.test", jobSummary: "https://jobs.example.test", personalData: "https://personal.example.test", personProfile: "https://profile.example.test" } } },
     };
     const resolved = resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK);
     assert.equal(resolved.config.ocr.secondOpinionMax, 7);
-    assert.equal(resolved.config.urls.ucpath.test?.smartHr, "https://settings-ucpath.example.test");
+    assert.equal(resolved.config.urls.ucpath.prod.smartHr, "https://settings-ucpath.example.test");
     assert.equal(resolved.config.timeouts.ukgNavigationMs, 75_000);
     assert.equal(resolved.provenance["ocr.secondOpinionMax"], "settings");
     assert.equal(resolved.provenance["timeouts.ukgNavigationMs"], "settings");
@@ -1500,20 +1542,12 @@ describe("strict config resolution", () => {
 });
 
 describe("instance and fiscal safety", () => {
-  it("defaults declared systems to production and refuses absent/equal test endpoints", () => {
+  it("defaults declared systems to production and refuses retired test targets", () => {
     const config = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
     assert.deepEqual(resolveInstances(config, ["ucpath", "crm"], undefined, "run-1"), { ucpath: "prod", crm: "prod" });
-    assert.throws(() => resolveInstances(config, ["ucpath"], { crm: "test" }, "run-1"), /undeclared systems/);
-    assert.throws(() => resolveSystemEntryUrl(config, "ucpath", "test", "run-1"), /no distinct test URL/);
-
-    const withDistinct = resolveConfigWithProvenance({
-      urls: { ucpath: { test: { smartHr: "https://ucpath-test.example.test" } } },
-    }, hostConfigFacts({}), CLOCK).config;
-    assert.equal(resolveSystemEntryUrl(withDistinct, "ucpath", "test", "run-1"), "https://ucpath-test.example.test");
-    const withEqual = resolveConfigWithProvenance({
-      urls: { ucpath: { test: { smartHr: config.urls.ucpath.prod.smartHr } } },
-    }, hostConfigFacts({}), CLOCK).config;
-    assert.throws(() => resolveSystemEntryUrl(withEqual, "ucpath", "test", "run-1"), /no distinct test URL/);
+    assert.throws(() => resolveInstances(config, ["ucpath"], { ucpath: "test" }, "run-1"), /retired test instance/u);
+    assert.throws(() => resolveSystemEntryUrl(config, "ucpath", "test", "run-1"), /retired test instance/u);
+    assert.equal(resolveSystemEntryUrl(config, "ucpath", "prod", "run-1"), config.urls.ucpath.prod.smartHr);
   });
 
   it("fails on missing and stale current-fiscal-year values", () => {

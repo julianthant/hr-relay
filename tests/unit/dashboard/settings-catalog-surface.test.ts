@@ -47,7 +47,7 @@ describe("typed Settings catalog controls", () => {
     assert.deepEqual(groupSettingsLeaves("providers", providerLeaves).map(group => group.label), ["OCR extraction", "Census geocoding", "Nominatim geocoding", "AI advisory", "Gemini", "Groq", "Mistral", "OpenRouter", "SambaNova"]);
     assert.ok(groupSettingsLeaves("paths", pathLeaves).some(group => group.label === "Reports and documents"));
     assert.deepEqual(groupSettingsLeaves("annual-dates", dateLeaves).map(group => group.label), ["Fiscal year 2027"]);
-    assert.deepEqual(groupDeploymentFacts(document.deployment).map(group => group.label), ["Operator", "Production routes", "Runtime paths"]);
+    assert.deepEqual(groupDeploymentFacts(document.deployment).map(group => group.label), ["Operator", "Local paths"]);
     assert.equal(settingsFactLabel("paths.stateRoot"), "Runtime state folder");
     assert.equal(settingsFactLabel("urls.ucpath.prod"), "UCPath production routes");
     assert.equal(settingsFactLabel("smartHr"), "SmartHR URL");
@@ -117,13 +117,13 @@ describe("typed Settings catalog controls", () => {
     const document = fixtureSettingsDocument(); const leaves = settingsLeaves(document);
     for (const [path, raw, value] of [
       ["actor.label", "New label", "New label"], ["ocr.pageConcurrency", "0", 0], ["timeouts.taskMs", "42", 2_520_000], ["browser.headless", "false", false],
-      ["paths.downloadsDir", "/tmp/new-downloads", "/tmp/new-downloads"], ["urls.kuali.test", { entry: "https://test.example/entry" }, { entry: "https://test.example/entry" }],
+      ["paths.downloadsDir", "/tmp/new-downloads", "/tmp/new-downloads"], ["urls.kuali.prod", { entry: "https://test.example/entry" }, { entry: "https://test.example/entry" }],
       ["providers.gemini.models", "second\nfirst", ["second", "first"]],
       ["providers.ocrExtract", { timeoutMs: "100", concurrency: "2", requestsPerMinute: "3", dailyRequestLimit: "4", costLimitUsdMicros: "0" }, { timeoutMs: 100, concurrency: 2, requestsPerMinute: 3, dailyRequestLimit: 4, costLimitUsdMicros: 0 }],
     ] as const) {
       assert.deepEqual(patchFromSettingsDraft(leaves, { [path]: { kind: "set", raw } }), { [path]: { set: value } });
     }
-    for (const [path, raw] of [["ocr.pageConcurrency", ""], ["ocr.pageConcurrency", "1.5"], ["timeouts.taskMs", "0"], ["paths.downloadsDir", "relative"], ["providers.gemini.models", "one\n\ntwo"], ["urls.kuali.test", { entry: "not a URL" }]] as const) {
+    for (const [path, raw] of [["ocr.pageConcurrency", ""], ["ocr.pageConcurrency", "1.5"], ["timeouts.taskMs", "0"], ["paths.downloadsDir", "relative"], ["providers.gemini.models", "one\n\ntwo"], ["urls.kuali.prod", { entry: "not a URL" }]] as const) {
       const leaf = leaves.find(candidate => candidate.path === path); assert.ok(leaf);
       assert.ok(draftError(leaf, { kind: "set", raw }));
     }

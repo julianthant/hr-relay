@@ -16,7 +16,6 @@ export const PreflightScenarioIdSchema = z.enum([
   "preflight/ocr-provider-unavailable",
   "preflight/ai-provider-unavailable",
   "preflight/endpoint-prod",
-  "preflight/endpoint-test",
   "preflight/provider-unavailable",
 ]);
 
@@ -25,7 +24,7 @@ const FAILURE_SCENARIOS = new Set([
   "preflight/low-disk", "preflight/corrupt-db", "preflight/port-busy", "preflight/fiscal-stale",
   "preflight/workflow-secret-missing",
   "preflight/ocr-provider-unavailable", "preflight/ai-provider-unavailable",
-  "preflight/endpoint-prod", "preflight/endpoint-test",
+  "preflight/endpoint-prod",
 ]);
 
 export const PREFLIGHT_SCENARIO_MANIFESTS = deepFreeze(ScenarioManifestSchema.array().parse(

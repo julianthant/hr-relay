@@ -199,7 +199,7 @@ describe("D331 settings catalog", () => {
   });
 
   it("P5/P8 generates exactly ordinary document members with no protected leaf", () => {
-    const ordinary = schemaLeaves(z.toJSONSchema(SettingsOverrideSchema));
+    const ordinary = schemaLeaves(z.toJSONSchema(SettingsOverrideSchema)).filter((leaf) => !leaf.includes(".test."));
     const expected = schemaLeaves(z.toJSONSchema(ConfigSchema)).filter((leaf) =>
       SETTINGS_CATALOG.some((row) => row.sourceClass === "ordinary-settings"
         && (leaf === row.key || leaf.startsWith(`${row.key}.`))));
@@ -207,11 +207,12 @@ describe("D331 settings catalog", () => {
     assert.equal(ordinary.includes("operator.timekeeperName"), false);
     assert.equal(SettingsOverrideSchema.safeParse({ operator: { timekeeperName: "synthetic-name" } }).success, false);
     assert.equal(SettingsOverrideSchema.safeParse({ paths: { stateRoot: "/tmp/foreign-root" } }).success, false);
-    assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { prod: { entry: "https://example.invalid" } } } }).success, false);
+    assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { prod: { entry: "https://example.invalid" } } } }).success, true);
+    assert.equal(SettingsOverrideSchema.safeParse({ urls: { kuali: { test: { entry: "https://example.invalid" } } } }).success, true);
     assert.throws(() => ordinarySettingsObject("actor", z.strictObject({ id: z.string() })), /actor.label is missing/u);
   });
-  it("P1 pins the 86-row closed registry and refuses a missing or duplicated row", () => {
-    assert.equal(SETTINGS_CATALOG.length, 86);
+  it("P1 pins the 77-row closed registry and refuses a missing or duplicated row", () => {
+    assert.equal(SETTINGS_CATALOG.length, 77);
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "provider-env", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
@@ -219,7 +220,7 @@ describe("D331 settings catalog", () => {
       "protected-store": 5,
       "provider-env": 5,
       "derived-host": 1,
-      "runtime-isolation": 16,
+      "runtime-isolation": 7,
     });
     assert.equal(SettingsCatalogSchema.safeParse(SETTINGS_CATALOG.slice(1)).success, false);
     assert.equal(SettingsCatalogSchema.safeParse([...SETTINGS_CATALOG.slice(1), SETTINGS_CATALOG[1]]).success, false);

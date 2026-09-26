@@ -1,38 +1,4 @@
-/**
- * `SettingsFactsWire` — the two READ-ONLY Settings status sections (D274 item 6,
- * ledger 3 SE40–SE42): *System hosts* and *Workflow capabilities*.
- *
- * D274 item 6 is "add read-only hosts/capabilities", and it names its own two
- * rejected alternatives: B hides facts this process already holds, and C couples
- * the reads to the settings WRITE family (`apply-settings`, doc 04) that does
- * not exist. So this document is a projection and nothing else — there is no
- * mutating counterpart on the wire, and the surface therefore cannot offer one.
- *
- * **Every leaf here is a fact some composed authority already answers**, and the
- * two of them are answered by different authorities, which is why they are named
- * separately below rather than folded into one "settings" blob:
- *
- * - `systemHosts` — the RESOLVED configuration (`domain/config/resolve.ts`'s
- *   `env > settings.json > default` chain), read through the same
- *   `listSystemEntryHosts` a run's `resolveSystemEntryUrl` reads, so the page
- *   cannot print a host a run would not navigate to.
- * - `workflowCapabilities` — the DESCRIPTOR registry, read through the same
- *   `workflowProjections` / `descriptor.capabilities` the Explorer and the Run
- *   Modal read. SE42's banner says exactly this ("read from the descriptors, not
- *   from a list somebody kept up to date"), and it is only true because there is
- *   no second table anywhere: a workflow that gains a dry run gains it here on
- *   the same deploy.
- *
- * **No display prose crosses this wire.** Every row carries structured facts —
- * a state, a node id, a count, a system id — and `surfaces/settings-model.ts`
- * owns the labels, the capability meanings and the order, the same way the
- * bootstrap serves a raw `categoryId` and the frontend owns the heading. A
- * server-composed sentence here would be a second author for one screen.
- *
- * The workflow's LABEL is deliberately absent: the bootstrap already serves
- * `workflows[].label` and the surface joins on `workflowId`. Serving it twice
- * would give one page two sources for one value (ref frontend-backend-integration §8.2).
- */
+/** Workflow capabilities are live descriptor facts. The system-host arm is retained for wire compatibility; its test state is unavailable for new runs. */
 import { z } from "zod";
 import {
   BrowserSystemIdSchema,
@@ -41,32 +7,11 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 
-/**
- * The two section ids, shared by the SERVER that lists them on the bootstrap and
- * the SURFACE that renders them.
- *
- * They live here rather than being spelled twice because `settings.tsx` decides
- * which renderer a served section gets by comparing ids, and a served section
- * this build has no renderer for is drawn as a NAMED build gap — so a typo on
- * either side would not fail anything, it would quietly demote a finished
- * section to "this build has no renderer for …".
- */
+/** The retired host id stays parseable for older facts wires. */
 export const SETTINGS_SYSTEM_HOSTS_SECTION_ID = "system-hosts";
 export const SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID = "workflow-capabilities";
 
-/**
- * A system's `test` host, told apart by SHAPE (unit F11b finding 2). Three
- * states, not two: `not-provisioned` is the deployment's ordinary unconfigured
- * case; `not-distinct` is a test URL that IS configured but is byte-identical
- * to `production` — the same case `resolveSystemEntryUrl` refuses at run time,
- * rather than silently falling back to production — and `provisioned` is a
- * real, distinct sandbox a run can actually reach.
- *
- * `not-provisioned` and `not-distinct` used to be one collapsed absence, which
- * meant a test host configured identical to production rendered as *none
- * provisioned* — indistinguishable from a system nobody ever configured a
- * sandbox for. One is a config mistake worth surfacing; the other is not.
- */
+/** Old wire states remain readable; current projections offer no test host. */
 export const SystemHostTestWireSchema = z.union([
   z.strictObject({ state: z.literal("not-provisioned") }),
   z.strictObject({ state: z.literal("not-distinct") }),
@@ -74,15 +19,7 @@ export const SystemHostTestWireSchema = z.union([
 ]);
 export type SystemHostTestWire = z.infer<typeof SystemHostTestWireSchema>;
 
-/**
- * One system's configured entry hosts (SE40).
- *
- * `production` is always present — every system has a production entry in
- * `ConfigSchema`'s defaults, and a deployment cannot delete one. `test` is the
- * three-state verdict above, read through the same `listSystemEntryHosts` a
- * run's `resolveSystemEntryUrl` reads — so a `provisioned` host here is a host
- * a run would actually navigate to.
- */
+/** Production entry stays available in the compatibility projection. */
 export const SystemHostWireSchema = z.strictObject({
   system: BrowserSystemIdSchema,
   production: z.url(),

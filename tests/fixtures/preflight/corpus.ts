@@ -15,7 +15,7 @@ import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, RUNTIME_DEPENDENCIES, SY
 import { PreflightReportWireSchema } from "../../../src/domain/preflight-contract.js";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
 
-const FixtureSchema = z.strictObject({ schemaVersion: z.literal(2), faults: z.array(z.strictObject({scenario:PreflightScenarioIdSchema, injection:z.string().min(1)})).length(14) });
+const FixtureSchema = z.strictObject({ schemaVersion: z.literal(2), faults: z.array(z.strictObject({scenario:PreflightScenarioIdSchema, injection:z.string().min(1)})).length(13) });
 const ExecutionSchema = z.strictObject({ scenario:PreflightScenarioIdSchema, dependency:z.string().min(1), variant:z.string().min(1), check:z.string().min(1), report:PreflightReportWireSchema,
   terminal:z.enum(["failed","partial"]), actionCount:z.literal(0), externalCommitCount:z.literal(0), evidence:z.array(z.string()), reportDigest:z.string().length(64), restored:z.literal(true) });
 export type CorpusExecution = z.infer<typeof ExecutionSchema>;
@@ -72,7 +72,7 @@ async function inject(f: ReturnType<typeof runtimeFixture>, entry: Case): Promis
   }
   const system=SYSTEM_RUNTIME_SPECS.find(candidate=>id.startsWith(`endpoint.${candidate.system}.`));
   if(system!==undefined) {
-    const routes=f.input.config.urls[system.configKey][id.endsWith(".test")?"test":"prod"];assert.ok(routes);
+    const routes=f.input.config.urls[system.configKey].prod;assert.ok(routes);
     const previous:unknown=Reflect.get(routes,entry.variant);Reflect.deleteProperty(routes,entry.variant);return()=>{Reflect.set(routes,entry.variant,previous);};
   }
   const feature=FEATURE_RUNTIME_SPECS.find(candidate=>candidate.dependency===id);

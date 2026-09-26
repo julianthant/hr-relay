@@ -119,7 +119,10 @@ it("optional or unselected faults leave unrelated valid scopes usable; instance 
   const optional = { ...scope, requestedCapabilities: [...scope.requestedCapabilities, "provider.census" as RuntimeCapability].sort() };
   const report = await h.preflight.admission.prepare(optional, signal());
   assert.equal(report.results.find(result => result.check === "provider.census")?.status, "warning"); h.preflight.admission.assertReady(optional);
-  assert.throws(() => h.preflight.admission.assertReady(h.preflight.currentScope(h.ingress.workflowId, { ucpath: "test" })), PreflightAdmissionRefusal);
+  assert.throws(
+    () => h.preflight.admission.assertReady(h.preflight.currentScope(h.ingress.workflowId, { ucpath: "test" })),
+    (error: unknown) => error instanceof PreflightAdmissionRefusal && error.reason === "scope-mismatch",
+  );
 });
 
 it("wrong fingerprints and divergent scoped reruns refuse before probes; failed and in-flight replay is stable", async () => {

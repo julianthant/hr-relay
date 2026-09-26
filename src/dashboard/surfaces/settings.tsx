@@ -28,6 +28,7 @@ import type { CatalogView } from "./row-catalog-model.js";
 import { CapabilitiesSection } from "./settings-capabilities.js";
 import { useEditableSettings } from "./settings-editor-model.js";
 import { EditableSettingsSection } from "./settings-editor.js";
+import { RoutesSection } from "./settings-routes.js";
 import { SystemHostsSection } from "./settings-hosts.js";
 import { KeyboardSection } from "./settings-keyboard.js";
 import { PreflightSection } from "./settings-preflight.js";
@@ -61,6 +62,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   paths: FolderOpen,
   storage: Database,
   preflight: ClipboardCheck,
+  routes: Link2,
   "system-hosts": Link2,
   capabilities: Table2,
   keyboard: KeyboardIcon,
@@ -328,13 +330,12 @@ export function SettingsPage({
         )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} />}
-        {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
+        {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
+        {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
         )}
         {resolution.state === "open" && ["protected-store", "provider-env", "derived-host", "runtime-isolation"].includes(resolution.entry.id) && <SettingsAuthoritySection editor={editor} sectionId={resolution.entry.id} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID && (
-          <SystemHostsSection />
-        )}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_SYSTEM_HOSTS_SECTION_ID && <SystemHostsSection />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <CapabilitiesSection workflowLabels={workflowLabels} />
         )}

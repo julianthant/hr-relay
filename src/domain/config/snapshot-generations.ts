@@ -4,6 +4,7 @@ import { canonicalJsonStringify } from "../canonical-json.js";
 import { deepFreeze } from "../immutability.js";
 import { ConfigLeafPathSchema, configLeafPaths } from "./resolve.js";
 import { ConfigSchema } from "./schema.js";
+import { ConfigSchema as HistoricalConfigSchema } from "./settings-v29-schema.js";
 
 /**
  * THE CONFIG SCHEMA'S OWN VERSION LINE, INDEPENDENT OF THE SQLITE MIGRATION
@@ -170,9 +171,15 @@ const RetiredPhoneCaptureConfigSchema = z.strictObject({
   maxSlices: z.number().int().positive(),
 });
 
+/** Previously captured run snapshots retain their test-route member for readback only. */
+const PreRouteStoredConfigSchema = z.strictObject({
+  ...CurrentStoredConfigSchema.shape,
+  urls: HistoricalConfigSchema.shape.urls.unwrap(),
+});
+
 /** D331's accepted historical exposure is read verbatim, never invented or rewritten. */
 const PreFloorStoredConfigSchema = z.strictObject({
-  ...CurrentStoredConfigSchema.shape,
+  ...PreRouteStoredConfigSchema.shape,
   operator: z.strictObject({ timekeeperName: z.string() }),
 });
 
@@ -181,9 +188,18 @@ const LegacyStoredConfigSchema = z.strictObject({
   capture: RetiredPhoneCaptureConfigSchema,
 });
 
-export const StoredConfigSchema = z.union([CurrentStoredConfigSchema, PreFloorStoredConfigSchema, LegacyStoredConfigSchema]);
+export const StoredConfigSchema = z.union([CurrentStoredConfigSchema, PreRouteStoredConfigSchema, PreFloorStoredConfigSchema, LegacyStoredConfigSchema]);
 
 export type StoredConfig = z.infer<typeof StoredConfigSchema>;
+
+/** Execute an authenticated old snapshot with its retired route fields removed. */
+export function executionConfigFromStored(config: StoredConfig): z.output<typeof ConfigSchema> {
+  const { capture: _capture, operator: _operator, ...retained } = config as StoredConfig & { capture?: unknown; operator?: unknown };
+  const urls = Object.fromEntries(Object.entries(retained.urls).map(([system, endpoints]) => [
+    system, { prod: endpoints.prod },
+  ]));
+  return ConfigSchema.parse({ ...retained, urls });
+}
 
 /**
  * The registered leaves this stored config DOES NOT CARRY — "these did not

@@ -5,8 +5,8 @@ import type { Clock } from "../../domain/clock.js";
 import type { IdFactory } from "../../domain/identifiers.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import type { CredentialStore } from "../../domain/config/credential-store.js";
-import { ConfigSchema, type Config } from "../../domain/config/schema.js";
-import { configSnapshotAbsentLeaves } from "../../domain/config/snapshot-generations.js";
+import type { Config } from "../../domain/config/schema.js";
+import { configSnapshotAbsentLeaves, executionConfigFromStored } from "../../domain/config/snapshot-generations.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
@@ -47,11 +47,11 @@ export function createRunResourcesFactory(input:Readonly<{
  return Object.freeze({
   baseline:compose,
   forRun(run:RunRecord):WorkerRunResources {
+   if (Object.values(run.envelope.resolvedInstance ?? {}).some(instance => instance === "test")) throw new Error("run-resources-retired-test-instance");
    const snapshot=ConfigSnapshotRecordSchema.parse(selectRunSettings(input.authority,run.envelope));
    if(sha256Hex(canonicalJsonStringify(snapshot.config))!==snapshot.fingerprint||configSnapshotAbsentLeaves(snapshot.config).length>0)throw new Error("run-resources-retained-snapshot-unavailable");
    const previous=cache.get(snapshot.fingerprint);
-   const {capture:_capture,operator:_operator,...current}=snapshot.config as typeof snapshot.config & {capture?:unknown;operator?:unknown};
-   const resources=previous??compose(ConfigSchema.parse(current));cache.set(snapshot.fingerprint,resources);
+   const resources=previous??compose(executionConfigFromStored(snapshot.config));cache.set(snapshot.fingerprint,resources);
    return input.preflight===undefined?resources:Object.freeze({...resources,sessionFactory:preflightSessionFactory(resources.sessionFactory,input.preflight,input.preflight.runScope(run.envelope))});
   },
  });

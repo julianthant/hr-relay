@@ -19,9 +19,10 @@ async function attachTree(page: Page, name: string): Promise<void> {
   await test.info().attach(name, { body, contentType: "text/yaml" });
 }
 const scenes = [
+  { id: "routes", section: "routes", title: "Routes" },
   { id: "structured", section: "providers", title: "Provider budgets & models" },
   { id: "credentials", section: "protected-store", title: "Credentials" },
-  { id: "readonly", section: "runtime-isolation", title: "Deployment" },
+  { id: "readonly", section: "runtime-isolation", title: "Runtime paths" },
   { id: "annual", section: "annual-dates", title: "Annual dates" },
   { id: "conflict", section: "general", title: "General" },
 ] as const;
@@ -44,6 +45,13 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
   if (scene.id === "structured") {
     await expect(page.locator('[data-settings-path="providers.gemini.models"] textarea')).toHaveValue("model-second\nmodel-first");
     expect(await page.locator('input[type="number"]').count()).toBeGreaterThan(5);
+  } else if (scene.id === "routes") {
+    await expect(page.locator('[data-settings-path="urls.crm.prod"] input')).toHaveCount(5);
+    await expect(page.locator('[data-settings-path="urls.crm.prod"] input').first()).toHaveValue(/^https:\/\//u);
+    await expect(page.getByRole("button", { name: "Save routes" })).toHaveCount(2);
+    await expect(page.getByText("9 systems · 18 destinations", { exact: true })).toBeVisible();
+    await expect(page.getByText("Edit by system", { exact: true })).toBeVisible();
+    await expect(page.getByText("Changes to this system join the page’s unsaved changes.", { exact: true })).toBeVisible();
   } else if (scene.id === "credentials") {
     await expect(page.locator('input[type="password"]')).toHaveCount(5);
     for (const input of await page.locator('input[type="password"]').all()) await expect(input).toHaveValue("");
@@ -72,6 +80,18 @@ for (const theme of PARITY_THEMES) for (const scene of scenes) test(`settings ca
   await captureParityPair(page, REFERENCES, { stateId: `settings-catalog-${scene.id}`, viewport: "1024x720", theme: theme.name,
     adapter: "fixture", fixtureId: "settings-catalog", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
     appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
+  if (scene.id === "routes") {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    const label = await page.locator('[data-settings-path="urls.crm.prod"] label').first().boundingBox();
+    const input = await page.locator('[data-settings-path="urls.crm.prod"] input').first().boundingBox();
+    expect(label).not.toBeNull(); expect(input).not.toBeNull();
+    if (label === null || input === null) throw new Error("route-field-layout-unavailable");
+    expect(input.x).toBeGreaterThan(label.x + 200);
+    expect(Math.abs(input.y - label.y)).toBeLessThan(30);
+    await captureParityPair(page, REFERENCES, { stateId: "settings-catalog-routes-wide", viewport: "1440x900", theme: theme.name,
+      adapter: "fixture", fixtureId: "settings-catalog", descriptorHash: FIXTURE_DESCRIPTOR_HASH,
+      appVersion: FIXTURE_APP_VERSION, capturedAt: FIXTURE_DAY, variant: "default" });
+  }
 });
 
 for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exact retry and dirty exits @ ${theme.name}`, {

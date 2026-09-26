@@ -42,13 +42,13 @@ const SETTINGS = [
   ["display", "Display"],
   ["performance", "Performance"],
   ["paths", "Paths"],
-  ["routes", "Test routes"],
+  ["routes", "Routes"],
   ["annual-dates", "Annual dates"],
   ["providers", "Provider budgets & models"],
   ["protected-store", "Credentials"],
   ["provider-env", "Provider availability"],
   ["derived-host", "Observed host"],
-  ["runtime-isolation", "Deployment"],
+  ["runtime-isolation", "Runtime paths"],
   ["storage", "Storage checks"],
   ["system-hosts", "System hosts"],
   ["workflow-capabilities", "Workflow capabilities"],
@@ -86,7 +86,7 @@ for (const theme of PARITY_THEMES) {
 
 const LAYOUT_SCENES = [
   ["paths", "Paths"], ["annual-dates", "Annual dates"], ["providers", "Provider budgets & models"],
-  ["protected-store", "Credentials"], ["runtime-isolation", "Deployment"], ["storage", "Storage checks"],
+  ["protected-store", "Credentials"], ["runtime-isolation", "Runtime paths"], ["storage", "Storage checks"],
 ] as const;
 for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ ${theme.name}`, async ({ page }, info) => {
   const settings = fixtureSettingsDocument({

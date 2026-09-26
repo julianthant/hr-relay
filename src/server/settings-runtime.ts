@@ -1,5 +1,5 @@
 import { selectActiveRunSettings } from "../core/run-settings.js";
-import { ConfigSchema } from "../domain/config/schema.js";
+import { executionConfigFromStored } from "../domain/config/snapshot-generations.js";
 import { sha256Hex } from "../domain/sha256.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
@@ -129,5 +129,5 @@ export function activeSettingsRuntimeIdentity(repositories: AuthorityRepositorie
   configFingerprint: active.configFingerprint };
 }
 export function activeSettingsConfig(repositories: AuthorityRepositories) {
- return ConfigSchema.parse(selectActiveRunSettings(repositories).config);
+ return executionConfigFromStored(selectActiveRunSettings(repositories).config);
 }

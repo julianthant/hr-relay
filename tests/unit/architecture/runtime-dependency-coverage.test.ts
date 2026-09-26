@@ -101,25 +101,20 @@ describe("runtime dependency coverage", () => {
       `browser-system inventory drifted; owner src/domain/ids.ts (BrowserSystemIdSchema) vs src/systems/`,
     );
 
-    // Each system must be reachable end to end: a runtime spec, a credential,
-    // and BOTH instance capabilities with a registered preflight endpoint check.
+    // Each system must be reachable through its production route and credential.
     const checkIds = new Set(PREFLIGHT_CHECKS.map(({ id }) => String(id)));
     for (const system of rebuild) {
       const spec = SYSTEM_RUNTIME_SPECS.find((candidate) => String(candidate.system) === system);
       assert.ok(spec, `${system}: no SystemRuntimeSpec; owner src/domain/runtime-dependencies.ts`);
       assert.equal(spec.routes.length > 0, true, `${system}: no declared routes`);
-      for (const instance of ["prod", "test"] as const) {
-        assert.equal(
-          RUNTIME_CAPABILITY_IDS.has(`system.${system}.${instance}`),
-          true,
-          `${system}: missing ${instance} runtime capability`,
-        );
-        assert.equal(
-          checkIds.has(`endpoint.${system}.${instance}`),
-          true,
-          `${system}: missing endpoint.${system}.${instance} preflight check`,
-        );
-      }
+      assert.equal(RUNTIME_CAPABILITY_IDS.has(`system.${system}.prod`), true,
+        `${system}: missing production runtime capability`);
+      assert.equal(checkIds.has(`endpoint.${system}.prod`), true,
+        `${system}: missing production endpoint preflight check`);
+      assert.equal(RUNTIME_CAPABILITY_IDS.has(`system.${system}.test`), false,
+        `${system}: retired test runtime capability must stay absent`);
+      assert.equal(checkIds.has(`endpoint.${system}.test`), false,
+        `${system}: retired test endpoint preflight check must stay absent`);
     }
   });
 
@@ -181,7 +176,7 @@ describe("runtime dependency coverage", () => {
     const checkCapabilities = new Set(PREFLIGHT_CHECKS.flatMap(({ capabilities }) => capabilities.map(String)));
     const uncovered = RuntimeCapabilitySchema.options.filter((capability) => !checkCapabilities.has(capability));
     assert.deepEqual(uncovered, [], "capabilities with no preflight check; owner src/domain/runtime-dependencies.ts");
-    assert.equal(capabilitiesFor("system.").length, BrowserSystemIdSchema.options.length * 2);
+    assert.equal(capabilitiesFor("system.").length, BrowserSystemIdSchema.options.length);
     assert.equal(capabilitiesFor("provider.").length, ProviderIdSchema.options.length);
   });
 

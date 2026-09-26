@@ -96,3 +96,23 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: real
     await test.info().attach(a11yName, { body: tree, contentType: "text/yaml" });
   } finally { await server.stop(); }
 });
+
+test("Routes saves a complete production system only after Save routes", async ({ page }) => {
+  ensureParityBundle();
+  const server = await startSettingsActivationServer();
+  try {
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await page.goto(`${server.url}/?settings=routes`);
+    const entry = page.locator('[data-settings-path="urls.crm.prod"] input').first();
+    await expect(entry).toHaveValue(/^https:\/\//u);
+    await entry.fill("https://crm.example.test/hr");
+    const client = createDashboardClient({ baseUrl: server.url });
+    await page.waitForTimeout(800);
+    expect((await client.editableSettings()).revision).toBe(1);
+    await page.getByRole("button", { name: "Save routes" }).first().click();
+    await expect.poll(async () => (await client.editableSettings()).revision).toBe(2);
+    const saved = await client.editableSettings();
+    const route = saved.sections.find(section => section.id === "routes")?.leaves.find(leaf => leaf.path === "urls.crm.prod");
+    expect(route?.settingsValue).toMatchObject({ entry: "https://crm.example.test/hr" });
+  } finally { await server.stop(); }
+});

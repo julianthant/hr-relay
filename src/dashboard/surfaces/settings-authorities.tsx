@@ -69,10 +69,10 @@ export function SettingsAuthoritySection({ editor, sectionId }: { editor: Return
       </PanelBody></Panel>;
   }
   if (sectionId !== "runtime-isolation") throw new Error("settings-authority-section-unknown");
-  return <Panel className="settings-page-panel"><PanelHeader title="Deployment" headingLevel={2} subtitle="Code-owned configuration for this process." icon={<Server aria-hidden className={dsIcon.lg} />} />
+  return <Panel className="settings-page-panel"><PanelHeader title="Runtime paths" headingLevel={2} subtitle="Code-owned paths for this process." icon={<Server aria-hidden className={dsIcon.lg} />} />
     <PanelBody className="settings-page-body">
-      <p className={cn(dsText.body, "mb-[var(--ds-space-section)] text-[color:var(--ds-fg-muted)]")}>Deployment facts change through config/runtime-isolation.json, runtime-paths.ts and configuration code.</p>
-      <section className="settings-group"><h3 className={cn(dsText.title, "mb-[var(--ds-space-cozy)] font-semibold")}>Runtime paths and routes</h3><div className="settings-group-rows">
+      <p className={cn(dsText.body, "mb-[var(--ds-space-section)] text-[color:var(--ds-fg-muted)]")}>These paths change through config/runtime-isolation.json and runtime-paths.ts.</p>
+      <section className="settings-group"><h3 className={cn(dsText.title, "mb-[var(--ds-space-cozy)] font-semibold")}>Operator and runtime paths</h3><div className="settings-group-rows">
       {groupDeploymentFacts(document.deployment).map(group => <section key={group.label} aria-label={group.label} className="settings-group"><h4 className={cn(dsText.ui, "mb-[var(--ds-space-tight)] font-semibold")}>{group.label}</h4>{group.entries.map(({ key, value }) => <dl key={key} className="settings-row"><dt className={dsText.ui}>{settingsFactLabel(key)}</dt><dd className={cn(dsText.meta, "m-0 min-w-0 break-words [overflow-wrap:anywhere]")}>{typeof value === "object" && !Array.isArray(value) ? <dl className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-tight)]">{Object.entries(value).map(([property, endpoint]) => <div key={property}><dt className="text-[color:var(--ds-fg-muted)]">{settingsFactLabel(property)}</dt><dd className="m-0 break-words [overflow-wrap:anywhere]">{formatSetting(endpoint)}</dd></div>)}</dl> : formatSetting(value)}</dd></dl>)}</section>)}
       </div></section>
     </PanelBody></Panel>;

@@ -66,7 +66,7 @@ export const CONFIG_ROUTE_KEYS = {
 } as const satisfies { readonly [Key in keyof typeof CONFIG_ROUTE_SCHEMAS]: readonly string[] };
 
 function endpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
-  return z.strictObject({ prod: routes, test: routes.partial().optional() });
+  return z.strictObject({ prod: routes });
 }
 
 export const AnnualDateEntrySchema = z.strictObject({
@@ -303,7 +303,7 @@ export function providerBudget(
 }
 
 function partialEndpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
-  return z.strictObject({ test: routes.partial().optional() });
+  return z.strictObject({ prod: routes.optional(), test: routes.partial().optional() });
 }
 
 /** D331: the catalog selects the ordinary members; templates supply their existing value schemas. */

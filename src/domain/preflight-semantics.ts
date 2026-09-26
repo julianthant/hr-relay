@@ -16,15 +16,15 @@ export const RuntimeCapabilitySchema = z.enum([
   "workflow.sharepoint-download",
   "feature.ocr",
   "feature.ai-advisory",
-  "system.ucpath.prod", "system.ucpath.test",
-  "system.crm.prod", "system.crm.test",
-  "system.onbase.prod", "system.onbase.test",
-  "system.kuali.prod", "system.kuali.test",
-  "system.servicenow.prod", "system.servicenow.test",
-  "system.i9.prod", "system.i9.test",
-  "system.new-kronos.prod", "system.new-kronos.test",
-  "system.old-kronos.prod", "system.old-kronos.test",
-  "system.sharepoint.prod", "system.sharepoint.test",
+  "system.ucpath.prod",
+  "system.crm.prod",
+  "system.onbase.prod",
+  "system.kuali.prod",
+  "system.servicenow.prod",
+  "system.i9.prod",
+  "system.new-kronos.prod",
+  "system.old-kronos.prod",
+  "system.sharepoint.prod",
   "provider.gemini", "provider.groq", "provider.mistral", "provider.openrouter", "provider.sambanova",
   "provider.census", "provider.nominatim",
 ]);
@@ -74,10 +74,10 @@ function expectation(
 }
 
 function systemExpectations(): readonly PreflightCheckSemanticExpectation[] {
-  return SystemIds.flatMap((system) => (["prod", "test"] as const).map((instance) => {
-    const capability = RuntimeCapabilitySchema.parse(`system.${system}.${instance}`);
-    return expectation(`endpoint.${system}.${instance}`, [capability], [capability]);
-  }));
+  return SystemIds.map((system) => {
+    const capability = RuntimeCapabilitySchema.parse(`system.${system}.prod`);
+    return expectation(`endpoint.${system}.prod`, [capability], [capability]);
+  });
 }
 
 function providerExpectations(): readonly PreflightCheckSemanticExpectation[] {
@@ -95,18 +95,18 @@ export const PREFLIGHT_CHECK_EXPECTATIONS = deepFreeze(PreflightCheckSemanticExp
   expectation("ports.available", ["dashboard.serve"], ["dashboard.serve"]),
   expectation("fiscal.current", ["workflow.kuali-fill"], ["workflow.kuali-fill"]),
   expectation("secrets.ucpath-sso", [
-    "system.ucpath.prod", "system.ucpath.test", "system.crm.prod", "system.crm.test",
-    "system.onbase.prod", "system.onbase.test", "system.kuali.prod", "system.kuali.test",
-    "system.servicenow.prod", "system.servicenow.test", "system.i9.prod", "system.i9.test",
-    "system.new-kronos.prod", "system.new-kronos.test", "system.old-kronos.prod", "system.old-kronos.test",
+    "system.ucpath.prod", "system.crm.prod",
+    "system.onbase.prod", "system.kuali.prod",
+    "system.servicenow.prod", "system.i9.prod",
+    "system.new-kronos.prod", "system.old-kronos.prod",
   ], [
-    "system.ucpath.prod", "system.ucpath.test", "system.crm.prod", "system.crm.test",
-    "system.onbase.prod", "system.onbase.test", "system.kuali.prod", "system.kuali.test",
-    "system.servicenow.prod", "system.servicenow.test", "system.i9.prod", "system.i9.test",
-    "system.new-kronos.prod", "system.new-kronos.test", "system.old-kronos.prod", "system.old-kronos.test",
+    "system.ucpath.prod", "system.crm.prod",
+    "system.onbase.prod", "system.kuali.prod",
+    "system.servicenow.prod", "system.i9.prod",
+    "system.new-kronos.prod", "system.old-kronos.prod",
   ]),
   expectation("secrets.timekeeper", ["workflow.kuali-fill"], ["workflow.kuali-fill"]),
-  expectation("secrets.sharepoint-roster", ["workflow.sharepoint-download", "system.sharepoint.prod", "system.sharepoint.test"], ["workflow.sharepoint-download", "system.sharepoint.prod", "system.sharepoint.test"]),
+  expectation("secrets.sharepoint-roster", ["workflow.sharepoint-download", "system.sharepoint.prod"], ["workflow.sharepoint-download", "system.sharepoint.prod"]),
   expectation("process.orphans", ["dashboard.serve"], []),
   expectation("feature.ocr.providers", ["feature.ocr"], ["feature.ocr"]),
   expectation("feature.ai-advisory.providers", ["feature.ai-advisory"], ["feature.ai-advisory"]),

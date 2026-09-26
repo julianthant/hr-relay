@@ -12,6 +12,7 @@ import {
   StoredConfigSchema,
   configSnapshotAbsentLeaves,
   configSnapshotGeneration,
+  executionConfigFromStored,
 } from "../../src/domain/config/snapshot-generations.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../src/domain/config/snapshot.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
@@ -189,6 +190,24 @@ describe("pre-D125 config snapshots are read forward", () => {
     const write = ConfigSnapshotWriteSchema.safeParse(historicalRecord);
     assert.equal(write.success, false);
     if (!write.success) assert.match(write.error.message, /cannot mint retired operator\.timekeeperName/u);
+  });
+
+  it("reads historical test routes but refuses them in new snapshots", () => {
+    const config = currentConfig();
+    const historical = {
+      ...config,
+      urls: { ...config.urls, crm: { ...config.urls.crm, test: { entry: "https://sandbox.example.test/hr" } } },
+    };
+    const stored = StoredConfigSchema.parse(historical);
+    assert.equal(executionConfigFromStored(stored).urls.crm.prod.entry, config.urls.crm.prod.entry);
+    assert.equal(Object.hasOwn(executionConfigFromStored(stored).urls.crm, "test"), false);
+    assert.equal(ConfigSchema.safeParse(historical).success, false);
+    const write = ConfigSnapshotWriteSchema.safeParse({
+      configSnapshotId: SNAPSHOT_ID, revision: 1, fingerprint: HASH_B,
+      capturedAt: NOW, capturedBy: "local-operator", config: historical, provenance: {},
+    });
+    assert.equal(write.success, false);
+    if (!write.success) assert.match(write.error.message, /cannot mint retired crm test routes/u);
   });
 
   it("reads an immutable pre-D294 capture snapshot but refuses to mint one", () => {

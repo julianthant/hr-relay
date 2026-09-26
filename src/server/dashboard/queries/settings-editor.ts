@@ -5,7 +5,8 @@ import { SETTINGS_CATALOG } from "../../../domain/config/catalog.js";
 import { hostConfigFacts } from "../../../domain/config/host-display.js";
 import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../domain/config/resolve.js";
 import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../domain/config/settings.js";
-import type { Config, SettingsOverride } from "../../../domain/config/schema.js";
+import type { StoredConfig } from "../../../domain/config/snapshot-generations.js";
+import type { SettingsOverride } from "../../../domain/config/schema.js";
 import { ProtectedSettingsNameSchema } from "../../../domain/config/protected-settings.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../domain/dashboard/settings-editor.js";
 import { EditableSettingsSectionIdSchema, settingsCatalogEntry, settingsControlFor, settingsSectionFor } from "../../../domain/dashboard/settings-catalog.js";
@@ -13,7 +14,7 @@ import type { Clock } from "../../../domain/clock.js";
 import { optionalSecretFamily, SecretFamilyNameSchema } from "../../../domain/secrets.js";
 import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../settings-runtime.js";
 
-const SECTION_LABELS = { general: "General", display: "Display", performance: "Performance", paths: "Paths", routes: "Test routes", "annual-dates": "Annual dates", providers: "Provider budgets & models" } as const;
+const SECTION_LABELS = { general: "General", display: "Display", performance: "Performance", paths: "Paths", routes: "Routes", "annual-dates": "Annual dates", providers: "Provider budgets & models" } as const;
 const LABELS: Readonly<Record<string, string>> = {
   "actor.label": "Operator label", "display.screenWidth": "Screen width", "display.screenHeight": "Screen height",
   "ocr.pageConcurrency": "OCR page concurrency", "ocr.maxValidationRetries": "OCR validation retries",
@@ -34,7 +35,7 @@ function atPath(value: unknown, path: string): unknown {
   return current;
 }
 export interface SettingsEditorQueryDeps {
-  readonly settings: { read(): SettingsRuntimeSnapshot & { readonly activeConfig?: Config } };
+  readonly settings: { read(): SettingsRuntimeSnapshot & { readonly activeConfig?: StoredConfig } };
   readonly protectedSettings: { read(): ProtectedSettingsRuntimeSnapshot };
   readonly environment: NodeJS.ProcessEnv;
   readonly clock: Clock;

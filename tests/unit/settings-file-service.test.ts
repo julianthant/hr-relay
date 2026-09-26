@@ -118,22 +118,24 @@ describe("baseline atomic Settings invariants on the single file authority", () 
   it("preserves untouched catalog leaves while replacing one catalog leaf", () => {
     const path = settingsPath();
     const service = createTestService({ path });
+    const crmDefaults = resolveConfigWithProvenance(
+      {}, hostConfigFacts({}), manualClock(new Date("2026-08-30T12:00:00.000Z")),
+    ).config.urls.crm.prod;
+    const firstRoutes = { ...crmDefaults, ucPathEntrySheet: "https://crm.example.test" };
     assert.equal(apply(service, 1, {
       browser: { headless: false },
-      urls: { crm: { test: { ucPathEntrySheet: "https://crm-test.example.test" } } },
+      urls: { crm: { prod: firstRoutes } },
     }).state, "applied");
 
     const second = apply(service, 2, {
       browser: { closeProofMs: 25_000 },
-      urls: { crm: { test: { onboardingSearch: "https://crm-search.example.test" } } },
+      urls: { crm: { prod: { ...firstRoutes, onboardingSearch: "https://crm-search.example.test" } } },
     });
 
     assert.equal(second.state, "applied");
     assert.deepEqual(service.read().settings, {
       browser: { headless: false, closeProofMs: 25_000 },
-      urls: { crm: { test: {
-        onboardingSearch: "https://crm-search.example.test",
-      } } },
+      urls: { crm: { prod: { ...firstRoutes, onboardingSearch: "https://crm-search.example.test" } } },
     });
     assert.equal(service.read().revision, 3);
   });
@@ -721,7 +723,7 @@ describe("D331 shared settings root", () => {
     const authorityBefore = readFileSync(join(dirname(oversizedPath), "authority.json"));
     const settingsBefore = readFileSync(oversizedPath);
     const patch = {
-      urls: { kuali: { test: { entry: `https://example.test/${"a".repeat(1_048_576)}` } } },
+      urls: { kuali: { prod: { entry: `https://example.test/${"a".repeat(1_048_576)}` } } },
     };
     const operations = settingsSetOperations(patch);
     assert.throws(() => oversized.apply({

@@ -91,11 +91,8 @@ function errorText(error: unknown): string {
 /**
  * Every browser system the descriptor reaches, resolved to an instance.
  *
- * Production is the default and test is opt-in, which is the documented
- * direction: an unrequested system resolving to `test` would run a "real" job
- * against a sandbox and report success. A request for a system the descriptor
- * never touches is a mistake worth surfacing, so it throws rather than being
- * dropped.
+ * Production is the only new run target. Historical envelopes may still name
+ * test, but a new request for it is refused before a plan is admitted.
  */
 export function resolveInstances(
   descriptor: AnyWorkflowDescriptor,
@@ -105,6 +102,9 @@ export function resolveInstances(
   const resolved: Record<string, string> = {};
   for (const system of systems) resolved[system] = "prod";
   for (const [system, instance] of Object.entries(requested ?? {})) {
+    if (instance === "test") {
+      throw new Error(`${descriptor.id} requested a retired test instance for ${system}`);
+    }
     if (!systems.includes(system)) {
       throw new Error(`${descriptor.id} never reaches ${system}; it cannot resolve an instance for it`);
     }

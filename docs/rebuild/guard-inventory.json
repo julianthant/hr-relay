@@ -150,7 +150,7 @@
       "file": "tests/unit/architecture/runtime-dependency-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "The closed browser-system and vision-provider sets, their capabilities, endpoint preflight checks, secret families, and provider-model environment keys agree with the exact frozen legacy inventory and with each other in both directions; the registry self-audit runs in the architecture lane and finished gates never require an external checkout.",
+      "invariant": "D349 (2026-09-25): the nine browser-system ids remain aligned with frozen legacy provenance, while the current runtime advertises only each system's production capability and endpoint check; retired test capabilities and checks stay absent. Historical test URLs remain readable and inert until a settings write removes them, and no defaults are persisted. Vision-provider inventory, secret families, provider-model environment keys, and all remaining runtime capabilities stay closed against the frozen legacy sources and each other in both directions. The registry self-audit runs in the architecture lane and finished gates never require an external checkout. Deciding evidence: clock-config-secrets §D349 and runtime-dependency-coverage.test.ts.",
       "replacementRequired": true
     },
     {

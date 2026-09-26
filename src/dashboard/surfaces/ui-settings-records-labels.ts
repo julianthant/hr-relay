@@ -79,7 +79,7 @@ export interface SettingsFactGroup {
 export function groupDeploymentFacts(facts: Readonly<Record<string, EditorValue>>): readonly SettingsFactGroup[] {
   const groups = new Map<string, { key: string; value: EditorValue }[]>();
   for (const [key, value] of Object.entries(facts)) {
-    const label = key === "actor.id" ? "Operator" : key.startsWith("urls.") ? "Production routes" : key.startsWith("paths.") || key === "duoWebauthnCredential" ? "Runtime paths" : "Deployment details";
+    const label = key === "actor.id" ? "Operator" : key.startsWith("urls.") ? "Production routes" : key.startsWith("paths.") || key === "duoWebauthnCredential" ? "Local paths" : "Deployment details";
     const entries = groups.get(label) ?? [];
     entries.push({ key, value });
     groups.set(label, entries);
@@ -125,7 +125,7 @@ function groupLabel(sectionId: string, path: string): string {
   if (sectionId === "providers") return providerName(parts[1] ?? "Provider");
   if (sectionId === "display") return "Primary display";
   if (sectionId === "general") return "Operator";
-  if (sectionId === "routes") return "Test destinations";
+  if (sectionId === "routes") return "System destinations";
   if (sectionId === "performance") return parts[0] === "daemon" ? "Worker sessions" : "Run capacity";
   if (sectionId === "paths") {
     const stem = parts[1] ?? "paths";

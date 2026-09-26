@@ -38,9 +38,6 @@ export function settingTitle(leaf: EditableSettingsLeafWire): string {
   if (TITLES[leaf.path] !== undefined) return TITLES[leaf.path];
   if (leaf.control.input === "object" && leaf.path.startsWith("providers.")) return `${humanize(leaf.path.split(".")[1] ?? "Provider")} budget`;
   if (!leaf.label.includes(" · ")) return leaf.label;
-  if (leaf.path.startsWith("urls.") && leaf.path.endsWith(".test")) {
-    return `${humanize(leaf.path.split(".")[1] ?? "")} test route`;
-  }
   const segment = leaf.path.split(".").at(-1) ?? leaf.label;
   const title = humanize(segment);
   if (leaf.path.startsWith("timeouts.") && segment.endsWith("Ms")) return `${title.replace(/ ms$/u, "")} timeout`;

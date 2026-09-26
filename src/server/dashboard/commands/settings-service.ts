@@ -7,7 +7,7 @@ import type { CredentialStore } from "../../../domain/config/credential-store.js
 import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../domain/config/protected-settings.js";
 import {
   SETTINGS_SCHEMA_HASH, SettingsApplyRefusalSchema, deriveSettingsPatchFingerprint,
-  derivePersistedSettingsFingerprint, mergeSettingsPatch,
+  derivePersistedSettingsFingerprint, mergeSettingsPatch, containsRetiredTestRoutePatch,
   type SettingsFileRecord,
 } from "../../../domain/config/settings.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
@@ -29,6 +29,9 @@ function protectedInput(command: SettingsCommand) {
 }
 
 function ordinaryRequestRefusal(command: Extract<SettingsCommand, { type: "apply-settings" }>) {
+  if (containsRetiredTestRoutePatch(command.payload.patch)) {
+    return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "not-editable", message: "retired test routes cannot be edited" });
+  }
   if (command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH) {
     return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "schema-mismatch", message: "settings schema-mismatch" });
   }

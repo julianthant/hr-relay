@@ -29,6 +29,7 @@ export type SettingsNavIcon =
   | "paths"
   | "storage"
   | "preflight"
+  | "routes"
   | "system-hosts"
   | "capabilities"
   | "keyboard"
@@ -47,7 +48,7 @@ const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze
   display: "display",
   performance: "performance",
   paths: "paths",
-  routes: "system-hosts",
+  routes: "routes",
   "annual-dates": "general",
   providers: "performance",
   "protected-store": "general",
@@ -164,7 +165,7 @@ export function buildSettingsNav(
       { id: "protected-store", label: "Credentials", icon: "general", source: "served" },
       { id: "provider-env", label: "Provider availability", icon: "capabilities", source: "served" },
       { id: "derived-host", label: "Observed host", icon: "display", source: "served" },
-      { id: "runtime-isolation", label: "Deployment", icon: "paths", source: "served" },
+      { id: "runtime-isolation", label: "Runtime paths", icon: "paths", source: "served" },
     ] });
   }
   const statusEntries: SettingsNavEntry[] = sections.map((section) => ({

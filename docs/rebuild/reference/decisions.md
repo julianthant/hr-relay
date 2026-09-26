@@ -1,4 +1,12 @@
-# `reference/decisions.md` — the decision ledger (D1–D348, 2026-07-17 → 2026-09-24)
+# `reference/decisions.md` — the decision ledger (D1–D349, 2026-07-17 → 2026-09-25)
+
+**D349 — Editable Routes and retired test-instance runs (operator direction, 2026-09-25):**
+The former Deployment production routes become editable on the Routes page.
+Test routes and new test-instance runs are removed; dry run remains available.
+Historical run and config evidence retains its original target. Authenticated
+saved test URLs remain readable and inert until the next settings write removes
+them; startup must not substitute defaults. Owner:
+[clock-config-secrets §D349](clock-config-secrets.md#d349--editable-routes-and-retirement-of-test-instance-runs--2026-09-25).
 
 **D348 — Dashboard and workflow runtime versions (operator-approved, 2026-09-24):**
 An approved Archive redesign adds independent durable dashboard and per-workflow `major.minor`

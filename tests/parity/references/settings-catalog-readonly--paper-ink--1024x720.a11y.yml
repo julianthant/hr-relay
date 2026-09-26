@@ -36,7 +36,7 @@
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
-      - link "Test routes":
+      - link "Routes":
         - /url: "?settings=routes"
       - link "Annual dates":
         - /url: "?settings=annual-dates"
@@ -49,7 +49,7 @@
         - /url: "?settings=provider-env"
       - link "Observed host":
         - /url: "?settings=derived-host"
-      - link "Deployment":
+      - link "Runtime paths":
         - /url: "?settings=runtime-isolation"
       - text: Status
       - link "Storage checks":
@@ -65,72 +65,16 @@
         - /url: "?settings=keyboard"
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
-    - heading "Deployment" [level=2]
-    - text: Code-owned configuration for this process.
-    - paragraph: Deployment facts change through config/runtime-isolation.json, runtime-paths.ts and configuration code.
-    - heading "Runtime paths and routes" [level=3]
+    - heading "Runtime paths" [level=2]
+    - text: Code-owned paths for this process.
+    - paragraph: These paths change through config/runtime-isolation.json and runtime-paths.ts.
+    - heading "Operator and runtime paths" [level=3]
     - region "Operator":
       - heading "Operator" [level=4]
       - term: Local operator ID
       - definition: local-operator
-    - region "Production routes":
-      - heading "Production routes" [level=4]
-      - term: Kuali production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb
-      - term: New Kronos production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd-sso.prd.mykronos.com/wfd/home
-      - term: CRM production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://crm.ucsd.edu/hr
-        - term: Onboarding search URL
-        - definition: https://act-crm.my.site.com/hr/ONB_SearchOnboardings
-        - term: UCPath entry sheet URL
-        - definition: https://act-crm.my.site.com/hr/ONB_PPSEntrySheet
-        - term: Onboarding history URL
-        - definition: https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory
-        - term: iDocs viewer URL
-        - definition: https://act-idocs.ucsd.edu
-      - term: OnBase production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd.hylandcloud.com/251ids/NavPanel.aspx
-      - term: UCPath production routes
-      - definition:
-        - term: Login URL
-        - definition: https://ucpath.ucsd.edu
-        - term: SmartHR URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/NUI_FRAMEWORK.PT_AGSTARTPAGE_NUI.GBL?CONTEXTIDPARAMS=TEMPLATE_ID%3aPTPPNAVCOL&scname=ADMN_UC_ADMIN_LOC_HIRE_NAVCOLL&PanelCollapsible=Y&PTPPB_GROUPLET_ID=UC_HIRE_TASKS_TILE_FL&CRefName=UC_HIRE_TASKS_TILE_FL&AJAXTRANSFER=Y
-        - term: Job summary URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).WF_JOB_SUMMARY.GBL
-        - term: Personal data URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psc/ucphrprd/EMPLOYEE/HRMS/c/ADMINISTER_WORKFORCE_(GBL).EMERGENCY_CONTACT.GBL?NavColl=true&uc_deep_link=1
-        - term: Person profile URL
-        - definition: https://ucphrprdpub.universityofcalifornia.edu/psp/ucphrprd/EMPLOYEE/HRMS/c/SETUP_PROFILE_MANAGEMENT.JPM_PERSON_PROFILE.GBL
-      - term: I-9 production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://i9complete.ucop.edu
-        - term: Application URL
-        - definition: https://wwwe.i9complete.com
-      - term: Old Kronos production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsd.kronos.net/wfcstatic/applications/navigator/html5/dist/container/index.html?version=8.1.18.502#/
-      - term: ServiceNow production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://support.ucsd.edu/esc?id=sc_cat_item&table=sc_cat_item&sys_id=d8af3ae8db4fe510b3187d84f39619bf
-      - term: SharePoint production routes
-      - definition:
-        - term: Entry URL
-        - definition: https://ucsdcloud.sharepoint.com
-    - region "Runtime paths":
-      - heading "Runtime paths" [level=4]
+    - region "Local paths":
+      - heading "Local paths" [level=4]
       - term: Runtime state folder
       - definition: /tmp/settings-fixture/state
       - term: Artifact folder

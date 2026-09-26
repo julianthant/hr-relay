@@ -216,4 +216,58 @@ describe("editable Settings surface", () => {
     await act(async () => { overlayButton("Discard changes").click(); });
     assert.equal(closeCount, 1, "explicit discard is the only dirty-draft exit");
   });
+
+  it("edits production routes only after an explicit save", async () => {
+    const applied: unknown[] = [];
+    const client = {
+      editableSettings: () => Promise.resolve(DOCUMENT),
+      applySettings: (command: unknown) => {
+        applied.push(command);
+        return Promise.resolve({ state: "applied", commandId: "00000000-0000-4000-8000-000000000001", affectedTargets: [{ family: "settings", revision: 2 }], restartRequired: true });
+      },
+    } as unknown as DashboardClient;
+    host = document.createElement("div");
+    document.body.append(host);
+    await act(async () => {
+      root = createRoot(host as HTMLElement);
+      root.render(createElement(DashboardClientProvider, {
+        client,
+        children: createElement(SettingsPage, {
+          catalogQuery: "",
+          catalogView: DEFAULT_CATALOG_VIEW,
+          onCatalogQuery: () => undefined,
+          onCatalogView: () => undefined,
+          storage: STORAGE,
+          sections: [],
+          workflowLabels: new Map<string, string>(),
+          section: "routes",
+          actorId: "local-operator",
+          descriptorFingerprint: "d".repeat(64),
+          preflight: [],
+          onSection: () => undefined,
+          onClose: () => undefined,
+        }),
+      }));
+    });
+    await act(async () => undefined);
+    assert.match(host.textContent ?? "", /Routes/u);
+    assert.doesNotMatch(host.textContent ?? "", /Test routes/u);
+    const input = host.querySelector('[data-settings-path="urls.crm.prod"] input');
+    if (!(input instanceof HTMLInputElement)) throw new Error("missing CRM route input");
+    vi.useFakeTimers();
+    await act(async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      Reflect.apply(descriptor.set, input, ["https://crm.example.test/new"]);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(701); });
+    assert.equal(applied.length, 0, "route edits wait for Save routes");
+    await act(async () => { button("Save routes").click(); });
+    assert.equal(applied.length, 1);
+    const command = applied[0] as { payload: { patch: Record<string, { set: { entry: string } }> } };
+    assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
+  });
 });

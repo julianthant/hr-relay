@@ -385,11 +385,11 @@ describe("start planning", () => {
     );
   });
 
-  it("resolves every reached system to production unless test is requested", () => {
+  it("resolves every reached system to production and refuses retired test targets", () => {
     assert.deepEqual(resolveInstances(personLookupDescriptor, undefined), { ucpath: "prod", crm: "prod" });
-    assert.deepEqual(resolveInstances(personLookupDescriptor, { crm: "test" }), { ucpath: "prod", crm: "test" });
+    assert.throws(() => resolveInstances(personLookupDescriptor, { crm: "test" }), /retired test instance/u);
     assert.throws(
-      () => resolveInstances(personLookupDescriptor, { kuali: "test" }),
+      () => resolveInstances(personLookupDescriptor, { kuali: "prod" }),
       /never reaches kuali/,
     );
   });
