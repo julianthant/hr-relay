@@ -6,7 +6,7 @@ import { Banner, BodySection, Button, Disclosure, Field, FormGroup, IconButton, 
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
-import { modelRaw, modelRows, removeModelRow, reorderModelRows, updateModelRow, type ProviderModelRow } from "./settings-provider-model.js";
+import { modelRaw, modelRows, removeModelRow, reorderModelRows, updateModelRow, type ProviderModelRow } from "./settings-ranked-models.js";
 import { providerFieldPresentation, providerName } from "./ui-settings-records-labels.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
 import "./settings-provider.css";
@@ -90,7 +90,7 @@ function ModelEditor({ editor, leaf, first }: { editor: Editor; leaf: EditableSe
         <Button type="button" size="md" variant="secondary" icon={<Plus aria-hidden className={dsIcon.sm} />} className="settings-provider-add" disabled={editor.locked || rows.length >= 32}
           onClick={() => update([...rowsRef.current.rows, { id: crypto.randomUUID(), value: "" }])}>Add model</Button>
       </div>
-      {editor.errors[leaf.path] !== undefined && <p role="alert" className="settings-provider-error">{editor.errors[leaf.path]}</p>}
+      {editor.errors[leaf.path] !== undefined && <p role="alert" className="settings-provider-error">Enter a model name for each row, without spaces or commas.</p>}
       {editor.save.state === "conflict" && operation !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
       {leaf.validity === "unset" && rows.length === 0 && <p className={dsText.meta}>No model preference is set.</p>}
       {leaf.hazard !== undefined && <p className={dsText.meta}>{leaf.hazard}</p>}

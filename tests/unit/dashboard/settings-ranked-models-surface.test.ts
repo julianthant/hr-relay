@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { act } from "react";
 import { afterEach, describe, it, vi } from "vitest";
 import { draftError, settingsLeaves } from "../../../src/dashboard/surfaces/settings-draft-model.js";
-import { modelRaw, modelRows, removeModelRow, reorderModelRows, updateModelRow } from "../../../src/dashboard/surfaces/settings-provider-model.js";
+import { modelRaw, modelRows, removeModelRow, reorderModelRows, updateModelRow } from "../../../src/dashboard/surfaces/settings-ranked-models.js";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "./helpers/settings-harness.js";
 
 const cleanups: (() => void)[] = [];
@@ -82,6 +82,8 @@ describe("provider budgets and models", () => {
     assert.equal((controller().draft["providers.gemini.models"] as { raw: string }).raw, "one\n");
     assert.ok(controller().errors["providers.gemini.models"]);
     assert.equal(modelArea(host).querySelectorAll(".ds-ranked-item").length, 2);
+    assert.match(modelArea(host).textContent ?? "", /Enter a model name for each row, without spaces or commas\./u);
+    assert.doesNotMatch(modelArea(host).textContent ?? "", /one model per line/u);
     assert.equal(modelArea(host).querySelector('input[aria-label="Gemini model 1"]')?.getAttribute("aria-invalid"), null);
     assert.equal(modelArea(host).querySelector('input[aria-label="Gemini model 2"]')?.getAttribute("aria-invalid"), "true");
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
