@@ -341,7 +341,6 @@
 .routes-page-system {
   min-width: 0;
 }
-.routes-page-system .ds-disclosure-trigger > svg:first-child { order: 3; }
 .routes-section-heading { display: flex; width: 100%; align-items: baseline; justify-content: space-between; gap: var(--ds-space-base); }
 .routes-section-heading > span:last-child { color: var(--ds-fg-muted); font-size: var(--ds-text-body-description); font-weight: 400; }
 .routes-page-system-fields {
@@ -490,6 +489,13 @@
 }
 .settings-viewport-control .ds-unit-field { width: 100%; }
 .settings-viewport-error { color: var(--ds-danger); }
+.settings-performance-disclosure-content { border-top: 1px solid var(--ds-border-subtle); }
+.settings-performance-disclosure-content > .settings-performance-row + .settings-performance-row { border-top: 1px solid var(--ds-border-subtle); }
+.settings-performance-row .settings-compact-control > .ds-unit-field { flex: 0 1 var(--ds-w-body-unit); }
+.settings-performance-row > p { margin: 0 0 var(--ds-space-base); font-size: var(--ds-text-body-description); }
+.settings-performance-hazard { color: var(--ds-status-waiting-fg); }
+.settings-performance-fallback { display: flex; align-items: center; gap: var(--ds-space-tight); }
+.settings-performance-fallback > :first-child { flex: 1; min-width: 0; }
 .settings-runtime-row .ds-result-row-side,
 .settings-runtime-row .ds-result-row-value { width: 100%; }
 .settings-credential-detail,

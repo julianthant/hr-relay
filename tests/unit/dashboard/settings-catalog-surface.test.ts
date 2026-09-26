@@ -112,8 +112,12 @@ describe("typed Settings catalog controls", () => {
   });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");
-    const groups = [...host.querySelectorAll('.settings-group-heading h2')].map(heading => heading.textContent);
-    assert.deepEqual(groups, ["Navigation", "Work", "Sign-in & Duo", "Retries and limits", "OCR", "Browser health", "Worker capacity"]);
+    const groups = [...host.querySelectorAll('.settings-performance-page .ds-body-section-heading')].map(heading => heading.firstChild?.textContent);
+    assert.deepEqual(groups, ["Navigation", "Work", "Sign-in & Duo", "Additional limits"]);
+    assert.equal(host.querySelectorAll('.settings-performance-page .ds-body-section-meta').length, 0);
+    assert.equal(host.querySelectorAll('.settings-performance-disclosure').length, 4);
+    assert.equal(host.querySelectorAll('.settings-performance-disclosure .ds-disclosure-body-meta').length, 0);
+    assert.equal(host.querySelectorAll('.settings-performance-disclosure[data-state="closed"]').length, 4);
     const navigation = host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(navigation);
     assert.match(navigation.textContent ?? "", /Standard navigation/u);
     assert.match(navigation.textContent ?? "", /Maximum wait for a regular page change/u);
@@ -127,6 +131,31 @@ describe("typed Settings catalog controls", () => {
     assert.equal(crm.querySelector(".ds-unit-label")?.textContent, "seconds");
     assert.equal(host.querySelector("select"), null);
     assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
+  });
+  it("keeps a saved Performance value and its restore action in the same row", async () => {
+    const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
+    const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
+    const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
+    assert.equal(row.querySelector("input")?.value, "22");
+    assert.ok(row.querySelector('button[aria-label="Actions for Standard navigation"]'));
+    assert.equal(row.querySelectorAll(".ds-body-row").length, 1);
+    assert.equal(row.querySelectorAll(".settings-row-actions").length, 0);
+    await settingsAction(() => mounted.controller().clear("timeouts.navigationMs"));
+    assert.deepEqual(mounted.controller().draft["timeouts.navigationMs"], { kind: "clear" });
+    await settingsAction(() => mounted.controller().reset("timeouts.navigationMs"));
+    assert.equal(mounted.controller().draft["timeouts.navigationMs"], undefined);
+    assert.equal(mounted.commands.length, 0);
+  });
+  it("reopens an additional limit with a retained invalid draft", async () => {
+    const mounted = await setup("performance");
+    await settingsAction(() => mounted.controller().update("ocr.pageConcurrency", ""));
+    assert.ok(mounted.controller().errors["ocr.pageConcurrency"]);
+    await mounted.render("general");
+    await mounted.render("performance");
+    const ocr = [...mounted.host.querySelectorAll(".settings-performance-disclosure")].find(group => group.textContent?.includes("OCR processing"));
+    assert.ok(ocr);
+    assert.equal(ocr.getAttribute("data-state"), "open");
+    assert.match(ocr.textContent ?? "", /Enter a whole number of at least 0/u);
   });
   it("does not expose host observation as a served authority page", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);

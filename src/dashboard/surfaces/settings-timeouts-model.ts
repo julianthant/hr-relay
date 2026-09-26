@@ -2,8 +2,8 @@ import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-e
 
 type TimeoutSetting = Readonly<{
   title: string;
-  description: string;
-  group: "Navigation" | "Work" | "Sign-in & Duo";
+  description?: string;
+  group: "Navigation" | "Work" | "Sign-in & Duo" | "Worker scheduling" | "OCR processing" | "Browser recovery";
   storedUnit: "milliseconds" | "seconds";
 }>;
 
@@ -18,6 +18,14 @@ const TIMEOUT_SETTINGS: Readonly<Record<string, TimeoutSetting>> = {
   "timeouts.duoCeremonyLeaseGraceMs": { title: "Duo lease grace", description: "Extra time reserved for Duo session cleanup.", group: "Sign-in & Duo", storedUnit: "milliseconds" },
   "timeouts.duoApprovalSeconds": { title: "Duo approval", description: "Maximum wait for a standard Duo approval.", group: "Sign-in & Duo", storedUnit: "seconds" },
   "timeouts.duoApprovalCrmSeconds": { title: "CRM Duo approval", description: "Maximum wait for Duo approval during CRM sign-in.", group: "Sign-in & Duo", storedUnit: "seconds" },
+  "daemon.idleMs": { title: "Idle interval", group: "Worker scheduling", storedUnit: "milliseconds" },
+  "daemon.idleRepollMs": { title: "Idle repoll interval", group: "Worker scheduling", storedUnit: "milliseconds" },
+  "ocr.pageMaxWaitMs": { title: "Page maximum wait", group: "OCR processing", storedUnit: "milliseconds" },
+  "ocr.tier1PatienceMs": { title: "Tier 1 patience", group: "OCR processing", storedUnit: "milliseconds" },
+  "ocr.backoffBaseMs": { title: "Backoff base", group: "OCR processing", storedUnit: "milliseconds" },
+  "ocr.backoffCapMs": { title: "Backoff cap", group: "OCR processing", storedUnit: "milliseconds" },
+  "browserHealth.monitorTickMs": { title: "Monitor interval", group: "Browser recovery", storedUnit: "milliseconds" },
+  "browser.closeProofMs": { title: "Close proof timeout", group: "Browser recovery", storedUnit: "milliseconds" },
 };
 
 export function timeoutSetting(path: string): TimeoutSetting | undefined {

@@ -7,21 +7,19 @@ import { SettingsValueControl } from "./settings-controls.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { timeoutReadableValue, timeoutSetting } from "./settings-timeouts-model.js";
 import { CompactSettingsSection } from "./ui-settings-records-general-paths.js";
-
-const GENERAL_SECTIONS = new Set(["general", "annual-dates", "display"]);
+import { PerformanceSettingsSection } from "./ui-settings-records-performance.js";
 
 export function EditableSettingsSection({ editor, sectionId }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string }) {
   if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} />;
+  if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
-  const sections = sectionId === "general"
-    ? document.sections.filter(section => GENERAL_SECTIONS.has(section.id))
-    : document.sections.filter(section => section.id === sectionId);
-  if (sections.length === 0 || (sectionId !== "general" && sections[0]?.id !== sectionId)) return <Banner tone="danger" title="Server-listed section is unavailable">The settings document did not include this section.</Banner>;
+  const sections = document.sections.filter(section => section.id === sectionId);
+  if (sections.length === 0) return <Banner tone="danger" title="Server-listed section is unavailable">The settings document did not include this section.</Banner>;
   const leaves = sections.flatMap(section => section.leaves);
-  const pageTitle = sectionId === "general" ? "General" : sections[0]?.label ?? sectionId;
-  return <section className={cn("settings-editor", sectionId === "performance" && "settings-performance")}>
+  const pageTitle = sections[0]?.label ?? sectionId;
+  return <section className="settings-editor">
     <PageHeading title={pageTitle} />
     <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}

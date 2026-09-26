@@ -201,6 +201,9 @@ describe("editable Settings surface", () => {
     });
     await act(async () => undefined);
     vi.useFakeTimers();
+    const ocrDisclosure = [...(host?.querySelectorAll(".settings-performance-disclosure button") ?? [])].find(candidate => candidate.textContent?.includes("OCR processing"));
+    if (!(ocrDisclosure instanceof HTMLButtonElement)) throw new Error("missing OCR processing disclosure");
+    await act(async () => { ocrDisclosure.click(); });
     const pageConcurrency = host.querySelector('[data-settings-path="ocr.pageConcurrency"] input');
     if (!(pageConcurrency instanceof HTMLInputElement)) throw new Error("missing OCR page concurrency input");
     await act(async () => {

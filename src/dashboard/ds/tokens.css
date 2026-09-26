@@ -1650,6 +1650,7 @@ body[data-demo-theme="light"] {
   min-height: var(--ds-h-body-row);
   padding-inline: 0;
 }
+.ds-disclosure-body .ds-disclosure-trigger > svg:first-child { order: 3; }
 
 .ds-disclosure-body-copy {
   display: flex;

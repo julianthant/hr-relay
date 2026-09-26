@@ -1,11 +1,11 @@
 import { Form } from "@heroui/react";
-import { Ellipsis } from "lucide-react";
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, DateInput, Field, FormGroup, IconButton, Input, PageHeading, Popover, PopoverContent, PopoverTrigger, ResultRow, Spinner, Switch, UnitField, dsIcon, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, ResultRow, Spinner, Switch, UnitField, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput, type SettingsDraftOperation } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { settingNote, settingTitle } from "./settings-presentation.js";
+import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -21,21 +21,6 @@ function rawValue(leaf: EditableSettingsLeafWire, operation: SettingsDraftOperat
   return raw;
 }
 
-function RowActions({ editor, leaf, companion }: { editor: Editor; leaf: EditableSettingsLeafWire; companion?: EditableSettingsLeafWire }) {
-  const operation = editor.draft[leaf.path];
-  const companionOperation = companion === undefined ? undefined : editor.draft[companion.path];
-  const jobEndDate = leaf.path.endsWith(".jobEndDate");
-  const restorable = (leaf.source === "settings" || companion?.source === "settings") && !jobEndDate && operation?.kind !== "clear";
-  if (!restorable && operation === undefined && companionOperation === undefined) return null;
-  return <Popover><PopoverTrigger asChild><IconButton size="xs" label={`Actions for ${companion === undefined ? settingTitle(leaf) : "browser viewport"}`} icon={<Ellipsis aria-hidden className={dsIcon.sm} />} /></PopoverTrigger>
-    <PopoverContent title="Value actions" width="sm" align="end"><div className="settings-compact-actions">
-      {restorable && <Button size="sm" variant="ghost" onClick={() => editor.clear(leaf.path)} disabled={editor.locked}>Restore standard</Button>}
-      {operation !== undefined && <Button size="sm" variant="ghost" onClick={() => editor.reset(leaf.path)} disabled={editor.locked}>{companion === undefined ? "Undo edit" : "Undo width edit"}</Button>}
-      {companion !== undefined && companionOperation !== undefined && <Button size="sm" variant="ghost" onClick={() => editor.reset(companion.path)} disabled={editor.locked}>Undo height edit</Button>}
-    </div></PopoverContent>
-  </Popover>;
-}
-
 function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: EditableSettingsLeafWire; wide?: boolean }) {
   const raw = rawValue(leaf, editor.draft[leaf.path]);
   const error = editor.errors[leaf.path];
@@ -43,7 +28,7 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   const description = settingNote(leaf);
   if (leaf.input === "boolean") return <div data-settings-path={leaf.path} className="settings-compact-row">
     <Switch label={title} description={description} checked={raw === "true"} disabled={editor.locked} onCheckedChange={value => editor.update(leaf.path, String(value))} />
-    <RowActions editor={editor} leaf={leaf} />
+    <SettingsRowActions editor={editor} leaf={leaf} />
     {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
   return <div data-settings-path={leaf.path} className="settings-compact-row">
@@ -51,7 +36,7 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
       <div className="settings-compact-control">{leaf.input === "date"
         ? <DateInput label={title} value={raw} onChange={value => editor.update(leaf.path, value)} textEntry required disabled={editor.locked} />
         : <Input type="text" value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)} />}
-      <RowActions editor={editor} leaf={leaf} /></div>
+      <SettingsRowActions editor={editor} leaf={leaf} /></div>
     </Field>
     {editor.save.state === "conflict" && editor.draft[leaf.path] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
   </div>;
@@ -78,7 +63,7 @@ function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
             <span>{settingTitle(leaf)}</span>
             <UnitField id={`settings-${leaf.path}`} bodyWidth="stretch" type="number" min={leaf.minimum} step={1} unit="px" aria-label={`Browser viewport ${settingTitle(leaf).toLowerCase()}`} aria-describedby={editor.errors[width.path] !== undefined || editor.errors[height.path] !== undefined ? "settings-viewport-error" : undefined} value={rawValue(leaf, editor.draft[leaf.path])} disabled={editor.locked} aria-invalid={editor.errors[leaf.path] !== undefined || undefined} onChange={event => editor.update(leaf.path, event.target.value)} />
           </label>)}
-        </div><RowActions editor={editor} leaf={width} companion={height} /></div>} />
+        </div><SettingsRowActions editor={editor} leaf={width} companion={height} /></div>} />
       {(editor.errors[width.path] ?? editor.errors[height.path]) !== undefined && <p id="settings-viewport-error" role="alert" className="settings-viewport-error">{editor.errors[width.path] ?? editor.errors[height.path]}</p>}
       {editor.save.state === "conflict" && (editor.draft[width.path] !== undefined || editor.draft[height.path] !== undefined) && <p className={dsText.meta}>Current value: {formatSetting(width.effectiveValue)} × {formatSetting(height.effectiveValue)} px</p>}
     </div></FormGroup></BodySection>

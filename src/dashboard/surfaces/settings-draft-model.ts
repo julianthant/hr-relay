@@ -2,6 +2,7 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { SettingsPatchSchema, type SettingsPatch } from "../../domain/config/settings.js";
 import type { EditableSettingsLeafWire, EditableSettingsWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
 import { timeoutInput, timeoutSetting, timeoutValue } from "./settings-timeouts-model.js";
+import { performanceSectionGroups } from "./settings-performance-model.js";
 
 export type SettingsDraftInput = string | Readonly<Record<string, string>>;
 export type SettingsDraftOperation = { readonly kind: "set"; readonly raw: SettingsDraftInput; readonly companion?: true } | { readonly kind: "clear" };
@@ -24,16 +25,9 @@ export function settingInput(leaf: EditableSettingsLeafWire, value = leaf.effect
   return value === undefined ? "" : String(value);
 }
 export function settingsSectionGroups(sectionId: string, leaves: readonly EditableSettingsLeafWire[]): readonly { title: string; leaves: readonly EditableSettingsLeafWire[] }[] {
+  if (sectionId === "performance") return performanceSectionGroups(leaves);
   const groupTitle = (path: string): string => {
     if (sectionId === "general") return path.startsWith("features.") ? "Features" : path.startsWith("annualDates.") ? "Employment" : path.startsWith("display.") ? "Display" : "Everyday operation";
-    if (sectionId === "performance") {
-      const timeout = timeoutSetting(path);
-      if (timeout !== undefined) return timeout.group;
-      if (path.startsWith("ocr.")) return "OCR";
-      if (path.startsWith("browserHealth.") || path.startsWith("browser.")) return "Browser health";
-      if (path.startsWith("daemon.") || path.startsWith("concurrency.")) return "Worker capacity";
-      return "Retries and limits";
-    }
     if (sectionId === "providers") return path.endsWith(".models") ? "Model order" : "Provider budgets";
     return { paths: "Working locations", routes: "System destinations" }[sectionId] ?? "Settings";
   };

@@ -159,6 +159,8 @@ describe("shared body and field primitives", () => {
     assert.match(html, /ds-disclosure-body/u);
     assert.match(html, /Fallback keys/u);
     assert.match(html, /Secondary connections/u);
+    const css = readFileSync(new URL("../../../src/dashboard/ds/tokens.css", import.meta.url), "utf8");
+    assert.match(css, /\.ds-disclosure-body \.ds-disclosure-trigger > svg:first-child \{ order: 3; \}/u);
     assert.match(html, /ds-disclosure-body-meta">2/u);
     assert.match(html, /Key details/u);
   });

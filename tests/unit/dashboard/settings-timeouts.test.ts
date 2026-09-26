@@ -4,14 +4,20 @@ import type { EditableSettingsLeafWire } from "../../../src/domain/dashboard/set
 import { fixtureSettingsDocument } from "../../parity/helpers/fixture-settings.js";
 import { draftError, patchFromSettingsDraft, settingInput, settingsSectionGroups, valueFromSettingInput } from "../../../src/dashboard/surfaces/settings-draft-model.js";
 import { settingNote, settingTitle } from "../../../src/dashboard/surfaces/settings-presentation.js";
-import { timeoutSetting } from "../../../src/dashboard/surfaces/settings-timeouts-model.js";
+import { performancePresentation, performanceSectionGroups } from "../../../src/dashboard/surfaces/settings-performance-model.js";
 
 const performance = fixtureSettingsDocument().sections.find(section => section.id === "performance");
 if (performance === undefined) throw new Error("performance fixture section missing");
-const timeouts = performance.leaves.filter(leaf => timeoutSetting(leaf.path) !== undefined);
+const performanceLeaves = performance.leaves;
+const timeouts = performanceLeaves.filter(leaf => leaf.path.startsWith("timeouts."));
 function leaf(path: string): EditableSettingsLeafWire {
   const found = timeouts.find(candidate => candidate.path === path);
   if (found === undefined) throw new Error(`timeout fixture leaf missing: ${path}`);
+  return found;
+}
+function performanceLeaf(path: string): EditableSettingsLeafWire {
+  const found = performanceLeaves.find(candidate => candidate.path === path);
+  if (found === undefined) throw new Error(`performance fixture leaf missing: ${path}`);
   return found;
 }
 
@@ -68,5 +74,28 @@ describe("Performance timeout presentation", () => {
     }
     assert.ok(draftError(task, { kind: "set", raw: "181.0001" }));
     assert.ok(draftError(task, { kind: "set", raw: "0.0001" }));
+  });
+
+  it("groups every served additional limit and converts its durations exactly to seconds", () => {
+    const groups = performanceSectionGroups(performance.leaves);
+    assert.deepEqual(groups.map(group => [group.title, group.leaves.length]), [
+      ["Navigation", 3], ["Work", 3], ["Sign-in & Duo", 4], ["Worker scheduling", 3],
+      ["Retry & termination", 2], ["OCR processing", 9], ["Browser recovery", 4],
+    ]);
+    assert.deepEqual(groups.flatMap(group => group.leaves.map(item => item.path)).sort(), performance.leaves.map(item => item.path).sort());
+    for (const item of performance.leaves.filter(candidate => !candidate.path.startsWith("timeouts."))) {
+      assert.ok(performancePresentation(item.path), `missing presentation: ${item.path}`);
+    }
+    for (const [path, display, stored] of [
+      ["daemon.idleMs", "900", 900_000], ["daemon.idleRepollMs", "30", 30_000],
+      ["ocr.pageMaxWaitMs", "120", 120_000], ["ocr.tier1PatienceMs", "90", 90_000],
+      ["ocr.backoffBaseMs", "2", 2_000], ["ocr.backoffCapMs", "60", 60_000],
+      ["browserHealth.monitorTickMs", "30", 30_000], ["browser.closeProofMs", "15", 15_000],
+    ] as const) {
+      const item = performanceLeaf(path);
+      assert.equal(settingInput(item), display);
+      assert.equal(valueFromSettingInput(item, display), stored);
+      assert.ok(draftError(item, { kind: "set", raw: "0.0001" }));
+    }
   });
 });

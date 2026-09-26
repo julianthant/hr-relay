@@ -1,5 +1,6 @@
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
 import { timeoutSetting } from "./settings-timeouts-model.js";
+import { performancePresentation } from "./settings-performance-model.js";
 
 const TITLES: Readonly<Record<string, string>> = {
   "actor.label": "Operator label",
@@ -41,6 +42,8 @@ export function settingObjectFieldTitle(name: string): string {
 }
 
 export function settingTitle(leaf: EditableSettingsLeafWire): string {
+  const performance = performancePresentation(leaf.path);
+  if (performance !== undefined) return performance.title;
   const timeout = timeoutSetting(leaf.path);
   if (timeout !== undefined) return timeout.title;
   if (leaf.path.endsWith(".jobEndDate")) return "Job end date";
