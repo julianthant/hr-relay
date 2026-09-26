@@ -61,7 +61,7 @@ const STORAGE_DOCTOR_VIEWPORTS = PARITY_VIEWPORTS.filter(
 test.describe("storage band", () => {
   const STORAGE_STATES: readonly { id: string; route: AppRoute }[] = [
     { id: "storage-queue", route: { day: FIXTURE_DAY } },
-    { id: "storage-settings", route: { day: FIXTURE_DAY, settings: "" } },
+    { id: "storage-settings", route: { day: FIXTURE_DAY, settings: "storage" } },
   ];
 
   for (const viewport of PARITY_VIEWPORTS) {
@@ -143,20 +143,20 @@ test.describe("loaded storage doctor", () => {
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
         await page.getByRole("button", { name: "Run the read-only storage doctor" }).click();
-        const heading = page.getByRole("heading", { name: "Span authority degraded" });
+        const row = page.locator(".storage-check-row").filter({ hasText: "Run record consistency" });
         await expect(page.getByText(/terminal outbox/u)).toHaveCount(0);
-        await expect(heading).toBeVisible();
-        await expect(page.getByRole("list", { name: "Span authority problems" }).getByRole("listitem"))
-          .toHaveCount(4);
-        await page.getByText("1 archived run", { exact: true }).click();
-        await expect(page.getByRole("list", { name: "Archived span-authority runs" })).toBeVisible();
-        await heading.scrollIntoViewIfNeeded();
+        await expect(row).toContainText("Needs attention");
+        await expect(row).toContainText("1 archived run");
+        await expect(row).toContainText("4 run record issues");
+        await row.getByText("4 run record issues", { exact: true }).click();
+        await expect(row).toContainText("Activity history missing");
+        await row.scrollIntoViewIfNeeded();
 
         await assertShellGeometry(page, `storage-doctor-degraded @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the loaded storage doctor").toEqual([]);
 
         const snapshot = await page.locator("body").ariaSnapshot();
-        expect(snapshot).toContain("Span authority degraded");
+        expect(snapshot).toContain("Run record consistency");
         test.info().annotations.push({
           type: `a11y-attachment-sha256:${a11yName}`,
           description: createHash("sha256").update(snapshot).digest("hex"),

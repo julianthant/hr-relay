@@ -1,494 +1,181 @@
-import {
-Database,
-Info,
-ShieldAlert
-} from "lucide-react";
-import { useState } from "react";
-import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
+import { Database, ShieldAlert } from "lucide-react";
+import { useState, type ReactNode } from "react";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
-import { IconButton,Popover,PopoverContent,PopoverTrigger,Banner,Button,Disclosure,dsIcon,dsText,MetaLine,Panel,PanelBody,PanelHeader,Separator,StatusDot,type DsStatus } from "../ds/ui.js";
-import { cn } from "../lib/utils.js";
-import { useStorageClient as useDashboardClient } from "../state/storage-client.js";
-import { fmtClock,fmtInstantDay,plural } from "./format.js";
-import { useEditableSettings } from "./settings-editor-model.js";
-import { PreflightControl } from "./settings-preflight.js";
-import { STORAGE_RECOVERY_GUIDANCE,spanAuthorityProblemDetail,type StorageHealthSummary } from "./storage-settings-model.js";
+import { Banner, Button, Panel, PanelBody, PanelHeader, dsIcon } from "../ds/ui.js";
+import { useStorageClient } from "../state/storage-client.js";
+import { fmtClock, fmtInstantDay, plural } from "./format.js";
+import { spanAuthorityProblemDetail, type StorageHealthSummary } from "./storage-settings-model.js";
 
-
-/* whether the storage summary owes the operator attention, the nav fold and the
-   section resolution all live in `settings-model.ts` — see the note there */
-
-/** The at-rest indicator tones; the words themselves render beside the dots. */
-function authorityStatusOf(authority: StorageHealthSummary["authority"]): DsStatus {
-  return authority === "healthy" ? "verifiedDone" : "failed";
-}
-
-
-function backupStatusOf(backup: StorageHealthSummary["backup"]): DsStatus {
-  if (backup === "current") return "verifiedDone";
-  if (backup === "stale") return "waiting";
-  return "failed";
-}
-
-
-/**
- * A dashboard that CANNOT WORK says so on EVERY view, not only on the page
- * that explains it — so this is mounted above the takeover switch, and the
- * queue, the intake workspace, the archive, the explorer, the catalog and the
- * activity report all carry it.
- *
- * D222 narrowed what earns the band to exactly that one state. A stale or
- * missing backup does not stop the work, and ref dashboard-surfaces §2.6 has always named it
- * a `storage` NOTIFICATION — so it now reaches the operator as a durable
- * inbox row (published by the composition's backup-health watch) plus the
- * gear's attention dot, never as a band over every view. The unreachable
- * authority stays here for a structural reason, not a volume preference: the
- * inbox is an authority table, so an authority that cannot be written cannot
- * record a notification about its own death — the banner is the one surface
- * that can still say it.
- *
- * The card's colour and content layout were ported from legacy
- * hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc. D281 item 7 later
- * ruled the shell geometry from legacy hr-automation@1ec1d870,
- * `src/dashboard/components/dev/rebuild-demo/DemoSettings.tsx:1204-1237`:
- * full-bleed, bottom edge only, no radius. That is `Banner shape="band"`, a
- * deliberate arm that leaves the primitive's default card unchanged.
- *
- * The COPY is not ported. The demo's banner disclosed two lists — what still
- * works and what is blocked — authored against a demo's `StorageMode`, and
- * every line of them would have been a claim about a system nobody had asked.
- * What this one says is derived from the facts the bootstrap actually serves
- * (`authority`, `backup`, `checkedAt`) and nothing else.
- *
- * It is a HAZARD, which is one of D24's two exemptions from "a professional
- * dashboard does not explain itself": it names the state, the one consequence
- * that changes what the operator should do next, and the route to the doctor.
- * There is no third sentence, no disclosure, and no defence of the design.
- */
 const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
 
-const BACKUP_HAZARD: Record<Exclude<StorageHealthSummary["backup"], "current">, string> = {
-  stale: "The backup summary is stale. Run the doctor to inspect the exact backup and generation gap.",
-  missing: "No backup manifest was found by the summary. Run the doctor to inspect recovery sources.",
-};
-
-
-export function StorageBanner({
-  storage,
-  onOpenSettings,
-}: {
+/** The bootstrap summary is cheap; the checklist only claims results from a doctor report. */
+export function StorageBanner({ storage, onOpenSettings }: {
   storage: StorageHealthSummary;
   onOpenSettings: () => void;
 }) {
   if (storage.authority === "healthy") return null;
-  const backupHazard = storage.backup === "current" ? undefined : BACKUP_HAZARD[storage.backup];
-  return (
-    <Banner
-      className="shrink-0"
-      tone="danger"
-      shape="band"
-      /* D276 item 4 keeps `Banner` shared; D281 item 7 supplies this one
-         site's band arm. The demo's glyph is `ShieldAlert`, and `Banner` takes
-         an icon. A shield is the right word here — the band is about what is
-         PROTECTING the data, not about a generic warning. */
-      icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
-      title="Authority storage is unavailable"
-      action={
-        <Button size="sm" variant="secondary" onClick={onOpenSettings}>
-          Storage health
-        </Button>
-      }
-    >
-      <span className="flex flex-col gap-[var(--ds-space-tight)]">
-        <span>
-          {AUTHORITY_HAZARD}
-          {/* Both facts, when both are true. The authority sentence leads
-              because it is the one that changes what happens next. */}
-          {backupHazard !== undefined ? ` ${backupHazard}` : ""}
-        </span>
-        <MetaLine items={[`checked ${fmtClock(storage.checkedAt)}`]} />
-      </span>
-    </Banner>
-  );
+  return <Banner className="shrink-0" tone="danger" shape="band"
+    icon={<ShieldAlert aria-hidden className={dsIcon.lg} />}
+    title="Authority storage is unavailable"
+    action={<Button size="sm" variant="secondary" onClick={onOpenSettings}>Storage checks</Button>}>
+    {AUTHORITY_HAZARD} Checked {fmtClock(storage.checkedAt)}.
+  </Banner>;
 }
-
-
-function fmtAge(ageMs: number): string {
-  const minutes = Math.floor(ageMs / 60_000);
-  if (minutes < 60) return `${String(minutes)}m`;
-  return `${String(Math.floor(minutes / 60))}h ${String(minutes % 60)}m`;
-}
-
 
 type DoctorState =
   | { state: "idle" }
   | { state: "loading" }
   | { state: "loaded"; report: StorageDoctorWire }
   | { state: "failed"; message: string };
+type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
+interface CheckResult { tone: CheckTone; value: string; evidence?: string; detail?: string; detailLabel?: string; extra?: ReactNode }
+const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
 
-
-function HealthLine({ status, label, value }: { status: DsStatus; label: string; value: string }) {
-  return (
-    <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
-      <StatusDot status={status} />
-      <span className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{label}</span>
-      <span className={cn(dsText.body, "min-w-0 break-words font-medium text-[color:var(--ds-fg)]")}>{value}</span>
-    </span>
-  );
+function CheckRow({ name, description, result }: { name: string; description: string; result: CheckResult }) {
+  return <div className="storage-check-row" role="listitem">
+    <div className="storage-check-copy">
+      <span className="storage-check-name">{name}</span>
+      <span className="storage-check-description">{description}</span>
+      {result.detail !== undefined && (result.detailLabel === undefined
+        ? <span className="storage-check-detail">{result.detail}</span>
+        : <details className="storage-check-detail"><summary>{result.detailLabel}</summary><span>{result.detail}</span></details>)}
+      {result.extra}
+    </div>
+    <div className="storage-check-result">
+      <span className={`storage-check-badge storage-check-badge--${result.tone}`}>{result.value}</span>
+      {result.evidence !== undefined && <span className="storage-check-evidence">{result.evidence}</span>}
+    </div>
+  </div>;
 }
 
-
-type SpanAuthorityWithAccounting = Exclude<StorageDoctorWire["spanAuthority"], { state: "unavailable" }>;
-
-
-function SpanArchiveAccounting({ archived }: { archived: SpanAuthorityWithAccounting["archived"] }) {
-  return (
-    <Disclosure summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")} summary={plural(archived.length, "archived run")}>
-      {archived.length === 0 ? (
-        <span className={cn(dsText.meta, "mt-[var(--ds-space-tight)] block text-[color:var(--ds-fg-muted)]")}>
-          No archived runs account for this corpus.
-        </span>
-      ) : (
-        <ul
-          aria-label="Archived span-authority runs"
-          className="mt-[var(--ds-space-tight)] flex flex-col gap-[var(--ds-space-hair)]"
-        >
-          {archived.map((entry) => (
-            <li
-              key={entry.runId}
-              title={entry.archivedAt}
-              className={cn(dsText.meta, dsText.nums, "break-all text-[color:var(--ds-fg-muted)]")}
-            >
-              {entry.runId} · archived {fmtInstantDay(entry.archivedAt)} · {fmtClock(entry.archivedAt)}
-            </li>
-          ))}
-        </ul>
-      )}
-    </Disclosure>
-  );
-}
-
-
-function SpanAuthorityReport({ spanAuthority }: { spanAuthority: StorageDoctorWire["spanAuthority"] }) {
-  if (spanAuthority.state === "unavailable") {
-    return (
-      <section
-        aria-labelledby="span-authority-title"
-        aria-live="polite"
-        className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
-      >
-        <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
-          <StatusDot status="failed" />
-          <h3 id="span-authority-title" className={cn(dsText.body, "font-semibold text-[color:var(--ds-danger)]")}>
-            Span authority unavailable
-          </h3>
-        </span>
-        <span className={cn(dsText.meta, dsText.nums, "break-words text-[color:var(--ds-danger)]")}>
-          {spanAuthority.cause.code}: {spanAuthority.cause.summary}
-        </span>
-      </section>
-    );
-  }
-  const reconciled = spanAuthority.state === "reconciled";
-  return (
-    <section
-      aria-labelledby="span-authority-title"
-      aria-live="polite"
-      className="flex flex-col gap-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"
-    >
-      <span className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
-        <StatusDot status={reconciled ? "verifiedDone" : "waiting"} />
-        <h3
-          id="span-authority-title"
-          className={cn(
-            dsText.body,
-            "font-semibold",
-            reconciled
-              ? "text-[color:var(--ds-status-verified-done-fg)]"
-              : "text-[color:var(--ds-status-waiting-fg)]",
-          )}
-        >
-          Span authority {spanAuthority.state}
-        </h3>
-      </span>
-      <span className={cn(dsText.meta, dsText.nums, "flex flex-wrap gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-hair)] text-[color:var(--ds-fg-muted)]")}>
-        <span>{plural(spanAuthority.streamRunCount, "stream run")}</span>
-        <span>{plural(spanAuthority.liveRunCount, "live authority run")}</span>
-      </span>
-      <SpanArchiveAccounting archived={spanAuthority.archived} />
-      {spanAuthority.state === "degraded" && (
-        <ul aria-label="Span authority problems" className="flex flex-col gap-[var(--ds-space-tight)]">
-          {spanAuthority.problems.map((problem, index) => (
-            <li
-              key={`${problem.state}:${String(index)}`}
-              className={cn(dsText.meta, "grid min-w-0 gap-[var(--ds-space-hair)] grid-cols-[max-content_minmax(0,1fr)]")}
-            >
-              <span className={cn(dsText.nums, "font-semibold text-[color:var(--ds-status-waiting-fg)]")}>
-                {problem.state}
-              </span>
-              <span className={cn(dsText.nums, "min-w-0 break-all text-[color:var(--ds-fg-muted)]")}>
-                {spanAuthorityProblemDetail(problem)}
-              </span>
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-
-const COUNT_LABELS = [
-  ["pendingCommands", "pending commands"],
-  ["unresolvedWriteIntents", "unresolved write intents"],
-  ["leases", "leases"],
-  ["providerReservations", "provider reservations"],
-  ["artifactOutbox", "artifact outbox"],
-] as const;
-
-
-function RecoveryStatus({ report }: { report: StorageDoctorWire }) {
-  const recovery = report.recovery;
-  return <section aria-label="Recovery status" aria-live="polite" className="flex flex-col gap-[var(--ds-space-tight)]">
-    <HealthLine status={recovery.state === "clear" ? "verifiedDone" : "failed"} label="Recovery"
-      value={recovery.state === "clear" ? "No interruption markers" : recovery.state === "interrupted" ? "Interrupted recovery" : "Inspection unavailable"} />
-    {recovery.state !== "clear" && <>
-      <span className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
-        {recovery.state === "unavailable" ? recovery.cause.summary : "Runtime startup remains blocked. Preserve the evidence and settle the exact interrupted operation."}
-      </span>
-      <ul aria-label="Recovery findings" className={dsText.meta}>
-        {recovery.findings.map(finding => <li key={finding.marker}>{finding.marker}: {finding.state}</li>)}
-      </ul>
-    </>}
+function CheckGroup({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
+  return <section className="storage-check-group" aria-label={title}>
+    <h3>{title}</h3><p>{subtitle}</p>
+    <div className="settings-group-rows" role="list">{children}</div>
   </section>;
 }
 
-function UpgradeAndCredentials({ report }: { report: StorageDoctorWire }) {
-  const upgrades = report.authorityUpgrades, credentials = report.protectedSettings;
-  return <>
-    <section aria-label="Authority upgrade history" className="flex flex-col gap-[var(--ds-space-tight)]">
-      <h3 className={cn(dsText.body, "font-semibold")}>Authority upgrade history</h3>
-      {upgrades.state === "available" ? <ul className={cn(dsText.meta, dsText.nums)}>
-        {upgrades.phases.map((row, index) => <li key={index}>
-          {row.phase}: v{row.fromSchemaVersion} → v{row.toSchemaVersion}; {fmtInstantDay(row.recordedAt)} {fmtClock(row.recordedAt)}
-        </li>)}
-      </ul> : <span className={dsText.meta}>{upgrades.state === "unavailable"
-        ? `Upgrade history unavailable: ${upgrades.cause.summary}`
-        : upgrades.reason === "pre-journal-schema" ? "This source predates the upgrade journal." : "No upgrade history recorded."}</span>}
-    </section>
-    <section aria-label="Independent credentials" className="flex flex-col gap-[var(--ds-space-tight)]">
-      <h3 className={cn(dsText.body, "font-semibold")}>Independent credentials</h3>
-      {credentials.state === "available" ? <ul className={cn(dsText.meta, "grid grid-cols-2 gap-[var(--ds-space-tight)]")}>
-        {credentials.entries.map(entry => <li key={entry.name}>{entry.name}: {entry.present ? "present" : "absent"}</li>)}
-      </ul> : <span className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>Credential inspection unavailable: {credentials.cause.summary}</span>}
-    </section>
-  </>;
+const COUNT_CHECKS = [
+  { key: "pendingCommands", name: "Pending commands", description: "Commands accepted but not yet completed." },
+  { key: "unresolvedWriteIntents", name: "Unresolved writes", description: "Database changes that still need a final outcome." },
+  { key: "leases", name: "Active leases", description: "Work currently held by a worker." },
+  { key: "providerReservations", name: "Provider reservations", description: "External provider work reserved by this system." },
+  { key: "artifactOutbox", name: "Artifact outbox", description: "Artifacts waiting to be published." },
+] as const;
+const CREDENTIAL_CHECKS = [
+  { key: "ucpathUserId", name: "UCPath user ID", description: "Login name for UCPath access." },
+  { key: "ucpathPassword", name: "UCPath password", description: "Password for UCPath access." },
+  { key: "timekeeperName", name: "Timekeeper name", description: "Name used for timekeeping workflows." },
+  { key: "sharepointOnboardingRosterUrl", name: "SharePoint onboarding roster URL", description: "Location of the onboarding roster." },
+  { key: "activityPersonPseudonym", name: "Activity person pseudonym", description: "Identifier used in activity records." },
+] as const;
+
+function authorityResult(report?: StorageDoctorWire): CheckResult {
+  if (report === undefined) return NOT_CHECKED;
+  if (report.authority.state === "degraded") return { tone: "unavailable", value: "Needs attention", detail: `${report.authority.cause.code}: ${report.authority.cause.summary}` };
+  return { tone: "pass", value: "Passed", evidence: `Schema v${report.authority.schemaVersion} · generation ${report.authority.authorityGeneration} · ${plural(report.authority.pageCount, "page")}` };
+}
+function recoveryResult(report?: StorageDoctorWire): CheckResult {
+  if (report === undefined) return NOT_CHECKED;
+  const recovery = report.recovery;
+  if (recovery.state === "clear") return { tone: "pass", value: "Clear", evidence: "No interruption markers" };
+  return {
+    tone: recovery.state === "interrupted" ? "attention" : "unavailable",
+    value: recovery.state === "interrupted" ? "Interrupted" : "Unavailable",
+    detail: recovery.state === "unavailable" ? recovery.cause.summary : "An interrupted operation needs review before startup.",
+    evidence: recovery.findings.map((finding) => `${finding.marker}: ${finding.state}`).join(" · ") || undefined,
+  };
+}
+function spanResult(report?: StorageDoctorWire): CheckResult {
+  if (report === undefined) return NOT_CHECKED;
+  const span = report.spanAuthority;
+  if (span.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: `${span.cause.code}: ${span.cause.summary}` };
+  return {
+    tone: span.state === "reconciled" ? "pass" : "attention",
+    value: span.state === "reconciled" ? "Reconciled" : "Needs attention",
+    evidence: `${plural(span.streamRunCount, "stream run")} · ${plural(span.liveRunCount, "live run")} · ${plural(span.archived.length, "archived run")} · ${plural(span.deleted.length, "deleted run")}`,
+    detailLabel: span.state === "degraded" ? plural(span.problems.length, "run record issue") : undefined,
+    detail: span.state === "degraded" ? span.problems.map((problem) => {
+      const label = {
+        missing: "Run missing",
+        "restore-loss": "Run missing after recovery",
+        "missing-span": "Activity history missing",
+        "malformed-authority": "Run record unreadable",
+        malformed: "Activity data unreadable",
+      }[problem.state];
+      return `${label}: ${spanAuthorityProblemDetail(problem)}`;
+    }).join(" · ") : undefined,
+    extra: span.archived.length > 0 ? <details className="storage-check-detail">
+      <summary>{plural(span.archived.length, "archived run")}</summary>
+      <ul>{span.archived.map((run) => <li key={run.runId} title={run.archivedAt}>
+        {run.runId} · {fmtInstantDay(run.archivedAt)} {fmtClock(run.archivedAt)}
+      </li>)}</ul>
+    </details> : undefined,
+  };
+}
+function upgradeResult(report?: StorageDoctorWire): CheckResult {
+  if (report === undefined) return NOT_CHECKED;
+  const upgrades = report.authorityUpgrades;
+  if (upgrades.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: upgrades.cause.summary };
+  if (upgrades.state === "absent") return { tone: "neutral", value: "No history", evidence: upgrades.reason === "pre-journal-schema" ? "This database predates upgrade records." : "No upgrade has been recorded." };
+  return { tone: "pass", value: "Recorded", detail: upgrades.phases.map((phase) => `${phase.phase}: v${phase.fromSchemaVersion} → v${phase.toSchemaVersion} · ${fmtInstantDay(phase.recordedAt)} ${fmtClock(phase.recordedAt)}`).join(" · ") };
+}
+function countResult(report: StorageDoctorWire | undefined, key: typeof COUNT_CHECKS[number]["key"]): CheckResult {
+  if (report === undefined) return NOT_CHECKED;
+  if (report.counts.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: report.counts.cause.summary };
+  const count = report.counts.values[key];
+  return { tone: "neutral", value: String(count) };
+}
+function credentialResult(report: StorageDoctorWire | undefined, key: typeof CREDENTIAL_CHECKS[number]["key"]): CheckResult {
+  if (report === undefined) return NOT_CHECKED;
+  if (report.protectedSettings.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary };
+  const entry = report.protectedSettings.entries.find((item) => item.name === key);
+  if (entry === undefined) return { tone: "unavailable", value: "Unknown", detail: "This credential was not included in the inspection." };
+  return { tone: "neutral", value: entry.present ? "Present" : "Not set" };
 }
 
-
-function DoctorReport({ report }: { report: StorageDoctorWire }) {
-  const counts = report.counts;
-  return (
-    <div className="flex flex-col gap-[var(--ds-space-base)]">
-      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-        Read-only doctor · checked {fmtClock(report.checkedAt)}
-      </span>
-
-      {report.authority.state === "healthy" ? (
-        <HealthLine
-          status="verifiedDone"
-          label="Authority"
-          value={`healthy — schema v${String(report.authority.schemaVersion)} · generation ${String(report.authority.authorityGeneration)} · ${plural(report.authority.pageCount, "page")}`}
-        />
-      ) : (
-        <HealthLine
-          status="failed"
-          label="Authority"
-          value={`degraded — ${report.authority.cause.code}: ${report.authority.cause.summary}`}
-        />
-      )}
-
-      {counts.state === "available" ? (
-        <div className="grid grid-cols-2 gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-tight)]">
-          {COUNT_LABELS.map(([key, label]) => (
-            <span key={key} className="flex items-baseline justify-between gap-[var(--ds-space-base)]">
-              <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{label}</span>
-              <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg)]")}>
-                {counts.values[key]}
-              </span>
-            </span>
-          ))}
-        </div>
-      ) : (
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          Pending counts unavailable — {counts.cause.summary}
-        </span>
-      )}
-
-      <RecoveryStatus report={report} />
-      <SpanAuthorityReport spanAuthority={report.spanAuthority} />
-      <UpgradeAndCredentials report={report} />
-
-      {report.backup.state === "current" || report.backup.state === "stale" ? (
-        <HealthLine
-          status={report.backup.state === "current" ? "verifiedDone" : "waiting"}
-          label="Backup"
-          value={`${report.backup.state} — ${report.backup.latest.backupFileName} · age ${fmtAge(report.backup.latest.ageMs)}`
-            + (report.backup.latest.generationGap.state === "known"
-              ? ` · generation gap ${String(report.backup.latest.generationGap.value)}`
-              : ` · generation gap unknown`)}
-        />
-      ) : (
-        <HealthLine
-          status="failed"
-          label="Backup"
-          value={`${report.backup.state} — ${report.backup.cause.summary}`}
-        />
-      )}
-
-      {report.service.state === "ok" && (
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          Backup service: last run ok at {fmtClock(report.service.finishedAt)} (generation {report.service.finalGeneration})
-        </span>
-      )}
-      {report.service.state === "failed" && (
-        <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
-          Backup service: last run FAILED at {fmtClock(report.service.failedAt)} — {report.service.message}
-        </span>
-      )}
-      {report.service.state === "never-run" && (
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          Backup service: {report.service.reason}
-        </span>
-      )}
-
-      <div className="flex flex-col gap-[var(--ds-space-tight)]">
-        <span className={cn(dsText.meta, "font-medium text-[color:var(--ds-fg-secondary)]")}>
-          {plural(report.restoreCandidates.length, "restore candidate")}
-        </span>
-        {report.restoreCandidates.map((candidate) => (
-          <span
-            key={candidate.manifestFileName}
-            className={cn(dsText.meta, dsText.nums, "break-all text-[color:var(--ds-fg-muted)]")}
-          >
-            {candidate.state === "verified-compatible"
-              ? `Verified bytes: ${candidate.manifestFileName}. ${candidate.selection === "lifecycle-pair" ? "Complete lifecycle pair" : "Individual database"}; restore ${candidate.restoreEligibility.state}. Schema v${String(candidate.schemaVersion)}; generation ${String(candidate.authorityGeneration)}; age ${fmtAge(candidate.ageMs)}.`
-                + ("reason" in candidate.restoreEligibility ? ` ${candidate.restoreEligibility.reason}` : candidate.restoreEligibility.state === "requires-upgrade" ? " Supported source requires stopped conversion with this release." : " Stopped-system checks still apply.")
-              : `INVALID ${candidate.manifestFileName} — ${candidate.cause.code}: ${candidate.cause.summary}`}
-          </span>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-
-function RecoveryGuidance() {
-  return <Popover>
-    <PopoverTrigger asChild>
-      <IconButton size="xs" label="Storage recovery instructions" icon={<Info aria-hidden className={dsIcon.sm} />} />
-    </PopoverTrigger>
-    <PopoverContent title="Storage recovery instructions" width="lg"
-      className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
-      <div className="flex flex-col gap-[var(--ds-space-base)]">
-        <p>Run these commands from the intended rebuild checkout. Stop its dashboard with Ctrl+C and wait for the BFF and all workers to finish before backup, upgrade or restore.</p>
-        {STORAGE_RECOVERY_GUIDANCE.map(row => <section key={row.title} className="flex flex-col gap-[var(--ds-space-tight)]">
-          <h3 className={cn(dsText.body, "font-semibold text-[color:var(--ds-fg)]")}>{row.title}</h3>
-          <code className={cn(dsText.meta, dsText.nums, "block break-words whitespace-pre-wrap select-text")}>{row.command}</code>
-          <p>{row.detail}</p>
-        </section>)}
-        <p>Interrupted or unavailable recovery: preserve the markers, suspect files and exact backup bytes. Correct the named evidence before replaying that exact operation. A generic retry is not safe. Never retry an UNKNOWN submit or re-admit a run lost during restore.</p>
-        <p>After recovery, rerun the doctor and check credentials before restarting services. Interactive restore, upgrade and repair controls are deferred until a concrete workflow need or an explicit post-release request.</p>
-      </div>
-    </PopoverContent>
-  </Popover>;
-}
-
-
-export function StorageSection({
-  storage,
-  editor,
-  preflight,
-}: {
-  storage: StorageHealthSummary;
-  editor: ReturnType<typeof useEditableSettings>;
-  preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
-}) {
-  const client = useDashboardClient();
+export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
+  const client = useStorageClient();
   const [doctor, setDoctor] = useState<DoctorState>({ state: "idle" });
-
+  const report = doctor.state === "loaded" ? doctor.report : undefined;
+  const authority = report?.authority.state ?? storage.authority;
   const runDoctor = (): void => {
     setDoctor({ state: "loading" });
     client.storageDoctor().then(
-      (report) => setDoctor({ state: "loaded", report }),
-      (caught: unknown) => setDoctor({
-        state: "failed",
-        message: caught instanceof Error ? caught.message : String(caught),
-      }),
+      (next) => setDoctor({ state: "loaded", report: next }),
+      (caught: unknown) => setDoctor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }),
     );
   };
-
-  const degraded = storage.authority !== "healthy";
-  return (
-    /*
-      SE45 (D276 item 4). Every other Settings destination in this file is a
-      `Panel` + `PanelHeader` + `PanelBody` — the demo's shape, and the shape
-      `System hosts` and `Workflow capabilities` were built to. Storage was the
-      one section that never got it and read as a loose `SectionLabel` inside
-      the frame, which made the doctor look like part of the page rather than
-      part of a destination.
-
-      The header's `meta` is the demo's freshness slot filled with the fact this
-      tree actually serves. The demo prints `newest backup <age>`; the summary
-      wire carries `authority`, `backup` and `checkedAt` and NO backup age at
-      all — the age exists only on the doctor report, which is a read the
-      operator has not made yet. So the slot takes the check time rather than an
-      invented or lazily-borrowed age, and the sentence below keeps the
-      provenance half it used to say twice.
-    */
-    <Panel className="settings-page-panel">
-      <PanelHeader
-        title="Storage health"
-        headingLevel={2}
-        icon={<Database aria-hidden className={dsIcon.lg} />}
-        meta={`checked ${fmtClock(storage.checkedAt)}`}
-      />
-      <PanelBody className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
-        {/*
-          SE46 — the demo's verdict banner, keyed on the ONE fact that decides
-          whether this dashboard can record anything. The two `HealthLine`s
-          below are NOT replaced by it: the demo's single `mode` collapses
-          authority and backup into one binary, and this wire serves them
-          separately — a stale backup is not a read-only volume, and a banner
-          that said so would be the surface losing a fact it holds. The banner
-          is the verdict; the lines are the facts it was derived from.
-        */}
-        <Banner
-          tone={degraded ? "danger" : "success"}
-          title={degraded ? "Authority unavailable" : "Authority summary healthy"}
-        >
-          {degraded
-            ? AUTHORITY_HAZARD
-            : "Backup metadata has not been re-verified by this summary."}
-        </Banner>
-
-        <HealthLine status={authorityStatusOf(storage.authority)} label="Authority" value={storage.authority} />
-        <HealthLine status={backupStatusOf(storage.backup)} label="Backup" value={storage.backup} />
-        <span className="flex items-center gap-[var(--ds-space-snug)]">
-          <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
-            {doctor.state === "loading" ? "Running doctor…" : "Run storage doctor"}
-          </Button>
-          <RecoveryGuidance />
-        </span>
-        {doctor.state === "failed" && (
-          <span role="alert" className={cn(dsText.meta, "text-[color:var(--ds-danger)]")}>
-            {doctor.message}
-          </span>
-        )}
-        {doctor.state === "loaded" && <DoctorReport report={doctor.report} />}
-        <Separator />
-        <PreflightControl editor={editor} retained={preflight} />
-      </PanelBody>
-    </Panel>
-  );
+  return <Panel className="settings-page-panel storage-checks-page">
+    <PanelHeader title="Storage checks" headingLevel={2}
+      subtitle="Read-only checks of the data store, unfinished work, and independent credentials."
+      icon={<Database aria-hidden className={dsIcon.lg} />} />
+    <PanelBody className="settings-page-body">
+      <div className="storage-check-toolbar">
+        <span>{report === undefined ? `Summary checked ${fmtClock(storage.checkedAt)}` : `Checks completed ${fmtClock(report.checkedAt)}`}</span>
+        <Button size="sm" onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
+          {doctor.state === "loading" ? "Running checks…" : report === undefined ? "Run storage checks" : "Run checks again"}
+        </Button>
+      </div>
+      <Banner tone={authority === "healthy" ? "success" : "danger"}
+        title={authority === "healthy" ? "Data store available" : "Data store unavailable"}>
+        {authority !== "healthy" ? AUTHORITY_HAZARD : report === undefined
+          ? "The latest summary can read the data store. Run the checks below for detailed results."
+          : "The read-only check verified the current database."}
+      </Banner>
+      {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">{doctor.message}</Banner>}
+      <CheckGroup title="Data store and recovery" subtitle="Integrity, interrupted work, run records, and upgrades.">
+        <CheckRow name="Database integrity" description="Can the current data store be read and verified?" result={authorityResult(report)} />
+        <CheckRow name="Interrupted operation" description="Are any prior storage operations still unfinished?" result={recoveryResult(report)} />
+        <CheckRow name="Run record consistency" description="Do run records match their activity history?" result={spanResult(report)} />
+        <CheckRow name="Upgrade record" description="What schema upgrades have been recorded?" result={upgradeResult(report)} />
+      </CheckGroup>
+      <CheckGroup title="Work in progress" subtitle="Current counts; a nonzero value can be normal while work is running.">
+        {COUNT_CHECKS.map((check) => <CheckRow key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
+      </CheckGroup>
+      <CheckGroup title="Independent credentials" subtitle="Presence only. Unset credentials affect their workflows, not data store integrity.">
+        {CREDENTIAL_CHECKS.map((check) => <CheckRow key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
+      </CheckGroup>
+    </PanelBody>
+  </Panel>;
 }

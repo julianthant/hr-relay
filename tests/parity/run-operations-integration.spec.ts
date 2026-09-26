@@ -16,10 +16,10 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     const h = operations; if (h === undefined) throw new Error("missing combined operations fixture");
     const errors = failOnPageErrors(page);
     await page.setViewportSize({ width: 1280, height: 720 }); await page.clock.setFixedTime(new Date(server.now)); await installTheme(page, theme);
-    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "storage" }); await dismissWorkflowWindow(page);
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "preflight" }); await dismissWorkflowWindow(page);
     const setup = page.getByRole("region", { name: "Preflight", exact: true });
     await setup.getByRole("combobox").selectOption(server.scope);
-    await expect(setup).toContainText("secrets.ucpath"); await expect(setup.getByText("fail", { exact: true }).first()).toBeVisible();
+    await expect(setup).toContainText("UCPath sign-in"); await expect(setup.getByText("fail", { exact: true }).first()).toBeVisible();
     const rejected = await page.request.post(`${server.baseUrl}/api/v1/start-plans`, {
       headers: { origin: server.baseUrl }, data: { workflowId: server.scope, submissions: [{ emplId: "10873698" }], dryRun: false },
     });

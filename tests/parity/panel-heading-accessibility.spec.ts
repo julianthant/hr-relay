@@ -63,7 +63,7 @@ test("production PanelHeaders use explicit semantic heading levels", async ({ pa
 
   for (const [section, title] of [
     ["", "General"],
-    ["storage", "Storage health"],
+    ["storage", "Storage checks"],
     ["keyboard", "Keyboard"],
     [SETTINGS_SYSTEM_HOSTS_SECTION_ID, "System hosts"],
     [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, "Workflow capabilities"],

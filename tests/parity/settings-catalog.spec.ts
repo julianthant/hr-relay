@@ -158,7 +158,7 @@ for (const theme of PARITY_THEMES) test(`settings catalog real authorities, exac
       await page.getByRole("button", { name: "Back to the dashboard", exact: true }).click();
       await page.getByRole("button", { name: "Discard changes", exact: true }).click();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toHaveCount(0);
-      const gear = page.getByRole("button", { name: "Settings — storage needs attention", exact: true }); await expect(gear).toBeFocused(); await gear.click();
+      const gear = page.getByRole("button", { name: "Settings", exact: true }); await expect(gear).toBeFocused(); await gear.click();
       expect(attempts.length).toBe(count);
     }
     await page.setViewportSize({ width: 1440, height: 900 });

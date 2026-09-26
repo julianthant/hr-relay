@@ -21,7 +21,7 @@ function storage(authority: "healthy" | "unavailable") {
 }
 
 function liveRegionClasses(markup: string, role: "alert" | "status"): string {
-  const match = new RegExp(`<div role="${role}" class="([^"]+)">`, "u").exec(markup);
+  const match = new RegExp(`<div class="([^"]+)"(?: [^>]*)? role="${role}"`, "u").exec(markup);
   assert.ok(match?.[1] !== undefined, markup);
   return match[1];
 }
@@ -39,7 +39,7 @@ describe("the app-wide storage band (D281 item 7)", () => {
 
     assert.equal(healthy, "");
     assert.match(unavailable, /Authority storage is unavailable/u);
-    assert.match(unavailable, /Storage health/u);
+    assert.match(unavailable, /Storage checks/u);
   });
 
   it("uses the bottom-edge-only, radius-free band arm", () => {
@@ -51,7 +51,7 @@ describe("the app-wide storage band (D281 item 7)", () => {
 
     assert.match(classes, /(?:^| )border-b(?: |$)/u);
     assert.doesNotMatch(classes, /(?:^| )border(?: |$)/u);
-    assert.doesNotMatch(classes, /rounded/u);
+    assert.match(classes, /(?:^| )rounded-none(?: |$)/u);
   });
 
   it("leaves every ordinary Banner on the bordered, rounded card shape", () => {
@@ -69,6 +69,7 @@ for (const authority of ["healthy", "unavailable"] as const) {
     const markup = renderToStaticMarkup(createElement(StorageBanner, {storage: {...storage(authority), backup}, onOpenSettings: () => undefined}));
     if (authority === "healthy") assert.equal(markup, "");
     else assert.match(markup, /Authority storage is unavailable/u);
+    assert.doesNotMatch(markup, /backup|restore/iu);
     assert.doesNotMatch(markup, /unaffected|cadence allows|read-write/iu);
   });
 }

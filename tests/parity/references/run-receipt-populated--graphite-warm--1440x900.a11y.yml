@@ -21,7 +21,7 @@
   - 'button "Preflight: unavailable"'
   - button "Notifications — 0 unread"
   - button "Switch to Paper Ink"
-  - button "Settings — storage needs attention"
+  - button "Settings"
 - main:
   - button "Workflow Panel — Person Lookup, minimised. 3 of 8 rows across every workflow are queued or running today": pl 3
   - button "Start a run"

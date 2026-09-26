@@ -3394,7 +3394,7 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     // (UF-SET-9); the two used to disagree because only the panel header was
     // ported (D276 item 4).
     assert.deepEqual(sections, [
-      { id: "storage", label: "Storage health", revision: 1 },
+      { id: "storage", label: "Storage checks", revision: 1 },
       { id: "system-hosts", label: "System hosts", revision: 1 },
       { id: "workflow-capabilities", label: "Workflow capabilities", revision: 1 },
     ]);

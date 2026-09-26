@@ -21,7 +21,7 @@
   - 'button "Preflight: unavailable"'
   - button "Notifications — 0 unread"
   - button "Switch to Graphite Warm"
-  - button "Settings — storage needs attention" [pressed]
+  - button "Settings" [pressed]
 - main:
   - region "Settings":
     - navigation "Settings sections":
@@ -52,8 +52,10 @@
       - link "Deployment":
         - /url: "?settings=runtime-isolation"
       - text: Status
-      - link "Storage health":
+      - link "Storage checks":
         - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
       - link "System hosts":
         - /url: "?settings=system-hosts"
       - link "Workflow capabilities":

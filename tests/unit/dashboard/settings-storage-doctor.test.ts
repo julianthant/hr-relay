@@ -104,7 +104,7 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
       }) }),
     }));
   });
-  const run = [...host.querySelectorAll("button")].find((candidate) => candidate.textContent === "Run storage doctor");
+  const run = [...host.querySelectorAll("button")].find((candidate) => candidate.textContent === "Run storage checks");
   if (!(run instanceof HTMLButtonElement)) throw new Error("storage doctor action is missing");
   await act(async () => { run.click(); });
   return host;
@@ -117,11 +117,11 @@ describe("loaded Settings storage doctor", () => {
       spanAuthority: { state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
         problems: [{ state, runId, possibleExternalWrite: true }] } });
     const dom = await mountDoctor(report);
-    const row = dom.querySelector('[aria-label="Span authority problems"]');
+    const row = [...dom.querySelectorAll(".storage-check-row")].find((candidate) => candidate.textContent?.includes("Run record consistency"));
     assert.ok(row);
     assert.match(row.textContent ?? "", /possible external write/u);
     assert.ok(row.textContent?.includes(runId));
-    assert.match(dom.textContent ?? "", /Span authority degraded/u);
+    assert.match(row.textContent ?? "", /Needs attention/u);
   });
 
   it("renders every degraded span-authority diagnosis with exact counts and identifying facts", async () => {
@@ -157,13 +157,9 @@ describe("loaded Settings storage doctor", () => {
 
     const dom = await mountDoctor(report);
     const text = dom.textContent ?? "";
-    assert.match(text, /Span authority degraded/u);
-    assert.equal(
-      dom.querySelector('section[aria-labelledby="span-authority-title"]')?.getAttribute("aria-live"),
-      "polite",
-    );
+    assert.match(text, /Run record consistency.*Needs attention/u);
     assert.match(text, /11 stream runs/u);
-    assert.match(text, /7 live authority runs/u);
+    assert.match(text, /7 live runs/u);
     assert.match(text, /1 archived run/u);
     const archived = [...dom.querySelectorAll("details")].find(
       (candidate) => candidate.querySelector("summary")?.textContent === "1 archived run",
@@ -172,11 +168,11 @@ describe("loaded Settings storage doctor", () => {
     await act(async () => { archived.querySelector("summary")?.click(); });
     assert.equal(archived.open, true);
     assert.match(archived.textContent ?? "", /00000000-0000-4000-8000-000000000101/u);
-    assert.match(text, /missing.*00000000-0000-4000-8000-000000000102/u);
-    assert.match(text, /missing-span.*00000000-0000-4000-8000-000000000103/u);
-    assert.match(text, /malformed-authority.*archived.*record-digest-8dc3.*archived authority record failed strict parsing/u);
-    assert.match(text, /malformed.*span_stream.*00000000-0000-4000-8000-000000000104.*queued root ordering is contradictory/u);
-    assert.equal(dom.querySelectorAll('[aria-label="Span authority problems"] > li').length, 4);
+    assert.match(text, /4 run record issues/u);
+    assert.match(text, /Run missing.*00000000-0000-4000-8000-000000000102/u);
+    assert.match(text, /Activity history missing.*00000000-0000-4000-8000-000000000103/u);
+    assert.match(text, /Run record unreadable.*archived.*record-digest-8dc3.*archived authority record failed strict parsing/u);
+    assert.match(text, /Activity data unreadable.*span_stream.*00000000-0000-4000-8000-000000000104.*queued root ordering is contradictory/u);
   });
 
   it("renders reconciled span authority with exact live, stream, and archived accounting", async () => {
@@ -202,9 +198,9 @@ describe("loaded Settings storage doctor", () => {
 
     const dom = await mountDoctor(report);
     const text = dom.textContent ?? "";
-    assert.match(text, /Span authority reconciled/u);
+    assert.match(text, /Run record consistency.*Reconciled/u);
     assert.match(text, /4 stream runs/u);
-    assert.match(text, /2 live authority runs/u);
+    assert.match(text, /2 live runs/u);
     const archived = [...dom.querySelectorAll("details")].find(
       (candidate) => candidate.querySelector("summary")?.textContent === "2 archived runs",
     );
@@ -218,7 +214,7 @@ describe("loaded Settings storage doctor", () => {
     const archivedRows = archived.querySelectorAll("li");
     assert.equal(archivedRows[0]?.title, "2026-08-31T14:00:00.000Z");
     assert.equal(archivedRows[1]?.title, "2026-08-30T14:00:00.000Z");
-    assert.equal(dom.querySelector('[aria-label="Span authority problems"]'), null);
+    assert.doesNotMatch(text, /run record issues/u);
   });
 
   it("renders unavailable span authority as its exact cause rather than empty or reconciled evidence", async () => {
@@ -235,15 +231,11 @@ describe("loaded Settings storage doctor", () => {
 
     const dom = await mountDoctor(report);
     const text = dom.textContent ?? "";
-    assert.match(text, /Span authority unavailable/u);
-    assert.equal(
-      dom.querySelector('section[aria-labelledby="span-authority-title"]')?.getAttribute("aria-live"),
-      "polite",
-    );
+    assert.match(text, /Run record consistency.*Unavailable/u);
     assert.match(text, /span-stream-invalid/u);
     assert.match(text, /span corpus directory spans is not a regular no-follow directory/u);
-    assert.doesNotMatch(text, /Span authority reconciled/u);
-    assert.doesNotMatch(text, /stream runs|live authority runs|archived runs?/u);
-    assert.equal(dom.querySelector('[aria-label="Span authority problems"]'), null);
+    assert.doesNotMatch(text, /Run record consistency.*Reconciled/u);
+    assert.doesNotMatch(text, /stream runs|live runs|archived runs?/u);
+    assert.doesNotMatch(text, /run record issues/u);
   });
 });

@@ -51,6 +51,9 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
     below say about it is true of it: the same seven sections, in the same order, drawn over
     `ds/ui.tsx` itself.
 
+Current operator direction supersedes the ported typeface rule below: use
+the macOS system UI font (San Francisco) through the dashboard sans token.
+
     This paragraph used to say the page did not exist at all — it was a real deferral, and D274
     item 3 ("port specimen page plus parity scene") ruled it built on 2026-08-26, closing
     `03.1-finish-the-dashboard.md` OPEN question 3 and ledger 3 UK146–UK158. Two details of the port

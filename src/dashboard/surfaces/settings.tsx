@@ -4,6 +4,7 @@ import {
 ArrowLeft,
 BookMarked,
 CircleAlert,
+ClipboardCheck,
 Database,
 FolderOpen,
 Gauge,
@@ -29,7 +30,8 @@ import { useEditableSettings } from "./settings-editor-model.js";
 import { EditableSettingsSection } from "./settings-editor.js";
 import { SystemHostsSection } from "./settings-hosts.js";
 import { KeyboardSection } from "./settings-keyboard.js";
-import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { PreflightSection } from "./settings-preflight.js";
+import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage-settings-model.js";
 import { StorageSection } from "./storage-settings.js";
 import { UiCatalogSection } from "./ui-catalog.js";
@@ -58,6 +60,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   performance: Gauge,
   paths: FolderOpen,
   storage: Database,
+  preflight: ClipboardCheck,
   "system-hosts": Link2,
   capabilities: Table2,
   keyboard: KeyboardIcon,
@@ -184,7 +187,7 @@ export function SettingsPage({
   onCatalogView,
   actorId,
   descriptorFingerprint,
-  preflight,
+  preflight: _preflight,
   onSection,
   onClose,
   onExitGuardChange,
@@ -323,7 +326,8 @@ export function SettingsPage({
             onView={onCatalogView}
           />
         )}
-        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} editor={editor} preflight={preflight} />}
+        {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} />}
         {resolution.state === "open" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
         )}

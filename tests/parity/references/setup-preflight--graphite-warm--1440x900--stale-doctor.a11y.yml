@@ -52,8 +52,10 @@
       - link "Deployment":
         - /url: "?settings=runtime-isolation"
       - text: Status
-      - link "Storage health":
+      - link "Storage checks":
         - /url: "?settings=storage"
+      - link "Preflight":
+        - /url: "?settings=preflight"
       - link "System hosts":
         - /url: "?settings=system-hosts"
       - link "Workflow capabilities":
@@ -63,18 +65,10 @@
         - /url: "?settings=keyboard"
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
-    - heading "Storage health" [level=2]
-    - text: checked 9:00 AM
-    - status: Authority summary healthy Backup metadata has not been re-verified by this summary.
-    - img "Done"
-    - text: Authority healthy
-    - img "Done"
-    - text: Backup current
-    - button "Run the read-only storage doctor": Run storage doctor
-    - button "Storage recovery instructions"
-    - separator
+    - heading "Preflight" [level=2]
+    - text: Check whether the dashboard or a workflow is ready to run.
     - region "Preflight":
-      - text: Preflight Check readiness for
+      - text: Check readiness for
       - combobox "Check readiness for":
         - option "Dashboard" [selected]
         - option "Person Lookup"

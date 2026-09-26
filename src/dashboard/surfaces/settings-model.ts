@@ -28,6 +28,7 @@ export type SettingsNavIcon =
   | "performance"
   | "paths"
   | "storage"
+  | "preflight"
   | "system-hosts"
   | "capabilities"
   | "keyboard"
@@ -98,6 +99,7 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
  * been added, removed and restored three times (D275 item 1, D281 item 2).
  */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
+export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
 
 
 /**
@@ -107,7 +109,7 @@ export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
  * Settings was a `Dialog`, and Radix restores focus to the element that opened
  * it when a dialog closes. As a routed page it has no such trigger ref — the
  * takeover can be reached from two doors (the gear, and the storage band's
- * `Storage health`) and can survive a reload — so the target is looked up by
+ * `Storage checks`) and can survive a reload — so the target is looked up by
  * id the same way `WORKFLOW_PANEL_TOGGLE_ID` is (`shell.tsx`), rather than
  * held as a React ref threaded down through `TopBar`.
  */
@@ -165,17 +167,16 @@ export function buildSettingsNav(
       { id: "runtime-isolation", label: "Deployment", icon: "paths", source: "served" },
     ] });
   }
-  if (sections.length > 0) {
-    groups.push({
-      heading: "Status",
-      entries: sections.map((section) => ({
-        id: section.id,
-        label: section.label,
-        icon: SERVED_NAV_ICON[section.id] ?? "unrendered",
-        source: "served",
-      })),
-    });
-  }
+  const statusEntries: SettingsNavEntry[] = sections.map((section) => ({
+    id: section.id,
+    label: section.label,
+    icon: SERVED_NAV_ICON[section.id] ?? "unrendered",
+    source: "served",
+  }));
+  const storageIndex = statusEntries.findIndex((entry) => entry.id === "storage");
+  statusEntries.splice(storageIndex < 0 ? statusEntries.length : storageIndex + 1, 0,
+    { id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
+  groups.push({ heading: "Status", entries: statusEntries });
   groups.push({
     heading: "Help",
     entries: [

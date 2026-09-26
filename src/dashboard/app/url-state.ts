@@ -244,7 +244,7 @@ export type ActiveTakeover =
 
 export function activeTakeover(route: AppRouteState): ActiveTakeover {
   // Settings outranks every other key, and the reason is functional rather
-  // than a preference about importance: the storage band's `Storage health`
+  // than a preference about importance: the storage band's `Storage checks`
   // door is mounted ABOVE the takeover switch, so it is pressed from inside
   // whatever is already open. If any of the keys below outranked `settings`,
   // that door would change the URL and leave the screen where it was.

@@ -72,7 +72,7 @@ function section(id: string, label: string): SettingsSection {
   return SettingsSectionPrimitiveSchema.parse({ id, label, revision: 1 });
 }
 
-const STORAGE = section("storage", "Storage health");
+const STORAGE = section("storage", "Storage checks");
 const HEALTHY_STORAGE = StorageHealthSummaryWireSchema.parse({
   authority: "healthy",
   backup: "current",
@@ -104,7 +104,7 @@ describe("the settings route (D272 item 1)", () => {
   });
 
   it("OUTRANKS every other takeover key", () => {
-    // The storage band's `Storage health` is mounted above the takeover switch,
+    // The storage band's `Storage checks` is mounted above the takeover switch,
     // so it is pressed from inside whatever is already open. If any key below
     // won, that door would move the URL and leave the screen where it was.
     const layered: AppRouteState = {
@@ -127,8 +127,9 @@ describe("the settings page's nav (D274 item 5)", () => {
   it("puts every served section under Status and always offers both Help entries", () => {
     const groups = buildSettingsNav([STORAGE]);
     assert.deepEqual(groups.map((group) => group.heading), ["Status", "Help"]);
-    assert.deepEqual(groups[0]?.entries.map((entry) => entry.id), ["storage"]);
+    assert.deepEqual(groups[0]?.entries.map((entry) => entry.id), ["storage", "preflight"]);
     assert.equal(groups[0]?.entries[0]?.source, "served");
+    assert.equal(groups[0]?.entries[1]?.source, "client");
     assert.deepEqual(
       groups[1]?.entries.map((entry) => entry.id),
       [SETTINGS_KEYBOARD_SECTION_ID, SETTINGS_UI_CATALOG_SECTION_ID],
@@ -140,14 +141,15 @@ describe("the settings page's nav (D274 item 5)", () => {
     assert.deepEqual(groups[1]?.entries.map((entry) => entry.source), ["client", "client"]);
   });
 
-  it("draws no Status heading over an empty list, and Help still stands", () => {
+  it("keeps Preflight available when no status section is served", () => {
     const groups = buildSettingsNav([]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Help"]);
+    assert.deepEqual(groups.map((group) => group.heading), ["Status", "Help"]);
+    assert.deepEqual(groups[0]?.entries.map((entry) => entry.id), ["preflight"]);
   });
 
   it("gives a served section this build cannot render its own glyph", () => {
     const groups = buildSettingsNav([STORAGE, section("budgets", "Budgets")]);
-    assert.deepEqual(groups[0]?.entries.map((entry) => entry.icon), ["storage", "unrendered"]);
+    assert.deepEqual(groups[0]?.entries.map((entry) => entry.icon), ["storage", "preflight", "unrendered"]);
   });
 });
 

@@ -1239,7 +1239,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
   /**
    * Settings is a PLACE now (D272 item 1), so its two doors — the gear and the
-   * storage band's `Storage health` — both push a history entry and the
+   * storage band's `Storage checks` — both push a history entry and the
    * browser's own Back returns the operator to the view they left. The empty
    * value is the page's first section; every other takeover key clears for the
    * same reason the switcher clears them.
