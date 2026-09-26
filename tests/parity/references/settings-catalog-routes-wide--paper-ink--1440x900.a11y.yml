@@ -1,0 +1,121 @@
+# settings-catalog-routes-wide--paper-ink--1440x900
+# adapter: fixture
+# fixture: settings-catalog
+# descriptorHash: a77fa29f1a9c71c1fe98a0b0eafbd9f20305704defb075c9a4bf07b610206411
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: paper-ink  variant: default
+# capturedAt: 2026-08-03
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive"
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
+  - button "No later day" [disabled]
+  - 'button "Preflight: unavailable"'
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings" [pressed]
+- main:
+  - region "Settings":
+    - navigation "Settings sections":
+      - button "Back to the dashboard"
+      - separator
+      - text: Settings
+      - link "General":
+        - /url: "?settings=general"
+      - link "Display":
+        - /url: "?settings=display"
+      - link "Performance":
+        - /url: "?settings=performance"
+      - link "Paths":
+        - /url: "?settings=paths"
+      - link "Routes":
+        - /url: "?settings=routes"
+      - link "Annual dates":
+        - /url: "?settings=annual-dates"
+      - link "Provider budgets & models":
+        - /url: "?settings=providers"
+      - text: Authorities
+      - link "Credentials":
+        - /url: "?settings=protected-store"
+      - link "Provider availability":
+        - /url: "?settings=provider-env"
+      - link "Observed host":
+        - /url: "?settings=derived-host"
+      - link "Runtime paths":
+        - /url: "?settings=runtime-isolation"
+      - text: Status
+      - link "Storage health":
+        - /url: "?settings=storage"
+      - link "Workflow capabilities":
+        - /url: "?settings=workflow-capabilities"
+      - text: Help
+      - link "Keyboard":
+        - /url: "?settings=keyboard"
+      - link "UI catalog":
+        - /url: "?settings=ui-catalog"
+    - heading "Routes" [level=2]
+    - text: Choose a system, then edit its destinations.
+    - button "Save routes" [disabled]
+    - text: 9 systems · 18 destinations
+    - strong: Edit by system
+    - text: Expand a system to see its route fields.
+    - searchbox "Find a system or route"
+    - text: 9 systems shown
+    - button "Kuali Forms and workflows 1 URL":
+      - strong: Kuali
+      - text: Forms and workflows 1 URL
+    - button "New Kronos Timekeeping 1 URL":
+      - strong: New Kronos
+      - text: Timekeeping 1 URL
+    - button "CRM Onboarding records and documents 5 URLs" [expanded]:
+      - strong: CRM
+      - text: Onboarding records and documents 5 URLs
+    - text: Entry
+    - paragraph: Open the HR CRM workspace
+    - textbox "Entry": https://crm.ucsd.edu/hr
+    - text: Onboarding search
+    - paragraph: Find an onboarding record
+    - textbox "Onboarding search": https://act-crm.my.site.com/hr/ONB_SearchOnboardings
+    - text: UCPath entry sheet
+    - paragraph: Open the entry sheet
+    - textbox "UCPath entry sheet": https://act-crm.my.site.com/hr/ONB_PPSEntrySheet
+    - text: Onboarding history
+    - paragraph: Review earlier onboarding activity
+    - textbox "Onboarding history": https://act-crm.my.site.com/hr/ONB_ShowOnboardingHistory
+    - text: iDocs viewer
+    - paragraph: View stored onboarding documents
+    - textbox "iDocs viewer": https://act-idocs.ucsd.edu
+    - paragraph: Changes to this system join the page’s unsaved changes.
+    - button "OnBase Document management 1 URL":
+      - strong: OnBase
+      - text: Document management 1 URL
+    - button "UCPath Personnel and job records 5 URLs":
+      - strong: UCPath
+      - text: Personnel and job records 5 URLs
+    - button "I-9 Employment eligibility verification 2 URLs":
+      - strong: I-9
+      - text: Employment eligibility verification 2 URLs
+    - button "Old Kronos Legacy timekeeping 1 URL":
+      - strong: Old Kronos
+      - text: Legacy timekeeping 1 URL
+    - button "ServiceNow Service requests 1 URL":
+      - strong: ServiceNow
+      - text: Service requests 1 URL
+    - button "SharePoint Shared files and rosters 1 URL":
+      - strong: SharePoint
+      - text: Shared files and rosters 1 URL
+    - text: No unsaved route changes
+    - button "Save routes" [disabled]
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live

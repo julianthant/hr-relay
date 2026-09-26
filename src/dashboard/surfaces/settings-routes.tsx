@@ -16,20 +16,22 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const section = document.sections.find(candidate => candidate.id === "routes");
   if (section === undefined) return <Banner tone="danger" title="Routes unavailable">The settings document did not include Routes.</Banner>;
   const routes = section.leaves.map(leaf => ({ leaf, presentation: routePresentation(leaf) }));
+  const destinationCount = routes.reduce((count, { leaf }) => count + (leaf.control.input === "object" ? leaf.control.fields.length : 0), 0);
   const filtered = routes.filter(({ presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   const dirtyRoutes = routes.filter(({ leaf }) => editor.draft[leaf.path] !== undefined);
   const hasError = Object.values(editor.errors).some(error => error !== undefined);
 
   const cannotSave = dirtyRoutes.length === 0 || editor.locked || editor.readProblem !== undefined || hasError;
   return <Panel className="settings-page-panel routes-page"><PanelHeader title="Routes" headingLevel={2} subtitle="Choose a system, then edit its destinations." icon={<Link2 aria-hidden className={dsIcon.lg} />}
-    actions={<Button variant="secondary" disabled={cannotSave} onClick={editor.submit}>Save routes</Button>} />
+    actions={<span className="routes-page-header-actions"><Button variant="primary" disabled={cannotSave} onClick={editor.submit}>Save routes</Button><span className={dsText.meta}>{String(routes.length)} systems · {String(destinationCount)} destinations</span></span>} />
     <PanelBody className="settings-page-body">
       <form className="flex flex-col gap-[var(--ds-space-section)]" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
         {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Saved routes take effect after this dashboard restarts. This process still uses settings revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
         {editor.readProblem !== undefined && <Banner tone="warning" title="Current routes unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
         <SettingsSaveFeedback save={editor.save} retry={editor.retry} retryConflict={editor.submit} />
+        <div className="routes-page-guidance"><strong>Edit by system</strong><span>Expand a system to see its route fields.</span></div>
         <div className="routes-page-toolbar">
-          <Input type="search" aria-label="Find a system or route" placeholder="Find a system or route" value={query} onChange={event => setQuery(event.target.value)} />
+          <Input type="search" aria-label="Find a system or route" placeholder="Find a system" value={query} onChange={event => setQuery(event.target.value)} />
           <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{String(filtered.length)} {filtered.length === 1 ? "system" : "systems"} shown</span>
         </div>
         <div className="routes-page-list">
@@ -60,6 +62,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
                   {operation !== undefined && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.reset(leaf.path)}>Undo edit</Button>}
                   {leaf.source === "settings" && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.clear(leaf.path)}>Reset to default</Button>}
                 </div>}
+                <p className="routes-page-system-note">Changes to this system join the page’s unsaved changes.</p>
               </div>}
             </section>;
           })}

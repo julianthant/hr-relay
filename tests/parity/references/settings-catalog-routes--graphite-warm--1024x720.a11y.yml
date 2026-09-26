@@ -64,6 +64,9 @@
     - heading "Routes" [level=2]
     - text: Choose a system, then edit its destinations.
     - button "Save routes" [disabled]
+    - text: 9 systems · 18 destinations
+    - strong: Edit by system
+    - text: Expand a system to see its route fields.
     - searchbox "Find a system or route"
     - text: 9 systems shown
     - button "Kuali Forms and workflows 1 URL":
@@ -90,6 +93,7 @@
     - text: iDocs viewer
     - paragraph: View stored onboarding documents
     - textbox "iDocs viewer": https://act-idocs.ucsd.edu
+    - paragraph: Changes to this system join the page’s unsaved changes.
     - button "OnBase Document management 1 URL":
       - strong: OnBase
       - text: Document management 1 URL
