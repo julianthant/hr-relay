@@ -68,7 +68,7 @@ describe("mounted shell navigation", () => {
     assert.doesNotMatch(document.querySelector('nav[aria-label="Workflow Panel"]')?.textContent ?? "", /active\s*│\s*all/iu);
     assert.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "separations");
     await click(button("Settings"));
-    await click(button("Back to the dashboard"));
+    await historyMove("back");
     assert.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
 
     await act(async () => root?.unmount()); root = undefined; document.body.innerHTML = "";
@@ -303,8 +303,8 @@ it("native date history preserves a dirty Settings draft, then restores the acce
     },
   });
   await click(button("Settings"));
-  const display = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "Display"); assert.ok(display);
-  await click(display);
+  const general = [...document.querySelectorAll<HTMLAnchorElement>("a")].find(node => node.textContent === "General"); assert.ok(general);
+  await click(general);
   const width = document.querySelector<HTMLInputElement>('input[type="number"]'); assert.ok(width);
   await act(async () => {
     const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value"); if (descriptor?.set === undefined) throw new Error("input value setter missing");

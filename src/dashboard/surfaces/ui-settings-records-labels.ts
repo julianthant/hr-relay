@@ -126,7 +126,7 @@ export function differingSettingsValues(leaf: EditableSettingsLeafWire): readonl
 
 function groupLabel(sectionId: string, path: string): string {
   const parts = path.split(".");
-  if (sectionId === "annual-dates") return parts[1] === undefined ? "Fiscal year" : `Fiscal year ${parts[1].replace(/^FY/u, "")}`;
+  if (sectionId === "annual-dates") return "Job end date";
   if (sectionId === "providers") return providerName(parts[1] ?? "Provider");
   if (sectionId === "display") return "Primary display";
   if (sectionId === "general") return "Operator";

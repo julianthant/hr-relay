@@ -8,9 +8,6 @@ import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
-import {
-SETTINGS_GEAR_ID,
-} from "../surfaces/settings-model.js";
 import { SettingsPage } from "../surfaces/settings.js";
 import {
 RUN_START_DOOR_ID,
@@ -57,11 +54,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               preflight={boot.preflight ?? []}
               onSection={(next) => setRoute({ ...route, settings: next })}
               onExitGuardChange={onSettingsExitGuardChange}
-              onClose={() => {
-                // The discard dialog must leave before focus can return to
-                // the persistent gear; the coordinator restores it after commit.
-                closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route));
-              }}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
             /* UF-FU-1: the surface owns the same full-bleed `TakeoverFrame`

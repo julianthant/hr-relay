@@ -2688,7 +2688,6 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
   it.each([
     { label: "partial display set", seed: {}, patch: { "display.screenWidth": { set: 1600 } }, missing: ["display.screenHeight"] },
     { label: "partial display clear", seed: { "display.screenWidth": { set: 1600 }, "display.screenHeight": { set: 900 } }, patch: { "display.screenHeight": { clear: true } }, missing: ["display.screenHeight"] },
-    { label: "partial annual dates set", seed: {}, patch: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" } }, missing: ["annualDates.FY2027.kronosDefaultEndDate", "annualDates.FY2027.kronosDefaultStartDate"] },
     { label: "partial annual dates clear", seed: { "annualDates.FY2027.jobEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultEndDate": { set: "06/30/2027" }, "annualDates.FY2027.kronosDefaultStartDate": { set: "07/01/2026" } }, patch: { "annualDates.FY2027.jobEndDate": { clear: true } }, missing: ["annualDates.FY2027.jobEndDate"] },
   ])("returns cross-field-invalid for $label without durable effects", async ({ seed, patch, missing }) => {
     const h = harness();
@@ -2706,6 +2705,21 @@ describe("BFF spine flow (start plan -> kernel -> spans -> projection)", () => {
     assert.deepEqual(await json(response), { state: "rejected", commandId, code: "cross-field-invalid",
       message: `cross-field-invalid { keys: ${missing.join(", ")} }` });
     assert.deepEqual(settingsAuthoritySnapshot(h, commandId), before);
+  });
+
+  it("accepts a current-year job-end date without Kronos fields", async () => {
+    const h = harness();
+    const path = `annualDates.FY${String(h.clock.fiscalYear())}.jobEndDate`;
+    const patch = { [path]: { set: "06/30/2027" } };
+    const response = await h.app.request("/api/v1/commands", {
+      method: "POST", headers: OPERATOR_JSON_HEADERS,
+      body: JSON.stringify({ commandId: "00000000-0000-4000-8000-000000000903", family: "settings", type: "apply-settings",
+        target: { expectedRevision: 1 }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: rawSettingsPatchFingerprint(patch), patch } }),
+    });
+    assert.equal(response.status, 200);
+    const record = h.database.withAuthorityTransaction(repositories => readSettings(repositories));
+    assert.equal(record.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+    assert.deepEqual(record.settings.annualDates, { [`FY${String(h.clock.fiscalYear())}`]: { jobEndDate: "06/30/2027" } });
   });
 
   it("refuses invalid or unauthorized requests before protected retry identity and journal reads", async () => {

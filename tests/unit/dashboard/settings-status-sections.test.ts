@@ -152,7 +152,6 @@ async function mount(
       descriptorFingerprint: "a".repeat(64),
       preflight: [],
       onSection: () => undefined,
-      onClose: () => undefined,
     }),
   });
   await act(async () => {

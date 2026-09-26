@@ -1766,6 +1766,37 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D350 — Single current-fiscal-year job-end date and historical backup compatibility · 2026-09-26
+
+Settings exposes one employment-date control: `annualDates.FY<year>.jobEndDate`, where the server
+selects `<year>` through its injected `Clock.fiscalYear()`. It serves that current-year leaf even
+when no value is stored. The job-end date stays required, has no clear/restore action, and does not
+receive an invented default. Runtime `requireAnnualDates` continues to fail loud when the current
+fiscal-year entry or its job-end date is absent or stale. The UI does not expose other fiscal years,
+year creation, or either Kronos date. Existing annual-date maps and historical records are retained
+without rewriting them.
+
+The live `AnnualDateEntrySchema` keeps `jobEndDate` required and makes only
+`kronosDefaultEndDate` and `kronosDefaultStartDate` optional, so date-only current entries are valid.
+The frozen v29 schema remains unchanged. This changes `SETTINGS_SCHEMA_HASH`, but it does not change
+the canonical persisted-value fingerprint for existing settings, the v55 authority schema version,
+the current settings revision/fingerprint, or any immutable journal, audit, snapshot, or historical
+map. `readSettings` projects the current build's schema hash while retaining the settings-current
+value fingerprint; no schema-version bump or historical-row migration occurs.
+
+The manifest-v2 reader has a narrow compatibility arm for the exact pre-D350 hash
+`b8cd5d1b0056fceb020df20e0682762b2de53d8efa8dd9109c835d0fc0e9908a`. Its frozen historical schema
+requires all three date fields and limits ordinary paths to the pre-D350 four operator-editable
+paths. It checks the ordinary record fingerprint and revision/last-applied fields, the authority
+tuple's exact root fingerprint and schema binding, and the copied database's matching current row,
+command and audit. A hash match alone cannot admit a shape or a mismatch. The compatibility arm is
+used only while verifying old manifest-v2 backups; `SettingsRootAuthoritySchema` and live-root
+validation remain pinned to the current schema hash. Later live path-membership changes must not
+alter this frozen v2 shape. Original journals and authority bytes remain untouched.
+
+Owner: this section, `src/domain/config/schema.ts`, `src/server/settings-runtime.ts`,
+`src/server/dashboard/queries/settings-editor.ts`, and the isolated historical-v2 reader.
+
 ### D349 — Editable Routes and retirement of test-instance runs · 2026-09-25
 
 The operator's Routes page owns the nine production system route sets. Each set is

@@ -71,8 +71,8 @@ function endpoints<Shape extends z.ZodRawShape>(routes: z.ZodObject<Shape>) {
 
 export const AnnualDateEntrySchema = z.strictObject({
   jobEndDate: UsDateSchema,
-  kronosDefaultEndDate: UsDateSchema,
-  kronosDefaultStartDate: UsDateSchema,
+  kronosDefaultEndDate: UsDateSchema.optional(),
+  kronosDefaultStartDate: UsDateSchema.optional(),
 });
 
 export const ProviderBudgetSchema = z.strictObject({

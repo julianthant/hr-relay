@@ -313,7 +313,7 @@ describe("sqlite-settings-authority", () => {
   });
 
   it("pins v32 values in settings_current and removes the protected singleton", () => {
-    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 50);
+    assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 55);
     assert.equal(SQLITE_MIGRATIONS.at(-1)?.version, CURRENT_AUTHORITY_SCHEMA_VERSION);
     const v32 = SQLITE_MIGRATIONS.find(({ version }) => version === 32);
     assert.ok(v32 !== undefined);

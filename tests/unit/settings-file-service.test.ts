@@ -102,17 +102,13 @@ afterEach(() => {
 });
 
 describe("baseline atomic Settings invariants on the single file authority", () => {
-  it("classifies an incomplete annual-date candidate as cross-field-invalid over the baseline", () => {
+  it("accepts a job-end-date-only annual entry over the baseline", () => {
     const path = settingsPath();
     const service = createTestService({ path });
 
-    assert.throws(
-      () => apply(service, 1, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }),
-      (error: unknown) => error instanceof Error
-        && error.message === "cross-field-invalid { keys: annualDates.FY2027.kronosDefaultEndDate,annualDates.FY2027.kronosDefaultStartDate }",
-    );
-    assert.deepEqual(service.read().settings, {});
-    assert.equal(service.read().revision, 1);
+    assert.equal(apply(service, 1, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }).state, "applied");
+    assert.deepEqual(service.read().settings, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } });
+    assert.equal(service.read().revision, 2);
   });
 
   it("preserves untouched catalog leaves while replacing one catalog leaf", () => {
@@ -158,6 +154,22 @@ describe("baseline atomic Settings invariants on the single file authority", () 
       jobEndDate: "06/28/2027",
       kronosDefaultEndDate: "06/29/2027",
       kronosDefaultStartDate: "07/01/2026",
+    });
+  });
+
+  it("preserves historical fiscal-year entries when setting the current job-end date alone", () => {
+    const path = settingsPath();
+    const service = createTestService({ path });
+    const historical = {
+      jobEndDate: "06/30/2024",
+      kronosDefaultEndDate: "06/29/2024",
+      kronosDefaultStartDate: "07/01/2023",
+    };
+    assert.equal(apply(service, 1, { annualDates: { FY2024: historical } }).state, "applied");
+    assert.equal(apply(service, 2, { annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }).state, "applied");
+    assert.deepEqual(service.read().settings.annualDates, {
+      FY2024: historical,
+      FY2027: { jobEndDate: "06/30/2027" },
     });
   });
 

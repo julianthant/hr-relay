@@ -1,7 +1,6 @@
 import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
 import {
-ArrowLeft,
 BookMarked,
 CircleAlert,
 ClipboardCheck,
@@ -15,12 +14,12 @@ Settings as SettingsIcon,
 SlidersHorizontal,
 Table2
 } from "lucide-react";
-import { useCallback,useEffect,useState } from "react";
+import { useCallback,useEffect,useRef,useState } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../domain/dashboard/settings.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,IconButton,SectionLabel,Separator,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsText } from "../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { plural } from "./format.js";
 import type { CatalogView } from "./row-catalog-model.js";
@@ -46,7 +45,7 @@ export type { SettingsSection,StorageHealthSummary };
  */
 const RENDERED_SERVED_SECTION_IDS: ReadonlySet<string> = new Set([
   ...EditableSettingsSectionIdSchema.options,
-  "protected-store", "provider-env", "derived-host", "runtime-isolation",
+  "credentials",
   "storage",
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID,
 ]);
@@ -164,8 +163,7 @@ export function SettingsGear({
 /**
  * Settings, as a page (D272 item 1 / D274 item 5).
  *
- * The 220px nav on the left, `Back to the dashboard` at the top of it, and the
- * section's own panel filling the rest — the demo's shape (SE1–SE4, SE8).
+ * The persistent section nav and body replace the queue while Settings is open.
  *
  * UF-SET-1/4/5. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
  * focus, decided once for all four takeovers. This surface's demo container:
@@ -187,7 +185,6 @@ export function SettingsPage({
   descriptorFingerprint,
   preflight: _preflight,
   onSection,
-  onClose,
   onExitGuardChange,
 }: {
   storage: StorageHealthSummary;
@@ -214,12 +211,12 @@ export function SettingsPage({
   descriptorFingerprint: string;
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string) => void;
-  onClose: () => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
   const editor = useEditableSettings({ actorId, descriptorFingerprint });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
+  const exitFocusTarget = useRef<HTMLElement | null>(null);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
@@ -240,6 +237,7 @@ export function SettingsPage({
 
   const requestExit = useCallback((proceed: () => void): void => {
     if (hasDirtyDraft) {
+      exitFocusTarget.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       setPendingExit(() => proceed);
       return;
     }
@@ -251,10 +249,9 @@ export function SettingsPage({
     return () => onExitGuardChange?.(undefined);
   }, [onExitGuardChange, requestExit]);
 
-  const requestClose = (): void => requestExit(onClose);
-
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
+    exitFocusTarget.current = null;
     editor.discard();
     editor.protectedEditor.discard();
     setPendingExit(undefined);
@@ -266,20 +263,11 @@ export function SettingsPage({
       <nav
         aria-label="Settings sections"
         className={cn(
-          "flex w-[196px] shrink-0 flex-col gap-[var(--ds-space-hair)] overflow-y-auto",
+          "flex w-[288px] shrink-0 flex-col gap-[var(--ds-space-hair)] overflow-y-auto",
           "border-r border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] p-[var(--ds-space-base)]",
         )}
       >
-        <Button
-          variant="ghost"
-          size="sm"
-          icon={<ArrowLeft aria-hidden className={dsIcon.md} />}
-          onClick={requestClose}
-          className="justify-start"
-        >
-          Back to the dashboard
-        </Button>
-        <Separator className="my-[var(--ds-space-tight)]" />
+        <h2 className={cn(dsText.title, "m-0 px-[var(--ds-space-base)] py-[var(--ds-space-cozy)] font-semibold text-[color:var(--ds-fg)]")}>Settings</h2>
         {groups.map((group) => (
           <div key={group.heading} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
             <SectionLabel className="px-[var(--ds-space-base)] pb-[var(--ds-space-tight)] pt-[var(--ds-space-cozy)]">
@@ -297,7 +285,8 @@ export function SettingsPage({
         ))}
       </nav>
 
-      <div className="settings-content flex min-h-0 min-w-0 flex-1 flex-col gap-[var(--ds-space-base)] overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]">
+      <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
+        <DsBodyScope className="settings-tab-body flex flex-col gap-[var(--ds-space-page)]">
         {/* A link naming a section this build has no entry for is stated, never
             redirected: landing on Storage under `?settings=budgets` tells the
             operator they are reading something they are not. */}
@@ -313,9 +302,7 @@ export function SettingsPage({
           </Banner>
         )}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
-        {/* The other Help entry (D295). It owns no takeover and no close
-            control: this page is the takeover, and its `Back to the dashboard`
-            is the one exit. */}
+        {/* The catalog remains a Help destination inside the Settings page. */}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_UI_CATALOG_SECTION_ID && (
           <UiCatalogSection
             query={catalogQuery}
@@ -330,7 +317,8 @@ export function SettingsPage({
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
         )}
-        {resolution.state === "open" && ["protected-store", "provider-env", "derived-host", "runtime-isolation"].includes(resolution.entry.id) && <SettingsAuthoritySection editor={editor} sectionId={resolution.entry.id} />}
+        {resolution.state === "open" && resolution.entry.id === "paths" && <SettingsAuthoritySection editor={editor} sectionId="runtime-isolation" />}
+        {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <CapabilitiesSection workflowLabels={workflowLabels} />
         )}
@@ -349,10 +337,20 @@ export function SettingsPage({
             </span>
           </section>
         )}
+        </DsBodyScope>
       </div>
       <Dialog open={pendingExit !== undefined} onOpenChange={(open) => { if (!open) setPendingExit(undefined); }}>
         <DialogContent
           size="sm"
+          className="ds-body-overlay"
+          onCloseAutoFocus={(event) => {
+            const target = exitFocusTarget.current;
+            exitFocusTarget.current = null;
+            if (target?.isConnected) {
+              event.preventDefault();
+              target.focus();
+            }
+          }}
           title="Discard unsaved settings?"
           description={`You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards both drafts and any pending retry identity. A write already submitted may still be stored.`}
         >

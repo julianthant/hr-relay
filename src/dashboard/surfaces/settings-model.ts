@@ -43,18 +43,30 @@ export type SettingsNavIcon =
  */
 const SERVED_NAV_ICON: Readonly<Record<string, SettingsNavIcon>> = Object.freeze({
   general: "general",
-  display: "display",
   performance: "performance",
   paths: "paths",
   routes: "routes",
-  "annual-dates": "general",
   providers: "performance",
-  "protected-store": "general",
-  "provider-env": "capabilities",
-  "derived-host": "display",
-  "runtime-isolation": "paths",
+  credentials: "general",
   storage: "storage",
   [SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID]: "capabilities",
+});
+
+const EDITOR_SECTIONS = new Set(["general", "display", "performance", "paths", "routes", "annual-dates", "providers"]);
+const FOLDED_EDITOR_SECTIONS = new Set(["display", "annual-dates"]);
+const SETTINGS_ALIASES: Readonly<Record<string, string>> = Object.freeze({
+  display: "general",
+  "annual-dates": "general",
+  "runtime-isolation": "paths",
+  "provider-env": "credentials",
+  "protected-store": "credentials",
+});
+
+const servedEntry = (id: string, label: string): SettingsNavEntry => ({
+  id,
+  label,
+  icon: SERVED_NAV_ICON[id] ?? "unrendered",
+  source: "served",
 });
 
 
@@ -147,33 +159,26 @@ export function buildSettingsNav(
 ): readonly SettingsNavGroup[] {
   const groups: SettingsNavGroup[] = [];
   if (editor !== undefined) {
-    groups.push({
-      heading: "Settings",
-      entries: editor.sections.map((section) => ({
-        id: section.id,
-        label: section.label,
-        icon: SERVED_NAV_ICON[section.id] ?? "unrendered",
-        source: "served",
-      })),
-    });
+    const entries = [
+      servedEntry("general", "General"),
+      servedEntry("performance", "Performance"),
+      servedEntry("paths", "Paths"),
+      servedEntry("routes", "Routes"),
+      servedEntry("providers", "Provider budgets & models"),
+      servedEntry("credentials", "Credentials"),
+      ...editor.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
+        .map(section => servedEntry(section.id, section.label)),
+    ];
+    groups.push({ heading: "Settings", entries });
   }
-  if (editor !== undefined) {
-    groups.push({ heading: "Authorities", entries: [
-      { id: "protected-store", label: "Credentials", icon: "general", source: "served" },
-      { id: "provider-env", label: "Provider availability", icon: "capabilities", source: "served" },
-      { id: "derived-host", label: "Observed host", icon: "display", source: "served" },
-      { id: "runtime-isolation", label: "Runtime paths", icon: "paths", source: "served" },
-    ] });
+  const statusEntries: SettingsNavEntry[] = [];
+  for (const section of sections) {
+    statusEntries.push(servedEntry(section.id, section.label));
+    if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
-  const statusEntries: SettingsNavEntry[] = sections.map((section) => ({
-    id: section.id,
-    label: section.label,
-    icon: SERVED_NAV_ICON[section.id] ?? "unrendered",
-    source: "served",
-  }));
-  const storageIndex = statusEntries.findIndex((entry) => entry.id === "storage");
-  statusEntries.splice(storageIndex < 0 ? statusEntries.length : storageIndex + 1, 0,
-    { id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
+  if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
+    statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
+  }
   groups.push({ heading: "Status", entries: statusEntries });
   groups.push({
     heading: "Help",
@@ -210,7 +215,7 @@ export function resolveSettingsSection(
   if (requested.length === 0) {
     return first === undefined ? { state: "empty" } : { state: "open", entry: first };
   }
-  const found = entries.find((entry) => entry.id === requested);
+  const found = entries.find((entry) => entry.id === (SETTINGS_ALIASES[requested] ?? requested));
   return found === undefined ? { state: "unknown", requested } : { state: "open", entry: found };
 }
 export { CAPABILITY_SPECS,capabilityAvailableCount,capabilityMatrix,dryRunPostureSentence } from "./settings-capabilities-model.js";

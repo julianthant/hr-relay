@@ -20,6 +20,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings-editor-model.js";
 import { EditableSettingsSection } from "../../../../src/dashboard/surfaces/settings-editor.js";
 import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/settings-authorities.js";
+import { RoutesSection } from "../../../../src/dashboard/surfaces/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 export function syntheticSettingsAuthority() {
@@ -61,7 +62,8 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
   let editor: ReturnType<typeof useEditableSettings> | undefined;
   function Harness({ sectionId }: { sectionId: string }) {
     editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: "d".repeat(64) });
-    return ["protected-store", "provider-env", "derived-host", "runtime-isolation"].includes(sectionId)
+    if (sectionId === "routes") return createElement(RoutesSection, { editor });
+    return ["credentials", "protected-store", "provider-env", "runtime-isolation"].includes(sectionId)
       ? createElement(SettingsAuthoritySection, { editor, sectionId }) : createElement(EditableSettingsSection, { editor, sectionId });
   }
   const render = async (sectionId: string): Promise<void> => { await act(async () => { root.render(createElement(DashboardClientProvider, { client, children: createElement(Harness, { sectionId }) })); }); };

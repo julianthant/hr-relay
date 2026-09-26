@@ -58,7 +58,8 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
   if (activeConfig === undefined) throw new Error("settings-editor-active-snapshot-missing");
   if (sha256Hex(canonicalJsonStringify(activeConfig)) !== active.configFingerprint || sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) throw new Error("settings-editor-config-mismatch");
   const ordinary = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings");
-  const years = [...new Set([...Object.keys(resolved.config.annualDates), ...Object.keys(activeConfig.annualDates)])].sort();
+  const currentFiscalYear = deps.clock.fiscalYear();
+  const currentFiscalYearKey = `FY${String(currentFiscalYear)}`;
   const leaf = (key: string, path = key) => {
     const control = settingsControlFor(key);
     const settingsValue = atPath(record.settings, path);
@@ -78,7 +79,9 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
       ...(key === "concurrency.defaultWorkers" ? { hazard: "Review capacity for new worker pools." } : {}),
     };
   };
-  const leaves = ordinary.flatMap(row => row.key.includes("*") ? years.map(year => leaf(row.key, row.key.replace("*", year))) : [leaf(row.key)]);
+  const leaves = ordinary.flatMap(row => row.key.startsWith("annualDates.")
+    ? row.key.endsWith(".jobEndDate") ? [leaf(row.key, row.key.replace("*", currentFiscalYearKey))] : []
+    : [leaf(row.key)]);
   const protectedRows = ProtectedSettingsNameSchema.options.map(name => ({ name, label: settingsLabel(name), activationScope: "next-use",
     purpose: name === "activityPersonPseudonym" ? "Historical records only; Activity pseudonym consumers remain retired." : `Used at the next ${name.startsWith("ucpath") ? "login" : "use"}.` }));
   let protectedSettings: unknown;
@@ -107,7 +110,7 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
     activeConfigFingerprint: active.configFingerprint, runtimeStatus,
     catalog: SETTINGS_CATALOG.map(settingsCatalogEntry),
     sections: EditableSettingsSectionIdSchema.options.map(id => ({ id, label: SECTION_LABELS[id], description: "Ordinary settings · SQLite", leaves: leaves.filter(value => settingsSectionFor(value.path) === id) })),
-    fiscalYearTemplate: { keyPattern: "^FY\\d{4}$", leaves: ordinary.filter(row => row.key.includes("*")).map(row => leaf(row.key)) },
+    currentFiscalYear,
     protectedSettings, providers, host: hostConfigFacts(deps.environment), deployment,
   });
 }

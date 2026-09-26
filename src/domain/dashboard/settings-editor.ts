@@ -91,7 +91,7 @@ export const EditableSettingsWireSchema = z.strictObject({
   activeConfigFingerprint: FingerprintSchema, runtimeStatus: SettingsRuntimeStatusSchema,
   catalog: SettingsCatalogWireSchema,
   sections: z.array(EditableSettingsSectionWireSchema).length(EditableSettingsSectionIdSchema.options.length),
-  fiscalYearTemplate: z.strictObject({ keyPattern: z.literal("^FY\\d{4}$"), leaves: z.array(EditableSettingsLeafWireSchema).length(3) }),
+  currentFiscalYear: PositiveIntSchema,
   protectedSettings: SettingsProtectedWireSchema,
   providers: z.record(ProviderKeySchema, SettingsProviderWireSchema),
   host: HostConfigFactsSchema,
@@ -103,18 +103,14 @@ export const EditableSettingsWireSchema = z.strictObject({
   const leaves = document.sections.flatMap(section => section.leaves);
   const keys = leaves.map(leaf => leaf.path);
   if (new Set(keys).size !== keys.length) issue("editable settings inventory repeats a path");
-  const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.includes("*")).map(row => row.key);
-  if (expected.some(key => !keys.includes(key)) || keys.some(key => !new Set<string>(expected).has(key) && !/^annualDates\.FY\d{4}\./u.test(key))) issue("editable settings inventory membership mismatch");
+  const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.startsWith("annualDates.")).map(row => row.key);
+  const currentJobEndDate = `annualDates.FY${String(document.currentFiscalYear)}.jobEndDate`;
+  if (expected.some(key => !keys.includes(key)) || keys.filter(key => key.startsWith("annualDates.")).join("\0") !== currentJobEndDate
+    || keys.some(key => !new Set<string>(expected).has(key) && key !== currentJobEndDate)) issue("editable settings inventory membership mismatch");
   for (const section of document.sections) for (const leaf of section.leaves) {
     if (settingsSectionFor(leaf.path) !== section.id) issue("editable setting is in the wrong section");
     if (document.runtimeStatus.state === "current" && canonicalJsonStringify(leaf.activeValue ?? null) !== canonicalJsonStringify(leaf.effectiveValue ?? null)) issue("current settings values disagree with active values");
   }
-  const template = document.fiscalYearTemplate.leaves;
-  const expectedTemplate = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && row.key.includes("*")).map(row => row.key);
-  if (new Set(template.map(leaf => leaf.path)).size !== expectedTemplate.length || expectedTemplate.some(key => !template.some(leaf => leaf.path === key))
-    || template.some(leaf => leaf.effectiveValue !== undefined || leaf.defaultValue !== undefined || leaf.activeValue !== undefined || leaf.settingsValue !== undefined)) issue("fiscal year template mismatch");
-  const years = new Set(keys.filter(key => key.startsWith("annualDates.")).map(key => key.split(".")[1]));
-  for (const year of years) if (expectedTemplate.some(key => !keys.includes(key.replace("*", String(year))))) issue("incomplete fiscal year");
   for (const [key, value] of Object.entries(document.deployment)) if (!z.safeParse(deploymentLeafSchema(key), value).success) issue("invalid deployment fact type");
   const persisted = document.runtimeStatus.state === "current" ? document.runtimeStatus.identity : document.runtimeStatus.persisted;
   const active = document.runtimeStatus.state === "current" ? document.runtimeStatus.identity : document.runtimeStatus.active;

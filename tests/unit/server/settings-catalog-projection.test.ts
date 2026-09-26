@@ -24,10 +24,13 @@ function fixture() {
   return { deps, snapshot };
 }
 describe("complete Settings catalog projection", () => {
-  it("serves exactly the 77 canonical rows in both directions, including three templates and all five source classes", () => {
+  it("serves the canonical catalog plus exactly one server-selected annual date leaf", () => {
     const document = fixtureSettingsDocument();
     assert.deepEqual(document.catalog.map(row => row.key).sort(), SETTINGS_CATALOG.map(row => row.key).sort());
-    assert.deepEqual(document.sections.flatMap(section => section.leaves.map(leaf => leaf.catalogKey)).concat(document.fiscalYearTemplate.leaves.map(leaf => leaf.catalogKey)).sort(), SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings").map(row => row.key).sort());
+    const leaves = document.sections.flatMap(section => section.leaves);
+    const expected = SETTINGS_CATALOG.filter(row => row.sourceClass === "ordinary-settings" && !row.key.startsWith("annualDates.")).map(row => row.key);
+    assert.deepEqual(leaves.map(leaf => leaf.catalogKey).filter(key => !key.startsWith("annualDates.")).sort(), expected.sort());
+    assert.deepEqual(leaves.filter(leaf => leaf.path.startsWith("annualDates.")).map(leaf => leaf.path), [`annualDates.FY${String(document.currentFiscalYear)}.jobEndDate`]);
     assert.deepEqual([...new Set(document.catalog.map(row => row.sourceClass))].sort(), ["derived-host", "ordinary-settings", "protected-store", "provider-env", "runtime-isolation"]);
     assert.equal(document.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
     assert.equal(JSON.stringify(document).includes("currentSource"), false);
@@ -68,7 +71,7 @@ describe("complete Settings catalog projection", () => {
     const env = new Proxy(deps.environment, { get: (target, key) => { if (key === "GEMINI_API_KEY") throw new Error("provider-sentinel"); return Reflect.get(target, key) as unknown; } });
     assert.deepEqual(buildSettingsEditor({ ...deps, environment: env }).providers.geminiApiKeys, { state: "unknown" });
   });
-  for (const mutation of ["missing", "duplicate", "classification", "wrong-section", "wrong-type", "wrong-control", "template", "legacy-readback"] as const) {
+  for (const mutation of ["missing", "duplicate", "classification", "wrong-section", "wrong-type", "wrong-control", "wrong-current-year", "legacy-readback"] as const) {
     it(`rejects ${mutation} payloads`, () => {
       const document = fixtureSettingsDocument();
       const general = document.sections.find(section => section.id === "general");
@@ -81,7 +84,10 @@ describe("complete Settings catalog projection", () => {
         case "wrong-section": document.sections.find(section => section.id === "paths")?.leaves.push(general.leaves.shift()!); break;
         case "wrong-type": label.effectiveValue = 42; break;
         case "wrong-control": label.control = { input: "number", minimum: 0 }; break;
-        case "template": document.fiscalYearTemplate.leaves[0].path = "annualDates.*.missing"; break;
+        case "wrong-current-year": {
+          const annual = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path.startsWith("annualDates."));
+          assert.ok(annual); annual.path = "annualDates.FY2028.jobEndDate"; break;
+        }
         case "legacy-readback": {
           assert.equal(document.protectedSettings.state, "available");
           if (document.protectedSettings.state !== "available") throw new Error("fixture unavailable");
@@ -91,12 +97,19 @@ describe("complete Settings catalog projection", () => {
       assert.equal(EditableSettingsWireSchema.safeParse(document).success, false);
     });
   }
-  it("retains optional/unset rows and expands fiscal years without redefining catalog membership", () => {
+  it("shows only the current fiscal year's required date and retains stored history without exposing it", () => {
     const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } }, providers: { gemini: { models: ["first", "second"] } } }, 2);
     assert.equal(document.catalog.length, 77);
-    assert.equal(document.sections.flatMap(section => section.leaves).length, 59);
+    assert.equal(document.sections.flatMap(section => section.leaves).length, 57);
     const model = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "providers.gemini.models");
     assert.deepEqual(model?.settingsValue, ["first", "second"]);
     assert.equal(model?.defaultValue, undefined);
+    assert.equal(document.currentFiscalYear, 2027);
+    const annual = document.sections.flatMap(section => section.leaves).filter(leaf => leaf.path.startsWith("annualDates."));
+    assert.deepEqual(annual.map(leaf => leaf.path), ["annualDates.FY2027.jobEndDate"]);
+    assert.equal(annual[0]?.settingsValue, "6/30/2027");
+    const absent = fixtureSettingsDocument({ annualDates: { FY2024: { jobEndDate: "6/30/2024" } } }, 2);
+    assert.deepEqual(absent.sections.flatMap(section => section.leaves).filter(leaf => leaf.path.startsWith("annualDates.")).map(leaf => leaf.path), ["annualDates.FY2027.jobEndDate"]);
+    assert.equal(absent.sections.flatMap(section => section.leaves).find(leaf => leaf.path.startsWith("annualDates."))?.validity, "unset");
   });
 });

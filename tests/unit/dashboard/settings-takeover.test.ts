@@ -253,7 +253,6 @@ describe("the settings nav renders real navigation, not buttons (unit F4b findin
     // is empty rather than a fixture nothing reads.
     workflowLabels: new Map<string, string>(),
     onSection: () => undefined,
-      onClose: () => undefined,
     }),
   }));
 
@@ -302,7 +301,6 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
       preflight: [],
       workflowLabels: new Map<string, string>(),
       onSection: () => undefined,
-        onClose: () => undefined,
       }),
     }));
     assert.match(markup, /called “budgets”\./u);
@@ -327,7 +325,6 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
       preflight: [],
       workflowLabels: new Map<string, string>(),
       onSection: () => undefined,
-        onClose: () => undefined,
       }),
     }));
     assert.match(markup, /“budgets”/u);

@@ -391,11 +391,8 @@ function CatalogRecord({
  * The SELECTION is local, as the Explorer's node selection is: a search term
  * is what a link carries, and the record it opens on is the term's first hit.
  *
- * D295 moved it out of its own takeover and under `?settings=ui-catalog`. It
- * takes NO `onClose`: the containing Settings takeover already owns exactly one
- * `Back to the dashboard`, and a second close control inside its content pane
- * would be two exits from one page — the duplicate-door problem the Activity
- * report's missing back button was ruled on for (D275 item 2).
+ * D295 moved it under `?settings=ui-catalog`. It does not own an exit action;
+ * Settings navigation and the shell's dirty-exit guard own section changes.
  */
 export function UiCatalogSection({
   query,

@@ -1504,9 +1504,13 @@ describe("strict config resolution", () => {
     assert.equal(resolved.provenance["browser.closeProofMs"], "settings");
   });
 
-  it("P37 rejects malformed ordinary values, half-year groups and half-display overrides", () => {
+  it("P37 rejects malformed ordinary values, missing job-end dates and half-display overrides", () => {
     assert.throws(() => resolveConfigWithProvenance({ ocr: { pageConcurrency: "auto" } }, hostConfigFacts({}), CLOCK));
-    assert.throws(() => resolveConfigWithProvenance({ annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }, hostConfigFacts({}), CLOCK));
+    const jobEndOnly = resolveConfigWithProvenance({ annualDates: { FY2027: { jobEndDate: "06/30/2027" } } }, hostConfigFacts({}), CLOCK).config;
+    assert.equal(jobEndOnly.annualDates.FY2027?.jobEndDate, "06/30/2027");
+    assert.equal(jobEndOnly.annualDates.FY2027?.kronosDefaultStartDate, undefined);
+    assert.equal(jobEndOnly.annualDates.FY2027?.kronosDefaultEndDate, undefined);
+    assert.throws(() => resolveConfigWithProvenance({ annualDates: { FY2027: { kronosDefaultEndDate: "06/30/2027" } } }, hostConfigFacts({}), CLOCK));
     assert.throws(() => resolveConfigWithProvenance({ display: { screenWidth: 1920 } }, hostConfigFacts({}), CLOCK));
     assert.throws(() => resolveConfigWithProvenance({ display: { screenHeight: 1080 } }, hostConfigFacts({}), CLOCK));
     const config = resolveConfigWithProvenance({ annualDates: { FY2027: {
@@ -1553,6 +1557,10 @@ describe("instance and fiscal safety", () => {
   it("fails on missing and stale current-fiscal-year values", () => {
     const defaults = resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK).config;
     assert.throws(() => requireAnnualDates(defaults, CLOCK), /FY2027/);
+    const jobEndOnly = resolveConfigWithProvenance({
+      annualDates: { FY2027: { jobEndDate: "06/30/2027" } },
+    }, hostConfigFacts({}), CLOCK).config;
+    assert.deepEqual(requireAnnualDates(jobEndOnly, CLOCK), { jobEndDate: "06/30/2027" });
     const stale = resolveConfigWithProvenance({
       annualDates: { FY2027: {
         jobEndDate: "06/30/2026",

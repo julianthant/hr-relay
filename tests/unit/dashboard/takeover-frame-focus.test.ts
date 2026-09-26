@@ -55,6 +55,7 @@ import { act, createElement, type ReactNode } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
+import { CalendarWireSchema } from "../../../src/domain/dashboard/calendar.js";
 import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { DashboardDayWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
@@ -133,6 +134,17 @@ const EMPTY_UI_CATALOG = UiCatalogWireSchema.parse({
   entries: [],
 });
 const EDITABLE_SETTINGS = FIXTURE_EDITABLE_SETTINGS;
+const CALENDAR = ({ month, day }: { month: string; day: string }) => CalendarWireSchema.parse({
+  month,
+  day,
+  today: "2026-08-27",
+  authorityGeneration: 1,
+  monthCounts: [],
+  firstDay: null,
+  lastDay: null,
+  previousDay: null,
+  nextDay: null,
+});
 
 let mounted: Root | undefined;
 
@@ -195,6 +207,7 @@ function appClient(): DashboardClient {
       return { close: () => undefined };
     },
     uiCatalog: () => Promise.resolve(EMPTY_UI_CATALOG),
+    calendar: (input: Parameters<DashboardClient["calendar"]>[0]) => Promise.resolve(CALENDAR(input)),
     // D298 — `?intake=` is always a session id, so mounting the takeover
     // always reads one. Left in flight: the door this suite restores is
     // owned by the frame, not by anything the session decides.
@@ -396,7 +409,7 @@ describe("the two remaining takeovers use the shared focus boundary (UF-FU-1)", 
       "the catalog must no longer mount a frame of its own",
     );
     assert.match(frame.textContent ?? "", /UI catalog/u);
-    assert.equal(takeFirstTab(frame).textContent?.trim(), "Back to the dashboard");
+    assert.equal(takeFirstTab(frame).textContent?.trim(), "General");
     assert.equal(
       document.querySelector('[aria-label="Close the UI catalog"]'),
       null,
@@ -450,7 +463,7 @@ describe("closing a route-backed takeover restores its toolbar door", () => {
 });
 
 describe("Settings exits share the page-owned draft guard", () => {
-  it("retains the same draft across catalog subroutes and a cancelled shell exit, then restores close focus", async () => {
+  it("retains the same draft across catalog subroutes, restores cancelled-dialog focus and exits to main", async () => {
     await mountDashboard("?settings=general");
     const input = document.querySelector("input");
     assert.ok(input instanceof HTMLInputElement);
@@ -466,18 +479,27 @@ describe("Settings exits share the page-owned draft guard", () => {
     await act(async () => sectionLink("UI catalog").click());
     assert.match(window.location.search, /settings=ui-catalog/u);
     assert.equal(document.querySelectorAll('section[aria-label="Settings"]').length, 1);
-    await press(buttonNamed("Dashboard"));
+    const dashboard = buttonNamed("Dashboard");
+    await press(dashboard);
     await press(buttonNamed("Keep editing"));
+    assert.equal(document.activeElement, dashboard, "cancelling the shell exit restores focus to its persistent navigation control");
     assert.match(window.location.search, /settings=ui-catalog/u);
+    await press(dashboard);
+    await act(async () => {
+      document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+      await Promise.resolve();
+    });
+    assert.equal(document.querySelector('[role="dialog"]'), null, "Escape closes the pending dirty-exit dialog");
+    assert.equal(document.activeElement, dashboard, "Escape restores focus to the persistent navigation control");
     await act(async () => sectionLink("General").click());
     const restored = document.querySelector("input");
     assert.ok(restored instanceof HTMLInputElement);
     assert.equal(restored.value, "Draft through catalog");
-    await press(buttonNamed("Back to the dashboard"));
+    await press(buttonNamed("Dashboard"));
     await press(buttonNamed("Discard changes"));
     assert.equal(document.querySelector('section[aria-label="Settings"]'), null);
     assert.equal(window.location.search.includes("catalog"), false);
-    assert.equal(document.activeElement?.id, "settings-gear");
+    assert.equal(document.activeElement?.id, "dashboard-main-region");
   });
 
   it("requires a discard before persistent TopBar navigation unmounts a dirty Settings draft", async () => {

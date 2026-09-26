@@ -1,6 +1,8 @@
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
+import { act } from "react";
+import { createRoot } from "react-dom/client";
 import { ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema } from "../../../src/domain/commands.js";
 import { ProtectedSettingsNameSchema } from "../../../src/domain/config/protected-settings.js";
 import { mountSettingsHarness, settingsAction, syntheticSettingsAuthority } from "./helpers/settings-harness.js";
@@ -134,4 +136,25 @@ it.each([
   const html = renderToStaticMarkup(createElement(SettingsSaveFeedback, { save, protectedStore: true, retry: () => {} }));
   assert.ok(html.includes(title));
   assert.equal(html.includes("Retry exact attempt"), retry);
+});
+
+it("shows applied feedback briefly, then clears it", async () => {
+  vi.useFakeTimers();
+  const host = document.createElement("div");
+  document.body.append(host);
+  const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(SettingsSaveFeedback, {
+      save: { state: "applied", replayed: true },
+      protectedStore: true,
+      retry: () => undefined,
+    })));
+    assert.match(host.textContent ?? "", /Already saved/u);
+    await act(async () => { await vi.advanceTimersByTimeAsync(2201); });
+    assert.equal(host.textContent, "");
+  } finally {
+    await act(async () => root.unmount());
+    host.remove();
+    vi.useRealTimers();
+  }
 });

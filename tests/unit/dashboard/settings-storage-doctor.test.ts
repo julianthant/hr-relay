@@ -100,7 +100,6 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
         descriptorFingerprint: "a".repeat(64),
         preflight: [],
         onSection: () => undefined,
-        onClose: () => undefined,
       }) }),
     }));
   });

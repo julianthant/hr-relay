@@ -45,6 +45,61 @@ update; future pages will reuse the same primitives.
   rewrite is not an acceptable shortcut. Record consequential contract changes at their owner and
   decision index in the same logical commit.
 
+### Category 2 Settings shell and ordinary forms — 2026-09-26
+
+The operator approved Category 2 implementation in the existing candidate checkout after the shared
+design-system commits `cf90206a9` and `ac6bb8ec7`. These commits own the accepted DS APIs, the 90%-scale
+body tokens and contrast corrections; Category 2 consumes them through `ds/ui.tsx`. All eleven tabs
+use the same 828px maximum body scope. General folds in Display and shows only the server Clock's
+current-fiscal-year `jobEndDate`; Performance shows fixed seconds while preserving millisecond values;
+Paths groups ordinary editable paths with runtime-path facts in their existing truthful
+read-only state; Routes keeps its explicit Save; Credentials temporarily combines the existing
+credential authority with read-only provider-key facts. Provider-key persistence, budget/model
+internals and diagnostics remain with later categories. Existing 700ms ordinary autosave, separate
+protected editing, revision/conflict/refusal/readback behavior and dirty-exit protection remain.
+
+D350 records the authorized date/schema compatibility boundary: optional live Kronos dates, required
+job end date, no authority-version bump or historical record rewrite, and strict pinned v2 backup
+compatibility for the pre-change hash. It does not authorize editing or relocating state/artifact
+roots in Category 2; their separately approved offline relocation remains with later runtime-path
+work. Category 2 owns the D350 amendment here and in `clock-config-secrets.md` plus
+`reference/decisions.md` in the same logical change.
+
+The Category 2 execution worker owns its shell/general/display/job-date/performance/routes proof,
+focused tests, scoped lint and affected static checks. It does not run full parity or full-repository
+gates under the Phase 3.1 cadence. Root owns candidate acceptance and combined verification.
+
+### Category 2 execution record — 2026-09-26
+
+The candidate is based on `ac6bb8ec7` on `codex/settings-design-system` in
+`/Users/julianhein/.codex/worktrees/9d88/hr-automation-rebuild`. The shell now has the eleven
+canonical tabs and legacy aliases, with all page bodies using the shared 828px scope. The retained
+render captures are `settings/general-dark-1440x900.png`, `settings/general-light-1024x768.png`,
+`settings/performance-dark-1440x900.png`, `settings/paths-light-1024x768.png`, and
+`settings/routes-dark-1440x900.png` under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-2/`.
+Observed geometry: body scope is 828px at 1440px and fills 688px at 1024px after the 288px sidebar
+and page gutters; horizontal form rows are 62.5px. The fixture build and visual check showed one
+required Job End Date control and no other-fiscal-year or Kronos-date controls. Routes labels remain
+connected to their generated input IDs. Dirty-exit keyboard/focus behavior is covered by the 17-test
+takeover-focus run. The headless playwright-cli session did not provide browser-level zoom, so actual
+desktop zoom remains unverified; the 1024px desktop viewport and keyboard behavior were checked.
+
+Focused tests used the approved two-worker Vitest adapter and `npm run test -- --config <adapter>`.
+`vitest-unit-11-final.log` passed 11 files / 201 tests; `settings-file-service-final.log` passed
+50 tests; `bff-flow-final.log` passed 152. Additional regression runs passed 3 files / 44 tests
+(`settings-existing-consumers-final.log`), 3 files / 47 tests
+(`settings-nav-editor-backup-final.log`), 4 architecture files / 68 tests
+(`architecture-focused-final.log`), and 17 focus tests (`takeover-focus-final.log`). These later
+runs overlap earlier membership and are not additive counts. The earlier combined run with timeouts
+is retained as failed diagnostic evidence; the 17-test focus file reproduced a worker exit at 10/17
+before the focus restoration fix and passed after it. Scoped ESLint and `git diff --check` passed.
+`web-build-final-2.log` passed with the existing >500 kB chunk warning. Typecheck still reports only
+the shared-kit Category 1 errors in `src/dashboard/kit/kit-page.tsx` and
+`tests/unit/dashboard/ds-body-primitives.test.ts`; those files are outside this category and remain
+assigned to root. Exact logs and renders are retained in the evidence directory above. Full parity,
+repository-wide gates and real desktop browser zoom were not run.
+
 ### Category assignments and gates
 
 Root owns design, behavior decisions, acceptance, and combined verification. Native Luna xhigh

@@ -103,7 +103,6 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
         descriptorFingerprint: "a".repeat(64),
         preflight: [],
         onSection: () => undefined,
-        onClose: () => undefined,
       })}),
     }));
   });

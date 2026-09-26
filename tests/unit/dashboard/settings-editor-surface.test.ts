@@ -86,6 +86,7 @@ describe("editable Settings surface", () => {
   it("autosaves one atomic leaf-operation draft after a settled edit", async () => {
     const applied: unknown[] = [];
     let closeCount = 0;
+    let exitGuard: ((proceed: () => void) => void) | undefined;
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
       applySettings: (command: unknown) => {
@@ -109,12 +110,12 @@ describe("editable Settings surface", () => {
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
-          section: "display",
+          section: "general",
           actorId: "local-operator",
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
           onSection: () => undefined,
-          onClose: () => { closeCount += 1; },
+          onExitGuardChange: guard => { exitGuard = guard; },
         }),
       }));
     });
@@ -122,12 +123,12 @@ describe("editable Settings surface", () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date("2026-08-28T18:00:00.000Z"));
 
-    const inputs = host.querySelectorAll("input");
-    assert.equal(inputs.length, 2);
-    const width = inputs[0];
-    const height = inputs[1];
+    const width = host.querySelector('[data-settings-path="display.screenWidth"] input');
+    const height = host.querySelector('[data-settings-path="display.screenHeight"] input');
+    assert.ok(width instanceof HTMLInputElement);
+    assert.ok(height instanceof HTMLInputElement);
     assert.equal(height.disabled, false);
-    width.focus();
+    await act(async () => { width.focus(); });
     assert.equal(document.activeElement, width, "the editable control accepts keyboard focus");
     await act(async () => {
       // React's controlled-input tracker requires the native setter bypass here.
@@ -139,7 +140,8 @@ describe("editable Settings surface", () => {
       width.dispatchEvent(new Event("change", { bubbles: true }));
     });
     assert.match(host.textContent ?? "", /Undo edit/u);
-    await act(async () => { button("Back to the dashboard").click(); });
+    if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
+    await act(async () => { exitGuard?.(() => { closeCount += 1; }); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
     assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
     const beforeUnload = new Event("beforeunload", { cancelable: true });
@@ -164,6 +166,7 @@ describe("editable Settings surface", () => {
   it("refuses a cleared zero-allowed OCR field instead of converting it to zero", async () => {
     const applied: unknown[] = [];
     let closeCount = 0;
+    let exitGuard: ((proceed: () => void) => void) | undefined;
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
       applySettings: (command: unknown) => {
@@ -192,7 +195,7 @@ describe("editable Settings surface", () => {
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
           onSection: () => undefined,
-          onClose: () => { closeCount += 1; },
+          onExitGuardChange: guard => { exitGuard = guard; },
         }),
       }));
     });
@@ -212,9 +215,46 @@ describe("editable Settings surface", () => {
     assert.match(host.textContent ?? "", /Enter a whole number of at least 0\./u);
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
     assert.equal(applied.length, 0);
-    await act(async () => { button("Back to the dashboard").click(); });
+    if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
+    await act(async () => { exitGuard?.(() => { closeCount += 1; }); });
     await act(async () => { overlayButton("Discard changes").click(); });
     assert.equal(closeCount, 1, "explicit discard is the only dirty-draft exit");
+  });
+
+  it("retains a partial required job-end date in the text draft and never submits it", async () => {
+    const applied: unknown[] = [];
+    const client = {
+      editableSettings: () => Promise.resolve(DOCUMENT),
+      applySettings: (command: unknown) => { applied.push(command); return Promise.resolve({ state: "applied", commandId: "00000000-0000-4000-8000-000000000001", affectedTargets: [{ family: "settings", revision: 2 }], restartRequired: true }); },
+    } as unknown as DashboardClient;
+    host = document.createElement("div");
+    document.body.append(host);
+    await act(async () => {
+      root = createRoot(host as HTMLElement);
+      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+        catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined, onCatalogView: () => undefined,
+        storage: STORAGE, sections: [], workflowLabels: new Map<string, string>(), section: "general", actorId: "local-operator",
+        descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
+      }) }));
+    });
+    await act(async () => undefined);
+    vi.useFakeTimers();
+    const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
+    const input = host.querySelector(`[data-settings-path="${datePath}"] input`);
+    if (!(input instanceof HTMLInputElement)) throw new Error("missing current job-end-date input");
+    assert.equal(input.required, true);
+    assert.equal(input.type, "text", "the partial-date editor remains text based so invalid drafts stay visible");
+    await act(async () => {
+      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
+      if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
+      // eslint-disable-next-line @typescript-eslint/unbound-method
+      Reflect.apply(descriptor.set, input, ["6/"]);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    });
+    await act(async () => { await vi.advanceTimersByTimeAsync(701); });
+    assert.equal(input.value, "6/");
+    assert.equal(applied.length, 0, "an invalid partial date stays in the local draft without a command");
   });
 
   it("edits production routes only after an explicit save", async () => {
@@ -245,7 +285,6 @@ describe("editable Settings surface", () => {
           descriptorFingerprint: "d".repeat(64),
           preflight: [],
           onSection: () => undefined,
-          onClose: () => undefined,
         }),
       }));
     });

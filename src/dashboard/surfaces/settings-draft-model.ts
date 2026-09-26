@@ -1,10 +1,10 @@
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { SettingsPatchSchema, type SettingsPatch } from "../../domain/config/settings.js";
 import type { EditableSettingsLeafWire, EditableSettingsWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
-import { timeoutInput, timeoutSetting, timeoutValue, type TimeoutUnit } from "./settings-timeouts-model.js";
+import { timeoutInput, timeoutSetting, timeoutValue } from "./settings-timeouts-model.js";
 
 export type SettingsDraftInput = string | Readonly<Record<string, string>>;
-export type SettingsDraftOperation = { readonly kind: "set"; readonly raw: SettingsDraftInput; readonly companion?: true; readonly timeoutUnit?: TimeoutUnit } | { readonly kind: "clear" };
+export type SettingsDraftOperation = { readonly kind: "set"; readonly raw: SettingsDraftInput; readonly companion?: true } | { readonly kind: "clear" };
 export type SettingsDraft = Readonly<Record<string, SettingsDraftOperation>>;
 export function formatSetting(value: EditorValue | undefined): string {
   if (value === undefined) return "not set";
@@ -25,7 +25,7 @@ export function settingInput(leaf: EditableSettingsLeafWire, value = leaf.effect
 }
 export function settingsSectionGroups(sectionId: string, leaves: readonly EditableSettingsLeafWire[]): readonly { title: string; leaves: readonly EditableSettingsLeafWire[] }[] {
   const groupTitle = (path: string): string => {
-    if (sectionId === "general") return path.startsWith("features.") ? "Features" : "Everyday operation";
+    if (sectionId === "general") return path.startsWith("features.") ? "Features" : path.startsWith("annualDates.") ? "Employment" : path.startsWith("display.") ? "Display" : "Everyday operation";
     if (sectionId === "performance") {
       const timeout = timeoutSetting(path);
       if (timeout !== undefined) return timeout.group;
@@ -35,8 +35,7 @@ export function settingsSectionGroups(sectionId: string, leaves: readonly Editab
       return "Retries and limits";
     }
     if (sectionId === "providers") return path.endsWith(".models") ? "Model order" : "Provider budgets";
-    if (sectionId === "annual-dates") return path.split(".")[1] ?? "Annual dates";
-    return { display: "Display size", paths: "Working locations", routes: "System destinations" }[sectionId] ?? "Settings";
+    return { paths: "Working locations", routes: "System destinations" }[sectionId] ?? "Settings";
   };
   const groups = new Map<string, EditableSettingsLeafWire[]>();
   for (const leaf of leaves) {
@@ -51,7 +50,7 @@ function integer(raw: string): number {
   if (!/^(?:0|[1-9]\d*)$/u.test(raw) || !Number.isSafeInteger(Number(raw))) throw new Error("invalid-number");
   return Number(raw);
 }
-export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: SettingsDraftInput, timeoutUnit?: TimeoutUnit): EditorValue {
+export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: SettingsDraftInput): EditorValue {
   if (leaf.control.input === "object") {
     if (typeof raw === "string") throw new Error("invalid-object");
     return Object.fromEntries(leaf.control.fields.flatMap(field => {
@@ -62,7 +61,7 @@ export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: Setti
     }));
   }
   if (typeof raw !== "string") throw new Error("invalid-scalar");
-  if (timeoutSetting(leaf.path) !== undefined) return timeoutValue(leaf, raw, timeoutUnit);
+  if (timeoutSetting(leaf.path) !== undefined) return timeoutValue(leaf, raw);
   if (leaf.input === "number") return integer(raw);
   if (leaf.input === "boolean") {
     if (raw !== "true" && raw !== "false") throw new Error("invalid-boolean");
@@ -74,7 +73,7 @@ export function valueFromSettingInput(leaf: EditableSettingsLeafWire, raw: Setti
 export function draftError(leaf: EditableSettingsLeafWire, operation: SettingsDraftOperation): string | undefined {
   if (operation.kind === "clear") return undefined;
   try {
-    const value = valueFromSettingInput(leaf, operation.raw, operation.timeoutUnit);
+    const value = valueFromSettingInput(leaf, operation.raw);
     if (!SettingsPatchSchema.safeParse({ [leaf.path]: { set: value } }).success) throw new Error("invalid-value");
     return undefined;
   } catch {
@@ -89,19 +88,18 @@ export function draftError(leaf: EditableSettingsLeafWire, operation: SettingsDr
     return "Enter a valid value.";
   }
 }
-export function settingsLeaves(document: EditableSettingsWire, added: readonly EditableSettingsLeafWire[] = []): readonly EditableSettingsLeafWire[] {
-  const served = document.sections.flatMap(section => section.leaves);
-  return [...served, ...added.filter(leaf => !served.some(current => current.path === leaf.path))];
+export function settingsLeaves(document: EditableSettingsWire): readonly EditableSettingsLeafWire[] {
+  return document.sections.flatMap(section => section.leaves);
 }
 export function coupledSettingsLeaves(leaf: EditableSettingsLeafWire, leaves: readonly EditableSettingsLeafWire[]): readonly EditableSettingsLeafWire[] {
-  const prefix = leaf.path.startsWith("display.") ? "display." : leaf.path.startsWith("annualDates.") ? `${leaf.path.split(".").slice(0, 2).join(".")}.` : undefined;
+  const prefix = leaf.path.startsWith("display.") ? "display." : undefined;
   return prefix === undefined ? [leaf] : leaves.filter(candidate => candidate.path.startsWith(prefix));
 }
 export function patchFromSettingsDraft(leaves: readonly EditableSettingsLeafWire[], draft: SettingsDraft): SettingsPatch {
   const patch = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
     const leaf = leaves.find(candidate => candidate.path === path);
     if (leaf === undefined) throw new Error("settings-draft-path-not-served");
-    return [path, operation.kind === "clear" ? { clear: true } : { set: valueFromSettingInput(leaf, operation.raw, operation.timeoutUnit) }];
+    return [path, operation.kind === "clear" ? { clear: true } : { set: valueFromSettingInput(leaf, operation.raw) }];
   }));
   return SettingsPatchSchema.parse(patch);
 }
@@ -112,10 +110,4 @@ export function ordinaryReadbackConfirms(document: EditableSettingsWire, patch: 
     if ("clear" in operation) return leaf === undefined ? path.startsWith("annualDates.") : leaf.settingsValue === undefined;
     return leaf !== undefined && leaf.settingsValue !== undefined && canonicalJsonStringify(leaf.settingsValue) === canonicalJsonStringify(operation.set);
   });
-}
-export function fiscalYearLeaves(document: EditableSettingsWire, year: string): readonly EditableSettingsLeafWire[] {
-  if (!new RegExp(document.fiscalYearTemplate.keyPattern, "u").test(year)) throw new Error("invalid-fiscal-year");
-  const leaves = document.fiscalYearTemplate.leaves.map(leaf => ({ ...leaf, path: leaf.path.replace("*", year), label: leaf.label.replace("*", year) }));
-  if (leaves.some(leaf => document.sections.some(section => section.leaves.some(current => current.path === leaf.path)))) throw new Error("fiscal-year-exists");
-  return leaves;
 }

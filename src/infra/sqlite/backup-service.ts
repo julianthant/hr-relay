@@ -41,7 +41,7 @@ import {
   type SettingsFileRecord,
 } from "../../domain/config/settings.js";
 import { SettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
-import { SettingsRootAuthoritySchema } from "../compat/d331-settings-root.js";
+import { D350HistoricalSettingsFileRecordSchema, D350HistoricalSettingsRootAuthoritySchema } from "../compat/d350-settings-v2-backup.js";
 import { ProtectedSettingsCurrentRecordSchema } from "../../domain/authority.js";
 import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
@@ -167,7 +167,7 @@ function readHistoricalCommandAudit(database: DatabaseSync, commandId: string) {
 }
 
 function authenticateHistoricalOrdinarySettings(
-  record: SettingsFileRecord,
+  record: SettingsFileRecord | z.infer<typeof D350HistoricalSettingsFileRecordSchema>,
   database: DatabaseSync,
 ): void {
   const current = readHistoricalRecord(
@@ -295,7 +295,7 @@ function authenticateHistoricalProtectedPresence(
 
 function authenticateHistoricalV2Bindings(
   backupPath: string,
-  ordinary: SettingsFileRecord,
+  ordinary: SettingsFileRecord | z.infer<typeof D350HistoricalSettingsFileRecordSchema>,
   protectedSettings: ProtectedSettingsBackupPresence,
 ): void {
   const database = new DatabaseSync(backupPath, {
@@ -379,14 +379,21 @@ export async function verifyBackupManifestAtPath(
   if (manifest.manifestVersion === 2) {
     const ordinary = manifest.files[1];
     const authority = manifest.files[2];
-    const ordinaryRecord = SettingsFileRecordSchema.parse(JSON.parse(readFileSync(
+    const ordinaryBytes: unknown = JSON.parse(readFileSync(
       join(dirname(manifestPath), ordinary.backupFileName),
       "utf8",
-    )));
-    const settingsAuthority = SettingsRootAuthoritySchema.parse(JSON.parse(readFileSync(
+    ));
+    const currentOrdinaryRecord = SettingsFileRecordSchema.safeParse(ordinaryBytes);
+    const ordinaryRecord = currentOrdinaryRecord.success
+      ? currentOrdinaryRecord.data
+      : D350HistoricalSettingsFileRecordSchema.parse(ordinaryBytes);
+    const settingsAuthority = D350HistoricalSettingsRootAuthoritySchema.parse(JSON.parse(readFileSync(
       join(dirname(manifestPath), authority.backupFileName),
       "utf8",
     )));
+    if (settingsAuthority.settingsSchemaHash !== ordinaryRecord.settingsSchemaHash) {
+      throw new Error("backup authority.json does not bind the ordinary settings schema");
+    }
     if (settingsAuthority.ordinary !== "initialized" || settingsAuthority.protected !== "initialized") {
       throw new Error("backup authority.json does not bind initialized settings documents");
     }
