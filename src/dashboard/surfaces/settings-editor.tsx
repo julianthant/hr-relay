@@ -6,10 +6,12 @@ import { settingsSectionGroups, formatSetting } from "./settings-draft-model.js"
 import { SettingsValueControl } from "./settings-controls.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { timeoutReadableValue, timeoutSetting } from "./settings-timeouts-model.js";
+import { CompactSettingsSection } from "./ui-settings-records-general-paths.js";
 
 const GENERAL_SECTIONS = new Set(["general", "annual-dates", "display"]);
 
 export function EditableSettingsSection({ editor, sectionId }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string }) {
+  if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} />;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;

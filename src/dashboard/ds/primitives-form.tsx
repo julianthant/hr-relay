@@ -536,8 +536,8 @@ export function Switch({
       )}><HeroSwitch.Thumb className={cn(
         "ds-switch-thumb block shrink-0 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
         checked
-          ? "ds-switch-thumb-checked translate-x-[var(--ds-switch-thumb-on-x)] bg-[var(--ds-accent-fg)]"
-          : "translate-x-[var(--ds-switch-thumb-off-x)] bg-[var(--ds-fg-muted)]",
+          ? "ds-switch-thumb-checked bg-[var(--ds-accent-fg)]"
+          : "bg-[var(--ds-fg-muted)]",
       )} /></HeroSwitch.Control>
       <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-col">
         <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>

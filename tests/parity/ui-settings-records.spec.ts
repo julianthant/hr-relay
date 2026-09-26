@@ -14,6 +14,34 @@ import { FIXTURE_ACTIVITY_RANGE, FIXTURE_SAVED_VERSIONS } from "./helpers/fixtur
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
 const servers = registerReferenceServers(["server"]);
+
+for (const theme of PARITY_THEMES) test(`Settings body switch thumbs remain on their track @ ${theme.name}`, {
+  annotation: [{ type: "required-a11y-evidence", description: `settings-switch-thumb-${theme.name}.a11y.yml` }],
+}, async ({ page }, info) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await installTheme(page, theme);
+  await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, settings: "general" });
+  await expect(page.getByRole("heading", { name: "General", level: 1 })).toBeVisible();
+  const switches = page.locator(".settings-tab-body .ds-switch-row");
+  await expect(switches).toHaveCount(3);
+  const positions = await switches.evaluateAll(rows => rows.map(row => {
+    const track = row.querySelector(".ds-switch-control")?.getBoundingClientRect();
+    const thumbElement = row.querySelector(".ds-switch-thumb");
+    const thumb = thumbElement?.getBoundingClientRect();
+    if (track === undefined || thumb === undefined || thumbElement === null) throw new Error("settings-switch-parts-missing");
+    return { checked: row.getAttribute("data-selected") === "true", trackLeft: track.left, trackRight: track.right, thumbLeft: thumb.left, thumbRight: thumb.right, color: getComputedStyle(thumbElement).backgroundColor };
+  }));
+  for (const position of positions) {
+    expect(position.thumbLeft).toBeGreaterThanOrEqual(position.trackLeft);
+    expect(position.thumbRight).toBeLessThanOrEqual(position.trackRight);
+    expect(position.color).toBe("rgb(255, 255, 255)");
+  }
+  expect(positions.filter(position => position.checked)).toHaveLength(2);
+  const evidenceName = `settings-switch-thumb-${theme.name}.a11y.yml`;
+  const tree = await page.locator("body").ariaSnapshot();
+  info.annotations.push({ type: `a11y-attachment-sha256:${evidenceName}`, description: createHash("sha256").update(tree).digest("hex") });
+  await info.attach(evidenceName, { body: tree, contentType: "text/yaml" });
+});
 const RECORDS_VERSION_CHANGE = {
   changeId: "00000000-0000-4000-8000-000000000098",
   state: "planned",

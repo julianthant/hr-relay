@@ -3,21 +3,25 @@ import { timeoutSetting } from "./settings-timeouts-model.js";
 
 const TITLES: Readonly<Record<string, string>> = {
   "actor.label": "Operator label",
-  "browser.headless": "Browser headless",
+  "browser.headless": "Run without a browser window",
   "features.debugScreenshots": "Debug screenshots",
   "features.duoWebAuthn": "Duo WebAuthn",
-  "display.screenWidth": "Screen width",
-  "display.screenHeight": "Screen height",
+  "display.screenWidth": "Width",
+  "display.screenHeight": "Height",
+  "paths.reportsDir": "Reports directory",
+  "paths.downloadsDir": "Downloads directory",
+  "paths.onboardingDocsDir": "Onboarding documents",
+  "paths.i9CheckTrackerPath": "I-9 check tracker",
 };
 const NOTES: Readonly<Record<string, string>> = {
-  "actor.label": "Name shown in new run records",
-  "browser.headless": "Run browser sessions without a visible window",
-  "features.debugScreenshots": "Capture extra diagnostic images",
-  "features.duoWebAuthn": "Use WebAuthn for Duo sign-in",
-  "paths.reportsDir": "Where generated reports are written",
-  "paths.downloadsDir": "Where browser downloads are kept",
-  "paths.onboardingDocsDir": "Where onboarding documents are stored",
-  "paths.i9CheckTrackerPath": "File used to track I-9 checks",
+  "actor.label": "Name shown in new run records.",
+  "browser.headless": "Use headless browser sessions.",
+  "features.debugScreenshots": "Capture extra diagnostic images.",
+  "features.duoWebAuthn": "Use WebAuthn for Duo sign-in.",
+  "paths.reportsDir": "Where generated reports are written.",
+  "paths.downloadsDir": "Where browser downloads are kept.",
+  "paths.onboardingDocsDir": "Folder containing onboarding documents.",
+  "paths.i9CheckTrackerPath": "Workbook used to track I-9 checks.",
 };
 
 function humanize(value: string): string {
@@ -39,6 +43,7 @@ export function settingObjectFieldTitle(name: string): string {
 export function settingTitle(leaf: EditableSettingsLeafWire): string {
   const timeout = timeoutSetting(leaf.path);
   if (timeout !== undefined) return timeout.title;
+  if (leaf.path.endsWith(".jobEndDate")) return "Job end date";
   if (TITLES[leaf.path] !== undefined) return TITLES[leaf.path];
   if (leaf.control.input === "object" && leaf.path.startsWith("providers.")) return `${humanize(leaf.path.split(".")[1] ?? "Provider")} budget`;
   if (!leaf.label.includes(" · ")) return leaf.label;
@@ -54,7 +59,7 @@ export function settingTitle(leaf: EditableSettingsLeafWire): string {
 export function settingNote(leaf: EditableSettingsLeafWire): string | undefined {
   const timeout = timeoutSetting(leaf.path);
   if (timeout !== undefined) return timeout.description;
-  if (leaf.path.endsWith(".jobEndDate")) return "End date used in annual job records";
+  if (leaf.path.endsWith(".jobEndDate")) return "Default end date for job records.";
   if (leaf.path.endsWith(".kronosDefaultEndDate")) return "Default end date for Kronos reports";
   if (leaf.path.endsWith(".kronosDefaultStartDate")) return "Default start date for Kronos reports";
   return NOTES[leaf.path] ?? (leaf.description === leaf.label ? undefined : leaf.description);

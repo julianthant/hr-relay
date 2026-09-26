@@ -71,6 +71,7 @@ describe("typed Settings catalog controls", () => {
     const mounted = await mountSettingsHarness(authority, "general", settingsWithDistinctRuntimeValues); cleanups.push(mounted.close);
     const field = mounted.host.querySelector('[data-settings-path="actor.label"]'); assert.ok(field);
     assert.equal(field.querySelector("input")?.value, "Saved operator");
+    assert.ok(field.querySelector('button[aria-label="Actions for Operator label"]'), "saved custom values keep in-row restore actions");
     assert.doesNotMatch(mounted.host.textContent ?? "", /Setting identities|Using default|Revision 2/u);
     assert.equal(field.querySelectorAll("details").length, 0);
     const annualRows = [...mounted.host.querySelectorAll('[data-settings-path^="annualDates."]')];
@@ -86,7 +87,18 @@ describe("typed Settings catalog controls", () => {
     assert.equal(width.querySelector("input")?.value, "1920");
     const height = mounted.host.querySelector('[data-settings-path="display.screenHeight"]'); assert.ok(height);
     assert.equal(height.querySelector("input")?.value, "1080");
+    assert.notEqual(width.querySelector("input")?.id, height.querySelector("input")?.id);
+    assert.equal((width as HTMLLabelElement).htmlFor, width.querySelector("input")?.id);
+    assert.equal((height as HTMLLabelElement).htmlFor, height.querySelector("input")?.id);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
+  });
+  it("shows one Paths heading with served read-only runtime locations and editable workflow paths", async () => {
+    const { host } = await setup("paths");
+    assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
+    assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Runtime locations", "Generated files", "Workflow documents"]);
+    assert.equal(host.querySelectorAll(".settings-runtime-row input[readonly]").length, 5);
+    assert.equal(host.querySelectorAll(".settings-compact-row input:not([readonly])").length, 4);
+    assert.doesNotMatch(host.textContent ?? "", /Code-owned paths for this process|Local operator ID/u);
   });
   it("keeps each route label associated with its generated control id", async () => {
     const { host } = await setup("routes");

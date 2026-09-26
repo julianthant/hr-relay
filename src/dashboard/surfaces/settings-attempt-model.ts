@@ -26,16 +26,16 @@ export function checkedSettingsResult(command: SettingsAttempt, input: unknown):
 }
 export function settingsRefusal(code: string): string {
   switch (code) {
-    case "schema-mismatch": return "The settings schema changed. Reopen Settings before saving.";
-    case "patch-fingerprint-mismatch": case "envelope-fingerprint-mismatch": case "command-divergent": return "The command identity did not match. Review the draft and save again.";
+    case "schema-mismatch": return "The settings schema changed. Reopen Settings before retrying.";
+    case "patch-fingerprint-mismatch": case "envelope-fingerprint-mismatch": case "command-divergent": return "The command identity did not match. Review the draft before retrying.";
     case "not-editable": return "This document contains a setting that cannot be edited here.";
     case "invalid-value": case "cross-field-invalid": return "Check the draft values and all required fields in coupled records.";
     case "document-too-large": return "The settings document is too large. Reduce the draft.";
-    case "directory-integrity": return "The credential store failed its integrity check. Check storage before saving again.";
-    case "lock-unavailable": return "The credential store is busy. Save again when it is available.";
-    case "write-id-reused": return "The write identity was already used. Save again with a fresh identity; your draft is retained.";
+    case "directory-integrity": return "The credential store failed its integrity check. Check storage before retrying.";
+    case "lock-unavailable": return "The credential store is busy. Retry when it is available.";
+    case "write-id-reused": return "The write identity was already used. Retry with a fresh identity; your draft is retained.";
     case "authority-unjournaled": case "authority-uncertain": return "The write could not be confirmed. It may already be stored. Retry the exact attempt to resolve it.";
-    default: return "The settings command was refused. Review the current document before saving again.";
+    default: return "The settings command was refused. Review the current document before retrying.";
   }
 }
 export function uncertainSettingsCode(code: string): boolean { return code === "authority-uncertain" || code === "authority-unjournaled"; }

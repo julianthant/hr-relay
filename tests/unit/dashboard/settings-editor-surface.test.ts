@@ -139,7 +139,7 @@ describe("editable Settings surface", () => {
       width.dispatchEvent(new Event("input", { bubbles: true }));
       width.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    assert.match(host.textContent ?? "", /Undo edit/u);
+    assert.ok(host.querySelector('button[aria-label="Actions for browser viewport"]'), "the retained draft has an in-row undo action");
     if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
     await act(async () => { exitGuard?.(() => { closeCount += 1; }); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
@@ -257,7 +257,7 @@ describe("editable Settings surface", () => {
     assert.equal(applied.length, 0, "an invalid partial date stays in the local draft without a command");
   });
 
-  it("edits production routes only after an explicit save", async () => {
+  it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
     const applied: unknown[] = [];
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
@@ -294,18 +294,23 @@ describe("editable Settings surface", () => {
     const input = host.querySelector('[data-settings-path="urls.crm.prod"] input');
     if (!(input instanceof HTMLInputElement)) throw new Error("missing CRM route input");
     vi.useFakeTimers();
-    await act(async () => {
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-      if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Reflect.apply(descriptor.set, input, ["https://crm.example.test/new"]);
+    // eslint-disable-next-line @typescript-eslint/unbound-method
+    const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+    if (setter === undefined) throw new Error("HTML input value setter is unavailable");
+    const enter = async (value: string): Promise<void> => { await act(async () => {
+      Reflect.apply(setter, input, [value]);
       input.dispatchEvent(new Event("input", { bubbles: true }));
       input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    }); };
+    await enter("https://");
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
-    assert.equal(applied.length, 0, "route edits wait for Save routes");
-    await act(async () => { button("Save routes").click(); });
+    assert.equal(applied.length, 0, "an invalid partial URL stays in the draft");
+    await enter("https://crm.example.test/new");
+    await act(async () => { await vi.advanceTimersByTimeAsync(699); });
+    assert.equal(applied.length, 0, "route edits wait for the debounce");
+    await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     assert.equal(applied.length, 1);
+    assert.doesNotMatch(host.textContent ?? "", /Save routes/u);
     const command = applied[0] as { payload: { patch: Record<string, { set: { entry: string } }> } };
     assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
   });

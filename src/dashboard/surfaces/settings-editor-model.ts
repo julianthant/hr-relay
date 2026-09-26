@@ -119,8 +119,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   const autosave = useEffectEvent(submit);
   useEffect(() => {
     if (editor.state !== "loaded" || save.state !== "idle" || readProblem !== undefined
-      || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)
-      || Object.keys(draft).some(path => path.startsWith("urls."))) return;
+      || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;
     const timer = window.setTimeout(() => autosave(), 700);
     return () => window.clearTimeout(timer);
   }, [draft, editor, errors, readProblem, save.state]);

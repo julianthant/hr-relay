@@ -317,7 +317,6 @@ export function SettingsPage({
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
         )}
-        {resolution.state === "open" && resolution.entry.id === "paths" && <SettingsAuthoritySection editor={editor} sectionId="runtime-isolation" />}
         {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <CapabilitiesSection workflowLabels={workflowLabels} />
