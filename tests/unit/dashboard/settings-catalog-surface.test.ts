@@ -271,14 +271,10 @@ describe("typed Settings catalog controls", () => {
     assert.doesNotMatch(h.host.textContent ?? "", /Environment:/u);
     const leaf = settingsLeaves(h.authority.read()).find(candidate => candidate.path === "providers.gemini.models"); assert.ok(leaf); assert.equal(settingInput(leaf), "");
   });
-  it("keeps provider environment source and process-start activation visible", async () => {
+  it("keeps an unavailable provider file explicit on Credentials", async () => {
     const h = await setup("credentials");
     const text = h.host.textContent ?? "";
-    assert.match(text, /Source: \.env\.providers/u);
-    assert.match(text, /Read-only at process start/u);
-    assert.match(text, /restart after changing a provider key/u);
-    assert.match(text, /Provider keys from environment/u);
-    const names = [...h.host.querySelectorAll('[aria-label="Provider keys from environment"] .ds-result-row-copy > .ds-field-label')].map(node => node.textContent);
-    assert.deepEqual(names, ["Gemini", "Groq", "Mistral", "OpenRouter", "SambaNova"]);
+    assert.match(text, /Provider keys unavailable/u);
+    assert.doesNotMatch(text, /0 saved keys/u);
   });
 });

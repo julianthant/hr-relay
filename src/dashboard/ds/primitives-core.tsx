@@ -232,6 +232,10 @@ const iconButtonVariants = cva(
           "bg-transparent border-transparent text-[color:var(--ds-fg-muted)]",
           "hover:bg-[var(--ds-danger-quiet)] hover:text-[color:var(--ds-danger)]",
         ),
+        "danger-outline": cn(
+          "bg-transparent border-[color:var(--ds-border-strong)] text-[color:var(--ds-fg-secondary)]",
+          "hover:bg-[var(--ds-danger-quiet)] hover:text-[color:var(--ds-danger)]",
+        ),
       },
       size: {
         // 20px — the chip height. For a control that sits ON a chip line and

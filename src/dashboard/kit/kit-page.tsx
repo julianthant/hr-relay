@@ -901,7 +901,7 @@ function FormsSection() {
         <BodySection title="API credentials">
           <FormGroup label="API credentials">
             {keys.filter((key) => key.role === "Primary").map((key) => (
-              <Field key={key.id} label={key.label} description="Primary connection" orientation="horizontal">
+              <Field key={key.id} label={key.label} description="Primary connection" orientation="horizontal" controlWidth="medium">
                 <SecretField
                   label={`${key.label} key`}
                   value={key.value}

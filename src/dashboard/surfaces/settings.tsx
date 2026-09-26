@@ -220,8 +220,9 @@ export function SettingsPage({
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
-  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount;
-  const hasDirtyDraft = totalDirty > 0;
+  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount;
+  const providerUncertain = editor.providerEditor.save.state === "unconfirmed";
+  const hasDirtyDraft = totalDirty > 0 || providerUncertain;
 
   useEffect(() => {
     if (!hasDirtyDraft) return undefined;
@@ -254,6 +255,7 @@ export function SettingsPage({
     exitFocusTarget.current = null;
     editor.discard();
     editor.protectedEditor.discard();
+    editor.providerEditor.discard();
     setPendingExit(undefined);
     pendingExit();
   };
@@ -350,12 +352,14 @@ export function SettingsPage({
               target.focus();
             }
           }}
-          title="Discard unsaved settings?"
-          description={`You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards both drafts and any pending retry identity. A write already submitted may still be stored.`}
+          title={providerUncertain ? "Leave with a pending provider write?" : "Discard unsaved settings?"}
+          description={providerUncertain
+            ? `You have ${plural(totalDirty, "local edit")}. Leaving Settings discards local drafts and this browser's retry attempt. A submitted provider write may already be stored. Any pending server write can be recovered when you return.`
+            : `You have ${plural(totalDirty, "unsaved change")}. Leaving Settings discards local drafts and any pending retry identity. A write already submitted may still be stored.`}
         >
           <DialogFooter>
             <Button variant="secondary" onClick={() => setPendingExit(undefined)}>Keep editing</Button>
-            <Button variant="danger" onClick={discardAndExit}>Discard changes</Button>
+            <Button variant="danger" disabled={editor.providerEditor.save.state === "saving"} onClick={discardAndExit}>{providerUncertain ? "Leave Settings" : "Discard changes"}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -1,68 +1,141 @@
-import { KeyRound, Server } from "lucide-react";
+import { useRef, useState } from "react";
+import { Plus, Server } from "lucide-react";
 import { Form } from "@heroui/react";
-import type { ReactNode } from "react";
-import { Badge, Banner, Button, Field, FormGroup, Panel, PanelBody, PanelHeader, ResultRow, SecretField, Spinner, dsFocus, dsIcon, dsText } from "../ds/ui.js";
+import { BodySection, Badge, Banner, Button, Dialog, DialogContent, DialogFooter, Disclosure, Field, FormGroup, PageHeading, Panel, PanelBody, PanelHeader, ResultRow, SecretField, Spinner, dsIcon, dsText } from "../ds/ui.js";
+import { SECRET_FAMILY_SPECS } from "../../domain/config/provider-family-specs.js";
+import { ProviderKeySlotSchema } from "../../domain/config/provider-keys.js";
 import { cn } from "../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { formatSetting } from "./settings-draft-model.js";
 import { groupDeploymentFacts, providerName, settingsFactLabel } from "./ui-settings-records-labels.js";
 
-function SettingsFact({ label, description, children }: { label: string; description?: string; children: ReactNode }) {
-  return <ResultRow label={label} description={description} value={children} />;
+type Editor = ReturnType<typeof useEditableSettings>;
+type Slot = (typeof ProviderKeySlotSchema.options)[number];
+const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
+  ucpathUserId: "Login name for UCPath access.",
+  ucpathPassword: "Password for UCPath access.",
+  timekeeperName: "Name used in timekeeping workflows.",
+  sharepointOnboardingRosterUrl: "Location of the onboarding roster.",
+  activityPersonPseudonym: "Identifier used in historical Activity records.",
+};
+
+type Removal = { kind: "protected"; name: Parameters<Editor["protectedEditor"]["clear"]>[0]; label: string; hasSaved: boolean }
+  | { kind: "provider"; slot: Slot; label: string; parentOverride: boolean; active: boolean; hasSaved: boolean };
+
+function CredentialsSection({ editor }: { editor: Editor }) {
+  const [removal, setRemoval] = useState<Removal | null>(null);
+  const removeTrigger = useRef<HTMLElement | null>(null);
+  if (editor.editor.state !== "loaded") return <Spinner label="Reading settings authorities" />;
+  const settingsDocument = editor.editor.document;
+  const authority = settingsDocument.protectedSettings;
+  const credentials = editor.protectedEditor;
+  const provider = editor.providerEditor;
+  const keys = settingsDocument.providerKeys;
+  const askRemove = (target: Removal): void => {
+    removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null;
+    setRemoval(target);
+  };
+  const confirmRemove = (): void => {
+    if (removal === null) return;
+    if (removal.kind === "protected") {
+      if (!removal.hasSaved) credentials.reset(removal.name);
+      else credentials.clear(removal.name);
+    } else provider.remove(removal.slot);
+    setRemoval(null);
+  };
+  const providerAvailable = keys.state === "available" || keys.state === "pending";
+  const providerLocked = keys.state !== "available" || provider.locked || editor.readProblem !== undefined;
+  const parent = providerAvailable ? new Set(keys.parentSlotNames) : new Set<Slot>();
+  const rawSaved = providerAvailable ? keys.slots : {};
+  const active = providerAvailable ? keys.activeSlots : {};
+  return <div className="settings-compact-page settings-credentials-page">
+    <PageHeading title="Credentials" description="Sign-in details, protected configuration, and provider keys." />
+    {editor.readProblem !== undefined && <Banner tone="warning" title="Current values unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh values</Button></Banner>}
+    {authority.state === "unknown" && <Banner tone="warning" title="Credentials unavailable">Saved credentials could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
+    <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
+    <Form validationBehavior="aria" className="settings-compact-form" onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
+      {(["UCPath sign-in", "Workflow configuration"] as const).map((title, groupIndex) => <BodySection key={title} title={title}>
+        <FormGroup label={title}>
+          {authority.rows.slice(groupIndex === 0 ? 0 : 2, groupIndex === 0 ? 2 : undefined).map(row => {
+            const operation = credentials.draft[row.name];
+            const stored = authority.state === "available" ? authority.entries[row.name] : undefined;
+            const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined ? "" : formatSetting(stored.value);
+            const canRemove = stored !== undefined || operation?.kind === "set";
+            return <Field key={row.name} label={row.label} description={PROTECTED_DESCRIPTION[row.name] ?? row.purpose}
+              error={credentials.errors[row.name]} orientation="horizontal" controlWidth="medium"
+              disabled={credentials.locked || authority.state !== "available" || editor.readProblem !== undefined}>
+              <SecretField label={row.label} identity={`${row.name}:${stored?.valueId ?? "empty"}`} value={value}
+                autoComplete="new-password" spellCheck={false} placeholder="Enter value"
+                onChange={event => credentials.update(row.name, event.target.value)}
+                {...(canRemove ? { onRemove: () => askRemove({ kind: "protected", name: row.name, label: row.label, hasSaved: stored !== undefined }) } : {})} />
+            </Field>;
+          })}
+        </FormGroup>
+      </BodySection>)}
+    </Form>
+    <BodySection title="Provider keys">
+      {keys.state === "unknown" && <Banner tone="warning" title="Provider keys unavailable">Saved provider keys cannot be verified. Refresh before editing. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
+      {keys.state === "pending" && <Banner tone="warning" title="Provider write pending">A previous write may already be saved. Recover its exact command before making another change. <Button size="sm" variant="secondary" disabled={provider.save.state === "saving"} onClick={() => { if (provider.hasExactAttempt) provider.retry(); else void provider.retryPending(); }}>Retry pending write</Button></Banner>}
+      <SettingsSaveFeedback save={provider.save} name="Provider keys" retry={provider.hasExactAttempt ? provider.retry : () => { void provider.retryPending(); }} retryConflict={provider.submit} />
+      {providerAvailable && <FormGroup label="Provider keys" className="settings-provider-families">
+        {SECRET_FAMILY_SPECS.map((family, index) => {
+          const slots = ProviderKeySlotSchema.options.filter(slot => slot === family.envPrefix || slot.startsWith(family.envPrefix) && /^\d+$/u.test(slot.slice(family.envPrefix.length)));
+          const visible = slots.filter(slot => rawSaved[slot] !== undefined || active[slot] !== undefined || parent.has(slot) || provider.draft[slot] !== undefined);
+          const savedCount = slots.filter(slot => rawSaved[slot] !== undefined).length;
+          return <Disclosure key={family.name} summary={providerName(family.name)} description={`Keys used for ${providerName(family.name)} requests.`}
+            meta={<Badge tone="neutral">{`${String(savedCount)} ${savedCount === 1 ? "saved key" : "saved keys"}`}</Badge>} variant="body" defaultOpen={index === 0}
+            contentClassName="settings-provider-disclosure-content">
+            {visible.map(slot => {
+              const position = slot === family.envPrefix ? 1 : Number(slot.slice(family.envPrefix.length));
+              const operation = provider.draft[slot];
+              const saved = rawSaved[slot];
+              const parentOverride = parent.has(slot);
+              const parentOnly = saved === undefined && operation === undefined && parentOverride;
+              const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : saved ?? active[slot] ?? "";
+              const note = parentOnly ? active[slot] === undefined ? "Empty environment override" : "Active from environment · read only"
+                : parentOverride ? active[slot] === undefined ? "Saved key is shadowed by an empty environment override" : "Saved key is shadowed by the environment" : "Configured API key";
+              return <Field key={slot} label={`Key ${String(position)}`} description={note} error={provider.errors[slot]}
+                orientation="horizontal" controlWidth="medium" disabled={providerLocked}>
+                <SecretField label={`${providerName(family.name)} Key ${String(position)}`} identity={`${slot}:${keys.sourceVersionToken}`}
+                  value={value} readOnly={parentOnly} autoComplete="new-password" spellCheck={false}
+                  placeholder={parentOnly ? "No active value" : "Enter API key"}
+                  onChange={event => provider.update(slot, event.target.value)}
+                  {...(parentOnly ? {} : { onRemove: () => askRemove({ kind: "provider", slot, label: `${providerName(family.name)} Key ${String(position)}`,
+                    parentOverride, active: active[slot] !== undefined, hasSaved: saved !== undefined }) })} />
+              </Field>;
+            })}
+            {visible.length === 0 && <p className={cn(dsText.meta, "settings-provider-empty")}>No saved keys.</p>}
+            <div className="settings-provider-add"><Button variant="ghost" disabled={providerLocked || slots.every(slot => rawSaved[slot] !== undefined || provider.draft[slot] !== undefined)}
+              onClick={() => provider.add(family.envPrefix)}><Plus aria-hidden className={dsIcon.sm} />Add key</Button></div>
+          </Disclosure>;
+        })}
+      </FormGroup>}
+      {providerAvailable && (keys.restartRequired || keys.parentSlotNames.length > 0) && <p className={cn(dsText.meta, "settings-provider-note")}>
+        {keys.restartRequired ? "Saved key changes take effect after restart." : "Environment values override saved keys in this process."}
+      </p>}
+    </BodySection>
+    <Dialog open={removal !== null} onOpenChange={open => { if (!open) setRemoval(null); }}>
+      <DialogContent size="sm" hideClose className="ds-body-overlay" title={`Remove ${removal?.label ?? "value"}?`}
+        description={removal?.kind === "provider"
+          ? !removal.hasSaved ? "This unsent key will be removed from the editor. No write will be sent."
+            : removal.parentOverride ? "The saved key will be removed. The environment override remains active."
+              : removal.active ? "The saved key will be removed. The active value may remain until restart."
+                : "The saved key will be removed."
+          : removal?.hasSaved ? "The stored credential will be removed from the protected store." : "This unsent value will be removed from the editor. No write will be sent."}
+        onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
+        <DialogFooter><Button variant="secondary" onClick={() => setRemoval(null)}>Cancel</Button>
+          <Button variant="danger" onClick={confirmRemove}>Remove {removal?.kind === "provider" ? "key" : "credential"}</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }
 
-export function SettingsAuthoritySection({ editor, sectionId }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string }) {
+export function SettingsAuthoritySection({ editor, sectionId }: { editor: Editor; sectionId: string }) {
+  if (sectionId === "protected-store" || sectionId === "credentials") return <CredentialsSection editor={editor} />;
   if (editor.editor.state !== "loaded") return <Spinner label="Reading settings authorities" />;
-  const document = editor.editor.document;
-  if (sectionId === "protected-store" || sectionId === "credentials") {
-    const authority = document.protectedSettings;
-    const credentials = editor.protectedEditor;
-    return <Panel className="settings-page-panel"><PanelHeader title="Credentials" headingLevel={2} icon={<KeyRound aria-hidden className={dsIcon.lg} />} />
-      <PanelBody className="settings-page-body">
-        <Form validationBehavior="aria" className="flex flex-col gap-[var(--ds-space-section)]" onSubmit={event => { event.preventDefault(); const invalid = event.currentTarget.querySelector<HTMLElement>('[aria-invalid="true"]'); if (invalid !== null) invalid.focus(); else credentials.submit(); }}>
-          {authority.state === "unknown" && <Banner tone="warning" title="Credential presence unknown">The credential store could not be read. <Button size="sm" onClick={editor.reload}>Refresh presence</Button></Banner>}
-          {editor.readProblem !== undefined && <Banner tone="warning" title="Current presence unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh presence</Button></Banner>}
-          <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
-      <FormGroup label="Stored credentials" className="settings-group">
-            <h3 className={cn(dsText.title, "mb-[var(--ds-space-cozy)] font-medium")}>Stored credentials</h3>
-            <div className="settings-group-rows">
-              {authority.rows.map(row => {
-                const operation = credentials.draft[row.name];
-                const presence = authority.state === "available" ? authority.readback.entries[row.name] : undefined;
-                const stored = authority.state === "available" ? authority.entries[row.name] : undefined;
-                return <div key={row.name} data-protected-name={row.name} className="settings-row settings-credential-row">
-                  <Field orientation="horizontal" label={row.label} description={row.purpose} error={credentials.errors[row.name]} disabled={credentials.locked || authority.state !== "available" || operation?.kind === "clear"} className="settings-row-field">
-                    <SecretField label={row.label} autoComplete="new-password" spellCheck={false} value={operation?.kind === "set" ? operation.raw : ""}
-                      placeholder="Enter replacement" onChange={event => credentials.update(row.name, event.target.value)} />
-                  </Field>
-                  <div className="settings-row-actions">
-                    <Badge tone={presence === undefined ? "warning" : "neutral"}>{presence === undefined ? "Unknown" : presence.present ? "Present" : "Missing"}</Badge>
-                    <Button size="sm" variant="ghost" aria-label={`Clear ${row.label}`} disabled={credentials.locked || authority.state !== "available"} onClick={() => credentials.clear(row.name)}>Clear</Button>
-                    {operation !== undefined && <Button size="sm" variant="ghost" disabled={credentials.locked} onClick={() => credentials.reset(row.name)}>Undo edit</Button>}
-                  </div>
-                  {stored !== undefined && <dl className={cn(dsText.body, "settings-credential-detail")}><dt>Current value</dt><dd className="m-0 break-all [overflow-wrap:anywhere]">{formatSetting(stored.value)}</dd></dl>}
-                  {presence?.present === true && <details className="settings-credential-audit"><summary aria-label={`Write details for ${row.label}`} className={cn(dsText.meta, dsFocus)}>Write details</summary>
-                    <dl className={cn(dsText.meta, "settings-credential-meta")}><div><dt>Write identity</dt><dd className="m-0 break-all">{presence.valueId}</dd></div><div><dt>Updated</dt><dd className="m-0">{presence.updatedAt}</dd></div></dl>
-                  </details>}
-                </div>;
-              })}
-            </div>
-      </FormGroup>
-      {sectionId === "credentials" && <FormGroup label="Provider keys from environment" className="settings-group">
-        <h3 className={cn(dsText.title, "mb-[var(--ds-space-cozy)] font-medium")}>Provider keys from environment</h3>
-        <div className="settings-group-rows">
-          {Object.entries(document.providers).map(([name, availability]) => <SettingsFact key={name} label={providerName(name)}>
-            <Badge tone={availability.state === "unknown" ? "warning" : "neutral"}>{availability.state === "present" ? `${String(availability.count)} ${availability.count === 1 ? "key configured" : "keys configured"}` : availability.state === "missing" ? "Missing" : "Unknown"}</Badge>
-            {availability.state === "present" && <ul className="settings-fact-list">{availability.values.map((value, index) => <li key={String(index)}><span>Key {String(index + 1)}</span><span className="break-all [overflow-wrap:anywhere]">{value}</span></li>)}</ul>}
-          </SettingsFact>)}
-        </div><p className={cn(dsText.meta, "settings-group-note")}>Source: .env.providers. Read-only at process start; restart after changing a provider key.</p>
-      </FormGroup>}
-        </Form>
-      </PanelBody>
-    </Panel>;
-  }
   if (sectionId !== "runtime-isolation") throw new Error("settings-authority-section-unknown");
+  const document = editor.editor.document;
   return <Panel className="settings-page-panel"><PanelHeader title="Paths" headingLevel={2} subtitle="Code-owned paths for this process." icon={<Server aria-hidden className={dsIcon.lg} />} />
     <PanelBody className="settings-page-body">
       <p className={cn(dsText.body, "mb-[var(--ds-space-section)] text-[color:var(--ds-fg-muted)]")}>These paths change through config/runtime-isolation.json and runtime-paths.ts.</p>

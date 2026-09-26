@@ -94,7 +94,7 @@ export function Field({
   /** Horizontal rows place the label and description beside the control. */
   orientation?: "vertical" | "horizontal";
   /** Preferred control column for horizontal body rows; ignored outside DsBodyScope. */
-  controlWidth?: "standard" | "wide";
+  controlWidth?: "standard" | "medium" | "wide";
   children: ReactNode;
 }) {
   const base = useId();
@@ -305,7 +305,7 @@ export const SecretField = forwardRef<HTMLInputElement, SecretFieldProps>(functi
           type="button"
           label={removeLabel ?? `Remove ${label}`}
           disabled={effectiveDisabled || props.readOnly}
-          variant="danger"
+          variant="danger-outline"
           size="sm"
           icon={<Trash2 aria-hidden className={dsIcon.sm} />}
           onClick={onRemove}

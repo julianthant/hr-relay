@@ -27,14 +27,15 @@ describe("independent protected Settings surface", () => {
     assert.doesNotMatch(savedText(h.host), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
-    assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
+    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[1]?.value, values.ucpathPassword);
+    assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.type === "password"));
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
     const history = h.authority.database.authority.commands.getSettingsHistory(request.commandId);
     const audit = h.authority.database.authority.commandAudits.findSettingsHistory(request.commandId);
     assert.doesNotMatch(JSON.stringify({ history, audit }), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
-    assert.match(savedText(h.host), /synthetic-password-sentinel/u);
+    assert.doesNotMatch(savedText(h.host), /synthetic-password-sentinel/u);
     assert.doesNotMatch(h.host.textContent ?? "", /show password|reveal|restart required/iu);
   });
   it("ordinary and credential drafts, revisions and outcomes are independent; Clear is explicit", async () => {
@@ -116,7 +117,7 @@ describe("independent protected Settings surface", () => {
     const h = await setup(); const document = h.authority.read();
     document.protectedSettings = { state: "unknown", rows: document.protectedSettings.rows, reason: "credential-store-unavailable" };
     h.ports.read = () => document; await settingsAction(() => h.controller().reload());
-    assert.match(h.host.textContent ?? "", /Credential presence unknown/u);
+    assert.match(h.host.textContent ?? "", /Credentials unavailable/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.disabled));
     assert.doesNotMatch(h.host.textContent ?? "", /Missing/u);
   });

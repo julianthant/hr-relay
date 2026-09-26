@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { Banner, Button, Refusal, dsText } from "../ds/ui.js";
 import type { SettingsSaveState } from "./settings-attempt-model.js";
-export function SettingsSaveFeedback({ save, protectedStore = false, retry, retryConflict }: { save: SettingsSaveState; protectedStore?: boolean; retry: () => void; retryConflict?: () => void }) {
+export function SettingsSaveFeedback({ save, protectedStore = false, name: explicitName, retry, retryConflict }: { save: SettingsSaveState; protectedStore?: boolean; name?: string; retry: () => void; retryConflict?: () => void }) {
   const [showApplied, setShowApplied] = useState(true);
   const appliedReplay = save.state === "applied" ? save.replayed : undefined;
   useEffect(() => {
@@ -13,7 +13,7 @@ export function SettingsSaveFeedback({ save, protectedStore = false, retry, retr
     const timer = window.setTimeout(() => setShowApplied(false), 2200);
     return () => window.clearTimeout(timer);
   }, [appliedReplay, save.state]);
-  const name = protectedStore ? "Credentials" : "Settings";
+  const name = explicitName ?? (protectedStore ? "Credentials" : "Settings");
   if (save.state === "idle") return null;
   if (save.state === "saving") return <span role="status" className={dsText.meta}>Saving…</span>;
   if (save.state === "applied") return showApplied ? <span role="status" className={dsText.meta}>{appliedReplay ? "Already saved" : "Saved"}</span> : null;

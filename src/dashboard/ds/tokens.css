@@ -445,6 +445,7 @@
   --ds-w-body-content: 828px;
   --ds-w-body-performance: 1090px;
   --ds-w-body-control-standard: 237px;
+  --ds-w-body-control-medium: 288px;
   --ds-w-body-control-wide: 378px;
   --ds-w-body-unit: 147.6px;
   --ds-w-body-control: 280px;
@@ -1460,6 +1461,10 @@ body[data-demo-theme="light"] {
 
 .ds-body-scope .ds-body-row[data-control-width="wide"] {
   grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control-wide));
+}
+
+.ds-body-scope .ds-body-row[data-control-width="medium"] {
+  grid-template-columns: minmax(0, 1fr) minmax(0, var(--ds-w-body-control-medium));
 }
 
 .ds-body-scope .ds-result-row {

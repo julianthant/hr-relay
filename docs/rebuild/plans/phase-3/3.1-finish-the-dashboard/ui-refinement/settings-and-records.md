@@ -234,8 +234,26 @@ Credentials provider keys. The first Category 3 outcome is the bounded private f
 synthetic-file proof in `src/infra/config/provider-key-store.ts` and
 `tests/unit/config/provider-key-store.test.ts`. The second bounded outcome wires the admitted
 `settings/apply-provider-keys` command, marked journal/audit verifier, exact pending retry,
-same-descriptor boot provenance, and saved/active/recovery GET. The Credentials UI remains the
-next Category 3 outcome. Tests use synthetic temporary provider files only.
+same-descriptor boot provenance, and saved/active/recovery GET. The third bounded outcome adds
+the Credentials editor with masked protected and provider rows, stable sparse provider slots,
+source-aware removal, valid-only autosave, exact retry, and a dirty-exit guard. It also adds the
+reusable 288px medium control column and an outlined destructive icon control to the design
+system and kit. Provider tests use synthetic temporary files only; browser captures use a
+synthetic fixture.
+
+The Credentials UI outcome passed 55 focused dashboard tests and 13 affected architecture
+tests, scoped ESLint, typecheck, web build, and roadmap freshness. Playwright-cli captures
+cover dark and light themes at 1440×900 and 1024×720: top, expanded provider rows, and
+centered removal dialog. All four sizes had no horizontal overflow; Escape closed the dialog.
+Evidence is retained under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-3/credentials-ui/`.
+
+The operator authorized parallel implementation in owned worktrees from accepted backend
+revision `897158ece`: this branch owns Credentials and shared control details, the models lane
+owns provider budgets/model controls, and the diagnostics lane owns Storage, Preflight,
+capabilities, Keyboard and UI catalog. Those categories have disjoint writes and evidence;
+the root accepts and assembles their commits into this task branch after each writer stops.
+Primary-checkout integration and push remain outside this assignment.
 
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->

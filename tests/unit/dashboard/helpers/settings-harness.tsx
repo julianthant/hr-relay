@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { act, createElement } from "react";
@@ -8,6 +8,12 @@ import { manualClock } from "../../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../../src/domain/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/domain/config/settings.js";
+import { ProviderKeysRetryIntentSchema } from "../../../../src/domain/commands.js";
+import { admitLocalEnvironmentFile } from "../../../../src/domain/secrets.js";
+import { createProviderKeyStore } from "../../../../src/infra/config/provider-key-store.js";
+import type { ProviderKeyStoreHooks } from "../../../../src/infra/config/provider-key-store.js";
+import { createProviderKeyJournal } from "../../../../src/server/dashboard/commands/provider-key-journal.js";
+import { providerCommandFromStore, providerMarkedFingerprint } from "../../../../src/server/dashboard/commands/provider-key-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/domain/config/protected-settings.js";
 import { executeSettingsCommand } from "../../../../src/core/command-kernel.js";
 import { AuthorityDatabase } from "../../../../src/infra/sqlite/index.js";
@@ -23,11 +29,17 @@ import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/set
 import { RoutesSection } from "../../../../src/dashboard/surfaces/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-export function syntheticSettingsAuthority() {
+export function syntheticSettingsAuthority(options: { providerFile?: string; parentSlots?: NodeJS.ProcessEnv; providerHooks?: ProviderKeyStoreHooks } = {}) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-surface-"));
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
   const database = AuthorityDatabase.open({ path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
   const credentials = createCredentialStore({ stateRoot: root });
+  const providerEnvPath = options.providerFile === undefined ? undefined : join(root, ".env.providers");
+  if (providerEnvPath !== undefined && options.providerFile !== undefined) writeFileSync(providerEnvPath, options.providerFile, { mode: 0o600 });
+  const providerEnvironment: NodeJS.ProcessEnv = { ...options.parentSlots };
+  const providerBoot = providerEnvPath === undefined ? undefined : admitLocalEnvironmentFile(providerEnvPath, providerEnvironment);
+  const providerStore = providerEnvPath === undefined ? undefined : createProviderKeyStore({ envPath: providerEnvPath,
+    journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint, hooks: options.providerHooks });
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
   const resolved = resolveConfigWithProvenance({}, hostFacts, clock);
   database.withAuthorityTransaction(repositories => {
@@ -35,12 +47,22 @@ export function syntheticSettingsAuthority() {
     repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
     repositories.runtimeConfig.activate({ settingsRevision: record.revision, settingsFingerprint: record.settingsFingerprint, configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: clock.now().toISOString() });
   });
-  const composition = composeSettings({ database, clock, hostFacts, active: activeSettingsRuntimeIdentity, environment: { HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" }, credentials });
-  const execute = (request: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings: composition.executor }, request);
+  const composition = composeSettings({ database, clock, hostFacts, active: activeSettingsRuntimeIdentity,
+    environment: { HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080", ...providerEnvironment }, credentials,
+    providerKeys: providerStore, providerBoot });
+  const execute = (request: unknown) => {
+    const retry = ProviderKeysRetryIntentSchema.safeParse(request);
+    const resolved = retry.success ? providerCommandFromStore(providerStore!.readPendingRequest({
+      commandId: retry.data.retry.commandId, writeId: retry.data.retry.writeId,
+      receiptId: retry.data.retry.pendingReceiptId,
+    })) : request;
+    return executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings: composition.executor }, resolved);
+  };
   const read = () => buildSettingsEditor(composition.routes.settingsEditor);
   const apply = (patch: SettingsPatch, revision = read().revision) => execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
   const protectedApply = (entries: unknown, revision = credentials.read().revision) => execute({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries } });
-  return { root, database, credentials, clock, execute, read, apply, protectedApply, close: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
+  return { root, database, credentials, providerStore, providerEnvPath, providerEnvironment, clock, execute, read, apply, protectedApply,
+    close: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
 }
 export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];

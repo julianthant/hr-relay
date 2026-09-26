@@ -13,6 +13,7 @@ import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
 import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
+import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../src/domain/config/provider-keys.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -43,6 +44,49 @@ function overlayButton(name: string): HTMLButtonElement {
 }
 
 describe("editable Settings surface", () => {
+  it("guards provider drafts and explains an unconfirmed write before leaving", async () => {
+    const providerDocument = EditableSettingsWireSchema.parse({ ...DOCUMENT,
+      providerKeys: { state: "available", providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision: 1,
+        sourceVersionToken: "a".repeat(64), slots: { GEMINI_API_KEY: "synthetic-saved" },
+        activeSlots: { GEMINI_API_KEY: "synthetic-saved" }, parentSlotNames: [], fileSlotNamesAtBoot: ["GEMINI_API_KEY"],
+        bootFileRevision: 1, bootFileSourceVersionToken: "a".repeat(64), overriddenSlots: [], restartRequired: false },
+    });
+    let guard: ((proceed: () => void) => void) | undefined;
+    let exited = 0;
+    const client = { editableSettings: () => Promise.resolve(providerDocument),
+      applyProviderKeys: () => Promise.reject(new Error("synthetic-uncertain")),
+    } as unknown as DashboardClient;
+    host = document.createElement("div"); document.body.append(host);
+    await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client,
+      children: createElement(SettingsPage, { catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW,
+        onCatalogQuery: () => undefined, onCatalogView: () => undefined, storage: STORAGE, sections: [],
+        workflowLabels: new Map<string, string>(), section: "credentials", actorId: "local-operator",
+        descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
+        onExitGuardChange: next => { guard = next; } }),
+    })); });
+    await act(async () => undefined);
+    await act(async () => button("Add key").click());
+    assert.ok(guard);
+    await act(async () => guard?.(() => { exited += 1; }));
+    assert.equal(exited, 0);
+    assert.match(document.body.textContent ?? "", /Discard unsaved settings\?/u);
+    await act(async () => overlayButton("Keep editing").click());
+    assert.equal(exited, 0);
+    const input = [...host.querySelectorAll<HTMLInputElement>("input")].find(candidate => candidate.placeholder === "Enter API key" && candidate.value === "");
+    assert.ok(input);
+    await act(async () => { // eslint-disable-next-line @typescript-eslint/unbound-method
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      if (setter === undefined) throw new Error("input setter unavailable");
+      Reflect.apply(setter, input, ["synthetic-local"]); input.dispatchEvent(new Event("input", { bubbles: true })); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1250)); });
+    await act(async () => guard?.(() => { exited += 1; }));
+    assert.match(document.body.textContent ?? "", /Leave with a pending provider write\?/u);
+    assert.match(document.body.textContent ?? "", /A submitted provider write may already be stored/u);
+    assert.match(document.body.textContent ?? "", /can be recovered when you return/u);
+    assert.equal(exited, 0);
+    await act(async () => overlayButton("Keep editing").click());
+    assert.equal(exited, 0);
+  });
   it("refuses a malformed server settings inventory instead of retyping, relocating, or contradicting its runtime identity", () => {
     const textLeafWithNumberPath = {
       ...DOCUMENT.sections[0]?.leaves[0],
