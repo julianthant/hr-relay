@@ -102,7 +102,7 @@ describe("typed Settings catalog controls", () => {
       "paths.reportsDir", "paths.downloadsDir", "paths.onboardingDocsDir", "paths.i9CheckTrackerPath"]) {
       const row = host.querySelector(`[data-settings-path="${path}"]`);
       if (row === null) throw new Error(`missing ${path} row`);
-      assert.ok(row.querySelector(".ds-path-value[title]"));
+      assert.ok(row.querySelector(".ds-path-value[aria-label]"));
       const label = row.querySelector("label");
       const change = row.querySelector(".ds-path-control button");
       assert.equal(label?.htmlFor, change?.id);

@@ -239,7 +239,7 @@ describe("storage relocation Paths controls", () => {
     view = StorageRelocationPlanViewSchema.parse({ ...INITIAL, sourcePair: { ...SOURCE, stateRoot: "/tmp/divergent" } });
     await act(async () => { surface.controller().reload(); await Promise.resolve(); });
     assert.equal(surface.controller().readProblem, true);
-    assert.equal(surface.host.querySelector('[data-settings-path="paths.stateRoot"] .ds-path-value')?.getAttribute("title"), SOURCE.stateRoot);
+    assert.equal(surface.host.querySelector('[data-settings-path="paths.stateRoot"] .ds-path-value')?.getAttribute("aria-label"), SOURCE.stateRoot);
     assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] .ds-path-control button') as HTMLButtonElement).disabled, true);
     assert.match(surface.host.textContent ?? "", /last verified paths remain shown/u);
   });

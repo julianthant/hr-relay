@@ -22,6 +22,7 @@ import { cn } from "../lib/utils.js";
 import { NativeSelect } from "./shadcn-native-select.js";
 import { ShadcnButton } from "./shadcn-button.js";
 import { Button, IconButton } from "./primitives-core.js";
+import { Tooltip, TooltipProvider } from "./primitives-overlay.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /**
@@ -222,11 +223,15 @@ export function PathControl({ value, label, onChange, disabled = false, busy = f
   const prefix = separator < 0 ? "" : value.slice(0, separator + 1);
   const basename = separator < 0 ? value : value.slice(separator + 1);
   return <div className="ds-path-control">
-    <span className="ds-path-value" title={value}>
-      <span className="sr-only">{value}</span>
-      <span aria-hidden="true" className="ds-path-prefix">{prefix}</span>
-      <span aria-hidden="true" className="ds-path-basename">{basename}</span>
-    </span>
+    <TooltipProvider delayDuration={250}>
+      <Tooltip content={<span className="break-all whitespace-normal">{value}</span>}>
+        <span className={cn("ds-path-value", dsFocus)} tabIndex={0} aria-label={value}>
+          <span className="sr-only">{value}</span>
+          <span aria-hidden="true" className="ds-path-prefix">{prefix}</span>
+          <span aria-hidden="true" className="ds-path-basename">{basename}</span>
+        </span>
+      </Tooltip>
+    </TooltipProvider>
     <Button id={field.id} aria-describedby={field["aria-describedby"]} aria-invalid={field["aria-invalid"]}
       aria-label={`Change ${label}`} size="md" variant="secondary" onClick={onChange}
       disabled={disabled || field.disabled} loading={busy}>Change</Button>
