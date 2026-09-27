@@ -5,7 +5,8 @@ import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { acquireInstallation, inspectPendingRelocationRecovery, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
+import { acquireInstallation, inspectPendingRelocationRecovery, inspectPendingRelocationStatus,
+  type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../src/infra/runtime-control/installation.js";
 import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
@@ -192,6 +193,7 @@ it("freezes issued leases and refuses a changed on-disk lease mode", () => {
 it("binds destination and retained source capabilities to one live relocation operation", () => {
   const { workspace, pair } = fixture();
   const first = adoptSynthetic(workspace, pair); first.release();
+  expect(inspectPendingRelocationStatus(workspace)).toBeUndefined();
   writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
   writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
   const lease = acquireInstallation(workspace, "exclusive");
@@ -292,6 +294,7 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
       ...(originalConfig.paths as Record<string, unknown>), reportsDir: join(workspace, "changed") } } } } }));
   expect(() => inspectPendingRelocationRecovery(workspace, operation.operationId, resumedHeld))
     .toThrow(/activation intent binding mismatch/u);
+  expect(() => inspectPendingRelocationStatus(workspace)).toThrow(/activation intent binding mismatch/u);
   writeFileSync(journalPath, originalJournal);
   expect(() => acquireRecoveryRuntimeRelocation(workspace, { ...binding, operationId: randomUUID() }, resumedHeld)).toThrow(/recovery|operation/u);
   const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, resumedHeld);
@@ -532,6 +535,7 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   const verify = staged(moving, destination, operationId, plan);
   moving.recordVerifiedStage(verify);
   moving.fenceRelocationSource();
+  expect(inspectPendingRelocationStatus(workspace)).toEqual({ operationId, phase: "fenced", fromGeneration: 0 });
   expect(existsSync(join(pair.stateRoot, ".runtime-source-fence.json"))).toBe(true);
   moving.release(); held.release();
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished fenced/u);
@@ -544,6 +548,7 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   const resume = acquireInstallation(workspace, "exclusive", { recoverRelocation: request });
   expect(() => inspectPendingRelocationRecovery(workspace, operationId, resumedHeld)).toThrow(/lease busy/u);
   resume.retainRelocationSources();
+  expect(inspectPendingRelocationStatus(workspace)).toEqual({ operationId, phase: "retained", fromGeneration: 0 });
   const retainedJournal = readFileSync(join(workspace, ".runtime-control", "journal.json"));
   const next = resume.switchRelocationLocator(verify);
   expect(next.generation).toBe(1);
@@ -555,6 +560,7 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   expect(afterSwitchCrash.switchRelocationLocator(verify)).toEqual(next);
   afterSwitchCrash.settleRelocation(verify);
   afterSwitchCrash.release(); finalHeld.release();
+  expect(inspectPendingRelocationStatus(workspace)).toBeUndefined();
   const absentRestore = restore(workspace);
   expect(() => inspectPendingRelocationRecovery(workspace, operationId, absentRestore)).toThrow(/ENOENT|journal/u);
   absentRestore.release();
@@ -578,6 +584,7 @@ it("keeps the source fence as a negative witness if its journal is lost", () => 
   moving.release(); held.release();
   unlinkSync(join(workspace, ".runtime-control", "journal.json"));
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/fenced source/u);
+  expect(() => inspectPendingRelocationStatus(workspace)).toThrow(/fenced source/u);
 });
 
 it("moves artifacts alone without advancing the state marker epoch", () => {

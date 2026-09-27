@@ -864,6 +864,28 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   return locator;
 }
 type RecoveryRequest = Readonly<{ installationId: string; fromGeneration: number; operationId: string; restoreAdmission: RestoreAdmissionHandle }>;
+export function inspectPendingRelocationStatus(workspacePath: string): Readonly<{
+  operationId: string; phase: RelocationInventory["phase"]; fromGeneration: number;
+}> | undefined {
+  const workspace = realpathSync(workspacePath);
+  if (resolve(workspacePath) !== workspace) fail("status workspace must be canonical");
+  const control = join(workspace, CONTROL);
+  assertNoSymlinkComponents(control);
+  privateDirectory(control);
+  const installation = readInstallation(control, workspace);
+  if (!lstatMaybe(join(control, "journal.json"))) {
+    readLocator(control, workspace);
+    return undefined;
+  }
+  const pending = readStrict(join(control, "journal.json"), JournalSchema);
+  if (pending.phase === "adopting" || pending.installationId !== installation.installationId) {
+    fail("pending relocation status is not an owned relocation");
+  }
+  readLocator(control, workspace, { installationId: pending.installationId,
+    fromGeneration: pending.fromGeneration, operationId: pending.operationId });
+  return Object.freeze({ operationId: pending.operationId, phase: pending.phase,
+    fromGeneration: pending.fromGeneration });
+}
 export function inspectPendingRelocationRecovery(workspacePath: string, operationId: string,
   restore: RestoreAdmissionHandle): Readonly<{ installationId: string; fromGeneration: number; operationId: string }> {
   const workspace = realpathSync(workspacePath);
