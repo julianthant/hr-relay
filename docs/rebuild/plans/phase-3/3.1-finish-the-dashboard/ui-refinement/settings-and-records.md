@@ -682,3 +682,13 @@ readback, exact retry after ingress restamping, stale revision conflict, CANCEL,
 The settings reader passed 14/14 and command architecture 9/9; scoped lint passed. Receipts are in
 `category-6/runtime-relocation/intent-wiring/`. Combined typecheck remains due after the concurrent
 fresh-adoption and v56 work is assembled.
+
+Fresh-adoption control `8d56de21e` was applied as `9a1cce189`, followed by the production bootstrap
+callback `c552679be`. Initialization is synchronous, database-only, and expires before read-only
+verification and locator publication. The fixed process-lock root check binds the issued lease's
+actual workspace. Control/admission/artifact tests passed 75/75; the real BFF tests passed 2/2,
+including fresh startup and refusal after an established database is removed. Scoped lint and the
+combined root typecheck passed, discharging the preceding control/intent static-check obligation.
+Receipts are `category-6/relocation-control/fresh-adoption-*` and
+`category-6/runtime-relocation/intent-wiring/fresh-*`. v56 and the offline engine remain separate
+pending outcomes.
