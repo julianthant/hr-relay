@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { FingerprintSchema, IsoInstantSchema, NonNegativeIntSchema } from "../ids.js";
 import { ActivityReportWireSchema } from "./activity.js";
+import { ActivityVolumeSchema } from "./activity-volume.js";
 
 export const ActivitySnapshotTokenSchema = z.string().regex(/^as1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/u).max(4096);
 export const ActivitySnapshotIdentitySchema = z.strictObject({
@@ -8,6 +9,7 @@ export const ActivitySnapshotIdentitySchema = z.strictObject({
   sourceIdentity: FingerprintSchema, authorityGeneration: NonNegativeIntSchema, reportDigest: FingerprintSchema,
 });
 export const ActivityReportSelectionSchema = ActivityReportWireSchema.safeExtend({
+  volume: ActivityVolumeSchema,
   snapshot: ActivitySnapshotIdentitySchema.safeExtend({token:ActivitySnapshotTokenSchema}),
 }).superRefine((report, context) => {
   if (report.from !== report.snapshot.from || report.to !== report.snapshot.to || report.generatedAt !== report.snapshot.generatedAt)

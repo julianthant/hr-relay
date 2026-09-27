@@ -21,6 +21,11 @@ ActivityReportWireSchema,
 type ActivityReportWire,
 } from "../../../src/domain/dashboard/activity.js";
 import {
+ActivityVolumeSchema,
+buildActivityVolumeBoundarySkeleton,
+createActivityDatePartReader,
+} from "../../../src/domain/dashboard/activity-volume.js";
+import {
 ArchiveIndexWireSchema,
 ArchivedRunDetailWireSchema,
 type ArchiveIndexWire,
@@ -394,6 +399,31 @@ export const FIXTURE_ARCHIVED_RUN: ArchivedRunDetailWire = ArchivedRunDetailWire
 
 export const FIXTURE_ACTIVITY_RANGE = { from: "2026-07-01", to: FIXTURE_DAY } as const;
 export const FIXTURE_ACTIVITY_UNAVAILABLE_RANGE = { from: "2026-07-02", to: FIXTURE_DAY } as const;
+const FIXTURE_ACTIVITY_TIME_ZONE = "America/Los_Angeles";
+const FIXTURE_ACTIVITY_DAYS = [
+  { day: "2026-07-29", runs: 3 },
+  { day: "2026-07-30", runs: 4 },
+  { day: FIXTURE_DAY, runs: 5 },
+] as const;
+
+function fixtureActivityVolume(range: { from: string; to: string }, days: readonly { day: string; runs: number }[]) {
+  const boundary = buildActivityVolumeBoundarySkeleton(range, FIXTURE_ACTIVITY_TIME_ZONE);
+  const datePart = createActivityDatePartReader(FIXTURE_ACTIVITY_TIME_ZONE);
+  const coveredRuns = days.reduce((total, day) => total + day.runs, 0);
+  return ActivityVolumeSchema.parse({
+    state: "complete",
+    ...boundary,
+    coveredRuns,
+    // This synthetic report assigns counts to three known calendar dates. Fold those counts into
+    // real report-zone intervals; do not invent per-run instants for the chart.
+    buckets: boundary.buckets.map((bucket) => {
+      const startDay = datePart(bucket.start);
+      const endDay = datePart(bucket.endExclusive);
+      const runs = days.reduce((total, day) => total + (day.day >= startDay && day.day < endDay ? day.runs : 0), 0);
+      return { ...bucket, runs };
+    }),
+  });
+}
 
 export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSchema.parse({
   wireVersion: 1,
@@ -407,11 +437,8 @@ export const FIXTURE_ACTIVITY_REPORT: ActivityReportWire = ActivityReportWireSch
   // compatible generation: the axis is a real deduplicated count, not another
   // spelling of run total.
   people: { state: "present", distinct: 8, evidenceRows: 12 },
-  days: [
-    { day: "2026-07-29", runs: 3 },
-    { day: "2026-07-30", runs: 4 },
-    { day: FIXTURE_DAY, runs: 5 },
-  ],
+  days: FIXTURE_ACTIVITY_DAYS,
+  volume: fixtureActivityVolume(FIXTURE_ACTIVITY_RANGE, FIXTURE_ACTIVITY_DAYS),
   // The whole-report completion split the headline tile reads, equal by
   // construction to the two rows' columns below — the schema refuses the
   // fixture outright if they ever part company.
@@ -491,6 +518,7 @@ export const FIXTURE_ACTIVITY_UNAVAILABLE_REPORT: ActivityReportWire = ActivityR
   ...FIXTURE_ACTIVITY_REPORT,
   from: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.from,
   to: FIXTURE_ACTIVITY_UNAVAILABLE_RANGE.to,
+  volume: fixtureActivityVolume(FIXTURE_ACTIVITY_UNAVAILABLE_RANGE, FIXTURE_ACTIVITY_DAYS),
   people: {
     state: "absent",
     evidenceRows: 12,

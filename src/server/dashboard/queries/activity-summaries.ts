@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { AuthorityDatabase } from "../../../infra/sqlite/authority-database.js";
 import { RunSummaryQuerySchema } from "../../../infra/sqlite/run-summaries.js";
+import { runtimeTimeZone } from "../../../domain/clock.js";
 import { statusOf } from "./run-summary-status.js";
 import type { SummaryRow } from "./run-summary-status.js";
 /** Selected live summary rows, streamed in bounded indexed pages inside one database snapshot. */
@@ -17,6 +18,7 @@ function visitRange(database:AuthorityDatabase,from:string,to:string,visit:(row:
 
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { ActivityReportWireSchema, ACTIVITY_SAMPLE_LIMIT, type ActivityReportWire, type ActivityWorkflowTotal } from "../../../domain/dashboard/activity.js";
+import { buildActivityVolumeBoundarySkeleton, createActivityDatePartReader } from "../../../domain/dashboard/activity-volume.js";
 import { TERMINAL_QUEUE_STATUSES } from "../../../domain/dashboard/projection.js";
 
 type ActivityWorkflowCounts = Omit<ActivityWorkflowTotal,"workflowId"|"registration">;
@@ -25,23 +27,63 @@ function emptyActivityWorkflowCounts():ActivityWorkflowCounts {
 }
 const ACTIVITY_STATUS_BUCKET = {partial:"partial",done:"completion",failed:"failed",cancelled:"cancelled",blocked:"open",queued:"open",running:"open",cancelling:"open","awaiting-approval":"open"} as const;
 
+/** A zone change can shift a local date by at most two days; inspect that bounded edge so it cannot hide a run as zero. */
+function shiftActivityDay(value:string,days:number):string {
+  const date=new Date(`${value}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate()+days);
+  if(date.getUTCFullYear()<0)return "0000-01-01";
+  if(date.getUTCFullYear()>9999)return "9999-12-31";
+  return date.toISOString().slice(0,10);
+}
+
+function bucketForInstant(buckets:readonly {start:string;endExclusive:string}[],instant:number):number {
+  let low=0,high=buckets.length;
+  while(low<high) {
+    const middle=Math.floor((low+high)/2);
+    if(Date.parse(buckets[middle].start)<=instant)low=middle+1;
+    else high=middle;
+  }
+  const index=low-1,bucket=buckets[index];
+  if(bucket===undefined||instant>=Date.parse(bucket.endExclusive))throw new Error("activity-volume-enqueue-outside-interval");
+  return index;
+}
+
 /** Same run metrics as the retained projector; ledger and registry remain explicitly supplied authorities. */
 export function queryActivitySummaries(database:AuthorityDatabase,input:{from:string;to:string;generatedAt:string},deps:{
   descriptors:{resolve(workflow:string):AnyWorkflowDescriptor|undefined};
   ledger:{foldActivityRange(from:string,to:string):ActivityReportWire["ledger"]};
+  timeZone?:string;
 }):ActivityReportWire {
   const bounds=z.strictObject({from:z.iso.date(),to:z.iso.date(),generatedAt:z.iso.datetime({offset:true})}).parse(input);
   if(bounds.from>bounds.to)throw new Error("run-summary-range-invalid");
+  const timeZone=deps.timeZone??runtimeTimeZone();
   return database.withAuthorityReadSnapshot(()=>{
     const start=bounds.from,end=bounds.to;
+    const volumeSkeleton=buildActivityVolumeBoundarySkeleton({from:start,to:end},timeZone);
+    const reportDayOf=createActivityDatePartReader(timeZone);
+    const volumeCounts=volumeSkeleton.buckets.map(()=>0);
+    const volumeStart=Date.parse(volumeSkeleton.interval.start),volumeEnd=Date.parse(volumeSkeleton.interval.endExclusive);
     const inRange:SummaryRow[]=[];
     const identities=new Set<string>();let evidenceRows=0,unavailableRows=0;
-    visitRange(database,start,end,row=>{
+    visitRange(database,shiftActivityDay(start,-2),shiftActivityDay(end,2),row=>{
+      const enqueuedDay=reportDayOf(row.enqueuedAt);
+      const storedDayIsInRange=row.localDay>=start&&row.localDay<=end;
+      const enqueuedDayIsInRange=enqueuedDay>=start&&enqueuedDay<=end;
+      if(row.localDay!==enqueuedDay) {
+        if(storedDayIsInRange||enqueuedDayIsInRange)throw new Error("activity-summary-local-day-time-zone-mismatch");
+        return;
+      }
+      if(!storedDayIsInRange)return;
       if(row.workflow==="separations" && row.shape!=="operation") {
         if(row.person.state==="available"){identities.add(row.person.identity);evidenceRows++;}
         else unavailableRows++;
       }
-      if(row.shape!=="operation-member")inRange.push(row);
+      if(row.shape==="operation-member")return;
+      const enqueuedAt=Date.parse(row.enqueuedAt);
+      if(!Number.isFinite(enqueuedAt))throw new Error("activity-summary-enqueued-at-invalid");
+      if(enqueuedAt<volumeStart||enqueuedAt>=volumeEnd)throw new Error("activity-volume-enqueue-outside-interval");
+      volumeCounts[bucketForInstant(volumeSkeleton.buckets,enqueuedAt)]+=1;
+      inRange.push(row);
     });
     const people=unavailableRows===0?{state:"present",distinct:identities.size,evidenceRows}:{state:"absent",evidenceRows,unavailableRows,
       reason:`${String(unavailableRows)} of ${String(evidenceRows+unavailableRows)} current Separations run/member rows lack validated canonical identity; distinct people is unavailable`};
@@ -149,6 +191,15 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
     const sorted = [...measured].sort((a, b) => a.ms - b.ms);
     const longest = sorted.at(-1);
     const median = sorted.length === 0 ? undefined : sorted[Math.floor((sorted.length - 1) / 2)];
+    const volume = {
+      state:"complete" as const,
+      timeZone:volumeSkeleton.timeZone,
+      granularity:volumeSkeleton.granularity,
+      interval:volumeSkeleton.interval,
+      coveredRuns:inRange.length,
+      buckets:volumeSkeleton.buckets.map((bucket,index)=>({...bucket,runs:volumeCounts[index]})),
+    };
+    if(volumeCounts.reduce((total,count)=>total+count,0)!==inRange.length)throw new Error("activity-volume-count-mismatch");
 
     return ActivityReportWireSchema.parse({
       wireVersion: 1,
@@ -160,6 +211,7 @@ export function queryActivitySummaries(database:AuthorityDatabase,input:{from:st
       inFlightRuns: inRange.length - terminalRuns,
       people,
       completion,
+      volume,
       days: [...days.entries()].sort(([a], [b]) => a.localeCompare(b)).map(([day, runs]) => ({ day, runs })),
       workflows: workflowTotals,
       categories: [

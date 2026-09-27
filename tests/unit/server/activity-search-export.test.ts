@@ -12,8 +12,13 @@ import { createContentAddressedArtifactWriter } from "../../../src/infra/artifac
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { ActivityReportSelectionSchema } from "../../../src/domain/dashboard/activity-selection.js";
+import type { ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
+import { createActivitySelectionService } from "../../../src/server/dashboard/queries/activity-selection.js";
+import { queryActivitySummaries } from "../../../src/server/dashboard/queries/activity-summaries.js";
 import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
 import { registerActivityRoutes } from "../../../src/server/dashboard/routes/activity.js";
+import { registerShellRoutes } from "../../../src/server/dashboard/routes/shell.js";
+import type { ShellRouteDeps } from "../../../src/server/dashboard/routes/shell-types.js";
 import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
@@ -26,21 +31,39 @@ import { runRecordOf } from "./helpers/dashboard-harness.js";
 
 const cleanup:(()=>void)[]=[];
 afterEach(()=>{for(const dispose of cleanup.splice(0))dispose();});
-function fixture() {
+function shiftActivityVolumeSeries(report:ActivityReportWire):ActivityReportWire {
+  const volume=report.volume;
+  if(volume===undefined)throw new Error("activity-selection-proof-volume-unavailable");
+  const source=volume.buckets.findIndex(bucket=>bucket.runs>0),destination=volume.buckets.findIndex((_bucket,index)=>index!==source);
+  if(source<0||destination<0)throw new Error("activity-selection-proof-volume-series-not-shiftable");
+  return {...report,volume:{...volume,buckets:volume.buckets.map((bucket,index)=>({...bucket,
+    runs:bucket.runs+(index===source?-1:index===destination?1:0)}))}};
+}
+function fixture(options:{dynamicVolumeSeries?:boolean}={}) {
   const root=mkdtempSync(join(tmpdir(),"activity-selection-proof-")),path=join(root,"state.db");
   const clock=manualClock(new Date("2026-09-21T17:00:00Z"));
   const database=AuthorityDatabase.open({path,busyTimeoutMs:500,migrationOwner:"activity-selection-proof"},clock);
   cleanup.push(()=>{database.close();rmSync(root,{recursive:true,force:true});});
   for(let seed=3701;seed<=3703;seed++)database.authority.runs.enqueue(runRecordOf({seed,runNumber:seed-3700,workflow:"historical-workflow",dryRun:true,enqueuedAt:"2026-09-20T17:00:00Z",displayName:"Private Ingress Subject 10000000"}));
-  const descriptors={resolve:()=>undefined},sourceIdentity=database.getSourceDatabaseIdentity();
-  const activity=composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)});
+  const descriptors={resolve:()=>undefined},ledger=createTransactionHistory(database.authority),sourceIdentity=database.getSourceDatabaseIdentity();
+  let shiftVolumeSeries=false;
+  const readSummary=(from:string,to:string,generatedAt:string)=>{
+    const report=queryActivitySummaries(database,{from,to,generatedAt},{descriptors,ledger,timeZone:"UTC"});
+    return shiftVolumeSeries?shiftActivityVolumeSeries(report):report;
+  };
+  const activity=options.dynamicVolumeSeries
+    ?createActivitySelectionService({database,clock,read:readSummary})
+    :composeActivity({database,clock,descriptors,ledger});
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
   const artifacts=createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"});
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
-  const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));registerActivityRoutes(app,{activity});
-  return {database,clock,activity,search,xlsx,artifacts,sourceIdentity,app};
+  const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));
+  app.use("*",(c,next)=>{c.set("requestActorId",ActorIdSchema.parse("synthetic-operator"));return next();});
+  registerActivityRoutes(app,{activity});
+  registerShellRoutes(app,{bootstrap:{} as ShellRouteDeps["bootstrap"],search,xlsxExports:xlsx,hub:{} as ShellRouteDeps["hub"]});
+  return {database,clock,activity,search,xlsx,artifacts,sourceIdentity,app,setShiftVolumeSeries:(value:boolean)=>{shiftVolumeSeries=value;}};
 }
 
 it("serves and exports the same reviewed Activity summary snapshot and refuses substitution after mutation",async()=>{
@@ -58,6 +81,37 @@ it("serves and exports the same reviewed Activity summary snapshot and refuses s
   // Registering this export itself advances authority: old review cannot silently read the new generation.
   assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),/stale/u);
   assert.equal((await f.app.request(`http://localhost/api/v1/reports/activity.csv?from=${report.from}&to=${report.to}`)).status,409);
+});
+
+it("binds Activity volume series into the snapshot digest for CSV and XLSX downloads",async()=>{
+  const f=fixture({dynamicVolumeSeries:true});await f.artifacts.ready;
+  const report=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
+  const generation=f.database.getMeta().authorityGeneration;
+  assert.equal(report.volume.coveredRuns,report.totalRuns);
+
+  f.setShiftVolumeSeries(true);
+  const changed=ActivityReportSelectionSchema.parse(await (await f.app.request("http://localhost/api/v1/reports/activity?from=2026-09-20&to=2026-09-20")).json());
+  assert.equal(f.database.getMeta().authorityGeneration,generation);
+  assert.equal(changed.snapshot.authorityGeneration,report.snapshot.authorityGeneration);
+  const {volume:originalVolume,snapshot:originalSnapshot,...originalCore}=report;
+  const {volume:changedVolume,snapshot:changedSnapshot,...changedCore}=changed;
+  assert.deepEqual(changedCore,originalCore);
+  assert.deepEqual(changedVolume,shiftActivityVolumeSeries({...originalCore,volume:originalVolume}).volume);
+  assert.notEqual(changedSnapshot.reportDigest,originalSnapshot.reportDigest);
+  assert.notEqual(changedSnapshot.token,originalSnapshot.token);
+  const {reportDigest:changedDigest,token:changedToken,...changedIdentity}=changedSnapshot;
+  const {reportDigest:originalDigest,token:originalToken,...originalIdentity}=originalSnapshot;
+  assert.notEqual(changedDigest,originalDigest);assert.notEqual(changedToken,originalToken);
+  assert.deepEqual(changedIdentity,originalIdentity);
+  assert.throws(()=>f.activity.readSelected(report.from,report.to,report.snapshot.token),/content-mismatch/u);
+
+  const csv=await f.app.request(`http://localhost/api/v1/reports/activity.csv?${new URLSearchParams({from:report.from,to:report.to,snapshot:report.snapshot.token})}`);
+  assert.equal(csv.status,409);
+  const xlsxRequest={requestVersion:3,selection:{kind:"activity" as const,from:report.from,to:report.to,snapshotToken:report.snapshot.token}};
+  await assert.rejects(f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),xlsxRequest),/content-mismatch/u);
+  const xlsx=await f.app.request("http://localhost/api/v1/exports/xlsx",{method:"POST",headers:{"content-type":"application/json"},body:JSON.stringify(xlsxRequest)});
+  assert.equal(xlsx.status,409);
+  assert.equal(f.database.getMeta().authorityGeneration,generation);
 });
 
 it("exports the complete ordered search selection with coverage while omitting private values and raw evidence",async()=>{

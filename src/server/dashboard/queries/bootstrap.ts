@@ -7,7 +7,7 @@
 import type { CapabilityAvailability } from "../../../domain/absence.js";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import { workflowProjections } from "../../../base/workflow.js";
-import type { Clock } from "../../../domain/clock.js";
+import { runtimeTimeZone, type Clock } from "../../../domain/clock.js";
 import { PreflightReportSchema } from "../../../domain/preflight.js";
 import { z } from "zod";
 import {
@@ -53,6 +53,8 @@ export interface BootstrapModuleView {
 export interface BootstrapQueryDeps {
   readonly appVersion: string;
   readonly clock: Clock;
+  /** Composition's local-calendar authority, shared with Activity summaries. */
+  readonly timeZone?: string;
   /** The composition root's own tuple — never a re-listed copy of it. */
   readonly modules: readonly BootstrapModuleView[];
   readonly descriptorSetHash: Fingerprint;
@@ -109,7 +111,7 @@ export function buildBootstrap(deps: BootstrapQueryDeps): FrontendBootstrapWire 
     protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH,
     projectionGeneration: deps.projection.generation(),
     actor: { id: LOCAL_OPERATOR_ACTOR_ID, label: "Local operator" },
-    serverClock: { now: deps.clock.now().toISOString(), zone: "America/Los_Angeles" },
+    serverClock: { now: deps.clock.now().toISOString(), zone: deps.timeZone ?? runtimeTimeZone() },
     storage: {
       authority: storageAuthority,
       backup: deps.backupSummary(),

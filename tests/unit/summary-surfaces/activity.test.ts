@@ -9,6 +9,7 @@ import {
   ActivityReportWireSchema,
   type ActivityReportWire,
 } from "../../../src/domain/dashboard/activity.js";
+import { buildActivityVolumeBoundarySkeleton } from "../../../src/domain/dashboard/activity-volume.js";
 import { ActivityBody, ActivityReport } from "../../../src/dashboard/surfaces/activity.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
@@ -31,7 +32,7 @@ const RUN_A = "11111111-1111-4111-8111-111111111111";
 const RUN_B = "22222222-2222-4222-8222-222222222222";
 
 function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
-  return ActivityReportWireSchema.parse({
+  const value = {
     wireVersion: 1,
     from: "2026-09-08",
     to: "2026-09-09",
@@ -65,7 +66,21 @@ function report(overrides: Record<string, unknown> = {}): ActivityReportWire {
     },
     ledger: { systems: [] },
     ...overrides,
-  });
+  };
+  const from = typeof value.from === "string" ? value.from : "2026-09-08";
+  const to = typeof value.to === "string" ? value.to : "2026-09-09";
+  const totalRuns = typeof value.totalRuns === "number" ? value.totalRuns : 2;
+  const days = Array.isArray(value.days) ? value.days as { day: string; runs: number }[] : [];
+  const volumeSkeleton = buildActivityVolumeBoundarySkeleton({ from, to }, "UTC");
+  const dayCounts = new Map(days.map(({ day, runs }) => [day, runs]));
+  const buckets = volumeSkeleton.buckets.map((bucket, index) => ({
+    ...bucket,
+    runs: volumeSkeleton.granularity === "daily"
+      ? dayCounts.get(bucket.start.slice(0, 10)) ?? 0
+      : index === 0 ? totalRuns : 0,
+  }));
+  const volume = { state: "complete" as const, ...volumeSkeleton, coveredRuns: buckets.reduce((sum, bucket) => sum + bucket.runs, 0), buckets };
+  return ActivityReportWireSchema.parse({ ...value, volume });
 }
 
 function reviewedReport(overrides:Record<string,unknown>={}) {
