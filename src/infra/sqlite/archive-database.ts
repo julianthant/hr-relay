@@ -86,7 +86,7 @@ export class ArchiveDatabase {
   get schemaVersion(): 1 | 2 { return this.#schemaVersion; }
   #memoryFiles: Map<string, Buffer> | undefined;
   constructor(admission: RuntimeAdmission, readonly path: string, options: Readonly<{readOnly?:boolean; validation?:"all"|"selected"}> = {}) {
-    requireRuntimeAdmission(admission).assertArchiveDatabase(path);
+    requireRuntimeAdmission(admission).assertArchiveDatabase(path, options.readOnly === true ? "read-only" : "read-write");
     const existed=existsSync(path); this.#readOnly=options.readOnly===true;
     if(options.validation==="selected"&&!this.#readOnly)throw new Error("archive-selected-validation-requires-read-only");
     if ((!existed && this.#readOnly) || (existed && (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).size===0))) throw new Error("archive-database-invalid-path");

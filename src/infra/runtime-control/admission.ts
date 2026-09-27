@@ -45,16 +45,19 @@ export class RuntimeAdmission {
   readonly #authorityDatabasePaths: ReadonlySet<string>;
   readonly #archiveDatabasePaths: ReadonlySet<string>;
   readonly #locator: RuntimeLocator | undefined;
+  readonly #scope: "installation" | "adoption-inspection" | "synthetic";
   #released = false;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
-    authorityDatabasePaths: readonly string[], archiveDatabasePaths: readonly string[], locator?: RuntimeLocator) {
+    authorityDatabasePaths: readonly string[], archiveDatabasePaths: readonly string[],
+    scope: "installation" | "adoption-inspection" | "synthetic", locator?: RuntimeLocator) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
     this.#artifactRoot = artifactRoot;
     this.#authorityDatabasePaths = new Set(authorityDatabasePaths);
     this.#archiveDatabasePaths = new Set(archiveDatabasePaths);
+    this.#scope = scope;
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     issued.add(this);
     Object.freeze(this);
@@ -73,6 +76,7 @@ export class RuntimeAdmission {
   }
   assertAuthorityDatabase(path: string): void {
     this.assertLive();
+    if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
     if (path === ":memory:") return;
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
   }
@@ -85,8 +89,9 @@ export class RuntimeAdmission {
     if (parent === join(this.#stateRoot, "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
     throw new Error("runtime-admission: read-only authority database path is outside admission");
   }
-  assertArchiveDatabase(path: string): void {
+  assertArchiveDatabase(path: string, mode: "read-only" | "read-write" = "read-write"): void {
     this.assertLive();
+    if (this.#scope === "adoption-inspection" && mode !== "read-only") throw new Error("runtime-admission: adoption inspection is read-only");
     if (path === ":memory:") return;
     if (!this.#archiveDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: archive database path is outside admission");
   }
@@ -108,7 +113,7 @@ export class RuntimeAdmission {
     assertInstallationLease(lease);
     const { stateRoot, artifactRoot } = lease.locator;
     return new RuntimeAdmission(issuanceToken, lease, stateRoot, artifactRoot,
-      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], lease.locator);
+      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "installation", lease.locator);
   }
 
   static acquireInitial(workspace: string,
@@ -122,7 +127,7 @@ export class RuntimeAdmission {
       defaultPair: defaults,
       verifyExisting: (pair) => {
         const inspection = new RuntimeAdmission(issuanceToken, { assertHeld() {}, release() {} }, pair.stateRoot, pair.artifactRoot,
-          [join(pair.stateRoot, "state.db")], [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
+          [join(pair.stateRoot, "state.db")], [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "adoption-inspection");
         try { return verifyExisting(pair, inspection); }
         finally { inspection.release(); }
       },
@@ -148,7 +153,7 @@ export class RuntimeAdmission {
     const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
     return new RuntimeAdmission(issuanceToken, authority, stateRoot, artifactRoot,
       kind === "authority" ? [databasePath] : [],
-      kind === "archive" ? [databasePath] : databasePath === ":memory:" ? [] : [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
+      kind === "archive" ? [databasePath] : databasePath === ":memory:" ? [] : [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "synthetic");
   }
 
   static syntheticRoots(stateRoot: string, artifactRoot: string): RuntimeAdmission {
@@ -156,7 +161,7 @@ export class RuntimeAdmission {
     assertSyntheticDirectory(artifactRoot);
     const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
     return new RuntimeAdmission(issuanceToken, authority, stateRoot, artifactRoot,
-      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
+      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "synthetic");
   }
 }
 Object.freeze(RuntimeAdmission.prototype);

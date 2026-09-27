@@ -1,8 +1,10 @@
 import { afterEach, expect, it } from "vitest";
-import { linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RuntimeAdmission, requireRuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission, acquireInitialRuntimeAdmission, requireRuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { ArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";
 
 const roots: string[] = [];
 function fixture(): string {
@@ -46,4 +48,22 @@ it("rejects fixture aliases and installation witnesses", () => {
   expect(() => RuntimeAdmission.syntheticFixture(join(alias, "state.db"), "authority")).toThrow(/unsafe synthetic fixture ancestor/u);
   mkdirSync(join(root, ".runtime-control"));
   expect(() => RuntimeAdmission.syntheticFixture(join(root, "state.db"), "authority")).toThrow(/installation witness/u);
+});
+
+it("limits first-adoption verification to read-only inspection", () => {
+  const workspace = fixture();
+  const stateRoot = join(workspace, ".tracker");
+  mkdirSync(stateRoot);
+  mkdirSync(join(stateRoot, "artifacts"));
+  writeFileSync(join(stateRoot, "sentinel.txt"), "synthetic");
+  const path = join(stateRoot, "state.db");
+  expect(() => acquireInitialRuntimeAdmission(workspace, (_pair, inspection) => {
+    expect(() => AuthorityDatabase.open(inspection, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }))
+      .toThrow(/adoption inspection is read-only/u);
+    expect(() => new ArchiveDatabase(inspection, join(stateRoot, "archive.sqlite")))
+      .toThrow(/adoption inspection is read-only/u);
+    throw new Error("verified refusal");
+  })).toThrow(/verified refusal/u);
+  expect(existsSync(path)).toBe(false);
+  expect(existsSync(join(stateRoot, "archive.sqlite"))).toBe(false);
 });
