@@ -3,7 +3,7 @@ import { poolWorkerId } from "../../../src/core/worker-loop.js";
 import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, rmSync } from "node:fs";
+import { mkdtempSync, mkdirSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, it } from "vitest";
@@ -13,6 +13,7 @@ import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../src/domain/config/protected-settings.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { composeRuntimePreflight } from "../../../src/server/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/server/preflight/runtime-runners.js";
@@ -37,7 +38,7 @@ const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0).reverse()) dispose(); });
 const signal = (): AbortSignal => new AbortController().signal;
 function harness() {
-  const repoRoot = mkdtempSync(join(tmpdir(), "preflight-admission-"));
+  const repoRoot = mkdtempSync(join(realpathSync(tmpdir()), "preflight-admission-"));
   const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot); mkdirSync(stateRoot, { recursive: true });
   const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "preflight-test" }, clock);
@@ -51,7 +52,8 @@ function harness() {
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let protectedRecord = initialProtectedStoreRecord();
   const faults = new Set<string>(); const probes: string[] = []; let supportMissing = false;
-  const preflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: rebuildRuntimeIsolation, descriptors,
+  const preflight = composeRuntimePreflight({ admission: RuntimeAdmission.syntheticRoots(stateRoot, join(repoRoot, rebuildRuntimeIsolation.artifactRoot)),
+    database, clock, repoRoot, isolation: rebuildRuntimeIsolation, descriptors,
     descriptorSetHash: personLookupDescriptor.contractFingerprint, protectedSecrets: { read: () => protectedRecord }, environment: {},
     runnerFactory: input => {
       const available = healthyRuntimePreflightRunners(input);
