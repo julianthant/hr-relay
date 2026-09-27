@@ -1,5 +1,5 @@
 import { afterEach, expect, it } from "vitest";
-import { existsSync, linkSync, mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
+import { existsSync, linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { RuntimeAdmission, acquireInitialRuntimeAdmission, requireRuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
@@ -8,7 +8,7 @@ import { ArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";
 
 const roots: string[] = [];
 function fixture(): string {
-  const root = mkdtempSync(join(tmpdir(), "runtime-admission-"));
+  const root = realpathSync(mkdtempSync(join(tmpdir(), "runtime-admission-")));
   roots.push(root);
   return root;
 }
@@ -78,7 +78,48 @@ it("limits first-adoption verification to read-only inspection", () => {
     expect(() => new ArchiveDatabase(inspection, join(stateRoot, "archive.sqlite")))
       .toThrow(/adoption inspection is read-only/u);
     throw new Error("verified refusal");
-  })).toThrow(/verified refusal/u);
+  }, () => { throw new Error("fresh callback must not run for existing data"); })).toThrow(/verified refusal/u);
   expect(existsSync(path)).toBe(false);
   expect(existsSync(join(stateRoot, "archive.sqlite"))).toBe(false);
+});
+
+it("initializes a fresh authority once under adopting journal before publishing its locator", () => {
+  const workspace = fixture();
+  const stateRoot = join(workspace, ".tracker");
+  const path = join(stateRoot, "state.db");
+  let initialization: RuntimeAdmission | undefined;
+  const admission = acquireInitialRuntimeAdmission(workspace, (pair, inspection) => {
+    expect(existsSync(join(workspace, ".runtime-control", "journal.json"))).toBe(true);
+    const inspected = AuthorityDatabase.inspectExistingReadOnly(inspection, path);
+    return { kind: "verified-existing", pair, authorityGeneration: inspected.authorityGeneration,
+      databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) };
+  }, (pair, fresh) => {
+    initialization = fresh;
+    expect(pair.stateRoot).toBe(stateRoot);
+    expect(existsSync(join(workspace, ".runtime-control", "journal.json"))).toBe(true);
+    expect(existsSync(join(workspace, ".runtime-control", "locator.json"))).toBe(false);
+    expect(() => fresh.assertWritable()).toThrow(/database-only write authority/u);
+    expect(() => fresh.assertArtifactRoot(join(pair.artifactRoot, "a.artifact"))).toThrow(/cannot write artifacts/u);
+    expect(() => fresh.assertStateRoot(join(pair.stateRoot, "credentials"))).toThrow(/outside database authority/u);
+    expect(() => fresh.assertAuthorityDatabase(":memory:")).toThrow(/outside admission/u);
+    const database = AuthorityDatabase.open(fresh, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" });
+    database.close();
+  });
+  expect(existsSync(path)).toBe(true);
+  expect(existsSync(join(workspace, ".runtime-control", "journal.json"))).toBe(false);
+  expect(existsSync(join(workspace, ".runtime-control", "locator.json"))).toBe(true);
+  expect(() => initialization?.assertLive()).toThrow(/released admission/u);
+  admission.release();
+});
+
+it("keeps an adopting journal after an empty fresh initializer", () => {
+  const workspace = fixture();
+  expect(() => acquireInitialRuntimeAdmission(workspace, () => {
+    throw new Error("verifier must not see missing database");
+  }, () => {})).toThrow(/fresh authority database missing/u);
+  expect(existsSync(join(workspace, ".runtime-control", "journal.json"))).toBe(true);
+  expect(existsSync(join(workspace, ".runtime-control", "locator.json"))).toBe(false);
+  expect(() => acquireInitialRuntimeAdmission(workspace, () => {
+    throw new Error("not reached");
+  }, () => {})).toThrow(/locator missing; offline recovery required/u);
 });

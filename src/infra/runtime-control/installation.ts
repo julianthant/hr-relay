@@ -70,9 +70,12 @@ export type RelocationInventory = Readonly<{ operationId: string; installationId
   pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
 export type ExistingAuthorityEvidence = Readonly<{ kind: "verified-existing"; pair: RuntimePair; authorityGeneration: number; databaseIdentity: string }>;
 export type AuthorityVerifier = (pair: RuntimePair) => ExistingAuthorityEvidence;
+export type FreshInitializationWitness = Readonly<{ installationId: string; pair: RuntimePair; assertHeld(): void }>;
+export type FreshInitializer = (witness: FreshInitializationWitness) => void;
 export type RelocationVerifier = (source: RuntimeLocator, destination: RuntimePair, operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationEvidence;
 export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator: RuntimeLocator;
-  assertHeld(): void; readRelocationReceipts(): readonly RelocationCompletionReceipt[]; release(): void }>;
+  assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
+  readRelocationReceipts(): readonly RelocationCompletionReceipt[]; release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding, restore: RestoreAdmissionHandle): string;
   relocationInventory(): RelocationInventory;
@@ -668,13 +671,16 @@ function defaultEmpty(pair: RuntimePair): boolean {
   }
   return true;
 }
-function adopt(control: string, workspace: string, defaultPair: RuntimePair, verifier?: AuthorityVerifier): RuntimeLocator {
+function adopt(control: string, workspace: string, defaultPair: RuntimePair, verifier?: AuthorityVerifier,
+  initializeFresh?: FreshInitializer): RuntimeLocator {
   const pair = Object.freeze({ stateRoot: defaultPair.stateRoot, artifactRoot: defaultPair.artifactRoot });
   assertKnownDefaults(workspace, pair);
   preflightPair(pair);
   if (existsSync(join(control, "installation.json")) || existsSync(join(control, "locator.json")) || existsSync(join(control, "journal.json"))) fail("incomplete adoption; offline recovery required");
   assertNoDefaultWitness(pair);
-  if (!defaultEmpty(pair)) {
+  const fresh = defaultEmpty(pair);
+  if (fresh && (!verifier || !initializeFresh)) fail("fresh authority requires initializer and verifier");
+  if (!fresh) {
     if (!verifier) fail("existing authority requires verifier");
     const evidence = verifier(Object.freeze({ ...pair }));
     if (evidence.kind !== "verified-existing" || evidence.pair.stateRoot !== pair.stateRoot || evidence.pair.artifactRoot !== pair.artifactRoot || !Number.isSafeInteger(evidence.authorityGeneration) || evidence.authorityGeneration < 0 || !evidence.databaseIdentity) fail("invalid authority evidence");
@@ -686,6 +692,36 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   atomicJson(join(control, "journal.json"), { schemaVersion: 1, phase: "adopting", installationId });
   installMarker(pair.stateRoot, installationId, workspace, "state", 0);
   installMarker(pair.artifactRoot, installationId, workspace, "artifact", 0);
+  if (fresh) {
+    let active = true;
+    const witness: FreshInitializationWitness = Object.freeze({ installationId, pair,
+      assertHeld() {
+        if (!active) fail("fresh initialization capability expired");
+        const pending = readStrict(join(control, "journal.json"), JournalSchema);
+        if (pending.phase !== "adopting" || pending.installationId !== installationId) fail("fresh initialization journal changed");
+        if (readStrict(join(control, "installation.json"), InstallationSchema).installationId !== installationId) {
+          fail("fresh initialization installation changed");
+        }
+        if (lstatMaybe(join(control, "locator.json"))) fail("fresh initialization locator already published");
+        checkMarker(pair.stateRoot, installationId, workspace, "state", 0);
+        checkMarker(pair.artifactRoot, installationId, workspace, "artifact", 0);
+      },
+    });
+    try {
+      const completed: unknown = initializeFresh!(witness);
+      if (completed !== undefined) fail("fresh initializer must complete synchronously");
+    }
+    finally { active = false; }
+    const database = lstatMaybe(join(pair.stateRoot, "state.db"));
+    if (!database || !database.isFile() || database.isSymbolicLink() || database.nlink !== 1
+      || (process.getuid && database.uid !== process.getuid()) || (Number(database.mode) & 0o022) !== 0) {
+      fail("fresh authority database missing or unsafe");
+    }
+    const evidence = verifier!(Object.freeze({ ...pair }));
+    if (evidence.kind !== "verified-existing" || evidence.pair.stateRoot !== pair.stateRoot
+      || evidence.pair.artifactRoot !== pair.artifactRoot || !Number.isSafeInteger(evidence.authorityGeneration)
+      || evidence.authorityGeneration < 0 || !evidence.databaseIdentity) fail("invalid fresh authority evidence");
+  }
   const locator = { schemaVersion: 1 as const, installationId, generation: 0, ...pair };
   atomicJson(join(control, "locator.json"), locator);
   unlinkSync(join(control, "journal.json")); syncDir(control);
@@ -693,8 +729,8 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
 }
 type RecoveryRequest = Readonly<{ installationId: string; fromGeneration: number; operationId: string; restoreAdmission: RestoreAdmissionHandle }>;
 export function acquireInstallation(workspacePath: string, mode: "shared", options?: never): InstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; recoverRelocation?: RecoveryRequest }): ExclusiveInstallationLease;
-export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; recoverRelocation?: RecoveryRequest }): InstallationLease | ExclusiveInstallationLease {
+export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest }): ExclusiveInstallationLease;
+export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest }): InstallationLease | ExclusiveInstallationLease {
   const workspace = realpathSync(workspacePath);
   const control = join(workspace, CONTROL);
   if (!existsSync(control)) {
@@ -702,6 +738,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     assertKnownDefaults(workspace, options.defaultPair);
     preflightPair(options.defaultPair);
     assertNoDefaultWitness(options.defaultPair);
+    if (defaultEmpty(options.defaultPair) && (!options.initializeFresh || !options.verifyExisting)) {
+      fail("fresh authority requires initializer and verifier");
+    }
     mkdirSync(control, { mode: 0o700 }); syncDir(workspace);
     mkdirSync(join(control, "leases"), { mode: 0o700 }); syncDir(control);
   }
@@ -712,7 +751,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     const peers = activeLeases(control);
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     if (options?.recoverRelocation) assertRestoreHeld(workspace, options.recoverRelocation.restoreAdmission);
-    const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting) : fail("installation locator missing"));
+    const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting, options.initializeFresh) : fail("installation locator missing"));
     admissionId = randomUUID();
     leasePath = join(control, "leases", `${admissionId}.json`);
     atomicJson(leasePath, { schemaVersion: 1, admissionId, mode, pid: process.pid, processIdentity: identity() });
@@ -732,6 +771,16 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     mode,
     locator: publicLocator,
     assertHeld,
+    assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string) {
+      assertHeld();
+      if (resolve(workspaceRoot) !== workspace || realpathSync(workspaceRoot) !== workspace
+        || processLockRoot !== fixedLockRoot(workspace)) fail("fixed process lock root does not match installation");
+      assertNoSymlinkComponents(processLockRoot);
+      privateDirectory(processLockRoot);
+      if (readInstallation(control, workspace).installationId !== locator.installationId) {
+        fail("fixed process lock installation changed");
+      }
+    },
     readRelocationReceipts() {
       assertHeld();
       if (lstatMaybe(join(control, "journal.json"))) fail("pending relocation has no settled receipt chain");

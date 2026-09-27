@@ -3,7 +3,7 @@ import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease,
-  type ExclusiveInstallationLease, type RelocationCompletionReceipt, type RelocationInventory,
+  type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
@@ -70,7 +70,8 @@ export type RuntimeRelocationOperation = Readonly<{
 }>;
 
 type AdmissionScope = "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged"
-  | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification";
+  | "verified-copy" | "synthetic-verified-copy" | "synthetic" | "relocation-destination" | "relocation-source-verification"
+  | "adoption-initialization";
 
 /** A lifetime-bound, path-specific authority to open this installation's physical storage. */
 export class RuntimeAdmission {
@@ -108,6 +109,13 @@ export class RuntimeAdmission {
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
+  assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void {
+    this.assertLive();
+    if (this.#scope !== "installation") throw new Error("runtime-admission: installation lock authority required");
+    const lease = this.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    lease.assertFixedProcessLockRoot(workspaceRoot, processLockRoot);
+  }
   readRelocationReceipts(): readonly RelocationCompletionReceipt[] {
     this.assertLive();
     if (this.#scope !== "installation" || this.#authority.readRelocationReceipts === undefined) {
@@ -136,18 +144,22 @@ export class RuntimeAdmission {
   assertWritable(): void {
     this.assertLive();
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
+    if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization has database-only write authority");
     if (this.#scope === "verified-copy" || this.#scope === "synthetic-verified-copy"
       || this.#scope === "relocation-source-verification") throw new Error("runtime-admission: verification is read-only");
   }
   assertAuthorityDatabase(path: string): void {
-    this.assertWritable();
+    if (this.#scope === "adoption-initialization") this.assertLive();
+    else this.assertWritable();
     this.assertStorageRootsSafe();
-    if (path === ":memory:" && this.#scope !== "relocation-destination") return;
+    if (path === ":memory:" && this.#scope !== "relocation-destination" && this.#scope !== "adoption-initialization") return;
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
     this.assertLive();
-    if (this.#scope === "relocation-source-verification") throw new Error("runtime-admission: source verification cannot open authority database");
+    if (this.#scope === "relocation-source-verification" || this.#scope === "adoption-initialization") {
+      throw new Error("runtime-admission: inspection database authority unavailable");
+    }
     this.assertStorageRootsSafe();
     if (path === ":memory:" && this.#scope !== "relocation-destination") return;
     const checked = resolve(path);
@@ -166,10 +178,11 @@ export class RuntimeAdmission {
     this.assertLive();
     if (this.#scope === "relocation-source-verification") throw new Error("runtime-admission: source verification cannot open archive database");
     this.assertStorageRootsSafe();
-    if (mode !== "read-only") this.assertWritable();
-    if (path === ":memory:" && this.#scope !== "relocation-destination") return;
+    if (mode !== "read-only" && this.#scope !== "adoption-initialization") this.assertWritable();
+    if (path === ":memory:" && this.#scope !== "relocation-destination" && this.#scope !== "adoption-initialization") return;
     const checked = resolve(path);
     if (this.#archiveDatabasePaths.has(checked)) return;
+    if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: archive path is outside fresh initialization");
     const parent = dirname(checked);
     if (mode === "read-only" && parent === join(this.#stateRoot, "backups", "authority")
       && /^[0-9a-f-]{36}\.archive\.sqlite$/u.test(checked.slice(parent.length + 1))) {
@@ -181,10 +194,15 @@ export class RuntimeAdmission {
   assertStateRoot(path: string): void {
     this.assertLive();
     this.assertStorageRootsSafe();
+    if (this.#scope === "adoption-initialization" && ![this.#stateRoot, join(this.#stateRoot, "state.db"),
+      join(this.#stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)].includes(resolve(path))) {
+      throw new Error("runtime-admission: fresh initialization path is outside database authority");
+    }
     if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
   }
   assertArtifactRoot(path: string): void {
     this.assertLive();
+    if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot write artifacts");
     this.assertStorageRootsSafe();
     if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
   }
@@ -276,6 +294,7 @@ export class RuntimeAdmission {
 
   verifiedReadOnlyCopy(path: string, expectedSha256: string, kind: "authority" | "archive"): RuntimeAdmission {
     this.assertLive();
+    if (this.#scope === "adoption-initialization") throw new Error("runtime-admission: fresh initialization cannot delegate copy authority");
     if (this.#scope === "relocation-source-verification") {
       throw new Error("runtime-admission: source verification is limited to retained roots");
     }
@@ -332,7 +351,8 @@ export class RuntimeAdmission {
   }
 
   static acquireInitial(workspace: string,
-    verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence): RuntimeAdmission {
+    verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence,
+    initializeFresh: (pair: RuntimePair, initialization: RuntimeAdmission) => void): RuntimeAdmission {
     const canonical = realpathSync(workspace);
     const defaults = Object.freeze({
       stateRoot: resolve(canonical, rebuildRuntimeIsolation.stateRoot),
@@ -345,6 +365,17 @@ export class RuntimeAdmission {
           [join(pair.stateRoot, "state.db")], [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "adoption-inspection", "exclusive");
         try { return verifyExisting(pair, inspection); }
         finally { inspection.release(); }
+      },
+      initializeFresh: (witness: FreshInitializationWitness) => {
+        const initialization = new RuntimeAdmission(issuanceToken,
+          { assertHeld: () => witness.assertHeld(), release() {} }, witness.pair.stateRoot, witness.pair.artifactRoot,
+          [join(witness.pair.stateRoot, "state.db")],
+          [join(witness.pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], "adoption-initialization", "exclusive");
+        try {
+          const completed: unknown = initializeFresh(witness.pair, initialization);
+          if (completed !== undefined) throw new Error("runtime-admission: fresh initialization must complete synchronously");
+        }
+        finally { initialization.release(); }
       },
     });
     return RuntimeAdmission.fromInstallationLease(lease);
@@ -396,8 +427,9 @@ export function acquireExclusiveRuntimeAdmission(workspace: string): RuntimeAdmi
 }
 
 export function acquireInitialRuntimeAdmission(workspace: string,
-  verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence): RuntimeAdmission {
-  return RuntimeAdmission.acquireInitial(workspace, verifyExisting);
+  verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence,
+  initializeFresh: (pair: RuntimePair, initialization: RuntimeAdmission) => void): RuntimeAdmission {
+  return RuntimeAdmission.acquireInitial(workspace, verifyExisting, initializeFresh);
 }
 
 export function acquireRecoveryRuntimeRelocation(workspace: string,

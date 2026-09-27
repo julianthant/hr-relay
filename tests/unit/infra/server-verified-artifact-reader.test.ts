@@ -80,7 +80,7 @@ it("refuses artifact services during read-only first-adoption inspection", async
       assert.throws(() => createContentAddressedArtifactWriter({ admission: inspection }), /read-only/u);
       assert.throws(() => createServerVerifiedArtifactReader({ admission: inspection }), /read-only/u);
       throw new Error("inspection-tested");
-    }), /inspection-tested/u);
+    }, () => { throw new Error("fresh initializer must not run for existing authority"); }), /inspection-tested/u);
     assert.deepEqual(await readdir(stateRoot), ["state.db"]);
   } finally {
     await rm(workspace, { recursive: true, force: true });
