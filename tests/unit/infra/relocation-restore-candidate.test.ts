@@ -12,7 +12,8 @@ import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import { NonNegativeIntSchema } from "../../../src/domain/ids.js";
+import { ConfigSnapshotWriteSchema } from "../../../src/domain/config/snapshot.js";
+import { FingerprintSchema, NonNegativeIntSchema } from "../../../src/domain/ids.js";
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { acquireInstallation } from "../../../src/infra/runtime-control/installation.js";
 import { inspectAuthorityBackupReadOnly } from "../../../src/infra/compat/backup-inspection.js";
@@ -95,6 +96,17 @@ it("requires the entire receipt-backed plan history and activation snapshot in a
     backupReceiptId: "fixture-final", backupDigest: "3".repeat(64), finalDatabasePath: path,
     configSnapshotId, configFingerprint: fingerprint, authorityVersion: 56 as const,
     databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path), managedStateEntries: [] };
+  lease.recordActivationIntent(() => ({ operationId, installationId: lease.locator.installationId,
+    sourceGeneration: 0, source: pair, destination, plan,
+    stageAuthority: { manifestPath: withoutSnapshot.manifestPath,
+      manifestSha256: createHash("sha256").update(readFileSync(withoutSnapshot.manifestPath)).digest("hex"),
+      backupPath: withoutSnapshot.backupPath, backupSha256: withoutSnapshot.manifest.sha256 },
+    stageArchive: null, nativeDestinationPath: path, nativeDestinationSha256: null,
+    preAuthorityGeneration: inspection.authorityGeneration,
+    preAuthorityContentFingerprint: inspection.authorityContentFingerprint,
+    managedInventoryDigest: "4".repeat(64), settingsRevision: 1, settingsFingerprint: "5".repeat(64),
+    priorActive: null, snapshot: ConfigSnapshotWriteSchema.parse({ configSnapshotId, revision: 1, fingerprint, config,
+      provenance: ordinary.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" }) }));
   lease.recordVerifiedStage(() => evidence);
   lease.fenceRelocationSource(); lease.retainRelocationSources();
   lease.switchRelocationLocator(() => evidence); lease.settleRelocation(() => evidence);
@@ -131,6 +143,6 @@ it("requires the entire receipt-backed plan history and activation snapshot in a
   const tamperedSha256 = createHash("sha256").update(readFileSync(tamperedPath)).digest("hex");
   expect(() => validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
     verifiedBackup: { ...complete, backupPath: tamperedPath, manifest: { ...complete.manifest,
-      sha256: tamperedSha256 } } })).toThrow(/activation snapshot fingerprint mismatch/u);
+      sha256: FingerprintSchema.parse(tamperedSha256) } } })).toThrow(/activation snapshot fingerprint mismatch/u);
   current.close(); active.release();
 });

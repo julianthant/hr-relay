@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -16,6 +17,10 @@ import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
 import { projectStorageRelocationPlanHistory } from "../../../src/core/storage-relocation-plans.js";
 import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { ConfigSnapshotWriteSchema } from "../../../src/domain/config/snapshot.js";
 
 const workspaces: string[] = [];
 function fixture(): { workspace: string; pair: RuntimePair } {
@@ -85,12 +90,29 @@ function staged(lease: ExclusiveInstallationLease, destination: RuntimePair, ope
       ".runtime-owner.json", ".runtime-source-fence.json"].includes(name)
       && !pinned.has(name))
       .map((name) => ({ name, kind: statSync(join(lease.locator.stateRoot, name)).isDirectory() ? "directory" as const : "file" as const })) : [];
+  const ordinary = resolveConfigWithProvenance({}, hostConfigFacts({}), manualClock(new Date("2026-09-26T12:00:00.000Z")));
+  const config = { ...ordinary.config, paths: { ...ordinary.config.paths,
+    stateRoot: destination.stateRoot, artifactRoot: destination.artifactRoot } };
+  const fingerprint = createHash("sha256").update(canonicalJsonStringify(config)).digest("hex");
   const evidence: VerifiedRelocationEvidence = { operationId, installationId: lease.locator.installationId,
     sourceGeneration: lease.locator.generation, source: { stateRoot: lease.locator.stateRoot, artifactRoot: lease.locator.artifactRoot },
     destination, plan, stagingReceiptId: "synthetic-stage", stagingDigest: "b".repeat(64),
     backupReceiptId: "synthetic-backup", backupDigest: "c".repeat(64), finalDatabasePath: join(destination.stateRoot, "state.db"),
-    configSnapshotId: "22222222-2222-4222-8222-222222222222", configFingerprint: "d".repeat(64),
+    configSnapshotId: "22222222-2222-4222-8222-222222222222", configFingerprint: fingerprint,
     authorityVersion: 56, databaseIdentity: "synthetic-db", managedStateEntries };
+  lease.recordActivationIntent(() => ({ operationId, installationId: lease.locator.installationId,
+    sourceGeneration: lease.locator.generation, source: { stateRoot: lease.locator.stateRoot,
+      artifactRoot: lease.locator.artifactRoot }, destination, plan,
+    stageAuthority: { manifestPath: join(lease.locator.stateRoot, "backups", "authority", "stage.manifest.json"),
+      manifestSha256: "1".repeat(64), backupPath: join(lease.locator.stateRoot, "backups", "authority", "stage.sqlite"),
+      backupSha256: "2".repeat(64) }, stageArchive: null,
+    nativeDestinationPath: join(destination.stateRoot, "state.db"),
+    nativeDestinationSha256: destination.stateRoot === lease.locator.stateRoot ? null : "2".repeat(64),
+    preAuthorityGeneration: 0, preAuthorityContentFingerprint: "3".repeat(64),
+    managedInventoryDigest: "4".repeat(64), settingsRevision: 1, settingsFingerprint: "5".repeat(64),
+    priorActive: null, snapshot: ConfigSnapshotWriteSchema.parse({ configSnapshotId: evidence.configSnapshotId, revision: 1,
+      fingerprint, capturedAt: "2026-09-26T12:00:00.000Z", capturedBy: "local-operator",
+      config, provenance: ordinary.provenance }) }));
   return () => evidence;
 }
 function settledMove(workspace: string, destination: RuntimePair): { operationId: string; locator: ExclusiveInstallationLease["locator"] } {
@@ -204,9 +226,15 @@ it("binds destination and retained source capabilities to one live relocation op
   expect(() => child.assertArchiveDatabase(":memory:")).toThrow(/outside admission/u);
   expect(() => child.assertAuthorityDatabase(join(pair.stateRoot, "state.db"))).toThrow(/outside admission/u);
   expect(() => operation.recordVerifiedStage(() => { throw new Error("stage verifier must not run"); }))
-    .toThrow(/verified preparation required/u);
+    .toThrow(/activation intent required/u);
   const verify = staged(lease, destination, operation.operationId, plan);
   const preparation = operation.inventory().preparation;
+  const activationIntent = operation.inventory().activationIntent;
+  if (activationIntent === undefined) throw new Error("activation intent missing");
+  expect(operation.inventory().phase).toBe("activating");
+  operation.recordActivationIntent(() => activationIntent);
+  expect(() => operation.recordActivationIntent(() => ({ ...activationIntent,
+    managedInventoryDigest: "f".repeat(64) }))).toThrow(/activation intent changed/u);
   expect(preparation).toMatchObject({ sourceSchemaVersion: 55, backupManifestSha256: "1".repeat(64),
     backupFileSha256: "2".repeat(64) });
   if (preparation === undefined) throw new Error("preparation missing");
@@ -246,12 +274,25 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
   const held = restore(workspace);
   const destination = { stateRoot: join(workspace, "new-state"), artifactRoot: join(workspace, "new-artifacts") };
   const operation = admission.beginRelocation(destination, relocationPlan(lease, destination), held);
+  prepareDestination(lease, destination);
   staged(lease, destination, operation.operationId, operation.inventory().plan);
   const originalPreparation = operation.inventory().preparation;
   if (originalPreparation === undefined) throw new Error("preparation missing");
   const binding = { installationId: lease.locator.installationId, fromGeneration: lease.locator.generation, operationId: operation.operationId };
   admission.release(); held.release();
   const resumedHeld = restore(workspace);
+  const journalPath = join(workspace, ".runtime-control", "journal.json");
+  const originalJournal = readFileSync(journalPath, "utf8");
+  const changedJournal = JSON.parse(originalJournal) as Record<string, unknown>;
+  const originalIntent = changedJournal.activationIntent as Record<string, unknown>;
+  const originalSnapshot = originalIntent.snapshot as Record<string, unknown>;
+  const originalConfig = originalSnapshot.config as Record<string, unknown>;
+  writeFileSync(journalPath, JSON.stringify({ ...changedJournal, activationIntent: { ...originalIntent,
+    snapshot: { ...originalSnapshot, config: { ...originalConfig, paths: {
+      ...(originalConfig.paths as Record<string, unknown>), reportsDir: join(workspace, "changed") } } } } }));
+  expect(() => inspectPendingRelocationRecovery(workspace, operation.operationId, resumedHeld))
+    .toThrow(/activation intent binding mismatch/u);
+  writeFileSync(journalPath, originalJournal);
   expect(() => acquireRecoveryRuntimeRelocation(workspace, { ...binding, operationId: randomUUID() }, resumedHeld)).toThrow(/recovery|operation/u);
   const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, resumedHeld);
   expect(recovered.operation.inventory().destination).toEqual(destination);
@@ -486,8 +527,8 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   const destination = { stateRoot: join(workspace, "new-state"), artifactRoot: join(workspace, "new-artifacts") };
   const plan = relocationPlan(moving, destination);
   const operationId = moving.beginRelocation(destination, plan, held);
-  expect(() => moving.switchRelocationLocator(staged(moving, destination, operationId, plan))).toThrow(/retained source required/u);
   prepareDestination(moving, destination);
+  expect(() => moving.switchRelocationLocator(staged(moving, destination, operationId, plan))).toThrow(/retained source required/u);
   const verify = staged(moving, destination, operationId, plan);
   moving.recordVerifiedStage(verify);
   moving.fenceRelocationSource();

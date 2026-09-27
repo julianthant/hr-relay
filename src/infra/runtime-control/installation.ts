@@ -12,6 +12,8 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../domain/commands.js";
 import { NonNegativeIntSchema } from "../../domain/ids.js";
 import { systemClock } from "../../domain/clock.js";
+import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../domain/config/snapshot.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../domain/config/runtime-generation.js";
 
 const PairSchema = z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) });
 const InstallationSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), workspace: z.string().min(1) });
@@ -47,6 +49,17 @@ const StageEvidenceSchema = z.strictObject({ operationId: z.uuid(), installation
   finalDatabasePath: z.string().min(1), configSnapshotId: z.uuid(), configFingerprint: DigestSchema,
   authorityVersion: z.literal(56), databaseIdentity: z.string().min(1),
   managedStateEntries: z.array(ManagedEntrySchema) });
+const StageCopySchema = z.strictObject({ manifestPath: z.string().min(1), manifestSha256: DigestSchema,
+  backupPath: z.string().min(1), backupSha256: DigestSchema });
+const ArchiveCopySchema = z.strictObject({ pairedManifestPath: z.string().min(1), pairedManifestSha256: DigestSchema,
+  archivePath: z.string().min(1), archiveSha256: DigestSchema });
+const ActivationIntentSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(), sourceGeneration: GenerationSchema,
+  source: PairSchema, destination: PairSchema, plan: PlanBindingSchema,
+  stageAuthority: StageCopySchema, stageArchive: ArchiveCopySchema.nullable(),
+  nativeDestinationPath: z.string().min(1), nativeDestinationSha256: DigestSchema.nullable(),
+  preAuthorityGeneration: GenerationSchema, preAuthorityContentFingerprint: DigestSchema,
+  managedInventoryDigest: DigestSchema, settingsRevision: z.number().int().positive(), settingsFingerprint: DigestSchema,
+  priorActive: ActiveRuntimeConfigRecordSchema.nullable(), snapshot: ConfigSnapshotRecordSchema });
 const RetentionSchema = z.strictObject({ role: z.enum(["state", "artifact"]), source: z.string(), retained: z.string(),
   strategy: z.enum(["whole-root", "lock-shell", "witness-shell"]) });
 const FenceSchema = z.strictObject({ schemaVersion: z.literal(2), operationId: z.uuid(), installationId: z.uuid(),
@@ -62,24 +75,28 @@ const JournalSchema = z.discriminatedUnion("phase", [
   z.strictObject({ schemaVersion: z.literal(1), phase: z.literal("adopting"), installationId: z.uuid() }),
   z.strictObject({ ...JournalBase, phase: z.literal("preparing") }),
   z.strictObject({ ...JournalBase, phase: z.literal("prepared"), preparation: PreparationEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("staged"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("fenced"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("retaining"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("retained"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("switched"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("activating"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("staged"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("fenced"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("retaining"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("retained"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("switched"), preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema, evidence: StageEvidenceSchema }),
 ]);
 const CompletionReceiptSchema = z.strictObject({ ...JournalBase, fromGeneration: GenerationSchema, toGeneration: GenerationSchema,
-  preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema, completedAt: z.string().datetime() });
+  preparation: PreparationEvidenceSchema, activationIntent: ActivationIntentSchema,
+  evidence: StageEvidenceSchema, completedAt: z.string().datetime() });
 export type RuntimePair = z.infer<typeof PairSchema>;
 export type RuntimeLocator = z.infer<typeof LocatorSchema>;
 export type RelocationPlanBinding = z.infer<typeof PlanBindingSchema>;
 export type VerifiedRelocationPreparation = z.infer<typeof PreparationEvidenceSchema>;
 export type VerifiedRelocationEvidence = z.infer<typeof StageEvidenceSchema>;
+export type VerifiedRelocationActivationIntent = z.infer<typeof ActivationIntentSchema>;
 export type RelocationCompletionReceipt = z.infer<typeof CompletionReceiptSchema>;
 export type RelocationInventory = Readonly<{ operationId: string; installationId: string; fromGeneration: number;
   source: RuntimePair; destination: RuntimePair; plan: RelocationPlanBinding;
-  phase: "preparing" | "prepared" | "staged" | "fenced" | "retaining" | "retained" | "switched";
+  phase: "preparing" | "prepared" | "activating" | "staged" | "fenced" | "retaining" | "retained" | "switched";
   preparation?: VerifiedRelocationPreparation;
+  activationIntent?: VerifiedRelocationActivationIntent;
   pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
 export type VerifiedSourceControlEntries = Readonly<{ source: RuntimePair;
   state: readonly string[]; artifact: readonly string[] }>;
@@ -90,6 +107,8 @@ export type FreshInitializer = (witness: FreshInitializationWitness) => void;
 export type RelocationVerifier = (source: RuntimeLocator, destination: RuntimePair, operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationEvidence;
 export type RelocationPreparationVerifier = (source: RuntimeLocator, destination: RuntimePair,
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationPreparation;
+export type RelocationActivationVerifier = (source: RuntimeLocator, destination: RuntimePair,
+  operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationActivationIntent;
 export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator: RuntimeLocator;
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
   readRelocationReceipts(): readonly RelocationCompletionReceipt[];
@@ -102,6 +121,7 @@ export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   verifiedSourceControlEntries(): VerifiedSourceControlEntries;
   readPriorReceipts(): readonly RelocationCompletionReceipt[];
   recordVerifiedPreparation(verify: RelocationPreparationVerifier): void;
+  recordActivationIntent(verify: RelocationActivationVerifier): void;
   recordVerifiedStage(verify: RelocationVerifier): void;
   fenceRelocationSource(): void;
   retainRelocationSources(): void;
@@ -492,7 +512,11 @@ function readReceiptChain(control: string, workspace: string, installationId: st
     }
     checkPreparationBinding(receipt, receipt.preparation);
     const { toGeneration: _toGeneration, completedAt: _completedAt, ...base } = receipt;
-    checkRetainedSource(workspace, { ...base, phase: "switched" });
+    const settled = { ...base, phase: "switched" as const };
+    verifyActivationIntent(settled, receipt.activationIntent);
+    if (receipt.evidence.configSnapshotId !== receipt.activationIntent.snapshot.configSnapshotId
+      || receipt.evidence.configFingerprint !== receipt.activationIntent.snapshot.fingerprint) fail("activation receipt snapshot mismatch");
+    checkRetainedSource(workspace, settled);
     source = receipt.destination;
     epochs = nextEpochs;
     accepted.push(receipt);
@@ -584,18 +608,41 @@ function validateJournal(workspace: string, pending: RelocationJournal, receipts
     fail("relocation journal binding mismatch");
   }
   if (pending.phase !== "preparing") checkPreparationBinding(pending, pending.preparation);
-  if (pending.phase !== "preparing" && pending.phase !== "prepared") {
+  if (pending.phase !== "preparing" && pending.phase !== "prepared") verifyActivationIntent(pending, pending.activationIntent);
+  if (pending.phase !== "preparing" && pending.phase !== "prepared" && pending.phase !== "activating") {
     const evidence = pending.evidence;
     if (evidence.operationId !== pending.operationId || evidence.installationId !== pending.installationId
       || evidence.sourceGeneration !== pending.fromGeneration || !equalPair(evidence.source, pending.source)
       || !equalPair(evidence.destination, pending.destination)
       || canonicalJsonStringify(evidence.plan) !== canonicalJsonStringify(pending.plan)
-      || evidence.finalDatabasePath !== join(pending.destination.stateRoot, "state.db")) fail("relocation journal stage mismatch");
+      || evidence.finalDatabasePath !== join(pending.destination.stateRoot, "state.db")
+      || evidence.configSnapshotId !== pending.activationIntent.snapshot.configSnapshotId
+      || evidence.configFingerprint !== pending.activationIntent.snapshot.fingerprint) fail("relocation journal stage mismatch");
   }
 }
 function equalLocator(left: RuntimeLocator, right: RuntimeLocator): boolean {
   return left.installationId === right.installationId && left.generation === right.generation
     && equalPair(left, right) && equalEpochs(epochsOf(left), epochsOf(right));
+}
+function verifyActivationIntent(pending: RelocationJournal, intentInput: VerifiedRelocationActivationIntent): VerifiedRelocationActivationIntent {
+  const intent = ActivationIntentSchema.parse(intentInput);
+  if (intent.operationId !== pending.operationId || intent.installationId !== pending.installationId
+    || intent.sourceGeneration !== pending.fromGeneration || !equalPair(intent.source, pending.source)
+    || !equalPair(intent.destination, pending.destination)
+    || canonicalJsonStringify(intent.plan) !== canonicalJsonStringify(pending.plan)
+    || intent.nativeDestinationPath !== join(pending.destination.stateRoot, "state.db")
+    || (movedRole(pending, "state") ? intent.nativeDestinationSha256 === null : intent.nativeDestinationSha256 !== null)
+    || (movedRole(pending, "state") && intent.nativeDestinationSha256 !== intent.stageAuthority.backupSha256)
+    || intent.snapshot.fingerprint !== createHash("sha256").update(canonicalJsonStringify(intent.snapshot.config)).digest("hex")
+    || intent.snapshot.config.paths.stateRoot !== pending.destination.stateRoot
+    || intent.snapshot.config.paths.artifactRoot !== pending.destination.artifactRoot) fail("activation intent binding mismatch");
+  for (const path of [intent.stageAuthority.manifestPath, intent.stageAuthority.backupPath,
+    ...(intent.stageArchive === null ? [] : [intent.stageArchive.pairedManifestPath, intent.stageArchive.archivePath])]) {
+    if (!isAbsolute(path) || resolve(path) !== path || !inside(pending.source.stateRoot, path)) {
+      fail("activation copy is outside source state root");
+    }
+  }
+  return intent;
 }
 function checkRetainedSource(workspace: string, pending: RelocationJournal): void {
   for (const retention of pending.retentions) {
@@ -609,7 +656,8 @@ function checkRetainedSource(workspace: string, pending: RelocationJournal): voi
       dataDirectory(retention.source);
       dataDirectory(retention.retained);
       if (retention.strategy === "lock-shell") privateDirectory(fixedLockRoot(workspace));
-      const entries = pending.phase === "preparing" || pending.phase === "prepared" ? [] : pending.evidence.managedStateEntries;
+      const entries = pending.phase === "preparing" || pending.phase === "prepared" || pending.phase === "activating"
+        ? [] : pending.evidence.managedStateEntries;
       const expectedNames = new Set([MARKER, FENCE, "state.db", ...pending.pinnedEntries]);
       if (retention.strategy === "lock-shell") expectedNames.add("locks");
       if (movedRole(pending, "artifact") && inside(retention.source, pending.source.artifactRoot)) {
@@ -659,7 +707,8 @@ function retainWholeRoot(pending: RelocationJournal, row: z.infer<typeof Retenti
 function retainEntryShell(workspace: string, pending: RelocationJournal, row: z.infer<typeof RetentionSchema>): void {
   preflightRoot(row.source);
   preflightRoot(row.retained);
-  const entries = pending.phase === "preparing" || pending.phase === "prepared" ? [] : pending.evidence.managedStateEntries;
+  const entries = pending.phase === "preparing" || pending.phase === "prepared" || pending.phase === "activating"
+    ? [] : pending.evidence.managedStateEntries;
   dataDirectory(row.source);
   if (row.strategy === "lock-shell") privateDirectory(fixedLockRoot(workspace));
   checkMarker(row.source, pending.installationId, workspace, "state", pending.sourceEpochs.state);
@@ -922,9 +971,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   function attestStage(pending: RelocationJournal, verify: RelocationVerifier): VerifiedRelocationEvidence {
     const evidence = verifyStage(pending, sourceLocator(pending), verify);
-    if (pending.phase !== "prepared" && pending.phase !== "preparing" && !sameEvidence(pending.evidence, evidence)) {
+    if (pending.phase !== "activating" && pending.phase !== "prepared" && pending.phase !== "preparing"
+      && !sameEvidence(pending.evidence, evidence)) {
       fail("verified stage changed");
     }
+    if (pending.phase === "activating" && (evidence.configSnapshotId !== pending.activationIntent.snapshot.configSnapshotId
+      || evidence.configFingerprint !== pending.activationIntent.snapshot.fingerprint)) fail("verified stage activation mismatch");
     return evidence;
   }
   const exclusive: ExclusiveInstallationLease = Object.freeze({
@@ -970,6 +1022,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         fromGeneration: pending.fromGeneration, source: Object.freeze({ ...pending.source }),
         destination: Object.freeze({ ...pending.destination }), plan: Object.freeze({ ...pending.plan }), phase: pending.phase,
         ...(pending.phase === "preparing" ? {} : { preparation: Object.freeze({ ...pending.preparation }) }),
+        ...(pending.phase === "preparing" || pending.phase === "prepared" ? {}
+          : { activationIntent: Object.freeze({ ...pending.activationIntent }) }),
         pinnedEntries: Object.freeze([...pending.pinnedEntries]),
         retentions: Object.freeze(pending.retentions.map((row) => Object.freeze({ ...row }))) });
     },
@@ -1050,12 +1104,29 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         writeJournal(control, { ...pending, phase: "prepared", preparation });
       } else if (!samePreparation(pending.preparation, preparation)) fail("verified preparation changed");
     },
+    recordActivationIntent(verify) {
+      const pending = journal();
+      assertOperation(pending);
+      if (pending.phase === "preparing") fail("verified preparation required before activation intent");
+      const intent = verifyActivationIntent(pending, verify(sourceLocator(pending), pending.destination,
+        pending.operationId, pending.plan));
+      if (pending.phase === "prepared") {
+        ConfigSnapshotWriteSchema.parse(intent.snapshot);
+        for (const role of ["state", "artifact"] as const) {
+          if (movedRole(pending, role)) checkDestinationMarker(pending.destination[`${role}Root`], pending,
+            workspace, role, pending.sourceEpochs[role]);
+        }
+        writeJournal(control, { ...pending, phase: "activating", activationIntent: intent });
+      } else if (canonicalJsonStringify(pending.activationIntent) !== canonicalJsonStringify(intent)) {
+        fail("activation intent changed");
+      }
+    },
     recordVerifiedStage(verify) {
       const pending = journal();
       assertOperation(pending);
-      if (pending.phase !== "prepared" && pending.phase !== "staged") fail("verified preparation required before staging");
+      if (pending.phase !== "activating" && pending.phase !== "staged") fail("activation intent required before staging");
       const evidence = attestStage(pending, verify);
-      if (pending.phase === "prepared") {
+      if (pending.phase === "activating") {
         verifyManagedEntries(pending, evidence);
         for (const role of ["state", "artifact"] as const) {
           if (movedRole(pending, role)) checkDestinationMarker(pending.destination[`${role}Root`], pending,

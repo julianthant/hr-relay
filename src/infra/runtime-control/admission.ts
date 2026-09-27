@@ -4,7 +4,8 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
-  type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
+  type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
+  type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import type { VerifiedSourceControlEntries } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
@@ -67,6 +68,7 @@ export type RuntimeRelocationOperation = Readonly<{
   destinationAdmission(): RuntimeAdmission;
   sourceVerificationAdmission(): RuntimeAdmission;
   recordVerifiedPreparation(verify: RelocationPreparationVerifier): void;
+  recordActivationIntent(verify: RelocationActivationVerifier): void;
   recordVerifiedStage(verify: RelocationVerifier): void;
   fenceRelocationSource(): void;
   retainRelocationSources(): void;
@@ -293,6 +295,7 @@ export class RuntimeAdmission {
       },
       recordVerifiedStage: (verify: RelocationVerifier) => { inventory(); lease.recordVerifiedStage(verify); },
       recordVerifiedPreparation: (verify: RelocationPreparationVerifier) => { inventory(); lease.recordVerifiedPreparation(verify); },
+      recordActivationIntent: (verify: RelocationActivationVerifier) => { inventory(); lease.recordActivationIntent(verify); },
       fenceRelocationSource: () => { inventory(); lease.fenceRelocationSource(); },
       retainRelocationSources: () => { inventory(); lease.retainRelocationSources(); },
       switchRelocationLocator: (verify: RelocationVerifier) => { inventory(); return lease.switchRelocationLocator(verify); },
