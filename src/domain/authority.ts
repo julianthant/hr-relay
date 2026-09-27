@@ -156,6 +156,13 @@ const AuthorityUpgradeBaselineRecordSchema = AuthorityUpgradeRecordBaseSchema.ex
   toSchemaVersion: z.union([z.literal(30), z.literal(31), z.literal(32), z.literal(33), z.literal(34), z.literal(35), z.literal(36), z.literal(37), z.literal(38), z.literal(39), z.literal(40), z.literal(41), z.literal(42), z.literal(43), z.literal(44), z.literal(45), z.literal(46), z.literal(47), z.literal(48), z.literal(49), z.literal(50), z.literal(51), z.literal(52), z.literal(53), z.literal(54), z.literal(55)]),
 });
 
+const AuthorityUpgradeBaselineV56Schema = AuthorityUpgradeRecordBaseSchema.extend({
+  upgradeId: z.literal("fresh"),
+  phase: z.literal("baseline"),
+  fromSchemaVersion: z.literal(0),
+  toSchemaVersion: z.literal(56),
+});
+
 const AuthorityUpgradeExecutionRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
   upgradeId: FingerprintSchema,
   phase: z.enum(["planned", "committed", "settled"]),
@@ -227,10 +234,23 @@ const SqliteSettingsUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.exten
   }
 });
 
+export const AuthorityCapabilityUpgradeRecordSchema = AuthorityUpgradeRecordBaseSchema.extend({
+  format: z.literal(4),
+  phase: z.literal("settled"),
+  fromSchemaVersion: z.literal(55),
+  toSchemaVersion: z.literal(56),
+  sourceGeneration: NonNegativeIntSchema,
+  sourceFingerprint: FingerprintSchema,
+  backupManifest: z.string().min(1),
+  backupSha256: FingerprintSchema,
+});
+
 export const AuthorityUpgradeRecordSchema = z.union([
   AuthorityUpgradeBaselineRecordSchema,
+  AuthorityUpgradeBaselineV56Schema,
   AuthorityUpgradeExecutionRecordSchema,
   SqliteSettingsUpgradeRecordSchema,
+  AuthorityCapabilityUpgradeRecordSchema,
 ]);
 export type AuthorityUpgradeRecord = z.infer<typeof AuthorityUpgradeRecordSchema>;
 

@@ -4,7 +4,7 @@ import { dirname, join } from "node:path";
 import { z } from "zod";
 import { backupHasArchiveTransferCustody } from "../compat/backup-inspection.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "./migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "./migrations.js";
 import { verifyLifecyclePair } from "./lifecycle-storage.js";
 import type { RuntimeAdmission } from "../runtime-control/admission.js";
 import { StorageRecoveryInspectionSchema, type RestoreCandidate } from "./recovery-contracts.js";
@@ -94,7 +94,7 @@ export function inspectRestoreEligibility(admission: RuntimeAdmission,input: { s
   stateRoot: string; authorityAvailable: boolean }): Eligibility {
   if (input.schemaVersion < UPGRADE_FLOOR_SCHEMA_VERSION) return { state: "unsupported",
     reason: `Below recovery floor ${String(UPGRADE_FLOOR_SCHEMA_VERSION)}. Restore and upgrade with the original compatible release, or start a fresh root.` };
-  if (input.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) return { state: "requires-upgrade" };
+  if (input.schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION) return { state: "requires-upgrade" };
   if (input.paired) return { state: "eligible" };
   try {
     const archivePath = join(input.stateRoot, "archive.sqlite");

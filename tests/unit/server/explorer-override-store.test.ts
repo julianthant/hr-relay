@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { readLatestDatabaseUpgrade } from "../../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
 import { acquireRuntimeRestoreAdmission } from "../../../src/infra/sqlite/runtime-process-locks.js";
@@ -46,9 +46,9 @@ describe("Explorer override stopped SQLite conversion", () => {
       assert.equal((await f.run(true)).state, "planned");
       assert.deepEqual(storageTree(f.root), before);
       assert.equal((await f.run()).state, "converted");
-      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
       const receipt = readLatestDatabaseUpgrade(f.path);
-      assert.ok(receipt && "format" in receipt && receipt.explorerImport);
+      assert.ok(receipt && "format" in receipt && receipt.format === 3 && receipt.explorerImport);
       assert.equal(receipt.explorerImport.sourceDatabaseIdentity, AuthorityDatabase.sourceDatabaseIdentity(f.path));
       assert.notEqual(receipt.explorerImport.backupSha256, "fresh");
       assert.deepEqual(receipt.explorerImport.source.state === "present" ? receipt.explorerImport.source.document : null, f.document);
@@ -162,7 +162,7 @@ describe("Explorer override stopped SQLite conversion", () => {
     try {
       await f.backup();
       await assert.rejects(upgradeStorage({ ...f.input, hooks: { [boundary]: () => { throw new Error("injected-conversion-stop"); } } }, f.clock), /injected-conversion-stop/u);
-      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, boundary === "beforeCommit" ? 50 : CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, boundary === "beforeCommit" ? 50 : NORMAL_AUTHORITY_SCHEMA_VERSION);
       if (boundary === "afterCommit") writeFileSync(`${f.sourcePath}.claim`, "old claim after SQL commit");
       assert.equal((await f.run()).state, "converted");
       const database = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 250, migrationOwner: "recovery" }, f.clock);
@@ -199,7 +199,7 @@ describe("Explorer override stopped SQLite conversion", () => {
       assert.equal(UPGRADE_FLOOR_SCHEMA_VERSION, 46);
       assert.equal((await f.run()).state, "converted");
       const receipt = readLatestDatabaseUpgrade(f.path);
-      assert.ok(receipt && "format" in receipt);
+      assert.ok(receipt && "format" in receipt && receipt.format === 3);
       assert.deepEqual(receipt.explorerImport?.source, { state: "absent" });
       assert.equal(receipt.explorerImport?.backupSha256, "fresh");
     } finally { f.dispose(); }

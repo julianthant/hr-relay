@@ -21,12 +21,12 @@ import {
 import {
   ProtectedSettingsNameSchema,
 } from "../../domain/config/protected-settings.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 const SafeFileNameSchema = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/);
 const HistoricalBackupSchemaVersionSchema = z.number().int().refine(
-  (value) => value >= 1 && value <= 18 || value >= 27 && value <= 54,
+  (value) => value >= 1 && value <= 18 || value >= 27 && value <= NORMAL_AUTHORITY_SCHEMA_VERSION,
   "schema version is not an admitted historical authority layout",
 );
 const BackupSchemaVersionSchema = z.number().int().refine(
@@ -50,7 +50,7 @@ export const AuthorityInvariantResultSchema = z.strictObject({
 
 export const AuthorityCopyInspectionSchema = z.strictObject({
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
-  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  schemaVersion: z.union([z.literal(NORMAL_AUTHORITY_SCHEMA_VERSION), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   pageCount: PositiveIntSchema,
   authorityGeneration: NonNegativeIntSchema,
   authorityContentFingerprint: FingerprintSchema,

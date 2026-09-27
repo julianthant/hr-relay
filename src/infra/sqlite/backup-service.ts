@@ -46,7 +46,7 @@ import { ProtectedSettingsCurrentRecordSchema } from "../../domain/authority.js"
 import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { isNormalAuthoritySchemaVersion } from "./migrations.js";
 import {
   AuthorityBackupManifestSchema,
   AuthorityBackupManifestV3Schema,
@@ -73,7 +73,7 @@ function inspectBackupCopy(
   expectedSchemaVersion?: number,
 ): ReturnType<typeof inspectAuthorityBackupReadOnly> {
   const inspection = inspectAuthorityBackupReadOnly(admission,backupPath, expectedSchemaVersion);
-  if (inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+  if (isNormalAuthoritySchemaVersion(inspection.schemaVersion)) {
     const current = AuthorityDatabase.inspectExistingReadOnly(admission, backupPath);
     for (const field of [
       "applicationId",

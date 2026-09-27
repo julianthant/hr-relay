@@ -11,7 +11,7 @@ import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js
 import { OfflineAuthorityRestoreService, OfflineRestoreOptionsSchema, OfflineRestoreFailure } from "../../infra/sqlite/offline-restore.js";
 import { OfflineRestoreRequestSchema } from "../../infra/sqlite/recovery-contracts.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
 import { upgradeStorage } from "./upgrade.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 
@@ -30,7 +30,7 @@ export async function restoreHistoricalStorage(runtimeAdmission:RuntimeAdmission
   const backupAdmission=runtimeAdmission.verifiedReadOnlyCopy(verified.backupPath,verified.manifest.sha256,"authority");
   try { if (backupHasArchiveTransferCustody(backupAdmission,verified.backupPath)) throw new Error("paired-lifecycle-backup-required"); }
   finally { backupAdmission.release(); }
-  if(verified.manifest.schemaVersion>=CURRENT_AUTHORITY_SCHEMA_VERSION)throw new Error("historical-restore-requires-old-backup");
+  if(verified.manifest.schemaVersion>=NORMAL_AUTHORITY_SCHEMA_VERSION)throw new Error("historical-restore-requires-old-backup");
   const marker=join(root,".archive-restore.json"),binding=canonicalJsonStringify({sourceIdentity:identity,backupSha256:verified.manifest.sha256});
   const admission=acquireRuntimeRestoreAdmission({processLockRoot:options.processLockRoot,pid:process.pid},clock);
   let started=false;

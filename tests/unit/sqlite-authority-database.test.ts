@@ -995,7 +995,7 @@ describe("native SQLite authority schema", () => {
 
   it("refuses an at-floor authority whose immutable baseline claims another target", () => {
     const path = databasePath("invalid-baseline-target.sqlite");
-    createExactReleasedDatabase(path, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    createExactReleasedDatabase(path, 55);
     const raw = new DatabaseSync(path);
     raw.prepare(`
       INSERT INTO database_upgrades (

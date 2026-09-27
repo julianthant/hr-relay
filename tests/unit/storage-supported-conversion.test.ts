@@ -7,7 +7,7 @@ import { describe, it } from "vitest";
 import { storageRecoveryFixture, storageTree, credentialTrap } from "./helpers/storage-recovery-fixture.js";
 import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { readLatestDatabaseUpgrade } from "../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
@@ -29,9 +29,9 @@ describe("supported stopped database recovery after settings import expiry", () 
       const before = storageTree(f.root); await assert.rejects(f.run(true), /backup-required/u); assert.deepEqual(storageTree(f.root), before);
       await f.backup(); const backed = storageTree(f.root);
       assert.equal((await f.run(true)).state, "planned"); assert.deepEqual(storageTree(f.root), backed);
-      assert.equal((await f.run()).state, "converted"); assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+      assert.equal((await f.run()).state, "converted"); assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
       const converted = storageTree(f.root); assert.equal((await f.run()).state, "already-upgraded"); assert.deepEqual(storageTree(f.root), converted);
-      const pending = readLatestDatabaseUpgrade(f.path); assert.ok(pending && "format" in pending);
+      const pending = readLatestDatabaseUpgrade(f.path); assert.ok(pending && "format" in pending && pending.format === 3);
       assert.equal(pending.phase, "settled"); assert.deepEqual(pending.importedKeys, []); assert.deepEqual(pending.sourceFiles, []);
     } finally { f.dispose(); }
   });

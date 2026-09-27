@@ -20,7 +20,7 @@ import { systemClock } from "../../domain/clock.js";
 import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
+import { isNormalAuthoritySchemaVersion } from "./migrations.js";
 import {
   verifyBackupBytesAtPath,
   verifyBackupManifestAtPath,
@@ -312,7 +312,7 @@ export class OfflineAuthorityRestoreService {
 
           let projectionRebuilt = false;
           let afterProjection = beforeProjection;
-          if (verified.manifest.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+          if (isNormalAuthoritySchemaVersion(verified.manifest.schemaVersion)) {
             await this.#projectionRebuild(stagedPath);
             afterProjection = inspectAuthorityBackupReadOnly(
               stagedAdmission,

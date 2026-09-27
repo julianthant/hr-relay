@@ -285,6 +285,8 @@ import {
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  NORMAL_AUTHORITY_SCHEMA_VERSION,
+  isNormalAuthoritySchemaVersion,
   databaseStateTable,
   databaseUpgradesTable,
   DATABASE_TABLE_RENAMES,
@@ -357,7 +359,7 @@ export const AuthorityMetaSchema = z.strictObject({
 
 export const AuthoritySchemaInspectionSchema = z.strictObject({
   applicationId: z.literal(AUTHORITY_APPLICATION_ID),
-  schemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  schemaVersion: z.union([z.literal(NORMAL_AUTHORITY_SCHEMA_VERSION), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   authorityGeneration: z.number().int().nonnegative(),
   pragmas: z.strictObject({
     journalMode: z.literal("wal"),
@@ -1951,7 +1953,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   if (schemaVersion > CURRENT_AUTHORITY_SCHEMA_VERSION) {
     throw new Error(`authority schema ${String(schemaVersion)} is newer than supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   }
-  if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && schemaVersion !== 48) {
+  if (!isNormalAuthoritySchemaVersion(schemaVersion) && schemaVersion !== 48) {
     throw new Error(`authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`);
   }
   QuickCheckRowSchema.parse(database.prepare("PRAGMA quick_check(1)").get());
@@ -1970,6 +1972,7 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
     throw new Error(`authority database is locked by migration owner ${String(meta.migration_owner)}`);
   }
   validateAuthorityRecordSchemas(database);
+  inspectCapabilityUpgradeHistory(database, schemaVersion);
   if (schemaVersion >= 51) validateExplorerOverrides(database);
   if (schemaVersion >= 52) validateNotificationMetadata(database);
   if (schemaVersion >= 53) validateWorkerControls(database);
@@ -1994,7 +1997,39 @@ function inspectOpenDatabase(database: DatabaseSync, requireOperationalPragmas: 
   });
 }
 
+function inspectCapabilityUpgradeHistory(database: DatabaseSync, schemaVersion: number): void {
+  if (!isNormalAuthoritySchemaVersion(schemaVersion)) return;
+  const rows = database.prepare("SELECT record_json FROM database_upgrades ORDER BY rowid").all()
+    .map((row) => AuthorityUpgradeRecordSchema.parse(JSON.parse(JsonRowSchema.parse(row).record_json)));
+  const capability = rows.filter((row) => "format" in row && row.format === 4);
+  const target56 = rows.filter((row) => row.toSchemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION);
+  if (schemaVersion === NORMAL_AUTHORITY_SCHEMA_VERSION) {
+    if (target56.length > 0) throw new Error("capability-upgrade-record-before-schema");
+    return;
+  }
+  if (target56.length !== 1 || target56[0] !== rows.at(-1) || capability.length > 1) {
+    throw new Error("capability-upgrade-history-missing-or-divergent");
+  }
+  if (capability.length === 1 && capability[0] !== target56[0]) {
+    throw new Error("capability-upgrade-history-missing-or-divergent");
+  }
+  const receipt = capability[0];
+  if (receipt !== undefined) {
+    const prior = rows.at(-2);
+    if (prior?.toSchemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
+      || (prior.phase !== "settled" && prior.phase !== "baseline")
+      || receipt.sourceGeneration >= readMetaRow(database).authority_generation) {
+      throw new Error("capability-upgrade-history-missing-or-divergent");
+    }
+  }
+}
+
 /** Internal stopped-upgrade barrier; never exported through the repository entrypoint. */
+export function inspectNormalAuthority(database: DatabaseSync): AuthorityCopyInspection {
+  if (!isNormalAuthoritySchemaVersion(readIntPragma(database, "user_version"))) throw new Error("normal-authority-schema-mismatch");
+  return inspectOpenDatabase(database, false);
+}
+
 export function inspectConvertedAuthority(database: DatabaseSync): void {
   if (readIntPragma(database,"user_version") !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("converted-authority-schema-mismatch");
   inspectOpenDatabase(database, false);
@@ -2070,7 +2105,7 @@ function inspectAuthorityReadIdentityReadOnly(
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
     }
     const schemaVersion = readIntPragma(database, "user_version");
-    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && schemaVersion !== 48) {
+    if (!isNormalAuthoritySchemaVersion(schemaVersion) && schemaVersion !== 48) {
       throw new Error(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
@@ -2363,7 +2398,7 @@ function inspectSpanRunAuthorityReadOnly(
       throw new Error(`existing database application_id ${String(applicationId)} is not the HR authority store`);
     }
     const schemaVersion = readIntPragma(database, "user_version");
-    if (schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION && schemaVersion !== 48) {
+    if (!isNormalAuthoritySchemaVersion(schemaVersion) && schemaVersion !== 48) {
       throw new Error(
         `authority schema ${String(schemaVersion)} does not match supported ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}`,
       );
@@ -4287,9 +4322,7 @@ export class AuthorityDatabase implements Disposable {
       this.#runMigrations(0, migrationOwner);
       return;
     }
-    if (existingVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
-      this.#runMigrations(existingVersion, migrationOwner);
-    }
+    if (!isNormalAuthoritySchemaVersion(existingVersion)) this.#runMigrations(existingVersion, migrationOwner);
   }
 
   #runMigrations(fromVersion: number, migrationOwner: string): void {
@@ -4375,7 +4408,7 @@ export class AuthorityDatabase implements Disposable {
     `).all().map((row) => TableNameRowSchema.parse(row).name);
     const expected = schemaVersion === 27 || schemaVersion === 28 || schemaVersion === 29
       ? INTEGRATED_AUTHORITY_TABLES_BY_VERSION[schemaVersion]
-      : schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION
+      : isNormalAuthoritySchemaVersion(schemaVersion)
         ? AUTHORITY_TABLE_REGISTRY.map(({ name }) => name).sort()
         : POST_FLOOR_AUTHORITY_TABLES_BY_VERSION[schemaVersion];
     if (expected === undefined) throw new Error(`no released layout for authority schema ${String(schemaVersion)}`);
@@ -4386,9 +4419,10 @@ export class AuthorityDatabase implements Disposable {
       );
     }
     validateAuthorityRecordSchemas(this.#database, new Set(names));
+    inspectCapabilityUpgradeHistory(this.#database, schemaVersion);
     if (schemaVersion >= 52) validateNotificationMetadata(this.#database);
     if (schemaVersion >= 53) validateWorkerControls(this.#database);
-    if (schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    if (schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION) {
       inspectHistoricalAuthorityInvariants(this.#database, schemaVersion);
       return;
     }

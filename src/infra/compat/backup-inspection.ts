@@ -26,7 +26,7 @@ import { existsSync, rmSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { inspectConvertedAuthority, inspectHistoricalAuthorityInvariants } from "../sqlite/authority-database.js";
+import { inspectNormalAuthority, inspectHistoricalAuthorityInvariants } from "../sqlite/authority-database.js";
 import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../sqlite/storage-records.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "./d331-settings-current.js";
 import { ProtectedSettingsCurrentRecordSchema } from "../../domain/authority.js";
@@ -34,13 +34,15 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
+  NORMAL_AUTHORITY_SCHEMA_VERSION,
+  isNormalAuthoritySchemaVersion,
   databaseStateTable,
   SQLITE_MIGRATIONS,
 } from "../sqlite/migrations.js";
 
 const ADMITTED_HISTORICAL_SCHEMA_VERSIONS = Object.freeze([
   1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18,
-  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54,
+  27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, NORMAL_AUTHORITY_SCHEMA_VERSION,
 ] as const);
 const PROJECTION_TABLES = new Set(["spans", "gates", "notes", "runs_view"]);
 
@@ -503,7 +505,7 @@ export function inspectOpenDatabase(
     .filter(({ type }) => type === "table")
     .map(({ name }) => name));
   validateHistoricalRecords(database, schemaVersion, tableNames);
-  if (schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) inspectConvertedAuthority(database);
+  if (isNormalAuthoritySchemaVersion(schemaVersion)) inspectNormalAuthority(database);
   else inspectHistoricalAuthorityInvariants(database, schemaVersion);
   return Object.freeze({
     applicationId: AUTHORITY_APPLICATION_ID,

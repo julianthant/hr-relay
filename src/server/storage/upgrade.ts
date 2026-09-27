@@ -3,27 +3,34 @@ import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspe
 import { requireSupportedRecoverySchema, requireDatabaseSourcePath } from "../../infra/sqlite/recovery-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../infra/compat/backup-inspection.js";
 import { inspectRecoveryFloor, readLatestDatabaseUpgrade, convertStoppedDatabase, settleDatabaseUpgrade, inspectHistoricalSettingsExposure } from "../../infra/sqlite/stopped-database-conversion.js";
-import { TombstoneBackfillCountsSchema } from "../../domain/authority.js";
-import { UPGRADE_FLOOR_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
+import { AuthorityCapabilityUpgradeRecordSchema, TombstoneBackfillCountsSchema } from "../../domain/authority.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, UPGRADE_FLOOR_SCHEMA_VERSION, isNormalAuthoritySchemaVersion } from "../../infra/sqlite/migrations.js";
 import { readArchiveUpgradeJournal, beginArchiveUpgrade, finishArchiveUpgrade, hasHistoricalArchiveSources } from "../../infra/compat/archive-upgrade-journal.js";
 import { backupLifecyclePair, verifyLifecyclePair } from "../../infra/sqlite/lifecycle-storage.js";
 import { timelineSourcesForUpgrade, preserveTimelineSources, readPreservedTimelineSources } from "../../infra/events/timeline-import.js";
 /** D336 stopped conversion: SQLite settles first; credentials settle independently. */
-import { existsSync, readdirSync, mkdirSync } from "node:fs";
+import { existsSync, readdirSync, mkdirSync, readFileSync, lstatSync } from "node:fs";
 import { join, basename, dirname } from "node:path";
+import { randomUUID } from "node:crypto";
+import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
-import { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
+import { AuthorityDatabase, inspectConvertedAuthority, inspectNormalAuthority } from "../../infra/sqlite/authority-database.js";
 import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
 import { ArchiveDatabase } from "../../infra/sqlite/archive-database.js";
-import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, RestoreAdmissionFileSchema, type RestoreAdmissionHandle } from "../../infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../infra/sqlite/recovery-stop-proof.js";
+import type { StoppedSystemProof } from "../../infra/sqlite/recovery-contracts.js";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { sha256Hex } from "../../domain/sha256.js";
+import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 
 export const StorageUpgradeReportSchema = z.strictObject({
   state: z.enum(["planned", "converted", "already-upgraded"]),
   fromSchemaVersion: z.number().int().nonnegative(),
-  toSchemaVersion: z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION),
+  toSchemaVersion: z.union([z.literal(NORMAL_AUTHORITY_SCHEMA_VERSION), z.literal(CURRENT_AUTHORITY_SCHEMA_VERSION)]),
   importedKeys: z.array(z.string()), sourceFiles: z.array(z.string()),
   envKeysToRemove: z.array(z.string()),
   backupManifest: z.string().optional(),
@@ -42,6 +49,130 @@ export interface StorageUpgradeInput {
   readonly timelineSourceDirectory?: string;
   readonly generatedSourceDirectory?: string;
   readonly hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void; afterCredentialRename?(): void; archiveStep?(step: "captured" | "verified" | "cleaned" | "published" | "retired"): void }>;
+}
+
+export interface RelocationCapabilityUpgradeInput {
+  readonly workspaceRoot: string;
+  readonly stateRoot: string;
+  readonly processLockRoot: string;
+  readonly backupManifest: string;
+  readonly expectedSource: Readonly<{ authorityGeneration: number; authorityContentFingerprint: string }>;
+  readonly stoppedSystemProof: StoppedSystemProof;
+  readonly heldRestoreAdmission?: RestoreAdmissionHandle;
+  readonly hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void }>;
+}
+
+function assertHeldRestoreAdmission(runtimeAdmission: RuntimeAdmission, input: RelocationCapabilityUpgradeInput, admissionId: string): void {
+  runtimeAdmission.assertFixedProcessLockRoot(input.workspaceRoot, input.processLockRoot);
+  const directory = lstatSync(input.processLockRoot);
+  if (!directory.isDirectory() || directory.isSymbolicLink() || (process.getuid && directory.uid !== process.getuid())
+    || (directory.mode & 0o777) !== 0o700) throw new Error("restore-admission-invalid-root");
+  const path = join(input.processLockRoot, "restore-admission.lock.json");
+  const stat = lstatSync(path);
+  if (!stat.isFile() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid())
+    || (stat.mode & 0o777) !== 0o600) throw new Error("restore-admission-invalid");
+  const record = RestoreAdmissionFileSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+  const observed = observeProcessIdentity(process.pid);
+  if (record.schemaVersion !== 2 || observed.state !== "alive" || record.admissionId !== admissionId
+    || record.pid !== process.pid || record.processIdentity.platform !== observed.identity.platform
+    || record.processIdentity.startToken !== observed.identity.startToken) throw new Error("restore-admission-identity-mismatch");
+}
+
+/** Explicit stopped capability fence. Ordinary v55 admission never calls this. */
+export async function upgradeRelocationCapabilityV56(
+  runtimeAdmission: RuntimeAdmission,
+  input: RelocationCapabilityUpgradeInput,
+  clock: Clock,
+): Promise<"converted" | "already-upgraded"> {
+  requireRuntimeAdmission(runtimeAdmission).assertExclusive();
+  runtimeAdmission.assertStateRoot(input.stateRoot);
+  runtimeAdmission.assertFixedProcessLockRoot(input.workspaceRoot, input.processLockRoot);
+  const path = join(input.stateRoot, "state.db");
+  runtimeAdmission.assertAuthorityDatabase(path);
+  requireDatabaseSourcePath(path);
+  const sourceIdentity = AuthorityDatabase.sourceDatabaseIdentity(path);
+  const current = inspectAuthorityBackupReadOnly(runtimeAdmission, path);
+  const verified = await verifyBackupManifestAtPath(runtimeAdmission, input.backupManifest, sourceIdentity);
+  if (verified.manifest.schemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
+    || verified.manifest.authorityGeneration !== input.expectedSource.authorityGeneration
+    || verified.manifest.authorityContentFingerprint !== input.expectedSource.authorityContentFingerprint) {
+    throw new Error("capability-upgrade-backup-source-mismatch");
+  }
+  if (current.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+    const prior = readLatestDatabaseUpgrade(runtimeAdmission, path);
+    if (prior?.phase === "settled" && "format" in prior && prior.format === 4
+      && prior.sourceGeneration === input.expectedSource.authorityGeneration
+      && prior.sourceFingerprint === input.expectedSource.authorityContentFingerprint
+      && prior.backupManifest === verified.manifestPath && prior.backupSha256 === verified.manifest.sha256) return "already-upgraded";
+    throw new Error("capability-upgrade-replay-divergent");
+  }
+  if (current.schemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
+    || current.authorityGeneration !== input.expectedSource.authorityGeneration
+    || current.authorityContentFingerprint !== input.expectedSource.authorityContentFingerprint) {
+    throw new Error("capability-upgrade-source-changed");
+  }
+  await requiredBackup(runtimeAdmission, input.stateRoot, current.authorityGeneration,
+    current.authorityContentFingerprint, verified.manifestPath);
+  runtimeAdmission.assertAuthorityDatabase(path);
+  const ownedRestore = input.heldRestoreAdmission === undefined
+    ? acquireRuntimeRestoreAdmission({ processLockRoot: input.processLockRoot, pid: process.pid }, clock)
+    : undefined;
+  try {
+    assertHeldRestoreAdmission(runtimeAdmission, input, input.heldRestoreAdmission?.admissionId ?? ownedRestore?.admissionId ?? "");
+    requireStopped({ stateRoot: input.stateRoot, processLockRoot: input.processLockRoot,
+      environmentFile: "", plan: false }, clock);
+    const proofs = new RecoveryStopProofStore({ processLockRoot: input.processLockRoot, maxProofAgeMs: 5 * 60_000 }, clock);
+    proofs.consumeAgainstLiveSnapshot(input.stoppedSystemProof,
+      observeRuntimeLockSnapshot({ processLockRoot: input.processLockRoot, sourceDatabaseIdentity: sourceIdentity }, clock));
+    const again = inspectAuthorityBackupReadOnly(runtimeAdmission, path);
+    if (again.schemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
+      || again.authorityGeneration !== current.authorityGeneration
+      || again.authorityContentFingerprint !== current.authorityContentFingerprint) throw new Error("capability-upgrade-source-changed");
+    runtimeAdmission.assertAuthorityDatabase(path);
+    assertHeldRestoreAdmission(runtimeAdmission, input, input.heldRestoreAdmission?.admissionId ?? ownedRestore?.admissionId ?? "");
+    const database = new DatabaseSync(path, { enableForeignKeyConstraints: true,
+      enableDoubleQuotedStringLiterals: false, allowExtension: false, readBigInts: false,
+      returnArrays: false, allowBareNamedParameters: false, allowUnknownNamedParameters: false, defensive: true });
+    let committed = false;
+    try {
+      database.exec("PRAGMA foreign_keys = ON; PRAGMA synchronous = FULL; BEGIN EXCLUSIVE");
+      const inside = inspectNormalAuthority(database);
+      if (inside.schemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION
+        || inside.authorityGeneration !== current.authorityGeneration
+        || inside.authorityContentFingerprint !== current.authorityContentFingerprint) throw new Error("capability-upgrade-source-changed");
+      const migration = SQLITE_MIGRATIONS.find((entry) => entry.version === CURRENT_AUTHORITY_SCHEMA_VERSION);
+      if (migration === undefined || migration.statements.length !== 0) throw new Error("capability-upgrade-not-version-only");
+      const now = clock.now().toISOString();
+      const record = AuthorityCapabilityUpgradeRecordSchema.parse({
+        format: 4, recordKey: randomUUID(), upgradeId: sha256Hex(canonicalJsonStringify({
+          sourceIdentity, generation: current.authorityGeneration, fingerprint: current.authorityContentFingerprint,
+          backupSha256: verified.manifest.sha256, target: CURRENT_AUTHORITY_SCHEMA_VERSION,
+        })), phase: "settled", fromSchemaVersion: NORMAL_AUTHORITY_SCHEMA_VERSION,
+        toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION, by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now,
+        sourceGeneration: current.authorityGeneration, sourceFingerprint: current.authorityContentFingerprint,
+        backupManifest: verified.manifestPath, backupSha256: verified.manifest.sha256,
+      });
+      database.prepare("INSERT INTO database_upgrades(record_key,upgrade_id,phase,record_json,created_at) VALUES (?,?,?,?,?)")
+        .run(record.recordKey, record.upgradeId, record.phase, canonicalJsonStringify(record), now);
+      database.prepare("UPDATE database_state SET schema_version = 56, authority_generation = authority_generation + 1, updated_at = ? WHERE singleton_id = 1")
+        .run(now);
+      database.exec("PRAGMA user_version = 56");
+      inspectConvertedAuthority(database);
+      input.hooks?.beforeCommit?.();
+      runtimeAdmission.assertAuthorityDatabase(path);
+      assertHeldRestoreAdmission(runtimeAdmission, input, input.heldRestoreAdmission?.admissionId ?? ownedRestore?.admissionId ?? "");
+      database.exec("COMMIT");
+      committed = true;
+      input.hooks?.afterCommit?.();
+    } catch (error) {
+      if (!committed && database.isTransaction) database.exec("ROLLBACK");
+      throw error;
+    } finally { database.close(); }
+    const after = inspectAuthorityBackupReadOnly(runtimeAdmission, path);
+    if (after.schemaVersion !== CURRENT_AUTHORITY_SCHEMA_VERSION
+      || after.authorityGeneration !== current.authorityGeneration + 1) throw new Error("capability-upgrade-postcheck-failed");
+    return "converted";
+  } finally { ownedRestore?.release(); }
 }
 
 function requireStopped(input: StorageUpgradeInput, clock: Clock): void {
@@ -124,9 +255,9 @@ export async function upgradeStorage(runtimeAdmission:RuntimeAdmission,input: St
       || prior.importedKeys.length > 0 || prior.sourceFiles.length > 0 || prior.envKeysToRemove.length > 0 || prior.generatedImport !== undefined) {
       throw new Error("upgrade-pending: finish the interrupted settings conversion with its original compatible release");
     }
-    if (from !== CURRENT_AUTHORITY_SCHEMA_VERSION) throw new Error("upgrade-pending: finish the interrupted database conversion with its original compatible release");
+    if (from !== prior.toSchemaVersion) throw new Error("upgrade-pending: finish the interrupted database conversion with its original compatible release");
   }
-  if (from === CURRENT_AUTHORITY_SCHEMA_VERSION) {
+  if (isNormalAuthoritySchemaVersion(from)) {
     const archiveNeedsUpgrade = archiveNeedsIndexUpgrade(runtimeAdmission,input.stateRoot);
     if (archiveJournal !== undefined) {
       if (prior === undefined || !("format" in prior)) throw new Error("archive-conversion-resume-mismatch");
@@ -187,7 +318,8 @@ export async function upgradeStorage(runtimeAdmission:RuntimeAdmission,input: St
 }
 
 function reportFor(state: StorageUpgradeReport["state"], from: number, historicalExposure: readonly "operator.timekeeperName"[] = [], backupManifest?: string): StorageUpgradeReport {
-  return StorageUpgradeReportSchema.parse({ state, fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+  return StorageUpgradeReportSchema.parse({ state, fromSchemaVersion: from,
+    toSchemaVersion: from === CURRENT_AUTHORITY_SCHEMA_VERSION ? CURRENT_AUTHORITY_SCHEMA_VERSION : NORMAL_AUTHORITY_SCHEMA_VERSION,
     historicalExposure, importedKeys: [], sourceFiles: [], envKeysToRemove: [], orphanGateRecordsRemoved: 0,
     tombstoneBackfill: { fromRoots: 0, fromReconstructedRoots: 0, unknown: 0, missingRunNumber: 0 },
     credentials: "unchanged", ...(backupManifest === undefined ? {} : { backupManifest: basename(backupManifest) }) });

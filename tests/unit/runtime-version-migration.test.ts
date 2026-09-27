@@ -19,7 +19,7 @@ describe("runtime version authority migration", () => {
       authority.close();
       const database = new DatabaseSync(path, { readOnly: true });
       try {
-        assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 55);
+        assert.equal(CURRENT_AUTHORITY_SCHEMA_VERSION, 56);
         assert.deepEqual(readRuntimeVersionAuthority(database).state, { dashboard: { major: 1, minor: 0 }, workflows: [] });
       } finally { database.close(); }
     } finally { rmSync(root, { recursive: true, force: true }); }

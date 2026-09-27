@@ -29,7 +29,7 @@ import { RunRecordService } from "../../core/run-record-service.js";
 import { SETTINGS_CATALOG } from "../../domain/config/catalog.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { protectedSettingsReadback } from "../../domain/config/protected-settings.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
@@ -252,7 +252,7 @@ function formatRestoreReport(report: OfflineRestoreReport): string {
     `from manifest: ${report.manifestFileName}`,
     `from backup:   ${report.backupFileName} (generation ${String(report.authorityGeneration)})`,
     `suspect kept:  ${report.suspectFileName}`,
-    `schema: v${String(report.schemaVersion)}${report.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION ? "; storage upgrade required before runtime boot" : ""}`,
+    `schema: v${String(report.schemaVersion)}${report.schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION ? "; storage upgrade required before runtime boot" : ""}`,
     `projections rebuilt: ${String(report.projectionRebuilt)} · `
     + `authority preserved across rebuild: ${String(report.authorityPreservedAcrossProjectionRebuild)}`,
   ].join("\n");
@@ -403,7 +403,7 @@ async function restoreCommand(
     const paired = resolvedManifest.endsWith(".lifecycle.json");
     const pairedSelection=paired ? await verifyLifecyclePair(admission,resolvedManifest) : undefined;
     const selected = paired ? undefined : await verifyBackupManifestAtPath(admission,resolvedManifest,sourceDatabaseIdentity);
-    const historical = selected !== undefined && selected.manifest.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION;
+    const historical = selected !== undefined && selected.manifest.schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION;
     let selectedHasArchiveCustody = false;
     if (selected !== undefined && !historical && !existsSync(join(stateRoot,"archive.sqlite"))) {
       const backupAdmission = admission.verifiedReadOnlyCopy(selected.backupPath,selected.manifest.sha256,"authority");
@@ -421,7 +421,7 @@ async function restoreCommand(
       manifestPath: resolve(manifestArgument),
       stoppedSystemProof,
     });
-    const upgrade = historicalResult?.upgrade ?? (report.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION
+    const upgrade = historicalResult?.upgrade ?? (report.schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION
       ? await upgradeStorage(admission,{stateRoot,processLockRoot,environmentFile:join(repoRoot,".env"),plan:false,backupManifest:pairedSelection?.live.manifestPath},clock) : undefined);
     // Observe credentials only AFTER successful SQLite replacement. Their failure
     // neither authorizes a rollback nor changes the reported restore outcome.

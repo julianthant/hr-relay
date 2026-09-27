@@ -18,7 +18,12 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../domain/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;
-export const CURRENT_AUTHORITY_SCHEMA_VERSION = 55;
+export const NORMAL_AUTHORITY_SCHEMA_VERSION = 55;
+export const CURRENT_AUTHORITY_SCHEMA_VERSION = 56;
+
+export function isNormalAuthoritySchemaVersion(version: number): boolean {
+  return version === NORMAL_AUTHORITY_SCHEMA_VERSION || version === CURRENT_AUTHORITY_SCHEMA_VERSION;
+}
 
 /** Physical names changed at v39; released DDL and stored JSON keep their bytes. */
 export const DATABASE_TABLE_RENAMES = deepFreeze({
@@ -45,7 +50,7 @@ export function settingsSnapshotsTable(schemaVersion: number): "config_snapshots
 
 export function requiresStoppedSystemAuthorityUpgrade(schemaVersion: number): boolean {
   // Retirement of archive authorities and obsolete relaunch relationships requires stopped conversion.
-  return schemaVersion > 0 && (schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION || schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION);
+  return schemaVersion > 0 && (schemaVersion <= UPGRADE_FLOOR_SCHEMA_VERSION || schemaVersion < NORMAL_AUTHORITY_SCHEMA_VERSION);
 }
 
 /**
@@ -2175,6 +2180,7 @@ export const SQLITE_MIGRATIONS = deepFreeze([
       WHEN json_extract(NEW.record_json,'$.reviewFingerprint') IS NOT json_extract(OLD.record_json,'$.reviewFingerprint')
       BEGIN SELECT RAISE(ABORT,'runtime version review is immutable'); END`,
   ] },
+  { version: 56, statements: [] },
 ] as const);
 
 export function auditMigrationTableCoverage(): readonly string[] {

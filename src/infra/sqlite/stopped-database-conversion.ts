@@ -24,8 +24,8 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { AuthorityUpgradeRecordSchema } from "../../domain/authority.js";
 import { derivePersistedSettingsFingerprint } from "../../domain/config/settings.js";
-import { withStoppedArchiveConversion, inspectConvertedAuthority } from "./authority-database.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, databaseStateTable, databaseUpgradesTable, settingsSnapshotsTable } from "./migrations.js";
+import { withStoppedArchiveConversion, inspectNormalAuthority } from "./authority-database.js";
+import { AUTHORITY_APPLICATION_ID, NORMAL_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS, databaseStateTable, databaseUpgradesTable, settingsSnapshotsTable } from "./migrations.js";
 import type { verifyBackupManifestAtPath } from "./backup-service.js";
 import { withAuthorityDatabaseReadOnly, inspectOpenDatabase, type BackupCopyInspection } from "../compat/backup-inspection.js";
 const RowSchema = z.strictObject({ record_json: z.string() });
@@ -113,7 +113,7 @@ export function convertStoppedDatabase(args: Readonly<{
       const now = args.archiveRecordedAt ?? clock.now().toISOString();
       const timelineIdentity = existed ? args.timelineSources?.digest : "fresh";
       if (timelineIdentity === undefined) throw new Error("timeline-import-source-evidence-required");
-      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: CURRENT_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, explorer: args.explorerSource.source, settings: derivePersistedSettingsFingerprint(sources.settings) }));
+      const upgradeId = sha256Hex(canonicalJsonStringify({ from, to: NORMAL_AUTHORITY_SCHEMA_VERSION, backup: backupEvidence?.manifest.sha256 ?? "fresh", timeline: timelineIdentity, explorer: args.explorerSource.source, settings: derivePersistedSettingsFingerprint(sources.settings) }));
       assertExplorerOverrideSourceUnchanged(input.stateRoot, args.explorerSource);
       if (!existed && args.verifyOnly !== true) { const fd = openSync(path, "wx", 0o600); closeSync(fd); }
       const createdIdentity = !existed && args.verifyOnly !== true ? lstatSync(path) : undefined;
@@ -191,7 +191,7 @@ export function convertStoppedDatabase(args: Readonly<{
             database.exec("UPDATE database_state SET schema_version=49 WHERE singleton_id=1; PRAGMA user_version=49");
             if (args.verifyOnly !== true) input.hooks?.archiveStep?.("retired");
           }
-        for (const migration of SQLITE_MIGRATIONS.filter(({version}) => version > Math.max(from, 49))) {
+        for (const migration of SQLITE_MIGRATIONS.filter(({version}) => version > Math.max(from, 49) && version <= NORMAL_AUTHORITY_SCHEMA_VERSION)) {
           for (const statement of migration.statements) database.exec(statement);
           database.prepare("UPDATE database_state SET schema_version=? WHERE singleton_id=1").run(migration.version);
           database.exec(`PRAGMA user_version=${String(migration.version)}`);
@@ -199,7 +199,7 @@ export function convertStoppedDatabase(args: Readonly<{
         assertExplorerOverrideSourceUnchanged(input.stateRoot, args.explorerSource);
         importExplorerOverrides(database, args.explorerSource);
         const revision = sources.revision;
-        pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: CURRENT_AUTHORITY_SCHEMA_VERSION,
+        pending = AuthorityUpgradeRecordSchema.parse({ format: 3, recordKey: randomUUID(), upgradeId, phase: "committed", fromSchemaVersion: from, toSchemaVersion: NORMAL_AUTHORITY_SCHEMA_VERSION,
           by: LOCAL_OPERATOR_ACTOR_ID, recordedAt: now, timelineImport,
           explorerImport: { format: 1, sourceDatabaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path), backupSha256: backupEvidence?.manifest.sha256 ?? "fresh", source: args.explorerSource.source },
           backupManifest: backupEvidence?.manifestPath ?? "fresh", ordinaryRevision: revision,
@@ -214,7 +214,7 @@ export function convertStoppedDatabase(args: Readonly<{
           if (from < 49) for (const snapshot of convertedTransactionSnapshots) indexArchivedTransactionSnapshot(database, snapshot);
           else backfillArchivedTransactionSelection(database, () => transactionArchive ??= new ArchiveDatabase(args.runtimeAdmission,join(input.stateRoot, "archive.sqlite"), {readOnly:true}));
         } finally { transactionArchive?.close(); }
-        inspectConvertedAuthority(database);
+        if (inspectNormalAuthority(database).schemaVersion !== NORMAL_AUTHORITY_SCHEMA_VERSION) throw new Error("stopped-conversion-target-mismatch");
         if (args.verifyOnly !== true) {
           input.hooks?.beforeCommit?.();
           assertExplorerOverrideSourceUnchanged(input.stateRoot, args.explorerSource);

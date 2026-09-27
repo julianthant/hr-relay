@@ -5,7 +5,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { readLatestDatabaseUpgrade as readLatestSettingsUpgrade } from "../helpers/synthetic-storage-admission.js";
-import { databaseStateTable, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { databaseStateTable, NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST, RUN_SESSION } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
@@ -139,7 +139,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run(true)).state, "planned");
     assert.deepEqual(readdirSync(f.root), before);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(read(f).meta.schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.equal(read(f).settings.revision, 1);
     assert.equal(existsSync(join(f.root, "credentials")), false);
     const bytes = readFileSync(f.path);
@@ -152,7 +152,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal(existsSync(f.path), false);
     assert.equal(createCredentialStore({ stateRoot: f.root }).read().revision, 1);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(read(f).meta.schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
   });
   it.each([46, 47, 48])("requires a current verified backup before v%s conversion and preserves it", async (version) => {
     const f = fixture(version); const before = readFileSync(f.path);
@@ -162,7 +162,7 @@ describe("D336 stopped SQLite upgrade", () => {
     assert.equal((await f.run(true)).fromSchemaVersion, version);
     assert.deepEqual(readFileSync(f.path), before);
     assert.equal((await f.run()).state, "converted");
-    assert.equal(read(f).meta.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(read(f).meta.schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
   });
   it.each([32, 33, 34, 35, 36, 37])("refuses to supersede an unfinished schema-%s settings conversion in plan and apply", async (version) => {
     const seed = fixture(); await seed.run();
@@ -396,7 +396,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
       assert.deepEqual(after.prepare("PRAGMA foreign_key_check").all(), []);
     } finally { after.close(); }
     const current = inspectAuthorityBackupReadOnly(f.path);
-    assert.equal(current.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(current.schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.equal(current.counts.leases, 1);
     const currentBackup = await f.backup();
     assert.equal(currentBackup.manifests[0]?.authorityContentFingerprint, current.authorityContentFingerprint);
@@ -412,7 +412,7 @@ describe("worker/auth/request SQL rename through stopped upgrade", () => {
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { beforeCommit: () => { throw new Error("rename-before-commit"); } } }, clock), /rename-before-commit/u);
     assert.deepEqual(readFileSync(f.path), before);
     await assert.rejects(upgradeStorage({ ...f.input, hooks: { afterCommit: () => { throw new Error("rename-after-commit"); } } }, clock), /rename-after-commit/u);
-    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    assert.equal(inspectAuthorityBackupReadOnly(f.path).schemaVersion, NORMAL_AUTHORITY_SCHEMA_VERSION);
     assert.equal((await f.run()).state, "converted");
     const after = new DatabaseSync(f.path, { readOnly: true });
     try {
