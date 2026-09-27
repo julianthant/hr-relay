@@ -258,8 +258,10 @@ unknown, null, false, zero and an empty collection are not interchangeable.
 The served report may add strictly validated archive-record identity/publication metadata, with
 explicit absence for historical producers. Original private source snapshots and private source
 digests remain outside this projection. This does not remove values already admitted to the
-operator report by D346. The stored report integrity digest and the public projection fingerprint
-must remain distinctly named. The dashboard and exports consume this same public report, without
+operator report by D346. The raw sealed-report digest also stays private: it changes with protected
+source bytes, unlike the stable public archive fingerprint. Expose verified report integrity and
+the existing public fingerprint without revealing the sealed digest or changing deletion citations.
+The dashboard and exports consume this same public report, without
 rebuilding it from live inputs or silently replacing missing evidence.
 
 Run export offers the complete public report as JSON and a typed field-path CSV. Workflow export
@@ -269,7 +271,9 @@ nested values through one field per row with run identity, path, type and encode
 the admitted spreadsheet-safe encoding policy. Exports preserve explicit absences and file
 metadata; attachment bytes continue through the verified attachment path. Loading, cancellation,
 changed selection, partial failure and bounded paging must not produce an apparently complete
-truncated export.
+truncated export. A browser export capacity bound must be explicit and refuse before offering a
+file; it must never silently truncate matching runs. This candidate bounds workflow export at
+5,000 reports and 50 MB, with narrowing filters offered when that bound is exceeded.
 
 ### D275 — standing conventions
 
