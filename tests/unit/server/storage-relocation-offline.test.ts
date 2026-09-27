@@ -17,6 +17,7 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/domain/config/protected-settings.js";
+import { FingerprintSchema, NonNegativeIntSchema } from "../../../src/domain/ids.js";
 import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
@@ -67,7 +68,7 @@ function installation() {
   const archivePath = join(source.stateRoot, "archive.sqlite");
   const archivedRunId = randomUUID();
   const archiveFileBytes = Buffer.from("synthetic archived attachment");
-  const archiveFile = { digest: createHash("sha256").update(archiveFileBytes).digest("hex"),
+  const archiveFile = { digest: FingerprintSchema.parse(createHash("sha256").update(archiveFileBytes).digest("hex")),
     byteLength: archiveFileBytes.byteLength, mediaType: "text/plain", name: "synthetic-archive.txt" };
   const archive = new ArchiveDatabase(admission, archivePath);
   try {
@@ -100,7 +101,7 @@ function plan(workspace: string, desiredPair: Readonly<{ stateRoot: string; arti
       const reader = createStorageRelocationPlanReader({ authority, admission, workspace });
       const view = reader.read();
       const target = { installationId: admission.locator.installationId,
-        sourceGeneration: admission.locator.generation,
+        sourceGeneration: NonNegativeIntSchema.parse(admission.locator.generation),
         sourcePair: { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot },
         expectedRevision: view.revision };
       const draft = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation",
