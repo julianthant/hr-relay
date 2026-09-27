@@ -663,3 +663,14 @@ refuses even after reader creation. Focused producer/control tests passed 38/38 
 passed; receipts are under `category-6/receipt-plan-bridge/` and `category-6/locator-readback/`.
 Their combined typecheck is still an integration obligation. Actual copy/backup verification,
 explicit v56 activation, real command composition, and final Paths behavior remain pending.
+
+### Relocation operation capabilities — 2026-09-26
+
+Control candidate `d2dbfb908` was applied as `5656b272f`. Issued installation leases are frozen
+and recheck their captured mode. Destination access and retained-source verification now derive
+from the exact live operation journal, parent admission, and held restore admission; recovery
+requires the explicit installation, generation, and operation binding. Retained-source access is
+read-only and available only after complete retention. Root inspected the patch and deciding
+logs: 28 focused control tests, scoped lint, and typecheck passed under
+`category-6/relocation-control/capability-*`. This establishes the engine's access boundaries;
+actual copying and recovery orchestration remain pending.
