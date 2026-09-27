@@ -100,7 +100,7 @@ describe("complete Settings catalog projection", () => {
   it("shows only the current fiscal year's required date and retains stored history without exposing it", () => {
     const document = fixtureSettingsDocument({ annualDates: { FY2027: { jobEndDate: "6/30/2027", kronosDefaultStartDate: "7/1/2026", kronosDefaultEndDate: "6/30/2027" } }, providers: { gemini: { models: ["first", "second"] } } }, 2);
     assert.equal(document.catalog.length, 77);
-    assert.equal(document.sections.flatMap(section => section.leaves).length, 57);
+    assert.equal(document.sections.flatMap(section => section.leaves).length, 60);
     const model = document.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "providers.gemini.models");
     assert.deepEqual(model?.settingsValue, ["first", "second"]);
     assert.equal(model?.defaultValue, undefined);
