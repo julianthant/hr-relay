@@ -731,6 +731,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     readRelocationReceipts() {
       assertHeld();
       if (lstatMaybe(join(control, "journal.json"))) fail("pending relocation has no settled receipt chain");
+      const current = readLocator(control, workspace);
+      if (canonicalJsonStringify(current) !== canonicalJsonStringify(locator)) fail("admitted locator changed; reacquire lease");
       return readReceiptChain(control, workspace, locator.installationId);
     },
     release() {

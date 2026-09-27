@@ -293,3 +293,24 @@ it("checks admission liveness for read, project, and validate", () => {
   expect(() => f.producer.project(f.database.authority)).toThrow(/released/u);
   expect(() => f.producer.validate(request)).toThrow(/released/u);
 });
+
+it("refuses a missing, malformed, or drifting locator after plan reader creation", () => {
+  for (const failure of ["missing", "malformed", "drift"] as const) {
+    const f = fixture();
+    expect(f.producer.read()).toMatchObject({ revision: 0, pending: null });
+    const locatorPath = join(f.workspace, ".runtime-control", "locator.json");
+    if (failure === "missing") unlinkSync(locatorPath);
+    else if (failure === "malformed") writeFileSync(locatorPath, "{");
+    else {
+      const alternateArtifactRoot = join(f.workspace, "alternate-artifacts");
+      mkdirSync(alternateArtifactRoot, { mode: 0o700 });
+      copyFileSync(join(f.pair.artifactRoot, ".runtime-owner.json"), join(alternateArtifactRoot, ".runtime-owner.json"));
+      const locator = JSON.parse(readFileSync(locatorPath, "utf8")) as Record<string, unknown>;
+      writeFileSync(locatorPath, JSON.stringify({ ...locator, artifactRoot: alternateArtifactRoot }));
+    }
+    const expected = failure === "missing" ? /locator missing/u
+      : failure === "drift" ? /admitted locator changed/u : /./u;
+    expect(() => f.producer.read()).toThrow(expected);
+    expect(() => f.producer.validate(plan(f, 0))).toThrow(expected);
+  }
+});
