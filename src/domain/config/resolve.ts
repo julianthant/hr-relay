@@ -1,4 +1,5 @@
 import { createHash } from "node:crypto";
+import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import type { Clock } from "../clock.js";
@@ -29,6 +30,26 @@ export const ResolvedConfigSchema = z.strictObject({
   fingerprint: FingerprintSchema,
 });
 export type ResolvedConfig = z.infer<typeof ResolvedConfigSchema>;
+
+export type AdmittedRuntimeStoragePair = Readonly<{ stateRoot: string; artifactRoot: string }>;
+const RuntimeStoragePairSchema = z.strictObject({
+  stateRoot: z.string().min(1),
+  artifactRoot: z.string().min(1),
+}).superRefine((pair, context) => {
+  for (const key of ["stateRoot", "artifactRoot"] as const) {
+    const path = pair[key];
+    if (!isAbsolute(path) || resolve(path) !== path) {
+      context.addIssue({ code: "custom", path: [key], message: "root must be canonical absolute path" });
+    }
+  }
+  if (!isAbsolute(pair.stateRoot) || !isAbsolute(pair.artifactRoot)) return;
+  const stateWithinArtifact = relative(pair.artifactRoot, pair.stateRoot);
+  if (stateWithinArtifact === "" || (stateWithinArtifact !== ".."
+    && !stateWithinArtifact.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`)
+    && !isAbsolute(stateWithinArtifact))) {
+    context.addIssue({ code: "custom", path: ["artifactRoot"], message: "artifact root cannot contain state root" });
+  }
+});
 
 type ConfigEnvApply = (config: Config, raw: string, fiscalYear: string) => Config;
 export const ConfigEnvBindingSchema = z.strictObject({
@@ -141,11 +162,12 @@ export function configLeafPaths(config: unknown): readonly string[] {
   return Object.freeze(collectLeafPaths(config));
 }
 
-function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts): ResolvedConfig {
+function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts, runtimeStoragePair?: AdmittedRuntimeStoragePair): ResolvedConfig {
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
   const hostFacts = HostConfigFactsSchema.parse(hostFactsInput);
+  const admittedPair = runtimeStoragePair === undefined ? undefined : RuntimeStoragePairSchema.parse(runtimeStoragePair);
   const defaults = ConfigSchema.parse({
-    paths: defaultRuntimePaths(), display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
+    paths: { ...defaultRuntimePaths(), ...admittedPair }, display: hostFacts.primaryDisplay ?? DEFAULT_DISPLAY,
   });
   const config = mergeSettings(defaults, settings);
 
@@ -172,6 +194,7 @@ export function resolveConfigWithProvenance(
   settingsInput: unknown,
   hostFacts: HostConfigFacts,
   _clock: Clock = systemClock,
+  runtimeStoragePair?: AdmittedRuntimeStoragePair,
 ): ResolvedConfig {
-  return resolveInternal(settingsInput, hostFacts);
+  return resolveInternal(settingsInput, hostFacts, runtimeStoragePair);
 }
