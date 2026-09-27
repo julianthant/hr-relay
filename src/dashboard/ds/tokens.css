@@ -2128,6 +2128,15 @@ body[data-demo-theme="light"] {
   --ds-focus-ring: var(--ds-activity-calendar-focus);
 }
 
+.activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]) {
+  background-color: var(--ds-activity-calendar-range-bg);
+  color: var(--ds-fg);
+}
+
+.activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]):hover {
+  background-color: var(--ds-activity-calendar-range-hover);
+}
+
 .activity-range-calendar .range-calendar__cell[data-today="true"] .range-calendar__cell-button,
 .activity-range-calendar .activity-range-calendar-report-today .range-calendar__cell-button {
   outline: 1px solid var(--ds-activity-calendar-endpoint-bg);

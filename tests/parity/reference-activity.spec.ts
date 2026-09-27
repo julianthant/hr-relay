@@ -81,6 +81,22 @@ test("[A3] Custom range stays draft until Apply; Cancel, Escape, outside, preset
   await expect(picker).toBeVisible();
   await picker.getByRole("button", { name: /Wednesday, August 5, 2026/u }).click();
   await picker.getByRole("button", { name: /Friday, August 7, 2026/u }).click();
+  const middleDay = picker.getByRole("button", { name: /Thursday, August 6, 2026/u });
+  await expect(middleDay).toHaveAttribute("data-selected", "true");
+  const middleDayBackground = await middleDay.evaluate(element => {
+    const calendar = element.closest(".activity-range-calendar");
+    if (!(calendar instanceof HTMLElement)) throw new Error("missing Activity range calendar");
+    const probe = document.createElement("span");
+    probe.style.backgroundColor = "var(--ds-activity-calendar-range-bg)";
+    probe.style.position = "fixed";
+    probe.style.visibility = "hidden";
+    calendar.append(probe);
+    const tokenBackground = getComputedStyle(probe).backgroundColor;
+    probe.remove();
+    return { actual: getComputedStyle(element).backgroundColor, token: tokenBackground };
+  });
+  expect(middleDayBackground.actual).toBe(middleDayBackground.token);
+  expect(middleDayBackground.actual).not.toBe("rgba(0, 0, 0, 0)");
   await expect(apply).toBeEnabled();
   await apply.click();
   await expect(page).toHaveURL(/activity=2026-08-05\.\.2026-08-07/u);
