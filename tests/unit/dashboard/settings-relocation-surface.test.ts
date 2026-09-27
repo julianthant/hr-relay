@@ -168,6 +168,20 @@ describe("storage relocation Paths controls", () => {
     assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).disabled, true);
     assert.match(surface.host.textContent ?? "", /last verified paths remain shown/u);
   });
+  it("rejects a global plan revision rewind even when source generation advances", async () => {
+    const current = StorageRelocationPlanViewSchema.parse({ ...INITIAL, revision: 2 });
+    let view: StorageRelocationPlanView = current;
+    const client = { storageRelocationPlans: () => Promise.resolve(view) } as unknown as DashboardClient;
+    const surface = await mount(client);
+    view = StorageRelocationPlanViewSchema.parse({ ...current, sourceGeneration: 1, revision: 1,
+      sourcePair: { stateRoot: "/tmp/moved-state", artifactRoot: "/tmp/moved-artifacts" } });
+    await act(async () => { surface.controller().reload(); await Promise.resolve(); });
+    assert.equal(surface.controller().readProblem, true);
+    assert.equal(surface.controller().read.state, "available");
+    if (surface.controller().read.state !== "available") throw new Error("last verified view disappeared");
+    assert.deepEqual(surface.controller().read.view, current);
+    assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).disabled, true);
+  });
   it("lets an invalid local field be undone without issuing a command", async () => {
     const commands: unknown[] = [];
     const client = { storageRelocationPlans: () => Promise.resolve(INITIAL), applyStorageRelocation: (input: unknown) => { commands.push(input); throw new Error("unexpected write"); } } as unknown as DashboardClient;

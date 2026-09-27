@@ -79,9 +79,9 @@ export function useStorageRelocation(input: Readonly<{ actorId: string }>) {
     const view = StorageRelocationPlanViewSchema.parse(await client.storageRelocationPlans());
     const previous = lastVerified.current;
     if (previous !== undefined && (view.installationId !== previous.installationId
-      || view.sourceGeneration < previous.sourceGeneration
+      || view.revision < previous.revision || view.sourceGeneration < previous.sourceGeneration
       || (view.sourceGeneration === previous.sourceGeneration && (view.sourcePair.stateRoot !== previous.sourcePair.stateRoot
-        || view.sourcePair.artifactRoot !== previous.sourcePair.artifactRoot || view.revision < previous.revision
+        || view.sourcePair.artifactRoot !== previous.sourcePair.artifactRoot
         || view.revision === previous.revision && canonicalJsonStringify(view) !== canonicalJsonStringify(previous))))) {
       throw new Error("storage-relocation-readback-stale-or-divergent");
     }
