@@ -2,7 +2,7 @@
  * No client method, parser, hook, or component is replaced. DOM declarations
  * are observable here; this fixture provides no browser layout/decode proof. */
 import { CalendarWireSchema } from "../../../../src/domain/dashboard/calendar.js";
-import { FIXTURE_EDITABLE_SETTINGS } from "../../../parity/helpers/fixture-settings.js";
+import { FIXTURE_EDITABLE_SETTINGS, FIXTURE_STORAGE_RELOCATION } from "../../../parity/helpers/fixture-settings.js";
 import assert from "node:assert/strict";
 import { act, createElement, Fragment, useEffect } from "react";
 import { createRoot, type Root } from "react-dom/client";
@@ -168,6 +168,7 @@ export async function mountCaptureApp(input: {
     if (url === `${CAPTURE_BASE_URL}/api/v1/bootstrap`) return Response.json(BOOTSTRAP);
     if (url === `${CAPTURE_BASE_URL}/api/v1/preflight`) return Response.json({error:"capture-fixture-preflight-unavailable"},{status:503});
     if (url === `${CAPTURE_BASE_URL}/api/v1/settings/editable`) return Response.json(FIXTURE_EDITABLE_SETTINGS);
+    if (url === `${CAPTURE_BASE_URL}/api/v1/settings/storage-relocation`) return Response.json(FIXTURE_STORAGE_RELOCATION);
     if (url === `${CAPTURE_BASE_URL}/api/v1/calendar?month=2026-08&day=2026-08-30`) return Response.json(CalendarWireSchema.parse({
       month:"2026-08",day:"2026-08-30",today:"2026-08-30",authorityGeneration:1,
       monthCounts:selectedDay.monthCounts,firstDay:"2026-08-30",lastDay:"2026-08-30",previousDay:null,nextDay:null,

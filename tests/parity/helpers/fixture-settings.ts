@@ -62,3 +62,10 @@ export function fixtureSettingsDocument(settings: SettingsOverride = {}, revisio
     protectedSettings: createProtectedSettingsRuntimeReader({ read: initialProtectedStoreRecord }), environment: {}, clock, resolve });
 }
 export const FIXTURE_EDITABLE_SETTINGS = fixtureSettingsDocument();
+export const FIXTURE_STORAGE_RELOCATION = {
+  revision: 0,
+  installationId: "11111111-1111-4111-8111-111111111111",
+  sourceGeneration: 0,
+  sourcePair: { stateRoot: "/tmp/settings-fixture/state", artifactRoot: "/tmp/settings-fixture/artifacts" },
+  pending: null,
+} as const;

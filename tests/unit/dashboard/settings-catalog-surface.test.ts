@@ -96,7 +96,7 @@ describe("typed Settings catalog controls", () => {
     const { host } = await setup("paths");
     assert.deepEqual([...host.querySelectorAll("h1")].map(node => node.textContent), ["Paths"]);
     assert.deepEqual([...host.querySelectorAll("h2")].map(node => node.textContent), ["Runtime locations", "Generated files", "Workflow documents"]);
-    assert.equal(host.querySelectorAll(".settings-runtime-row input[readonly]").length, 2);
+    assert.equal(host.querySelectorAll(".settings-relocation-row input:not([readonly])").length, 2);
     assert.equal(host.querySelectorAll(".settings-compact-row input:not([readonly])").length, 7);
     for (const path of ["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"]) {
       assert.ok(host.querySelector(`[data-settings-path="${path}"] input:not([readonly])`));

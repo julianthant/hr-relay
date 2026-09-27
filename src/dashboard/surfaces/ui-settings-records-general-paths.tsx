@@ -6,6 +6,7 @@ import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { settingNote, settingTitle } from "./settings-presentation.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
+import { StorageRelocationRows } from "./settings-relocation.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -42,11 +43,6 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   </div>;
 }
 
-function RuntimeRow({ label, description, value }: { label: string; description: string; value: unknown }) {
-  if (typeof value !== "string" || value.length === 0) throw new Error(`settings-runtime-location-unavailable:${label}`);
-  return <ResultRow label={label} description={description} controlWidth="wide" className="settings-runtime-row" value={<Input aria-label={label} value={value} readOnly />} />;
-}
-
 function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
   const date = servedLeaf(editor, `annualDates.FY${String(year)}.jobEndDate`);
   const width = servedLeaf(editor, "display.screenWidth");
@@ -70,11 +66,10 @@ function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
   </>;
 }
 
-function PathsContent({ editor, deployment }: { editor: Editor; deployment: Readonly<Record<string, unknown>> }) {
+function PathsContent({ editor }: { editor: Editor }) {
   return <>
     <BodySection title="Runtime locations"><FormGroup label="Runtime locations">
-      <RuntimeRow label="Runtime state folder" description="Persistent settings and run data." value={deployment["paths.stateRoot"]} />
-      <RuntimeRow label="Artifact folder" description="Run evidence and generated artifacts." value={deployment["paths.artifactRoot"]} />
+      <StorageRelocationRows editor={editor.relocationEditor} />
       <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.browserProfileRoot")} wide />
       <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.duoCredential")} wide />
       <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.duoExtensionDir")} wide />
@@ -98,7 +93,7 @@ export function CompactSettingsSection({ editor, sectionId }: { editor: Editor; 
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
       <SettingsSaveFeedback save={editor.save} retry={editor.retry} retryConflict={editor.submit} />
-      <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} deployment={document.deployment} />}</div>
+      <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
     </Form>
   </section>;
 }

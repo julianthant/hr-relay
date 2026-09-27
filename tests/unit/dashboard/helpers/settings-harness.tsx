@@ -73,6 +73,9 @@ export async function mountSettingsHarness(authority: ReturnType<typeof syntheti
   };
   const client = createDashboardClient({ baseUrl: "http://127.0.0.1:43210", fetchImpl: async (url, init) => {
     if (url.endsWith("/settings/editable")) return new Response(JSON.stringify(ports.read()), { status: 200 });
+    if (url.endsWith("/settings/storage-relocation")) return new Response(JSON.stringify({ revision: 0,
+      installationId: "11111111-1111-4111-8111-111111111111", sourceGeneration: 0,
+      sourcePair: { stateRoot: "/tmp/settings-fixture/state", artifactRoot: "/tmp/settings-fixture/artifacts" }, pending: null }), { status: 200 });
     if (url.endsWith("/commands") && typeof init?.body === "string") {
       const request: unknown = JSON.parse(init.body); commands.push(request);
       const refusal = ports.response(); if (refusal !== undefined) return refusal;

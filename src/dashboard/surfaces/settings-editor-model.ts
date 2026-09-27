@@ -8,6 +8,7 @@ import { useSettingsClient } from "../state/settings-client.js";
 import { useSettingsPreflight } from "./settings-preflight-model.js";
 import { useProtectedSettings } from "./settings-protected-model.js";
 import { useProviderKeys } from "./settings-provider-model.js";
+import { useStorageRelocation } from "./settings-relocation-model.js";
 import { beforeEffectRefusal, checkedSettingsResult, settingsRefusal, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { coupledSettingsLeaves, draftError, ordinaryReadbackConfirms, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
 
@@ -45,6 +46,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   }, [refresh]);
   const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh });
   const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh });
+  const relocationEditor = useStorageRelocation({ actorId: input.actorId });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
     const leaf = leaves.find(candidate => candidate.path === path);
@@ -127,7 +129,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
   }, [draft, editor, errors, readProblem, save.state]);
   const retry = (): void => { if (pending.current !== undefined) void perform(pending.current); };
   const reload = (): void => { void refresh().catch(() => undefined); };
-  return Object.freeze({ editor, draft, errors, save, preflight, protectedEditor, providerEditor, leaves, readProblem,
+  return Object.freeze({ editor, draft, errors, save, preflight, protectedEditor, providerEditor, relocationEditor, leaves, readProblem,
     dirtyCount: Object.keys(draft).length, locked: save.state === "saving" || pending.current !== undefined,
     update, reset, clear, discard, submit, retry, reload, rerunPreflight });
 }

@@ -3,6 +3,7 @@ CommandResultSchema,
 ProviderKeysCommandRequestSchema,
 ProviderKeysRetryIntentSchema,
 SettingsCommandRequestSchema,
+StorageRelocationCommandRequestSchema,
 type CommandResult
 } from "../../domain/commands.js";
 import { DashboardClientError } from "./errors.js";
@@ -15,6 +16,7 @@ export interface SettingsCommands {
   applySettings(request: unknown): Promise<CommandResult>;
   applyProviderKeys(request: unknown): Promise<CommandResult>;
   retryProviderKeys(request: unknown): Promise<CommandResult>;
+  applyStorageRelocation(request: unknown): Promise<CommandResult>;
 }
 
 export function createSettingsCommands(transport: DashboardTransport): SettingsCommands { return Object.freeze({
@@ -42,5 +44,11 @@ export function createSettingsCommands(transport: DashboardTransport): SettingsC
       const response = await transport.requestJson("/api/v1/commands", { method: "POST", body: JSON.stringify(intent) });
       try { return CommandResultSchema.parse(response); }
       catch { throw new DashboardClientError({ kind: "schema", code: "PROVIDER_RESPONSE_INVALID", message: "Provider recovery response could not be verified" }); }
+    },
+    async applyStorageRelocation(request: unknown): Promise<CommandResult> {
+      const command = StorageRelocationCommandRequestSchema.parse(request);
+      const response = await transport.requestJson("/api/v1/commands", { method: "POST", body: JSON.stringify(command) });
+      try { return CommandResultSchema.parse(response); }
+      catch { throw new DashboardClientError({ kind: "schema", code: "STORAGE_RELOCATION_RESPONSE_INVALID", message: "Storage relocation command response could not be verified" }); }
     },
 }); }

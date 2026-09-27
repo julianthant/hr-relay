@@ -521,8 +521,10 @@
 .settings-performance-hazard { color: var(--ds-status-waiting-fg); }
 .settings-performance-fallback { display: flex; align-items: center; gap: var(--ds-space-tight); }
 .settings-performance-fallback > :first-child { flex: 1; min-width: 0; }
-.settings-runtime-row .ds-result-row-side,
-.settings-runtime-row .ds-result-row-value { width: 100%; }
+.settings-relocation-plan { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ds-space-tight); min-width: 0; }
+.settings-relocation-plan p { margin: 0; }
+.settings-relocation-plan > div { overflow-wrap: anywhere; }
+.settings-relocation-note { margin: 0; font-size: var(--ds-text-body-description); color: var(--ds-fg-muted); }
 .settings-credential-detail,
 .settings-credential-meta {
   grid-column: 2;
