@@ -110,6 +110,24 @@ export function activityRangeValue(range: { from: string; to: string }): string 
   return `${range.from}..${range.to}`;
 }
 
+export type ActivityPeriod = "today" | "week" | "month" | "custom";
+
+export function activityPeriodRange(period: Exclude<ActivityPeriod, "custom">, today: string): { from: string; to: string } {
+  if (period === "today") return { from: today, to: today };
+  if (period === "month") return { from: `${today.slice(0, 7)}-01`, to: today };
+  const date = new Date(`${today}T00:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() - date.getUTCDay());
+  return { from: date.toISOString().slice(0, 10), to: today };
+}
+
+export function activityPeriodOf(range: { from: string; to: string }, today: string): ActivityPeriod {
+  for (const period of ["today", "week", "month"] as const) {
+    const candidate = activityPeriodRange(period, today);
+    if (candidate.from === range.from && candidate.to === range.to) return period;
+  }
+  return "custom";
+}
+
 /**
  * The span's own label — the demo's `ReportSpan.label`, derived here from the
  * two bounds the wire requires (D180: both bounds are named, never defaulted).

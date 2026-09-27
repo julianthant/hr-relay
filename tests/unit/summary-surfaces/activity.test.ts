@@ -18,6 +18,8 @@ import { id } from "../database-foundation/fixtures.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import {
   activityPeopleEvidenceItems,
+  activityPeriodOf,
+  activityPeriodRange,
   activityRangeLabel,
   activityRangeValue,
   parseActivityRange,
@@ -166,14 +168,50 @@ describe("Activity consumes the served summary boundary", () => {
     const markup = renderToStaticMarkup(createElement(ActivityBody, { report: report(), rows: [queueRow] }));
     assert.match(markup, /Activity by workflow, grouped by category/u);
     assert.match(markup, /Separations/u);
-    assert.match(markup, /2026-09-08/u);
-    assert.match(markup, /2026-09-09/u);
+    assert.match(markup, /dateTime="2026-09-08"/u);
+    assert.match(markup, /dateTime="2026-09-09"/u);
     assert.match(markup, /Named by operator/u);
     assert.match(markup, /1 distinct person touched/u);
     assert.match(markup, /\+1/u);
   });
 
-  it("keeps warning and failed-duration misses explicit and distinct from measured zero", () => {
+  it("focuses the workflow table without changing range-wide totals", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
+    const value = report({
+      workflows: [
+        { workflowId: "separations", registration: { state: "registered", code: "sp", label: "Separations", categoryId: "employment" }, runs: 1, completion: { readBack: 0, warnings: 0, warningsUnknown: 0 }, failed: 0, cancelled: 0, partial: 0, open: 1 },
+        { workflowId: "person-lookup", registration: { state: "registered", code: "pl", label: "Person Lookup", categoryId: "employment" }, runs: 1, completion: { readBack: 0, warnings: 0, warningsUnknown: 0 }, failed: 0, cancelled: 0, partial: 0, open: 1 },
+      ],
+      categories: [{ category: { state: "registered", categoryId: "employment" }, runs: 2 }],
+    });
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => { root.render(createElement(ActivityBody, { report: value, rows: [] })); });
+      const selector = host.querySelector<HTMLSelectElement>('select[aria-label="Show workflow in breakdown"]');
+      assert.ok(selector);
+      const table = host.querySelector('table[aria-label="Activity by workflow, grouped by category"]');
+      assert.ok(table);
+      assert.match(table.textContent ?? "", /Person Lookup/u);
+      assert.match(table.textContent ?? "", /employment — subtotal/u);
+      await act(async () => {
+        selector.value = "separations";
+        selector.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+      assert.equal(selector.value, "separations");
+      assert.doesNotMatch(table.textContent ?? "", /Person Lookup/u);
+      assert.doesNotMatch(table.textContent ?? "", /employment — subtotal/u);
+      assert.match(host.querySelector('[aria-label="Range-wide report totals"]')?.textContent ?? "", /of 2 runs in this period/u);
+    } finally {
+      await act(async () => { root.unmount(); });
+      host.remove();
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("keeps warning and failed-duration misses explicit and distinct from measured zero", async () => {
+    vi.stubGlobal("IS_REACT_ACT_ENVIRONMENT", true);
     const value = report({
       terminalRuns: 2,
       inFlightRuns: 0,
@@ -203,9 +241,24 @@ describe("Activity consumes the served summary boundary", () => {
     const text = renderToStaticMarkup(createElement(ActivityBody, { report: value, rows: [] }));
     assert.match(text, /Distinct people unavailable/u);
     assert.doesNotMatch(text, /0 distinct people touched/u);
-    assert.match(text, /median 0ms/u);
-    assert.match(text, /1 finished run has no recorded end instant/u);
-    assert.match(text, /SUMMARY_FIXTURE/u);
+    assert.match(text, /Median duration/u);
+    assert.match(text, /0ms/u);
+    assert.match(text, /1 unmeasured/u);
+    assert.match(text, /Failure codes/u);
+    const host = document.createElement("div");
+    document.body.append(host);
+    const root = createRoot(host);
+    try {
+      await act(async () => { root.render(createElement(ActivityBody, { report: value, rows: [] })); });
+      const trigger = [...host.querySelectorAll("button")].find((button) => button.textContent?.includes("Failure codes"));
+      assert.ok(trigger);
+      await act(async () => { trigger.click(); });
+      assert.match(host.textContent ?? "", /SUMMARY_FIXTURE/u);
+    } finally {
+      await act(async () => { root.unmount(); });
+      host.remove();
+      vi.unstubAllGlobals();
+    }
   });
 
   it("keeps a valid URL range explicit and refuses invalid explicit selections without substituting month-to-date", () => {
@@ -213,6 +266,8 @@ describe("Activity consumes the served summary boundary", () => {
     assert.deepEqual(valid, { from: "2026-09-08", to: "2026-09-09" });
     assert.equal(activityRangeValue(valid), "2026-09-08..2026-09-09");
     assert.equal(activityRangeLabel(valid.from, valid.to), "Tue, Sep 8 – Wed, Sep 9");
+    assert.deepEqual(activityPeriodRange("week", "2026-09-10"), { from: "2026-09-06", to: "2026-09-10" });
+    assert.equal(activityPeriodOf({ from: "2026-09-06", to: "2026-09-10" }, "2026-09-10"), "week");
     assert.deepEqual(parseActivityRange("", "2026-09-10"), {
       from: "2026-09-01",
       to: "2026-09-10",
