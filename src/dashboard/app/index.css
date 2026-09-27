@@ -432,9 +432,11 @@
   min-height: var(--ds-h-md);
   align-items: center;
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
+  padding-block: var(--ds-space-cozy);
+  padding-inline: var(--ds-space-body-group-inline);
 }
 .settings-credentials-page .settings-provider-add button {
-  padding-inline: var(--ds-space-base);
+  padding-inline: var(--ds-space-cozy);
 }
 .settings-provider-empty {
   margin: 0;

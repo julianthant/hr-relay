@@ -109,8 +109,10 @@ function CredentialsSection({ editor }: { editor: Editor }) {
               </Field>;
             })}
             {visible.length === 0 && <p className={cn(dsText.meta, "settings-provider-empty")}>No saved keys.</p>}
-            <div className="settings-provider-add"><Button variant="ghost" disabled={providerLocked || slots.every(slot => rawSaved[slot] !== undefined || provider.draft[slot] !== undefined)}
-              onClick={() => provider.add(family.envPrefix)}><Plus aria-hidden className={dsIcon.sm} />Add key</Button></div>
+            <div className="settings-provider-add"><Button variant="secondary" size="md"
+              icon={<Plus aria-hidden className={dsIcon.sm} />}
+              disabled={providerLocked || slots.every(slot => rawSaved[slot] !== undefined || provider.draft[slot] !== undefined)}
+              onClick={() => provider.add(family.envPrefix)}>Add key</Button></div>
           </Disclosure>;
         })}
       </FormGroup>}
