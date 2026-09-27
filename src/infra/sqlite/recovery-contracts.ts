@@ -421,6 +421,16 @@ export const RestoreCandidateSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+export const PreviousLocationBackupSchema = z.strictObject({
+  selection: z.enum(["single-database", "lifecycle-pair"]),
+  schemaVersion: z.number().int().positive(),
+  manifestFileName: SafeFileNameSchema,
+  backupFileName: SafeFileNameSchema,
+  createdAt: IsoInstantSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  restoreEligibility: z.literal("not-admitted"),
+});
+
 export const BackupHealthSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("current"),
@@ -481,6 +491,7 @@ export const StorageDoctorReportSchema = z.strictObject({
   spanAuthority: SpanAuthorityReconciliationSchema,
   backup: BackupHealthSchema,
   restoreCandidates: z.array(RestoreCandidateSchema),
+  previousLocationBackups: z.array(PreviousLocationBackupSchema).optional(),
 });
 
 export const RecoveryProcessLockStateSchema = z.discriminatedUnion("state", [

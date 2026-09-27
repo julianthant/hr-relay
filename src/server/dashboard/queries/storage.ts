@@ -49,6 +49,7 @@ export async function buildStorageDoctor(deps: StorageQueryDeps): Promise<Storag
     spanAuthority: report.spanAuthority,
     backup: report.backup,
     restoreCandidates: report.restoreCandidates,
+    ...(report.previousLocationBackups === undefined ? {} : { previousLocationBackups: report.previousLocationBackups }),
     service: deps.serviceState(),
   });
 }

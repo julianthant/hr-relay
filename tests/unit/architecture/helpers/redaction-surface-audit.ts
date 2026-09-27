@@ -1488,6 +1488,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/storage-doctor", path: "restoreCandidates[].generationGap.reason", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "restoreCandidates[].restoreEligibility.reason", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "restoreCandidates[].manifestFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor", path: "previousLocationBackups[].backupFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor", path: "previousLocationBackups[].manifestFileName", origin: "local-filesystem-name" },
   { surface: "wire/storage-doctor", path: "service.message", origin: "repository-authored" },
   { surface: "wire/storage-doctor", path: "service.reason", origin: "repository-authored" },
   // D282 diagnostics are loopback-only. Parser/read failures can contribute

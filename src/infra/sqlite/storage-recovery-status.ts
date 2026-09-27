@@ -77,7 +77,8 @@ export function inspectStorageRecovery(stateRoot: string, sourceIdentity: string
 }
 
 /** Authenticate the exact existing pair, including pending/published file custody. */
-export async function inspectDoctorPair(admission: RuntimeAdmission,path: string, sourceIdentity: string) {
+export async function inspectDoctorPairWithOrigin(admission: RuntimeAdmission,path: string,
+  classifyOrigin: (sourceIdentity: string) => "current" | "previous-location") {
   // The verifier already refuses leaf aliases. Check parent paths before it reads retained files.
   const envelope = z.object({ fileDirectory: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u),
     liveManifest: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u),
@@ -85,8 +86,16 @@ export async function inspectDoctorPair(admission: RuntimeAdmission,path: string
   requireDatabaseSourcePath(join(dirname(path), envelope.fileDirectory, "probe"));
   for (const name of [envelope.liveManifest, envelope.archiveFile]) requireDatabaseSourcePath(join(dirname(path), name));
   const verified = await verifyLifecyclePair(admission,path);
-  if (verified.pair.sourceDatabaseIdentity !== sourceIdentity) throw new Error("lifecycle-restore-identity-mismatch");
-  return verified.live;
+  const origin = classifyOrigin(verified.pair.sourceDatabaseIdentity);
+  return { verified: verified.live, origin };
+}
+
+export async function inspectDoctorPair(admission: RuntimeAdmission,path: string, sourceIdentity: string) {
+  const inspected = await inspectDoctorPairWithOrigin(admission,path, (identity) => {
+    if (identity !== sourceIdentity) throw new Error("lifecycle-restore-identity-mismatch");
+    return "current";
+  });
+  return inspected.verified;
 }
 
 type Eligibility = Extract<RestoreCandidate, {state: "verified-compatible"}>["restoreEligibility"];

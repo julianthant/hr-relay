@@ -66,6 +66,16 @@ export const RestoreCandidateWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 
+export const PreviousLocationBackupWireSchema = z.strictObject({
+  selection: z.enum(["single-database", "lifecycle-pair"]),
+  schemaVersion: z.number().int().positive(),
+  manifestFileName: z.string().min(1),
+  backupFileName: z.string().min(1),
+  createdAt: IsoInstantSchema,
+  authorityGeneration: NonNegativeIntSchema,
+  restoreEligibility: z.literal("not-admitted"),
+});
+
 export const BackupHealthWireSchema = z.discriminatedUnion("state", [
   z.strictObject({
     state: z.literal("current"),
@@ -194,6 +204,7 @@ export const StorageDoctorWireSchema = z.strictObject({
   spanAuthority: SpanAuthorityReconciliationWireSchema,
   backup: BackupHealthWireSchema,
   restoreCandidates: z.array(RestoreCandidateWireSchema),
+  previousLocationBackups: z.array(PreviousLocationBackupWireSchema).optional(),
   service: BackupServiceStateWireSchema,
 });
 
