@@ -33,6 +33,10 @@ admission. Later moves also preserve prior receipt-bound witnesses in an exact s
 Locator v2 preserves separate marker epochs for unchanged roots. Interrupted movement
 blocks admission until explicit verified recovery, and durable activation receipts preserve
 validation of immutable older-generation plan history.
+Preparation pins the exact verified preupgrade backup before source mutation. Previous-location
+backups remain verifiable history but do not become current restore candidates. After relocation,
+every restore must preserve v56 and all completed relocation commands/audits and destination
+configuration snapshots before any swap, including when only artifacts moved.
 The foundation, lifetime runtime admission, intent producer, receipt-aware plan projection, and
 real command composition are implemented. The explicit stopped v56 upgrade is implemented;
 actual verified movement and activation orchestration remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)

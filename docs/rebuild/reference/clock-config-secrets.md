@@ -1852,6 +1852,16 @@ path-free artifact identities remain unchanged. The destination receives an expl
 configuration snapshot for its admitted root pair, with the ordinary Settings revision unchanged,
 and a freshly verified backup bound to the database's final path before activation.
 
+Copied older backup manifests retain their original identities and bytes. Read-only inspection may
+recognize former database identities only through the strict settled relocation receipt chain;
+these are previous-location evidence, not current recovery candidates. Current backup health uses
+the current database identity and must not be displaced by a newer-mtime historical copy. Restore
+does not gain a general former-origin allowance. After any completed relocation, including an
+artifact-only move with an unchanged database path, a restore candidate must retain schema v56,
+the complete receipt-compatible relocation command/audit history, and each receipt's destination
+configuration snapshot and fingerprint. Verify this before either DB-only or paired restore can
+stage or replace authority. Generation-zero installations retain normal v55 restore compatibility.
+
 Moved source data is retained under journal-bound sibling locations. An outermost moved source
 directory normally becomes a regular-file tombstone; a moved parent also blocks its former nested
 artifact path. The default state root has one necessary exception: `.tracker/locks` is the fixed
@@ -1878,6 +1888,13 @@ operation blocks normal admission until explicit offline recovery verifies it. T
 receipt is durable before the transient journal is cleared; later plan projection checks completed
 source generations through those receipts. These are acceptance requirements for the pending
 engine, not claims that movement or recovery is implemented.
+
+Before source upgrade, the operation journal records an immutable preparation receipt binding the
+exact verified backup file and manifest paths and both digests, source schema/identity/generation/
+content fingerprint, and existing operation/plan binding. Recovery re-verifies that exact evidence;
+it never selects the latest backup. A strict read-only inspector may recover the typed binding for
+an explicitly named pending operation under held fixed restore admission, without relaxing normal
+startup's refusal of an unfinished journal.
 
 ### D351 — Revisioned provider-key file and exact pending recovery · 2026-09-26
 
