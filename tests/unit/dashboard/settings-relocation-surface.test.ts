@@ -177,9 +177,10 @@ describe("storage relocation Paths controls", () => {
       sourcePair: { stateRoot: "/tmp/moved-state", artifactRoot: "/tmp/moved-artifacts" } });
     await act(async () => { surface.controller().reload(); await Promise.resolve(); });
     assert.equal(surface.controller().readProblem, true);
-    assert.equal(surface.controller().read.state, "available");
-    if (surface.controller().read.state !== "available") throw new Error("last verified view disappeared");
-    assert.deepEqual(surface.controller().read.view, current);
+    const read = surface.controller().read;
+    assert.equal(read.state, "available");
+    if (read.state !== "available") throw new Error("last verified view disappeared");
+    assert.deepEqual(read.view, current);
     assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).disabled, true);
   });
   it("lets an invalid local field be undone without issuing a command", async () => {

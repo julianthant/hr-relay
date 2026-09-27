@@ -1464,7 +1464,7 @@ describe("strict config resolution", () => {
       { ...valid, artifactRoot: "/tmp" },
       { ...valid, extra: "unexpected" },
     ]) {
-      assert.throws(() => resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK, pair), undefined, JSON.stringify(pair));
+      assert.throws(() => resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK, pair), (error) => error instanceof Error, JSON.stringify(pair));
     }
     assert.equal(resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK, valid).config.paths.artifactRoot,
       valid.artifactRoot);

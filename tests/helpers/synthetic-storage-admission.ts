@@ -37,8 +37,6 @@ export * from "../../src/infra/config/credential-test-data-migration.js";
 export * from "../../src/server/test-data/compose.js";
 export * from "../../src/infra/sqlite/authority-boot.js";
 export * from "../../src/infra/sqlite/authority-health-runner.js";
-export * from "./synthetic-storage-admission.js";
-export * from "./synthetic-storage-admission.js";
 export type AuthorityDatabase = RealAuthorityDatabase;
 export type ArchiveDatabase = RealArchiveDatabase;
 export function inspectAuthorityBackupReadOnly(path: string, expectedSchemaVersion?: number, busyTimeoutMs?: number) {

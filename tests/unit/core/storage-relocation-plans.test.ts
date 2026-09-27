@@ -138,7 +138,8 @@ it("refuses incomplete and divergent immutable history, including locator identi
   const orphan = plan(f, 0);
   f.database.withAuthorityTransaction((repositories) => { repositories.commands.insert(orphan); });
   expect(() => f.producer.read()).toThrow(/missing command audit/u);
-  const anotherLease = { mode: "shared" as const, locator: { ...f.lease.locator, generation: 1 }, assertHeld: () => undefined, release: () => undefined };
+  const anotherLease = { mode: "shared" as const, locator: { ...f.lease.locator, generation: 1 }, assertHeld: () => undefined,
+    readRelocationReceipts: () => [], release: () => undefined };
   const drifted = createStorageRelocationPlanReader({ authority: f.database, installation: anotherLease,
     workspace: f.workspace });
   expect(() => drifted.read()).toThrow(/installation or source pair drift/u);

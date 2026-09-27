@@ -10,14 +10,15 @@ import { resolveConfigWithProvenance } from "../../../../src/domain/config/resol
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/domain/config/settings.js";
 import { ProviderKeysRetryIntentSchema } from "../../../../src/domain/commands.js";
 import { admitLocalEnvironmentFile } from "../../../../src/domain/secrets.js";
-import { createProviderKeyStore } from "../../../helpers/synthetic-storage-admission.js";
+import { createProviderKeyStore } from "../../../../src/infra/config/provider-key-store.js";
 import type { ProviderKeyStoreHooks } from "../../../../src/infra/config/provider-key-store.js";
 import { createProviderKeyJournal } from "../../../../src/server/dashboard/commands/provider-key-journal.js";
 import { providerCommandFromStore, providerMarkedFingerprint } from "../../../../src/server/dashboard/commands/provider-key-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/domain/config/protected-settings.js";
 import { executeSettingsCommand } from "../../../../src/core/command-kernel.js";
-import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
-import { createCredentialStore } from "../../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../../../src/infra/sqlite/authority-database.js";
+import { createCredentialStore } from "../../../../src/infra/config/credential-store.js";
+import { RuntimeAdmission } from "../../../../src/infra/runtime-control/admission.js";
 import { activeSettingsRuntimeIdentity, readSettings } from "../../../../src/server/settings-runtime.js";
 import { composeSettings } from "../../../../src/server/dashboard/compose/settings.js";
 import { buildSettingsEditor } from "../../../../src/server/dashboard/queries/settings-editor.js";
@@ -32,13 +33,14 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 export function syntheticSettingsAuthority(options: { providerFile?: string; parentSlots?: NodeJS.ProcessEnv; providerHooks?: ProviderKeyStoreHooks } = {}) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-surface-"));
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
-  const database = AuthorityDatabase.open({ path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const credentials = createCredentialStore({ stateRoot: root });
+  const admission = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
+  const database = AuthorityDatabase.open(admission, { path: join(root, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  const credentials = createCredentialStore({ admission, stateRoot: root });
   const providerEnvPath = options.providerFile === undefined ? undefined : join(root, ".env.providers");
   if (providerEnvPath !== undefined && options.providerFile !== undefined) writeFileSync(providerEnvPath, options.providerFile, { mode: 0o600 });
   const providerEnvironment: NodeJS.ProcessEnv = { ...options.parentSlots };
   const providerBoot = providerEnvPath === undefined ? undefined : admitLocalEnvironmentFile(providerEnvPath, providerEnvironment);
-  const providerStore = providerEnvPath === undefined ? undefined : createProviderKeyStore({ envPath: providerEnvPath,
+  const providerStore = providerEnvPath === undefined ? undefined : createProviderKeyStore({ admission, envPath: providerEnvPath,
     journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint, hooks: options.providerHooks });
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
   const resolved = resolveConfigWithProvenance({}, hostFacts, clock);
@@ -62,7 +64,7 @@ export function syntheticSettingsAuthority(options: { providerFile?: string; par
   const apply = (patch: SettingsPatch, revision = read().revision) => execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });
   const protectedApply = (entries: unknown, revision = credentials.read().revision) => execute({ family: "settings", type: "apply-protected-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { protectedSchemaHash: PROTECTED_SETTINGS_SCHEMA_HASH, writeId: randomUUID(), entries } });
   return { root, database, credentials, providerStore, providerEnvPath, providerEnvironment, clock, execute, read, apply, protectedApply,
-    close: () => { database.close(); rmSync(root, { recursive: true, force: true }); } };
+    close: () => { database.close(); admission.release(); rmSync(root, { recursive: true, force: true }); } };
 }
 export async function mountSettingsHarness(authority: ReturnType<typeof syntheticSettingsAuthority>, section = "general", readDocument: (() => unknown) | undefined = undefined) {
   const commands: unknown[] = [];
