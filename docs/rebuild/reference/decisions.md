@@ -35,7 +35,10 @@ blocks admission until explicit verified recovery, and durable activation receip
 validation of immutable older-generation plan history.
 Preparation pins the exact verified preupgrade backup before source mutation. Destination ownership
 is never inferred from a matching installation alone; new destination markers bind the exact
-operation. Previous-location backups remain verifiable history but do not become current restore candidates. After relocation,
+operation. A durable activation checkpoint pins native snapshots and the selected configuration
+intent before mutation; recovery accepts only its exact prestate or exact committed transaction,
+including artifact-only moves. Secret-derived digests do not enter relocation receipts.
+Previous-location backups remain verifiable history but do not become current restore candidates. After relocation,
 every restore must preserve v56 and all completed relocation commands/audits and destination
 configuration snapshots before any swap, including when only artifacts moved.
 The foundation, lifetime runtime admission, intent producer, receipt-aware plan projection, and

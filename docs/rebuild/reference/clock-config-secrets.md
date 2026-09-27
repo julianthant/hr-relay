@@ -1850,7 +1850,16 @@ backup captures committed WAL content. Unknown entries, unsafe links, divergent 
 unverifiable references refuse the move. Nested artifacts are copied once. Old run snapshots and
 path-free artifact identities remain unchanged. The destination receives an explicitly selected
 configuration snapshot for its admitted root pair, with the ordinary Settings revision unchanged,
-and a freshly verified backup bound to the database's final path before activation.
+and a freshly verified backup bound to the database's final path before locator activation.
+
+Before writing that configuration, a durable operation-bound activation checkpoint pins the exact
+native authority/archive snapshots, nonsecret inventory binding, ordinary Settings revision and
+fingerprint, and the selected configuration snapshot identity, contents, fingerprint, and time.
+Recovery reuses this intent rather than selecting a fresh backup or probing a new host configuration.
+It accepts only the exact pre-activation authority or the exact transactionally committed intent;
+a third state refuses. This also applies to artifact-only moves, where activation changes the source
+database itself. Credential bytes are compared privately and do not contribute secret-derived
+digests to the relocation journal or completion receipt.
 
 Copied older backup manifests retain their original identities and bytes. Read-only inspection may
 recognize former database identities only through the strict settled relocation receipt chain;
