@@ -164,6 +164,7 @@ export {
   Field,
   useFieldControl,
   Input,
+  PathControl,
   Textarea,
   Select,
   Checkbox,

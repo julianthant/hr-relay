@@ -86,6 +86,7 @@ import {
   DsBodyScope,
   IconButton,
   Input,
+  PathControl,
   Kbd,
   KeyValueList,
   Panel,
@@ -873,6 +874,9 @@ function FormsSection() {
             </Field>
             <Field label="Employee ID" error="No UCPath record matches 10084412X." orientation="horizontal">
               <Input defaultValue="10084412X" />
+            </Field>
+            <Field label="Document folder" description="Files used by this workflow" orientation="horizontal" controlWidth="wide">
+              <PathControl label="Document folder" value="/Users/operator/Workflows/onboarding-documents" onChange={() => undefined} />
             </Field>
             <Field label="Read timeout" description="How long to wait for a response" orientation="horizontal">
               <UnitField aria-label="Read timeout" type="number" min={1} value={timeout} onChange={(event) => setTimeout(event.target.value)} unit="seconds" />

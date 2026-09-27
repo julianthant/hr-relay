@@ -494,6 +494,13 @@
 .settings-compact-row:has(.ds-switch-row) > p { flex-basis: 100%; }
 .settings-compact-control { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--ds-space-tight); }
 .settings-compact-control > :first-child { flex: 1; min-width: 0; }
+.ds-path-control { display: flex; width: 100%; min-width: 0; align-items: center; gap: var(--ds-space-snug); }
+.ds-path-value { display: flex; flex: 1; min-width: 0; overflow: hidden; color: var(--ds-fg-muted); font-family: var(--ds-font-mono); font-size: var(--ds-text-body-description); white-space: nowrap; }
+.ds-path-prefix { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ds-path-basename { max-width: 78%; flex: none; overflow: hidden; text-overflow: ellipsis; direction: rtl; white-space: nowrap; }
+.ds-path-control > button { flex: none; height: var(--ds-h-body-control); border-radius: var(--ds-radius-body-control); padding-inline: var(--ds-space-base); font-size: var(--ds-text-body-row); }
+.settings-path-picker { flex: 1; min-width: 0; }
+.settings-path-picker-error { margin: var(--ds-space-tight) 0 0; color: var(--ds-danger); font-size: var(--ds-text-body-description); }
 .settings-compact-actions { display: flex; flex-direction: column; align-items: stretch; }
 .settings-compact-row > p,
 .settings-viewport-row > p { margin: 0 0 var(--ds-space-base); font-size: var(--ds-text-body-description); }
@@ -524,6 +531,11 @@
 .settings-relocation-plan { display: flex; flex-direction: column; align-items: flex-start; gap: var(--ds-space-tight); min-width: 0; }
 .settings-relocation-plan p { margin: 0; }
 .settings-relocation-plan > div { overflow-wrap: anywhere; }
+.settings-relocation-command-block { width: 100%; min-width: 0; font-size: var(--ds-text-body-description); }
+.settings-relocation-command { display: flex; align-items: center; gap: var(--ds-space-snug); width: 100%; min-width: 0; }
+.settings-relocation-command > :first-child { flex: 1; min-width: 0; font-family: var(--ds-font-mono); }
+.settings-relocation-command-block [role="status"] { color: var(--ds-fg-muted); }
+.settings-relocation-command-block [role="alert"] { color: var(--ds-danger); }
 .settings-relocation-note { margin: 0; font-size: var(--ds-text-body-description); color: var(--ds-fg-muted); }
 .settings-credential-detail,
 .settings-credential-meta {

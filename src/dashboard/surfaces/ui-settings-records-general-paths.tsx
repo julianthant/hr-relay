@@ -7,6 +7,8 @@ import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { settingNote, settingTitle } from "./settings-presentation.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
 import { StorageRelocationRows } from "./settings-relocation.js";
+import { SettingsPathPicker } from "./settings-path-picker.js";
+import type { NativePathField } from "../../domain/dashboard/native-path-picker.js";
 
 type Editor = ReturnType<typeof useEditableSettings>;
 
@@ -43,6 +45,21 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   </div>;
 }
 
+function PathRow({ editor, field }: { editor: Editor; field: NativePathField }) {
+  const leaf = servedLeaf(editor, field);
+  const raw = rawValue(leaf, editor.draft[field]);
+  const title = settingTitle(leaf);
+  return <div data-settings-path={field} className="settings-compact-row">
+    <Field orientation="horizontal" controlWidth="wide" label={title} description={settingNote(leaf)} error={editor.errors[field]} disabled={editor.locked}>
+      <div className="settings-compact-control">
+        <SettingsPathPicker field={field} label={title} value={raw} disabled={editor.locked} onSelected={path => editor.update(field, path)} />
+        <SettingsRowActions editor={editor} leaf={leaf} />
+      </div>
+    </Field>
+    {editor.save.state === "conflict" && editor.draft[field] !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
+  </div>;
+}
+
 function GeneralContent({ editor, year }: { editor: Editor; year: number }) {
   const date = servedLeaf(editor, `annualDates.FY${String(year)}.jobEndDate`);
   const width = servedLeaf(editor, "display.screenWidth");
@@ -70,15 +87,15 @@ function PathsContent({ editor }: { editor: Editor }) {
   return <>
     <BodySection title="Runtime locations"><FormGroup label="Runtime locations">
       <StorageRelocationRows editor={editor.relocationEditor} />
-      <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.browserProfileRoot")} wide />
-      <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.duoCredential")} wide />
-      <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.duoExtensionDir")} wide />
+      <PathRow editor={editor} field="paths.browserProfileRoot" />
+      <PathRow editor={editor} field="paths.duoCredential" />
+      <PathRow editor={editor} field="paths.duoExtensionDir" />
     </FormGroup></BodySection>
     <BodySection title="Generated files"><FormGroup label="Generated files">
-      {(["paths.reportsDir", "paths.downloadsDir"] as const).map(path => <ScalarRow key={path} editor={editor} leaf={servedLeaf(editor, path)} wide />)}
+      {(["paths.reportsDir", "paths.downloadsDir"] as const).map(path => <PathRow key={path} editor={editor} field={path} />)}
     </FormGroup></BodySection>
     <BodySection title="Workflow documents"><FormGroup label="Workflow documents">
-      {(["paths.onboardingDocsDir", "paths.i9CheckTrackerPath"] as const).map(path => <ScalarRow key={path} editor={editor} leaf={servedLeaf(editor, path)} wide />)}
+      {(["paths.onboardingDocsDir", "paths.i9CheckTrackerPath"] as const).map(path => <PathRow key={path} editor={editor} field={path} />)}
     </FormGroup></BodySection>
   </>;
 }

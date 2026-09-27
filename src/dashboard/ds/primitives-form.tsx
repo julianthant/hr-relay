@@ -21,7 +21,7 @@ import { Check, ChevronDown, Eye, EyeOff, Lock, Minus, Pencil, Search, Trash2, T
 import { cn } from "../lib/utils.js";
 import { NativeSelect } from "./shadcn-native-select.js";
 import { ShadcnButton } from "./shadcn-button.js";
-import { IconButton } from "./primitives-core.js";
+import { Button, IconButton } from "./primitives-core.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
 
 /**
@@ -213,6 +213,25 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
     );
   },
 );
+
+export function PathControl({ value, label, onChange, disabled = false, busy = false }: {
+  value: string; label: string; onChange: () => void; disabled?: boolean; busy?: boolean;
+}) {
+  const field = useFieldControl();
+  const separator = value.lastIndexOf("/");
+  const prefix = separator < 0 ? "" : value.slice(0, separator + 1);
+  const basename = separator < 0 ? value : value.slice(separator + 1);
+  return <div className="ds-path-control">
+    <span className="ds-path-value" title={value}>
+      <span className="sr-only">{value}</span>
+      <span aria-hidden="true" className="ds-path-prefix">{prefix}</span>
+      <span aria-hidden="true" className="ds-path-basename">{basename}</span>
+    </span>
+    <Button id={field.id} aria-describedby={field["aria-describedby"]} aria-invalid={field["aria-invalid"]}
+      aria-label={`Change ${label}`} size="md" variant="secondary" onClick={onChange}
+      disabled={disabled || field.disabled} loading={busy}>Change</Button>
+  </div>;
+}
 
 export type UnitFieldProps = Omit<InputHTMLAttributes<HTMLInputElement>, "aria-describedby"> & {
   unit: string;

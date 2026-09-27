@@ -4,6 +4,9 @@ import { DashboardClientError } from "./errors.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";
 import { StorageRelocationPlanViewSchema, type StorageRelocationPlanView } from "../../domain/commands.js";
+import { NativePathPickerRequestSchema, NativePathPickerResponseSchema,
+  type NativePathPickerRequest, type NativePathPickerResponse } from "../../domain/dashboard/native-path-picker.js";
+import { httpError, schemaError } from "./errors.js";
 
 
 export interface SettingsQueries {
@@ -20,6 +23,7 @@ export interface SettingsQueries {
   /** DCC3: the closed server-owned editable leaves with current revision and provenance. */
   editableSettings(): Promise<EditableSettingsWire>;
   storageRelocationPlans(): Promise<StorageRelocationPlanView>;
+  pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse>;
 }
 
 export function createSettingsQueries(transport: DashboardTransport): SettingsQueries { return Object.freeze({
@@ -42,5 +46,18 @@ export function createSettingsQueries(transport: DashboardTransport): SettingsQu
         if (error instanceof DashboardClientError && error.kind === "http") throw error;
         throw new DashboardClientError({ kind: "schema", code: "STORAGE_RELOCATION_READ_UNAVAILABLE", message: "GET /api/v1/settings/storage-relocation: plan view could not be verified", cause: error });
       }
+    },
+    async pickSettingsPath(request: NativePathPickerRequest): Promise<NativePathPickerResponse> {
+      const parsedRequest = NativePathPickerRequestSchema.parse(request);
+      const response = await transport.requestJsonResponse("/api/v1/settings/path-picker", {
+        method: "POST", body: JSON.stringify(parsedRequest),
+      });
+      const parsedResponse = NativePathPickerResponseSchema.safeParse(response.body);
+      if (!parsedResponse.success) throw schemaError("POST /api/v1/settings/path-picker", parsedResponse.error);
+      const result = parsedResponse.data;
+      if (result.field !== parsedRequest.field) throw schemaError("POST /api/v1/settings/path-picker", "selected field differs from request");
+      if ((result.state === "unavailable" && response.status !== (result.reason === "busy" ? 409 : 503))
+        || (result.state !== "unavailable" && response.status !== 200)) throw httpError(response.status, response.body);
+      return result;
     },
 }); }
