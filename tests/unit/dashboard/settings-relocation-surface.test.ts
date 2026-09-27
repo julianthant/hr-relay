@@ -256,7 +256,9 @@ describe("storage relocation Paths controls", () => {
     assert.equal(read.state, "available");
     if (read.state !== "available") throw new Error("last verified view disappeared");
     assert.deepEqual(read.view, current);
-    assert.equal((surface.host.querySelector('[data-settings-path="paths.stateRoot"] input') as HTMLInputElement).disabled, true);
+    const change = surface.host.querySelector('[data-settings-path="paths.stateRoot"] button[aria-label="Change Runtime state folder"]');
+    if (!(change instanceof HTMLButtonElement)) throw new Error("state picker action missing");
+    assert.equal(change.disabled, true);
   });
   it("lets an invalid local field be undone without issuing a command", async () => {
     const commands: unknown[] = [];
