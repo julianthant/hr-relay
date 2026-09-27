@@ -2,7 +2,8 @@ import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpat
 import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
-import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease, type RuntimeLocator, type RuntimePair } from "./installation.js";
+import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease,
+  type RelocationCompletionReceipt, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 
 const issued = new WeakSet<RuntimeAdmission>();
@@ -49,6 +50,7 @@ function assertActiveRootSafe(path: string): void {
 
 type AdmissionAuthority = Readonly<{
   assertHeld(): void;
+  readRelocationReceipts?(): readonly RelocationCompletionReceipt[];
   release(): void;
 }>;
 
@@ -88,6 +90,13 @@ export class RuntimeAdmission {
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
+  readRelocationReceipts(): readonly RelocationCompletionReceipt[] {
+    this.assertLive();
+    if (this.#scope !== "installation" || this.#authority.readRelocationReceipts === undefined) {
+      throw new Error("runtime-admission: installation receipt authority required");
+    }
+    return this.#authority.readRelocationReceipts();
+  }
   assertLive(): void {
     if (!issued.has(this) || this.#released) throw new Error("runtime-admission: missing or released admission");
     this.#authority.assertHeld();

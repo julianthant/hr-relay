@@ -6,9 +6,11 @@ import {
 } from "../domain/commands.js";
 import { deepFreeze } from "../domain/immutability.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
-import type { InstallationLease, RuntimeLocator } from "../infra/runtime-control/installation.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../infra/runtime-control/admission.js";
+import type { RelocationCompletionReceipt, RuntimeLocator } from "../infra/runtime-control/installation.js";
 
 type Pair = Readonly<{ stateRoot: string; artifactRoot: string }>;
+type Epoch = Pick<RuntimeLocator, "installationId" | "generation" | "stateRoot" | "artifactRoot">;
 type Authority = Readonly<{ withAuthorityTransaction<T>(work: (repositories: AuthorityRepositories) => T): T }>;
 export type StorageRelocationPlanReader = Readonly<{
   read(): StorageRelocationPlanView;
@@ -45,16 +47,16 @@ function requireDesired(source: Pair, desired: Pair, workspace: string): void {
     }
   }
 }
-function locatorTarget(locator: RuntimeLocator) {
+function locatorTarget(locator: Epoch) {
   return { installationId: locator.installationId, sourceGeneration: locator.generation,
     sourcePair: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot } };
 }
-function requireSource(request: StorageRelocationCommandRequest, locator: RuntimeLocator): void {
+function requireSource(request: StorageRelocationCommandRequest, locator: Epoch): void {
   if (canonicalJsonStringify({ installationId: request.target.installationId,
     sourceGeneration: request.target.sourceGeneration, sourcePair: request.target.sourcePair })
     !== canonicalJsonStringify(locatorTarget(locator))) refuse("installation or source pair drift");
 }
-function requireRequest(request: StorageRelocationCommandRequest, locator: RuntimeLocator, workspace: string): void {
+function requireRequest(request: StorageRelocationCommandRequest, locator: Epoch, workspace: string): void {
   requireSource(request, locator);
   if (request.payload.requestFingerprint !== storageRelocationRequestFingerprint(request)) refuse("request fingerprint mismatch");
   if (request.type === "plan-storage-relocation") {
@@ -63,13 +65,34 @@ function requireRequest(request: StorageRelocationCommandRequest, locator: Runti
   }
 }
 
-function project(repositories: AuthorityRepositories, locator: RuntimeLocator, workspace: string): StorageRelocationPlanView {
+function samePair(left: Pair, right: Pair): boolean {
+  return left.stateRoot === right.stateRoot && left.artifactRoot === right.artifactRoot;
+}
+function consumeReceipt(receipt: RelocationCompletionReceipt, pending: NonNullable<StorageRelocationPlanView["pending"]>,
+  epoch: Epoch, revision: number): Epoch {
+  if (receipt.installationId !== epoch.installationId || receipt.fromGeneration !== epoch.generation
+    || receipt.toGeneration !== epoch.generation + 1
+    || !samePair(receipt.source, epoch) || receipt.plan.revision !== revision
+    || receipt.plan.expectedRevision !== revision - 1 || receipt.plan.commandId !== pending.commandId
+    || receipt.plan.requestFingerprint !== pending.requestFingerprint
+    || receipt.plan.desiredDigest !== pending.desiredDigest
+    || !samePair(receipt.destination, pending.desiredPair)) refuse("activation receipt does not match pending plan");
+  return { installationId: epoch.installationId, generation: receipt.toGeneration,
+    stateRoot: receipt.destination.stateRoot, artifactRoot: receipt.destination.artifactRoot };
+}
+function project(repositories: AuthorityRepositories, locator: RuntimeLocator,
+  receipts: readonly RelocationCompletionReceipt[], workspace: string): StorageRelocationPlanView {
   const commands = repositories.commands.listStorageRelocationCommands();
   const seenWriteIds = new Set<string>();
   let pending: StorageRelocationPlanView["pending"] = null;
   let revision = 0;
+  let epoch: Epoch = receipts.length > 0
+    ? { installationId: locator.installationId, generation: 0,
+      stateRoot: receipts[0].source.stateRoot, artifactRoot: receipts[0].source.artifactRoot }
+    : { installationId: locator.installationId, generation: 0, stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot };
+  let receiptIndex = 0;
   for (const request of commands) {
-    requireRequest(request, locator, workspace);
+    requireRequest(request, epoch, workspace);
     if (request.target.expectedRevision !== revision) refuse("duplicate or gap plan revision");
     if (seenWriteIds.has(request.payload.writeId)) refuse("write id reused");
     seenWriteIds.add(request.payload.writeId);
@@ -92,7 +115,16 @@ function project(repositories: AuthorityRepositories, locator: RuntimeLocator, w
       pending = null;
     }
     revision = nextRevision;
+    const receipt = receipts[receiptIndex];
+    if (receipt !== undefined && receipt.plan.revision <= revision) {
+      if (pending === null) refuse("activation receipt has no pending plan");
+      epoch = consumeReceipt(receipt, pending, epoch, revision);
+      pending = null;
+      receiptIndex += 1;
+    }
   }
+  if (receiptIndex !== receipts.length) refuse("activation receipt has no matching plan command");
+  if (epoch.generation !== locator.generation || !samePair(epoch, locator)) refuse("projected plan epoch differs from active locator");
   return deepFreeze(StorageRelocationPlanViewSchema.parse({ revision, installationId: locator.installationId,
     sourceGeneration: locator.generation,
     sourcePair: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }, pending }));
@@ -100,15 +132,31 @@ function project(repositories: AuthorityRepositories, locator: RuntimeLocator, w
 
 export function createStorageRelocationPlanReader(input: Readonly<{
   authority: Authority;
-  installation: InstallationLease;
+  admission: RuntimeAdmission;
   workspace: string;
 }>): StorageRelocationPlanReader {
   const workspace = resolve(input.workspace);
-  const locator = deepFreeze({ ...input.installation.locator });
-  requirePair(locator, workspace);
+  const context = () => {
+    const admission = requireRuntimeAdmission(input.admission);
+    const locator = admission.locator;
+    requirePair(locator, workspace);
+    const receipts = admission.readRelocationReceipts();
+    if (receipts.length !== locator.generation
+      || (receipts.length > 0 && !samePair(receipts[receipts.length - 1].destination, locator))) {
+      refuse("active locator receipt chain mismatch");
+    }
+    return { locator, receipts };
+  };
+  context();
   return Object.freeze({
-    read: () => input.authority.withAuthorityTransaction((repositories) => project(repositories, locator, workspace)),
-    project: (repositories: AuthorityRepositories) => project(repositories, locator, workspace),
-    validate: (request: StorageRelocationCommandRequest) => requireRequest(request, locator, workspace),
+    read: () => input.authority.withAuthorityTransaction((repositories) => {
+      const current = context();
+      return project(repositories, current.locator, current.receipts, workspace);
+    }),
+    project: (repositories: AuthorityRepositories) => {
+      const current = context();
+      return project(repositories, current.locator, current.receipts, workspace);
+    },
+    validate: (request: StorageRelocationCommandRequest) => requireRequest(request, context().locator, workspace),
   });
 }

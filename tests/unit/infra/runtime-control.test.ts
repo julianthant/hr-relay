@@ -130,7 +130,7 @@ it("binds the first real saved plan at applied revision one and expected revisio
   const admission = RuntimeAdmission.fromInstallationLease(planning);
   const database = AuthorityDatabase.open(admission, { path: join(pair.stateRoot, "state.db"),
     busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
-  const producer = createStorageRelocationPlanReader({ authority: database, installation: planning, workspace });
+  const producer = createStorageRelocationPlanReader({ authority: database, admission, workspace });
   const destination = { stateRoot: join(workspace, "planned-state"), artifactRoot: join(workspace, "planned-artifacts") };
   const request = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation",
     type: "plan-storage-relocation", commandId: randomUUID(), requestedAt: clock.now().toISOString(),
