@@ -84,7 +84,7 @@ it("Settings groups served checks and keeps failures, blocks, and only exact rem
   assert.ok(workflow?.textContent?.includes("Current fiscal year"));
   assert.ok(runtime?.textContent?.includes("Data store readiness"));
   assert.ok(runtime?.textContent?.includes("Browser tools"));
-  assert.doesNotMatch(host.textContent??"",/Technical details|Synthetic .* unavailable|Remedy:|Repair browser.assets/u);
+  assert.doesNotMatch(host.textContent??"",/Scope details|Technical details|Synthetic .* unavailable|Remedy:|Repair browser.assets/u);
   assert.match(host.textContent??"",/Affected: Run execution/u);
   const buttons=[...host.querySelectorAll("button")].filter(button=>button.textContent?.startsWith("Open "));
   assert.equal(buttons.length,3);
@@ -124,4 +124,17 @@ it("Settings keeps unknown credential presence unknown while retaining blocked v
   assert.match(host.textContent??"",/Credential presence could not be verified/u);
   assert.doesNotMatch(host.textContent??"",/username and password are missing/u);
   assert.match(host.textContent??"",/Blocked/u);
+});
+
+it("Settings directs missing SharePoint roster configuration to Routes",async()=>{
+  const served=await report();let destination:string|undefined;
+  const check={id:PreflightCheckIdSchema.parse("secrets.sharepoint-roster"),label:"secrets.sharepoint-roster",verdict:"fail" as const,
+    detail:"missing roster",blocks:["system.sharepoint.prod"],checkedAt:served.checkedAt};
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,
+    showSettings(section?:"storage"|"credentials"|"routes"){destination=section;},showSessions(){}};
+  const client={preflightScopes:()=>Promise.resolve([])} as unknown as DashboardClient;
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:{state:"completed",report:served,checks:[check]},protectedSettings:FIXTURE_EDITABLE_SETTINGS.protectedSettings,onRerun(){}})})}));});
+  const configure=[...host.querySelectorAll("button")].find(button=>button.textContent==="Configure SharePoint route");
+  assert.ok(configure);await act(async()=>configure.click());assert.equal(destination,"routes");
 });

@@ -1,4 +1,4 @@
-import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field } from "../ds/ui.js";
+import { Badge, Banner, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { usePreflightActions } from "../state/preflight-actions.js";
 import { usePreflightScope } from "../state/preflight-client.js";
@@ -65,10 +65,11 @@ function missingCredentialCopy(check: PreflightCheckWire, protectedSettings: Edi
   return `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} missing.`;
 }
 
-function targetedRemedy(id: string): "settings" | "storage" | "sessions" | "credentials" | undefined {
+function targetedRemedy(id: string): "settings" | "storage" | "sessions" | "credentials" | "routes" | undefined {
   if (id === "authority.health") return "storage";
   if (id === "process.orphans") return "sessions";
   if (id === "fiscal.current") return "settings";
+  if (id === "secrets.sharepoint-roster") return "routes";
   if (Object.hasOwn(SECRET_FIELDS, id)) return "credentials";
   return undefined;
 }
@@ -78,7 +79,7 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
   const remedy = check.verdict === "pass" ? undefined : targetedRemedy(check.id);
   const action = remedy === undefined ? undefined : () => {
     if (remedy === "sessions") actions.showSessions();
-    else actions.showSettings(remedy === "storage" ? "storage" : remedy === "credentials" ? "credentials" : undefined);
+    else actions.showSettings(remedy === "storage" ? "storage" : remedy === "credentials" ? "credentials" : remedy === "routes" ? "routes" : undefined);
   };
   const copy = checkCopy(check.id);
   const missing = missingCredentialCopy(check, protectedSettings);
@@ -92,7 +93,7 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
       : <Badge tone={check.verdict === "fail" ? "danger" : "warning"}>{check.verdict === "warning" ? "Needs attention" : "Blocked"}</Badge>} />
     {action !== undefined && <div className="diagnostic-check-detail">
       <Button size="sm" variant="ghost" className="diagnostic-remedy-action" onClick={action}>
-        {remedy === "sessions" ? "Open Sessions" : remedy === "storage" ? "Open Storage" : remedy === "credentials" ? "Configure credentials" : "Open Settings"}
+        {remedy === "sessions" ? "Open Sessions" : remedy === "storage" ? "Open Storage" : remedy === "credentials" ? "Configure credentials" : remedy === "routes" ? "Configure SharePoint route" : "Open Settings"}
       </Button>
     </div>}
   </div>;
@@ -129,7 +130,6 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { pr
         {scope.state === "unavailable" && <span>Workflow scopes could not be read.</span>}
         {completed !== undefined && <>
           <span>Checked <time dateTime={completed.report.checkedAt}>{fmtClock(completed.report.checkedAt)}</time></span>
-          <Disclosure summary="Scope details">{completed.report.requestedCapabilities.join(" · ")}</Disclosure>
         </>}
         {completed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
       </div>
