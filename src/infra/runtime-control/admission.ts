@@ -1,0 +1,163 @@
+import { lstatSync, realpathSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease, type RuntimeLocator, type RuntimePair } from "./installation.js";
+import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
+
+const issued = new WeakSet<RuntimeAdmission>();
+
+function within(parent: string, child: string): boolean {
+  const part = relative(parent, child);
+  return part === "" || (part !== ".." && !part.startsWith("../") && !part.startsWith("..\\") && !isAbsolute(part));
+}
+
+function assertSyntheticDirectory(path: string): void {
+  if (!isAbsolute(path) || resolve(path) !== path) throw new Error("runtime-admission: fixture path must be absolute");
+  const temp = resolve(tmpdir());
+  if (!within(temp, path) || path === temp) throw new Error("runtime-admission: fixture must be beneath system temp");
+  let ancestor = path;
+  while (ancestor !== temp) {
+    const info = lstatSync(ancestor, { throwIfNoEntry: false });
+    if (info !== undefined && (!info.isDirectory() || info.isSymbolicLink()
+      || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0)) {
+      throw new Error("runtime-admission: unsafe synthetic fixture ancestor");
+    }
+    if (lstatSync(join(ancestor, ".runtime-control"), { throwIfNoEntry: false }) !== undefined
+      || lstatSync(join(ancestor, ".runtime-owner.json"), { throwIfNoEntry: false }) !== undefined
+      || lstatSync(join(ancestor, ".runtime-source-fence.json"), { throwIfNoEntry: false }) !== undefined) {
+      throw new Error("runtime-admission: fixture overlaps installation witness");
+    }
+    ancestor = dirname(ancestor);
+  }
+}
+
+type AdmissionAuthority = Readonly<{
+  assertHeld(): void;
+  release(): void;
+}>;
+
+/** A lifetime-bound, path-specific authority to open this installation's physical storage. */
+export class RuntimeAdmission {
+  readonly #authority: AdmissionAuthority;
+  readonly #stateRoot: string;
+  readonly #artifactRoot: string;
+  readonly #authorityDatabasePaths: ReadonlySet<string>;
+  readonly #archiveDatabasePaths: ReadonlySet<string>;
+  readonly #locator: RuntimeLocator | undefined;
+  #released = false;
+
+  private constructor(authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
+    authorityDatabasePaths: readonly string[], archiveDatabasePaths: readonly string[], locator?: RuntimeLocator) {
+    this.#authority = authority;
+    this.#stateRoot = stateRoot;
+    this.#artifactRoot = artifactRoot;
+    this.#authorityDatabasePaths = new Set(authorityDatabasePaths);
+    this.#archiveDatabasePaths = new Set(archiveDatabasePaths);
+    this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
+    issued.add(this);
+  }
+
+  get locator(): RuntimeLocator {
+    this.assertLive();
+    if (this.#locator === undefined) throw new Error("runtime-admission: synthetic fixture has no installation locator");
+    return this.#locator;
+  }
+  get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
+  get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
+  assertLive(): void {
+    if (!issued.has(this) || this.#released) throw new Error("runtime-admission: missing or released admission");
+    this.#authority.assertHeld();
+  }
+  assertAuthorityDatabase(path: string): void {
+    this.assertLive();
+    if (path === ":memory:") return;
+    if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
+  }
+  assertArchiveDatabase(path: string): void {
+    this.assertLive();
+    if (path === ":memory:") return;
+    if (!this.#archiveDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: archive database path is outside admission");
+  }
+  assertStateRoot(path: string): void {
+    this.assertLive();
+    if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
+  }
+  assertArtifactRoot(path: string): void {
+    this.assertLive();
+    if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
+  }
+  release(): void {
+    if (this.#released) return;
+    this.#authority.release();
+    this.#released = true;
+  }
+
+  static fromInstallationLease(lease: InstallationLease): RuntimeAdmission {
+    assertInstallationLease(lease);
+    const { stateRoot, artifactRoot } = lease.locator;
+    return new RuntimeAdmission(lease, stateRoot, artifactRoot,
+      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], lease.locator);
+  }
+
+  static acquireInitial(workspace: string,
+    verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence): RuntimeAdmission {
+    const canonical = realpathSync(workspace);
+    const defaults = Object.freeze({
+      stateRoot: resolve(canonical, rebuildRuntimeIsolation.stateRoot),
+      artifactRoot: resolve(canonical, rebuildRuntimeIsolation.artifactRoot),
+    });
+    const lease = acquireInstallation(canonical, "exclusive", {
+      defaultPair: defaults,
+      verifyExisting: (pair) => {
+        const inspection = new RuntimeAdmission({ assertHeld() {}, release() {} }, pair.stateRoot, pair.artifactRoot,
+          [join(pair.stateRoot, "state.db")], [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
+        try { return verifyExisting(pair, inspection); }
+        finally { inspection.release(); }
+      },
+    });
+    return RuntimeAdmission.fromInstallationLease(lease);
+  }
+
+  /** Bounded synthetic authority for tests; never accepts an installation or checkout path. */
+  static syntheticFixture(databasePath: string, kind: "authority" | "archive"): RuntimeAdmission {
+    if (databasePath !== ":memory:") {
+      assertSyntheticDirectory(dirname(databasePath));
+      for (const forbidden of [".runtime-control", ".runtime-owner.json", ".runtime-source-fence.json"]) {
+        if (databasePath.split(/[\\/]/u).includes(forbidden)) throw new Error("runtime-admission: fixture overlaps installation control");
+      }
+    }
+    const stateRoot = databasePath === ":memory:" ? ":memory:" : dirname(databasePath);
+    const artifactRoot = databasePath === ":memory:" ? ":memory:" : join(stateRoot, "artifacts");
+    const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
+    return new RuntimeAdmission(authority, stateRoot, artifactRoot,
+      kind === "authority" ? [databasePath] : [],
+      kind === "archive" ? [databasePath] : databasePath === ":memory:" ? [] : [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
+  }
+
+  static syntheticRoots(stateRoot: string, artifactRoot: string): RuntimeAdmission {
+    assertSyntheticDirectory(stateRoot);
+    assertSyntheticDirectory(artifactRoot);
+    const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
+    return new RuntimeAdmission(authority, stateRoot, artifactRoot,
+      [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
+  }
+}
+
+export function requireRuntimeAdmission(value: RuntimeAdmission | undefined): RuntimeAdmission {
+  if (value === undefined || !issued.has(value)) throw new Error("runtime-admission: required");
+  value.assertLive();
+  return value;
+}
+
+export function acquireSharedRuntimeAdmission(workspace: string): RuntimeAdmission {
+  return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "shared"));
+}
+
+export function acquireExclusiveRuntimeAdmission(workspace: string): RuntimeAdmission {
+  return RuntimeAdmission.fromInstallationLease(acquireInstallation(workspace, "exclusive"));
+}
+
+export function acquireInitialRuntimeAdmission(workspace: string,
+  verifyExisting: (pair: RuntimePair, inspection: RuntimeAdmission) => ExistingAuthorityEvidence): RuntimeAdmission {
+  return RuntimeAdmission.acquireInitial(workspace, verifyExisting);
+}
