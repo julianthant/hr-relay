@@ -27,6 +27,7 @@ import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type Ve
 import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../domain/archive/lifecycle-source.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
+import type { VerifiedRelocationActivationIntent } from "../runtime-control/installation.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
@@ -36,6 +37,14 @@ import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.j
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { SqliteProviderAccounting, finalizeProviderRun, inspectGenericProviderAccounting } from "./provider-accounting.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
+import { ImportedArtifactSchema } from "../../domain/intake/imported-artifact.js";
+import { GeneratedArtifactSchema } from "../../domain/generated-artifact.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../domain/artifacts.js";
+import { ExtractPdfPagesOutputSchema } from "../../domain/contracts/extraction/extract-pdf-pages.js";
+import { OperatorXlsxExportEvidenceSchema } from "../../domain/dashboard/xlsx-export.js";
+import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
+import { AppSettingsSchema } from "../../domain/config/app-settings.js";
+import { initialSettingsFileRecord } from "../../domain/config/settings.js";
 import { completionFromAuthorization } from "../../domain/run/completion.js";
 import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../domain/run/completion-history.js";
 import { lifecycleCommandId } from "../../domain/identifiers.js";
@@ -1933,6 +1942,49 @@ function authorityContentFingerprint(database: DatabaseSync): string {
   return hash.digest("hex");
 }
 
+function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string {
+  const excluded = new Set(["database_state", "app_settings", "settings_snapshots"]);
+  const present = new Set(inspectionTableNames(database));
+  const hash = createHash("sha256");
+  for (const table of AuthorityTableNameSchema.options.filter((name) => present.has(name) && !excluded.has(name))) {
+    hash.update(canonicalJsonStringify(table));
+    for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY record_key`).iterate()) {
+      hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
+    }
+  }
+  return hash.digest("hex");
+}
+
+function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
+  return database.prepare("SELECT * FROM settings_snapshots ORDER BY record_key").all().map((raw) => {
+    const row = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw);
+    const record = ConfigSnapshotRecordSchema.parse(JSON.parse(row.record_json));
+    if (record.configSnapshotId !== row.record_key || record.capturedAt !== row.created_at) {
+      throw new Error("storage-relocation: snapshot row metadata changed");
+    }
+    return canonicalJsonStringify(row);
+  });
+}
+
+function relocationAppSettings(database: DatabaseSync) {
+  const rows = database.prepare("SELECT * FROM app_settings ORDER BY record_key").all()
+    .map((raw) => AuthorityRecordFingerprintRowSchema.extend({ config_snapshot_id: z.string().nullable(),
+      command_id: z.string().nullable(), audit_id: z.string().nullable(), created_at: z.string() }).parse(raw));
+  if (rows.length > 1 || rows.some((row) => row.record_key !== "current")) {
+    throw new Error("storage-relocation: app settings membership changed");
+  }
+  const row = rows[0];
+  if (row === undefined) return null;
+  const value = AppSettingsSchema.parse(JSON.parse(row.record_json));
+  if (row.config_snapshot_id !== (value.active?.configSnapshotId ?? null)
+    || row.command_id !== (value.saved?.commandId ?? null)
+    || row.audit_id !== (value.saved?.auditId ?? null)
+    || row.created_at !== (value.saved?.committedAt ?? value.active?.activatedAt)) {
+    throw new Error("storage-relocation: app settings row metadata changed");
+  }
+  return value;
+}
+
 function pendingCounts(database: DatabaseSync) {
   const count = (sql: string): number => CountRowSchema.parse(database.prepare(sql).get()).count;
   return {
@@ -2945,6 +2997,112 @@ export class AuthorityDatabase implements Disposable {
       authorityGeneration: row.authority_generation,
       updatedAt: row.updated_at,
     });
+  }
+
+  readManagedArtifactReferences(): readonly ArtifactRef[] {
+    this.#assertOpen();
+    const pdfPagesHash = deriveSchemaHash(ExtractPdfPagesOutputSchema, "output");
+    return this.#withReadSnapshot(() => {
+      const references: ArtifactRef[] = [];
+      const rows = (table: "generated_artifacts" | "imported_artifacts" | "operator_xlsx_exports" | "run_checkpoints") =>
+        this.#database.prepare(`SELECT record_json FROM ${table} ORDER BY record_key`).all()
+          .map((raw) => AuthorityRecordFingerprintRowSchema.pick({ record_json: true }).parse(raw).record_json);
+      for (const json of rows("generated_artifacts")) {
+        const record = GeneratedArtifactSchema.parse(JSON.parse(json));
+        for (const version of record.versions) if (version.state === "verified") references.push(version.artifact);
+        if (record.prepared !== null) references.push(record.prepared.artifact);
+      }
+      for (const json of rows("imported_artifacts")) {
+        const record = ImportedArtifactSchema.parse(JSON.parse(json));
+        if (record.preparationJson !== null) {
+          references.push(IntakeSessionSchema.parse(JSON.parse(record.preparationJson)).artifact);
+        }
+      }
+      if (inspectionTableNames(this.#database).includes("operator_xlsx_exports")) {
+        for (const json of rows("operator_xlsx_exports")) {
+          references.push(OperatorXlsxExportEvidenceSchema.parse(JSON.parse(json)).artifact);
+        }
+      }
+      for (const json of rows("run_checkpoints")) {
+        const record = RunCheckpointRecordSchema.parse(JSON.parse(json));
+        if (record.output.schemaHash === pdfPagesHash) {
+          const pages = ExtractPdfPagesOutputSchema.parse(record.output.value);
+          for (const page of pages.pages) references.push(page.image);
+        }
+      }
+      return Object.freeze(references.map((reference) => Object.freeze(ArtifactRefSchema.parse(reference))));
+    });
+  }
+
+  classifyRelocationActivation(intent: VerifiedRelocationActivationIntent, verifiedStageBackupPath = intent.stageAuthority.backupPath): "prestate" | "committed" {
+    this.#assertOpen();
+    this.#admission.assertExclusive();
+    if (this.#path !== intent.nativeDestinationPath
+      || this.#path !== join(intent.destination.stateRoot, "state.db")) {
+      throw new Error("storage-relocation: activation authority path mismatch");
+    }
+    const copyAdmission = this.#admission.verifiedReadOnlyCopy(verifiedStageBackupPath,
+      intent.stageAuthority.backupSha256, "authority");
+    try {
+      copyAdmission.assertReadOnlyAuthorityDatabase(verifiedStageBackupPath);
+      const baseline = new DatabaseSync(verifiedStageBackupPath, { readOnly: true,
+        enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false, allowExtension: false,
+        timeout: 5000, defensive: true });
+      try {
+        inspectOpenDatabase(baseline, false);
+        return this.#withReadSnapshot(() => {
+        const before = readMetaRow(baseline);
+        const after = readMetaRow(this.#database);
+        if (before.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION
+          || after.schema_version !== CURRENT_AUTHORITY_SCHEMA_VERSION
+          || before.authority_generation !== intent.preAuthorityGeneration
+          || authorityContentFingerprint(baseline) !== intent.preAuthorityContentFingerprint) {
+          throw new Error("storage-relocation: activation native baseline changed");
+        }
+        const baselineApp = relocationAppSettings(baseline);
+        const baselineSettings = baselineApp?.saved ?? initialSettingsFileRecord();
+        if (baselineSettings.revision !== intent.settingsRevision
+          || baselineSettings.settingsFingerprint !== intent.settingsFingerprint) {
+          throw new Error("storage-relocation: activation settings identity changed");
+        }
+        if (canonicalJsonStringify(baselineApp?.active ?? null) !== canonicalJsonStringify(intent.priorActive)) {
+          throw new Error("storage-relocation: activation prior runtime mismatch");
+        }
+        if (authorityContentFingerprint(this.#database) === authorityContentFingerprint(baseline)) return "prestate";
+        if (relocationUnchangedAuthorityFingerprint(this.#database)
+          !== relocationUnchangedAuthorityFingerprint(baseline)) {
+          throw new Error("storage-relocation: unrelated authority rows changed during activation");
+        }
+        const snapshots = relocationSettingsSnapshots(this.#database);
+        const priorSnapshots = relocationSettingsSnapshots(baseline);
+        const added = snapshots.filter((row) =>
+          AuthorityRecordFingerprintRowSchema.parse(JSON.parse(row)).record_key === intent.snapshot.configSnapshotId);
+        if (added.length !== 1 || snapshots.length !== priorSnapshots.length + 1
+          || canonicalJsonStringify(snapshots.filter((row) => !added.includes(row))) !== canonicalJsonStringify(priorSnapshots)) {
+          throw new Error("storage-relocation: activation snapshot history changed");
+        }
+        const addedRow = added[0];
+        if (addedRow === undefined) throw new Error("storage-relocation: activation snapshot missing");
+        const addedRecord = AuthorityRecordFingerprintRowSchema.parse(JSON.parse(addedRow));
+        if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(addedRecord.record_json)))
+          !== canonicalJsonStringify(intent.snapshot)) throw new Error("storage-relocation: activation snapshot differs from intent");
+        const app = relocationAppSettings(this.#database);
+        const expectedActive = { generation: (intent.priorActive?.generation ?? 0) + 1,
+          settingsRevision: intent.settingsRevision, settingsFingerprint: intent.settingsFingerprint,
+          configSnapshotId: intent.snapshot.configSnapshotId, configFingerprint: intent.snapshot.fingerprint,
+          activatedAt: intent.snapshot.capturedAt };
+        if (app === null || canonicalJsonStringify(app.saved) !== canonicalJsonStringify(baselineApp?.saved ?? null)
+          || canonicalJsonStringify(app.active) !== canonicalJsonStringify(expectedActive)
+          || after.authority_generation !== before.authority_generation + 1
+          || after.updated_at !== intent.snapshot.capturedAt
+          || after.migration_owner !== before.migration_owner
+          || after.migration_started_at !== before.migration_started_at) {
+          throw new Error("storage-relocation: activation state differs from intent");
+        }
+        return "committed";
+        });
+      } finally { baseline.close(); }
+    } finally { copyAdmission.release(); }
   }
 
   inspectSchema(): z.infer<typeof AuthoritySchemaInspectionSchema> {

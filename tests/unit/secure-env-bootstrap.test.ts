@@ -138,6 +138,52 @@ describe("secure environment bootstrap", () => {
     assert.throws(() => held?.assertLive(), /released admission/u);
   });
 
+  it("dispatches exact relocation recovery before normal installation or provider admission", async () => {
+    const operationId = "11111111-1111-4111-8111-111111111111";
+    const events: string[] = [];
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    const output: string[] = [];
+    process.stdout.write = (value: string) => { output.push(value); return true; };
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--resume", operationId, "--json"], {
+        acquireAdmission: () => { throw new Error("normal admission must not precede recovery"); },
+        assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
+        admitEnvironmentFile: () => { throw new Error("relocation must not open provider file"); },
+        runCli: () => { throw new Error("relocation must not enter ordinary CLI composition"); },
+        runRelocation: async ({ args, admission }) => {
+          assert.equal(admission, undefined);
+          assert.deepEqual(args, ["--resume", operationId, "--json"]);
+          events.push("recovery");
+          return { operationId, generation: 2 };
+        },
+      });
+      assert.deepEqual(events, ["recovery"]);
+      assert.deepEqual(output, [`{"operationId":"${operationId}","generation":2}\n`]);
+    } finally { process.stdout.write = originalWrite; }
+  });
+
+  it("keeps the exact planned relocation admission held through the offline runner", async () => {
+    const commandId = "22222222-2222-4222-8222-222222222222";
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = () => true;
+    let held: RuntimeAdmission | undefined;
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--plan", commandId], {
+        acquireAdmission: (mode) => { assert.equal(mode, "exclusive"); held = syntheticAdmission(); return held; },
+        assertEnvironment: () => { throw new Error("relocation must not read provider environment"); },
+        runRelocation: async ({ args, admission }) => {
+          assert.deepEqual(args, ["--plan", commandId]);
+          assert.equal(admission, held);
+          admission?.assertLive();
+          await Promise.resolve();
+          admission?.assertLive();
+          return { operationId: commandId, generation: 1 };
+        },
+      });
+      assert.throws(() => held?.assertLive(), /released admission/u);
+    } finally { process.stdout.write = originalWrite; }
+  });
+
   it("does not start the CLI when its module is executed directly", () => {
     const result = spawnSync(TSX, [join(REPO_ROOT, "src", "cli.ts")], {
       cwd: tmpdir(),

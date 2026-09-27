@@ -15,6 +15,8 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runCli?: (admission: RuntimeAdmission) => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
+  readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
+    admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
 }
 
 /** The one production `.env.providers`, anchored to this bootstrap rather than the caller's CWD. */
@@ -38,6 +40,30 @@ export async function runSecureEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("..", import.meta.url));
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "relocate") {
+    const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/server/storage/relocate.js");
+    const command = parseRelocationCommand(entrypointArgs.slice(2));
+    const admission = command.kind === "plan"
+      ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))("exclusive")
+      : undefined;
+    try {
+      try {
+        const result = dependencies.runRelocation === undefined
+          ? await runOfflineStorageRelocation({ workspace, command, ...(admission === undefined ? {} : { admission }) })
+          : await dependencies.runRelocation({ workspace, args: entrypointArgs.slice(2),
+            ...(admission === undefined ? {} : { admission }) });
+        process.stdout.write(command.json ? `${JSON.stringify(result)}\n`
+          : `storage relocate: verified operation ${result.operationId}; active generation ${String(result.generation)}\n`);
+      } catch (error) {
+        if (!(error instanceof StorageRelocationIncompleteError)) throw error;
+        process.stderr.write(command.json ? `${JSON.stringify({ state: "incomplete", operationId: error.operationId,
+          resume: `storage relocate --resume ${error.operationId}` })}\n`
+          : `storage relocate: operation ${error.operationId} incomplete; run storage relocate --resume ${error.operationId}\n`);
+        process.exitCode = 1;
+      }
+    } finally { admission?.release(); }
+    return;
+  }
   const mode = entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["backup", "doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
     ? "exclusive" : "shared";
