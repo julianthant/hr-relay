@@ -300,6 +300,26 @@ profile is not populated by copying the old profile. Existing runs retain their 
 State/database and artifact locations remain with the verified offline relocation category.
 Neither category may move real data or modify real credentials during verification.
 
+### Runtime relocation foundation and intent — 2026-09-26
+
+The uncalled installation-control foundation (`9ab7f8a95` through `b6f6c8827`) and deferred
+PLAN/CANCEL producer (`605c10236`) are accepted as bounded backend outcomes. The foundation has
+12 passing focused tests covering private control files, competing processes, crash refusal,
+retained-source witnesses, and immutable locator snapshots. The producer has seven passing
+focused tests covering revision CAS, exact retry/cancel, unsafe overlap, divergent identities,
+and missing/multiple/mismatched audit history. Command-path architecture passes 9/9 and wire
+connectivity passes 51/51; typecheck, lint, manifest freshness, and store catalog freshness pass.
+The strict-boundary guard retains four verified unchanged baseline source findings; it did not
+pass and no new relocation boundary finding was introduced. Evidence and exact process exits are
+under `category-6/runtime-relocation/producer/` in the existing Settings evidence directory.
+
+D352 records the single locator authority and v55 intent/v56 activation boundary. The next
+outcome must hold admission across the complete CLI lifetime before secrets or storage opens,
+including previously detached asynchronous composition branches. Actual relocation, verified
+backup and destination checks, source tombstones, receipt-aware historical projection, and the
+editable desired-root UI remain pending. No production runtime uses the foundation yet, and no
+real paths, state, artifacts, or credentials were changed by these checks.
+
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->
 

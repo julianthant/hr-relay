@@ -1,4 +1,17 @@
-# `reference/decisions.md` — the decision ledger (D1–D351, 2026-07-17 → 2026-09-26)
+# `reference/decisions.md` — the decision ledger (D1–D352, 2026-07-17 → 2026-09-26)
+
+**D352 — Planned runtime storage relocation and v56 activation gate (operator-approved, 2026-09-26):**
+The operator may plan and cancel a complete state-root/artifact-root pair through immutable,
+audited SQLite commands while schema v55 and the current paths remain active. The plan binds the
+installation UUID, source generation and pair, desired pair, revision, command/write identities,
+and request/destination digests. Exact retry is idempotent; corrupt or drifting history refuses.
+Actual relocation requires exclusive offline admission, verified backup, a durable source fence,
+an atomic pair locator switch, and an activation receipt. Schema v56 is required before activation
+so supported pre-location binaries refuse the authority even when only artifacts move. v55 backup
+readability is retained. SQLite stores desired intent, not a second active-root authority.
+The foundation and intent producer are implemented but runtime admission, movement, and activation
+remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)
+and [dashboard-surfaces §D352](dashboard-surfaces.md#d352--storage-relocation-intent--2026-09-26).
 
 **D351 — Revisioned provider-key file and exact pending recovery (operator-approved, 2026-09-26):**
 `.env.providers` remains the saved key authority for five sparse eight-slot families. A private

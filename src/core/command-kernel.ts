@@ -3,6 +3,7 @@ import { workflowPreflightScope } from "../services/start/preflight-scope.js";
 import { startSupersedeTargets } from "../domain/run/start-supersede.js";
 import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../domain/worker-control.js";
 import { CommandRefusal } from "./command-refusal.js";
+import type { StorageRelocationPlanReader } from "./storage-relocation-plans.js";
 import type { CommandApplication } from "./command-application.js";
 export type { CommandApplication } from "./command-application.js";
 import { executeFailureResolution, failureResolutionCapability } from "./failure-resolution.js";
@@ -62,6 +63,7 @@ import {
   CommandIdentityConflictError,
   CommandRequestSchema,
   CommandResultSchema,
+  StorageRelocationCommandRequestSchema,
   deriveSettingsCommandFingerprint,
   markSettingsCommand,
   type CommandRequest,
@@ -167,6 +169,7 @@ const PHASE1_ACTIVE = {
 const PHASE1_DEFERRED = {
   intake: [],
   settings: [],
+  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   "version-archive": [],
   run: [],
   notification: [],
@@ -439,6 +442,7 @@ export interface CommandKernelDependencies {
   readonly configIdentity: RunConfigIdentity;
   /** The strict settings-file CAS executor. An active settings command cannot exist without it. */
   readonly settings?: SettingsApplicationExecutor;
+  readonly storageRelocationPlans?: StorageRelocationPlanReader;
   readonly failureResolution?: Readonly<{execute:typeof executeFailureResolution;capability:typeof failureResolutionCapability}>;
   /**
    * D179: the final projected row/detail/failure for a run a version bump is
@@ -2964,6 +2968,48 @@ function replay(
       providerReceiptId: settingsVerification.value.receiptId,
       providerSourceVersionToken: settingsVerification.value.sourceVersionToken,
     } : {}),
+  });
+}
+
+/** Plan intent is journaled here; runtime activation is a separate offline operation. */
+export function executeStorageRelocationCommand(
+  dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "storageRelocationPlans">,
+  input: unknown,
+): CommandResult {
+  const plans = dependencies.storageRelocationPlans;
+  if (plans === undefined) throw new Error("storage-relocation-plan: producer unavailable");
+  const request = StorageRelocationCommandRequestSchema.parse(input);
+  plans.validate(request);
+  return dependencies.authority.withAuthorityTransaction((repositories) => {
+    const current = plans.project(repositories);
+    repositories.commands.assertIdentity(request);
+    const existing = repositories.commands.get(request.commandId);
+    if (existing !== undefined) {
+      if (canonicalJsonStringify(existing) !== canonicalJsonStringify(request)) throw new CommandIdentityConflictError();
+      const audit = repositories.commandAudits.findByCommand(request.commandId);
+      if (audit === undefined || audit.result.state !== "applied") throw new Error("storage-relocation-plan: replay has no settled audit");
+      return audit.result;
+    }
+    if (repositories.commands.listStorageRelocationCommands().some((previous) => previous.payload.writeId === request.payload.writeId)) {
+      throw new Error("storage-relocation-plan: write id reused");
+    }
+    if (request.target.expectedRevision !== current.revision) return CommandResultSchema.parse({
+      state: "conflict", commandId: request.commandId, currentVersion: current.revision,
+      message: "storage relocation plan revision changed; reread before saving",
+    });
+    if (request.type === "cancel-storage-relocation"
+      && (current.pending === null || current.pending.commandId !== request.payload.cancelledPlanCommandId
+        || current.pending.desiredDigest !== request.payload.cancelledPlanDigest)) {
+      throw new Error("storage-relocation-plan: cancel does not match current plan");
+    }
+    const nextRevision = current.revision + 1;
+    const target = { family: "storage-relocation", revision: nextRevision };
+    const result = CommandResultSchema.parse({ state: "applied", commandId: request.commandId, affectedTargets: [target] });
+    const now = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
+    repositories.commands.insert(request);
+    repositories.commandAudits.insert({ auditId: dependencies.ids.uuid(), request, result, completedAt: now,
+      versionChanges: [{ target, before: current.revision, after: nextRevision }], affectedDependencyIds: [] });
+    return result;
   });
 }
 

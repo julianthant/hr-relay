@@ -95,6 +95,22 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
     payload: { providerSchemaHash: HASH_B, writeId: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
       operations: { GROQ_API_KEY: { set: "synthetic-guard" } } },
   },
+  {
+    commandId: "abababab-abab-4aba-8aba-abababababab", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard", family: "storage-relocation", type: "plan-storage-relocation",
+    target: { installationId: UUID_2, sourceGeneration: 0,
+      sourcePair: { stateRoot: "/synthetic/state", artifactRoot: "/synthetic/state/artifacts" }, expectedRevision: 0 },
+    payload: { writeId: UUID_4, desiredPair: { stateRoot: "/synthetic/next-state", artifactRoot: "/synthetic/next-state/artifacts" },
+      desiredDigest: HASH_B, requestFingerprint: HASH_B },
+  },
+  {
+    commandId: "cdcdcdcd-cdcd-4cdc-8cdc-cdcdcdcdcdcd", requestedAt: NOW,
+    requestedBy: "local-operator", source: "dashboard", family: "storage-relocation", type: "cancel-storage-relocation",
+    target: { installationId: UUID_2, sourceGeneration: 0,
+      sourcePair: { stateRoot: "/synthetic/state", artifactRoot: "/synthetic/state/artifacts" }, expectedRevision: 1 },
+    payload: { writeId: "efefefef-efef-4efe-8efe-efefefefefef", cancelledPlanCommandId: "abababab-abab-4aba-8aba-abababababab",
+      cancelledPlanDigest: HASH_B, requestFingerprint: HASH_B },
+  },
 ]);
 
 /* ── the ratified Phase-1f partition (ref dashboard-surfaces §Phase-1f authority) ────────── */
@@ -137,6 +153,7 @@ const EXPECTED_ACTIVE = {
 const EXPECTED_DEFERRED = {
   intake: [],
   settings: [],
+  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   "version-archive": [],
   run: [],
   notification: [],
@@ -300,6 +317,7 @@ describe("control-command-single-path", () => {
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
       ["src/server/settings-runtime.ts", 1],
+      ["src/core/storage-relocation-plans.ts", 1],
       ["src/server/dashboard/commands/provider-key-journal.ts", 3],
       ["src/infra/compat/d331-protected-journal.ts", 1],
       ["src/infra/sqlite/backup-service.ts", 0],
