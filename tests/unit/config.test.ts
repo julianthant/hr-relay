@@ -601,12 +601,11 @@ describe("strict config resolution", () => {
     }
   });
 
-  it("P8 rejects protected names and deployment paths at both settings write boundaries", () => {
+  it("P8 rejects protected names and state deployment paths at both settings write boundaries", () => {
     const forbiddenPatches = [
-      { paths: { duoCredential: "/tmp/stolen-duo.json" } },
-      { paths: { duoExtensionDir: "/tmp/untrusted-extension" } },
       { operator: { timekeeperName: "request-owned-identity" } },
       { paths: { stateRoot: "/tmp/untrusted-state" } },
+      { paths: { artifactRoot: "/tmp/untrusted-artifacts" } },
       { paths: { authRoot: "/tmp/untrusted-auth" } },
     ] as const;
 

@@ -216,11 +216,11 @@ describe("D331 settings catalog", () => {
     assert.deepEqual(Object.fromEntries([
       "ordinary-settings", "protected-store", "provider-env", "derived-host", "runtime-isolation",
     ].map((sourceClass) => [sourceClass, SETTINGS_CATALOG.filter((row) => row.sourceClass === sourceClass).length])), {
-      "ordinary-settings": 59,
+      "ordinary-settings": 62,
       "protected-store": 5,
       "provider-env": 5,
       "derived-host": 1,
-      "runtime-isolation": 7,
+      "runtime-isolation": 4,
     });
     assert.equal(SettingsCatalogSchema.safeParse(SETTINGS_CATALOG.slice(1)).success, false);
     assert.equal(SettingsCatalogSchema.safeParse([...SETTINGS_CATALOG.slice(1), SETTINGS_CATALOG[1]]).success, false);

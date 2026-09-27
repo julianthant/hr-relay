@@ -65,7 +65,7 @@ describe("SQLite Settings reader snapshot", () => {
       assert.equal(f.reads() - before, 1); assert.equal(editor.revision, 1);
       assert.equal(editor.settingsFingerprint, f.initial.settingsFingerprint);
       assert.deepEqual(editor.runtimeStatus, { state: "current", identity: f.active });
-      assert.equal(editor.sections.flatMap((section) => section.leaves).length, 56);
+      assert.equal(editor.sections.flatMap((section) => section.leaves).length, 60);
     }
     assert.equal(existsSync(join(f.root, "settings")), false);
   });

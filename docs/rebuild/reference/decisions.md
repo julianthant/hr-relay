@@ -1,4 +1,14 @@
-# `reference/decisions.md` — the decision ledger (D1–D352, 2026-07-17 → 2026-09-26)
+# `reference/decisions.md` — the decision ledger (D1–D353, 2026-07-17 → 2026-09-26)
+
+**D353 — Editable browser and Duo paths (operator-approved, 2026-09-26):**
+Browser-profile, Duo credential, and Duo extension locations are independent ordinary Settings
+leaves with autosave and new-run activation. Validate changed targets before activation, allow
+safe canonical-default profile reset, require fresh arbitrary profiles without copying, and
+preserve existing run snapshots. Duo metadata and recognizable identity checks do not replace
+runtime credential usability checks. State/artifact relocation remains D352-owned. The previous
+v55 Settings hash and command fingerprints remain readable through the existing DB-only backup
+contract; historical v2 checks are unchanged. Owner:
+[clock-config-secrets §D353](clock-config-secrets.md#d353--editable-browser-and-duo-paths--2026-09-26).
 
 **D352 — Planned runtime storage relocation and v56 activation gate (operator-approved, 2026-09-26):**
 The operator may plan and cancel a complete state-root/artifact-root pair through immutable,

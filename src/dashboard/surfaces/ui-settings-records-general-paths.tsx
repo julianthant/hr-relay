@@ -75,9 +75,9 @@ function PathsContent({ editor, deployment }: { editor: Editor; deployment: Read
     <BodySection title="Runtime locations"><FormGroup label="Runtime locations">
       <RuntimeRow label="Runtime state folder" description="Persistent settings and run data." value={deployment["paths.stateRoot"]} />
       <RuntimeRow label="Artifact folder" description="Run evidence and generated artifacts." value={deployment["paths.artifactRoot"]} />
-      <RuntimeRow label="Browser profile folder" description="Saved browser sessions." value={deployment["paths.browserProfileRoot"]} />
-      <RuntimeRow label="Duo credential file" description="Stored Duo authentication data." value={deployment["paths.duoCredential"]} />
-      <RuntimeRow label="Duo extension folder" description="Browser extension used for Duo." value={deployment["paths.duoExtensionDir"]} />
+      <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.browserProfileRoot")} wide />
+      <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.duoCredential")} wide />
+      <ScalarRow editor={editor} leaf={servedLeaf(editor, "paths.duoExtensionDir")} wide />
     </FormGroup></BodySection>
     <BodySection title="Generated files"><FormGroup label="Generated files">
       {(["paths.reportsDir", "paths.downloadsDir"] as const).map(path => <ScalarRow key={path} editor={editor} leaf={servedLeaf(editor, path)} wide />)}

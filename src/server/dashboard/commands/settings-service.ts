@@ -16,6 +16,9 @@ import { readSettings } from "../../settings-runtime.js";
 import { z } from "zod";
 import { ProviderKeyStoreConflictError, type createProviderKeyStore } from "../../../infra/config/provider-key-store.js";
 import { providerStoreRequest } from "./provider-key-projection.js";
+import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
+
+const VALIDATED_PATHS = new Set(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"]);
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);
@@ -94,7 +97,15 @@ export function createSettingsApplicationExecutor(
         if (sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) {
           throw new Error("settings-resolution-fingerprint-mismatch");
         }
+        if (Object.keys(command.payload.patch).some(path => VALIDATED_PATHS.has(path))) {
+          const previous = ResolvedConfigSchema.parse(resolveCandidate(current.settings));
+          validateOrdinaryPathChanges(previous.config, resolved.config);
+        }
       } catch (error) {
+        if (error instanceof OrdinaryPathValidationError) {
+          return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "invalid-value",
+            message: `${error.key}: ${error.reason}` });
+        }
         const keys = error instanceof z.ZodError
           ? [...new Set(error.issues.map((issue) => issue.path.map(String).join(".")))].sort()
           : Object.keys(command.payload.patch).sort();

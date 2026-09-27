@@ -1766,6 +1766,26 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D353 — Editable browser and Duo paths · 2026-09-26
+
+`paths.browserProfileRoot`, `paths.duoCredential`, and `paths.duoExtensionDir` are independent
+ordinary Settings leaves. They autosave through the existing revision CAS and activate for new
+runs. Existing run snapshots remain immutable. A profile override never implicitly rebases the
+Duo credential path; defaults still derive from the installation's default profile location.
+
+Before activation, validate changed effective paths only. An arbitrary browser-profile target
+must be a fresh, absent or empty location with safe ownership and permissions; no profile is
+copied. Reset may reuse the safe canonical installation default. The Duo file must be an owned
+0600 regular file with the existing parser's recognizable credential identity; this is not proof
+that its private key works. Browser/preflight checks remain the usability boundary. The extension
+must be an owned unpacked MV3 extension directory. Invalid targets refuse before snapshot
+activation, while unchanged paths do not block unrelated Settings edits.
+
+The state and artifact roots remain under D352's separate relocation authority. The ordinary-path
+schema change preserves verified v55 SQLite command history and DB-only backups, including the
+prior hash `09853878dd557c777b6df18ff2fb0d03310fad409ced3367ab17ceb4626f57a4`.
+The historical v2 reader and its `restartRequired === true` invariant remain unchanged.
+
 ### D352 — Planned runtime storage relocation and the v56 activation gate · 2026-09-26
 
 The operator may request a new absolute state-root and artifact-root pair independently. A

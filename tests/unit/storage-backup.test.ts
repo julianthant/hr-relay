@@ -15,6 +15,8 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import {
   CommandAuditRecordSchema,
   deriveSettingsCommandFingerprint,
@@ -33,6 +35,7 @@ import {
 } from "../../src/infra/compat/backup-inspection.js";
 import { SettingsCurrentRecordSchema } from "../../src/infra/compat/d331-settings-current.js";
 import { SettingsRootAuthoritySchema } from "../../src/infra/compat/d331-settings-root.js";
+import { readSettings } from "../../src/server/settings-runtime.js";
 import {
   D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
   D350HistoricalSettingsFileRecordSchema,
@@ -59,6 +62,7 @@ const NOW = "2026-09-06T20:00:00.000Z";
 const CLOCK = manualClock(new Date(NOW));
 const SETTINGS_COMMAND_ID = "11111111-1111-4111-8111-111111111111";
 const SETTINGS_AUDIT_ID = "22222222-2222-4222-8222-222222222222";
+const PRE_ORDINARY_PATHS_SETTINGS_SCHEMA_HASH = "09853878dd557c777b6df18ff2fb0d03310fad409ced3367ab17ceb4626f57a4";
 const roots: string[] = [];
 const databases: AuthorityDatabase[] = [];
 
@@ -642,6 +646,50 @@ describe("D336 DB-only authority backups", () => {
     });
     const manifestPath = writeManifest(directory, manifest, "authority-v31-d350.v2.manifest.json");
     assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.manifestVersion, 2);
+  });
+
+  it("reads and verifies a v55 DB-only backup with an unchanged pre-Paths marked command", async () => {
+    const world = openCurrentWorld();
+    const patch = { "browser.headless": { set: false } } as const;
+    const settings = { browser: { headless: false } };
+    const command = SettingsCommandRequestSchema.parse({
+      commandId: SETTINGS_COMMAND_ID, requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
+      family: "settings", type: "apply-settings", target: { expectedRevision: 1 },
+      payload: { settingsSchemaHash: PRE_ORDINARY_PATHS_SETTINGS_SCHEMA_HASH,
+        patchFingerprint: deriveSettingsPatchFingerprint(patch), patch },
+    });
+    const fingerprint = derivePersistedSettingsFingerprint(settings);
+    const resolved = resolveConfigWithProvenance(settings, hostConfigFacts({}), CLOCK);
+    const configSnapshotId = "33333333-3333-4333-8333-333333333333";
+    const target = { family: "settings" as const, revision: 2 };
+    world.database.withAuthorityTransaction(repositories => {
+      repositories.commands.insert(command);
+      repositories.commandAudits.insert({
+        auditId: SETTINGS_AUDIT_ID, request: command,
+        result: { state: "applied", commandId: command.commandId, affectedTargets: [target],
+          restartRequired: false, settingsRevision: 2, settingsFingerprint: fingerprint },
+        completedAt: NOW, versionChanges: [{ target, before: 1, after: 2 }], affectedDependencyIds: [],
+      });
+      repositories.configSnapshots.insert({ configSnapshotId, revision: 2, fingerprint: resolved.fingerprint,
+        config: resolved.config, provenance: resolved.provenance, capturedAt: NOW, capturedBy: "local-operator" });
+      repositories.runtimeConfig.activate({ settingsRevision: 2, settingsFingerprint: fingerprint,
+        configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: NOW });
+      repositories.settingsCurrent.advance({
+        revision: 2, settings, settingsFingerprint: fingerprint, commandId: command.commandId,
+        commandFingerprint: deriveSettingsCommandFingerprint(command), auditId: SETTINGS_AUDIT_ID, committedAt: NOW,
+      });
+    });
+    const read = readSettings(world.database.authority);
+    assert.equal(read.settingsSchemaHash, SETTINGS_SCHEMA_HASH);
+    assert.equal(read.settingsFingerprint, fingerprint);
+    assert.deepEqual(read.settings, settings);
+    assert.deepEqual(world.database.authority.commands.getSettingsHistory(command.commandId), command);
+    const backup = await new AuthorityBackupService(world.database, { directory: world.backupDirectory }, CLOCK)
+      .request({ trigger: "operator", requiredGeneration: world.database.getMeta().authorityGeneration });
+    const manifest = backup.manifests[0];
+    assert.ok(manifest);
+    assert.equal(manifest.manifestVersion, 3);
+    await verifyBackupManifestAtPath(join(world.backupDirectory, `${manifest.backupFileName}.manifest.json`));
   });
 
   it.each([

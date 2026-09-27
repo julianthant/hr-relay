@@ -300,6 +300,16 @@ profile is not populated by copying the old profile. Existing runs retain their 
 State/database and artifact locations remain with the verified offline relocation category.
 Neither category may move real data or modify real credentials during verification.
 
+The ordinary-path outcome `e27fba469` is accepted: the three runtime fields use the shared compact
+editors and ordinary autosave, with changed-target validation before activation and immutable old
+run snapshots. D353 owns the authority amendment. Focused tests pass 164/164 including catalog
+architecture; the final v55 backup suite passes 41/41 with the prior schema hash, unchanged
+command fingerprint, and `restartRequired: false`. No historical backup reader was changed.
+Scoped lint, typecheck, build, manifest, stores, and roadmap freshness pass. Dark/light 1440×900
+and 1024×720 captures show three editable fields without horizontal overflow; state/artifact
+fields remain read-only pending D352. Evidence is under `category-6/ordinary-paths/` in the
+existing Settings evidence directory. No zoom tests ran.
+
 ### Runtime relocation foundation and intent — 2026-09-26
 
 The uncalled installation-control foundation (`9ab7f8a95` through `b6f6c8827`) and deferred
