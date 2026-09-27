@@ -58,6 +58,7 @@ it("limits first-adoption verification to read-only inspection", () => {
   writeFileSync(join(stateRoot, "sentinel.txt"), "synthetic");
   const path = join(stateRoot, "state.db");
   expect(() => acquireInitialRuntimeAdmission(workspace, (_pair, inspection) => {
+    expect(() => inspection.assertWritable()).toThrow(/adoption inspection is read-only/u);
     expect(() => AuthorityDatabase.open(inspection, { path, busyTimeoutMs: 250, migrationOwner: "unit-test" }))
       .toThrow(/adoption inspection is read-only/u);
     expect(() => new ArchiveDatabase(inspection, join(stateRoot, "archive.sqlite")))
