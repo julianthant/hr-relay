@@ -8,9 +8,24 @@ import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { assertShellGeometry } from "./helpers/geometry.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import type { ExplorerWorkflowWire } from "../../src/domain/dashboard/explorer.js";
+import { explorerGraphTotals } from "../../src/dashboard/surfaces/explorer-model.js";
+import { EXPLORER_TIMELINE_BROWSER_WIRE, EXPLORER_TIMELINE_PARENT_ID } from "../fixtures/explorer-timeline-wire.js";
 
 type Server = Awaited<ReturnType<typeof startExplorerAuthorityServer>>;
 type Field = "label" | "icon" | "category";
+const PERSON_LOOKUP_VERSION_LINE = "Descriptor v1";
+
+async function expectWorkflowIdentity(page: Page, label: string, served?: ExplorerWorkflowWire): Promise<void> {
+  await expect(page.getByRole("heading", { name: label, exact: true })).toBeVisible();
+  await expect(page.getByText(PERSON_LOOKUP_VERSION_LINE)).toBeVisible();
+  if (served !== undefined) {
+    const totals = explorerGraphTotals(served);
+    await expect(page.getByRole("complementary", { name: "Workflow context" })).toContainText(`${String(totals.nodes)} nodes`);
+    await page.getByRole("button", { name: `What is this graph? — ${label}` }).click();
+    await expect(page.getByText(new RegExp(`^${String(totals.reads)} reads? and ${String(totals.writes)} writes? count FIELDS`, "u"))).toBeVisible();
+    await page.keyboard.press("Escape");
+  }
+}
 
 function workflow(server: Server): ExplorerWorkflowWire {
   const row = server.read().workflows.find(w => w.id === "person-lookup");
@@ -33,6 +48,8 @@ async function capture(page: Page, info: TestInfo, name: string): Promise<void> 
 }
 
 async function review(page: Page, field: Field, value: string): Promise<void> {
+  const workflowDetails = page.getByRole("button", { name: "Workflow details", exact: true });
+  if (await workflowDetails.getAttribute("aria-expanded") !== "true") await workflowDetails.click();
   const door = page.getByRole("button", { name: `Edit workflow ${field}`, exact: true });
   await door.focus();
   await page.keyboard.press("Enter");
@@ -79,12 +96,13 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of PARITY_THEMES) {
       await installTheme(page, theme);
       await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, explore: "person-lookup" });
       await assertThemeApplied(page, theme);
-      await expect(page.getByRole("heading", { name: "Person Lookup v1", exact: true })).toBeVisible();
+      await expectWorkflowIdentity(page, "Person Lookup", workflow(server));
       await assertShellGeometry(page, "Explorer authority graph");
       await capture(page, info, "graph");
       await page.setViewportSize({ width: 1024, height: 720 });
       await expect(page.getByRole("region", { name: "Registered workflows" })).toBeInViewport();
-      await expect(page.getByRole("heading", { name: "Person Lookup v1", exact: true })).toBeInViewport();
+      await expect(page.getByRole("heading", { name: "Person Lookup", exact: true })).toBeInViewport();
+      await expect(page.getByText(PERSON_LOOKUP_VERSION_LINE)).toBeInViewport();
       await capture(page, info, "graph-minimum");
       await page.setViewportSize(viewport);
       const original = workflow(server);
@@ -106,14 +124,14 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of PARITY_THEMES) {
         await closeEdit(page, field);
       }
       await page.reload();
-      await expect(page.getByRole("heading", { name: "People search reviewed v1", exact: true })).toBeVisible();
+      await expectWorkflowIdentity(page, "People search reviewed");
       const fresh = await browser.newContext({ viewport, isMobile: false, hasTouch: false, deviceScaleFactor: 1 });
       try {
         const independent = await fresh.newPage();
         independent.on("pageerror", error => errors.push(error.message));
         await installTheme(independent, theme);
         await gotoAppState(independent, server.baseUrl, { day: FIXTURE_DAY, explore: "person-lookup" });
-        await expect(independent.getByRole("heading", { name: "People search reviewed v1", exact: true })).toBeVisible();
+        await expectWorkflowIdentity(independent, "People search reviewed");
         for (const field of fields) {
           await review(independent, field, original[field]);
           await apply(independent, server, field, original[field], ++revision);
@@ -123,7 +141,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of PARITY_THEMES) {
         await capture(independent, info, "fresh-context-restored");
       } finally { await fresh.close(); }
       await page.reload();
-      await expect(page.getByRole("heading", { name: "Person Lookup v1", exact: true })).toBeVisible();
+      await expectWorkflowIdentity(page, "Person Lookup");
       await page.getByRole("button", { name: "What is this graph? — Person Lookup", exact: true }).click();
       await expect(page.getByText("src/workflows/person-lookup/workflow.ts", { exact: true }).first()).toBeVisible();
       await page.keyboard.press("Escape");
@@ -256,6 +274,7 @@ for (const fault of ["empty-registry", "unresolved-sources", "stale-catalog", "m
         await expect(page.getByText("The server serves an empty registry, so there is no graph to explore.", { exact: true })).toBeVisible();
         await expect(page.getByRole("button", { name: "Open person-lookup", exact: true })).toHaveCount(0);
       } else if (fault === "unresolved-sources") {
+        await page.getByRole("button", { name: "Graph and source evidence", exact: true }).click();
         await expect(page.getByText(/^unresolved: /u).first()).toBeVisible();
       } else await expect(page.getByText("The committed UI catalog could not be served", { exact: true })).toBeVisible();
       expect(server.database.authority.explorerOverrides.readAll()).toEqual([]);
@@ -264,14 +283,98 @@ for (const fault of ["empty-registry", "unresolved-sources", "stale-catalog", "m
   });
 }
 
+test("E4 branch and child path controls stay keyboard-readable and launch no execution", evidence("e4-interaction", ["branch-b"]), async ({ page }, info) => {
+  const server = await startExplorerAuthorityServer();
+  const writes: string[] = [];
+  page.on("request", (request) => {
+    if (request.method() !== "GET") writes.push(`${request.method()} ${request.url()}`);
+  });
+  try {
+    await page.route("**/api/v1/explorer", async (route) => {
+      await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(EXPLORER_TIMELINE_BROWSER_WIRE) });
+    });
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, explore: EXPLORER_TIMELINE_PARENT_ID });
+    await expect(page.getByRole("heading", { name: "Branching timeline fixture", exact: true })).toBeVisible();
+
+    const routeChoice = page.getByRole("combobox", { name: "Path preview for Select route", exact: true });
+    await routeChoice.focus();
+    await routeChoice.press("r");
+    await expect(routeChoice).toHaveValue("Route B");
+    await expect(routeChoice).toBeFocused();
+    await expect(page.getByTitle("Nested timeline child steps for Call child B", { exact: true })).toBeVisible();
+    await expect(page.getByTitle("Nested timeline child steps for Call child A", { exact: true })).toHaveCount(0);
+    await expect(page.getByText("Shared continuation", { exact: true })).toBeVisible();
+    await expect(page.getByText("Path rejoins after Select route", { exact: true })).toBeVisible();
+    await capture(page, info, "branch-b");
+
+    const nestedDoor = page.getByTitle("Nested timeline child steps for Call child B", { exact: true }).getByRole("button").first();
+    await nestedDoor.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("combobox", { name: "Path preview for Child outcome in Call child B", exact: true })).toBeHidden();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("combobox", { name: "Path preview for Child outcome in Call child B", exact: true })).toBeVisible();
+
+    const inspect = page.getByRole("button", { name: "Inspect After B", exact: true });
+    await inspect.focus();
+    await page.keyboard.press("Enter");
+    await routeChoice.selectOption("Route A");
+    await expect(page.getByRole("button", { name: "Close step inspection", exact: true })).toHaveCount(0);
+    await routeChoice.focus();
+    await routeChoice.press("r");
+    await expect(routeChoice).toHaveValue("Route B");
+    await inspect.focus();
+    await page.keyboard.press("Enter");
+    const close = page.getByRole("button", { name: "Close step inspection", exact: true });
+    await close.click();
+    await expect(inspect).toBeFocused();
+
+    const evidenceDoor = page.getByRole("button", { name: "Graph and source evidence", exact: true });
+    await evidenceDoor.click();
+    const evidenceNode = page.getByRole("button", { name: /after-b/u });
+    await evidenceNode.focus();
+    await page.keyboard.press("Enter");
+    await page.getByRole("button", { name: "Close step inspection", exact: true }).click();
+    await expect(evidenceNode).toBeFocused();
+
+    await routeChoice.focus();
+    await page.keyboard.press("Escape");
+    await expect(routeChoice).toHaveValue("Route B");
+    await expect(page.getByTitle("Nested timeline child steps for Call child B", { exact: true })).toBeVisible();
+    await expect(page.getByTitle("Nested timeline child steps for Call child A", { exact: true })).toHaveCount(0);
+    expect(writes).toEqual([]);
+  } finally { await server.close(); expect(existsSync(server.root)).toBe(false); }
+});
+
 test("unregistered deep link offers a real registered destination", evidence("unregistered", ["registered-control"]), async ({ page }, info) => {
   const server = await startExplorerAuthorityServer();
   try {
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, explore: "unregistered-workflow" });
     await expect(page.getByText('No workflow is registered as "unregistered-workflow"', { exact: true })).toBeVisible();
     await page.getByRole("button", { name: "Open person-lookup", exact: true }).click();
-    await expect(page.getByRole("heading", { name: "Person Lookup v1", exact: true })).toBeVisible();
+    await expectWorkflowIdentity(page, "Person Lookup");
     await capture(page, info, "registered-control");
+  } finally { await server.close(); expect(existsSync(server.root)).toBe(false); }
+});
+
+test("transaction contract stays readable and keyboard reachable at the desktop floor", async ({ page }) => {
+  const server = await startExplorerAuthorityServer();
+  try {
+    await page.setViewportSize({ width: 1024, height: 720 });
+    await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, explore: "separations" });
+    const step = page.getByRole("button", { name: "Inspect Finalize Kuali Document" });
+    await step.focus();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("heading", { name: "Finalize Kuali Document", exact: true })).toBeFocused();
+    await page.getByRole("button", { name: "Full contract" }).click();
+    const dialog = page.getByRole("dialog", { name: "Finalize Kuali Document contract" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByText("Write safety")).toHaveCount(1);
+    await expect(dialog.getByText("probe→fence")).toHaveCount(1);
+    await expect(dialog).toBeInViewport();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Full contract" })).toBeFocused();
+    await page.getByRole("button", { name: "Close step inspection" }).click();
+    await expect(step).toBeFocused();
   } finally { await server.close(); expect(existsSync(server.root)).toBe(false); }
 });
 

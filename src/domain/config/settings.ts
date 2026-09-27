@@ -45,7 +45,7 @@ function isRetiredTestRoutePath(path: string): boolean {
 }
 
 /** Old journal commands must remain parseable; the application boundary refuses these paths. */
-export function containsRetiredTestRoutePatch(patch: Readonly<Record<string, unknown>>): boolean {
+export function containsRetiredTestRoutePatch(patch: SettingsPatch): boolean {
   return Object.keys(patch).some(isRetiredTestRoutePath);
 }
 

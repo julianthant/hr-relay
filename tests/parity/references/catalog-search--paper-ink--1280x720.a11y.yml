@@ -1,7 +1,7 @@
 # catalog-search--paper-ink--1280x720
 # adapter: fixture
 # fixture: catalog-search
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 000316b7c1a49bb21755d3123185f18fcf1653069e9269d8dd40f5b054546522
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -25,32 +25,20 @@
 - main:
   - region "Settings":
     - navigation "Settings sections":
-      - button "Back to the dashboard"
-      - separator
-      - text: Settings
+      - heading "Settings" [level=2]
+      - text: Personal
       - link "General":
         - /url: "?settings=general"
-      - link "Display":
-        - /url: "?settings=display"
       - link "Performance":
         - /url: "?settings=performance"
       - link "Paths":
         - /url: "?settings=paths"
       - link "Routes":
         - /url: "?settings=routes"
-      - link "Annual dates":
-        - /url: "?settings=annual-dates"
       - link "Provider budgets & models":
         - /url: "?settings=providers"
-      - text: Authorities
       - link "Credentials":
-        - /url: "?settings=protected-store"
-      - link "Provider availability":
-        - /url: "?settings=provider-env"
-      - link "Observed host":
-        - /url: "?settings=derived-host"
-      - link "Runtime paths":
-        - /url: "?settings=runtime-isolation"
+        - /url: "?settings=credentials"
       - text: Status
       - link "Storage checks":
         - /url: "?settings=storage"
@@ -64,69 +52,59 @@
       - link "UI catalog":
         - /url: "?settings=ui-catalog"
     - heading "UI catalog" [level=2]
-    - text: The committed selector-semantics catalog, exactly as generated generated/ui-catalog.json
-    - group "Catalog views":
-      - tablist "Catalog views":
-        - tab "Selectors" [selected]
-        - tab "Rows & panels"
+    - paragraph: Reference material for workflow pages and controls.
+    - tablist "Catalog views":
+      - tab "Selectors" [selected]
+      - tab "Rows & panels"
     - tabpanel "Selectors":
-      - group "Search the UI catalog":
-        - searchbox "Search the UI catalog by id, label, system or search term": kuali
-        - button "Clear search"
-        - text: 31 of 118 entries
-      - listbox "Catalog entries":
-        - group "kuali":
-          - text: kuali · 31 entries
-          - option "Screen kuali.rrss-document 2026-08-04 Kuali RRSS Separation Request Form document" [selected]
-          - option "Element eid-field 2026-08-04 RRSS document EID field"
-          - option "Element timekeeper-field 2026-08-04 RRSS document timekeeper name field"
-          - option "Element save-button 2026-08-04 RRSS document Save button"
-          - option "Element employee-name-field 2026-08-14 RRSS document employee name field"
-          - option "Element last-day-worked-field 2026-08-14 RRSS document last day worked field"
-          - option "Element separation-date-field 2026-08-14 RRSS document separation date field"
-          - option "Element termination-type-field 2026-08-14 RRSS document type of termination select"
-          - option "Element location-field 2026-08-14 RRSS document location field"
-          - option "Element request-acknowledged-checkbox 2026-08-14 RRSS document request acknowledged checkbox"
-          - option "Element timekeeper-comments-field 2026-08-14 RRSS document timekeeper approver comments field"
-          - option "Element termination-effective-date-field 2026-08-14 RRSS document termination effective date field"
-          - option "Element department-field 2026-08-14 RRSS document department select"
-          - option "Element payroll-title-code-field 2026-08-14 RRSS document payroll title code field"
-          - option "Element payroll-title-field 2026-08-14 RRSS document payroll title field"
-          - option "Element submitted-template-checkbox 2026-08-14 RRSS document submitted termination template checkbox"
-          - option "Element transaction-number-field 2026-08-14 RRSS document transaction number field"
-          - option "Element final-pay-student-radio 2026-08-14 RRSS document does-not-need-final-pay student radio"
-          - option "Page state ready 2026-08-04 RRSS document loaded and identifiable"
-          - option "Page state separation-ready 2026-08-14 RRSS separation document loaded and proved to be a separation form"
-          - option "Page state finalization-staged 2026-08-14 RRSS separation document with an unsaved staged finalization"
-          - option "Observation displayed-eid 2026-08-04 Displayed RRSS document EID"
-          - option "Observation displayed-number 2026-08-14 Displayed RRSS document number"
-          - option "Observation displayed-form-type 2026-08-14 Displayed RRSS document form type"
-          - option "Observation displayed-transaction-number 2026-08-14 Displayed RRSS document transaction number"
-          - option "Screen kuali.action-list 2026-08-20 Kuali Build Action List"
-          - option "Element search-input 2026-08-20 Action List search box"
-          - option "Element search-go-button 2026-08-20 Action List search GO button"
-          - option "Element document-link 2026-08-20 Action List document link for one document number"
-          - option "Page state ready 2026-08-20 Action List loaded and filterable"
-          - option "Observation matched-document-number 2026-08-20 Action List matched document number"
-      - article "Screen kuali.rrss-document":
-        - text: Screen
-        - heading "kuali.rrss-document" [level=3]
-        - paragraph: Kuali RRSS Separation Request Form document
-        - text: system kuali sensitivity restricted
-        - region "Provenance":
-          - text: Provenance
-          - term: Verified
-          - definition: 2026-08-04
-          - term: Fixture evidence
-          - definition: evidence/ui/kuali/rrss-document.fixture.json
-          - term: Live evidence
-          - definition: evidence/ui/kuali/rrss-document.live.json
-          - term: Owner
-          - definition: src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY
-          - text: verified by ui/kuali-rrss-document-identity
-        - region "Usage": Usage used by kuali/read-separation-document kuali/match-separation-finalization kuali/stage-separation-finalization kuali/verify-separation-finalization kuali/save-separation-finalization search kuali rrss separation request document screen
-        - region "On the same screen":
-          - text: On the same screen
+      - searchbox "Search the UI catalog by id, label, system or search term": kuali
+      - button "Clear search"
+      - text: 31 of 118 entries
+      - group "UI catalog browser":
+        - listbox "Catalog entries":
+          - group "kuali":
+            - text: Kuali · RRSS Separation Request Form document
+            - option "Kuali RRSS Separation Request Form document · kuali.rrss-document · Screen · Verified 2026-08-04" [selected]: Kuali RRSS Separation Request Form document Screen · 2026-08-04
+            - option "RRSS document EID field · kuali.rrss-document.eid-field · Element · Verified 2026-08-04": RRSS document EID field Element · 2026-08-04
+            - option "RRSS document timekeeper name field · kuali.rrss-document.timekeeper-field · Element · Verified 2026-08-04": RRSS document timekeeper name field Element · 2026-08-04
+            - option "RRSS document Save button · kuali.rrss-document.save-button · Element · Verified 2026-08-04": RRSS document Save button Element · 2026-08-04
+            - option "RRSS document employee name field · kuali.rrss-document.employee-name-field · Element · Verified 2026-08-14": RRSS document employee name field Element · 2026-08-14
+            - option "RRSS document last day worked field · kuali.rrss-document.last-day-worked-field · Element · Verified 2026-08-14": RRSS document last day worked field Element · 2026-08-14
+            - option "RRSS document separation date field · kuali.rrss-document.separation-date-field · Element · Verified 2026-08-14": RRSS document separation date field Element · 2026-08-14
+            - option "RRSS document type of termination select · kuali.rrss-document.termination-type-field · Element · Verified 2026-08-14": RRSS document type of termination select Element · 2026-08-14
+            - option "RRSS document location field · kuali.rrss-document.location-field · Element · Verified 2026-08-14": RRSS document location field Element · 2026-08-14
+            - option "RRSS document request acknowledged checkbox · kuali.rrss-document.request-acknowledged-checkbox · Element · Verified 2026-08-14": RRSS document request acknowledged checkbox Element · 2026-08-14
+            - option "RRSS document timekeeper approver comments field · kuali.rrss-document.timekeeper-comments-field · Element · Verified 2026-08-14": RRSS document timekeeper approver comments field Element · 2026-08-14
+            - option "RRSS document termination effective date field · kuali.rrss-document.termination-effective-date-field · Element · Verified 2026-08-14": RRSS document termination effective date field Element · 2026-08-14
+            - option "RRSS document department select · kuali.rrss-document.department-field · Element · Verified 2026-08-14": RRSS document department select Element · 2026-08-14
+            - option "RRSS document payroll title code field · kuali.rrss-document.payroll-title-code-field · Element · Verified 2026-08-14": RRSS document payroll title code field Element · 2026-08-14
+            - option "RRSS document payroll title field · kuali.rrss-document.payroll-title-field · Element · Verified 2026-08-14": RRSS document payroll title field Element · 2026-08-14
+            - option "RRSS document submitted termination template checkbox · kuali.rrss-document.submitted-template-checkbox · Element · Verified 2026-08-14": RRSS document submitted termination template checkbox Element · 2026-08-14
+            - option "RRSS document transaction number field · kuali.rrss-document.transaction-number-field · Element · Verified 2026-08-14": RRSS document transaction number field Element · 2026-08-14
+            - option "RRSS document does-not-need-final-pay student radio · kuali.rrss-document.final-pay-student-radio · Element · Verified 2026-08-14": RRSS document does-not-need-final-pay student radio Element · 2026-08-14
+            - option "RRSS document loaded and identifiable · kuali.rrss-document.ready · Page state · Verified 2026-08-04": RRSS document loaded and identifiable Page state · 2026-08-04
+            - option "RRSS separation document loaded and proved to be a separation form · kuali.rrss-document.separation-ready · Page state · Verified 2026-08-14": RRSS separation document loaded and proved to be a separation form Page state · 2026-08-14
+            - option "RRSS separation document with an unsaved staged finalization · kuali.rrss-document.finalization-staged · Page state · Verified 2026-08-14": RRSS separation document with an unsaved staged finalization Page state · 2026-08-14
+            - option "Displayed RRSS document EID · kuali.rrss-document.displayed-eid · Observation · Verified 2026-08-04": Displayed RRSS document EID Observation · 2026-08-04
+            - option "Displayed RRSS document number · kuali.rrss-document.displayed-number · Observation · Verified 2026-08-14": Displayed RRSS document number Observation · 2026-08-14
+            - option "Displayed RRSS document form type · kuali.rrss-document.displayed-form-type · Observation · Verified 2026-08-14": Displayed RRSS document form type Observation · 2026-08-14
+            - option "Displayed RRSS document transaction number · kuali.rrss-document.displayed-transaction-number · Observation · Verified 2026-08-14": Displayed RRSS document transaction number Observation · 2026-08-14
+            - text: Kuali · Build Action List
+            - option "Kuali Build Action List · kuali.action-list · Screen · Verified 2026-08-20": Kuali Build Action List Screen · 2026-08-20
+            - option "Action List search box · kuali.action-list.search-input · Element · Verified 2026-08-20": Action List search box Element · 2026-08-20
+            - option "Action List search GO button · kuali.action-list.search-go-button · Element · Verified 2026-08-20": Action List search GO button Element · 2026-08-20
+            - option "Action List document link for one document number · kuali.action-list.document-link · Element · Verified 2026-08-20": Action List document link for one document number Element · 2026-08-20
+            - option "Action List loaded and filterable · kuali.action-list.ready · Page state · Verified 2026-08-20": Action List loaded and filterable Page state · 2026-08-20
+            - option "Action List matched document number · kuali.action-list.matched-document-number · Observation · Verified 2026-08-20": Action List matched document number Observation · 2026-08-20
+        - article "Screen kuali.rrss-document":
+          - text: Screen · Kuali
+          - heading "Kuali RRSS Separation Request Form document" [level=3]
+          - paragraph: kuali.rrss-document
+          - heading "Properties" [level=3]
+          - group "Catalog properties": System Kuali Sensitivity Restricted Used by kuali/read-separation-document, kuali/match-separation-finalization, kuali/stage-separation-finalization, kuali/verify-separation-finalization, kuali/save-separation-finalization Search terms kuali rrss separation request document screen
+          - heading "Verification & evidence" [level=3]
+          - group "Catalog verification and evidence": Verified 2026-08-04 Fixture evidence evidence/ui/kuali/rrss-document.fixture.json Live evidence evidence/ui/kuali/rrss-document.live.json Owner src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY Verified by ui/kuali-rrss-document-identity
+          - heading "On the same screen" [level=3]
           - button "kuali.rrss-document.eid-field"
           - button "kuali.rrss-document.timekeeper-field"
           - button "kuali.rrss-document.save-button"

@@ -26,6 +26,276 @@ import type { CommandResult } from "../../domain/commands.js";
 /** The three presentation rows DCC5 may edit; everything else is inspection-only. */
 export type ExplorerPresentationField = "workflow-label" | "workflow-icon" | "workflow-category";
 
+export interface ExplorerTimelinePath {
+  /** A node is omitted only when a declared branch case excludes it. */
+  readonly hidden: ReadonlySet<string>;
+  /** Case-specific nodes on the currently selected authored path. */
+  readonly selected: ReadonlySet<string>;
+  /** Nodes reached from every case through the dependency graph. */
+  readonly rejoins: ReadonlySet<string>;
+  /** First dependency join reached from every distinct case path. */
+  readonly rejoinAt: ReadonlyMap<string, readonly string[]>;
+  /** First node explicitly shared by every authored case. */
+  readonly commonAt: ReadonlyMap<string, readonly string[]>;
+  /** Controllers whose distinct case paths have no dependency join. */
+  readonly branchesWithoutRejoin: ReadonlySet<string>;
+}
+
+function explorerEdgeKey(
+  edge: Readonly<{ from: string; to: string; kind: string; label?: string }>,
+): string {
+  return JSON.stringify([edge.kind, edge.from, edge.to, edge.label ?? null]);
+}
+
+function explorerTimelineEdges(
+  workflow: ExplorerWorkflowWire,
+  nodes: ReadonlyMap<string, ExplorerNodeWire>,
+): readonly Readonly<{ from: string; to: string; kind: string; label?: string }>[] {
+  const expected: { from: string; to: string; kind: string; label?: string }[] = [];
+  for (const node of workflow.nodes) {
+    const id = String(node.id);
+    const dependencies = new Set<string>();
+    for (const dependency of node.dependsOn) {
+      const from = String(dependency);
+      if (!nodes.has(from)) throw new Error("Explorer node " + id + " depends on unknown node " + from);
+      if (dependencies.has(from)) throw new Error("Explorer node " + id + " repeats dependency " + from);
+      dependencies.add(from);
+      expected.push({ from, to: id, kind: "depends-on" });
+    }
+    if (node.shape.kind === "branch") {
+      if (node.shape.cases.length < 2) {
+        throw new Error("Explorer branch " + id + " must declare at least two cases");
+      }
+      const names = new Set<string>();
+      for (const branchCase of node.shape.cases) {
+        if (branchCase.name.trim() !== branchCase.name || branchCase.name.length === 0 || names.has(branchCase.name)) {
+          throw new Error("Explorer branch " + id + " has an empty or repeated case name");
+        }
+        names.add(branchCase.name);
+        if (branchCase.nodes.length === 0) {
+          throw new Error("Explorer branch " + id + " case " + branchCase.name + " has no nodes");
+        }
+        const members = new Set<string>();
+        for (const member of branchCase.nodes) {
+          const to = String(member);
+          if (!nodes.has(to)) throw new Error("Explorer branch " + id + " case " + branchCase.name + " names unknown node " + to);
+          if (members.has(to)) throw new Error("Explorer branch " + id + " case " + branchCase.name + " repeats node " + to);
+          members.add(to);
+          expected.push({ from: id, to, kind: "branch-case", label: branchCase.name });
+        }
+      }
+    }
+    if (node.shape.kind === "parallel") {
+      if (node.shape.branches.length < 2) {
+        throw new Error("Explorer parallel " + id + " must declare at least two branches");
+      }
+      const branchIds = new Set<string>();
+      const members = new Set<string>();
+      for (const branch of node.shape.branches) {
+        if (branch.id.trim() !== branch.id || branch.id.length === 0 || branchIds.has(branch.id)) {
+          throw new Error("Explorer parallel " + id + " has an empty or repeated branch id");
+        }
+        branchIds.add(branch.id);
+        if (branch.nodes.length === 0) throw new Error("Explorer parallel " + id + " branch " + branch.id + " has no nodes");
+        for (const member of branch.nodes) {
+          const to = String(member);
+          if (!nodes.has(to)) throw new Error("Explorer parallel " + id + " branch " + branch.id + " names unknown node " + to);
+          if (members.has(to)) throw new Error("Explorer parallel " + id + " repeats node " + to);
+          members.add(to);
+          expected.push({ from: id, to, kind: "parallel-branch", label: branch.id });
+        }
+      }
+    }
+  }
+
+  const expectedCounts = new Map<string, number>();
+  for (const edge of expected) {
+    const key = explorerEdgeKey(edge);
+    expectedCounts.set(key, (expectedCounts.get(key) ?? 0) + 1);
+  }
+  const actualCounts = new Map<string, number>();
+  for (const edge of workflow.edges) {
+    const from = String(edge.from);
+    const to = String(edge.to);
+    if (!nodes.has(from) || !nodes.has(to)) {
+      throw new Error("Explorer edge " + from + " → " + to + " names an unknown node");
+    }
+    const key = explorerEdgeKey({ ...edge, from, to });
+    actualCounts.set(key, (actualCounts.get(key) ?? 0) + 1);
+  }
+  if (expectedCounts.size !== actualCounts.size
+    || [...expectedCounts].some(([key, count]) => actualCounts.get(key) !== count)) {
+    throw new Error("Explorer graph " + String(workflow.id) + " edges disagree with its dependencies or control metadata");
+  }
+  return workflow.edges.map((edge) => ({
+    from: String(edge.from),
+    to: String(edge.to),
+    kind: edge.kind,
+    ...(edge.label === undefined ? {} : { label: edge.label }),
+  }));
+}
+
+/** Selects authored case names by controller id; executable scenario ids are separate. */
+export function explorerTimelinePath(
+  workflow: ExplorerWorkflowWire,
+  selectedCases: Readonly<Record<string, string>>,
+): ExplorerTimelinePath {
+  const nodes = new Map(workflow.nodes.map((node) => [String(node.id), node]));
+  const edges = explorerTimelineEdges(workflow, nodes);
+  const dependents = new Map<string, string[]>();
+  const dependencies = new Map<string, string[]>();
+  for (const edge of edges) {
+    if (edge.kind !== "depends-on") continue;
+    dependents.set(edge.from, [...(dependents.get(edge.from) ?? []), edge.to]);
+    dependencies.set(edge.to, [...(dependencies.get(edge.to) ?? []), edge.from]);
+  }
+  const descendants = (roots: readonly string[]): Set<string> => {
+    const reached = new Set<string>();
+    const pending = [...roots];
+    while (pending.length > 0) {
+      const id = pending.pop();
+      if (id === undefined || reached.has(id)) continue;
+      reached.add(id);
+      pending.push(...(dependents.get(id) ?? []));
+    }
+    return reached;
+  };
+  const ancestors = (root: string): Set<string> => {
+    const reached = new Set<string>([root]);
+    const pending = [root];
+    while (pending.length > 0) {
+      const id = pending.pop();
+      if (id === undefined) continue;
+      for (const dependency of dependencies.get(id) ?? []) {
+        if (reached.has(dependency)) continue;
+        reached.add(dependency);
+        pending.push(dependency);
+      }
+    }
+    return reached;
+  };
+  const hidden = new Set<string>();
+  const selected = new Set<string>();
+  const rejoins = new Set<string>();
+  const rejoinAt = new Map<string, string[]>();
+  const commonAt = new Map<string, string[]>();
+  const branchesWithoutRejoin = new Set<string>();
+  const ordered = explorerTimelineOrder(workflow);
+  for (const controller of ordered) {
+    if (controller.shape.kind !== "branch") continue;
+    const controllerId = String(controller.id);
+    if (hidden.has(controllerId)) continue;
+    const cases = controller.shape.cases;
+    const caseDescendants = cases.map((one) => descendants(one.nodes.map(String)));
+    const firstCasePath = caseDescendants[0];
+    if (firstCasePath === undefined) throw new Error("Explorer branch " + controllerId + " has no cases");
+    const common = new Set([...firstCasePath].filter((id) => caseDescendants.every((path) => path.has(id))));
+    const requestedCase = Object.hasOwn(selectedCases, controllerId) ? selectedCases[controllerId] : undefined;
+    const requestedIndex = cases.findIndex((one) => one.name === requestedCase);
+    const activeIndex = requestedIndex < 0 ? 0 : requestedIndex;
+    const activePath = caseDescendants[activeIndex];
+    if (activePath === undefined) throw new Error("Explorer branch " + controllerId + " has no selected path");
+
+    const controllerDescendants = descendants([controllerId]);
+    const branchOwned = new Set([...caseDescendants.flatMap((path) => [...path]), ...controllerDescendants]);
+    branchOwned.delete(controllerId);
+    for (const id of branchOwned) {
+      if (!activePath.has(id)) hidden.add(id);
+    }
+    for (const id of activePath) {
+      if (!common.has(id)) selected.add(id);
+    }
+    for (const id of common) rejoins.add(id);
+
+    const exclusiveByCase = caseDescendants.map((path) => new Set([...path].filter((id) => !common.has(id))));
+    const hasDistinctCases = exclusiveByCase.some((path) => path.size > 0);
+    const trueRejoins = [...common].filter((id) => {
+      const upstream = ancestors(id);
+      return exclusiveByCase.every((path) => [...path].some((member) => upstream.has(member)));
+    });
+    if (hasDistinctCases && trueRejoins.length === 0) branchesWithoutRejoin.add(controllerId);
+
+    const firstCommonRoot = ordered.find((node) =>
+      cases.every((one) => one.nodes.some((member) => String(member) === String(node.id))));
+    if (firstCommonRoot !== undefined) {
+      const id = String(firstCommonRoot.id);
+      commonAt.set(id, [...(commonAt.get(id) ?? []), controllerId]);
+    }
+    const firstRejoin = ordered.find((node) => trueRejoins.includes(String(node.id)));
+    if (firstRejoin !== undefined) {
+      const id = String(firstRejoin.id);
+      rejoinAt.set(id, [...(rejoinAt.get(id) ?? []), controllerId]);
+    }
+  }
+  for (const id of hidden) {
+    selected.delete(id);
+    rejoins.delete(id);
+    rejoinAt.delete(id);
+    commonAt.delete(id);
+  }
+  return { hidden, selected, rejoins, rejoinAt, commonAt, branchesWithoutRejoin };
+}
+
+/** Only selected direct case members nest; downstream parent work retains its own row. */
+export function explorerTimelineContainment(
+  workflow: ExplorerWorkflowWire,
+  cases: Readonly<Record<string, string>>,
+  path: ExplorerTimelinePath,
+): ReadonlyMap<string, string> {
+  const owner = new Map<string, string>();
+  for (const controller of explorerTimelineOrder(workflow)) {
+    const id = String(controller.id);
+    if (controller.shape.kind !== "branch" || path.hidden.has(id)) continue;
+    const active = controller.shape.cases.find((one) => one.name === cases[id]) ?? controller.shape.cases[0];
+    for (const member of active?.nodes ?? []) {
+      const candidate = String(member);
+      if (path.selected.has(candidate) && !path.hidden.has(candidate) && !owner.has(candidate)) owner.set(candidate, id);
+    }
+  }
+  return owner;
+}
+
+/** Dependencies and control edges order the explanation; tuple order breaks ties only. */
+export function explorerTimelineOrder(workflow: ExplorerWorkflowWire): readonly ExplorerNodeWire[] {
+  const declared = workflow.timeline.flatMap((group) => group.nodes.map(String));
+  const nodes = new Map(workflow.nodes.map((node) => [String(node.id), node]));
+  if (nodes.size !== workflow.nodes.length
+    || declared.length !== nodes.size || new Set(declared).size !== nodes.size
+    || declared.some((id) => !nodes.has(id))) {
+    throw new Error(`explorer timeline for ${String(workflow.id)} does not cover its graph exactly`);
+  }
+  const edges = explorerTimelineEdges(workflow, nodes);
+  const position = new Map(declared.map((id, index) => [id, index]));
+  const incoming = new Map(declared.map((id) => [id, 0]));
+  const outgoing = new Map<string, Set<string>>();
+  for (const edge of edges) {
+    const from = edge.from;
+    const to = edge.to;
+    const targets = outgoing.get(from) ?? new Set<string>();
+    if (targets.has(to)) continue;
+    targets.add(to);
+    outgoing.set(from, targets);
+    incoming.set(to, (incoming.get(to) ?? 0) + 1);
+  }
+  const ready = declared.filter((id) => incoming.get(id) === 0);
+  const result: ExplorerNodeWire[] = [];
+  while (ready.length > 0) {
+    ready.sort((left, right) => (position.get(left) ?? 0) - (position.get(right) ?? 0));
+    const id = ready.shift();
+    if (id === undefined) break;
+    const node = nodes.get(id);
+    if (node === undefined) throw new Error(`explorer timeline lost node ${id}`);
+    result.push(node);
+    for (const target of outgoing.get(id) ?? []) {
+      const remaining = (incoming.get(target) ?? 0) - 1;
+      incoming.set(target, remaining);
+      if (remaining === 0) ready.push(target);
+    }
+  }
+  if (result.length !== nodes.size) throw new Error(`explorer timeline for ${String(workflow.id)} contains a cycle`);
+  return result;
+}
+
 const PRESENTATION_FIELD_LABEL: Readonly<Record<ExplorerPresentationField, string>> = {
   "workflow-label": "Workflow label",
   "workflow-icon": "Workflow icon",

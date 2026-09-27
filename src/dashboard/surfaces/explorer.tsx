@@ -1,4 +1,5 @@
 import { observeAsyncResource } from "../state/async-resource.js";
+import "./explorer.css";
 /**
  * The graph-inspection Workflow Explorer with DCC5's closed presentation editor
  * (ref operator-trust §5.2–§5.4; ref dashboard-surfaces §13).
@@ -15,17 +16,9 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * Copied with provenance and adapted to THIS repository's served wire; nothing
  * here reaches the legacy repository at runtime and nothing may (D93/D94).
  *
- * ## The three panels, and why they are those three
- *
- * The demo's answer, kept: **what you are looking at · its shape · one part of
- * that shape in detail.** A registry column on the left, grouped by each
- * descriptor's own `category` through the SAME projection the workflow rail
- * reads (`groupWorkflowsByCategory`) so the explorer cannot bin a workflow
- * under a heading the product does not use; the graph in the middle, in
- * declaration order with the conditional edges drawn BETWEEN the rows they
- * decide; and the selected node's whole binding on the right, because the
- * question being answered is a lookup and a lookup that hides half its answer
- * behind a second click is a worse index than the source tree.
+ * The workflow rail selects a descriptor. The center timeline previews its
+ * declared paths; the right panel summarizes the selected step. Complete
+ * contract fields stay in a wider dialog so identifiers remain readable.
  *
  * ## What the demo shows that this wire cannot serve — stated, never faked
  *
@@ -33,9 +26,8 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * recorded values, provenance marks). That overlay is ref operator-trust §5.7's first named
  * exclusion — the run-detail timeline already serves those facts per run — so
  * it is absent here rather than approximated, and the toolbar band it occupied
- * carries the workflow's identity instead. The demo's node panel is a
- * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this one serves the
- * same FIELD census (D227), derived from each contract's own zod shape, but
+ * carries the workflow's identity instead. The full contract dialog serves
+ * the FIELD census (D227), derived from each contract's own zod shape, but
  * draws it as one card per task arm with an Inputs and an Outputs group (D302):
  * the demo's third column carries what one run RECORDED, which varies per row,
  * while this tree's `Recorded` is a per-arm POLICY that does not — so it is
@@ -51,18 +43,20 @@ import { observeAsyncResource } from "../state/async-resource.js";
  */
 import {
 ArrowDownToLine,
+CornerDownRight,
 ArrowUpFromLine,
 Eye,
 FileCode2,
 Info,
 Pencil,
 ScanEye,
+Search,
 ShieldAlert,
 SquareArrowOutUpRight,
 Workflow,
 } from "lucide-react";
 import type { ReactElement,ReactNode } from "react";
-import { useEffect,useMemo,useRef,useState } from "react";
+import { useEffect,useId,useMemo,useRef,useState } from "react";
 import { systemClock } from "../../domain/clock.js";
 import type {
 ExplorerContractFieldWire,
@@ -93,12 +87,16 @@ dsIcon,
 dsMotion,
 dsRadius,
 dsText,
+dsSurface,
+DsBodyScope,
+Disclosure,
 EmptyState,
 Field,
 IconButton,
 Input,
 MetaLine,
 PageHeader,
+PageHeading,
 Panel,
 PanelBody,
 PanelHeader,
@@ -133,6 +131,9 @@ dryRunBoundaryNodeId,
 dryRunPosture,
 explorerEditProblemTitle,
 explorerGraphTotals,
+explorerTimelineContainment,
+explorerTimelineOrder,
+explorerTimelinePath,
 explorerPresentationChange,
 explorerPresentationDraft,
 explorerPresentationFieldLabel,
@@ -157,6 +158,7 @@ type DryRunPosture,
 type ExplorerEditProblem,
 type ExplorerEditValidationTicket,
 type ExplorerPresentationField,
+type ExplorerTimelinePath,
 } from "./explorer-model.js";
 import { plural } from "./format.js";
 import {
@@ -365,6 +367,26 @@ function SourceLink({ label, link }: { label: string; link: SourceLinkWire }) {
   );
 }
 
+function ContextSource({ link }: { link: SourceLinkWire }) {
+  if (link.state === "resolved") return <SourceLink label="child descriptor" link={link} />;
+  return <div className="explorer-source-warning">
+    <span>Child source unavailable</span>
+    <Disclosure summary="Details" summaryClassName="explorer-source-details">
+      <dl><dt>Attempted path</dt><dd>{link.attemptedPath}</dd><dt>Reason</dt><dd>{link.reason}</dd></dl>
+    </Disclosure>
+  </div>;
+}
+
+function WorkflowSources({ workflow }: { workflow: ExplorerWorkflowWire }) {
+  const { descriptor, module } = workflow.sources;
+  const same = descriptor.state === module.state && (descriptor.state === "resolved"
+    ? module.state === "resolved" && descriptor.path === module.path
+    : module.state === "unresolved" && descriptor.attemptedPath === module.attemptedPath && descriptor.reason === module.reason);
+  return same ? <SourceLink label="descriptor · module" link={descriptor} /> : <>
+    <SourceLink label="descriptor" link={descriptor} /><SourceLink label="module" link={module} />
+  </>;
+}
+
 /* =========================================================================
  * PANEL ONE — the registry
  * ====================================================================== */
@@ -391,12 +413,10 @@ function WorkflowListPanel({
   workflows,
   selected,
   onSelect,
-  onVersionRegistry,
 }: {
   workflows: readonly ExplorerWorkflowWire[];
   selected: string;
   onSelect: (id: string) => void;
-  onVersionRegistry: () => void;
 }) {
   const groups = useMemo(
     () =>
@@ -430,9 +450,9 @@ function WorkflowListPanel({
         onClick={() => onSelect(id)}
         title={`${workflow.label} v${String(workflow.version)} — ${plural(workflow.nodes.length, "node")}`}
         className={cn(
-          "flex w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)]",
-          "px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left",
-          dsText.ui,
+          "flex min-h-9 w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-base)] rounded-[var(--ds-radius-md)]",
+          "px-[var(--ds-space-base)] py-[var(--ds-space-snug)] text-left",
+          dsText.body,
           dsFocus,
           dsMotion.base,
           active
@@ -440,16 +460,15 @@ function WorkflowListPanel({
             : "text-[color:var(--ds-fg-secondary)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
         )}
       >
+        {workflow.category === "search" ? <Search aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
+          : <Workflow aria-hidden className={cn(dsIcon.sm, "shrink-0")} />}
         <span className="flex min-w-0 flex-1 flex-col">
-          <span className={cn("min-w-0", dsClip.text)}>{workflow.label}</span>
+          <span className="min-w-0 break-words">{workflow.label}</span>
           {node.harness !== undefined && (
             <span className={cn(dsText.micro, "min-w-0 font-normal text-[color:var(--ds-fg-muted)]", dsClip.text)}>
               {`a proving harness of ${workflowHarnessOfName(node.harness)}`}
             </span>
           )}
-        </span>
-        <span className={cn(dsText.micro, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-          {workflow.nodes.length}
         </span>
       </BareButton>
     );
@@ -474,17 +493,11 @@ function WorkflowListPanel({
     list is a bare `div`, so it never had two landmarks to distinguish.
   */
   return (
-    <Panel className="min-h-0" aria-label="Registered workflows">
-      <PanelHeader title="Workflows" headingLevel={2} meta={String(workflows.length)} />
-      <div className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]">
-        <Button size="toolbar" variant="secondary" icon={<Eye aria-hidden className={dsIcon.sm} />} onClick={onVersionRegistry}>Version registry</Button>
-      </div>
-      <PanelBody>
+    <Panel className="explorer-rail min-h-0" aria-label="Registered workflows">
+      <PanelBody className="explorer-rail-body">
+        <SectionLabel className="block px-[var(--ds-space-base)] py-[var(--ds-space-cozy)]">Workflows</SectionLabel>
         {groups.map((group) => (
-          <div key={group.label} className="border-b border-[color:var(--ds-border-subtle)] last:border-b-0">
-            <SectionLabel className="block px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]">
-              {group.label}
-            </SectionLabel>
+          <div key={group.label}>
             <ul>
               {group.entries.map((node) => (
                 <li key={String(node.entry.id)}>
@@ -496,7 +509,7 @@ function WorkflowListPanel({
                   {node.members.length > 0 && (
                     <ul
                       aria-label={`Proving harnesses of ${node.entry.label}`}
-                      className="pl-[var(--ds-space-cozy)]"
+                      className="pl-[var(--ds-space-base)]"
                     >
                       {node.members.map((member) => (
                         <li key={String(member.entry.id)}>{row(member)}</li>
@@ -672,7 +685,7 @@ function GraphNodeRow({
   node: ExplorerNodeWire;
   delegatesToLabel?: string;
   selected: boolean;
-  onSelect: () => void;
+  onSelect: (trigger: HTMLButtonElement) => void;
 }) {
   const kind = NODE_KIND[node.shape.kind];
   const bindings = nodeBindings(node);
@@ -681,7 +694,7 @@ function GraphNodeRow({
     <BareButton
       type="button"
       aria-current={selected ? "true" : undefined}
-      onClick={onSelect}
+      onClick={(event) => onSelect(event.currentTarget)}
       className={cn(
         "flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)] border text-left",
         "rounded-[var(--ds-radius-md)] p-[var(--ds-space-base)]",
@@ -763,44 +776,222 @@ function GraphNodeRow({
   );
 }
 
+function TimelineSequence({
+  wire,
+  workflow,
+  selectedNodeId,
+  onSelectNode,
+  ancestors,
+  selectionContext,
+  numberPrefix = "",
+  compact = false,
+  selectedCases,
+  onSelectedCases,
+}: {
+  wire: WorkflowExplorerWire;
+  workflow: ExplorerWorkflowWire;
+  selectedNodeId?: string;
+  onSelectNode?: (id: string | undefined, trigger?: HTMLButtonElement) => void;
+  ancestors: ReadonlySet<string>;
+  selectionContext?: string;
+  numberPrefix?: string;
+  compact?: boolean;
+  selectedCases?: Readonly<Record<string, string>>;
+  onSelectedCases?: (cases: Record<string, string>) => void;
+}) {
+  const instanceId = useId();
+  const [localCases, setLocalCases] = useState<Record<string, string>>({});
+  const cases = selectedCases ?? localCases;
+  const setCases = onSelectedCases ?? setLocalCases;
+  const path = useMemo(() => explorerTimelinePath(workflow, cases), [workflow, cases]);
+  const ordered = useMemo(() => explorerTimelineOrder(workflow), [workflow]);
+  const visible = ordered.filter((node) => !path.hidden.has(String(node.id)));
+  const firstBranchId = visible.find((node) => node.shape.kind === "branch")?.id;
+  const byId = new Map(workflow.nodes.map((node) => [String(node.id), node]));
+  const sharedPrerequisites = new Set<string>();
+  for (const branch of workflow.nodes) if (branch.shape.kind === "branch") {
+    const pending = branch.dependsOn.map(String);
+    while (pending.length > 0) {
+      const id = pending.pop();
+      if (id === undefined || sharedPrerequisites.has(id)) continue;
+      sharedPrerequisites.add(id);
+      pending.push(...(byId.get(id)?.dependsOn.map(String) ?? []));
+    }
+  }
+  const boundaryNodeId = dryRunBoundaryNodeId(workflow);
+  const owner = explorerTimelineContainment(workflow, cases, path);
+  const childrenOf = (controllerId: string): readonly ExplorerNodeWire[] => visible.filter((node) => owner.get(String(node.id)) === controllerId);
+
+  const renderNode = (node: ExplorerNodeWire, index: number, prefix = numberPrefix, embedded = false): ReactElement => {
+        const id = String(node.id);
+        const shape = node.shape;
+        const selectorLabel = selectionContext === undefined
+          ? `Path preview for ${node.label}`
+          : `Path preview for ${node.label} in ${selectionContext}`;
+        const target = shape.kind === "child-run"
+          ? wire.workflows.find((candidate) => String(candidate.id) === String(shape.targetWorkflowId))
+          : undefined;
+        const canNest = target !== undefined && !ancestors.has(String(target.id));
+        const childRunSummary = shape.kind !== "child-run" ? undefined : shape.cardinality === "many"
+          ? `Multiple runs of ${target?.label ?? String(shape.targetWorkflowId)}`
+          : `One run of ${target?.label ?? String(shape.targetWorkflowId)}`;
+        const relationship = shape.kind === "branch" ? "Scenario"
+          : shape.kind === "child-run" ? "Child workflow"
+          : path.selected.has(id) ? "Dependent"
+          : sharedPrerequisites.has(id) || path.rejoins.has(id) ? "Shared"
+          : NODE_KIND[shape.kind].word;
+        return <li key={id} className={cn("explorer-step relative min-w-0", compact && "explorer-child-step")}>
+          {boundaryNodeId === id && <DryRunBoundary />}
+          {!embedded && !compact && <span aria-hidden className="explorer-step-marker absolute -left-[calc(var(--ds-space-section)+14px)] top-0 flex size-7 items-center justify-center rounded-full border border-[color:var(--ds-border)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg-muted)]">
+            <span className={cn(dsText.meta, dsText.nums)}>{prefix}{index + 1}</span>
+          </span>}
+          {shape.kind !== "child-run" && <div className="explorer-step-heading flex min-w-0 flex-wrap items-start gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]">
+            {(embedded || compact) && <span aria-hidden className={cn(dsText.meta, dsText.nums, "shrink-0 font-normal text-[color:var(--ds-fg-muted)]")}>{prefix}{index + 1}</span>}
+            {onSelectNode === undefined ? (
+              <span className="explorer-step-title">{node.label}</span>
+            ) : (
+              <BareButton
+                type="button"
+                aria-label={`Inspect ${node.label}`}
+                aria-current={selectedNodeId === id ? "true" : undefined}
+                onClick={(event) => onSelectNode(id, event.currentTarget)}
+                className={cn(dsFocus, "explorer-step-title rounded-[var(--ds-radius-sm)] hover:underline")}
+              >{node.label}</BareButton>
+            )}
+            {!compact && <Badge className="explorer-relationship" tone="neutral" title={`Node type: ${NODE_KIND[shape.kind].word}`}>{relationship}</Badge>}
+            {(path.rejoinAt.get(id) ?? []).map((controllerId) => (
+              <span key={controllerId} className="explorer-rejoin">{`Path rejoins after ${workflow.nodes.find((one) => String(one.id) === controllerId)?.label ?? controllerId}`}</span>
+            ))}
+          </div>}
+          {!compact && shape.kind !== "branch" && !(embedded && shape.kind === "child-run") && (node.purpose.state === "authored" ? (
+            <p className="explorer-step-copy">{node.purpose.text}</p>
+          ) : <div className="explorer-step-copy"><Prose prose={node.purpose} /></div>)}
+          {shape.kind === "task" && shape.condition !== undefined && (
+            <div className={cn(dsText.meta, "explorer-condition text-[color:var(--ds-fg-muted)]")}>
+              {describeNodeCondition(shape.condition)}
+            </div>
+          )}
+          {shape.kind === "branch" && (
+            <div className="explorer-branch rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)]">
+              <div className="flex min-w-0 flex-wrap items-center justify-between gap-[var(--ds-space-base)]">
+              <label htmlFor={`${instanceId}-case-${id}`} className="explorer-scenario-label">Scenario<span className="sr-only"> for {node.label}</span></label>
+              <Select
+                id={`${instanceId}-case-${id}`}
+                aria-label={selectorLabel}
+                aria-describedby={numberPrefix === "" && id === firstBranchId ? `${instanceId}-preview-note-${id}` : undefined}
+                className="explorer-scenario-select w-full max-w-[240px]"
+                value={cases[id] ?? shape.cases[0]?.name}
+                onChange={(event) => {
+                  const nextCases = { ...cases, [id]: event.target.value };
+                  const nextPath = explorerTimelinePath(workflow, nextCases);
+                  if (selectedNodeId !== undefined && nextPath.hidden.has(selectedNodeId)) {
+                    onSelectNode?.(undefined);
+                  }
+                  setCases(nextCases);
+                }}
+              >
+                {shape.cases.map((one) => <option key={one.name} value={one.name}>{one.name}</option>)}
+              </Select>
+              </div>
+              {node.purpose.state === "authored" && <p className="explorer-scenario-copy">{node.purpose.text}</p>}
+              {path.branchesWithoutRejoin.has(id) && (
+                <p className={cn(dsText.meta, "mt-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>
+                  No shared continuation is declared for these cases.
+                </p>
+              )}
+              {childrenOf(id).length > 0 && <ol className="explorer-branch-members flex flex-col">
+                {childrenOf(id).map((child, childIndex) => renderNode(child, childIndex, `${prefix}${index + 1}.`, true))}
+              </ol>}
+              {numberPrefix === "" && id === firstBranchId && <p id={`${instanceId}-preview-note-${id}`} className="explorer-preview-note">
+                Preview only; choosing a path does not start a workflow or run.
+              </p>}
+            </div>
+          )}
+          {shape.kind === "parallel" && (
+            <div className={cn(dsText.meta, "mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}>
+              {`Runs ${shape.branches.map((branch) => branch.id).join(" and ")} in parallel · ${shape.join === "all" ? "waits for all" : "settles all"}`}
+            </div>
+          )}
+          {shape.kind === "child-run" && (
+            <div className={cn("explorer-delegation rounded-[var(--ds-radius-md)]", embedded ? "explorer-delegation-embedded" : "explorer-delegation-standalone")}>
+              <Disclosure summary={<span className="explorer-child-heading">{target?.category === "search" ? <Search aria-hidden className={dsIcon.sm} /> : <Workflow aria-hidden className={dsIcon.sm} />}<strong title={target?.label}>{node.label}</strong><Badge className="explorer-relationship" tone="neutral">Child workflow</Badge><span className="explorer-child-wait">{shape.await === "terminal" ? "Parent waits" : "Parent continues"}</span></span>} defaultOpen summaryClassName="explorer-child-trigger" title={`${target?.label ?? String(shape.targetWorkflowId)} steps for ${node.label}`}>
+                <div className="explorer-child-content">
+                  {canNest && target !== undefined ? <TimelineSequence
+                    wire={wire}
+                    workflow={target}
+                    ancestors={new Set([...ancestors, String(target.id)])}
+                    selectionContext={selectionContext === undefined ? node.label : `${selectionContext} → ${node.label}`}
+                    numberPrefix={embedded && childrenOf(owner.get(id) ?? "").length === 1 ? prefix : `${prefix}${index + 1}.`}
+                    compact
+                  /> : <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                    {target === undefined ? "Child workflow detail is unavailable in the served registry." : "Recursive child workflow detail is unavailable here."}
+                  </p>}
+                </div>
+              </Disclosure>
+              {!embedded && <p className="explorer-delegation-summary">{childRunSummary}</p>}
+              <Disclosure summary="Delegation policy" className="explorer-policy" summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
+                <div className={cn(dsText.meta, "flex flex-col gap-[var(--ds-space-tight)] p-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>
+                  <span>{`Await: ${shape.await} · join: ${shape.join}`}</span>
+                  <span>{`On child failure: ${shape.onChildFailed} · cancel: ${shape.cascadeCancel} · retry: ${shape.afterChildRetry} · ${shape.visibility} visibility`}</span>
+                  <span>Return policy and selectable child results are unavailable in the served metadata.</span>
+                  {onSelectNode !== undefined && <BareButton type="button" aria-label={`Inspect ${node.label}`} className={cn(dsFocus, "explorer-child-inspect")} onClick={(event) => onSelectNode(id, event.currentTarget)}>Inspect {node.label}</BareButton>}
+                </div>
+              </Disclosure>
+              <div className="explorer-return-row">
+                <CornerDownRight aria-hidden />{shape.await === "terminal" ? shape.cardinality === "many" ? "Parent waits for the child group." : "Parent waits for the child to finish." : "Parent continues without waiting for the child."}
+              </div>
+            </div>
+          )}
+        </li>;
+  };
+  return (
+    <ol className={cn("flex flex-col border-l border-[color:var(--ds-border)]", compact ? "explorer-child-list ml-[var(--ds-space-section)] gap-[var(--ds-space-tight)] pl-[var(--ds-space-tight)]" : "explorer-timeline ml-[var(--ds-space-base)] gap-[var(--ds-space-base)] pl-[var(--ds-space-section)]")}>
+      {visible.filter((node) => !owner.has(String(node.id))).map((node, index) => renderNode(node, index))}
+    </ol>
+  );
+}
+
+function WorkflowIntroduction({ workflow }: { workflow: ExplorerWorkflowWire }) {
+  const posture = dryRunPosture(workflow);
+  const totals = explorerGraphTotals(workflow);
+  const branches = workflow.nodes.filter((node) => node.shape.kind === "branch");
+  const conditionalDelegations = workflow.nodes.filter((node) => node.shape.kind === "child-run"
+    && branches.some((branch) => branch.shape.kind === "branch"
+      && branch.shape.cases.some((one) => one.nodes.some((id) => String(id) === String(node.id))))).length;
+  return <div className="explorer-introduction">
+    <PageHeading as="h2" title={workflow.label} actions={<GraphInfo workflow={workflow} posture={posture} totals={totals} />} />
+    <div className="explorer-summary"><Prose prose={workflow.summary} /></div>
+    <div className="explorer-metadata">
+      <strong>{workflow.role.kind === "composition" ? "Parent workflow" : workflow.role.kind === "chunk-harness" ? "Harness" : "Workflow"}</strong>
+      {conditionalDelegations > 0 ? <span>{plural(conditionalDelegations, "conditional delegation")}</span>
+        : <span>{`Descriptor v${String(workflow.version)}`}</span>}
+      <span className="explorer-metadata-posture">Planned behavior</span>
+    </div>
+  </div>;
+}
+
 function GraphPanel({
   wire,
   workflow,
   selectedNodeId,
   onSelectNode,
   onEditPresentation,
+  selectedCases,
+  onSelectedCases,
 }: {
   wire: WorkflowExplorerWire;
   workflow: ExplorerWorkflowWire;
   selectedNodeId: string;
-  onSelectNode: (id: string) => void;
+  onSelectNode: (id: string | undefined, trigger?: HTMLButtonElement) => void;
   onEditPresentation: (field: ExplorerPresentationField, trigger: HTMLButtonElement) => void;
+  selectedCases: Readonly<Record<string, string>>;
+  onSelectedCases: (cases: Record<string, string>) => void;
 }) {
   const posture = dryRunPosture(workflow);
-  const totals = explorerGraphTotals(workflow);
-  const boundaryNodeId = dryRunBoundaryNodeId(workflow);
   const labelOf = (targetId: string): string | undefined =>
     wire.workflows.find((candidate) => String(candidate.id) === targetId)?.label;
-
   return (
-    <Panel className="min-h-0">
-      <PanelHeader
-        title={`${workflow.label} v${String(workflow.version)}`}
-        headingLevel={2}
-        meta={[
-          plural(totals.nodes, "node"),
-          plural(totals.reads, "read"),
-          totals.writes > 0 ? plural(totals.writes, "write") : undefined,
-        ]
-          .filter((part) => part !== undefined)
-          .join(" · ")}
-        actions={<GraphInfo workflow={workflow} posture={posture} totals={totals} />}
-      />
-
-      <WorkflowIdentityBand workflow={workflow} />
-
-      <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
-        <ExplorerPresentationFields workflow={workflow} onEdit={onEditPresentation} />
+    <div className="explorer-graph flex min-w-0 flex-col gap-[var(--ds-space-section)]">
         {/* A HAZARD, not teaching: this workflow changes a system of record and
             has no rehearsal, so there is no safe way to try it. */}
         {posture === "no-rehearsal" && (
@@ -813,27 +1004,40 @@ function GraphPanel({
         {/* A FACT about this graph. The absence of a boundary line has to be
             readable as an answer rather than as a rendering that did not
             happen. */}
-        {posture === "no-system-write" && (
-          <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-snug)]">
-            <Chip label="changes">no system of record</Chip>
-            <Chip label="dry run">nothing to stop short of</Chip>
-          </div>
-        )}
+        {posture === "no-system-write" && <span className="sr-only">This workflow changes no system of record and has no dry-run boundary.</span>}
 
-        <ol className="flex flex-col">
+        <TimelineSequence
+          key={String(workflow.id)}
+          wire={wire}
+          workflow={workflow}
+          selectedNodeId={selectedNodeId}
+          onSelectNode={onSelectNode}
+          ancestors={new Set([String(workflow.id)])}
+          selectedCases={selectedCases}
+          onSelectedCases={onSelectedCases}
+        />
+
+        <Disclosure summary="Workflow details" summaryClassName="explorer-secondary-disclosure" description="Presentation, registration and source" className="mt-[var(--ds-space-cozy)]">
+          <div className="flex flex-col gap-[var(--ds-space-cozy)] pt-[var(--ds-space-base)]">
+            <WorkflowIdentityBand workflow={workflow} />
+            <ExplorerPresentationFields workflow={workflow} onEdit={onEditPresentation} />
+          </div>
+        </Disclosure>
+
+        <Disclosure summary="Graph and source evidence" summaryClassName="explorer-secondary-disclosure" description="Dependencies and executable scenarios" className="mt-[var(--ds-space-cozy)]">
+        <ol className="flex flex-col pt-[var(--ds-space-base)]">
           {workflow.nodes.map((node, index) => {
             const id = String(node.id);
             const shape = node.shape;
             return (
               <li key={id} className="flex flex-col">
-                {boundaryNodeId === id && <DryRunBoundary />}
                 <GraphNodeRow
                   node={node}
                   delegatesToLabel={
                     shape.kind === "child-run" ? labelOf(String(shape.targetWorkflowId)) : undefined
                   }
                   selected={id === selectedNodeId}
-                  onSelect={() => onSelectNode(id)}
+                  onSelect={(trigger) => onSelectNode(id, trigger)}
                 />
                 {index < workflow.nodes.length - 1 && (
                   <Connector
@@ -847,9 +1051,62 @@ function GraphPanel({
         </ol>
 
         <ScenariosSection workflow={workflow} />
-      </PanelBody>
-    </Panel>
+        </Disclosure>
+    </div>
   );
+}
+
+function TimelineContext({ workflow, wire, path }: { workflow: ExplorerWorkflowWire; wire: WorkflowExplorerWire; path: ExplorerTimelinePath }) {
+  const branches = workflow.nodes.filter((node) => node.shape.kind === "branch").length;
+  const activeDelegations = workflow.nodes.filter((node) => node.shape.kind === "child-run" && !path.hidden.has(String(node.id)));
+  const parallels = workflow.nodes.filter((node) => node.shape.kind === "parallel").length;
+  if (activeDelegations.length > 0) return <aside aria-label="Workflow context" className="explorer-context">
+    <h3>Delegation</h3>
+    <dl className="explorer-context-facts"><div className={workflow.label.length > 24 ? "explorer-fact-stacked" : undefined}><dt>Parent</dt><dd>{workflow.label}</dd></div></dl>
+    {activeDelegations.map((node) => {
+      if (node.shape.kind !== "child-run") return null;
+      const child = node.shape;
+      const target = wire.workflows.find((entry) => String(entry.id) === String(child.targetWorkflowId));
+      return <section key={String(node.id)} className="explorer-context-child">
+        {activeDelegations.length > 1 && <h4>{node.label}</h4>}
+        <dl className="explorer-context-facts">
+          <div className={(target?.label ?? String(child.targetWorkflowId)).length > 24 ? "explorer-fact-stacked" : undefined}><dt>Child</dt><dd>{target?.label ?? String(child.targetWorkflowId)}</dd></div>
+        </dl>
+        <div className="explorer-context-section">
+          <h4>Parent behavior</h4>
+          <p>{child.await === "terminal" ? child.cardinality === "many" ? `Waits for the ${target?.label ?? "child"} group.` : `Waits for ${target?.label ?? "the child"} to finish.` : "Continues without waiting"}</p>
+        </div>
+        <div className="explorer-context-section">
+          <h4>Returned result</h4>
+          <p>Return routing isn’t defined.</p>
+        </div>
+        <div className="explorer-context-section">
+          <h4>Inside the child</h4>
+          <p>{target === undefined ? "Child workflow detail is unavailable in the served registry." : `${plural(target.nodes.length, "defined step")}.`}</p>
+          {target !== undefined && <ContextSource link={target.sources.descriptor} />}
+        </div>
+      </section>;
+    })}
+  </aside>;
+  return <aside aria-label="Workflow context" className="explorer-context">
+    <h3 className={cn(dsText.title, "font-semibold text-[color:var(--ds-fg)]")}>Workflow context</h3>
+    <div className={cn(dsText.body, "mt-[var(--ds-space-section)] flex flex-col gap-[var(--ds-space-section)] text-[color:var(--ds-fg-secondary)]")}>
+      <section className="border-b border-[color:var(--ds-border)] pb-[var(--ds-space-section)]">
+        <h4 className="font-semibold text-[color:var(--ds-fg)]">Registration</h4>
+        <p className="mt-[var(--ds-space-base)]">{workflow.category} · {plural(workflow.nodes.length, "node")}</p>
+        <p>{workflow.systems.join(" · ") || "No system declared"}</p>
+      </section>
+      <section className="border-b border-[color:var(--ds-border)] pb-[var(--ds-space-section)]">
+        <h4 className="font-semibold text-[color:var(--ds-fg)]">Path structure</h4>
+        <p className="mt-[var(--ds-space-base)]">{plural(branches, "branch")} · no delegation on this path</p>
+        {parallels > 0 && <p>{plural(parallels, "parallel group")}</p>}
+      </section>
+      <section>
+        <h4 className="font-semibold text-[color:var(--ds-fg)]">Source</h4>
+        <div className="mt-[var(--ds-space-base)] break-words"><SourceLink label="descriptor" link={workflow.sources.descriptor} /></div>
+      </section>
+    </div>
+  </aside>;
 }
 
 /**
@@ -2161,8 +2418,13 @@ export function WorkflowExplorer({
   const bootstrap = useBootstrap();
   const [resource, setResource] = useState<AsyncResource<WorkflowExplorerWire>>(LOADING);
   const [openNodeId, setOpenNodeId] = useState<string | undefined>(undefined);
+  const [selectedCases, setSelectedCases] = useState<Record<string, string>>({});
+  const [contractOpen, setContractOpen] = useState(false);
   const [editingField, setEditingField] = useState<ExplorerPresentationField | undefined>(undefined);
   const editTrigger = useRef<HTMLButtonElement | undefined>(undefined);
+  const inspectTrigger = useRef<HTMLButtonElement | undefined>(undefined);
+  const contractTrigger = useRef<HTMLButtonElement | null>(null);
+  const inspectorHeading = useRef<HTMLHeadingElement | null>(null);
 
   useEffect(() => {
     setResource(LOADING);
@@ -2171,6 +2433,7 @@ export function WorkflowExplorer({
 
   const wire = resource.state === "loaded" ? resource.value : undefined;
   const workflow = wire?.workflows.find((candidate) => String(candidate.id) === workflowId);
+  const timelinePath = useMemo(() => workflow === undefined ? undefined : explorerTimelinePath(workflow, selectedCases), [workflow, selectedCases]);
   // The URL names the workflow, never the node, so the open node resets with
   // it; falling back to the first node keeps the record column from opening
   // empty on a surface whose whole job is to show something.
@@ -2182,12 +2445,33 @@ export function WorkflowExplorer({
    * claim is asserted rather than assumed, because a wire that relaxed `.min(1)`
    * would otherwise turn a real empty graph into a blank record column.
    */
-  const openNode = workflow?.nodes.find((node) => String(node.id) === openNodeId) ?? workflow?.nodes[0];
-  if (workflow !== undefined && openNode === undefined) {
+  const openNode = workflow?.nodes.find((node) => String(node.id) === openNodeId);
+  if (workflow !== undefined && workflow.nodes.length === 0) {
     throw new Error(`explorer workflow ${String(workflow.id)} served no nodes; the wire requires at least one`);
   }
 
-  useEffect(() => setOpenNodeId(undefined), [workflowId]);
+  useEffect(() => {
+    setOpenNodeId(undefined);
+    setContractOpen(false);
+    setSelectedCases({});
+    inspectTrigger.current = undefined;
+  }, [workflowId]);
+
+  useEffect(() => {
+    if (openNodeId !== undefined) inspectorHeading.current?.focus();
+  }, [openNodeId]);
+
+  const selectNode = (id: string | undefined, trigger?: HTMLButtonElement) => {
+    if (id === undefined) {
+      setOpenNodeId(undefined);
+      setContractOpen(false);
+      inspectTrigger.current = undefined;
+      return;
+    }
+    inspectTrigger.current = trigger;
+    setContractOpen(false);
+    setOpenNodeId(id);
+  };
 
   const detailDelegatesTo =
     openNode !== undefined && openNode.shape.kind === "child-run"
@@ -2205,17 +2489,28 @@ export function WorkflowExplorer({
        src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:666-667` →
        `DemoExplorerPage`, whose root is a bare `flex min-h-0 flex-1 flex-col`
        div at `DemoExplorer.tsx:165` (`:164` is the `return (`). */
-    <TakeoverFrame label="Workflow explorer">
+    <TakeoverFrame label="Workflow explorer" className="explorer-surface">
       <PageHeader
         title="Explorer"
         icon={<Workflow aria-hidden className={dsIcon.md} />}
+        className="explorer-header min-h-[calc(var(--ds-h-bar)+var(--ds-space-cozy))]"
+        actions={<div className="flex items-center gap-[var(--ds-space-tight)]">
+          {workflow !== undefined && <Popover>
+            <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<FileCode2 aria-hidden className={dsIcon.sm} />}>Source</Button></PopoverTrigger>
+            <PopoverContent title={`${workflow.label} source`} side="bottom" align="end" width="lg">
+              <div className="flex flex-col gap-[var(--ds-space-base)]">
+                <WorkflowSources workflow={workflow} />
+              </div>
+            </PopoverContent>
+          </Popover>}
+          <Button size="toolbar" variant="secondary" icon={<Eye aria-hidden className={dsIcon.sm} />} onClick={onVersionRegistry}>Version registry</Button>
+        </div>}
       />
 
-      {/* D340 keeps the workflow list beside the graph at the desktop floor.
-          The node record gets its own column when the desktop has room. */}
-      <div className="grid min-h-0 flex-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] grid-cols-[minmax(0,232px)_minmax(0,1fr)] min-[1280px]:grid-cols-[minmax(0,232px)_minmax(0,1fr)_minmax(0,420px)]">
+      {/* Keep the workflow rail beside its selected graph and inspector. */}
+      <div className="explorer-frame grid min-h-0 flex-1 gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)] grid-cols-[minmax(0,230px)_minmax(0,1fr)]">
         {resource.state === "loading" && (
-          <Panel className="min-h-0 col-span-2 min-[1280px]:col-span-3">
+          <Panel className="min-h-0 col-span-2">
             <PanelBody className="p-[var(--ds-space-cozy)]">
               <div className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">
                 <Spinner label="Loading the explorer projection" />
@@ -2226,7 +2521,7 @@ export function WorkflowExplorer({
         )}
 
         {resource.state === "failed" && (
-          <Panel className="min-h-0 col-span-2 min-[1280px]:col-span-3">
+          <Panel className="min-h-0 col-span-2">
             <PanelBody className="p-[var(--ds-space-cozy)]">
               <Banner tone="danger" title="The explorer projection could not be read">
                 {resource.error.message}
@@ -2240,9 +2535,9 @@ export function WorkflowExplorer({
             <WorkflowListPanel
               workflows={wire.workflows}
               selected={workflowId}
-              onVersionRegistry={onVersionRegistry}
               onSelect={(id) => {
                 onWorkflow(id);
+                setSelectedCases({});
                 // A new workflow is a new shape: the open node belonged to the
                 // old one, so it is dropped rather than carried onto a graph
                 // that has no such node.
@@ -2255,8 +2550,8 @@ export function WorkflowExplorer({
               workflow always has a node, so "no graph" and "no such workflow"
               are the same fact here.
             */}
-            {workflow === undefined || openNode === undefined ? (
-              <Panel className="min-h-0 min-[1280px]:col-span-2">
+            {workflow === undefined ? (
+              <Panel className="min-h-0">
                 <PanelBody>
                   <EmptyState
                     icon={<Workflow aria-hidden className={dsIcon.lg} />}
@@ -2291,32 +2586,54 @@ export function WorkflowExplorer({
                 </PanelBody>
               </Panel>
             ) : (
-              <>
+              <Panel
+                aria-label={`${workflow.label} workflow view`}
+                className={cn("explorer-main min-h-0 min-w-0 overflow-y-auto", dsSurface.bodyPage)}
+              >
+                <DsBodyScope className="!max-w-none">
+                <WorkflowIntroduction workflow={workflow} />
+                <div className="explorer-columns grid min-w-0 grid-cols-[minmax(0,1fr)_190px] gap-[20px] min-[1151px]:grid-cols-[minmax(0,1fr)_minmax(205px,250px)] min-[1151px]:gap-[30px]">
                 <GraphPanel
                   wire={wire}
                   workflow={workflow}
-                  selectedNodeId={String(openNode.id)}
-                  onSelectNode={setOpenNodeId}
+                  selectedNodeId={openNode === undefined ? "" : String(openNode.id)}
+                  onSelectNode={selectNode}
+                  selectedCases={selectedCases}
+                  onSelectedCases={setSelectedCases}
                   onEditPresentation={(field, trigger) => {
                     editTrigger.current = trigger;
                     setEditingField(field);
                   }}
                 />
-                {/*
-                  Between the two thresholds the record column is BELOW the
-                  other two rather than beside them, so it takes the whole row.
-                  Auto-placement would drop it into the 232px registry column
-                  instead, where a three-column table renders its own headings
-                  on top of each other — the demo's grid has the same hole and
-                  its corpus never photographed that width.
-                */}
-                <div className="flex min-h-0 col-span-2 min-[1280px]:col-span-1">
-                  <NodeDetail
-                    workflow={workflow}
-                    node={openNode}
-                    delegatesToLabel={detailDelegatesTo}
-                  />
+                {openNode === undefined ? <TimelineContext workflow={workflow} wire={wire} path={timelinePath ?? explorerTimelinePath(workflow, selectedCases)} /> : (
+                  <aside className="explorer-context min-w-0">
+                    <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
+                    <Button size="sm" variant="ghost" className="self-start" onClick={() => {
+                      const trigger = inspectTrigger.current;
+                      setOpenNodeId(undefined);
+                      inspectTrigger.current = undefined;
+                      window.setTimeout(() => trigger?.focus(), 0);
+                    }}>Close step inspection</Button>
+                    <h3 ref={inspectorHeading} tabIndex={-1} className={cn(dsText.title, "min-w-0 break-words font-semibold text-[color:var(--ds-fg)]")}>{openNode.label}</h3>
+                    </div>
+                    <p className={cn(dsText.body, "mt-[var(--ds-space-base)] break-words text-[color:var(--ds-fg-secondary)]")}>{openNode.purpose.state === "authored" ? openNode.purpose.text : openNode.purpose.reason}</p>
+                    <div className={cn(dsText.meta, "mt-[var(--ds-space-section)] flex flex-col gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}>
+                      <span>{NODE_KIND[openNode.shape.kind].word}</span>
+                      <span>{`${plural(openNode.tasks.filter(task => task.effect === "read").length, "read contract")} · ${plural(openNode.tasks.filter(task => task.effect !== "read").length, "write contract")}`}</span>
+                      {openNode.shape.kind === "transaction" && <span>Changes a system of record · inspect dry-run boundary and write proof</span>}
+                    </div>
+                    <Button ref={contractTrigger} size="sm" variant="secondary" className="mt-[var(--ds-space-section)]" onClick={() => setContractOpen(true)}>Full contract</Button>
+                    <Dialog open={contractOpen} onOpenChange={setContractOpen}>
+                      <DialogContent title={`${openNode.label} contract`} description="Complete served step contract and source evidence." size="xl" onCloseAutoFocus={(event) => { event.preventDefault(); contractTrigger.current?.focus(); }}>
+                        <DialogBody className="min-h-0 overflow-y-auto p-[var(--ds-space-base)]">
+                          <NodeDetail workflow={workflow} node={openNode} delegatesToLabel={detailDelegatesTo} />
+                        </DialogBody>
+                      </DialogContent>
+                    </Dialog>
+                  </aside>
+                )}
                 </div>
+                </DsBodyScope>
                 <ExplorerEditDialog
                   workflow={workflow}
                   field={editingField}
@@ -2330,7 +2647,7 @@ export function WorkflowExplorer({
                     setResource(loaded(next));
                   }}
                 />
-              </>
+              </Panel>
             )}
           </>
         )}

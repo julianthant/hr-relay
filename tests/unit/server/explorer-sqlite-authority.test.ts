@@ -5,6 +5,7 @@ import { describe, it } from "vitest";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../helpers/synthetic-storage-admission.js";
 import { OfflineAuthorityRestoreService } from "../../helpers/synthetic-storage-admission.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { explorerAuthorityFixture } from "../../fixtures/explorer-authority.js";
@@ -52,7 +53,7 @@ describe("Explorer SQLite command authority", () => {
       const manifest = backup.manifests[0];
       assert.ok(manifest);
       const manifestPath = join(directory, `${manifest.backupFileName}.manifest.json`);
-      assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion, 51);
+      assert.equal((await verifyBackupManifestAtPath(manifestPath)).manifest.schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(f.kernel.execute(f.command(SECOND, 1, "After backup")).state, "applied");
       f.database.close();
       const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.path);
@@ -68,7 +69,7 @@ describe("Explorer SQLite command authority", () => {
         try { assert.deepEqual(reopened.authority.explorerOverrides.readAll(), saved); rebuilds += 1; }
         finally { reopened.close(); }
       }, f.clock);
-      assert.equal((await restore.restore({ manifestPath, stoppedSystemProof })).schemaVersion, 51);
+      assert.equal((await restore.restore({ manifestPath, stoppedSystemProof })).schemaVersion, CURRENT_AUTHORITY_SCHEMA_VERSION);
       assert.equal(rebuilds, 1);
       for (const suffix of ["", ".claim", ".pending", ".claim.pending"]) writeFileSync(join(f.root, `explorer-overrides.json${suffix}`), "inert after restore");
       f.restart();

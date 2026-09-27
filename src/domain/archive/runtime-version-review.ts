@@ -15,12 +15,13 @@ export const RuntimeVersionMemberSchema = z.strictObject({
 });
 export type RuntimeVersionMember = z.infer<typeof RuntimeVersionMemberSchema>;
 
-export type RuntimeVersionReview = Readonly<{
-  members: readonly RuntimeVersionMember[];
-  candidates: readonly RuntimeVersionMember[];
-  blockers: readonly RuntimeVersionMember[];
-  membershipDigest: string;
-}>;
+export const RuntimeVersionReviewSchema = z.strictObject({
+  members: z.array(RuntimeVersionMemberSchema).readonly(),
+  candidates: z.array(RuntimeVersionMemberSchema).readonly(),
+  blockers: z.array(RuntimeVersionMemberSchema).readonly(),
+  membershipDigest: z.string().regex(/^[a-f0-9]{64}$/u),
+}).readonly();
+export type RuntimeVersionReview = z.infer<typeof RuntimeVersionReviewSchema>;
 
 /** Calculate membership from one authority snapshot before showing or claiming a bump. */
 export function reviewRuntimeVersionTransition(input: Readonly<{
@@ -59,5 +60,5 @@ export function reviewRuntimeVersionTransition(input: Readonly<{
   members.sort((left, right) => left.workflowId.localeCompare(right.workflowId) || left.runId.localeCompare(right.runId));
   const candidates = members.filter(row => row.state === "terminal");
   const blockers = members.filter(row => row.state !== "terminal");
-  return Object.freeze({ members, candidates, blockers, membershipDigest: sha256Hex(canonicalJsonStringify(members)) });
+  return RuntimeVersionReviewSchema.parse({ members, candidates, blockers, membershipDigest: sha256Hex(canonicalJsonStringify(members)) });
 }

@@ -25,6 +25,8 @@ export const SCENES: readonly ReferenceScene[] = [
   }];
 export const ANCHORS: SceneAnchors = {
   "explorer-transaction": async (page) => {
-    await page.getByRole("button", { name: /^finalize-kuali .*Transaction/u }).click();
+    await page.getByRole("button", { name: "Inspect Finalize Kuali Document" }).click();
+    await page.getByRole("button", { name: "Full contract" }).click();
+    await page.getByRole("dialog", { name: "Finalize Kuali Document contract" }).getByText("Write safety").waitFor();
   },
 };

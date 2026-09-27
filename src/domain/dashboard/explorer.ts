@@ -49,6 +49,7 @@ import {
   EditDataFieldSchema,
   EnqueuePolicySchema,
   IconNameSchema,
+  TimelineCategoryKeySchema,
   WorkflowCategorySchema,
   WorkflowCodeSchema,
 } from "../workflow/presentation.js";
@@ -534,6 +535,12 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     ]),
   }),
   nodes: z.array(ExplorerNodeWireSchema).min(1),
+  /** Factory-owned presentation groups; every graph node occurs exactly once. */
+  timeline: z.array(z.strictObject({
+    key: TimelineCategoryKeySchema,
+    label: z.string().min(1),
+    nodes: z.array(NodeIdSchema).min(1),
+  })).min(1),
   edges: z.array(ExplorerEdgeWireSchema),
   scenarios: z.array(ExplorerScenarioWireSchema),
   sources: z.strictObject({
@@ -542,6 +549,48 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
     /** Every file in the descriptor's fingerprinted source closure. */
     closureFileCount: z.number().int().positive(),
   }),
+}).superRefine((workflow, context) => {
+  const graphNodeIds = new Set(workflow.nodes.map(({ id }) => String(id)));
+  const groupKeys = new Set<string>();
+  const timelineNodeIds = new Set<string>();
+  for (const [groupIndex, group] of workflow.timeline.entries()) {
+    if (groupKeys.has(group.key)) {
+      context.addIssue({
+        code: "custom",
+        path: ["timeline", groupIndex, "key"],
+        message: `timeline repeats group key ${group.key}`,
+      });
+    }
+    groupKeys.add(group.key);
+    for (const [nodeIndex, nodeId] of group.nodes.entries()) {
+      const id = String(nodeId);
+      if (!graphNodeIds.has(id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["timeline", groupIndex, "nodes", nodeIndex],
+          message: `timeline names unknown node ${id}`,
+        });
+      }
+      if (timelineNodeIds.has(id)) {
+        context.addIssue({
+          code: "custom",
+          path: ["timeline", groupIndex, "nodes", nodeIndex],
+          message: `timeline repeats node ${id}`,
+        });
+      }
+      timelineNodeIds.add(id);
+    }
+  }
+  for (const node of workflow.nodes) {
+    const id = String(node.id);
+    if (!timelineNodeIds.has(id)) {
+      context.addIssue({
+        code: "custom",
+        path: ["timeline"],
+        message: `timeline omits graph node ${id}`,
+      });
+    }
+  }
 });
 export type ExplorerWorkflowWire = z.infer<typeof ExplorerWorkflowWireSchema>;
 

@@ -43,12 +43,13 @@ export const RuntimeVersionScopeSchema = z.discriminatedUnion("kind", [
 ]);
 export type RuntimeVersionScope = z.infer<typeof RuntimeVersionScopeSchema>;
 
-export type RuntimeVersionTransition = Readonly<{
-  kind: "minor" | "major";
-  before: RuntimeVersionState;
-  after: RuntimeVersionState;
-  affectedWorkflowIds: readonly string[];
-}>;
+export const RuntimeVersionTransitionSchema = z.strictObject({
+  kind: z.enum(["minor", "major"]),
+  before: RuntimeVersionStateSchema,
+  after: RuntimeVersionStateSchema,
+  affectedWorkflowIds: z.array(WorkflowIdSchema).readonly(),
+}).readonly();
+export type RuntimeVersionTransition = z.infer<typeof RuntimeVersionTransitionSchema>;
 
 /** A selection covering every workflow is the dashboard action. */
 export function planRuntimeVersionTransition(
@@ -80,5 +81,5 @@ export function planRuntimeVersionTransition(
       return { workflowId, version: all ? { major: nextMajor, minor: 0 } : { major: version.major, minor: nextMinor } };
     }),
   });
-  return Object.freeze({ kind: all ? "major" : "minor", before: state, after, affectedWorkflowIds });
+  return RuntimeVersionTransitionSchema.parse({ kind: all ? "major" : "minor", before: state, after, affectedWorkflowIds });
 }

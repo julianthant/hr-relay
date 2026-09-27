@@ -10,24 +10,42 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { z } from "zod";
+import { flow } from "../../../src/base/flow.js";
+import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
+import { compileWorkflow, composeWorkflowModule } from "../../../src/base/workflow-definition.js";
+import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { FingerprintSchema } from "../../../src/domain/ids.js";
+import {
+  DelegationEdgeIdSchema,
+  FingerprintSchema,
+  ItemIdSchema,
+  WorkflowIdSchema,
+} from "../../../src/domain/ids.js";
 import {
   UiCatalogWireSchema,
+  ExplorerWorkflowWireSchema,
   WorkflowExplorerWireSchema,
   ExplorerWorkflowOverrideSchema,
   type ExplorerProvenanceWire,
 } from "../../../src/domain/dashboard/explorer.js";
+import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import { workflowSourcePath } from "../../../src/domain/workflow/source-layout.js";
 import {
   EXPLORER_SOURCE_ROOT,
   buildWorkflowExplorer,
   readScenarioSources,
+  type ExplorerModuleView,
 } from "../../../src/server/dashboard/queries/explorer.js";
 import {
   buildUiCatalogWire,
   readCommittedUiCatalog,
 } from "../../../src/server/dashboard/queries/ui-catalog.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
+import { taskStoreRegistry } from "../../../src/stores/index.js";
+import { separationsKualiReadWorkflow } from "../../../src/workflows/separations/kuali-extraction/workflow.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));
 const HASH = FingerprintSchema.parse("c".repeat(64));
@@ -44,6 +62,138 @@ function separationsExplorerEntry() {
     .workflows.find((workflow) => String(workflow.id) === "separations");
   assert.ok(entry, "the Explorer serves no separations workflow");
   return entry;
+}
+
+function syntheticDelegationExplorerWire() {
+  const input = z.strictObject({ route: z.enum(["single", "batch", "background"]) });
+  const canonicalInput = defineCanonicalInput(input, input, [{ route: "single" }]);
+  const childInput = z.strictObject({ key: z.enum(["single", "batch-a", "batch-b", "background"]) });
+  const childResult = z.strictObject({ complete: z.boolean() });
+  const child = {
+    id: WorkflowIdSchema.parse("unregistered-child"),
+    input: childInput,
+    result: childResult,
+  };
+  const childItemIds = {
+    single: "00000000-0000-4000-8000-000000000001",
+    "batch-a": "00000000-0000-4000-8000-000000000002",
+    "batch-b": "00000000-0000-4000-8000-000000000003",
+    background: "00000000-0000-4000-8000-000000000004",
+  } as const;
+  const childItemId = (value: z.output<typeof childInput>) => ItemIdSchema.parse(childItemIds[value.key]);
+  const graph = flow(input)
+    .branch("select-child", {
+      dependsOn: [],
+      choose: ({ input: value }) => value.route,
+      cases: {
+        single: ["call-single"],
+        batch: ["call-batch"],
+        background: ["call-background"],
+      },
+    })
+    .childRun("call-single", child, {
+      label: "Single awaited child",
+      dependsOn: ["select-child"],
+      edgeId: DelegationEdgeIdSchema.parse("single-child-call"),
+      cardinality: "one",
+      bind: () => ({ key: "single" }),
+      deriveChildItemId: childItemId,
+      await: "terminal",
+      join: "one",
+      policy: {
+        onChildFailed: "fail-parent",
+        cascadeCancel: "cascade",
+        afterChildRetry: "resume-parent",
+        visibility: "inline",
+      },
+    })
+    .childRun("call-batch", child, {
+      label: "Settled child batch",
+      dependsOn: ["select-child"],
+      edgeId: DelegationEdgeIdSchema.parse("batch-child-call"),
+      cardinality: "many",
+      bind: () => [{ key: "batch-a" }, { key: "batch-b" }],
+      deriveChildItemId: childItemId,
+      await: "terminal",
+      join: "all-settled",
+      policy: {
+        onChildFailed: "allow-partial",
+        cascadeCancel: "independent",
+        afterChildRetry: "manual-parent-resume",
+        visibility: "linked",
+      },
+    })
+    .childRun("call-background", child, {
+      label: "Background child",
+      dependsOn: ["select-child"],
+      edgeId: DelegationEdgeIdSchema.parse("background-child-call"),
+      cardinality: "one",
+      bind: () => ({ key: "background" }),
+      deriveChildItemId: childItemId,
+      await: "none",
+      join: "none",
+      policy: {
+        onChildFailed: "block-parent",
+        cascadeCancel: "cascade",
+        afterChildRetry: "manual-parent-resume",
+        visibility: "hidden-unless-failed",
+      },
+    })
+    .gate("completion", {
+      dependsOn: ["call-single", "call-batch", "call-background"],
+      label: "Completion",
+      resolvedBy: "operator",
+      result: z.strictObject({ complete: z.boolean() }),
+    })
+    .build({
+      schema: z.strictObject({ complete: z.literal(true) }),
+      dependsOn: ["completion"],
+      derive: () => ({ complete: true as const }),
+    });
+  const descriptor = defineWorkflowDescriptor({
+    id: "explorer-delegation-fixture",
+    version: 1,
+    contractFingerprint: FingerprintSchema.parse("d".repeat(64)),
+    code: "edf",
+    label: "Explorer Delegation Fixture",
+    summary: "A typed graph fixture for Explorer metadata projection.",
+    icon: "Search",
+    category: "operations",
+    canonicalInput,
+    inputSubject: "none",
+    surface: { shape: "single" },
+    enqueue: "reject-active",
+    actions: STANDARD_WORKFLOW_ACTIONS,
+    surfaces: {},
+    details: [],
+    timeline: [
+      { key: "selection", label: "Selection", nodes: ["select-child"] },
+      { key: "delegations", label: "Delegations", nodes: ["call-single", "call-batch", "call-background"] },
+      { key: "completion", label: "Completion", nodes: ["completion"] },
+    ],
+    nodePurposes: [
+      { nodeId: "select-child", purpose: "Selects one declared child call site." },
+      { nodeId: "call-single", purpose: "Waits for one child workflow." },
+      { nodeId: "call-batch", purpose: "Joins all child outcomes." },
+      { nodeId: "call-background", purpose: "Enqueues a child without awaiting it." },
+      { nodeId: "completion", purpose: "Waits for the selected child call site to settle." },
+    ],
+    identity: { matchKey: ({ route }) => `route:${route}` },
+    presentation: { title: ({ route }) => `Route ${route}` },
+    scenarios: ["explorer-delegation-fixture/happy"],
+    flow: graph,
+  });
+  const role = defineWorkflowRole({ kind: "standalone" });
+  const module: ExplorerModuleView = { descriptor, stores: [], role };
+  const deps = explorerQueryDeps(CLOCK, HASH);
+  return buildWorkflowExplorer({
+    ...deps,
+    modules: [module],
+    buildManifest: {
+      workflows: [{ id: String(descriptor.id), sources: [{ path: workflowSourcePath(String(descriptor.id), role) }] }],
+      tasks: [],
+    },
+  });
 }
 
 describe("the contract field census (D227)", () => {
@@ -218,24 +368,145 @@ describe("the workflow explorer projection", () => {
   it("serves each module's declared role and refuses a harness with no composition beside it", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     const roles = new Map(wire.workflows.map((workflow) => [String(workflow.id), workflow.role]));
+    assert.deepEqual(wire.workflows.map((workflow) => String(workflow.id)),
+      WORKFLOW_MODULES.map((module) => String(module.descriptor.id)));
     assert.deepEqual(roles.get("separations"), { kind: "composition" });
+    assert.equal(roles.has("separations-kuali-read"), false);
+    assert.deepEqual(roles.get("person-lookup"), { kind: "standalone" });
     assert.deepEqual(
-      roles.get("separations-kuali-read"),
+      wire.workflows.flatMap((workflow) => workflow.nodes
+        .filter(({ shape }) => shape.kind === "branch" || shape.kind === "child-run")
+        .map(({ id }) => `${String(workflow.id)}:${String(id)}`)),
+      [],
+    );
+    for (const module of WORKFLOW_MODULES) {
+      const projected = wire.workflows.find(({ id }) => id === module.descriptor.id);
+      assert.ok(projected, `the Explorer omits registered workflow ${String(module.descriptor.id)}`);
+      assert.deepEqual(
+        projected.nodes.map(({ id, shape }) => [String(id), shape.kind]),
+        module.descriptor.nodes.map(({ id, kind }) => [String(id), kind]),
+      );
+      assert.deepEqual(
+        projected.timeline.map(({ key, label, nodes }) => ({ key, label, nodes: nodes.map(String) })),
+        module.descriptor.timeline.map(({ key, label, nodes }) => ({
+          key,
+          label,
+          nodes: nodes.map(({ id }) => String(id)),
+        })),
+      );
+    }
+
+    const harness = composeWorkflowModule(compileWorkflow(separationsKualiReadWorkflow), taskStoreRegistry.stores);
+    const withHarness = buildWorkflowExplorer({
+      ...explorerQueryDeps(CLOCK, HASH),
+      modules: [...WORKFLOW_MODULES, harness],
+    });
+    const harnessRoles = new Map(withHarness.workflows.map((workflow) => [String(workflow.id), workflow.role]));
+    assert.deepEqual(
+      harnessRoles.get("separations-kuali-read"),
       { kind: "chunk-harness", of: "separations", step: "kuali-extraction" },
     );
-    assert.deepEqual(roles.get("person-lookup"), { kind: "standalone" });
 
     // Drop the composition and the harnesses point at nothing this document
     // carries — the wire says so rather than serving an unnestable entry.
     const orphaned = WorkflowExplorerWireSchema.safeParse({
-      ...wire,
-      workflows: wire.workflows.filter((workflow) => String(workflow.id) !== "separations"),
+      ...withHarness,
+      workflows: withHarness.workflows.filter((workflow) => String(workflow.id) !== "separations"),
     });
     assert.equal(orphaned.success, false);
     assert.match(
       JSON.stringify(orphaned.error?.issues ?? []),
       /is served as a chunk harness of separations/u,
     );
+  });
+
+  it("projects typed branch and repeated child-call metadata without fabricating unavailable child detail", () => {
+    const wire = syntheticDelegationExplorerWire();
+    assert.doesNotThrow(() => WorkflowExplorerWireSchema.parse(wire));
+    assert.deepEqual(wire.workflows.map(({ id }) => String(id)), ["explorer-delegation-fixture"]);
+    const entry = wire.workflows[0];
+    assert.ok(entry, "the synthetic workflow is absent from its own wire");
+    assert.deepEqual(
+      entry.timeline.map(({ key, label, nodes }) => ({ key, label, nodes: nodes.map(String) })),
+      [
+        { key: "selection", label: "Selection", nodes: ["select-child"] },
+        { key: "delegations", label: "Delegations", nodes: ["call-single", "call-batch", "call-background"] },
+        { key: "completion", label: "Completion", nodes: ["completion"] },
+      ],
+    );
+
+    const branch = entry.nodes.find(({ id }) => String(id) === "select-child");
+    assert.ok(branch, "the synthetic branch is absent from the public wire");
+    assert.equal(branch.shape.kind, "branch");
+    if (branch.shape.kind !== "branch") return;
+    assert.deepEqual(branch.shape.cases.map(({ name, nodes }) => ({ name, nodes: nodes.map(String) })), [
+      { name: "single", nodes: ["call-single"] },
+      { name: "batch", nodes: ["call-batch"] },
+      { name: "background", nodes: ["call-background"] },
+    ]);
+    assert.deepEqual(entry.scenarios.map(({ scenarioId }) => String(scenarioId)), [
+      "explorer-delegation-fixture/happy",
+    ]);
+    assert.ok(branch.shape.cases.every(({ name }) => !entry.scenarios.some(({ scenarioId }) => String(scenarioId) === name)));
+
+    const calls = entry.nodes.flatMap((node) => node.shape.kind === "child-run"
+      ? [{ nodeId: String(node.id), ...node.shape }]
+      : []);
+    assert.deepEqual(calls.map((call) => call.nodeId), ["call-single", "call-batch", "call-background"]);
+    assert.equal(new Set(calls.map(({ edgeId }) => edgeId)).size, 3);
+    assert.deepEqual(calls.map((call) => ({
+      targetWorkflowId: String(call.targetWorkflowId),
+      cardinality: call.cardinality,
+      await: call.await,
+      join: call.join,
+      onChildFailed: call.onChildFailed,
+      cascadeCancel: call.cascadeCancel,
+      afterChildRetry: call.afterChildRetry,
+      visibility: call.visibility,
+    })), [
+      {
+        targetWorkflowId: "unregistered-child",
+        cardinality: "one",
+        await: "terminal",
+        join: "one",
+        onChildFailed: "fail-parent",
+        cascadeCancel: "cascade",
+        afterChildRetry: "resume-parent",
+        visibility: "inline",
+      },
+      {
+        targetWorkflowId: "unregistered-child",
+        cardinality: "many",
+        await: "terminal",
+        join: "all-settled",
+        onChildFailed: "allow-partial",
+        cascadeCancel: "independent",
+        afterChildRetry: "manual-parent-resume",
+        visibility: "linked",
+      },
+      {
+        targetWorkflowId: "unregistered-child",
+        cardinality: "one",
+        await: "none",
+        join: "none",
+        onChildFailed: "block-parent",
+        cascadeCancel: "cascade",
+        afterChildRetry: "manual-parent-resume",
+        visibility: "hidden-unless-failed",
+      },
+    ]);
+    assert.equal(
+      wire.workflows.some(({ id }) => String(id) === "unregistered-child"),
+      false,
+      "an absent child target must not gain fabricated workflow detail",
+    );
+
+    const incompleteTimeline = ExplorerWorkflowWireSchema.safeParse({
+      ...entry,
+      timeline: [entry.timeline[0]],
+    });
+    assert.equal(incompleteTimeline.success, false);
+    assert.match(JSON.stringify(incompleteTimeline.error?.issues ?? []), /timeline omits graph node/u);
   });
 
   it("reports a scenario with no executable file as unresolved, naming the path it tried", () => {

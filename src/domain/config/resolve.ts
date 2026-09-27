@@ -31,7 +31,6 @@ export const ResolvedConfigSchema = z.strictObject({
 });
 export type ResolvedConfig = z.infer<typeof ResolvedConfigSchema>;
 
-export type AdmittedRuntimeStoragePair = Readonly<{ stateRoot: string; artifactRoot: string }>;
 const RuntimeStoragePairSchema = z.strictObject({
   stateRoot: z.string().min(1),
   artifactRoot: z.string().min(1),
@@ -49,7 +48,8 @@ const RuntimeStoragePairSchema = z.strictObject({
     && !isAbsolute(stateWithinArtifact))) {
     context.addIssue({ code: "custom", path: ["artifactRoot"], message: "artifact root cannot contain state root" });
   }
-});
+}).readonly();
+export type AdmittedRuntimeStoragePair = z.infer<typeof RuntimeStoragePairSchema>;
 
 type ConfigEnvApply = (config: Config, raw: string, fiscalYear: string) => Config;
 export const ConfigEnvBindingSchema = z.strictObject({
