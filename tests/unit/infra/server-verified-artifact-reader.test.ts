@@ -38,6 +38,38 @@ it("uses disjoint admitted roots and refuses storage after release", async () =>
   }
 });
 
+it("closes snapshot and source when admission is released during snapshotting", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-snapshot-revoke-"));
+  const admission = RuntimeAdmission.syntheticRoots(join(workspace, "state"), join(workspace, "artifacts"));
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const ref = await writer.put(SMALL_BYTES, { mediaType: "application/octet-stream" });
+    const closed: string[] = [];
+    let leaseClosed = 0;
+    let revoked = false;
+    const reader = createServerVerifiedArtifactReader({
+      admission,
+      observeIo(kind) {
+        if (kind === "snapshot-write" && !revoked) {
+          revoked = true;
+          admission.release();
+        }
+      },
+      observeHandleClosed(kind) { closed.push(kind); },
+      observeLeaseClosed() { leaseClosed += 1; },
+    });
+    await reader.ready;
+    await assert.rejects(reader.prepare(ref), /released admission/u);
+    assert.equal(revoked, true);
+    assert.deepEqual(closed, ["source", "snapshot"]);
+    assert.equal(leaseClosed, 0);
+    assert.deepEqual(await readdir(join(workspace, "state", "verified-byte-scratch")), []);
+  } finally {
+    admission.release();
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
 it("refuses artifact services during read-only first-adoption inspection", async () => {
   const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-adoption-"));
   const stateRoot = join(workspace, ".tracker");

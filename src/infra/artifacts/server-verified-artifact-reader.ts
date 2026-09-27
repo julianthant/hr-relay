@@ -1147,7 +1147,6 @@ export function createServerVerifiedArtifactReader(
         options.injectFault,
         options.observeHandleClosed,
       );
-      admission.assertLive();
     } catch (error: unknown) {
       if (isAborted(error, signal) || error instanceof VerifiedArtifactSourceMissingError) throw error;
       throw operationalFailure(error);
@@ -1155,6 +1154,7 @@ export function createServerVerifiedArtifactReader(
     let prepared: FileHandle | undefined;
     let snapshotClosed = false;
     try {
+      admission.assertLive();
       if (retain) {
         prepared = await createAnonymousScratch(
           roots.scratchRoot,
