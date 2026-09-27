@@ -11,6 +11,7 @@ import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVe
 import { reviewRuntimeVersionTransition } from "../../domain/archive/runtime-version-review.js";
 import { RuntimeVersionChangeSchema, type RuntimeVersionChange } from "../../domain/archive/runtime-version-change.js";
 import { createRunSearchIndex } from "./run-search-index.js";
+import { RunSearchPublicationSchema } from "../../domain/dashboard/search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
 import { WorkerControlBasisSchema } from "../../domain/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
@@ -30,6 +31,7 @@ import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-contr
 import type { VerifiedRelocationActivationIntent } from "../runtime-control/installation.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
+import { SummaryPublicationSchema } from "../../domain/run/summary.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
@@ -1943,7 +1945,7 @@ function authorityContentFingerprint(database: DatabaseSync): string {
 }
 
 function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string {
-  const excluded = new Set(["database_state", "app_settings", "settings_snapshots"]);
+  const excluded = new Set(["database_state", "app_settings", "settings_snapshots", "run_search_publication", "summary_publication"]);
   const present = new Set(inspectionTableNames(database));
   const hash = createHash("sha256");
   for (const table of AuthorityTableNameSchema.options.filter((name) => present.has(name) && !excluded.has(name))) {
@@ -1956,7 +1958,7 @@ function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string
 }
 
 function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseSync): readonly string[] {
-  const excluded = new Set(["database_state", "app_settings", "settings_snapshots"]);
+  const excluded = new Set(["database_state", "app_settings", "settings_snapshots", "run_search_publication", "summary_publication"]);
   const beforeNames = new Set(inspectionTableNames(before));
   const afterNames = new Set(inspectionTableNames(after));
   return AuthorityTableNameSchema.options.filter((table) => !excluded.has(table)).filter((table) => {
@@ -1971,6 +1973,45 @@ function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseS
     };
     return fingerprint(before) !== fingerprint(after);
   });
+}
+
+function assertRelocationPublications(before: DatabaseSync, after: DatabaseSync, sourceGeneration: number, activatedAt: string): void {
+  const publicationRow = (database: DatabaseSync, table: "run_search_publication" | "summary_publication") => {
+    const rows = database.prepare(`SELECT * FROM ${table} ORDER BY record_key`).all().map((raw) =>
+      AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw));
+    if (rows.length > 1 || rows.some((row) => row.record_key !== "current")) {
+      throw new Error(`storage-relocation: ${table} membership changed`);
+    }
+    return rows[0] ?? null;
+  };
+  const priorSearch = publicationRow(before, "run_search_publication");
+  const currentSearch = publicationRow(after, "run_search_publication");
+  if (priorSearch === null || currentSearch === null) throw new Error("storage-relocation: search publication missing");
+  const search = RunSearchPublicationSchema.parse(JSON.parse(priorSearch.record_json));
+  const expectedSearch = RunSearchPublicationSchema.parse({
+    state: search.state === "published" && search.sourceGeneration === sourceGeneration ? "published" : "invalid",
+    sourceGeneration: sourceGeneration + 1, afterRun: null, rowCount: search.rowCount,
+  });
+  if (canonicalJsonStringify(currentSearch) !== canonicalJsonStringify({ record_key: "current",
+    record_json: canonicalJsonStringify(expectedSearch), created_at: activatedAt })) {
+    throw new Error("storage-relocation: search publication differs from activation transaction");
+  }
+  const priorSummary = publicationRow(before, "summary_publication");
+  const currentSummary = publicationRow(after, "summary_publication");
+  if (priorSummary === null) {
+    if (currentSummary !== null) throw new Error("storage-relocation: summary publication appeared during activation");
+    return;
+  }
+  const summary = SummaryPublicationSchema.parse(JSON.parse(priorSummary.record_json));
+  const expectedSummary = summary.state === "published"
+    ? { record_key: "current", record_json: canonicalJsonStringify(SummaryPublicationSchema.parse({
+      state: "published", generation: summary.generation + 1, sourceGeneration: sourceGeneration + 1,
+      rowCount: summary.rowCount,
+    })), created_at: activatedAt }
+    : priorSummary;
+  if (canonicalJsonStringify(currentSummary) !== canonicalJsonStringify(expectedSummary)) {
+    throw new Error("storage-relocation: summary publication differs from activation transaction");
+  }
 }
 
 function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
@@ -3087,6 +3128,7 @@ export class AuthorityDatabase implements Disposable {
           throw new Error("storage-relocation: activation prior runtime mismatch");
         }
         if (authorityContentFingerprint(this.#database) === authorityContentFingerprint(baseline)) return "prestate";
+        assertRelocationPublications(baseline, this.#database, before.authority_generation, intent.snapshot.capturedAt);
         if (relocationUnchangedAuthorityFingerprint(this.#database)
           !== relocationUnchangedAuthorityFingerprint(baseline)) {
           throw new Error(`storage-relocation: unrelated authority rows changed during activation: ${relocationChangedAuthorityTables(baseline, this.#database).join(",")}`);
