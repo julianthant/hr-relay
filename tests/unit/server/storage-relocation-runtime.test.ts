@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
-import { copyFileSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
@@ -86,5 +86,34 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
         assert.equal(final.sourceGeneration, 0);
       } finally { await runtime.stop(); }
     } finally { admission.release(); }
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+}, 20_000);
+
+it("initializes fresh authority before admission and refuses a later missing database", async () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-fresh-bff-")));
+  const authorityPath = join(workspace, rebuildRuntimeIsolation.stateRoot, "state.db");
+  const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
+  try {
+    copyFileSync(join(process.cwd(), "package.json"), join(workspace, "package.json"));
+    copyFileSync(join(process.cwd(), "package-lock.json"), join(workspace, "package-lock.json"));
+    const first = acquireEntrypointAdmission(workspace, "shared");
+    try {
+      assert.equal(existsSync(authorityPath), true);
+      const runtime = await composeDashboardRuntime({ admission: first, isolation: rebuildRuntimeIsolation, repoRoot: workspace,
+        env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
+      try {
+        const client = createDashboardClient({ baseUrl: `http://127.0.0.1:${String(runtime.port)}` });
+        assert.equal((await client.storageRelocationPlans()).revision, 0);
+      } finally { await runtime.stop(); }
+    } finally { first.release(); }
+
+    rmSync(authorityPath);
+    const later = acquireEntrypointAdmission(workspace, "shared");
+    try {
+      await assert.rejects(composeDashboardRuntime({ admission: later, isolation: rebuildRuntimeIsolation,
+        repoRoot: workspace, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 }),
+      /dashboard state root is established but its authority database is missing/u);
+      assert.equal(existsSync(authorityPath), false);
+    } finally { later.release(); }
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 }, 20_000);

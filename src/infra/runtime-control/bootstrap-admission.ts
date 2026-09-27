@@ -19,10 +19,17 @@ function verifyKnownDefaultAuthority(pair: RuntimePair, inspection: RuntimeAdmis
     databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path) });
 }
 
+function initializeKnownDefaultAuthority(pair: RuntimePair, initialization: RuntimeAdmission): void {
+  const authority = AuthorityDatabase.open(initialization, {
+    path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "runtime-bootstrap",
+  });
+  authority.close();
+}
+
 export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "exclusive"): RuntimeAdmission {
   const control = resolve(workspace, ".runtime-control");
   if (lstatSync(control, { throwIfNoEntry: false }) === undefined) {
-    const first = acquireInitialRuntimeAdmission(workspace, verifyKnownDefaultAuthority);
+    const first = acquireInitialRuntimeAdmission(workspace, verifyKnownDefaultAuthority, initializeKnownDefaultAuthority);
     if (mode === "exclusive") return first;
     first.release();
   }
