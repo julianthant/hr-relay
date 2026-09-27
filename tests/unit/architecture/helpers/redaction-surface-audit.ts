@@ -94,6 +94,7 @@ import {
   CapturePointerWireSchema,
 } from "../../../../src/domain/dashboard/artifacts.js";
 import { FrontendBootstrapWireSchema } from "../../../../src/domain/dashboard/bootstrap.js";
+import { NativePathPickerResponseSchema } from "../../../../src/domain/dashboard/native-path-picker.js";
 import { DiagnosticBundleWireSchema } from "../../../../src/domain/dashboard/diagnostic-bundle.js";
 import {
   ExplorerEditApplyResultSchema,
@@ -892,6 +893,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/domain/dashboard/storage.ts", schema: StorageDoctorWireSchema },
   { id: "wire/settings-facts", egress: "operator-loopback", module: "src/domain/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/domain/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
+  { id: "wire/native-path-picker", egress: "operator-loopback", module: "src/domain/dashboard/native-path-picker.ts", schema: NativePathPickerResponseSchema },
   { id: "wire/workflow-explorer", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: WorkflowExplorerWireSchema },
   { id: "wire/explorer-edit-validation", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditValidationResultSchema },
   { id: "wire/explorer-edit-apply", egress: "operator-loopback", module: "src/domain/dashboard/explorer.ts", schema: ExplorerEditApplyResultSchema },
@@ -993,6 +995,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "wire/editable-settings", path: "sections[].leaves[].path", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].defaultValue[]", origin: "repository-authored" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].activeValue", origin: "operator-authored" },
+  { surface: "wire/native-path-picker", path: "path", origin: "external-text" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].activeValue[]", origin: "operator-authored" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].effectiveValue[]", origin: "operator-authored" },
   { surface: "wire/editable-settings", path: "sections[].leaves[].settingsValue[]", origin: "operator-authored" },
@@ -1946,6 +1949,7 @@ export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = 
     { module: "src/domain/dashboard/explorer-override.ts", state: "audited", reason: "D337 transaction ports use the existing strict override values; the durable stopped-import receipt retains only that safe presentation document and source/backup digests" },
     { module: "src/domain/dashboard/explorer.ts", state: "audited", reason: "the explorer projects descriptors, contracts and the UI catalog" },
     { module: "src/domain/dashboard/item-attempt-history.ts", state: "audited", reason: "the attempt-history wire serves retained per-item status and dates" },
+    { module: "src/domain/dashboard/native-path-picker.ts", state: "audited", reason: "the local native picker returns an operator-selected absolute pathname, never file contents" },
     { module: "src/domain/dashboard/primitives.ts", state: "audited", reason: "shared wire primitives are carried by the surfaces that embed them" },
     { module: "src/domain/dashboard/projection.ts", state: "audited", reason: "the queue row and day projection are the operator's main surface" },
     { module: "src/domain/dashboard/run-detail.ts", state: "audited", reason: "run detail and its sections carry everything one run touched" },

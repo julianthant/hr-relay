@@ -10,6 +10,7 @@ import { activeSettingsConfig, createProtectedSettingsRuntimeReader, createSetti
 import { createSettingsApplicationExecutor } from "../commands/settings-service.js";
 import type { SettingsRouteDeps } from "../routes/settings-types.js";
 import type { StorageRelocationPlanReader } from "../../../core/storage-relocation-plans.js";
+import { createNativePathPicker } from "../native-path-picker.js";
 
 export function composeSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
@@ -20,6 +21,7 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   const activeProviderSlots = activeProviderKeySlots(input.environment);
   const reader = createSettingsRuntimeReader(input);
   const routes: SettingsRouteDeps = {
+    nativePathPicker: createNativePathPicker(),
     ...(input.storageRelocationPlans === undefined ? {} : { storageRelocationPlans: input.storageRelocationPlans }),
     settings: { get config() { return database.withAuthorityTransaction(activeSettingsConfig); }, descriptors: DESCRIPTORS },
     settingsEditor: {

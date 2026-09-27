@@ -60,6 +60,7 @@ export function createDashboardApp(deps: DashboardAppDeps): DashboardApp {
   // POST route without a row below is a red gate, not a quiet exposure.
   app.use("/api/v1/commands", operatorMutationIngressGuard);
   app.use("/api/v1/commands/bulk", operatorMutationIngressGuard);
+  app.use("/api/v1/settings/path-picker", operatorMutationIngressGuard);
   app.use("/api/v1/exports/xlsx", operatorMutationIngressGuard);
   app.use("/api/v1/exports/search", operatorMutationIngressGuard);
   app.use("/api/v1/start-plans", operatorMutationIngressGuard);

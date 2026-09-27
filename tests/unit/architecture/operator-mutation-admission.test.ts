@@ -31,6 +31,7 @@ const ADMITTED_MUTATIONS: Readonly<Record<string, Admission>> = Object.freeze({
   "/api/v1/intake/files": { guard: "operatorOpaqueIngressGuard" },
   "/api/v1/commands": { guard: "operatorMutationIngressGuard" },
   "/api/v1/commands/bulk": { guard: "operatorMutationIngressGuard" },
+  "/api/v1/settings/path-picker": { guard: "operatorMutationIngressGuard" },
 });
 
 const MUTATION_ROUTE = /app\.(post|put|patch|delete)\(\s*"([^"]+)"/g;
