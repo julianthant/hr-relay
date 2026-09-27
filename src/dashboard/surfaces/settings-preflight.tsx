@@ -7,20 +7,21 @@ import { preflightRemedy, preflightVerdict } from "./preflight-popover-model.js"
 import type { PreflightRerunState } from "./settings-preflight-model.js";
 import { fmtClock } from "./format.js";
 import type { PreflightCheckWire } from "./preflight-popover-model.js";
+import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
 import "./diagnostic-presentation.css";
 
 const CHECK_COPY: Record<string, { name: string; description: string }> = {
-  "runtime.compatibility": { name: "Runtime compatibility", description: "Node.js and installed dependencies match this release." },
-  "browser.assets": { name: "Browser tools", description: "Required browser and extension files are available." },
-  "config.valid": { name: "Runtime settings", description: "The current configuration passes validation." },
-  "filesystem.health": { name: "Files and disk space", description: "Required directories are usable and have enough free space." },
-  "authority.health": { name: "Data store readiness", description: "The data store and run records are ready for this scope." },
-  "ports.available": { name: "Network ports", description: "The dashboard's reserved ports are available." },
-  "fiscal.current": { name: "Current fiscal year", description: "A current fiscal year is configured for the workflow." },
-  "secrets.ucpath-sso": { name: "UCPath sign-in", description: "UCPath credentials are configured." },
-  "secrets.timekeeper": { name: "Timekeeper name", description: "A timekeeper name is configured." },
-  "secrets.sharepoint-roster": { name: "SharePoint roster", description: "The onboarding roster location is configured." },
-  "process.orphans": { name: "Unfinished processes", description: "No stale process or worker lease needs review." },
+  "runtime.compatibility": { name: "Runtime compatibility", description: "Checks Node.js and installed dependencies for this release." },
+  "browser.assets": { name: "Browser tools", description: "Checks the required browser and extension files." },
+  "config.valid": { name: "Runtime settings", description: "Checks current configuration validity." },
+  "filesystem.health": { name: "Files and disk space", description: "Checks required directories and free space." },
+  "authority.health": { name: "Data store readiness", description: "Checks the data store and run records for this scope." },
+  "ports.available": { name: "Network ports", description: "Checks the dashboard's reserved ports." },
+  "fiscal.current": { name: "Current fiscal year", description: "Checks the workflow's fiscal year configuration." },
+  "secrets.ucpath-sso": { name: "UCPath sign-in", description: "Checks the username and password required for UCPath sign-in." },
+  "secrets.timekeeper": { name: "Timekeeper name", description: "Checks the timekeeper name needed by this workflow." },
+  "secrets.sharepoint-roster": { name: "SharePoint roster", description: "Checks the onboarding roster location used by this workflow." },
+  "process.orphans": { name: "Unfinished processes", description: "Checks for stale processes or worker leases." },
 };
 
 function checkCopy(id: string): { name: string; description: string } {
@@ -40,51 +41,75 @@ export function PreflightScopeSelect() {
   </Field>;
 }
 
-function targetedRemedy(id: string): "settings" | "storage" | "sessions" | undefined {
+const SECRET_FIELDS = {
+  "secrets.ucpath-sso": [{ name: "ucpathUserId", label: "UCPath username" }, { name: "ucpathPassword", label: "UCPath password" }],
+  "secrets.timekeeper": [{ name: "timekeeperName", label: "Timekeeper name" }],
+  "secrets.sharepoint-roster": [{ name: "sharepointOnboardingRosterUrl", label: "SharePoint onboarding roster URL" }],
+} as const;
+
+const BLOCK_LABELS: Readonly<Record<string, string>> = {
+  "system.ucpath.prod": "UCPath", "system.crm.prod": "CRM", "system.onbase.prod": "OnBase",
+  "system.kuali.prod": "Kuali", "system.servicenow.prod": "ServiceNow", "system.i9.prod": "I-9",
+  "system.new-kronos.prod": "New Kronos", "system.old-kronos.prod": "Old Kronos",
+  "system.sharepoint.prod": "SharePoint", "workflow.kuali-fill": "Kuali fill",
+  "workflow.sharepoint-download": "SharePoint download", "executor.run": "Run execution", "dashboard.serve": "Dashboard",
+};
+
+function missingCredentialCopy(check: PreflightCheckWire, protectedSettings: EditableSettingsWire["protectedSettings"] | undefined): string | undefined {
+  const fields = SECRET_FIELDS[check.id as keyof typeof SECRET_FIELDS];
+  if (fields === undefined || check.verdict === "pass") return undefined;
+  if (protectedSettings?.state !== "available") return "Credential presence could not be verified from Settings.";
+  const missing = fields.filter(field => !protectedSettings.readback.entries[field.name].present).map(field => field.label);
+  if (missing.length === 0) return "Credentials are present in Settings, but this check still needs attention.";
+  if (check.id === "secrets.ucpath-sso") return `UCPath ${missing.map(label => label.replace(/^UCPath /u, "")).join(" and ")} ${missing.length === 1 ? "is" : "are"} missing.`;
+  return `${missing.join(" and ")} ${missing.length === 1 ? "is" : "are"} missing.`;
+}
+
+function targetedRemedy(id: string): "settings" | "storage" | "sessions" | "credentials" | undefined {
   if (id === "authority.health") return "storage";
   if (id === "process.orphans") return "sessions";
   if (id === "fiscal.current") return "settings";
+  if (Object.hasOwn(SECRET_FIELDS, id)) return "credentials";
   return undefined;
 }
 
-function SettingsPreflightCheck({ check }: { check: PreflightCheckWire }) {
+function SettingsPreflightCheck({ check, protectedSettings }: { check: PreflightCheckWire; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const actions = usePreflightActions();
   const remedy = check.verdict === "pass" ? undefined : targetedRemedy(check.id);
   const action = remedy === undefined ? undefined : () => {
     if (remedy === "sessions") actions.showSessions();
-    else actions.showSettings(remedy === "storage" ? "storage" : undefined);
+    else actions.showSettings(remedy === "storage" ? "storage" : remedy === "credentials" ? "credentials" : undefined);
   };
-  const detail = check.verdict === "pass" ? undefined : <div className="diagnostic-check-detail">
-    <span>{check.detail}</span>
-    {check.blocks.length > 0 && <span>Blocks: {check.blocks.join(" · ")}</span>}
-    {check.remediation !== undefined && <span>Remedy: {check.remediation}</span>}
-  </div>;
+  const copy = checkCopy(check.id);
+  const missing = missingCredentialCopy(check, protectedSettings);
+  const affected = check.verdict === "pass" ? [] : check.blocks.map(block => BLOCK_LABELS[block] ?? block);
   return <div className="diagnostic-check-entry" role="listitem">
-    <ResultRow label={checkCopy(check.id).name} description={checkCopy(check.id).description}
-      value={<Badge tone={check.verdict === "fail" ? "danger" : check.verdict === "warning" ? "warning" : "success"}>
-        {check.verdict === "pass" ? "Passed" : check.verdict === "warning" ? "Needs attention" : "Blocked"}
-      </Badge>}
-      evidence={check.verdict === "pass"
-        ? <Disclosure summary="Technical details">{check.label}: {check.detail}</Disclosure>
-        : action === undefined ? undefined : <Button size="sm" variant="ghost" onClick={action}>
-          {remedy === "sessions" ? "Open Sessions" : remedy === "storage" ? "Open Storage" : "Open Settings"}
-        </Button>} />
-    {detail}
+    <ResultRow label={copy.name} description={<><span>{copy.description}</span>
+      {missing !== undefined && <span className="diagnostic-check-evidence">{missing}</span>}
+      {affected.length > 0 && <span className="diagnostic-check-evidence">Affected: {affected.join(" · ")}</span>}
+    </>} value={check.verdict === "pass"
+      ? <span className="diagnostic-check-status"><StatusDot status="verifiedDone" />Passed</span>
+      : <Badge tone={check.verdict === "fail" ? "danger" : "warning"}>{check.verdict === "warning" ? "Needs attention" : "Blocked"}</Badge>} />
+    {action !== undefined && <div className="diagnostic-check-detail">
+      <Button size="sm" variant="ghost" className="diagnostic-remedy-action" onClick={action}>
+        {remedy === "sessions" ? "Open Sessions" : remedy === "storage" ? "Open Storage" : remedy === "credentials" ? "Configure credentials" : "Open Settings"}
+      </Button>
+    </div>}
   </div>;
 }
 
-function SettingsPreflightGroup({ title, subtitle, checks }: { title: string; subtitle: string; checks: readonly PreflightCheckWire[] }) {
+function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings }: { title: string; subtitle: string; checks: readonly PreflightCheckWire[]; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   return <BodySection title={title}>
     <p className="diagnostic-section-description">{subtitle}</p>
     <FormGroup label={title}><div role="list">
       {checks.length === 0
         ? <div className="diagnostic-empty-group">No checks were returned for this group.</div>
-        : checks.map(check => <SettingsPreflightCheck key={check.id} check={check} />)}
+        : checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}
     </div></FormGroup>
   </BodySection>;
 }
 
-function SettingsPreflightReport({ preflight, onRerun }: { preflight: PreflightRerunState; onRerun: () => void }) {
+function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
   const completed = preflight.state === "completed" ? preflight : undefined;
   const verdict = completed === undefined ? undefined : preflightVerdict(completed.checks);
@@ -125,16 +150,16 @@ function SettingsPreflightReport({ preflight, onRerun }: { preflight: PreflightR
         value={<span className="diagnostic-summary-meta">{completed === undefined ? "No current result" : `${completed.checks.length} returned checks`}</span>} />
     </FormGroup>}
     {completed !== undefined && <>
-      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings and credentials for the selected scope." checks={workflowChecks} />
-      <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} />
+      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings and credentials for the selected scope." checks={workflowChecks} protectedSettings={protectedSettings} />
+      <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={protectedSettings} />
     </>}
   </section>;
 }
 
 /** Setup and doctor share the served verdict and evidence, including absence and freshness. */
-export function PreflightReportContent({ preflight, onRerun, presentation = "compact" }: { preflight: PreflightRerunState; onRerun: () => void; presentation?: "compact" | "settings" }) {
+export function PreflightReportContent({ preflight, onRerun, presentation = "compact", protectedSettings }: { preflight: PreflightRerunState; onRerun: () => void; presentation?: "compact" | "settings"; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const actions = usePreflightActions();
-  if (presentation === "settings") return <SettingsPreflightReport preflight={preflight} onRerun={onRerun} />;
+  if (presentation === "settings") return <SettingsPreflightReport preflight={preflight} onRerun={onRerun} protectedSettings={protectedSettings} />;
   const completed = preflight.state === "completed" ? preflight : undefined;
   const verdict = completed === undefined ? undefined : preflightVerdict(completed.checks);
   const tone = verdict === "fail" ? "danger" : verdict === "warning" ? "warning" : "success";
@@ -177,5 +202,6 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
 }
 
 export function PreflightSection({ editor }: { editor: ReturnType<typeof useEditableSettings> }) {
-  return <PreflightReportContent presentation="settings" preflight={editor.preflight} onRerun={editor.rerunPreflight} />;
+  return <PreflightReportContent presentation="settings" preflight={editor.preflight} onRerun={editor.rerunPreflight}
+    protectedSettings={editor.editor.state === "loaded" ? editor.editor.document.protectedSettings : undefined} />;
 }

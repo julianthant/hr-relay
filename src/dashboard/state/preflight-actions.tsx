@@ -2,7 +2,7 @@ import { createContext, useContext, type ReactNode } from "react";
 export interface PreflightActions {
   readonly actorId: string;
   readonly descriptorFingerprint: string;
-  showSettings(section?: "storage"): void;
+  showSettings(section?: "storage" | "credentials"): void;
   showSessions(): void;
 }
 const Context = createContext<PreflightActions | undefined>(undefined);
