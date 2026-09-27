@@ -477,8 +477,10 @@ review. Numeric headers and values align right, and ordinary counts remain plain
 totals and exports remain explicitly range-wide; this presentation does not invent a
 workflow-scoped summary/export authority or derive totals from partial client rows. The compact
 heading places the selected dates beside Activity after a subtle divider, with Period and Export
-on the right. Custom replaces that plain date label with its date-range trigger. The requested Custom range design reuses
-the existing master HeroUI calendar styling and anchored popover, shown only for Custom, and
+on the right, without a visible Period label. Custom replaces that plain date label with its
+date-range trigger. The requested Custom range design reuses the existing master HeroUI calendar
+structure and anchored popover, shown only for Custom, with Settings neutrals, restrained blue
+selection and a clear Today marker, and
 includes date-only selection with Apply and Cancel. Both selected dates are included as whole
 report-timezone calendar days; the operator removed the earlier time-field proposal. Presets include Today, This week, Last month,
 Last 3 months, Last 6 months and Last year. Month presets are rolling calendar ranges ending today;
