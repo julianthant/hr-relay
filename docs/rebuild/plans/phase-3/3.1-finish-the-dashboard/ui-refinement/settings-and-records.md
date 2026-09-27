@@ -255,6 +255,22 @@ capabilities, Keyboard and UI catalog. Those categories have disjoint writes and
 the root accepts and assembles their commits into this task branch after each writer stops.
 Primary-checkout integration and push remain outside this assignment.
 
+The Models lane was accepted at `1ffe0ba` with the `e8b04f7` rename correction;
+Diagnostics was accepted at `166b926` and assembled as `9d7542fae`. Both are present in
+the Settings candidate at `f63624c67`. The combined outcome adds an editable RankedList
+kit specimen beside the existing ranked example and scopes the Credentials Add key footer
+CSS to its page so the Models Add model control keeps its normal button layout. The
+assembled provider, ranked-model, editor, catalog, protected, and shared body tests pass
+(78 tests across seven files), as do ten affected architecture tests, scoped ESLint,
+typecheck, web build, and roadmap freshness. Synthetic
+Playwright-cli captures cover the kit and assembled Models in dark/light at 1440×900 and
+1024×720; the Add key control was rechecked after the CSS scope change. Evidence is under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-assembly/kit-combined/`.
+The setup/preflight parity inputs were unchanged by this kit and scoped CSS outcome; the
+accepted Diagnostics lane retains its separate 25-case parity proof. Runtime relocation
+remains pending; its separate lane is working on a control-locator and lease foundation.
+The three reference tabs remain in progress.
+
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->
 

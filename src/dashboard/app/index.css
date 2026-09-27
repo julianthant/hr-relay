@@ -426,14 +426,14 @@
 .settings-provider-disclosure-content > .ds-body-row + .ds-body-row {
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }
-.settings-provider-add {
+.settings-credentials-page .settings-provider-add {
   display: flex;
   justify-content: flex-end;
   min-height: var(--ds-h-md);
   align-items: center;
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }
-.settings-provider-add button {
+.settings-credentials-page .settings-provider-add button {
   padding-inline: var(--ds-space-base);
 }
 .settings-provider-empty {

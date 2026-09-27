@@ -823,6 +823,10 @@ function FormsSection() {
     { id: "ucpath", label: "UCPath", description: "Primary connection", role: "Primary" },
     { id: "hrms", label: "Legacy HRMS", description: "Fallback connection", role: "Fallback" },
   ]);
+  const [editableModels, setEditableModels] = useState([
+    { id: "model-primary", value: "gemini-2.5-pro" },
+    { id: "model-fallback", value: "gemini-2.5-flash" },
+  ]);
   const selectedKey = keys.find((key) => key.id === pendingKey);
 
   return (
@@ -944,6 +948,35 @@ function FormsSection() {
             items={priorities}
             onReorder={setPriorities}
           />
+        </FormGroup>
+
+        <FormGroup label="Editable model priority">
+          <SectionLabel>Editable model priority</SectionLabel>
+          <RankedList
+            label="Editable model priority"
+            items={editableModels.map((model, index) => ({
+              id: model.id,
+              label: model.value || `Model ${index + 1}`,
+              role: index === 0 ? "Primary" : "Fallback",
+              content: <Input aria-label={`Model ${index + 1}`} value={model.value}
+                onChange={(event) => setEditableModels((current) => current.map((item) =>
+                  item.id === model.id ? { ...item, value: event.target.value } : item))} />,
+              actions: <IconButton type="button" size="xs" variant="ghost" label={`Remove model ${index + 1}`}
+                icon={<Trash2 aria-hidden className={dsIcon.sm} />}
+                onClick={() => setEditableModels((current) => current.filter((item) => item.id !== model.id))} />,
+            }))}
+            onReorder={(ordered) => setEditableModels((current) => {
+              const byId = new Map(current.map((model) => [model.id, model]));
+              return ordered.flatMap((item) => {
+                const model = byId.get(item.id);
+                return model === undefined ? [] : [model];
+              });
+            })}
+          />
+          <Button size="md" variant="secondary" icon={<Plus aria-hidden className={dsIcon.sm} />}
+            onClick={() => setEditableModels((current) => [...current, { id: `model-${crypto.randomUUID()}`, value: "" }])}>
+            Add model
+          </Button>
         </FormGroup>
 
         <div className="grid min-w-0 grid-cols-1 items-start gap-[var(--ds-space-loose)] md:grid-cols-2">
