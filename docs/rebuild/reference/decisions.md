@@ -19,7 +19,8 @@ Actual relocation requires exclusive offline admission, verified backup, a durab
 an atomic pair locator switch, and an activation receipt. Schema v56 is required before activation
 so supported pre-location binaries refuse the authority even when only artifacts move. v55 backup
 readability and normal DB-only/paired restore are retained. Normal startup admits v55/v56 without
-auto-upgrading existing v55; v56 activation is explicit and stopped. SQLite stores desired intent,
+auto-upgrading existing v55; v56 activation is explicit and stopped. Upgrade the source to v56
+before staging so older binaries also refuse it after a crash. SQLite stores desired intent,
 not a second active-root authority.
 Process locks stay checkout-local. Destination activation includes a final-path verified backup.
 Journal-bound retained data and tombstones prevent old-path reuse. The default `.tracker` source

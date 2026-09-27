@@ -1822,7 +1822,11 @@ perform the migration or relocation. Normal startup must admit both the exact v5
 without advancing an existing v55 database. The v56 capability migration is an explicit stopped,
 verified-backup operation; fresh databases may start at v56. v55 DB-only and paired backups retain
 normal verification and restore behavior, without historical archive quarantine. Versions below
-v55 keep their existing stopped-upgrade and recovery boundaries. The later offline engine must bind the exact plan command,
+v55 keep their existing stopped-upgrade and recovery boundaries. The source authority is upgraded
+to v56 under the verified pre-upgrade backup before staging begins, even when the state root will
+move. Upgrading only the destination would leave the old source writable by a pre-location binary
+after a process crash and restore-lock reaping. The staged copy therefore inherits v56; a JSON
+source fence alone is not an older-binary write barrier. The later offline engine must bind the exact plan command,
 revision and request fingerprint to its durable journal, source fence, atomic locator switch and
 activation receipt. Completed older-generation plan history remains immutable; future projection
 must validate its source transitions through activation receipts rather than discard it. Retained
