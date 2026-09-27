@@ -30,8 +30,9 @@ describe("independent protected Settings surface", () => {
     const search = h.host.querySelector<HTMLInputElement>('input[type="search"]');
     assert.ok(search);
     await settingsAction(() => {
+      // eslint-disable-next-line @typescript-eslint/unbound-method
       const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
-      setter?.call(search, "roster");
+      if (setter !== undefined) Reflect.apply(setter, search, ["roster"]);
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     assert.match(h.host.textContent ?? "", /SharePoint/u);
@@ -52,7 +53,7 @@ describe("independent protected Settings surface", () => {
   });
   it("starts empty, validates all five names, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
-    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 4);
+    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 2);
     assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
@@ -60,11 +61,19 @@ describe("independent protected Settings surface", () => {
       await settingsAction(() => h.controller().protectedEditor.update(name, "")); assert.ok(h.controller().protectedEditor.errors[name]);
       await settingsAction(() => h.controller().protectedEditor.update(name, values[name])); assert.equal(h.controller().protectedEditor.errors[name], undefined);
     }
-    assert.doesNotMatch(savedText(h.host), /synthetic-(?:user|password|timekeeper|url|sentinel)/u);
+    assert.doesNotMatch(savedText(h.host), /synthetic-(?:password|url|sentinel)/u);
     await settingsAction(() => h.controller().protectedEditor.submit());
     assert.equal(h.controller().protectedEditor.save.state, "applied"); assert.equal(h.controller().protectedEditor.dirtyCount, 0);
-    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[1]?.value, values.ucpathPassword);
-    assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.type === "password"));
+    for (const [name, expected] of [["UCPath username", values.ucpathUserId], ["Timekeeper name", values.timekeeperName]] as const) {
+      const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === name);
+      assert.ok(label);
+      const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
+      assert.equal(input?.type, "text");
+      assert.equal(input.value, expected);
+      assert.equal(h.host.querySelector(`button[aria-label="Show ${name}"]`), null);
+    }
+    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]')[0]?.value, values.ucpathPassword);
+    assert.equal(h.host.querySelectorAll<HTMLInputElement>('input[type="password"]').length, 2);
     const after = h.authority.read(); assert.equal(after.revision, ordinary.revision); assert.deepEqual(after.sections, ordinary.sections);
     assert.match(JSON.stringify(after), /synthetic-password-sentinel/u);
     const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);

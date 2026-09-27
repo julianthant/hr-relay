@@ -1,4 +1,5 @@
-import { Field, SecretField } from "../ds/ui.js";
+import { Trash2 } from "lucide-react";
+import { Field, IconButton, Input, SecretField, dsIcon } from "../ds/ui.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { formatSetting } from "./settings-draft-model.js";
 
@@ -20,12 +21,22 @@ export function ProtectedSettingField({ editor, name, description, controlWidth 
   const operation = credentials.draft[name];
   const stored = authority.state === "available" ? authority.entries[name] : undefined;
   const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined ? "" : formatSetting(stored.value);
-  return <Field label={row.label} description={description} error={credentials.errors[name]}
+  const disabled = credentials.locked || authority.state !== "available" || editor.readProblem !== undefined;
+  const canRemove = stored !== undefined || operation?.kind === "set";
+  const visible = name === "ucpathUserId" || name === "timekeeperName";
+  const label = name === "ucpathUserId" ? "UCPath username" : row.label;
+  return <Field label={label} description={description} error={credentials.errors[name]}
     orientation="horizontal" controlWidth={controlWidth} className={className}
-    disabled={credentials.locked || authority.state !== "available" || editor.readProblem !== undefined}>
-    <SecretField label={row.label} identity={`${name}:${stored?.valueId ?? "empty"}`} value={value}
+    disabled={disabled}>
+    {visible ? <div className="ds-secret-field">
+      <Input type="text" value={value} disabled={disabled} autoComplete="off" spellCheck={false} placeholder="Enter value"
+        onChange={event => credentials.update(name, event.target.value)} />
+      {canRemove && <IconButton type="button" label={`Remove ${label}`} disabled={disabled} variant="danger-outline" size="sm"
+        className="ds-secret-remove" icon={<Trash2 aria-hidden className={dsIcon.sm} />}
+        onClick={() => onRemove(stored !== undefined, label)} />}
+    </div> : <SecretField label={label} identity={`${name}:${stored?.valueId ?? "empty"}`} value={value}
       autoComplete="new-password" spellCheck={false} placeholder="Enter value"
       onChange={event => credentials.update(name, event.target.value)}
-      {...(stored !== undefined || operation?.kind === "set" ? { onRemove: () => onRemove(stored !== undefined, row.label) } : {})} />
+      {...(canRemove ? { onRemove: () => onRemove(stored !== undefined, label) } : {})} />}
   </Field>;
 }
