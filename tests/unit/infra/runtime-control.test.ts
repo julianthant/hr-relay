@@ -12,6 +12,16 @@ function fixture(): { workspace: string; pair: RuntimePair } {
   return { workspace, pair: { stateRoot: join(workspace, ".tracker"), artifactRoot: join(workspace, ".tracker", "artifacts") } };
 }
 afterEach(() => { for (const workspace of workspaces.splice(0)) rmSync(workspace, { recursive: true, force: true }); });
+async function stopChild(child: ReturnType<typeof spawn>): Promise<void> {
+  if (child.exitCode !== null || child.signalCode !== null) return;
+  await new Promise<void>((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error("owned child did not exit after SIGKILL")), 5000);
+    const done = () => { clearTimeout(timeout); resolve(); };
+    child.once("exit", done);
+    child.kill("SIGKILL");
+    if (child.exitCode !== null || child.signalCode !== null) done();
+  });
+}
 
 it("adopts empty defaults, admits shared readers, and refuses lost locator and owner mismatch", () => {
   const { workspace, pair } = fixture();
@@ -178,9 +188,9 @@ it("refuses a mutex left by a crashed child without automatic reaping", async ()
   const lease = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); lease.release();
   const mutex = join(workspace, ".runtime-control", "admission-mutex");
   const child = spawn(process.execPath, ["--input-type=module", "-e", `import { mkdirSync, writeFileSync } from 'node:fs'; mkdirSync(${JSON.stringify(mutex)}, {mode:0o700}); writeFileSync(${JSON.stringify(join(mutex, "owner.json"))}, JSON.stringify({schemaVersion:1,acquisitionId:'00000000-0000-4000-8000-000000000000',phase:'admitting',pid:process.pid,processIdentity:{platform:process.platform,startToken:'synthetic'}}), {mode:0o600}); process.stdout.write('READY\\n'); setInterval(()=>{},1000);`], { stdio: ["ignore", "pipe", "pipe"] });
-  await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
-  child.kill("SIGKILL");
-  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  try {
+    await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
+  } finally { await stopChild(child); }
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex busy or abandoned; offline recovery required/u);
 });
 
@@ -189,10 +199,10 @@ it("ignores a dead process lease after a crash outside the mutex", async () => {
   const initial = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); initial.release();
   const moduleUrl = new URL("../../../src/infra/runtime-control/installation.ts", import.meta.url).href;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `import { acquireInstallation } from ${JSON.stringify(moduleUrl)}; acquireInstallation(${JSON.stringify(workspace)}, 'shared'); process.stdout.write('READY\\n'); setInterval(() => {}, 1000);`], { stdio: ["ignore", "pipe", "pipe"] });
-  await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
-  expect(() => acquireInstallation(workspace, "exclusive")).toThrow(/lease busy/u);
-  child.kill("SIGKILL");
-  await new Promise<void>((resolve) => child.once("exit", () => resolve()));
+  try {
+    await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
+    expect(() => acquireInstallation(workspace, "exclusive")).toThrow(/lease busy/u);
+  } finally { await stopChild(child); }
   const afterCrash = acquireInstallation(workspace, "exclusive"); afterCrash.release();
 });
 
@@ -204,16 +214,15 @@ it("serializes simultaneous shared and exclusive child-process admission", async
   const launch = (mode: "shared" | "exclusive") => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `import { existsSync } from 'node:fs'; import { acquireInstallation } from ${JSON.stringify(moduleUrl)}; const tick=setInterval(()=>{if(!existsSync(${JSON.stringify(gate)}))return;clearInterval(tick);try{acquireInstallation(${JSON.stringify(workspace)},${JSON.stringify(mode)});process.stdout.write('ACQUIRED');setInterval(()=>{},1000);}catch(error){process.stdout.write('REFUSED:'+String(error));}},1);`], { stdio: ["ignore", "pipe", "pipe"] });
   const shared = launch("shared");
   const exclusive = launch("exclusive");
-  const output = (child: typeof shared) => new Promise<string>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => resolve(data.toString())); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
-  const sharedOutput = output(shared);
-  const exclusiveOutput = output(exclusive);
-  writeFileSync(gate, "go");
-  const results = await Promise.all([sharedOutput, exclusiveOutput]);
   try {
+    const output = (child: typeof shared) => new Promise<string>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => resolve(data.toString())); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
+    const sharedOutput = output(shared);
+    const exclusiveOutput = output(exclusive);
+    writeFileSync(gate, "go");
+    const results = await Promise.all([sharedOutput, exclusiveOutput]);
     expect(results.filter((result) => result === "ACQUIRED")).toHaveLength(1);
     expect(results.filter((result) => result.startsWith("REFUSED:") && result.includes("runtime-control:"))).toHaveLength(1);
   } finally {
-    shared.kill("SIGKILL"); exclusive.kill("SIGKILL");
-    await Promise.all([shared, exclusive].map((child) => child.exitCode !== null || child.signalCode !== null ? Promise.resolve() : new Promise<void>((resolve) => child.once("exit", () => resolve()))));
+    await Promise.all([stopChild(shared), stopChild(exclusive)]);
   }
 });
