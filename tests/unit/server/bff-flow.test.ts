@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
 import {captureArchiveReport} from "../../../src/services/archive/report-capture.js";
@@ -70,7 +71,7 @@ import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js"
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
-import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../../helpers/synthetic-storage-admission.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import {
@@ -281,13 +282,11 @@ function harness(options: {
   seedSyntheticRuntimeConfig(database);
   assert.equal("projections" in database, false, "the retired projection repositories have no database capability");
   const artifacts = createContentAddressedArtifactWriter({
-    workspaceRoot: root,
-    artifactRoot: ".tracker/artifacts",
+    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
   });
   const artifactSourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    workspaceRoot: root,
-    artifactRoot: ".tracker/artifacts",
+    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
     observeIo: (kind, bytes) => {
       if (kind === "source-read") artifactSourceReads.push(bytes);
     },

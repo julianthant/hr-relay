@@ -1,6 +1,7 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { mkdtemp, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
+import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
@@ -13,6 +14,46 @@ import type {
 
 const ARTIFACT_ROOT = ".tracker/artifacts";
 const SMALL_BYTES = Uint8Array.from([0x00, 0x10, 0x7f, 0x80, 0xff]);
+
+it("uses disjoint admitted roots and refuses storage after release", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "hrauto-disjoint-artifact-roots-"));
+  const stateRoot = join(workspace, "state");
+  const artifactRoot = join(workspace, "payloads");
+  const admission = RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot);
+  try {
+    const writer = createContentAddressedArtifactWriter({ admission });
+    const ref = await writer.put(SMALL_BYTES, { mediaType: "application/octet-stream" });
+    const reader = createServerVerifiedArtifactReader({ admission });
+    const lease = await reader.prepare(ref);
+    assert.deepEqual(await readdir(artifactRoot), [`${ref.sha256}.artifact`]);
+    assert.deepEqual(await readdir(join(stateRoot, "verified-byte-scratch")), []);
+    admission.release();
+    await assert.rejects(writer.put(SMALL_BYTES, { mediaType: "application/octet-stream" }), /released admission/);
+    await assert.rejects(writer.open(ref), /released admission/);
+    await assert.rejects(reader.verify(ref), /released admission/);
+    await assert.rejects(lease.takeBody(), /released admission/);
+  } finally {
+    admission.release();
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
+
+it("refuses artifact services during read-only first-adoption inspection", async () => {
+  const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-adoption-"));
+  const stateRoot = join(workspace, ".tracker");
+  try {
+    await mkdir(stateRoot, { mode: 0o700 });
+    await writeFile(join(stateRoot, "state.db"), "existing authority evidence");
+    assert.throws(() => RuntimeAdmission.acquireInitial(workspace, (_pair, inspection) => {
+      assert.throws(() => createContentAddressedArtifactWriter({ admission: inspection }), /read-only/u);
+      assert.throws(() => createServerVerifiedArtifactReader({ admission: inspection }), /read-only/u);
+      throw new Error("inspection-tested");
+    }), /inspection-tested/u);
+    assert.deepEqual(await readdir(stateRoot), ["state.db"]);
+  } finally {
+    await rm(workspace, { recursive: true, force: true });
+  }
+});
 
 async function collectBytes(body: ReadableStream<Uint8Array>): Promise<Buffer> {
   const chunks: Uint8Array[] = [];
@@ -39,7 +80,7 @@ async function withWrittenArtifact(
 ): Promise<void> {
   const workspace = await mkdtemp(join(tmpdir(), "hrauto-server-artifact-reader-"));
   try {
-    const writer = createContentAddressedArtifactWriter({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+    const writer = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
     const ref = await writer.put(bytes, { mediaType: "application/octet-stream" });
     await run(Object.freeze({ workspace, ref }));
   } finally {
@@ -150,8 +191,7 @@ async function expectVerifyAndPrepareToReject(
   for (const operation of ["verify", "prepare"] as const) {
     const closed: Array<Readonly<{ kind: string; fd: number }>> = [];
     const reader = createServerVerifiedArtifactReader({
-      workspaceRoot: workspace,
-      artifactRoot: ARTIFACT_ROOT,
+      admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
       observeHandleClosed(kind, handle) {
         closed.push(Object.freeze({ kind, fd: handle.fd }));
       },
@@ -175,15 +215,14 @@ describe("server verified artifact reader", () => {
   it("prepare retains one disposable exact-byte body after the source envelope changes", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-server-artifact-reader-"));
     try {
-      const writer = createContentAddressedArtifactWriter({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+      const writer = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
       const ref = await writer.put(
         Uint8Array.from([0x00, 0x10, 0x7f, 0x80, 0xff]),
         { mediaType: "application/octet-stream" },
       );
       let closed = 0;
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         observeLeaseClosed: () => {
           closed += 1;
         },
@@ -225,16 +264,14 @@ describe("server verified artifact reader", () => {
       }\r\n`);
       let closed = 0;
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         observeLeaseClosed: () => {
           closed += 1;
         },
       });
 
       const publicWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
       });
       assert.deepEqual(await collectNodeBytes(await publicWriter.open(ref)), Buffer.from("414243fbef", "hex"));
 
@@ -256,10 +293,9 @@ describe("server verified artifact reader", () => {
         ref,
         `{"payloadBase64":"","ref":{"id":"${ref.id}","sha256":"${ref.sha256}","bytes":0e9999,"mediaType":"${ref.mediaType}"}}`,
       );
-      const reader = createServerVerifiedArtifactReader({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+      const reader = createServerVerifiedArtifactReader({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
       const publicWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
       });
 
       assert.deepEqual(await collectNodeBytes(await publicWriter.open(ref)), Buffer.alloc(0));
@@ -277,9 +313,9 @@ describe("server verified artifact reader", () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-server-artifact-reader-"));
     try {
       const mediaType = `application/${"x".repeat(4_096)}`;
-      const writer = createContentAddressedArtifactWriter({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+      const writer = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
       const ref = await writer.put(SMALL_BYTES, { mediaType });
-      const reader = createServerVerifiedArtifactReader({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+      const reader = createServerVerifiedArtifactReader({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
 
       assert.deepEqual(await collectNodeBytes(await writer.open(ref)), Buffer.from(SMALL_BYTES));
       await reader.verify(ref);
@@ -299,8 +335,7 @@ describe("server verified artifact reader", () => {
       const payloadBase64 = Buffer.from(source).toString("base64");
       await writeStoredEnvelope(workspace, ref, envelope(ref, payloadBase64));
       const publicWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
       });
 
       await assert.rejects(publicWriter.open(ref));
@@ -315,8 +350,7 @@ describe("server verified artifact reader", () => {
       await withWrittenArtifact(source, async ({ workspace, ref }) => {
         const retained: number[] = [];
         const reader = createServerVerifiedArtifactReader({
-          workspaceRoot: workspace,
-          artifactRoot: ARTIFACT_ROOT,
+          admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
           observeRetainedBytes(_phase, bytes) {
             retained.push(bytes);
           },
@@ -365,8 +399,7 @@ describe("server verified artifact reader", () => {
     await withWrittenArtifact(source, async ({ workspace, ref }) => {
       const observations: Array<Readonly<{ kind: VerifiedArtifactIoKind; bytes: number }>> = [];
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         observeIo(kind, bytes) {
           observations.push(Object.freeze({ kind, bytes }));
         },
@@ -403,7 +436,7 @@ describe("server verified artifact reader", () => {
       await rm(storedPath);
       await writeFile(targetPath, "PRIVATE_TARGET_BYTES", "utf8");
       await symlink(targetPath, storedPath);
-      const reader = createServerVerifiedArtifactReader({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+      const reader = createServerVerifiedArtifactReader({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
 
       for (const operation of [() => reader.verify(ref), () => reader.prepare(ref)]) {
         await assert.rejects(operation, (error: unknown) => {
@@ -434,8 +467,7 @@ describe("server verified artifact reader", () => {
     await withWrittenArtifact(SMALL_BYTES, async ({ workspace, ref }) => {
       const observations: Array<Readonly<{ kind: VerifiedArtifactIoKind; bytes: number }>> = [];
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         observeIo(kind, bytes) {
           observations.push(Object.freeze({ kind, bytes }));
         },
@@ -457,8 +489,7 @@ describe("server verified artifact reader", () => {
       const closed: Array<Readonly<{ kind: string; fd: number }>> = [];
       const preparedReads: number[] = [];
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         observeIo(kind, bytes) {
           if (kind === "prepared-read") {
             preparedReads.push(bytes);
@@ -483,8 +514,7 @@ describe("server verified artifact reader", () => {
     await withWrittenArtifact(source, async ({ workspace, ref }) => {
       let closed = 0;
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         observeLeaseClosed: () => {
           closed += 1;
         },
@@ -515,8 +545,7 @@ describe("server verified artifact reader", () => {
     await withWrittenArtifact(SMALL_BYTES, async ({ workspace, ref }) => {
       let injected = false;
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         injectFault(point) {
           if (!injected && point === faultPoint) {
             injected = true;
@@ -548,8 +577,7 @@ describe("server verified artifact reader", () => {
       let injected = false;
       const closed: Array<Readonly<{ kind: string; fd: number }>> = [];
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         injectFault(point) {
           if (!injected && point === faultPoint) {
             injected = true;
@@ -580,8 +608,7 @@ describe("server verified artifact reader", () => {
       const cleanup = new Error("PRIVATE_PREPARED_CLOSE_FAILURE");
       const closed: Array<Readonly<{ kind: string; fd: number }>> = [];
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         injectFault(point) {
           if (point === "prepared-sync") throw primary;
           if (point === "prepared-close") throw cleanup;
@@ -614,8 +641,7 @@ describe("server verified artifact reader", () => {
     await withWrittenArtifact(SMALL_BYTES, async ({ workspace, ref }) => {
       let closed = 0;
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         injectFault(point) {
           if (point === "lease-read") throw new Error("PRIVATE_LEASE_READ_FAILURE");
         },
@@ -643,8 +669,7 @@ describe("server verified artifact reader", () => {
     await withWrittenArtifact(SMALL_BYTES, async ({ workspace, ref }) => {
       let closed = 0;
       const reader = createServerVerifiedArtifactReader({
-        workspaceRoot: workspace,
-        artifactRoot: ARTIFACT_ROOT,
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)),
         injectFault(point) {
           if (point === "lease-close") throw new Error("PRIVATE_LEASE_CLOSE_FAILURE");
         },
@@ -668,7 +693,7 @@ describe("server verified artifact reader", () => {
 
   it("a fresh call re-verifies a source changed after an earlier success", async () => {
     await withWrittenArtifact(SMALL_BYTES, async ({ workspace, ref }) => {
-      const reader = createServerVerifiedArtifactReader({ workspaceRoot: workspace, artifactRoot: ARTIFACT_ROOT });
+      const reader = createServerVerifiedArtifactReader({ admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ARTIFACT_ROOT)) });
       await reader.verify(ref);
       await writeStoredEnvelope(workspace, ref, '{"changed":"after verified call"}\n');
 

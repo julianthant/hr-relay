@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { generatedUpdateId, pendingGeneratedUpdateIds } from "../../src/core/generated-artifact-projection.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -47,7 +48,7 @@ import {
   ArtifactSinkConflictError,
   createXlsxRetentionSink,
 } from "../../src/infra/artifacts/xlsx-retention-sink.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {
@@ -147,7 +148,7 @@ function outboxRow(database: AuthorityDatabase, input: Readonly<{
 }
 
 function projectorFor(database: AuthorityDatabase, root: string, clock: Readonly<{ now: () => Date }>) {
-  const artifacts = createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"});
+  const artifacts = createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts"))});
   artifactReadiness.push(artifacts.ready);
   return createArtifactSinkProjector({
     authority: database.authority,

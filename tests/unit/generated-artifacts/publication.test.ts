@@ -1,9 +1,10 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import type { ArtifactRef } from "../../../src/domain/artifacts.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createArtifactSinkProjector, ArtifactSinkBusyError, type ArtifactSinkProjectorOptions } from "../../../src/infra/artifacts/artifact-sink-projector.js";
 import { createXlsxRetentionSink, type PublicationFaultPoint } from "../../../src/infra/artifacts/xlsx-retention-sink.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
@@ -11,7 +12,7 @@ import { foundationFixture, update, id, NOW } from "../database-foundation/fixtu
 
 async function fixture() {
   const f = foundationFixture();
-  const artifacts = createContentAddressedArtifactWriter({ workspaceRoot: f.root, artifactRoot: ".tracker/artifacts" });
+  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/artifacts")) });
   await artifacts.ready;
   const path = join(f.root, "retention.xlsx");
   const make = (db = f.db, fault?: (point: PublicationFaultPoint) => void | Promise<void>, settlementFault?: ArtifactSinkProjectorOptions["fault"], destination = path) => createArtifactSinkProjector({

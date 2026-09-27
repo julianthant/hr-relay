@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
@@ -22,8 +24,7 @@ function fixture() {
   const captures = {
     authority: f.database.authority.diagnosticBundles,
     artifactReader: createServerVerifiedArtifactReader({
-      workspaceRoot: f.world.stateRoot,
-      artifactRoot: ".tracker/artifacts",
+      admission: RuntimeAdmission.syntheticRoots(join(f.world.stateRoot, ".tracker"), join(f.world.stateRoot, ".tracker/artifacts")),
     }),
   };
   const bundle = (seed: number, origin: DiagnosticBundle["origin"], runId = run.envelope.runId) => {

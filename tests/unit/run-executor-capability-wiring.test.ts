@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D162 executor capability wiring (ref data-intake-and-edit-data §4.11): the run executor mints
@@ -341,8 +342,7 @@ function tempArtifactWriter(): ContentAddressedArtifactWriter {
   const workspaceRoot = mkdtempSync(join(tmpdir(), "hrauto-wiring-artifacts-"));
   disposers.push(() => rmSync(workspaceRoot, { recursive: true, force: true }));
   return createContentAddressedArtifactWriter({
-    workspaceRoot,
-    artifactRoot: ".tracker/artifacts",
+    admission: RuntimeAdmission.syntheticRoots(join(workspaceRoot, ".tracker"), join(workspaceRoot, ".tracker/artifacts")),
   });
 }
 

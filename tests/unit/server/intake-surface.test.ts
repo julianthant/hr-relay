@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
@@ -30,7 +31,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
@@ -103,8 +104,7 @@ function surface(): Surface {
 
 
   const artifacts = createContentAddressedArtifactWriter({
-    workspaceRoot: root,
-    artifactRoot: ".tracker/artifacts",
+    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
   });
   const parser = createIntakeParser({ artifacts });
   const projections = {

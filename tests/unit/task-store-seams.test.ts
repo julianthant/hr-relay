@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -192,19 +193,15 @@ describe("task, store, session, provider, and artifact seams", () => {
   it("atomically persists and deduplicates content bytes without exposing a backing path", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifacts-"));
     try {
-      assert.throws(() => createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker-rebuild/artifacts",
-      }), /Invalid input/);
+      assert.throws(() => Reflect.apply(createContentAddressedArtifactWriter, undefined, [{ admission: undefined }]),
+        /runtime-admission: required/);
       const writer = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
       });
       const bytes = new TextEncoder().encode("same immutable bytes");
       const first = await writer.put(bytes, { mediaType: "text/plain" });
       const reopenedWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
       });
       const second = await reopenedWriter.put(Readable.from([bytes]), { mediaType: "text/plain" });
       assert.deepEqual(second, first);
@@ -237,8 +234,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       let armed = true;
       try {
         const faulting = createContentAddressedArtifactWriter({
-          workspaceRoot: workspace,
-          artifactRoot: ".tracker/artifacts",
+          admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
           injectFault(actual) {
             if (armed && actual === step) {
               armed = false;
@@ -248,8 +244,7 @@ describe("task, store, session, provider, and artifact seams", () => {
         });
         await assert.rejects(faulting.put(bytes, { mediaType: "text/plain" }), new RegExp(`injected ${step}`));
         const recovery = createContentAddressedArtifactWriter({
-          workspaceRoot: workspace,
-          artifactRoot: ".tracker/artifacts",
+          admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
         });
         const ref = await recovery.put(bytes, { mediaType: "text/plain" });
         assert.deepEqual(await readStream(await recovery.open(ref)), bytes);
@@ -271,11 +266,13 @@ describe("task, store, session, provider, and artifact seams", () => {
       "../../src/infra/artifacts/content-addressed-artifact-writer.ts",
       import.meta.url,
     ).href;
+    const admissionModuleUrl = new URL("../../src/infra/runtime-control/admission.ts", import.meta.url).href;
     const childSource = `
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(writerModuleUrl)};
+      import { RuntimeAdmission } from ${JSON.stringify(admissionModuleUrl)};
+      import { join } from "node:path";
       const writer = createContentAddressedArtifactWriter({
-        workspaceRoot: ${JSON.stringify(workspace)},
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(${JSON.stringify(workspace)}, ".tracker"), join(${JSON.stringify(workspace)}, ".tracker/artifacts")),
         injectFault(step) {
           if (step === "temp-synced") process.kill(process.pid, "SIGKILL");
         },
@@ -310,8 +307,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       assert.match(crashEntries[0] ?? "", new RegExp(`^${sha256}\\.${String(child.pid)}\\..+\\.tmp$`, "u"));
 
       const recovery = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
       });
       const ref = await recovery.put(bytes, { mediaType: "text/plain" });
       assert.equal(ref.sha256, sha256);
@@ -322,15 +318,9 @@ describe("task, store, session, provider, and artifact seams", () => {
     }
   });
 
-  it("rejects relative workspaces, a symlinked workspace, and symlinked rebuild roots", async () => {
-    const relativeWriter = createContentAddressedArtifactWriter({
-      workspaceRoot: "relative-workspace",
-      artifactRoot: ".tracker/artifacts",
-    });
-    await assert.rejects(
-      relativeWriter.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
-      /workspaceRoot must be absolute/,
-    );
+  it("rejects relative fixture roots and symlinked storage roots", async () => {
+    assert.throws(() => RuntimeAdmission.syntheticRoots("relative-workspace", "relative-workspace/artifacts"),
+      /fixture path must be absolute/);
 
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-symlink-"));
     const aliasRoot = await mkdtemp(join(tmpdir(), "hrauto-artifact-alias-"));
@@ -338,24 +328,12 @@ describe("task, store, session, provider, and artifact seams", () => {
     try {
       const workspaceAlias = join(aliasRoot, "workspace");
       await symlink(workspace, workspaceAlias, "dir");
-      const aliasWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspaceAlias,
-        artifactRoot: ".tracker/artifacts",
-      });
-      await assert.rejects(
-        aliasWriter.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
-        /artifact workspace root cannot be a symbolic link/,
-      );
+      assert.throws(() => RuntimeAdmission.syntheticRoots(join(workspaceAlias, ".tracker"), join(workspaceAlias, ".tracker/artifacts")),
+        /unsafe synthetic fixture ancestor/);
 
       await symlink(outside, join(workspace, ".tracker"), "dir");
-      const writer = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
-      });
-      await assert.rejects(
-        writer.put(new Uint8Array(), { mediaType: "application/octet-stream" }),
-        /cannot be a symbolic link/,
-      );
+      assert.throws(() => RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
+        /unsafe synthetic fixture ancestor/);
     } finally {
       await rm(workspace, { recursive: true, force: true });
       await rm(aliasRoot, { recursive: true, force: true });
@@ -367,8 +345,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-corrupt-"));
     try {
       const writer = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
       });
       const bytes = new TextEncoder().encode("corruption fixture");
       const ref = await writer.put(bytes, { mediaType: "text/plain" });
@@ -397,12 +374,10 @@ describe("task, store, session, provider, and artifact seams", () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-concurrent-"));
     try {
       const firstWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
       });
       const secondWriter = createContentAddressedArtifactWriter({
-        workspaceRoot: workspace,
-        artifactRoot: ".tracker/artifacts",
+        admission: RuntimeAdmission.syntheticRoots(join(workspace, ".tracker"), join(workspace, ".tracker/artifacts")),
       });
       const bytes = new TextEncoder().encode("concurrent immutable bytes");
       const results = await Promise.all([

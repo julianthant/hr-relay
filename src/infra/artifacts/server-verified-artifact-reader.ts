@@ -1,8 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
 import { lstat, mkdir, open, realpath, unlink, type FileHandle } from "node:fs/promises";
-import { isAbsolute, join, resolve, sep } from "node:path";
-import { RebuildArtifactRootSchema } from "../../config/define-runtime-isolation.js";
+import { join } from "node:path";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../domain/artifacts.js";
 
 const IO_CHUNK_BYTES = 64 * 1024;
@@ -24,8 +24,7 @@ export type VerifiedArtifactFaultPoint =
   | "lease-close";
 
 export interface ServerVerifiedArtifactReaderOptions {
-  readonly workspaceRoot: string;
-  readonly artifactRoot: unknown;
+  readonly admission: RuntimeAdmission;
   readonly observeIo?: (kind: VerifiedArtifactIoKind, bytes: number) => void;
   /** Conservative upper bound for reader-owned live byte-buffer capacity in the active phase. */
   readonly observeRetainedBytes?: (phase: VerifiedArtifactMemoryPhase, bytes: number) => void;
@@ -107,30 +106,25 @@ async function rejectSymlink(path: string, label: string): Promise<void> {
   }
 }
 
-async function initializeRoots(workspaceRoot: string, artifactRootInput: unknown): Promise<ReaderRoots> {
-  if (!isAbsolute(workspaceRoot)) throw new Error("artifact workspaceRoot must be absolute");
-  const workspace = resolve(workspaceRoot);
-  if (workspace === sep) throw new Error("artifact workspaceRoot cannot be the filesystem root");
-  const artifactRoot = RebuildArtifactRootSchema.parse(artifactRootInput);
-  await rejectSymlink(workspace, "artifact workspace root");
-  const trackerRoot = join(workspace, ".tracker");
-  const artifactPath = join(workspace, artifactRoot);
-  const scratchPath = join(trackerRoot, "verified-byte-scratch");
-  await rejectSymlink(trackerRoot, "rebuild state root");
-  await mkdir(trackerRoot, { recursive: true, mode: 0o700 });
+async function initializeRoots(admission: RuntimeAdmission): Promise<ReaderRoots> {
+  admission.assertWritable();
+  const artifactPath = admission.artifactRoot;
+  const scratchPath = join(admission.stateRoot, "verified-byte-scratch");
+  admission.assertArtifactRoot(artifactPath);
+  admission.assertStateRoot(scratchPath);
   await rejectSymlink(artifactPath, "rebuild artifact root");
+  admission.assertLive();
   await mkdir(artifactPath, { recursive: true, mode: 0o700 });
   await rejectSymlink(scratchPath, "verified-byte scratch root");
+  admission.assertLive();
   await mkdir(scratchPath, { recursive: true, mode: 0o700 });
-  const [workspaceReal, artifactReal, scratchReal] = await Promise.all([
-    realpath(workspace),
+  admission.assertLive();
+  await Promise.all([
     realpath(artifactPath),
     realpath(scratchPath),
   ]);
-  if (!artifactReal.startsWith(`${workspaceReal}${sep}`) || !scratchReal.startsWith(`${workspaceReal}${sep}`)) {
-    throw new Error("verified artifact reader root escapes its workspace");
-  }
-  return Object.freeze({ artifactRoot: artifactReal, scratchRoot: scratchReal });
+  admission.assertLive();
+  return Object.freeze({ artifactRoot: artifactPath, scratchRoot: scratchPath });
 }
 
 async function createAnonymousScratch(
@@ -1029,6 +1023,7 @@ async function inspectSnapshot(
 function createLease(
   handle: FileHandle,
   ref: ArtifactRef,
+  admission: RuntimeAdmission,
   observeIo: ServerVerifiedArtifactReaderOptions["observeIo"],
   injectFault: ServerVerifiedArtifactReaderOptions["injectFault"],
   observeLeaseClosed: ServerVerifiedArtifactReaderOptions["observeLeaseClosed"],
@@ -1064,11 +1059,15 @@ function createLease(
   return Object.freeze({
     ref: Object.freeze(ref),
     async takeBody() {
+      try { admission.assertLive(); }
+      catch (error: unknown) { await dispose(); throw error; }
       if (taken) throw new Error(`verified artifact ${ref.id} body lease is single-use`);
       if (closed) throw new Error(`verified artifact ${ref.id} body lease is disposed`);
       taken = true;
       return new ReadableStream<Uint8Array>({
         async pull(controller) {
+          try { admission.assertLive(); }
+          catch (error: unknown) { await dispose(); controller.error(error); return; }
           if (closed) {
             controller.error(new Error(`verified artifact ${ref.id} body lease closed before EOF`));
             return;
@@ -1087,6 +1086,7 @@ function createLease(
             observeRetainedBytes?.("lease-read", IO_CHUNK_BYTES * 2);
             const buffer = Buffer.allocUnsafe(Math.min(IO_CHUNK_BYTES, ref.bytes - offset));
             const { bytesRead } = await handle.read(buffer, 0, buffer.byteLength, offset);
+            admission.assertLive();
             if (bytesRead === 0) {
               throw new VerifiedArtifactOperationalError({
                 cause: new Error(`verified artifact ${ref.id} body ended before its authoritative length`),
@@ -1116,16 +1116,22 @@ function createLease(
 export function createServerVerifiedArtifactReader(
   options: ServerVerifiedArtifactReaderOptions,
 ): ServerVerifiedArtifactReader & { readonly ready: Promise<void> } {
-  const rootsPromise = initializeRoots(options.workspaceRoot, options.artifactRoot);
+  const admission = requireRuntimeAdmission(options.admission);
+  admission.assertWritable();
+  const rootsPromise = initializeRoots(admission);
   const inspect = async (
     refInput: ArtifactRef,
     signal: AbortSignal | undefined,
     retain: boolean,
   ): Promise<VerifiedByteLease | undefined> => {
+    admission.assertLive();
+    admission.assertArtifactRoot(admission.artifactRoot);
+    admission.assertStateRoot(admission.stateRoot);
     const ref = ArtifactRefSchema.parse(refInput);
     let roots: ReaderRoots;
     try {
       roots = await rootsPromise;
+      admission.assertLive();
     } catch (error: unknown) {
       if (isAborted(error, signal)) throw error;
       throw operationalFailure(error);
@@ -1141,6 +1147,7 @@ export function createServerVerifiedArtifactReader(
         options.injectFault,
         options.observeHandleClosed,
       );
+      admission.assertLive();
     } catch (error: unknown) {
       if (isAborted(error, signal) || error instanceof VerifiedArtifactSourceMissingError) throw error;
       throw operationalFailure(error);
@@ -1157,6 +1164,7 @@ export function createServerVerifiedArtifactReader(
       }
       options.observeRetainedBytes?.("parse-and-decode", IO_CHUNK_BYTES * 4);
       await inspectSnapshot(snapshot, ref, prepared, signal, options.observeIo, options.injectFault);
+      admission.assertLive();
       await closeTransientHandle(snapshot, "snapshot", options, () => {
         snapshotClosed = true;
       });
@@ -1165,10 +1173,12 @@ export function createServerVerifiedArtifactReader(
       await prepared.sync();
       options.observeRetainedBytes?.("prepared-verify", IO_CHUNK_BYTES);
       await verifyPrepared(prepared, ref, signal, options.observeIo, options.injectFault);
+      admission.assertLive();
       signal?.throwIfAborted();
       return createLease(
         prepared,
         ref,
+        admission,
         options.observeIo,
         options.injectFault,
         options.observeLeaseClosed,
@@ -1214,7 +1224,7 @@ export function createServerVerifiedArtifactReader(
      * itself reject unhandled whenever `verify()`/`prepare()` already reported it.
      */
     get ready(): Promise<void> {
-      return rootsPromise.then(() => undefined);
+      return rootsPromise.then(() => { admission.assertLive(); });
     },
     async verify(ref: ArtifactRef, signal?: AbortSignal) {
       await inspect(ref, signal, false);

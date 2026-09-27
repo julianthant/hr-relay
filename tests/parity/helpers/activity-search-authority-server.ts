@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { randomUUID } from "node:crypto";
 import { startSeededServer } from "./seeded-bff.js";
 import type { ParityBundleProof } from "./bundle.js";
@@ -25,7 +27,7 @@ export async function startActivitySearchAuthorityServer(input:{distDir:string;b
     });
     const sourceIdentity=database.getSourceDatabaseIdentity(),activity=composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)});
     const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(47),authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:query=>database.authority.runs.search(query)}))}});
-    const artifacts=createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"});await artifacts.ready;
+    const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts"))});await artifacts.ready;
     return {activity,search,xlsxExports:createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)}),searchMetadataExports:{export:request=>exportSearchMetadata({search,sourceIdentity},request)}};
   }});
   return {...server,authority:()=>{if(authority===undefined)throw new Error("activity-proof-authority-unavailable");return authority;}};

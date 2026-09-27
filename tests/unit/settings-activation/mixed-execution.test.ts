@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { WorkerIdSchema } from "../../../src/domain/ids.js";
 import * as geminiOcr from "../../../src/infra/providers/gemini-ocr-extract.js";
 import { runWorkerLoop } from "../../../src/core/worker-loop.js";
@@ -55,7 +57,7 @@ it("actual browser launch and execution resources use each run's retained displa
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 },
     "providers.gemini.models": { set: ["synthetic-model-b", "synthetic-model-b-fallback"] } }).state, "applied");
   const next = f.create();
-  const artifacts = createContentAddressedArtifactWriter({ workspaceRoot: f.root, artifactRoot: ".tracker/artifacts" }); await artifacts.ready;
+  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/artifacts")) }); await artifacts.ready;
   const composeOcr = vi.spyOn(geminiOcr, "createGeminiOcrExtractAdapter");
   const factory = createRunResourcesFactory({ authority: f.database.authority, artifacts, clock: f.clock,
     ids: { uuid: randomUUID }, isolation: rebuildRuntimeIsolation, protectedSecrets: createCredentialStore({ stateRoot: f.root }),

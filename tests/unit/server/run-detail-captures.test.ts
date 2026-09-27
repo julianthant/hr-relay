@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import {captureArchiveReport,genericArchiveSection} from "../../../src/services/archive/report-capture.js";
 import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
 
@@ -15,7 +16,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import type { z } from "zod";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../src/domain/artifacts.js";
 import { CaptureListSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
@@ -103,8 +104,7 @@ function harness() {
   writeArtifactEnvelope(world.stateRoot, refOf(ATTACHMENT), BYTES);
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    workspaceRoot: world.stateRoot,
-    artifactRoot: ".tracker/artifacts",
+    admission: RuntimeAdmission.syntheticRoots(join(world.stateRoot, ".tracker"), join(world.stateRoot, ".tracker/artifacts")),
     observeIo: (kind, bytes) => {
       if (kind === "source-read") sourceReads.push(bytes);
     },
