@@ -70,7 +70,7 @@ import { repeatEvidenceDigest } from "../../domain/run/rerun.js";
 import { archivedRunContentDigest } from "../../domain/archive/model.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
-import { existsSync, statSync, lstatSync, openSync, closeSync, readFileSync, fstatSync, constants } from "node:fs";
+import { existsSync, statSync, lstatSync, openSync, closeSync, readFileSync, fstatSync, fsyncSync, unlinkSync, constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { z } from "zod";
@@ -2014,6 +2014,29 @@ function assertRelocationPublications(before: DatabaseSync, after: DatabaseSync,
   }
 }
 
+function assertNoRelocationCopyCompanions(path: string): void {
+  if (lstatSync(`${path}-wal`, { throwIfNoEntry: false }) !== undefined
+    || lstatSync(`${path}-shm`, { throwIfNoEntry: false }) !== undefined) {
+    throw new Error("storage-relocation: stage authority copy has preexisting companion");
+  }
+}
+
+function removeRelocationCopyInspectionCompanions(path: string): void {
+  for (const candidate of [`${path}-wal`, `${path}-shm`]) {
+    const info = lstatSync(candidate, { throwIfNoEntry: false });
+    if (info !== undefined && (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1
+      || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0
+      || (candidate.endsWith("-wal") && info.size !== 0))) {
+      throw new Error("storage-relocation: stage authority inspection created unsafe companion");
+    }
+  }
+  for (const candidate of [`${path}-wal`, `${path}-shm`]) {
+    if (lstatSync(candidate, { throwIfNoEntry: false }) !== undefined) unlinkSync(candidate);
+  }
+  const fd = openSync(dirname(path), constants.O_RDONLY | constants.O_NOFOLLOW);
+  try { fsyncSync(fd); } finally { closeSync(fd); }
+}
+
 function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
   return database.prepare("SELECT * FROM settings_snapshots ORDER BY record_key").all().map((raw) => {
     const row = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw);
@@ -3104,6 +3127,7 @@ export class AuthorityDatabase implements Disposable {
       intent.stageAuthority.backupSha256, "authority");
     try {
       copyAdmission.assertReadOnlyAuthorityDatabase(verifiedStageBackupPath);
+      assertNoRelocationCopyCompanions(verifiedStageBackupPath);
       const baseline = new DatabaseSync(verifiedStageBackupPath, { readOnly: true,
         enableForeignKeyConstraints: true, enableDoubleQuotedStringLiterals: false, allowExtension: false,
         timeout: 5000, defensive: true });
@@ -3136,14 +3160,14 @@ export class AuthorityDatabase implements Disposable {
         const snapshots = relocationSettingsSnapshots(this.#database);
         const priorSnapshots = relocationSettingsSnapshots(baseline);
         const added = snapshots.filter((row) =>
-          AuthorityRecordFingerprintRowSchema.parse(JSON.parse(row)).record_key === intent.snapshot.configSnapshotId);
+          AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(row)).record_key === intent.snapshot.configSnapshotId);
         if (added.length !== 1 || snapshots.length !== priorSnapshots.length + 1
           || canonicalJsonStringify(snapshots.filter((row) => !added.includes(row))) !== canonicalJsonStringify(priorSnapshots)) {
           throw new Error("storage-relocation: activation snapshot history changed");
         }
         const addedRow = added[0];
         if (addedRow === undefined) throw new Error("storage-relocation: activation snapshot missing");
-        const addedRecord = AuthorityRecordFingerprintRowSchema.parse(JSON.parse(addedRow));
+        const addedRecord = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(JSON.parse(addedRow));
         if (canonicalJsonStringify(ConfigSnapshotRecordSchema.parse(JSON.parse(addedRecord.record_json)))
           !== canonicalJsonStringify(intent.snapshot)) throw new Error("storage-relocation: activation snapshot differs from intent");
         const app = relocationAppSettings(this.#database);
@@ -3161,7 +3185,7 @@ export class AuthorityDatabase implements Disposable {
         }
         return "committed";
         });
-      } finally { baseline.close(); }
+      } finally { baseline.close(); removeRelocationCopyInspectionCompanions(verifiedStageBackupPath); }
     } finally { copyAdmission.release(); }
   }
 
