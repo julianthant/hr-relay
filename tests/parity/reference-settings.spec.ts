@@ -31,7 +31,7 @@ registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
  */
 test.describe("settings panes", () => {
   const PANES: readonly { variant: string; section: string; heading: string }[] = [
-    { variant: "capabilities", section: "workflow-capabilities", heading: "Where a dry run stops" },
+    { variant: "capabilities", section: "workflow-capabilities", heading: "By workflow" },
   ];
   for (const pane of PANES) {
     const a11yName = `settings-pane-${pane.variant}.a11y.yml`;
@@ -46,6 +46,8 @@ test.describe("settings panes", () => {
       await assertThemeApplied(page, PARITY_THEMES[0]);
 
       await expect(page.getByRole("heading", { name: pane.heading, exact: true })).toBeVisible();
+      await expect(page.getByText("Where a dry run stops", { exact: true })).toBeVisible();
+      await expect(page.getByRole("group", { name: "Workflow capabilities" }).locator(".ds-result-row")).toHaveCount(6);
       await page.waitForTimeout(120);
       expect(errors, `page errors while rendering the ${pane.variant} pane`).toEqual([]);
       const snapshot = await page.locator("body").ariaSnapshot();

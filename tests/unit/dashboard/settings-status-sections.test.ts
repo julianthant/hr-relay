@@ -207,13 +207,17 @@ describe("Workflow capabilities (SE41/SE42)", () => {
   });
 
   it("draws all three cell shapes, each with its own word", async () => {
-    const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
-    // available — the thing itself, never a tick
+    await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
+    const groups = [...mounted().querySelectorAll(".settings-reference-disclosure")];
+    assert.equal(groups.length, 3);
+    assert.ok(groups[0]?.textContent?.includes("Not applicable"));
+    assert.ok(groups[0]?.textContent?.includes("writes to no system of record"));
+    for (const group of groups.slice(1)) {
+      const trigger = group.querySelector("button"); assert.ok(trigger);
+      await act(async () => { trigger.click(); });
+    }
+    const text = mounted().textContent ?? "";
     assert.ok(text.includes("stops at clear-pending"), text);
-    // not-applicable — the decision
-    assert.ok(text.includes("N/A"), text);
-    assert.ok(text.includes("writes to no system of record"), text);
-    // not-built — the gap, with its named offender
     assert.ok(text.includes("Not built"), text);
     assert.ok(text.includes("write-anyway declares no preview arm"), text);
   });
@@ -226,20 +230,25 @@ describe("Workflow capabilities (SE41/SE42)", () => {
     assert.ok(document.body.textContent?.includes("Offers a rehearsal that reads everything for real and writes nothing."));
   });
 
-  it("counts, per capability, how many workflows answer it", async () => {
-    const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
-    // Dry run: only `separations` is supported, of three rows.
-    assert.ok(text.includes("1 of 3"), text);
+  it("groups the six actual capabilities by workflow", async () => {
+    await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
+    assert.equal(mounted().querySelectorAll(".settings-reference-disclosure").length, 3);
+    assert.equal(mounted().querySelectorAll(".settings-reference-disclosure[data-state=open]").length, 1);
   });
 
-  it("gives the dry-run posture its own reading, including the refusal", async () => {
+  it("gives each workflow its own dry-run posture, including the refusal", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
     assert.ok(text.includes("Where a dry run stops"), text);
-    assert.ok(text.includes("Stops after the prepare of clear-pending"), text);
-    assert.ok(
-      text.includes("write-anyway commits and declares no preview arm"),
-      text,
-    );
+    const supported = [...mounted().querySelectorAll(".settings-reference-disclosure")].find(node => node.textContent?.includes("Separations"));
+    assert.ok(supported);
+    const supportedTrigger = supported.querySelector("button"); assert.ok(supportedTrigger);
+    await act(async () => { supportedTrigger.click(); });
+    assert.ok(supported.textContent?.includes("Stops after the prepare of clear-pending"));
+    const refusal = [...mounted().querySelectorAll(".settings-reference-disclosure")].find(node => node.textContent?.includes("unpreviewable-fixture"));
+    assert.ok(refusal);
+    const trigger = refusal.querySelector("button"); assert.ok(trigger);
+    await act(async () => { trigger.click(); });
+    assert.ok(refusal.textContent?.includes("write-anyway commits and declares no preview arm"));
   });
 
   it("falls back to the workflow's own id, and says that is what it is", async () => {

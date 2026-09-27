@@ -6239,9 +6239,11 @@ workflow by failing the build. Nothing composes prose from a label.
 
 **The UI catalog is the same contract at system scope — and since D303 (2026-09-01) the same
 SHAPE.** `ui-catalog.tsx` draws a structure rail beside a record column: a `listbox` of every
-semantic id, nested under the screen its `screen` field names and grouped by system, with
-`verifiedAt` on every row; and one record printing the selected entry whole with the same
-chip-first, one-tinted-mark discipline (`observation` is the tinted kind). `ref operator-trust` §5.8
+semantic entry, nested under the screen its `screen` field names and grouped by system, with
+its label, kind and `verifiedAt` on every row; and one record printing the selected entry whole.
+The 2026-09-26 Settings amendment keeps each full id in the row's title and accessible name and
+the selected record, using the shared Properties and Verification & evidence presentation.
+`ref operator-trust` §5.8
 owns what the rail and the record each must carry. Its entry no longer sits beside the
 explorer's in the panel's action bar (D295): it is `Settings -> Help -> UI catalog`. The explorer's
 own entry stays a `ghost` button because it is not a command.

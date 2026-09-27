@@ -269,7 +269,36 @@ Playwright-cli captures cover the kit and assembled Models in dark/light at 1440
 The setup/preflight parity inputs were unchanged by this kit and scoped CSS outcome; the
 accepted Diagnostics lane retains its separate 25-case parity proof. Runtime relocation
 remains pending; its separate lane is working on a control-locator and lease foundation.
-The three reference tabs remain in progress.
+The three reference tabs are recorded separately below.
+
+### Reference tabs and runtime-path allocation — 2026-09-26
+
+The reference-tab category uses the shared body primitives for Workflow capabilities, Keyboard,
+and UI catalog. Capabilities preserves all six served facts and each workflow's dry-run boundary;
+Keyboard derives its three groups from the existing shortcut registry. The catalog preserves
+route-owned search/view, screen nesting, stable selection, and the complete selected record.
+The approved label-led rail amendment is recorded together in D303, operator-trust §5.8, and
+dashboard-surfaces §9.5.3. Catalog refusal states remain fail-loud.
+
+The initial candidate `a2eac3438` passed 63 focused unit tests, 17 affected architecture tests,
+typecheck, scoped lint, build, one capabilities parity assertion, one catalog interaction case,
+and two stale/malformed catalog refusal cases. Only the capabilities reference triple changed.
+Root inspection found that inter-row spacing applied only to the last screen group. The accepted
+correction `ef9394b0e` gives every screen wrapper a shared gap, verified at 5.39px in dark 1440×900
+and light 1024×720 selected/hover captures. Its focused interaction assertion and build pass;
+`5997b7be7` removes an unnecessary test assertion, after which scoped lint passes. These source
+commits and this contract amendment are assembled into the Settings task
+branch together. Ten of eleven Settings tabs are complete; Paths still requires its backend work.
+No zoom tests ran. Evidence is retained under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-5/reference-tabs/`.
+
+Runtime-path work is split into independent outcomes. The ordinary-path category owns editable
+browser-profile, Duo credential, and Duo extension locations with the existing Settings CAS,
+readback, and new-run activation. These paths remain independent: changing the profile does not
+implicitly rebase the Duo credential. Changed paths require validation before activation; a fresh
+profile is not populated by copying the old profile. Existing runs retain their immutable snapshots.
+State/database and artifact locations remain with the verified offline relocation category.
+Neither category may move real data or modify real credentials during verification.
 
 ## Outcome and scope
 <!-- roadmap: dash-ui-settings-records -->

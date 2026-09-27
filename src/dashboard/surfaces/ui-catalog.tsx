@@ -1,47 +1,7 @@
 import { observeAsyncResource } from "../state/async-resource.js";
-/**
- * The generated UI catalog surface (ref operator-trust §1.3, ref dashboard-surfaces §13, D177),
- * mounted as the `ui-catalog` section of the Settings takeover (D295).
- *
- * ## What this is, and why it is worth a surface
- *
- * `generated/ui-catalog.json` is the canonical answer to "what does this system
- * know how to see and touch on a page, and when was that last verified against
- * the live system". Before it had a surface it was reachable only from a CLI
- * (`npm run selector:search`) and from two markdown projections. The operator
- * who needs it most is the one already in the dashboard looking at a failed
- * run, and the ONE thing that would make them distrust it is a catalog that
- * disagrees with the drivers — so the server refuses to serve a stale artifact
- * at all, and this surface renders that refusal in the generator's own words.
- *
- * ## SHAPE — a rail beside a record (2026-09-01)
- *
- * The first cut drew every entry as a seven-line block of identical chips:
- * five entries per screen out of 118, the same `system` / `owner` / evidence
- * chips repeated on every row of a system, and screens flattened into one list
- * with the elements that live on them. The operator's verdict was that it could
- * not be followed. This is the Explorer's shape instead (ref dashboard-surfaces
- * §9.5.3 — "the same contract at system scope"): a **rail** of every id, nested
- * under the screen it names and grouped by system, beside a **record** column
- * that prints the selected entry whole. The rail answers "what is here"; the
- * record answers "what is this one", which is the question an operator arrives
- * holding.
- *
- * ## Provenance — the one deliberate bend
- *
- * ref operator-trust §5.8 says provenance sits beside the id, never behind a
- * disclosure a hurried reader skips. The rail keeps `verifiedAt` on every row at
- * the id's own weight; both evidence refs are printed in full on the record,
- * one click away and never collapsed. That is a bend of "on the same line",
- * ratified by the operator on 2026-09-01 in exchange for a catalog that can be
- * read.
- *
- * It is strictly read-only: there is no control here that writes anything, and
- * regenerating is deliberately not offered. `npm run ui:catalog` is the one
- * writer, and a surface that regenerated on demand would silently heal a stale
- * checkout — the exact failure the 2026-08-03 tracked-artifact lesson records.
- */
-import { BookMarked,CircleAlert,ScanEye } from "lucide-react";
+import "./reference-settings.css";
+/** The committed catalog is read-only; a stale artifact is a visible refusal. */
+import { CircleAlert } from "lucide-react";
 import { useCallback,useEffect,useId,useMemo,useState,type KeyboardEvent } from "react";
 import type { UiCatalogWire } from "../../domain/dashboard/explorer.js";
 import type { UiCatalogEntry } from "../../domain/ui/contracts.js";
@@ -50,10 +10,10 @@ Badge,
 Banner,
 Chip,
 EmptyState,
-KeyValueList,
-Panel,
-PanelHeader,
-PanelToolbar,
+BodySection,
+FormGroup,
+PageHeading,
+ResultRow,
 SearchInput,
 SectionLabel,
 Spinner,
@@ -61,7 +21,6 @@ Tab,
 TabList,
 TabPanel,
 Tabs,
-dsClip,
 dsFocus,
 dsIcon,
 dsMotion,
@@ -76,7 +35,6 @@ import {
 ENTRY_KIND,
 catalogRowDomId,
 foldCatalogRail,
-railDisplayId,
 resolveCatalogSelection,
 siblingsOnScreen,
 stepCatalogSelection,
@@ -84,16 +42,6 @@ type CatalogRail,
 type CatalogSelectionRequest,
 } from "./ui-catalog-model.js";
 
-/**
- * A wrapping row of chips, packed rather than tracked.
- *
- * The DS's `ChipRow` lays chips on an equal-width GRID so a wrapped set ends on
- * one edge instead of leaving an orphan — which is exactly right in the queue's
- * ~400px column, where it was designed. The record column is the other case: a
- * dozen SHORT facts (`role field`, `effect prepare`) where `auto-fit` cuts
- * seven 160px tracks and every chip sits alone at the left of one. So the facts
- * pack, and the ragged right edge is the deliberate cost.
- */
 function FactChips({ label, children }: { label?: string; children: React.ReactNode }) {
   return (
     <div
@@ -105,25 +53,7 @@ function FactChips({ label, children }: { label?: string; children: React.ReactN
   );
 }
 
-/** The rail's one-letter kind glyph, at the chip's own height so rows stay 40px. */
-function KindMark({ kind }: { kind: UiCatalogEntry["kind"] }) {
-  const meta = ENTRY_KIND[kind];
-  return (
-    <Badge tone={meta.tone} title={meta.word} className="w-5 shrink-0 justify-center px-0">
-      <span aria-hidden>{meta.mark}</span>
-      <span className="sr-only">{meta.word}</span>
-    </Badge>
-  );
-}
-
-/**
- * One rail row: the id first and loud, the label beneath it, the verified
- * date on the id's line at the id's weight (the §5.8 half the rail keeps).
- *
- * `role="option"` inside the rail's `listbox`: a single-select list whose
- * arrow keys move the selection is what this is, and the roving `tabIndex`
- * gives the selected row the one tab stop.
- */
+/** Each option exposes the full raw id while its visible title stays readable. */
 function RailRow({
   entry,
   domId,
@@ -145,10 +75,11 @@ function RailRow({
       tabIndex={selected ? 0 : -1}
       onClick={onSelect}
       title={String(entry.id)}
+      aria-label={`${entry.label} · ${String(entry.id)} · ${ENTRY_KIND[entry.kind].word} · Verified ${entry.verification.verifiedAt}`}
       className={cn(
         "flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)] border-l-[length:var(--ds-border-w-rail)]",
-        "py-[var(--ds-space-snug)] pr-[var(--ds-space-cozy)]",
-        nested ? "pl-[var(--ds-space-section)]" : "pl-[var(--ds-space-base)]",
+        "py-[var(--ds-space-snug)] pr-[var(--ds-space-cozy)] rounded-[var(--ds-radius-md)]",
+        nested ? "pl-[var(--ds-space-cozy)]" : "pl-[var(--ds-space-base)]",
         dsFocus,
         dsMotion.base,
         selected
@@ -156,25 +87,13 @@ function RailRow({
           : "border-l-transparent hover:bg-[var(--ds-surface-3)]",
       )}
     >
-      <span className="pt-px"><KindMark kind={entry.kind} /></span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <span className="flex min-w-0 items-baseline gap-[var(--ds-space-base)]">
-          <span
-            className={cn(
-              dsText.ui,
-              dsText.nums,
-              dsClip.text,
-              "min-w-0 flex-1",
-              entry.kind === "screen" || selected ? "font-semibold text-[color:var(--ds-fg)]" : "font-medium text-[color:var(--ds-fg-secondary)]",
-            )}
-          >
-            {railDisplayId(entry)}
-          </span>
-          <span className={cn(dsText.meta, dsText.nums, "shrink-0 text-[color:var(--ds-fg-muted)]")}>
-            {entry.verification.verifiedAt}
-          </span>
+      <span className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-tight)]">
+        <span className={cn(dsText.ui, "settings-reference-rail-label", selected || entry.kind === "screen" ? "font-semibold text-[color:var(--ds-fg)]" : "font-medium text-[color:var(--ds-fg-secondary)]")}>
+          {entry.label}
         </span>
-        <span className={cn(dsText.meta, dsClip.text, "text-[color:var(--ds-fg-muted)]")}>{entry.label}</span>
+        <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+          {ENTRY_KIND[entry.kind].word} · {entry.verification.verifiedAt}
+        </span>
       </span>
     </div>
   );
@@ -211,7 +130,7 @@ function CatalogRailView({
       aria-label="Catalog entries"
       aria-activedescendant={selectedId === undefined ? undefined : catalogRowDomId(baseId, selectedId)}
       onKeyDown={onKeyDown}
-      className="min-h-0 overflow-y-auto border-r border-[color:var(--ds-border)]"
+      className="settings-reference-catalog-rail min-h-0 overflow-y-auto border-r border-[color:var(--ds-border)]"
     >
       {rail.systems.map((system) => (
         <div key={system.system} role="group" aria-label={system.system}>
@@ -233,7 +152,7 @@ function CatalogRailView({
             </SectionLabel>
           </div>
           {system.screens.map(({ screen, children }) => (
-            <div key={String(screen.id)}>
+            <div key={String(screen.id)} className="settings-reference-catalog-screen">
               <RailRow
                 entry={screen}
                 domId={catalogRowDomId(baseId, String(screen.id))}
@@ -275,105 +194,44 @@ function CatalogRecord({
 }) {
   const kind = ENTRY_KIND[entry.kind];
   const verification = entry.verification;
-  return (
-    <article
-      aria-label={`${kind.word} ${String(entry.id)}`}
-      className="flex min-w-0 flex-col gap-[var(--ds-space-loose)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]"
-    >
-      <header className="flex min-w-0 flex-col gap-[var(--ds-space-tight)]">
-        <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
-          <Badge tone={kind.tone}>{kind.word}</Badge>
-          <h3 className={cn(dsText.title, dsText.nums, "min-w-0 break-all font-semibold text-[color:var(--ds-fg)]")}>
-            {String(entry.id)}
-          </h3>
-        </div>
-        <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{entry.label}</p>
-        <FactChips label="Facts">
-          <Chip label="system">{entry.system}</Chip>
-          {"screen" in entry && <Chip label="screen">{String(entry.screen)}</Chip>}
-          {"role" in entry && <Chip label="role">{entry.role}</Chip>}
-          {"effect" in entry && (
-            // `effect` is the one field that separates reading a page from
-            // acting on it, so a non-observing element is marked rather than
-            // sitting in a row of identical neutral chips.
-            <Chip label="effect" tone={entry.effect === "observe" ? "neutral" : "warning"}>
-              {entry.effect}
-            </Chip>
-          )}
-          {"authoritativeFor" in entry && (
-            <Chip label="authoritative for" tone="info">
-              {entry.authoritativeFor.join(", ")}
-            </Chip>
-          )}
-          <Chip label="sensitivity" tone={entry.sensitivity === "hr" ? "warning" : "neutral"}>
-            {entry.sensitivity}
-          </Chip>
-        </FactChips>
-      </header>
-
-      <section aria-label="Provenance" className="flex flex-col gap-[var(--ds-space-base)]">
-        <SectionLabel className="border-b border-[color:var(--ds-border)] pb-[var(--ds-space-tight)]">Provenance</SectionLabel>
-        <KeyValueList
-          items={[
-            {
-              key: "Verified",
-              value: (
-                <span className="inline-flex items-center gap-[var(--ds-space-tight)]">
-                  <ScanEye aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
-                  {verification.verifiedAt}
-                </span>
-              ),
-            },
-            { key: "Fixture evidence", value: verification.fixtureEvidenceRef },
-            { key: "Live evidence", value: verification.liveReadOnlyEvidenceRef },
-            { key: "Owner", value: entry.sourceLink },
-          ]}
-        />
-        <FactChips label="Verified by">
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>verified by</span>
-          {verification.scenarios.map((scenario) => (
-            <Chip key={String(scenario)}>{String(scenario)}</Chip>
-          ))}
-        </FactChips>
-      </section>
-
-      <section aria-label="Usage" className="flex flex-col gap-[var(--ds-space-base)]">
-        <SectionLabel className="border-b border-[color:var(--ds-border)] pb-[var(--ds-space-tight)]">Usage</SectionLabel>
-        <FactChips label="Used by">
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>used by</span>
-          {entry.taskUses.length === 0 ? (
-            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-faint)]")}>no task</span>
-          ) : (
-            entry.taskUses.map((taskId) => <Chip key={String(taskId)}>{String(taskId)}</Chip>)
-          )}
-        </FactChips>
-        <FactChips label="Search terms">
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>search</span>
-          {entry.searchTerms.map((term) => (
-            <Chip key={term}>{term}</Chip>
-          ))}
-        </FactChips>
-      </section>
-
-      {siblings.length > 0 && (
-        <section aria-label="On the same screen" className="flex flex-col gap-[var(--ds-space-base)]">
-          <SectionLabel className="border-b border-[color:var(--ds-border)] pb-[var(--ds-space-tight)]">On the same screen</SectionLabel>
-          {/*
-            Derived from the served `screen` field, so a chip here is a fact
-            about the registry and not a guess. Selecting one moves the record,
-            which is the one interaction this read-only surface has.
-          */}
-          <FactChips>
-            {siblings.map((sibling) => (
-              <Chip key={String(sibling.id)} onSelect={() => onSelect(String(sibling.id))} title={sibling.label}>
-                {String(sibling.id)}
-              </Chip>
-            ))}
-          </FactChips>
-        </section>
-      )}
-    </article>
-  );
+  const propertyRows = [
+    ["System", entry.system],
+    ...( "screen" in entry ? [["Screen", String(entry.screen)]] : []),
+    ...( "role" in entry ? [["Role", entry.role]] : []),
+    ...( "effect" in entry ? [["Effect", entry.effect]] : []),
+    ...( "authoritativeFor" in entry ? [["Authoritative for", entry.authoritativeFor.join(", ")]] : []),
+    ["Sensitivity", entry.sensitivity],
+  ] as const;
+  return <article aria-label={`${kind.word} ${String(entry.id)}`} className="settings-reference-catalog-record">
+    <header className="settings-reference-record-heading">
+      <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
+        <Badge tone={kind.tone}>{kind.word}</Badge>
+        <h3 className={cn(dsText.title, dsText.nums, "min-w-0 break-all font-semibold text-[color:var(--ds-fg)]")}>{String(entry.id)}</h3>
+      </div>
+      <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{entry.label}</p>
+    </header>
+    <BodySection as="h3" title="Properties">
+      <FormGroup label="Catalog properties">
+        {propertyRows.map(([label, value]) => <ResultRow key={label} label={label} value={value} />)}
+        <ResultRow label="Used by" value={entry.taskUses.length === 0 ? "no task" : entry.taskUses.map(String).join(", ")} />
+        <ResultRow label="Search terms" value={entry.searchTerms.join(", ")} />
+      </FormGroup>
+    </BodySection>
+    <BodySection as="h3" title="Verification & evidence">
+      <FormGroup label="Catalog verification and evidence">
+        <ResultRow label="Verified" value={verification.verifiedAt} />
+        <ResultRow label="Fixture evidence" value={verification.fixtureEvidenceRef} />
+        <ResultRow label="Live evidence" value={verification.liveReadOnlyEvidenceRef} />
+        <ResultRow label="Owner" value={entry.sourceLink} />
+        <ResultRow label="Verified by" value={verification.scenarios.map(String).join(", ")} />
+      </FormGroup>
+    </BodySection>
+    {siblings.length > 0 && <BodySection as="h3" title="On the same screen">
+      <FactChips>
+        {siblings.map(sibling => <Chip key={String(sibling.id)} onSelect={() => onSelect(String(sibling.id))} title={sibling.label}>{String(sibling.id)}</Chip>)}
+      </FactChips>
+    </BodySection>}
+  </article>;
 }
 
 /**
@@ -429,130 +287,46 @@ export function UiCatalogSection({
   const select = useCallback((id: string) => setRequest({ id, query }), [query]);
 
   return (
-    /*
-      D295. A Settings SECTION, so the takeover, its region name and its own
-      close control all belong to `SettingsPage` now — this draws the demo's
-      `Panel` + `PanelHeader` + body shape every other Settings destination
-      draws (SE45).
-    */
-    <Panel className="settings-page-panel">
-      <PanelHeader
-        title="UI catalog"
-        headingLevel={2}
-        subtitle={
-          view === "selectors"
-            ? "The committed selector-semantics catalog, exactly as generated"
-            : "The row and panel vocabulary, as this build serves it"
-        }
-        icon={<BookMarked aria-hidden className={dsIcon.md} />}
-        // The source path names the BYTES the selector view served. The
-        // vocabulary view serves no artifact — it is derived from the schemas
-        // in this bundle — so it names none rather than borrowing one.
-        meta={view === "selectors" && wire !== undefined ? <span>{wire.sourcePath}</span> : undefined}
-      />
-
-      {/*
-        The view switch is the DS's own `Tabs` rather than two buttons, so the
-        two panels get roving arrow-key focus and a real `aria-controls` target.
-        Its value is the ROUTE's, so pressing a tab navigates — which is what
-        puts the view in history and makes it linkable.
-      */}
-      <Tabs
-        value={view}
-        onValueChange={(next) => {
-          const parsed = parseCatalogView(next);
-          // A tab whose value is not a view would silently do nothing; the
-          // strip and the parser are the two halves of one vocabulary.
-          if (parsed === undefined) throw new Error(`catalog tab ${next} is not a catalog view`);
-          onView(parsed);
-        }}
-        className="min-h-0 flex-1"
-      >
-        <PanelToolbar label="Catalog views">
-          <TabList label="Catalog views">
-            <Tab value="selectors">Selectors</Tab>
-            <Tab value="vocabulary">Rows &amp; panels</Tab>
-          </TabList>
-        </PanelToolbar>
-
-        <TabPanel value="vocabulary" className="px-[var(--ds-space-cozy)] [&>*]:max-w-[var(--ds-w-explorer-measure)]">
+    <div className="settings-reference-page settings-reference-catalog">
+      <PageHeading as="h2" title="UI catalog" description="Reference material for workflow pages and controls." />
+      <Tabs value={view} onValueChange={(next) => {
+        const parsed = parseCatalogView(next);
+        if (parsed === undefined) throw new Error(`catalog tab ${next} is not a catalog view`);
+        onView(parsed);
+      }} className="min-h-0 flex-1">
+        <TabList label="Catalog views">
+          <Tab value="selectors">Selectors</Tab>
+          <Tab value="vocabulary">Rows &amp; panels</Tab>
+        </TabList>
+        <TabPanel value="vocabulary" className="settings-reference-vocabulary">
           <RowCatalogView />
         </TabPanel>
-
-        {/*
-          The search and the entry count live INSIDE the tabpanel they filter,
-          so a reader who moves from the tab into its panel — which is what
-          `aria-controls` promises — arrives at the only control on the view.
-          The panel is a column, not a scroll container: the rail and the
-          record scroll on their own, so the toolbar never leaves the top.
-        */}
-        <TabPanel value="selectors" className="flex flex-col overflow-hidden">
-          <PanelToolbar label="Search the UI catalog" className="px-[var(--ds-space-cozy)]">
-            <SearchInput
-              className="w-full max-w-[28rem]"
-              value={query}
+        <TabPanel value="selectors" className="settings-reference-catalog-panel">
+          <div className="settings-reference-catalog-toolbar">
+            <SearchInput className="settings-reference-catalog-search" value={query}
               aria-label="Search the UI catalog by id, label, system or search term"
               placeholder="kuali save · observation · ucpath person org"
-              onChange={(event) => onQuery(event.currentTarget.value)}
-              onClear={() => onQuery("")}
-            />
-            {wire !== undefined && (
-              <span className={cn(dsText.meta, dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                {rail.matchedCount === wire.entries.length
-                  ? `${String(wire.entries.length)} entries`
-                  : `${String(rail.matchedCount)} of ${String(wire.entries.length)} entries`}
-              </span>
-            )}
-          </PanelToolbar>
-
-          {resource.state === "loading" && (
-            <div className="flex items-center gap-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]">
-              <Spinner label="Loading the UI catalog" />
-              <span className={dsText.body}>Reading the committed catalog…</span>
-            </div>
-          )}
-
-          {resource.state === "failed" && (
-            // A stale artifact arrives here, carrying the generator's own
-            // remediation. It is a refusal, not an outage: serving the stale
-            // bytes would describe selectors this build does not use.
-            <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
-              <Banner tone="danger" title="The committed UI catalog could not be served">
-                {resource.error.message}
-              </Banner>
-            </div>
-          )}
-
-          {wire !== undefined && selected === undefined && (
-            <div className="px-[var(--ds-space-cozy)]">
-              <EmptyState
-                icon={<CircleAlert aria-hidden className={dsIcon.lg} />}
-                title={`Nothing in the catalog matches “${query}”`}
-                description={
-                  `All ${String(wire.entries.length)} entries were searched by id, label, system, kind `
-                  + "and registered search terms. Try one word — a system (kuali), a kind (observation), "
-                  + "or part of an id (timekeeper)."
-                }
-              />
-            </div>
-          )}
-
-          {wire !== undefined && selected !== undefined && (
-            /*
-              The split keys on the panel's own width: the rail takes the
-              Explorer's 232px column at the narrow rung and widens once the
-              record has room to spare, so an id truncates in the rail before
-              the record loses its measure.
-            */
-            <div className="grid min-h-0 flex-1 grid-cols-[minmax(0,232px)_minmax(0,1fr)] min-[1280px]:grid-cols-[minmax(0,400px)_minmax(0,1fr)]">
-              <CatalogRailView rail={rail} baseId={baseId} selectedId={String(selected.id)} onSelect={select} />
-              <div className="min-h-0 overflow-y-auto">
-                <CatalogRecord entry={selected} siblings={siblings} onSelect={select} />
-              </div>
-            </div>
-          )}
+              onChange={(event) => onQuery(event.currentTarget.value)} onClear={() => onQuery("")} />
+            {wire !== undefined && <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+              {rail.matchedCount === wire.entries.length
+                ? `${String(wire.entries.length)} entries`
+                : `${String(rail.matchedCount)} of ${String(wire.entries.length)} entries`}
+            </span>}
+          </div>
+          {wire !== undefined && <p className={cn(dsText.meta, "settings-reference-source")}>Source: {wire.sourcePath}</p>}
+          {resource.state === "loading" && <div className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">
+            <Spinner label="Loading the UI catalog" /><span className={dsText.body}>Reading the committed catalog…</span>
+          </div>}
+          {resource.state === "failed" && <Banner tone="danger" title="The committed UI catalog could not be served">{resource.error.message}</Banner>}
+          {wire !== undefined && selected === undefined && <EmptyState icon={<CircleAlert aria-hidden className={dsIcon.lg} />}
+            title={`Nothing in the catalog matches “${query}”`}
+            description={`All ${String(wire.entries.length)} entries were searched by id, label, system, kind and registered search terms. Try one word — a system (kuali), a kind (observation), or part of an id (timekeeper).`} />}
+          {wire !== undefined && selected !== undefined && <FormGroup label="UI catalog browser" className="settings-reference-catalog-browser">
+            <CatalogRailView rail={rail} baseId={baseId} selectedId={String(selected.id)} onSelect={select} />
+            <div className="settings-reference-catalog-detail"><CatalogRecord entry={selected} siblings={siblings} onSelect={select} /></div>
+          </FormGroup>}
         </TabPanel>
       </Tabs>
-    </Panel>
+    </div>
   );
 }

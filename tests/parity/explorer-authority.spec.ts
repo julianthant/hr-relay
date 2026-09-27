@@ -133,7 +133,7 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of PARITY_THEMES) {
       await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("link", { name: "UI catalog", exact: true }).click();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
-      await expect(page.getByRole("button", { name: "Back to the dashboard", exact: true })).toHaveCount(1);
+      await expect(page.getByRole("button", { name: "Dashboard", exact: true })).toHaveCount(1);
       const search = page.getByRole("searchbox", { name: "Search the UI catalog by id, label, system or search term" });
       await search.fill("kuali");
       const rail = page.getByRole("listbox", { name: "Catalog entries" });
@@ -143,13 +143,31 @@ for (const viewport of PARITY_VIEWPORTS) for (const theme of PARITY_THEMES) {
       await expect(rail).not.toHaveAttribute("aria-activedescendant", before ?? "");
       await expect(rail.getByRole("option", { selected: true })).toBeFocused();
       const selected = rail.getByRole("option", { selected: true });
+      await expect(selected).toHaveCount(1);
+      const rowGaps = await rail.locator(".settings-reference-catalog-screen").evaluateAll(groups => groups.flatMap(group => {
+        const rows = [...group.querySelectorAll(":scope > [role=option]")];
+        return rows.slice(1).map((row, index) => row.getBoundingClientRect().top - rows[index].getBoundingClientRect().bottom);
+      }));
+      expect(rowGaps.length).toBeGreaterThan(1);
+      expect(Math.min(...rowGaps)).toBeGreaterThanOrEqual(4);
+      const hovered = selected.locator("xpath=following-sibling::*[1]");
+      await hovered.hover();
+      const selectedHoverGap = await selected.evaluate(element => {
+        const next = element.nextElementSibling;
+        if (next === null) throw new Error("selected catalog option has no adjacent hover target");
+        return next.getBoundingClientRect().top - element.getBoundingClientRect().bottom;
+      });
+      expect(selectedHoverGap).toBeGreaterThanOrEqual(4);
       const id = await selected.getAttribute("title");
       expect(id).not.toBeNull();
       const catalogResponse = await page.request.get(`${server.baseUrl}/api/v1/ui-catalog`);
-      const catalog = await catalogResponse.json() as { entries: { id: string; sourceLink: string; verification: { verifiedAt: string; fixtureEvidenceRef: string; liveReadOnlyEvidenceRef: string } }[] };
+      const catalog = await catalogResponse.json() as { entries: { id: string; label: string; sourceLink: string; verification: { verifiedAt: string; fixtureEvidenceRef: string; liveReadOnlyEvidenceRef: string } }[] };
       const entry = catalog.entries.find(row => row.id === id);
       if (entry === undefined) throw new Error("selected catalog id absent from production query");
-      const provenance = page.getByRole("region", { name: "Provenance", exact: true });
+      const optionName = await selected.getAttribute("aria-label");
+      expect(optionName).toContain(entry.label);
+      expect(optionName).toContain(entry.id);
+      const provenance = page.locator(".settings-reference-catalog-record");
       for (const fact of [entry.verification.verifiedAt, entry.verification.fixtureEvidenceRef, entry.verification.liveReadOnlyEvidenceRef, entry.sourceLink]) await expect(provenance).toContainText(fact);
       await page.setViewportSize({ width: 1024, height: 720 });
       await expect(search).toBeInViewport();

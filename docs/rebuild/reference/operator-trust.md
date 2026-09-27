@@ -2228,14 +2228,17 @@ cannot make a stale live verification current, so the rule stands that no proven
 a disclosure a hurried reader skips. The surface is the Explorer's shape at system scope (ref
 dashboard-surfaces §9.5.3): a `listbox` rail of every id, nested under the screen each entry's
 `screen` field names and grouped by system, beside one record that prints the selected entry whole.
-The RAIL keeps `verifiedAt` on every row at the id's own weight; the RECORD prints both evidence
-refs, the owner, every scenario by name and every task by name, one click away and never collapsed.
+The approved Settings design amendment (2026-09-26) makes the RAIL label-led: each row shows the
+entry's human-readable label, then its kind and `verifiedAt` in the shared description style.
+The full stable id remains in the row's title and accessible name and in the selected RECORD.
+The RECORD prints both evidence refs, the owner, every scenario by name and every task by name,
+one click away and never collapsed. Selected and hovered rows retain a visible gap.
 That is the one deliberate bend of the 2026-08-09 wording ("both evidence refs on the same line as
 the id"), ratified by the operator over a two-line ledger that kept them on the row, because the
 seven-line chip block it replaced put five of 118 entries on a screen and repeated one system's
-owner and refs on every row. A nested row prints its id without its screen's prefix when it has one
-— display only; the row's title and the record carry the whole id — and an entry whose screen the
-catalog does not serve throws by id rather than being filed under a made-up heading.
+owner and refs on every row. Screen/child nesting and stable selection identities remain unchanged;
+an entry whose screen the catalog does not serve throws by id rather than being filed under a
+made-up heading.
 
 ### 5.9 The node panel is a FIELD table, and its census is derived (2026-08-19, D227)
 
