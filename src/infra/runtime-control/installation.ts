@@ -21,7 +21,11 @@ const LocatorSchema = z.discriminatedUnion("schemaVersion", [
   z.strictObject({ schemaVersion: z.literal(2), ...LocatorCommon,
     stateRootGeneration: z.number().int().nonnegative(), artifactRootGeneration: z.number().int().nonnegative() }),
 ]);
-const MarkerSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), workspace: z.string(), role: z.enum(["state", "artifact"]), generation: z.number().int().nonnegative() });
+const MarkerCommon = { installationId: z.uuid(), workspace: z.string(), role: z.enum(["state", "artifact"]), generation: z.number().int().nonnegative() };
+const MarkerSchema = z.discriminatedUnion("schemaVersion", [
+  z.strictObject({ schemaVersion: z.literal(1), ...MarkerCommon }),
+  z.strictObject({ schemaVersion: z.literal(2), ...MarkerCommon, operationId: z.uuid() }),
+]);
 const LeaseSchema = z.strictObject({ schemaVersion: z.literal(1), admissionId: z.uuid(), mode: z.enum(["shared", "exclusive"]), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
 const DigestSchema = z.string().regex(/^[0-9a-f]{64}$/u);
 const GenerationSchema = z.number().int().nonnegative();
@@ -77,6 +81,8 @@ export type RelocationInventory = Readonly<{ operationId: string; installationId
   phase: "preparing" | "prepared" | "staged" | "fenced" | "retaining" | "retained" | "switched";
   preparation?: VerifiedRelocationPreparation;
   pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
+export type VerifiedSourceControlEntries = Readonly<{ source: RuntimePair;
+  state: readonly string[]; artifact: readonly string[] }>;
 export type ExistingAuthorityEvidence = Readonly<{ kind: "verified-existing"; pair: RuntimePair; authorityGeneration: number; databaseIdentity: string }>;
 export type AuthorityVerifier = (pair: RuntimePair) => ExistingAuthorityEvidence;
 export type FreshInitializationWitness = Readonly<{ installationId: string; pair: RuntimePair; assertHeld(): void }>;
@@ -86,10 +92,14 @@ export type RelocationPreparationVerifier = (source: RuntimeLocator, destination
   operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationPreparation;
 export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator: RuntimeLocator;
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
-  readRelocationReceipts(): readonly RelocationCompletionReceipt[]; release(): void }>;
+  readRelocationReceipts(): readonly RelocationCompletionReceipt[];
+  readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator; receipts: readonly RelocationCompletionReceipt[] }>;
+  release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding, restore: RestoreAdmissionHandle): string;
   relocationInventory(): RelocationInventory;
+  prepareDestinationRoots(): void;
+  verifiedSourceControlEntries(): VerifiedSourceControlEntries;
   readPriorReceipts(): readonly RelocationCompletionReceipt[];
   recordVerifiedPreparation(verify: RelocationPreparationVerifier): void;
   recordVerifiedStage(verify: RelocationVerifier): void;
@@ -342,10 +352,50 @@ function checkMarker(root: string, installationId: string, workspace: string, ro
   const marker = readStrict(markerPath(root), MarkerSchema);
   if (marker.installationId !== installationId || marker.workspace !== workspace || marker.role !== role || marker.generation !== generation) fail(`root ownership mismatch: ${role}`);
 }
-function installMarker(root: string, installationId: string, workspace: string, role: "state" | "artifact", generation: number): void {
+function checkDestinationMarker(root: string, pending: RelocationJournal, workspace: string,
+  role: "state" | "artifact", generation: number): void {
+  checkMarker(root, pending.installationId, workspace, role, generation);
+  const marker = readStrict(markerPath(root), MarkerSchema);
+  if (marker.schemaVersion !== 2 || marker.operationId !== pending.operationId) fail("destination marker operation mismatch");
+}
+function installMarker(root: string, installationId: string, workspace: string, role: "state" | "artifact", generation: number,
+  operationId?: string): void {
   ensureRoot(root);
   if (lstatMaybe(markerPath(root))) fail(`root already owned: ${role}`);
-  atomicJson(markerPath(root), { schemaVersion: 1, installationId, workspace, role, generation }, "data");
+  atomicJson(markerPath(root), operationId === undefined
+    ? { schemaVersion: 1, installationId, workspace, role, generation }
+    : { schemaVersion: 2, installationId, workspace, role, generation, operationId }, "data");
+}
+function assertEmptyNestedDestination(stateRoot: string, artifactRoot: string): void {
+  let current = stateRoot;
+  for (const part of relative(stateRoot, artifactRoot).split(/[\\/]/u)) {
+    if (part === "") continue;
+    const entries = readdirSync(current);
+    if (entries.length !== 1 || entries[0] !== part) fail("unowned nested destination content");
+    current = join(current, part);
+    preflightRoot(current);
+    dataDirectory(current);
+  }
+  if (readdirSync(artifactRoot).length !== 0) fail("unowned nested destination content");
+}
+function prepareMovedDestinationRoot(workspace: string, pending: RelocationJournal,
+  role: "state" | "artifact"): void {
+  const root = pending.destination[`${role}Root`];
+  preflightRoot(root);
+  if (lstatMaybe(markerPath(root))) {
+    checkDestinationMarker(root, pending, workspace, role, pending.sourceEpochs[role]);
+    if (lstatMaybe(join(root, FENCE))) fail("destination is fenced");
+    return;
+  }
+  if (lstatMaybe(root)) {
+    dataDirectory(root);
+    if (role === "state" && movedRole(pending, "artifact") && inside(root, pending.destination.artifactRoot)) {
+      if (readdirSync(root).length > 0) assertEmptyNestedDestination(root, pending.destination.artifactRoot);
+    } else if (readdirSync(root).length > 0) fail("unowned destination content");
+  }
+  if (lstatMaybe(join(root, FENCE))) fail("destination is fenced");
+  ensureRoot(root);
+  installMarker(root, pending.installationId, workspace, role, pending.sourceEpochs[role], pending.operationId);
 }
 function identity(): ProcessStartIdentity {
   const observation = observeProcessIdentity(process.pid);
@@ -765,6 +815,24 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   return locator;
 }
 type RecoveryRequest = Readonly<{ installationId: string; fromGeneration: number; operationId: string; restoreAdmission: RestoreAdmissionHandle }>;
+export function inspectPendingRelocationRecovery(workspacePath: string, operationId: string,
+  restore: RestoreAdmissionHandle): Readonly<{ installationId: string; fromGeneration: number; operationId: string }> {
+  const workspace = realpathSync(workspacePath);
+  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
+  const control = join(workspace, CONTROL);
+  assertNoSymlinkComponents(control);
+  privateDirectory(control);
+  assertRestoreHeld(workspace, restore);
+  if (activeLeases(control).length !== 0) fail("installation lease busy during recovery inspection");
+  const installation = readInstallation(control, workspace);
+  const pending = readStrict(join(control, "journal.json"), JournalSchema);
+  if (pending.phase === "adopting" || pending.operationId !== operationId
+    || pending.installationId !== installation.installationId) fail("recovery operation binding mismatch");
+  const binding = Object.freeze({ installationId: pending.installationId,
+    fromGeneration: pending.fromGeneration, operationId: pending.operationId });
+  readLocator(control, workspace, binding);
+  return binding;
+}
 export function acquireInstallation(workspacePath: string, mode: "shared", options?: never): InstallationLease;
 export function acquireInstallation(workspacePath: string, mode: "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest }): ExclusiveInstallationLease;
 export function acquireInstallation(workspacePath: string, mode: "shared" | "exclusive", options?: { defaultPair?: RuntimePair; verifyExisting?: AuthorityVerifier; initializeFresh?: FreshInitializer; recoverRelocation?: RecoveryRequest }): InstallationLease | ExclusiveInstallationLease {
@@ -824,6 +892,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const current = readLocator(control, workspace);
       if (canonicalJsonStringify(current) !== canonicalJsonStringify(locator)) fail("admitted locator changed; reacquire lease");
       return readReceiptChain(control, workspace, locator.installationId);
+    },
+    readInstallationContext() {
+      const receipts = shared.readRelocationReceipts();
+      return Object.freeze({ workspace, locator: publicLocator, receipts });
     },
     release() {
       if (released) return;
@@ -901,6 +973,57 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         pinnedEntries: Object.freeze([...pending.pinnedEntries]),
         retentions: Object.freeze(pending.retentions.map((row) => Object.freeze({ ...row }))) });
     },
+    prepareDestinationRoots() {
+      const pending = journal();
+      assertOperation(pending);
+      if (pending.phase !== "preparing" && pending.phase !== "prepared" && pending.phase !== "staged") {
+        fail("destination preparation phase ended");
+      }
+      for (const role of ["state", "artifact"] as const) checkMarker(pending.source[`${role}Root`],
+        pending.installationId, workspace, role, pending.sourceEpochs[role]);
+      for (const role of ["state", "artifact"] as const) {
+        assertOperation(pending);
+        if (movedRole(pending, role)) prepareMovedDestinationRoot(workspace, pending, role);
+        else checkMarker(pending.destination[`${role}Root`], pending.installationId, workspace, role,
+          pending.sourceEpochs[role]);
+        assertOperation(pending);
+      }
+    },
+    verifiedSourceControlEntries() {
+      const pending = journal();
+      assertOperation(pending);
+      if (pending.phase === "retaining") fail("partial source retention cannot be inventoried");
+      const retained = pending.phase === "retained" || pending.phase === "switched";
+      if (retained) checkRetainedSource(workspace, pending);
+      const physical: RuntimePair = {
+        stateRoot: retained && movedRole(pending, "state") ? retainedRoleRoot(pending, "state") : pending.source.stateRoot,
+        artifactRoot: retained && movedRole(pending, "artifact") ? retainedRoleRoot(pending, "artifact") : pending.source.artifactRoot,
+      };
+      const controls = (role: "state" | "artifact"): string[] => {
+        const root = physical[`${role}Root`];
+        checkMarker(root, pending.installationId, workspace, role, pending.sourceEpochs[role]);
+        const names = [MARKER];
+        if (lstatMaybe(join(root, FENCE))) {
+          if (!movedRole(pending, role)) fail("unmoved source has a relocation fence");
+          checkFence(root, expectedFence(pending, role));
+          names.push(FENCE);
+        } else if (retained || pending.phase === "fenced") {
+          if (movedRole(pending, role)) fail("moved source fence missing");
+        }
+        if (role === "state" && !(retained && movedRole(pending, "state"))) {
+          if (inside(root, fixedLockRoot(workspace))) {
+            privateDirectory(fixedLockRoot(workspace));
+            names.push(relative(root, fixedLockRoot(workspace)).split(/[\\/]/u)[0] ?? "locks");
+          }
+          names.push(...pending.pinnedEntries);
+        }
+        return [...new Set(names)].sort();
+      };
+      const result = Object.freeze({ source: Object.freeze(physical),
+        state: Object.freeze(controls("state")), artifact: Object.freeze(controls("artifact")) });
+      assertOperation(pending);
+      return result;
+    },
     readPriorReceipts() {
       const pending = journal();
       assertOperation(pending);
@@ -935,7 +1058,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       if (pending.phase === "prepared") {
         verifyManagedEntries(pending, evidence);
         for (const role of ["state", "artifact"] as const) {
-          if (movedRole(pending, role)) checkMarker(pending.destination[`${role}Root`], pending.installationId,
+          if (movedRole(pending, role)) checkDestinationMarker(pending.destination[`${role}Root`], pending,
             workspace, role, pending.sourceEpochs[role]);
         }
         writeJournal(control, { ...pending, phase: "staged", evidence });
@@ -980,7 +1103,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
           const root = pending.destination[`${role}Root`];
           const marker = readStrict(markerPath(root), MarkerSchema);
           if (marker.generation === pending.sourceEpochs[role]) {
-            checkMarker(root, pending.installationId, workspace, role, pending.sourceEpochs[role]);
+            checkDestinationMarker(root, pending, workspace, role, pending.sourceEpochs[role]);
             atomicJson(markerPath(root), { ...marker, generation: pending.destinationEpochs[role] }, "data");
           } else checkMarker(root, pending.installationId, workspace, role, pending.destinationEpochs[role]);
         }
@@ -997,8 +1120,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       checkRetainedSource(workspace, pending);
       const current = rawLocator(control, workspace);
       if (!equalLocator(current, destinationLocator(pending))) fail("switched locator mismatch");
-      for (const role of ["state", "artifact"] as const) checkMarker(current[`${role}Root`], pending.installationId,
-        workspace, role, pending.destinationEpochs[role]);
+      for (const role of ["state", "artifact"] as const) {
+        if (movedRole(pending, role)) checkDestinationMarker(current[`${role}Root`], pending,
+          workspace, role, pending.destinationEpochs[role]);
+        else checkMarker(current[`${role}Root`], pending.installationId, workspace, role, pending.destinationEpochs[role]);
+      }
       const directory = join(control, RECEIPTS);
       if (!lstatMaybe(directory)) { mkdirSync(directory, { mode: 0o700 }); syncDir(control); }
       privateDirectory(directory);

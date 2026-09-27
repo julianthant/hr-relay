@@ -10,7 +10,12 @@ import { requireRuntimeAdmission, type RuntimeAdmission } from "../infra/runtime
 import type { RelocationCompletionReceipt, RuntimeLocator } from "../infra/runtime-control/installation.js";
 
 type Pair = Readonly<{ stateRoot: string; artifactRoot: string }>;
-type Epoch = Pick<RuntimeLocator, "installationId" | "generation" | "stateRoot" | "artifactRoot">;
+export type StorageRelocationEpoch = Pick<RuntimeLocator, "installationId" | "generation" | "stateRoot" | "artifactRoot">;
+export type StorageRelocationHistoryRepositories = Readonly<{
+  commands: Pick<AuthorityRepositories["commands"], "listStorageRelocationCommands">;
+  commandAudits: Pick<AuthorityRepositories["commandAudits"], "findByCommand">;
+}>;
+type Epoch = StorageRelocationEpoch;
 type Authority = Readonly<{ withAuthorityTransaction<T>(work: (repositories: AuthorityRepositories) => T): T }>;
 export type StorageRelocationPlanReader = Readonly<{
   read(): StorageRelocationPlanView;
@@ -80,7 +85,7 @@ function consumeReceipt(receipt: RelocationCompletionReceipt, pending: NonNullab
   return { installationId: epoch.installationId, generation: receipt.toGeneration,
     stateRoot: receipt.destination.stateRoot, artifactRoot: receipt.destination.artifactRoot };
 }
-function project(repositories: AuthorityRepositories, locator: RuntimeLocator,
+function project(repositories: StorageRelocationHistoryRepositories, locator: Epoch,
   receipts: readonly RelocationCompletionReceipt[], workspace: string): StorageRelocationPlanView {
   const commands = repositories.commands.listStorageRelocationCommands();
   const seenWriteIds = new Set<string>();
@@ -128,6 +133,13 @@ function project(repositories: AuthorityRepositories, locator: RuntimeLocator,
   return deepFreeze(StorageRelocationPlanViewSchema.parse({ revision, installationId: locator.installationId,
     sourceGeneration: locator.generation,
     sourcePair: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }, pending }));
+}
+
+export function projectStorageRelocationPlanHistory(repositories: StorageRelocationHistoryRepositories,
+  epoch: StorageRelocationEpoch, receipts: readonly RelocationCompletionReceipt[], workspaceInput: string): StorageRelocationPlanView {
+  const workspace = resolve(workspaceInput);
+  requirePair(epoch, workspace);
+  return project(repositories, epoch, receipts, workspace);
 }
 
 export function createStorageRelocationPlanReader(input: Readonly<{

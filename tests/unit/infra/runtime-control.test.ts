@@ -4,7 +4,7 @@ import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { acquireInstallation, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
+import { acquireInstallation, inspectPendingRelocationRecovery, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../src/infra/runtime-control/installation.js";
 import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
@@ -14,6 +14,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../src/infra/runtime-control/admission.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
+import { projectStorageRelocationPlanHistory } from "../../../src/core/storage-relocation-plans.js";
 import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
 
 const workspaces: string[] = [];
@@ -54,14 +55,11 @@ function relocationPlan(lease: ExclusiveInstallationLease, destination: RuntimeP
         artifactRoot: lease.locator.artifactRoot }, expectedRevision: NonNegativeIntSchema.parse(0) }, destination) };
 }
 function prepareDestination(lease: ExclusiveInstallationLease, destination: RuntimePair): void {
+  lease.prepareDestinationRoots();
   if (destination.stateRoot !== lease.locator.stateRoot) {
-    mkdirSync(destination.stateRoot, { recursive: true, mode: 0o700 });
-    copyFileSync(join(lease.locator.stateRoot, ".runtime-owner.json"), join(destination.stateRoot, ".runtime-owner.json"));
     copyFileSync(join(lease.locator.stateRoot, "state.db"), join(destination.stateRoot, "state.db"));
   }
   if (destination.artifactRoot !== lease.locator.artifactRoot) {
-    mkdirSync(destination.artifactRoot, { recursive: true, mode: 0o700 });
-    copyFileSync(join(lease.locator.artifactRoot, ".runtime-owner.json"), join(destination.artifactRoot, ".runtime-owner.json"));
     copyFileSync(join(lease.locator.artifactRoot, "a.artifact"), join(destination.artifactRoot, "a.artifact"));
   }
 }
@@ -154,6 +152,7 @@ it("freezes issued leases and refuses a changed on-disk lease mode", () => {
   writeFileSync(installedPath, installedBytes);
   first.release();
   const shared = acquireInstallation(workspace, "shared");
+  expect(shared.readInstallationContext()).toMatchObject({ workspace, locator: shared.locator, receipts: [] });
   expect(Object.isFrozen(shared)).toBe(true);
   expect(Reflect.set(shared, "mode", "exclusive")).toBe(false);
   expect(Reflect.set(shared, "assertHeld", () => {})).toBe(false);
@@ -184,9 +183,14 @@ it("binds destination and retained source capabilities to one live relocation op
   const syntheticArtifacts = join(syntheticWorkspace, "artifacts");
   mkdirSync(syntheticState); mkdirSync(syntheticArtifacts);
   const synthetic = RuntimeAdmission.syntheticRoots(syntheticState, syntheticArtifacts);
+  expect(synthetic.readInstallationContext()).toBeUndefined();
   expect(() => synthetic.beginRelocation(destination, plan, held)).toThrow(/exclusive installation relocation authority/u);
   synthetic.release();
   const operation = admission.beginRelocation(destination, plan, held);
+  expect(() => admission.readInstallationContext()).toThrow(/pending relocation/u);
+  expect(() => operation.destinationAdmission().readInstallationContext()).toThrow(/installation context authority/u);
+  expect(operation.verifiedSourceControlEntries()).toMatchObject({ source: pair,
+    state: [".runtime-owner.json", "locks"], artifact: [".runtime-owner.json"] });
   expect(operation.inventory()).toMatchObject({ operationId: operation.operationId, source: pair, destination, plan, phase: "preparing" });
   expect(operation.readPriorReceipts()).toHaveLength(0);
   const child = operation.destinationAdmission();
@@ -211,8 +215,12 @@ it("binds destination and retained source capabilities to one live relocation op
     backupManifestSha256: "3".repeat(64) }))).toThrow(/verified preparation changed/u);
   operation.recordVerifiedStage(verify);
   operation.fenceRelocationSource();
+  expect(operation.verifiedSourceControlEntries().artifact).toContain(".runtime-source-fence.json");
   operation.retainRelocationSources();
   const source = operation.sourceVerificationAdmission();
+  expect(operation.verifiedSourceControlEntries().source).toEqual({
+    stateRoot: source.stateRoot, artifactRoot: source.artifactRoot,
+  });
   expect(source.stateRoot).toBe(join(workspace, `.tracker.retained-${operation.operationId}-state`));
   expect(source.artifactRoot).toBe(join(source.stateRoot, "artifacts"));
   source.assertStateRoot(join(source.stateRoot, "state.db"));
@@ -309,6 +317,9 @@ it("binds the first real saved plan at applied revision one and expected revisio
   const view = producer.read();
   expect(view.revision).toBe(1);
   expect(view.pending?.commandId).toBe(request.commandId);
+  expect(projectStorageRelocationPlanHistory(database.authority, planning.locator, [], workspace)).toEqual(view);
+  expect(() => projectStorageRelocationPlanHistory(database.authority,
+    { ...planning.locator, generation: 1 }, [], workspace)).toThrow(/projected plan epoch differs/u);
   database.close(); planning.release();
   const lease = acquireInstallation(workspace, "exclusive");
   const held = restore(workspace);
@@ -317,6 +328,40 @@ it("binds the first real saved plan at applied revision one and expected revisio
     desiredDigest: view.pending?.desiredDigest ?? "" };
   expect(lease.beginRelocation(destination, binding, held)).toMatch(/^[0-9a-f-]{36}$/u);
   lease.release(); held.release();
+});
+
+it("claims destination roots for one operation and refuses foreign witnesses", () => {
+  const { workspace, pair } = fixture();
+  const initial = adoptSynthetic(workspace, pair); initial.release();
+  const lease = acquireInstallation(workspace, "exclusive");
+  const held = restore(workspace);
+  const destination = { stateRoot: join(workspace, "next-state"), artifactRoot: join(workspace, "next-state", "artifacts") };
+  const operationId = lease.beginRelocation(destination, relocationPlan(lease, destination), held);
+  mkdirSync(destination.stateRoot);
+  writeFileSync(join(destination.stateRoot, "foreign"), "unrelated");
+  expect(() => lease.prepareDestinationRoots()).toThrow(/unowned (nested )?destination content/u);
+  unlinkSync(join(destination.stateRoot, "foreign"));
+  lease.prepareDestinationRoots();
+  const stateMarkerPath = join(destination.stateRoot, ".runtime-owner.json");
+  const artifactMarkerPath = join(destination.artifactRoot, ".runtime-owner.json");
+  const stateMarker = readFileSync(stateMarkerPath, "utf8");
+  expect(JSON.parse(stateMarker)).toMatchObject({ schemaVersion: 2, operationId, role: "state" });
+  expect(JSON.parse(readFileSync(artifactMarkerPath, "utf8"))).toMatchObject({ schemaVersion: 2, operationId, role: "artifact" });
+  lease.prepareDestinationRoots();
+  unlinkSync(artifactMarkerPath);
+  lease.prepareDestinationRoots();
+  writeFileSync(stateMarkerPath, JSON.stringify({ ...JSON.parse(stateMarker) as Record<string, unknown>, operationId: randomUUID() }));
+  expect(() => lease.prepareDestinationRoots()).toThrow(/destination marker operation mismatch/u);
+  writeFileSync(stateMarkerPath, stateMarker);
+  const sourceMarkerPath = join(pair.stateRoot, ".runtime-owner.json");
+  const sourceMarker = readFileSync(sourceMarkerPath, "utf8");
+  writeFileSync(sourceMarkerPath, JSON.stringify({ ...JSON.parse(sourceMarker) as Record<string, unknown>, role: "artifact" }));
+  expect(() => lease.verifiedSourceControlEntries()).toThrow(/root ownership mismatch/u);
+  writeFileSync(sourceMarkerPath, sourceMarker);
+  expect(lease.verifiedSourceControlEntries().state).toContain(".runtime-owner.json");
+  held.release();
+  expect(() => lease.prepareDestinationRoots()).toThrow(/restore admission|ENOENT/u);
+  lease.release();
 });
 
 it("refuses a retained default-source fence after control and owner markers are lost", () => {
@@ -451,7 +496,12 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/unfinished fenced/u);
   const resumedHeld = restore(workspace);
   const request = { installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: resumedHeld };
+  expect(() => inspectPendingRelocationRecovery(workspace, randomUUID(), resumedHeld)).toThrow(/recovery operation binding mismatch/u);
+  expect(inspectPendingRelocationRecovery(workspace, operationId, resumedHeld)).toEqual({
+    installationId: initial.locator.installationId, fromGeneration: 0, operationId,
+  });
   const resume = acquireInstallation(workspace, "exclusive", { recoverRelocation: request });
+  expect(() => inspectPendingRelocationRecovery(workspace, operationId, resumedHeld)).toThrow(/lease busy/u);
   resume.retainRelocationSources();
   const retainedJournal = readFileSync(join(workspace, ".runtime-control", "journal.json"));
   const next = resume.switchRelocationLocator(verify);
@@ -464,6 +514,9 @@ it("resumes fenced, retained, and switched journals only with an exact held rest
   expect(afterSwitchCrash.switchRelocationLocator(verify)).toEqual(next);
   afterSwitchCrash.settleRelocation(verify);
   afterSwitchCrash.release(); finalHeld.release();
+  const absentRestore = restore(workspace);
+  expect(() => inspectPendingRelocationRecovery(workspace, operationId, absentRestore)).toThrow(/ENOENT|journal/u);
+  absentRestore.release();
   const reader = acquireInstallation(workspace, "shared");
   expect(reader.locator).toEqual(next); reader.release();
 });

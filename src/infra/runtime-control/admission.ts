@@ -5,6 +5,7 @@ import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
+import type { VerifiedSourceControlEntries } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
@@ -60,6 +61,8 @@ type AdmissionAuthority = Readonly<{
 export type RuntimeRelocationOperation = Readonly<{
   operationId: string;
   inventory(): RelocationInventory;
+  prepareDestinationRoots(): void;
+  verifiedSourceControlEntries(): VerifiedSourceControlEntries;
   readPriorReceipts(): readonly RelocationCompletionReceipt[];
   destinationAdmission(): RuntimeAdmission;
   sourceVerificationAdmission(): RuntimeAdmission;
@@ -111,6 +114,15 @@ export class RuntimeAdmission {
   }
   get stateRoot(): string { this.assertLive(); return this.#stateRoot; }
   get artifactRoot(): string { this.assertLive(); return this.#artifactRoot; }
+  readInstallationContext(): Readonly<{ workspace: string; locator: RuntimeLocator;
+    receipts: readonly RelocationCompletionReceipt[] }> | undefined {
+    this.assertLive();
+    if (this.#scope === "synthetic") return undefined;
+    if (this.#scope !== "installation") throw new Error("runtime-admission: installation context authority required");
+    const lease = this.#authority as InstallationLease;
+    assertInstallationLease(lease);
+    return lease.readInstallationContext();
+  }
   assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void {
     this.assertLive();
     if (this.#scope !== "installation") throw new Error("runtime-admission: installation lock authority required");
@@ -260,6 +272,8 @@ export class RuntimeAdmission {
       scope === "relocation-destination" ? [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)] : [],
       scope, "exclusive");
     return Object.freeze({ operationId, inventory,
+      prepareDestinationRoots: () => { inventory(); lease.prepareDestinationRoots(); },
+      verifiedSourceControlEntries: () => { inventory(); return lease.verifiedSourceControlEntries(); },
       readPriorReceipts: () => { inventory(); return lease.readPriorReceipts(); },
       destinationAdmission: () => child(inventory().destination, "relocation-destination"),
       sourceVerificationAdmission: () => {
