@@ -704,3 +704,26 @@ database bytes or state entries. Evidence is under `category-6/runtime-relocatio
 the durable proof script and provenance. M25 remains the documented baseline failure (71/72
 storage-upgrade tests passed); the five status baseline failures were not rerun. This accepts the
 upgrade primitive, not the pending copy engine or its end-to-end activation.
+
+Preparation and recovery checkpoints `295a3f6f1`, `ed3cc3169`, and `b199cc4fe` bind the pre-upgrade
+backup, exclude an operation's own published receipt from prior history, and require destination
+ownership markers to name the exact operation. Named recovery and read-only history projection use
+the checked control journal. Focused preparation tests passed 36/36, receipt-publication recovery
+passed 29/29, and the final control-context suite passed 30/30; scoped lint passed. Root inspected
+the patches and logs under `category-6/relocation-control/`. A later combined typecheck found nine
+diagnostics only in the then-uncommitted inventory implementation; its repair still needs the next
+combined static check.
+
+Historical backup verification `24faa3259` keeps verified former-location backups visible without
+making them current-origin restore candidates. Unrelated or corrupt backups retain the existing
+failure policy. Focused backup-location and summary tests passed 6/6. The associated settings
+redaction declarations were corrected in `d4f7abe31`; the unchanged redaction guard passed 31/31,
+with scoped lint clean. Evidence is under `category-6/runtime-relocation/v56/`.
+
+Restore-candidate adapter `9761ac6d2` checks the complete relocation command/audit history and each
+destination activation snapshot in a verified schema-56 backup. Its synthetic artifact-only
+relocation case passed, including refusal of missing history, missing activation snapshots, and
+a stale active path; scoped lint passed. The adapter worktree typecheck reported 18 diagnostics
+from producer changes already integrated in the root, and is not recorded as a pass. Both restore
+consumers, the copy engine, and final integrated checks remain pending. Evidence is under
+`category-6/relocation-control/restore-candidate-*`.
