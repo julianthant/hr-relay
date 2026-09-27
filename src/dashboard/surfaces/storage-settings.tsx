@@ -1,5 +1,5 @@
 import { ShieldAlert } from "lucide-react";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, StatusDot, dsIcon } from "../ds/ui.js";
 import { useStorageClient } from "../state/storage-client.js";
@@ -24,10 +24,11 @@ export function StorageBanner({ storage, onOpenSettings }: {
 }
 
 type DoctorState =
-  | { state: "idle" }
-  | { state: "loading" }
+  | { state: "idle"; report?: undefined }
+  | { state: "reading" }
+  | { state: "running"; report?: StorageDoctorWire }
   | { state: "loaded"; report: StorageDoctorWire }
-  | { state: "failed"; message: string };
+  | { state: "failed"; message: string; report?: StorageDoctorWire };
 type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
 interface CheckResult { tone: CheckTone; value: string; evidence?: string; detail?: string; detailLabel?: string; extra?: ReactNode }
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
@@ -138,22 +139,31 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
 
 export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
   const client = useStorageClient();
-  const [doctor, setDoctor] = useState<DoctorState>({ state: "idle" });
-  const report = doctor.state === "loaded" ? doctor.report : undefined;
-  const authority = report?.authority.state ?? storage.authority;
+  const [doctor, setDoctor] = useState<DoctorState>({ state: "reading" });
+  useEffect(() => {
+    let active = true;
+    client.latestStorageDoctor().then(
+      latest => { if (active) setDoctor(latest.state === "completed" ? { state: "loaded", report: latest.report } : { state: "idle" }); },
+      (caught: unknown) => { if (active) setDoctor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }); },
+    );
+    return () => { active = false; };
+  }, [client]);
+  const report = doctor.state === "reading" ? undefined : doctor.report;
+  const authority = storage.authority;
   const runDoctor = (): void => {
-    setDoctor({ state: "loading" });
+    setDoctor(previous => ({ state: "running", report: previous.state === "reading" ? undefined : previous.report }));
     client.storageDoctor().then(
       (next) => setDoctor({ state: "loaded", report: next }),
-      (caught: unknown) => setDoctor({ state: "failed", message: caught instanceof Error ? caught.message : String(caught) }),
+      (caught: unknown) => setDoctor(previous => ({ state: "failed", report: previous.state === "reading" ? undefined : previous.report,
+        message: caught instanceof Error ? caught.message : String(caught) })),
     );
   };
   return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks">
     <PageHeading as="h2" title="Storage checks" description="Data store health, diagnostics, and recovery." />
     <div className="diagnostic-toolbar">
-        <span>{report === undefined ? `Summary checked ${fmtClock(storage.checkedAt)}` : `Checks completed ${fmtClock(report.checkedAt)}`}</span>
-        <Button onClick={runDoctor} disabled={doctor.state === "loading"} aria-label="Run the read-only storage doctor">
-          {doctor.state === "loading" ? "Running checks…" : report === undefined ? "Run storage checks" : "Run checks again"}
+        <span>{report === undefined ? doctor.state === "reading" ? "Loading last storage check…" : "No completed checks in this server session" : `Last checked ${fmtInstantDay(report.checkedAt)} ${fmtClock(report.checkedAt)}`}</span>
+        <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"} aria-label="Run the read-only storage doctor">
+          {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
         </Button>
     </div>
       {authority === "healthy"
@@ -161,8 +171,8 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
           <ResultRow label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
             description={report === undefined
               ? "The latest summary can read the data store. Run the checks below for detailed results."
-              : "The read-only check verified the current database."}
-            value={<span className="diagnostic-summary-meta">{report === undefined ? "Detailed checks not run" : "Read-only check complete"}</span>} />
+              : "Showing the last completed read-only check. Run checks again to refresh these results."}
+            value={<span className="diagnostic-summary-meta">{report === undefined ? "Detailed checks not run" : "Last completed check"}</span>} />
         </FormGroup>
         : <Banner tone="danger" title="Data store unavailable">{AUTHORITY_HAZARD}</Banner>}
       {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">{doctor.message}</Banner>}
@@ -172,7 +182,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         <CheckRow name="Run record consistency" description="Do run records match their activity history?" result={spanResult(report)} />
         <CheckRow name="Upgrade record" description="What schema upgrades have been recorded?" result={upgradeResult(report)} />
       </CheckGroup>
-      <CheckGroup title="Work in progress" subtitle="Current counts; a nonzero value can be normal while work is running.">
+      <CheckGroup title="Work in progress" subtitle="Counts at the last check; a nonzero value can be normal while work is running.">
         {COUNT_CHECKS.map((check) => <CheckRow key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
       </CheckGroup>
       <CheckGroup title="Independent credentials" subtitle="Presence only. Unset credentials affect their workflows, not data store integrity.">

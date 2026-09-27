@@ -118,7 +118,7 @@ import {
   EditableSettingsPathSchema,
   EditableSettingsWireSchema,
 } from "../../../../src/domain/dashboard/settings-editor.js";
-import { StorageDoctorWireSchema, ProtectedSettingsInspectionWireSchema } from "../../../../src/domain/dashboard/storage.js";
+import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema, ProtectedSettingsInspectionWireSchema } from "../../../../src/domain/dashboard/storage.js";
 import { DashboardStreamEnvelopeSchema } from "../../../../src/domain/dashboard/subscription.js";
 import { OperatorXlsxExportEvidenceSchema } from "../../../../src/domain/dashboard/xlsx-export.js";
 import { RerunValuesResponseSchema } from "../../../../src/domain/dashboard/rerun-values.js";
@@ -891,6 +891,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   // cannot ship unreviewed.
   { id: "wire/capture-pointer", egress: "operator-loopback", module: "src/domain/dashboard/artifacts.ts", schema: CapturePointerWireSchema },
   { id: "wire/storage-doctor", egress: "operator-loopback", module: "src/domain/dashboard/storage.ts", schema: StorageDoctorWireSchema },
+  { id: "wire/storage-doctor-latest", egress: "operator-loopback", module: "src/domain/dashboard/storage.ts", schema: StorageDoctorLatestWireSchema },
   { id: "wire/settings-facts", egress: "operator-loopback", module: "src/domain/dashboard/settings.ts", schema: SettingsFactsWireSchema },
   { id: "wire/editable-settings", egress: "operator-loopback", module: "src/domain/dashboard/settings-editor.ts", schema: EditableSettingsWireSchema },
   { id: "wire/native-path-picker", egress: "operator-loopback", module: "src/domain/dashboard/native-path-picker.ts", schema: NativePathPickerResponseSchema },
@@ -1487,6 +1488,37 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   // origins; the wire schema additionally refuses a full UCPath identifier in
   // either message leaf.
   { surface: "wire/storage-doctor", path: "spanAuthority.problems[].recordKey", origin: "repository-authored" },
+
+  { surface: "wire/storage-doctor-latest", path: "report.authorityUpgrades.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.authorityUpgrades.cause.summary", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.recovery.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.recovery.cause.summary", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.protectedSettings.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.protectedSettings.cause.summary", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.authority.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.authority.cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor-latest", path: "report.backup.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.backup.cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor-latest", path: "report.backup.latest.backupFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor-latest", path: "report.backup.latest.generationGap.reason", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.backup.latest.restoreEligibility.reason", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.backup.latest.manifestFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor-latest", path: "report.counts.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.counts.cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor-latest", path: "report.spanAuthority.cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.spanAuthority.cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor-latest", path: "report.spanAuthority.problems[].summary", origin: "external-text" },
+  { surface: "wire/storage-doctor-latest", path: "report.restoreCandidates[].backupFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor-latest", path: "report.restoreCandidates[].cause.code", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.restoreCandidates[].cause.summary", origin: "external-text" },
+  { surface: "wire/storage-doctor-latest", path: "report.restoreCandidates[].generationGap.reason", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.restoreCandidates[].restoreEligibility.reason", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.restoreCandidates[].manifestFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor-latest", path: "report.previousLocationBackups[].backupFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor-latest", path: "report.previousLocationBackups[].manifestFileName", origin: "local-filesystem-name" },
+  { surface: "wire/storage-doctor-latest", path: "report.service.message", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.service.reason", origin: "repository-authored" },
+  { surface: "wire/storage-doctor-latest", path: "report.spanAuthority.problems[].recordKey", origin: "repository-authored" },
 
   { surface: "wire/workflow-explorer", path: "workflows[].actions[]", origin: "repository-authored" },
   { surface: "wire/workflow-explorer", path: "workflows[].category", origin: "repository-authored" },

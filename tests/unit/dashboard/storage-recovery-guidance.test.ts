@@ -75,11 +75,12 @@ afterEach(() => {
   host = undefined;
 });
 
-async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise<StorageDoctorWire> = () => Promise.resolve(report), runImmediately = true): Promise<HTMLElement> {
+async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise<StorageDoctorWire> = () => Promise.resolve(report), runImmediately = true, lastReport?: StorageDoctorWire, storage = STORAGE): Promise<HTMLElement> {
   host = document.createElement("div");
   document.body.append(host);
   const client = {
     editableSettings: () => Promise.reject(new Error("editable settings are outside this fixture")),
+    latestStorageDoctor: () => Promise.resolve(lastReport === undefined ? { state: "never-run" } : { state: "completed", report: lastReport }),
     storageDoctor: fetchReport,
   } as unknown as DashboardClient;
   await act(async () => {
@@ -95,7 +96,7 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
         catalogView: DEFAULT_CATALOG_VIEW,
         onCatalogQuery: () => undefined,
         onCatalogView: () => undefined,
-        storage: STORAGE,
+        storage,
         sections: SECTIONS,
         workflowLabels: new Map<string, string>(),
         section: "storage",
@@ -106,7 +107,7 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
       })}),
     }));
   });
-  const run = [...host.querySelectorAll("button")].find((candidate) => candidate.textContent === "Run storage checks");
+  const run = host.querySelector('[aria-label="Run the read-only storage doctor"]');
   if (!(run instanceof HTMLButtonElement)) throw new Error("storage doctor action is missing");
   if (runImmediately) await act(async () => { run.click(); });
   return host;
@@ -133,15 +134,15 @@ it("keeps idle, loading, failure, successful refresh and failed refresh distinct
   assert.equal(doctorButton(dom).disabled, true);
   assert.match(dom.textContent ?? "", /Running checks/u);
   await act(async () => { reject(new Error("Synthetic doctor unavailable")); });
-  assert.match(dom.querySelector('[role="alert"]')?.textContent ?? "", /Synthetic doctor unavailable/u);
+  assert.match(dom.textContent ?? "", /Storage checks could not finishSynthetic doctor unavailable/u);
   assert.equal(doctorButton(dom).disabled, false);
   await act(async () => { doctorButton(dom).click(); resolve(HEALTHY); });
   assert.match(dom.textContent ?? "", /No interruption markers/u);
   await act(async () => { doctorButton(dom).click(); });
-  assert.match(dom.textContent ?? "", /Interrupted operation.*Not checked/su);
+  assert.match(dom.textContent ?? "", /No interruption markers/u);
   await act(async () => { reject(new Error("Synthetic refresh failed")); });
   assert.match(dom.textContent ?? "", /Synthetic refresh failed/u);
-  assert.doesNotMatch(dom.textContent ?? "", /No interruption markers/u);
+  assert.match(dom.textContent ?? "", /No interruption markers/u);
   assert.equal(calls, 3);
 });
 
@@ -193,4 +194,15 @@ it("shows every check before running and keeps Preflight on a separate destinati
   assert.doesNotMatch(dom.textContent ?? "", /Check readiness for|Rerun preflight/iu);
   assert.ok([...dom.querySelectorAll('a')].some((link) => link.textContent === "Preflight" && link.getAttribute('href') === '?settings=preflight'));
   assert.equal(doctorCalls, 0);
+});
+
+it("loads the last completed report on revisit without running the doctor, while current degradation stays prominent", async () => {
+  let runs = 0;
+  const degraded = StorageHealthSummaryWireSchema.parse({ ...STORAGE, authority: "unavailable" });
+  const dom = await mountDoctor(HEALTHY, () => { runs++; return Promise.resolve(HEALTHY); }, false, HEALTHY, degraded);
+  assert.equal(runs, 0);
+  assert.match(dom.textContent ?? "", /Last checked/u);
+  assert.match(dom.textContent ?? "", /No interruption markers/u);
+  assert.match(dom.textContent ?? "", /Data store unavailable/u);
+  assert.doesNotMatch(dom.textContent ?? "", /Data store available/u);
 });
