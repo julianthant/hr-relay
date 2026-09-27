@@ -1,4 +1,5 @@
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
+import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
 import { createHash, randomUUID } from "node:crypto";
 import {
   chmodSync,
@@ -252,7 +253,9 @@ export class OfflineAuthorityRestoreService {
     }
 
     const verified = await verifyBackupManifestAtPath(this.#runtimeAdmission,request.manifestPath, sourceDatabaseIdentity);
-  requireSupportedRecoverySchema(verified.manifest.schemaVersion);
+    requireSupportedRecoverySchema(verified.manifest.schemaVersion);
+    validateStorageRelocationRestoreCandidate({ admission: this.#runtimeAdmission,
+      activeAuthorityPath: this.#authorityPath, verifiedBackup: verified });
     const restoreAdmission = this.#admissionFactory({
       processLockRoot: this.#processLockRoot,
       pid: process.pid,

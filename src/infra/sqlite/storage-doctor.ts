@@ -1,5 +1,6 @@
 import { inspectRestoreEligibility, inspectStorageRecovery } from "./storage-recovery-status.js";
 import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
+import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { ProtectedSettingsNameSchema } from "../../domain/config/protected-settings.js";
 import { TimelineRecordError } from "./timeline-repository.js";
@@ -1137,14 +1138,24 @@ async function inspectCandidates(
             state: "known" as const,
             value: Math.max(0, authorityInspection.authorityGeneration - verified.manifest.authorityGeneration),
           };
+      let restoreEligibility = inspectRestoreEligibility(admission,{ schemaVersion: verified.manifest.schemaVersion,
+        paired: selection === "lifecycle-pair", backupPath: verified.backupPath,
+        backupSha256: verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined });
+      if (restoreEligibility.state === "eligible") {
+        try {
+          validateStorageRelocationRestoreCandidate({ admission, activeAuthorityPath: join(stateRoot, "state.db"),
+            verifiedBackup: verified });
+        } catch {
+          restoreEligibility = { state: "unavailable", reason: "Backup does not prove the active relocation history." };
+        }
+      }
       candidates.push({
         modifiedMs,
         candidate: RestoreCandidateSchema.parse({
           state: "verified-compatible",
           selection,
           schemaVersion: verified.manifest.schemaVersion,
-          restoreEligibility: inspectRestoreEligibility(admission,{ schemaVersion: verified.manifest.schemaVersion, paired: selection === "lifecycle-pair",
-            backupPath: verified.backupPath, backupSha256:verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined }),
+          restoreEligibility,
           manifestFileName,
           backupFileName: verified.manifest.backupFileName,
           createdAt: verified.manifest.createdAt,

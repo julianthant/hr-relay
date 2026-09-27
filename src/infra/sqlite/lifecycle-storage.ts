@@ -1,5 +1,6 @@
 import { backupPendingCaptureFiles, backupHasArchiveTransferCustody } from "../compat/backup-inspection.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
+import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
 import type { VersionChange } from "../../domain/archive/change-record.js";
 import { z } from "zod";
 import type { AuthorityDatabase } from "./authority-database.js";
@@ -146,6 +147,8 @@ export async function restoreLifecyclePair(runtimeAdmission:RuntimeAdmission,opt
   requireSupportedRecoverySchema(verified.live.manifest.schemaVersion);
   const {AuthorityDatabase:LiveDatabase}=await import("./authority-database.js");
   if(verified.pair.sourceDatabaseIdentity!==LiveDatabase.sourceDatabaseIdentity(options.authorityPath))throw new Error("lifecycle-restore-identity-mismatch");
+  validateStorageRelocationRestoreCandidate({ admission: runtimeAdmission,
+    activeAuthorityPath: options.authorityPath, verifiedBackup: verified.live });
   const admission=acquireRuntimeRestoreAdmission({processLockRoot:options.processLockRoot,pid:process.pid},clock);
   const journal=join(stateRoot,".lifecycle-restore.json"),identity=canonicalJsonStringify({schemaVersion:1,manifestDigest:fileDigest(request.manifestPath)});
   let changed=false;
