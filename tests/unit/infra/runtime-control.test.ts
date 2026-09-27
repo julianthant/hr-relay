@@ -11,7 +11,7 @@ import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
 import { NonNegativeIntSchema } from "../../../src/domain/ids.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../src/infra/runtime-control/admission.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
 import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
@@ -104,6 +104,98 @@ it("adopts empty defaults, admits shared readers, and refuses lost locator and o
   unlinkSync(locator);
   expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair })).toThrow(/locator missing/u);
   expect(existsSync(join(pair.stateRoot, ".runtime-owner.json"))).toBe(true);
+});
+
+it("freezes issued leases and refuses a changed on-disk lease mode", () => {
+  const { workspace, pair } = fixture();
+  const first = acquireInstallation(workspace, "exclusive", { defaultPair: pair });
+  expect(Object.isFrozen(first)).toBe(true);
+  expect(Reflect.set(first, "assertHeld", () => {})).toBe(false);
+  first.release();
+  const shared = acquireInstallation(workspace, "shared");
+  expect(Object.isFrozen(shared)).toBe(true);
+  expect(Reflect.set(shared, "mode", "exclusive")).toBe(false);
+  expect(Reflect.set(shared, "assertHeld", () => {})).toBe(false);
+  const admission = RuntimeAdmission.fromInstallationLease(shared);
+  expect(() => admission.assertExclusive()).toThrow(/exclusive offline admission required/u);
+  const leasePath = join(workspace, ".runtime-control", "leases", readdirSync(join(workspace, ".runtime-control", "leases"))[0]);
+  const original = readFileSync(leasePath);
+  const parsed = JSON.parse(original.toString("utf8")) as Record<string, unknown>;
+  writeFileSync(leasePath, JSON.stringify({ ...parsed, mode: "exclusive" }));
+  expect(() => admission.assertLive()).toThrow(/lease identity changed/u);
+  writeFileSync(leasePath, original);
+  admission.release();
+});
+
+it("binds destination and retained source capabilities to one live relocation operation", () => {
+  const { workspace, pair } = fixture();
+  const first = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); first.release();
+  writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
+  writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
+  const lease = acquireInstallation(workspace, "exclusive");
+  const admission = RuntimeAdmission.fromInstallationLease(lease);
+  const held = restore(workspace);
+  const destination = { stateRoot: join(workspace, "new-state"), artifactRoot: join(workspace, "new-artifacts") };
+  const plan = relocationPlan(lease, destination);
+  const syntheticWorkspace = realpathSync(mkdtempSync(join(tmpdir(), "runtime-synthetic-")));
+  workspaces.push(syntheticWorkspace);
+  const syntheticState = join(syntheticWorkspace, "state");
+  const syntheticArtifacts = join(syntheticWorkspace, "artifacts");
+  mkdirSync(syntheticState); mkdirSync(syntheticArtifacts);
+  const synthetic = RuntimeAdmission.syntheticRoots(syntheticState, syntheticArtifacts);
+  expect(() => synthetic.beginRelocation(destination, plan, held)).toThrow(/exclusive installation relocation authority/u);
+  synthetic.release();
+  const operation = admission.beginRelocation(destination, plan, held);
+  expect(operation.inventory()).toMatchObject({ operationId: operation.operationId, source: pair, destination, plan, phase: "preparing" });
+  const child = operation.destinationAdmission();
+  expect(child.stateRoot).toBe(destination.stateRoot);
+  expect(child.artifactRoot).toBe(destination.artifactRoot);
+  expect(() => operation.sourceVerificationAdmission()).toThrow(/fully retained source required/u);
+  prepareDestination(lease, destination);
+  child.assertAuthorityDatabase(join(destination.stateRoot, "state.db"));
+  child.assertArchiveDatabase(join(destination.stateRoot, "archive.sqlite"));
+  expect(() => child.assertAuthorityDatabase(":memory:")).toThrow(/outside admission/u);
+  expect(() => child.assertArchiveDatabase(":memory:")).toThrow(/outside admission/u);
+  expect(() => child.assertAuthorityDatabase(join(pair.stateRoot, "state.db"))).toThrow(/outside admission/u);
+  const verify = staged(lease, destination, operation.operationId, plan);
+  operation.recordVerifiedStage(verify);
+  operation.fenceRelocationSource();
+  operation.retainRelocationSources();
+  const source = operation.sourceVerificationAdmission();
+  expect(source.stateRoot).toBe(join(workspace, `.tracker.retained-${operation.operationId}-state`));
+  expect(source.artifactRoot).toBe(join(source.stateRoot, "artifacts"));
+  source.assertStateRoot(join(source.stateRoot, "state.db"));
+  source.assertArtifactRoot(join(source.artifactRoot, "a.artifact"));
+  expect(() => source.assertWritable()).toThrow(/read-only/u);
+  expect(() => source.assertReadOnlyAuthorityDatabase(join(source.stateRoot, "state.db"))).toThrow(/cannot open/u);
+  expect(() => source.assertArchiveDatabase(join(source.stateRoot, "archive.sqlite"), "read-only")).toThrow(/cannot open/u);
+  held.release();
+  expect(() => operation.inventory()).toThrow(/restore-admission|restore admission|ENOENT/u);
+  expect(() => child.assertLive()).toThrow(/restore-admission|restore admission|ENOENT/u);
+  expect(() => source.assertLive()).toThrow(/restore-admission|restore admission|ENOENT/u);
+  admission.release();
+});
+
+it("recovers only the exact operation through a fresh held fixed restore lease", () => {
+  const { workspace, pair } = fixture();
+  const first = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); first.release();
+  writeFileSync(join(pair.stateRoot, "state.db"), "synthetic source authority");
+  writeFileSync(join(pair.artifactRoot, "a.artifact"), "synthetic artifact");
+  const lease = acquireInstallation(workspace, "exclusive");
+  const admission = RuntimeAdmission.fromInstallationLease(lease);
+  const held = restore(workspace);
+  const destination = { stateRoot: join(workspace, "new-state"), artifactRoot: join(workspace, "new-artifacts") };
+  const operation = admission.beginRelocation(destination, relocationPlan(lease, destination), held);
+  const binding = { installationId: lease.locator.installationId, fromGeneration: lease.locator.generation, operationId: operation.operationId };
+  admission.release(); held.release();
+  const resumedHeld = restore(workspace);
+  expect(() => acquireRecoveryRuntimeRelocation(workspace, { ...binding, operationId: randomUUID() }, resumedHeld)).toThrow(/recovery|operation/u);
+  const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, resumedHeld);
+  expect(recovered.operation.inventory().destination).toEqual(destination);
+  const child = recovered.operation.destinationAdmission();
+  recovered.admission.release();
+  expect(() => child.assertLive()).toThrow(/released admission/u);
+  resumedHeld.release();
 });
 
 it("does not silently re-adopt defaults after control is lost", () => {

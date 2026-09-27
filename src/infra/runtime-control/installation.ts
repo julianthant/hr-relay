@@ -64,8 +64,10 @@ export type RuntimeLocator = z.infer<typeof LocatorSchema>;
 export type RelocationPlanBinding = z.infer<typeof PlanBindingSchema>;
 export type VerifiedRelocationEvidence = z.infer<typeof StageEvidenceSchema>;
 export type RelocationCompletionReceipt = z.infer<typeof CompletionReceiptSchema>;
-export type RelocationInventory = Readonly<{ operationId: string; pinnedEntries: readonly string[];
-  retentions: readonly z.infer<typeof RetentionSchema>[] }>;
+export type RelocationInventory = Readonly<{ operationId: string; installationId: string; fromGeneration: number;
+  source: RuntimePair; destination: RuntimePair; plan: RelocationPlanBinding;
+  phase: "preparing" | "staged" | "fenced" | "retaining" | "retained" | "switched";
+  pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
 export type ExistingAuthorityEvidence = Readonly<{ kind: "verified-existing"; pair: RuntimePair; authorityGeneration: number; databaseIdentity: string }>;
 export type AuthorityVerifier = (pair: RuntimePair) => ExistingAuthorityEvidence;
 export type RelocationVerifier = (source: RuntimeLocator, destination: RuntimePair, operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationEvidence;
@@ -722,9 +724,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   function assertHeld(): void {
     if (released) fail("installation lease released");
     const record = readStrict(leasePath, LeaseSchema);
-    if (record.admissionId !== admissionId || record.pid !== process.pid || !isLive(record)) fail("installation lease identity changed");
+    if (record.admissionId !== admissionId || record.mode !== mode || record.pid !== process.pid || !isLive(record)) {
+      fail("installation lease identity changed");
+    }
   }
-  const shared = {
+  const shared = Object.freeze({
     mode,
     locator: publicLocator,
     assertHeld,
@@ -740,9 +744,8 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       mutex(control, () => { assertHeld(); unlinkSync(leasePath); syncDir(join(control, "leases")); });
       released = true;
     },
-  };
-  issuedLeases.add(shared);
-  if (mode === "shared") return shared;
+  });
+  if (mode === "shared") { issuedLeases.add(shared); return shared; }
   let relocationStarted = options?.recoverRelocation !== undefined;
   let heldRestore = options?.recoverRelocation?.restoreAdmission;
   function journal(): RelocationJournal {
@@ -764,7 +767,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (pending.phase !== "preparing" && !sameEvidence(pending.evidence, evidence)) fail("verified stage changed");
     return evidence;
   }
-  const exclusive: ExclusiveInstallationLease = {
+  const exclusive: ExclusiveInstallationLease = Object.freeze({
     ...shared,
     beginRelocation(destination, plan, restore) {
       assertHeld();
@@ -803,7 +806,10 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     relocationInventory() {
       const pending = journal();
       assertOperation(pending);
-      return Object.freeze({ operationId: pending.operationId, pinnedEntries: Object.freeze([...pending.pinnedEntries]),
+      return Object.freeze({ operationId: pending.operationId, installationId: pending.installationId,
+        fromGeneration: pending.fromGeneration, source: Object.freeze({ ...pending.source }),
+        destination: Object.freeze({ ...pending.destination }), plan: Object.freeze({ ...pending.plan }), phase: pending.phase,
+        pinnedEntries: Object.freeze([...pending.pinnedEntries]),
         retentions: Object.freeze(pending.retentions.map((row) => Object.freeze({ ...row }))) });
     },
     recordVerifiedStage(verify) {
@@ -893,7 +899,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       readReceiptChain(control, workspace, pending.installationId);
       unlinkSync(join(control, "journal.json")); syncDir(control);
     },
-  };
+  });
   issuedLeases.add(exclusive);
   return exclusive;
 }
