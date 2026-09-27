@@ -636,3 +636,30 @@ Its 25 synthetic protocol tests and scoped lint passed. Its separate branch type
 files; integration must discharge that obligation. Evidence is under `category-6/relocation-control/`.
 The typed stage verifier is an engine boundary, not proof that real copy, backup, config activation,
 or CLI composition has been implemented.
+
+
+### Runtime admission integration and receipt history — 2026-09-26
+
+Runtime candidate `d33a970f3` was integrated into the owned Settings branch as `2b7301e1a`;
+control protocol `26e2f90d7` was applied as `ae4491869`. Admission is mandatory at physical SQLite
+openers and long-lived artifact/credential/provider boundaries, with awaited bootstrap/CLI
+lifetimes and separate stopped, adoption-inspection, and verified-copy scopes. The deciding
+category receipts are under `category-6/runtime-relocation/admission/`. Typecheck and scoped
+lint passed. Focused backup/restore checks passed 81/81; credential/provider checks passed 44/44.
+The old conversion-to-dashboard M25 case and five storage-status cases fail identically against
+clean `f63624c67` and remain explicit baseline obligations, not passing gates.
+
+The combined repair `05cf59d30` corrected test API shapes and a real fixture import-cycle regression.
+The catalog passed 23/23 on pre-admission `56949dbeb`, failed after the broad helper import, and
+passed after the harness used directly admitted leaf factories and accidental helper self-exports
+were removed. Combined typecheck and lint passed, as did 93 focused tests across six suites and
+52 config tests. Exact logs/exits are under `category-6/runtime-relocation/integration/`.
+
+Receipt-aware history `de466ef06` was applied as `77c51b8c7`, and locator reread correction
+`34a9cd39a` as `51a4284ed`. The reader now binds a genuine live admission, validates each command
+against its original source epoch, consumes only an exact completed pending plan, and preserves
+the global revision across later plans and cancels. Missing, corrupt, or changed locator state
+refuses even after reader creation. Focused producer/control tests passed 38/38 and scoped lint
+passed; receipts are under `category-6/receipt-plan-bridge/` and `category-6/locator-readback/`.
+Their combined typecheck is still an integration obligation. Actual copy/backup verification,
+explicit v56 activation, real command composition, and final Paths behavior remain pending.

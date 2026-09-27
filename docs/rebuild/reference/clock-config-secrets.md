@@ -1812,7 +1812,11 @@ v55 runtime still uses the old paths. No state-root, artifact-root or credential
 would leave artifacts nested in the old state root is structurally refused; artifact-only moves
 require a destination outside source-root overlap.
 The generic command arm remains unavailable until its admitted installation lease and dashboard
-composition are wired; the bounded producer and read projector are the current implementation.
+composition are wired. The runtime now holds path-bound admission throughout bootstrap, awaited
+CLI composition, database and artifact operations, and credential/provider access. The plan reader
+requires a live installation admission, rechecks the actual locator, and validates immutable older
+command epochs through exact activation receipts. These implemented boundaries do not themselves
+copy storage or enable the deferred command arm.
 
 Activation requires a later stopped, verified-backup upgrade to authority schema v56. That
 version is a runtime-location capability floor: supported pre-location binaries must refuse a

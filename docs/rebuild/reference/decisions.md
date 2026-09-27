@@ -30,8 +30,8 @@ admission. Later moves also preserve prior receipt-bound witnesses in an exact s
 Locator v2 preserves separate marker epochs for unchanged roots. Interrupted movement
 blocks admission until explicit verified recovery, and durable activation receipts preserve
 validation of immutable older-generation plan history.
-The foundation and intent producer are implemented but runtime admission, movement, and activation
-remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)
+The foundation, lifetime runtime admission, intent producer, and receipt-aware plan projection are
+implemented. Actual verified movement, v56 activation, and real command composition remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)
 and [dashboard-surfaces §D352](dashboard-surfaces.md#d352--storage-relocation-intent--2026-09-26).
 
 **D351 — Revisioned provider-key file and exact pending recovery (operator-approved, 2026-09-26):**
