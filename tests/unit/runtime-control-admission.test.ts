@@ -50,6 +50,20 @@ it("rejects fixture aliases and installation witnesses", () => {
   expect(() => RuntimeAdmission.syntheticFixture(join(root, "state.db"), "authority")).toThrow(/installation witness/u);
 });
 
+it("rechecks root shape after a capability was issued", () => {
+  const root = fixture();
+  const external = fixture();
+  const stateRoot = join(root, "state");
+  const artifactRoot = join(root, "artifacts");
+  mkdirSync(stateRoot);
+  mkdirSync(artifactRoot);
+  const admission = RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot);
+  expect(() => admission.assertStorageRootsSafe()).not.toThrow();
+  rmSync(artifactRoot, { recursive: true });
+  symlinkSync(external, artifactRoot);
+  expect(() => admission.assertStorageRootsSafe()).toThrow(/unsafe synthetic fixture ancestor/u);
+});
+
 it("limits first-adoption verification to read-only inspection", () => {
   const workspace = fixture();
   const stateRoot = join(workspace, ".tracker");

@@ -1,6 +1,6 @@
 import { lstatSync, realpathSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { dirname, isAbsolute, join, relative, resolve } from "node:path";
+import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 
@@ -29,6 +29,20 @@ function assertSyntheticDirectory(path: string): void {
       throw new Error("runtime-admission: fixture overlaps installation witness");
     }
     ancestor = dirname(ancestor);
+  }
+}
+
+function assertActiveRootSafe(path: string): void {
+  let component = parse(path).root;
+  for (const part of relative(component, path).split(/[\\/]/u)) {
+    if (part === "") continue;
+    component = join(component, part);
+    const info = lstatSync(component);
+    if (!info.isDirectory() || info.isSymbolicLink()) throw new Error("runtime-admission: storage root path changed shape");
+  }
+  const root = lstatSync(path);
+  if ((process.getuid && root.uid !== process.getuid()) || (root.mode & 0o022) !== 0) {
+    throw new Error("runtime-admission: storage root ownership changed");
   }
 }
 
@@ -77,6 +91,16 @@ export class RuntimeAdmission {
     if (!issued.has(this) || this.#released) throw new Error("runtime-admission: missing or released admission");
     this.#authority.assertHeld();
   }
+  assertStorageRootsSafe(): void {
+    this.assertLive();
+    if (this.#scope === "synthetic") {
+      if (this.#stateRoot !== ":memory:") assertSyntheticDirectory(this.#stateRoot);
+      if (this.#artifactRoot !== ":memory:") assertSyntheticDirectory(this.#artifactRoot);
+      return;
+    }
+    assertActiveRootSafe(this.#stateRoot);
+    assertActiveRootSafe(this.#artifactRoot);
+  }
   assertExclusive(): void {
     this.assertLive();
     if (this.#mode !== "exclusive") throw new Error("runtime-admission: exclusive offline admission required");
@@ -87,11 +111,13 @@ export class RuntimeAdmission {
   }
   assertAuthorityDatabase(path: string): void {
     this.assertWritable();
+    this.assertStorageRootsSafe();
     if (path === ":memory:") return;
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
   }
   assertReadOnlyAuthorityDatabase(path: string): void {
     this.assertLive();
+    this.assertStorageRootsSafe();
     if (path === ":memory:") return;
     const checked = resolve(path);
     if (this.#authorityDatabasePaths.has(checked)) return;
@@ -102,16 +128,19 @@ export class RuntimeAdmission {
   }
   assertArchiveDatabase(path: string, mode: "read-only" | "read-write" = "read-write"): void {
     this.assertLive();
+    this.assertStorageRootsSafe();
     if (mode !== "read-only") this.assertWritable();
     if (path === ":memory:") return;
     if (!this.#archiveDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: archive database path is outside admission");
   }
   assertStateRoot(path: string): void {
     this.assertLive();
+    this.assertStorageRootsSafe();
     if (!within(this.#stateRoot, resolve(path))) throw new Error("runtime-admission: state path is outside admission");
   }
   assertArtifactRoot(path: string): void {
     this.assertLive();
+    this.assertStorageRootsSafe();
     if (!within(this.#artifactRoot, resolve(path))) throw new Error("runtime-admission: artifact path is outside admission");
   }
   release(): void {
