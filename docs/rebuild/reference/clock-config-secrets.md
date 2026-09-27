@@ -1818,12 +1818,12 @@ The relocation request fingerprint binds client-owned command intent, including 
 target, and payload, excluding the fingerprint itself and server-stamped provenance fields
 (`requestedAt`, `requestedBy`, and `source`). Authenticated provenance is still persisted with the
 command and audit. Restamping ingress provenance must not invalidate an unchanged intent or exact retry.
-The generic command arm remains unavailable until its admitted installation lease and dashboard
-composition are wired. The runtime now holds path-bound admission throughout bootstrap, awaited
+The generic command arm and dashboard plan query use the genuine admitted installation reader;
+missing composition returns an explicit unavailable result. The runtime holds path-bound admission throughout bootstrap, awaited
 CLI composition, database and artifact operations, and credential/provider access. The plan reader
 requires a live installation admission, rechecks the actual locator, and validates immutable older
 command epochs through exact activation receipts. These implemented boundaries do not themselves
-copy storage or enable the deferred command arm.
+copy storage.
 
 Activation requires a later stopped, verified-backup upgrade to authority schema v56. That
 version is a runtime-location capability floor: supported pre-location binaries must refuse a

@@ -1327,8 +1327,9 @@ after the one `edit-checkpoint` removal below:
 The closed `storage-relocation` family uses the existing immutable `commands` and `command_audits`
 tables to project one contiguous revisioned desired plan. PLAN/CANCEL do not mutate the active
 locator, `app_settings`, runtime configuration, or artifacts. The command and matching audit are
-committed in one transaction. At v55 the generic arm remains deferred until admitted runtime and
-dashboard composition are wired.
+committed in one transaction. The generic arm and dashboard plan query share the admitted
+installation reader. Missing composition returns an explicit unavailable result. Intent fingerprints
+exclude server-stamped provenance; the authenticated command and audit retain it.
 
 A stopped, verified-backup v56 upgrade is mandatory before relocation activation, including
 artifact-only changes that leave the database path unchanged. v56 is a runtime-location capability

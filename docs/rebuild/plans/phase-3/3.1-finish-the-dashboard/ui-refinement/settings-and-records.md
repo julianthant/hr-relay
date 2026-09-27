@@ -674,3 +674,11 @@ read-only and available only after complete retention. Root inspected the patch 
 logs: 28 focused control tests, scoped lint, and typecheck passed under
 `category-6/relocation-control/capability-*`. This establishes the engine's access boundaries;
 actual copying and recovery orchestration remain pending.
+
+Real intent/config wiring `82446e01e` composes the same genuine reader for the dashboard query and
+command kernel. Runtime callers resolve the admitted physical pair while preserving ordinary
+settings revisions. Root inspected the patch and real temporary-installation BFF test: PLAN,
+readback, exact retry after ingress restamping, stale revision conflict, CANCEL, and retry passed.
+The settings reader passed 14/14 and command architecture 9/9; scoped lint passed. Receipts are in
+`category-6/runtime-relocation/intent-wiring/`. Combined typecheck remains due after the concurrent
+fresh-adoption and v56 work is assembled.
