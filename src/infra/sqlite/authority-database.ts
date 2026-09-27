@@ -89,6 +89,7 @@ import {
   BulkRunCommandAcceptanceRecordSchema,
   CommandAuditRecordSchema,
   CommandRequestSchema,
+  StorageRelocationCommandRequestSchema,
   RunLifecycleCommandAuditRecordSchema,
   RunLifecycleCommandRecordSchema,
 } from "../../domain/commands.js";
@@ -403,6 +404,7 @@ type CommandRepository = Readonly<{
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
   listProviderSettingsCommands(): readonly z.infer<typeof CommandRequestSchema>[];
+  listStorageRelocationCommands(): readonly z.infer<typeof StorageRelocationCommandRequestSchema>[];
 }>;
 
 /**
@@ -5167,6 +5169,9 @@ export class AuthorityDatabase implements Disposable {
           WHERE family = 'settings' AND json_extract(record_json, '$.type') = 'apply-provider-keys'
           ORDER BY rowid
         `).all().map(row => parseJsonRecord(CommandRequestSchema, JsonRowSchema.parse(row).record_json)),
+        listStorageRelocationCommands: () => this.#database.prepare(`
+          SELECT record_json FROM commands WHERE family = 'storage-relocation' ORDER BY rowid
+        `).all().map(row => parseJsonRecord(StorageRelocationCommandRequestSchema, JsonRowSchema.parse(row).record_json)),
         parentId: (commandId: string) => {
           const row = this.#database.prepare("SELECT parent_command_id FROM commands WHERE record_key = ?").get(commandId);
           return row === undefined ? undefined : z.strictObject({ parent_command_id: z.string().nullable() }).parse(row).parent_command_id;

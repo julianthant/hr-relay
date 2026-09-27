@@ -1,0 +1,114 @@
+import { isAbsolute, relative, resolve, join } from "node:path";
+import { canonicalJsonStringify } from "../domain/canonical-json.js";
+import {
+  StorageRelocationPlanViewSchema, storageRelocationDesiredDigest, storageRelocationRequestFingerprint,
+  type StorageRelocationCommandRequest, type StorageRelocationPlanView,
+} from "../domain/commands.js";
+import { deepFreeze } from "../domain/immutability.js";
+import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
+import type { InstallationLease, RuntimeLocator } from "../infra/runtime-control/installation.js";
+
+type Pair = Readonly<{ stateRoot: string; artifactRoot: string }>;
+type Authority = Readonly<{ withAuthorityTransaction<T>(work: (repositories: AuthorityRepositories) => T): T }>;
+export type StorageRelocationPlanReader = Readonly<{
+  read(): StorageRelocationPlanView;
+  project(repositories: AuthorityRepositories): StorageRelocationPlanView;
+  validate(request: StorageRelocationCommandRequest): void;
+}>;
+
+function refuse(reason: string): never { throw new Error(`storage-relocation-plan: ${reason}`); }
+function inside(parent: string, child: string): boolean {
+  const part = relative(parent, child);
+  return part === "" || (part !== ".." && !part.startsWith(`..${process.platform === "win32" ? "\\" : "/"}`) && !isAbsolute(part));
+}
+function requirePair(pair: Pair, workspace: string): void {
+  for (const path of [pair.stateRoot, pair.artifactRoot]) {
+    if (!isAbsolute(path) || resolve(path) !== path) refuse("roots must be canonical absolute paths");
+    if (inside(path, workspace) || inside(path, join(workspace, ".runtime-control"))
+      || inside(join(workspace, ".runtime-control"), path)) refuse("control overlaps a movable root");
+  }
+  if (inside(pair.artifactRoot, pair.stateRoot)) refuse("state root overlaps artifact root");
+}
+function requireDesired(source: Pair, desired: Pair, workspace: string): void {
+  requirePair(source, workspace);
+  requirePair(desired, workspace);
+  if (source.stateRoot === desired.stateRoot && source.artifactRoot === desired.artifactRoot) refuse("desired pair is unchanged");
+  if (source.stateRoot !== desired.stateRoot && source.artifactRoot === desired.artifactRoot
+    && inside(source.stateRoot, source.artifactRoot)) refuse("state-only move would strand nested artifacts");
+  for (const moved of [
+    ...(source.stateRoot === desired.stateRoot ? [] : [desired.stateRoot]),
+    ...(source.artifactRoot === desired.artifactRoot ? [] : [desired.artifactRoot]),
+  ]) {
+    if (inside(moved, source.stateRoot) || inside(source.stateRoot, moved)
+      || inside(moved, source.artifactRoot) || inside(source.artifactRoot, moved)) {
+      refuse("moved root overlaps a source root");
+    }
+  }
+}
+function locatorTarget(locator: RuntimeLocator) {
+  return { installationId: locator.installationId, sourceGeneration: locator.generation,
+    sourcePair: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot } };
+}
+function requireSource(request: StorageRelocationCommandRequest, locator: RuntimeLocator): void {
+  if (canonicalJsonStringify({ installationId: request.target.installationId,
+    sourceGeneration: request.target.sourceGeneration, sourcePair: request.target.sourcePair })
+    !== canonicalJsonStringify(locatorTarget(locator))) refuse("installation or source pair drift");
+}
+function requireRequest(request: StorageRelocationCommandRequest, locator: RuntimeLocator, workspace: string): void {
+  requireSource(request, locator);
+  if (request.payload.requestFingerprint !== storageRelocationRequestFingerprint(request)) refuse("request fingerprint mismatch");
+  if (request.type === "plan-storage-relocation") {
+    requireDesired(request.target.sourcePair, request.payload.desiredPair, workspace);
+    if (request.payload.desiredDigest !== storageRelocationDesiredDigest(request.target, request.payload.desiredPair)) refuse("desired digest mismatch");
+  }
+}
+
+function project(repositories: AuthorityRepositories, locator: RuntimeLocator, workspace: string): StorageRelocationPlanView {
+  const commands = repositories.commands.listStorageRelocationCommands();
+  const seenWriteIds = new Set<string>();
+  let pending: StorageRelocationPlanView["pending"] = null;
+  let revision = 0;
+  for (const request of commands) {
+    requireRequest(request, locator, workspace);
+    if (request.target.expectedRevision !== revision) refuse("duplicate or gap plan revision");
+    if (seenWriteIds.has(request.payload.writeId)) refuse("write id reused");
+    seenWriteIds.add(request.payload.writeId);
+    const nextRevision = revision + 1;
+    const target = { family: "storage-relocation", revision: nextRevision };
+    const audit = repositories.commandAudits.findByCommand(request.commandId);
+    if (audit === undefined) refuse("missing command audit");
+    if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(request)
+      || audit.result.state !== "applied" || audit.result.commandId !== request.commandId
+      || canonicalJsonStringify(audit.result.affectedTargets) !== canonicalJsonStringify([target])
+      || canonicalJsonStringify(audit.versionChanges) !== canonicalJsonStringify([{ target, before: revision, after: nextRevision }])
+      || audit.affectedDependencyIds.length !== 0) refuse("command audit mismatch");
+    if (request.type === "plan-storage-relocation") {
+      pending = { commandId: request.commandId, writeId: request.payload.writeId,
+        desiredPair: request.payload.desiredPair, desiredDigest: request.payload.desiredDigest,
+        requestFingerprint: request.payload.requestFingerprint };
+    } else {
+      if (pending === null || pending.commandId !== request.payload.cancelledPlanCommandId
+        || pending.desiredDigest !== request.payload.cancelledPlanDigest) refuse("cancel does not match current plan");
+      pending = null;
+    }
+    revision = nextRevision;
+  }
+  return deepFreeze(StorageRelocationPlanViewSchema.parse({ revision, installationId: locator.installationId,
+    sourceGeneration: locator.generation,
+    sourcePair: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }, pending }));
+}
+
+export function createStorageRelocationPlanReader(input: Readonly<{
+  authority: Authority;
+  installation: InstallationLease;
+  workspace: string;
+}>): StorageRelocationPlanReader {
+  const workspace = resolve(input.workspace);
+  const locator = deepFreeze({ ...input.installation.locator });
+  requirePair(locator, workspace);
+  return Object.freeze({
+    read: () => input.authority.withAuthorityTransaction((repositories) => project(repositories, locator, workspace)),
+    project: (repositories: AuthorityRepositories) => project(repositories, locator, workspace),
+    validate: (request: StorageRelocationCommandRequest) => requireRequest(request, locator, workspace),
+  });
+}

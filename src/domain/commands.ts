@@ -61,6 +61,7 @@ export const CommandFamilySchema = z.enum([
   "intake",
   "worker-browser",
   "settings",
+  "storage-relocation",
   "version-archive",
   "run",
   "gate",
@@ -88,6 +89,8 @@ export const CommandActionSchema = z.enum([
   "apply-settings",
   "apply-protected-settings",
   "apply-provider-keys",
+  "plan-storage-relocation",
+  "cancel-storage-relocation",
   "plan-version-bump",
   "apply-version-bump",
   "plan-runtime-version",
@@ -233,6 +236,77 @@ export const SettingsCommandRequestSchema = z.strictObject({
     patch: SettingsPatchSchema,
   }),
 });
+
+export const StorageRelocationPairSchema = z.strictObject({
+  stateRoot: z.string().min(1),
+  artifactRoot: z.string().min(1),
+});
+const StorageRelocationTargetSchema = z.strictObject({
+  installationId: z.uuid(),
+  sourceGeneration: NonNegativeIntSchema,
+  sourcePair: StorageRelocationPairSchema,
+  expectedRevision: NonNegativeIntSchema,
+});
+const StorageRelocationPlanFields = {
+  ...CommandEnvelopeFields,
+  family: z.literal("storage-relocation"),
+  type: z.literal("plan-storage-relocation"),
+  target: StorageRelocationTargetSchema,
+  payload: z.strictObject({
+    writeId: z.uuid(),
+    desiredPair: StorageRelocationPairSchema,
+    desiredDigest: FingerprintSchema,
+    requestFingerprint: FingerprintSchema,
+  }),
+};
+const StorageRelocationCancelFields = {
+  ...CommandEnvelopeFields,
+  family: z.literal("storage-relocation"),
+  type: z.literal("cancel-storage-relocation"),
+  target: StorageRelocationTargetSchema,
+  payload: z.strictObject({
+    writeId: z.uuid(),
+    cancelledPlanCommandId: CommandIdSchema,
+    cancelledPlanDigest: FingerprintSchema,
+    requestFingerprint: FingerprintSchema,
+  }),
+};
+export const StorageRelocationCommandRequestSchema = z.discriminatedUnion("type", [
+  z.strictObject(StorageRelocationPlanFields),
+  z.strictObject(StorageRelocationCancelFields),
+]);
+export type StorageRelocationCommandRequest = z.infer<typeof StorageRelocationCommandRequestSchema>;
+export const StorageRelocationPlanViewSchema = z.strictObject({
+  revision: NonNegativeIntSchema,
+  installationId: z.uuid(),
+  sourceGeneration: NonNegativeIntSchema,
+  sourcePair: StorageRelocationPairSchema,
+  pending: z.strictObject({
+    commandId: CommandIdSchema,
+    writeId: z.uuid(),
+    desiredPair: StorageRelocationPairSchema,
+    desiredDigest: FingerprintSchema,
+    requestFingerprint: FingerprintSchema,
+  }).nullable(),
+});
+export type StorageRelocationPlanView = z.infer<typeof StorageRelocationPlanViewSchema>;
+
+export function storageRelocationDesiredDigest(
+  target: StorageRelocationCommandRequest["target"],
+  desiredPair: z.infer<typeof StorageRelocationPairSchema>,
+): string {
+  return sha256Hex(`hrauto:storage-relocation-desired:v1\0${canonicalJsonStringify({
+    installationId: target.installationId,
+    sourceGeneration: target.sourceGeneration,
+    sourcePair: target.sourcePair,
+    desiredPair,
+  })}`);
+}
+
+export function storageRelocationRequestFingerprint(request: StorageRelocationCommandRequest): string {
+  const { requestFingerprint: _fingerprint, ...payload } = request.payload;
+  return sha256Hex(`hrauto:storage-relocation-command:v1\0${canonicalJsonStringify({ ...request, payload })}`);
+}
 
 export const ProtectedSettingsCommandRequestSchema = z.strictObject({
   ...CommandEnvelopeFields,
@@ -441,6 +515,7 @@ export const CommandRequestSchema = z.union([
   IntakeCommandRequestSchema,
   WorkerBrowserCommandRequestSchema,
   SettingsCommandRequestSchema,
+  StorageRelocationCommandRequestSchema,
   ProtectedSettingsCommandRequestSchema,
   MarkedProtectedSettingsCommandRequestSchema,
   ProviderKeysCommandRequestSchema,
@@ -466,6 +541,7 @@ export const CommandTargetReferenceSchema = z.discriminatedUnion("family", [
   /** D269: the per-workflow pool row `plan-worker-count` advanced. */
   z.strictObject({ family: z.literal("worker-pool"), workflowId: WorkflowIdSchema }),
   z.strictObject({ family: z.literal("settings"), revision: PositiveIntSchema }),
+  z.strictObject({ family: z.literal("storage-relocation"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("protected-settings"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("provider-keys"), revision: PositiveIntSchema }),
   z.strictObject({ family: z.literal("version-archive"), versionPlanId: VersionPlanIdSchema }),
@@ -855,6 +931,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   intake: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"],
   "worker-browser": ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"],
   settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
+  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
@@ -887,6 +964,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "intake", actions: ["inspect-intake", "confirm-intake-mapping", "correct-intake-row", "exclude-intake-row", "validate-intake", "enqueue-intake-manifest"] },
   { family: "worker-browser", actions: ["plan-worker-count", "spawn-worker", "stop-worker", "pause-worker", "resume-worker", "refresh-browser", "reopen-browser"] },
   { family: "settings", actions: ["apply-settings", "apply-protected-settings", "apply-provider-keys"] },
+  { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },

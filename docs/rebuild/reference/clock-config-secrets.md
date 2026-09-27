@@ -1766,6 +1766,44 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D352 — Planned runtime storage relocation and the v56 activation gate · 2026-09-26
+
+The operator may request a new absolute state-root and artifact-root pair independently. A
+checkout-local private installation control directory binds an immutable installation UUID to
+the canonical workspace and owns one atomic active pair and global generation. After adoption,
+missing or malformed control cannot fall back to `config/runtime-isolation.json`; retained source
+markers are negative witnesses, never replacement locators. Other isolation values retain their
+existing authority unless separately admitted, but the adopted state and artifact roots are
+selected only through this installation control. A shared lifetime admission
+precedes any runtime, credential or authority read; an exclusive offline admission blocks every
+shared opener. The current foundation is not yet wired to runtime entrypoints.
+
+At schema v55, `storage-relocation/plan-storage-relocation` and
+`storage-relocation/cancel-storage-relocation` record desired intent as immutable SQLite commands
+with one matching audit each. The projected revision starts at zero, advances by one per command,
+and refuses missing, multiple or mismatched audits, duplicate or skipped revisions, reused write
+IDs, invalid request/destination digests and installation/source-pair drift. A plan binds the
+installation UUID, source global generation and complete active and desired pairs; cancel names
+the current plan command and digest. Exact command retry returns its recorded result. A stale
+expected revision conflicts without a write. These commands neither switch the active locator
+nor create a second settings or plan authority; the planned Settings UI can save intent while the
+v55 runtime still uses the old paths. No state-root, artifact-root or credential value is added to
+`app_settings`, and no secret-derived fingerprint enters relocation history. A state-only move that
+would leave artifacts nested in the old state root is structurally refused; artifact-only moves
+require a destination outside source-root overlap.
+The generic command arm remains unavailable until its admitted installation lease and dashboard
+composition are wired; the bounded producer and read projector are the current implementation.
+
+Activation requires a later stopped, verified-backup upgrade to authority schema v56. That
+version is a runtime-location capability floor: supported pre-location binaries must refuse a
+v56 authority before touching an archive writer, including when an artifact-only move leaves the
+database path unchanged. v56 is not required to record v55 intent, and this producer does not
+perform the migration or relocation. The later offline engine must bind the exact plan command,
+revision and request fingerprint to its durable journal, source fence, atomic locator switch and
+activation receipt. Completed older-generation plan history remains immutable; future projection
+must validate its source transitions through activation receipts rather than discard it. Retained
+source data is never deleted or made an automatic fallback.
+
 ### D351 — Revisioned provider-key file and exact pending recovery · 2026-09-26
 
 The fixed `.env.providers` remains the sole saved provider-key authority. Five registered
