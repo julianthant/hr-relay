@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { join, resolve } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { projectStorageRelocationPlanHistory, type StorageRelocationHistoryRepositories } from "../../core/storage-relocation-plans.js";
 import { CommandAuditRecordSchema, StorageRelocationCommandRequestSchema } from "../../domain/commands.js";
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import type { StorageRelocationPlanView } from "../../domain/commands.js";
 import { withAuthorityDatabaseReadOnly } from "../compat/backup-inspection.js";
@@ -81,7 +83,11 @@ export function validateStorageRelocationRestoreCandidate(input: Readonly<{
         if (rows.length !== 1) refuse("activation snapshot missing or ambiguous");
         const row = TextRow.parse(rows[0]);
         const snapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(row.record_json));
-        if (row.record_key !== snapshot.configSnapshotId || snapshot.fingerprint !== receipt.evidence.configFingerprint) {
+        const actualFingerprint = createHash("sha256").update(canonicalJsonStringify(snapshot.config)).digest("hex");
+        if (row.record_key !== snapshot.configSnapshotId || snapshot.fingerprint !== actualFingerprint
+          || snapshot.fingerprint !== receipt.evidence.configFingerprint
+          || snapshot.config.paths.stateRoot !== receipt.destination.stateRoot
+          || snapshot.config.paths.artifactRoot !== receipt.destination.artifactRoot) {
           refuse("activation snapshot fingerprint mismatch");
         }
       }

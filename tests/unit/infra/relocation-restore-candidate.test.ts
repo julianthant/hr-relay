@@ -1,10 +1,12 @@
-import { randomUUID } from "node:crypto";
-import { mkdtempSync, realpathSync, rmSync } from "node:fs";
+import { createHash, randomUUID } from "node:crypto";
+import { copyFileSync, mkdtempSync, readFileSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
 import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
@@ -63,10 +65,13 @@ it("requires the entire receipt-backed plan history and activation snapshot in a
     storageRelocationPlans: producer }, request).state).toBe("applied");
   const withoutSnapshot = await backup();
   const configSnapshotId = randomUUID();
-  const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+  const ordinary = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+  const config = { ...ordinary.config, paths: { ...ordinary.config.paths,
+    stateRoot: destination.stateRoot, artifactRoot: destination.artifactRoot } };
+  const fingerprint = createHash("sha256").update(canonicalJsonStringify(config)).digest("hex");
   database.withAuthorityTransaction((repositories) => repositories.configSnapshots.insert({
-    configSnapshotId, revision: 1, fingerprint: resolved.fingerprint, config: resolved.config,
-    provenance: resolved.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
+    configSnapshotId, revision: 1, fingerprint, config,
+    provenance: ordinary.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator",
   }));
   database.close(); admission.release();
 
@@ -88,7 +93,7 @@ it("requires the entire receipt-backed plan history and activation snapshot in a
   const evidence = { operationId, installationId: lease.locator.installationId, sourceGeneration: 0,
     source: pair, destination, plan, stagingReceiptId: "fixture-stage", stagingDigest: "2".repeat(64),
     backupReceiptId: "fixture-final", backupDigest: "3".repeat(64), finalDatabasePath: path,
-    configSnapshotId, configFingerprint: resolved.fingerprint, authorityVersion: 56 as const,
+    configSnapshotId, configFingerprint: fingerprint, authorityVersion: 56 as const,
     databaseIdentity: AuthorityDatabase.sourceDatabaseIdentity(path), managedStateEntries: [] };
   lease.recordVerifiedStage(() => evidence);
   lease.fenceRelocationSource(); lease.retainRelocationSources();
@@ -112,5 +117,20 @@ it("requires the entire receipt-backed plan history and activation snapshot in a
     .toThrow(/active authority path differs from locator/u);
   expect(validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
     verifiedBackup: complete })).toMatchObject({ revision: 1, sourceGeneration: 1, pending: null });
+  const tamperedPath = join(backupDirectory, "tampered.sqlite");
+  copyFileSync(complete.backupPath, tamperedPath);
+  const tamperedDatabase = new DatabaseSync(tamperedPath);
+  const raw = tamperedDatabase.prepare("SELECT record_json FROM settings_snapshots WHERE record_key = ?")
+    .get(configSnapshotId);
+  if (raw === undefined || typeof raw.record_json !== "string") throw new Error("missing fixture snapshot");
+  const snapshot = JSON.parse(raw.record_json) as Record<string, unknown>;
+  tamperedDatabase.prepare("UPDATE settings_snapshots SET record_json = ? WHERE record_key = ?")
+    .run(JSON.stringify({ ...snapshot, config: { ...config, paths: { ...config.paths,
+      reportsDir: join(workspace, "tampered") } } }), configSnapshotId);
+  tamperedDatabase.close();
+  const tamperedSha256 = createHash("sha256").update(readFileSync(tamperedPath)).digest("hex");
+  expect(() => validateStorageRelocationRestoreCandidate({ admission: active, activeAuthorityPath: path,
+    verifiedBackup: { ...complete, backupPath: tamperedPath, manifest: { ...complete.manifest,
+      sha256: tamperedSha256 } } })).toThrow(/activation snapshot fingerprint mismatch/u);
   current.close(); active.release();
 });
