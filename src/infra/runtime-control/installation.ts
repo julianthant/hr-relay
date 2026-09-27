@@ -6,7 +6,7 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
-import { observeProcessIdentity, observeRuntimeLockSnapshot, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
+import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
   type ProcessStartIdentity, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../domain/commands.js";
@@ -532,6 +532,33 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   syncDir(history);
   syncDir(control);
   return Object.freeze({ acquisitionId: owner.acquisitionId, pid: owner.pid, receiptPath });
+}
+
+/** Startup uses the offline proof only for an exact abandoned owner in a settled installation. */
+export function recoverAbandonedAdmissionMutexAtStartup(workspacePath: string): void {
+  const workspace = realpathSync(workspacePath);
+  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
+  const control = join(workspace, CONTROL);
+  assertNoSymlinkComponents(control);
+  privateDirectory(control);
+  const mutexPath = join(control, "admission-mutex");
+  if (lstatMaybe(mutexPath) === undefined) return;
+  privateDirectory(mutexPath);
+  const entries = readdirSync(mutexPath);
+  if (entries.length !== 1) fail("abandoned mutex has unexpected entries");
+  const name = entries[0];
+  if (name !== "owner.json") {
+    const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
+    if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
+  }
+  const owner = readStrict(join(mutexPath, name), MutexOwnerSchema);
+  const observed = observeProcessIdentity(owner.pid);
+  if (observed.state !== "gone" && (observed.state !== "alive"
+    || observed.identity.platform === owner.processIdentity.platform
+      && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
+  const restore = acquireRuntimeRestoreAdmission({ processLockRoot: fixedLockRoot(workspace), pid: process.pid });
+  try { recoverAbandonedAdmissionMutex(workspace, restore, owner.pid); }
+  finally { restore.release(); }
 }
 
 function activeLeases(control: string): readonly z.infer<typeof LeaseSchema>[] {

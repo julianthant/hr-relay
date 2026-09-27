@@ -1,4 +1,12 @@
-# `reference/decisions.md` — the decision ledger (D1–D353, 2026-07-17 → 2026-09-26)
+# `reference/decisions.md` — the decision ledger (D1–D354, 2026-07-17 → 2026-09-27)
+
+**D354 — Proven abandoned admission mutex recovery at startup (operator-directed, 2026-09-27):**
+An ordinary runtime entrypoint may retry admission once after the existing stopped-system proof
+archives one private, schema-valid mutex owner whose process identity is gone or reused. The proof
+still requires fixed restore admission, a settled installation, unchanged owner bytes, stopped
+leases and process locks, and no pending journal. Live, ambiguous, malformed, or incomplete states
+refuse; relocation recovery remains explicit. The `storage recover-admission --pid` command stays.
+Owner: [clock-config-secrets §D354](clock-config-secrets.md#d354--proven-abandoned-admission-mutex-recovery-at-startup--2026-09-27).
 
 **D353 — Editable browser and Duo paths (operator-approved, 2026-09-26):**
 Browser-profile, Duo credential, and Duo extension locations are independent ordinary Settings
