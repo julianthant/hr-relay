@@ -107,10 +107,10 @@ export function createNativePathPicker(options: Readonly<{ platform?: NodeJS.Pla
   let active = false;
   return Object.freeze({
     async pick(request: NativePathPickerRequest, signal: AbortSignal): Promise<NativePathPickerResponse> {
-      if (platform !== "darwin") return { state: "unavailable", field: request.field, reason: "unsupported-platform" };
-      if (active) return { state: "unavailable", field: request.field, reason: "busy" };
       const kind = pathKind(request.field);
       const hint = request.initialPath === undefined ? undefined : existingDirectoryHint(request.initialPath, kind);
+      if (platform !== "darwin") return { state: "unavailable", field: request.field, reason: "unsupported-platform" };
+      if (active) return { state: "unavailable", field: request.field, reason: "busy" };
       if (signal.aborted) return { state: "unavailable", field: request.field, reason: "dialog-failed" };
       active = true;
       try {

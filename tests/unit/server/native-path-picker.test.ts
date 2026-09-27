@@ -63,6 +63,8 @@ describe("native macOS path picker", () => {
     const unsupported = createNativePathPicker({ platform: "linux", execute: async () => { throw new Error("must not execute"); } });
     assert.deepEqual(await unsupported.pick(request, controller().signal),
       { state: "unavailable", field: request.field, reason: "unsupported-platform" });
+    await assert.rejects(unsupported.pick({ ...request, initialPath: "relative/unsafe" }, controller().signal),
+      InvalidNativePickerHintError);
   });
 
   it("rejects unsafe hints, omits missing hints, and refuses concurrent dialogs", async () => {
