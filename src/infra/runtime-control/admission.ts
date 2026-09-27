@@ -5,6 +5,7 @@ import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvi
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 
 const issued = new WeakSet<RuntimeAdmission>();
+const issuanceToken = Symbol("runtime-admission-issuance");
 
 function within(parent: string, child: string): boolean {
   const part = relative(parent, child);
@@ -13,8 +14,8 @@ function within(parent: string, child: string): boolean {
 
 function assertSyntheticDirectory(path: string): void {
   if (!isAbsolute(path) || resolve(path) !== path) throw new Error("runtime-admission: fixture path must be absolute");
-  const temp = resolve(tmpdir());
-  if (!within(temp, path) || path === temp) throw new Error("runtime-admission: fixture must be beneath system temp");
+  const temp = [resolve(tmpdir()), realpathSync(tmpdir())].find((candidate) => within(candidate, path) && path !== candidate);
+  if (temp === undefined) throw new Error("runtime-admission: fixture must be beneath system temp");
   let ancestor = path;
   while (ancestor !== temp) {
     const info = lstatSync(ancestor, { throwIfNoEntry: false });
@@ -46,8 +47,9 @@ export class RuntimeAdmission {
   readonly #locator: RuntimeLocator | undefined;
   #released = false;
 
-  private constructor(authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
+  private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[], archiveDatabasePaths: readonly string[], locator?: RuntimeLocator) {
+    if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
     this.#stateRoot = stateRoot;
     this.#artifactRoot = artifactRoot;
@@ -55,6 +57,7 @@ export class RuntimeAdmission {
     this.#archiveDatabasePaths = new Set(archiveDatabasePaths);
     this.#locator = locator === undefined ? undefined : Object.freeze({ ...locator });
     issued.add(this);
+    Object.freeze(this);
   }
 
   get locator(): RuntimeLocator {
@@ -72,6 +75,15 @@ export class RuntimeAdmission {
     this.assertLive();
     if (path === ":memory:") return;
     if (!this.#authorityDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: authority database path is outside admission");
+  }
+  assertReadOnlyAuthorityDatabase(path: string): void {
+    this.assertLive();
+    if (path === ":memory:") return;
+    const checked = resolve(path);
+    if (this.#authorityDatabasePaths.has(checked)) return;
+    const parent = dirname(checked);
+    if (parent === join(this.#stateRoot, "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
+    throw new Error("runtime-admission: read-only authority database path is outside admission");
   }
   assertArchiveDatabase(path: string): void {
     this.assertLive();
@@ -95,7 +107,7 @@ export class RuntimeAdmission {
   static fromInstallationLease(lease: InstallationLease): RuntimeAdmission {
     assertInstallationLease(lease);
     const { stateRoot, artifactRoot } = lease.locator;
-    return new RuntimeAdmission(lease, stateRoot, artifactRoot,
+    return new RuntimeAdmission(issuanceToken, lease, stateRoot, artifactRoot,
       [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)], lease.locator);
   }
 
@@ -109,7 +121,7 @@ export class RuntimeAdmission {
     const lease = acquireInstallation(canonical, "exclusive", {
       defaultPair: defaults,
       verifyExisting: (pair) => {
-        const inspection = new RuntimeAdmission({ assertHeld() {}, release() {} }, pair.stateRoot, pair.artifactRoot,
+        const inspection = new RuntimeAdmission(issuanceToken, { assertHeld() {}, release() {} }, pair.stateRoot, pair.artifactRoot,
           [join(pair.stateRoot, "state.db")], [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
         try { return verifyExisting(pair, inspection); }
         finally { inspection.release(); }
@@ -122,6 +134,11 @@ export class RuntimeAdmission {
   static syntheticFixture(databasePath: string, kind: "authority" | "archive"): RuntimeAdmission {
     if (databasePath !== ":memory:") {
       assertSyntheticDirectory(dirname(databasePath));
+      const file = lstatSync(databasePath, { throwIfNoEntry: false });
+      if (file !== undefined && (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1
+        || (process.getuid && file.uid !== process.getuid()) || (file.mode & 0o022) !== 0)) {
+        throw new Error("runtime-admission: unsafe synthetic fixture database");
+      }
       for (const forbidden of [".runtime-control", ".runtime-owner.json", ".runtime-source-fence.json"]) {
         if (databasePath.split(/[\\/]/u).includes(forbidden)) throw new Error("runtime-admission: fixture overlaps installation control");
       }
@@ -129,7 +146,7 @@ export class RuntimeAdmission {
     const stateRoot = databasePath === ":memory:" ? ":memory:" : dirname(databasePath);
     const artifactRoot = databasePath === ":memory:" ? ":memory:" : join(stateRoot, "artifacts");
     const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
-    return new RuntimeAdmission(authority, stateRoot, artifactRoot,
+    return new RuntimeAdmission(issuanceToken, authority, stateRoot, artifactRoot,
       kind === "authority" ? [databasePath] : [],
       kind === "archive" ? [databasePath] : databasePath === ":memory:" ? [] : [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
   }
@@ -138,10 +155,11 @@ export class RuntimeAdmission {
     assertSyntheticDirectory(stateRoot);
     assertSyntheticDirectory(artifactRoot);
     const authority: AdmissionAuthority = { assertHeld() {}, release() {} };
-    return new RuntimeAdmission(authority, stateRoot, artifactRoot,
+    return new RuntimeAdmission(issuanceToken, authority, stateRoot, artifactRoot,
       [join(stateRoot, "state.db")], [join(stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)]);
   }
 }
+Object.freeze(RuntimeAdmission.prototype);
 
 export function requireRuntimeAdmission(value: RuntimeAdmission | undefined): RuntimeAdmission {
   if (value === undefined || !issued.has(value)) throw new Error("runtime-admission: required");
