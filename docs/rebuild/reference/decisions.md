@@ -18,7 +18,9 @@ and request/destination digests. Exact retry is idempotent; corrupt or drifting 
 Actual relocation requires exclusive offline admission, verified backup, a durable source fence,
 an atomic pair locator switch, and an activation receipt. Schema v56 is required before activation
 so supported pre-location binaries refuse the authority even when only artifacts move. v55 backup
-readability is retained. SQLite stores desired intent, not a second active-root authority.
+readability and normal DB-only/paired restore are retained. Normal startup admits v55/v56 without
+auto-upgrading existing v55; v56 activation is explicit and stopped. SQLite stores desired intent,
+not a second active-root authority.
 Process locks stay checkout-local. Destination activation includes a final-path verified backup.
 Journal-bound retained data and tombstones prevent old-path reuse. The default `.tracker` source
 must remain a directory shell around fixed `.tracker/locks`; its managed entries are retained
