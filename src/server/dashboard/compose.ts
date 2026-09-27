@@ -1074,6 +1074,14 @@ async function composeDashboardRuntimeStartup(
           failures.push(error);
         }
       }
+      // The CLI shutdown signal handlers still own the process until stop()
+      // settles. Release installation admission here, after the database and
+      // process lock, so a repeated signal cannot interrupt its mutex cleanup.
+      try {
+        admission.release();
+      } catch (error: unknown) {
+        failures.push(error);
+      }
       const primary = failures[0];
       if (failures.length === 1) throw primary;
       if (failures.length > 1) {

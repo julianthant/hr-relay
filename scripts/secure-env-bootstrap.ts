@@ -5,7 +5,10 @@ import {
 } from "../src/domain/secrets.js";
 import { publishProviderBootProvenance } from "../src/domain/config/provider-boot-provenance.js";
 import { acquireEntrypointAdmission } from "../src/infra/runtime-control/bootstrap-admission.js";
-import { inspectPendingRelocationStatus } from "../src/infra/runtime-control/installation.js";
+import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../src/infra/runtime-control/installation.js";
+import { acquireRuntimeRestoreAdmission } from "../src/infra/sqlite/runtime-process-locks.js";
+import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
+import { join } from "node:path";
 import type { RuntimeAdmission } from "../src/infra/runtime-control/admission.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
@@ -19,6 +22,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
   readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
+  readonly runAdmissionRecovery?: (workspace: string, expectedPid: number) => ReturnType<typeof recoverAbandonedAdmissionMutex>;
 }
 
 /** The one production `.env.providers`, anchored to this bootstrap rather than the caller's CWD. */
@@ -42,6 +46,19 @@ export async function runSecureEnvironmentBootstrap(
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
   const workspace = fileURLToPath(new URL("..", import.meta.url));
+  if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "recover-admission") {
+    if (entrypointArgs.length !== 4 || entrypointArgs[2] !== "--pid"
+      || !/^[1-9]\d*$/u.test(entrypointArgs[3] ?? "")) throw new Error("storage recover-admission usage: --pid <abandoned-owner-pid>");
+    const recover = dependencies.runAdmissionRecovery ?? ((root: string, expectedPid: number) => {
+      const restore = acquireRuntimeRestoreAdmission({ processLockRoot: join(root, rebuildRuntimeIsolation.processLockRoot), pid: process.pid });
+      try { return recoverAbandonedAdmissionMutex(root, restore, expectedPid); }
+      finally { restore.release(); }
+    });
+    const result = recover(workspace, Number(entrypointArgs[3]));
+    process.stdout.write(`storage admission recovered: ${result.acquisitionId}; receipt ${result.receiptPath}\n`);
+    return;
+  }
+
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "relocate") {
     const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/server/storage/relocate.js");
     const command = parseRelocationCommand(entrypointArgs.slice(2));
@@ -117,7 +134,21 @@ export async function runSecureEnvironmentBootstrap(
     ?? (await import("./smoke-test-target-document-number.js")).runTestTargetDocumentNumberSmoke;
   process.exitCode = await runTestTargetDocumentNumberSmoke();
   } finally {
-    admission.release();
+    if (entrypoint === "cli" && entrypointArgs[0] === "dashboard") {
+      // The runtime's shutdown listeners end before this final admission release.
+      // Keep signal ownership through the next event-loop turn so a queued second
+      // Ctrl+C cannot interrupt the mutex owner publication or cleanup.
+      const absorb = (): void => undefined;
+      process.on("SIGINT", absorb);
+      process.on("SIGTERM", absorb);
+      try {
+        admission.release();
+        await new Promise<void>(resolve => setImmediate(resolve));
+      } finally {
+        process.removeListener("SIGINT", absorb);
+        process.removeListener("SIGTERM", absorb);
+      }
+    } else admission.release();
   }
 }
 

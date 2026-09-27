@@ -241,6 +241,7 @@ export function runtimeHelp(isolation: RuntimeIsolation): string {
     "  storage doctor [--json]  read-only authority + span reconciliation + backup report (ref dashboard-surfaces §2.5; exit 0 = authority healthy + reconciliation healthy + protected authority readable; backup reported, not gated)",
     "  storage backup [--json]  write ONE verified authority backup + manifest — the only backup writer (D322)",
     "  storage restore --from <manifest.json> [--json]  quarantine the suspect authority and swap in ONE named verified backup (D181)",
+    "  storage recover-admission --pid <owner-pid>  offline quarantine of a verified abandoned installation mutex; preserves its owner evidence",
     ...TEST_DATA_USAGE.map((line) => `  ${line}`),
   ].join("\n");
 }

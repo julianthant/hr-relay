@@ -3,12 +3,12 @@ import { randomUUID } from "node:crypto";
 import { createHash } from "node:crypto";
 import { chmodSync, copyFileSync, existsSync, linkSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, renameSync, rmSync, statSync, symlinkSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { acquireInstallation, inspectPendingRelocationRecovery, inspectPendingRelocationStatus,
+import { acquireInstallation, recoverAbandonedAdmissionMutex, inspectPendingRelocationRecovery, inspectPendingRelocationStatus,
   type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../src/infra/runtime-control/installation.js";
-import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { acquireRuntimeRestoreAdmission, observeProcessIdentity, type RestoreAdmissionHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
 import { NonNegativeIntSchema } from "../../../src/domain/ids.js";
@@ -896,6 +896,96 @@ it("refuses a mutex left by a crashed child without automatic reaping", async ()
     await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
   } finally { await stopChild(child); }
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex busy or abandoned; offline recovery required/u);
+});
+
+it.each(["temporary", "published"])("recovers an exact abandoned %s mutex owner under held offline restore admission", (kind) => {
+  const { workspace, pair } = fixture();
+  const initial = adoptSynthetic(workspace, pair); initial.release();
+  const mutex = join(workspace, ".runtime-control", "admission-mutex");
+  mkdirSync(mutex, { mode: 0o700 });
+  const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: 99999999,
+    processIdentity: { platform: process.platform, startToken: "synthetic-dead-owner" } };
+  const ownerPath = join(mutex, kind === "temporary" ? `.${randomUUID()}.tmp` : "owner.json");
+  writeFileSync(ownerPath, `${JSON.stringify(owner)}\n`, { mode: 0o600 });
+  const held = restore(workspace);
+  try {
+    expect(() => recoverAbandonedAdmissionMutex(workspace, held, 99999998)).toThrow(/expected pid mismatch/u);
+    writeFileSync(join(mutex, "unexpected"), "unknown", { mode: 0o600 });
+    expect(() => recoverAbandonedAdmissionMutex(workspace, held, owner.pid)).toThrow(/unexpected entries/u);
+    unlinkSync(join(mutex, "unexpected"));
+    if (kind === "published") {
+      const history = join(workspace, ".runtime-control", "admission-mutex-recovery");
+      mkdirSync(history, { mode: 0o700 });
+      writeFileSync(join(history, `${owner.acquisitionId}.json`), JSON.stringify({
+        schemaVersion: 1, acquisitionId: owner.acquisitionId, pid: owner.pid,
+        processIdentity: owner.processIdentity, installationId: initial.locator.installationId,
+        generation: 0, ownerFile: basename(ownerPath),
+        ownerSha256: createHash("sha256").update(readFileSync(ownerPath)).digest("hex"),
+        recoveredAt: "2026-09-26T00:00:00.000Z",
+      }), { mode: 0o600 });
+    }
+    const result = recoverAbandonedAdmissionMutex(workspace, held, owner.pid);
+    expect(result.acquisitionId).toBe(owner.acquisitionId);
+    expect(existsSync(mutex)).toBe(false);
+    expect(readFileSync(join(workspace, ".runtime-control", "admission-mutex-recovery", owner.acquisitionId,
+      basename(ownerPath)), "utf8")).toBe(`${JSON.stringify(owner)}\n`);
+    expect(JSON.parse(readFileSync(result.receiptPath, "utf8"))).toMatchObject({ pid: owner.pid,
+      acquisitionId: owner.acquisitionId, ownerFile: basename(ownerPath) });
+    if (kind === "published") expect(JSON.parse(readFileSync(result.receiptPath, "utf8"))).toHaveProperty(
+      "recoveredAt", "2026-09-26T00:00:00.000Z");
+    const after = acquireInstallation(workspace, "shared"); after.release();
+  } finally { held.release(); }
+});
+
+it.each(["live lease", "pending journal", "symlink owner", "public owner"])("refuses mutex recovery with %s", (condition) => {
+  const { workspace, pair } = fixture();
+  const initial = adoptSynthetic(workspace, pair); initial.release();
+  const control = join(workspace, ".runtime-control");
+  const mutex = join(control, "admission-mutex");
+  mkdirSync(mutex, { mode: 0o700 });
+  const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: 99999999,
+    processIdentity: { platform: process.platform, startToken: "synthetic-dead-owner" } };
+  const ownerPath = join(mutex, "owner.json");
+  writeFileSync(ownerPath, JSON.stringify(owner), { mode: 0o600 });
+  if (condition === "live lease") {
+    const current = observeProcessIdentity(process.pid);
+    if (current.state !== "alive") throw new Error("current process identity unavailable");
+    const admissionId = randomUUID();
+    writeFileSync(join(control, "leases", `${admissionId}.json`), JSON.stringify({ schemaVersion: 1,
+      admissionId, mode: "shared", pid: process.pid, processIdentity: current.identity }), { mode: 0o600 });
+  } else if (condition === "pending journal") {
+    writeFileSync(join(control, "journal.json"), JSON.stringify({ schemaVersion: 1, phase: "adopting",
+      installationId: initial.locator.installationId }), { mode: 0o600 });
+  } else if (condition === "symlink owner") {
+    const target = join(workspace, "preserved-owner.json");
+    renameSync(ownerPath, target);
+    symlinkSync(target, ownerPath);
+  } else chmodSync(ownerPath, 0o644);
+  const held = restore(workspace);
+  try {
+    expect(() => recoverAbandonedAdmissionMutex(workspace, held, owner.pid)).toThrow(
+      /lease may still be live|unexpected installation control entry|unsafe file/u);
+    expect(existsSync(ownerPath)).toBe(true);
+    expect(existsSync(join(control, "admission-mutex-recovery"))).toBe(false);
+  } finally { held.release(); }
+});
+
+it("refuses offline mutex recovery while its recorded owner is live", () => {
+  const { workspace, pair } = fixture();
+  const initial = adoptSynthetic(workspace, pair); initial.release();
+  const mutex = join(workspace, ".runtime-control", "admission-mutex");
+  mkdirSync(mutex, { mode: 0o700 });
+  const current = observeProcessIdentity(process.pid);
+  if (current.state !== "alive") throw new Error("current process identity unavailable");
+  const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid,
+    processIdentity: current.identity };
+  const ownerPath = join(mutex, "owner.json");
+  writeFileSync(ownerPath, `${JSON.stringify(owner)}\n`, { mode: 0o600 });
+  const held = restore(workspace);
+  try {
+    expect(() => recoverAbandonedAdmissionMutex(workspace, held, process.pid)).toThrow(/may still be live/u);
+    expect(existsSync(ownerPath)).toBe(true);
+  } finally { held.release(); }
 });
 
 it("ignores a dead process lease after a crash outside the mutex", async () => {

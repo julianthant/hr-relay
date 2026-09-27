@@ -41,6 +41,65 @@ describe("secure environment bootstrap", () => {
       assert.deepEqual(output, [`storage relocate: fenced operation ${operationId}; run storage relocate --resume ${operationId}\n`]);
     } finally { process.stdout.write = originalWrite; }
   });
+  it("dispatches exact offline admission recovery without normal admission or provider environment", async () => {
+    const output: string[] = [];
+    const original = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (value: string) => { output.push(value); return true; };
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "storage", "recover-admission", "--pid", "71300"], {
+        acquireAdmission: () => { throw new Error("normal admission must not run"); },
+        assertEnvironment: () => { throw new Error("provider environment must not load"); },
+        runAdmissionRecovery: (workspace, pid) => {
+          assert.equal(workspace, REPO_ROOT);
+          assert.equal(pid, 71300);
+          return { acquisitionId: "11111111-1111-4111-8111-111111111111", pid, receiptPath: "/synthetic/receipt.json" };
+        },
+      });
+      assert.match(output.join(""), /storage admission recovered: 11111111-1111-4111-8111-111111111111/u);
+    } finally { process.stdout.write = original; }
+  });
+
+  it("keeps signal listeners through the final dashboard admission release", async () => {
+    const originalArgv = [...process.argv];
+    const beforeInterrupt = process.listenerCount("SIGINT");
+    const beforeTerminate = process.listenerCount("SIGTERM");
+    let released = false;
+    let queuedSignalAbsorbed = false;
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "dashboard"], {
+        acquireAdmission: () => ({ release() {
+          assert.ok(process.listenerCount("SIGINT") > beforeInterrupt);
+          assert.ok(process.listenerCount("SIGTERM") > beforeTerminate);
+          process.emit("SIGINT");
+          process.emit("SIGTERM");
+          setImmediate(() => { queuedSignalAbsorbed = process.listenerCount("SIGINT") > beforeInterrupt; process.emit("SIGINT"); });
+          released = true;
+        } }) as unknown as RuntimeAdmission,
+        assertEnvironment: () => undefined,
+        admitEnvironmentFile: () => undefined,
+        runCli: async () => undefined,
+      });
+      assert.equal(released, true);
+      assert.equal(queuedSignalAbsorbed, true);
+      assert.equal(process.listenerCount("SIGINT"), beforeInterrupt);
+      assert.equal(process.listenerCount("SIGTERM"), beforeTerminate);
+    } finally { process.argv.splice(0, process.argv.length, ...originalArgv); }
+  });
+
+  it("survives a real SIGINT sent by the stub final admission release", () => {
+    const moduleUrl = pathToFileURL(join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts")).href;
+    const source = `import { runSecureEnvironmentBootstrap } from ${JSON.stringify(moduleUrl)};
+      await runSecureEnvironmentBootstrap(['cli','dashboard'], {
+        acquireAdmission: () => ({ release() { process.kill(process.pid, 'SIGINT'); } }),
+        assertEnvironment: () => {}, admitEnvironmentFile: () => {}, runCli: async () => {},
+      });
+      process.stdout.write('RELEASED\\n');`;
+    const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", source],
+      { cwd: REPO_ROOT, encoding: "utf8", timeout: 5000 });
+    assert.equal(child.status, 0, `child ended with ${String(child.signal)}: ${child.stderr}`);
+    assert.match(child.stdout, /RELEASED/u);
+  });
+
   it("resolves the admitted environment file from the bootstrap module when CWD changes", () => {
     const originalDirectory = process.cwd();
     const unrelatedDirectory = mkdtempSync(join(tmpdir(), "hrauto-bootstrap-cwd-"));

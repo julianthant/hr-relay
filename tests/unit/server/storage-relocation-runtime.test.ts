@@ -84,7 +84,10 @@ it("plans, reads, retries, conflicts, and cancels through a real admitted dashbo
         assert.equal(final.pending, null);
         assert.deepEqual(final.sourcePair, { stateRoot, artifactRoot });
         assert.equal(final.sourceGeneration, 0);
-      } finally { await runtime.stop(); }
+      } finally {
+        await runtime.stop();
+        assert.throws(() => admission.assertLive(), /released admission/u);
+      }
     } finally { admission.release(); }
   } finally { rmSync(workspace, { recursive: true, force: true }); }
 }, 20_000);

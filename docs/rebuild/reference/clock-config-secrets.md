@@ -1908,6 +1908,15 @@ receipt is durable before the transient journal is cleared; later plan projectio
 source generations through those receipts. These are acceptance requirements for the pending
 engine, not claims that movement or recovery is implemented.
 
+An abandoned installation admission mutex remains a startup refusal. With the runtime stopped,
+`npm run cli -- storage recover-admission --pid <owner-pid>` takes fixed restore admission and
+requires a settled installation, valid root witnesses, and proof that the recorded mutex owner,
+installation leases, and runtime process owners are no longer live. It accepts one complete owner
+record, including an interrupted atomic publication, and refuses unknown or unsafe entries. Recovery
+revalidates the same owner and directory before quarantining the mutex with a durable receipt under
+`.runtime-control/admission-mutex-recovery/`. It never deletes installation identity, changes the
+locator, or repairs a relocation journal. Normal startup does not perform this recovery automatically.
+
 Before source upgrade, the operation journal records an immutable preparation receipt binding the
 exact verified backup file and manifest paths and both digests, source schema/identity/generation/
 content fingerprint, and existing operation/plan binding. Recovery re-verifies that exact evidence;

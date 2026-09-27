@@ -6,7 +6,7 @@ import {
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
-import { observeProcessIdentity, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
+import { observeProcessIdentity, observeRuntimeLockSnapshot, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
   type ProcessStartIdentity, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { storageRelocationDesiredDigest } from "../../domain/commands.js";
@@ -445,6 +445,95 @@ function mutex<T>(control: string, callback: () => T): T {
     syncDir(control);
   }
 }
+const MutexOwnerSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
+  phase: z.literal("admitting"), pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema });
+const MutexRecoveryReceiptSchema = z.strictObject({ schemaVersion: z.literal(1), acquisitionId: z.uuid(),
+  pid: z.number().int().positive(), processIdentity: ProcessStartIdentitySchema,
+  installationId: z.uuid(), generation: NonNegativeIntSchema, ownerFile: z.string().min(1),
+  ownerSha256: z.string().regex(/^[0-9a-f]{64}$/u), recoveredAt: z.iso.datetime() });
+
+/** Explicit offline recovery. The restore lock serializes recoveries; the occupied mutex excludes ordinary admission until the final rename. */
+export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: RestoreAdmissionHandle,
+  expectedPid: number): Readonly<{ acquisitionId: string; pid: number; receiptPath: string }> {
+  const workspace = realpathSync(workspacePath);
+  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
+  const control = join(workspace, CONTROL);
+  assertNoSymlinkComponents(control);
+  privateDirectory(control);
+  assertRestoreHeld(workspace, restore);
+  const mutexPath = join(control, "admission-mutex");
+  privateDirectory(mutexPath);
+  const mutexBefore = lstatSync(mutexPath);
+  const allowedControl = new Set(["installation.json", "locator.json", "leases", "admission-mutex",
+    "admission-mutex-recovery", RECEIPTS]);
+  if (readdirSync(control).some(entry => !allowedControl.has(entry))) fail("unexpected installation control entry");
+  const entries = readdirSync(mutexPath);
+  if (entries.length !== 1) fail("abandoned mutex has unexpected entries");
+  const name = entries[0];
+  if (name !== "owner.json") {
+    const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
+    if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
+  }
+  const ownerPath = join(mutexPath, name);
+  const before = lstatSync(ownerPath);
+  const bytes = readFileSync(ownerPath);
+  const owner = readStrict(ownerPath, MutexOwnerSchema);
+  if (owner.pid !== expectedPid) fail("abandoned mutex expected pid mismatch");
+  const observed = observeProcessIdentity(owner.pid);
+  if (observed.state !== "gone" && (observed.state !== "alive"
+    || observed.identity.platform === owner.processIdentity.platform
+      && observed.identity.startToken === owner.processIdentity.startToken)) fail("admission mutex owner may still be live");
+  const leases = join(control, "leases");
+  privateDirectory(leases);
+  for (const leaseName of readdirSync(leases)) {
+    if (!/^[-0-9a-f]+\.json$/u.test(leaseName)) fail("unexpected lease entry");
+    const lease = readStrict(join(leases, leaseName), LeaseSchema);
+    const observation = observeProcessIdentity(lease.pid);
+    if (observation.state !== "gone" && (observation.state !== "alive"
+      || observation.identity.platform === lease.processIdentity.platform
+        && observation.identity.startToken === lease.processIdentity.startToken)) fail("installation lease may still be live");
+  }
+  if (lstatMaybe(join(control, "journal.json"))) fail("pending installation journal blocks mutex recovery");
+  const locator = readLocator(control, workspace);
+  const processLockRoot = fixedLockRoot(workspace);
+  const lockSnapshot = observeRuntimeLockSnapshot({ processLockRoot,
+    sourceDatabaseIdentity: "0".repeat(64) });
+  if (lockSnapshot.processLocks.server.state !== "stopped"
+    || lockSnapshot.processLocks.workers.state !== "stopped") fail("runtime process lock may still be live");
+  assertRestoreHeld(workspace, restore);
+  privateDirectory(mutexPath);
+  const currentEntries = readdirSync(mutexPath);
+  const current = lstatSync(ownerPath);
+  if (currentEntries.length !== 1 || currentEntries[0] !== name || current.dev !== before.dev
+    || current.ino !== before.ino || current.size !== before.size
+    || !readFileSync(ownerPath).equals(bytes)) fail("admission mutex changed during recovery");
+  const history = join(control, "admission-mutex-recovery");
+  if (lstatMaybe(history) === undefined) { mkdirSync(history, { mode: 0o700 }); syncDir(control); }
+  privateDirectory(history);
+  const receipt = MutexRecoveryReceiptSchema.parse({ schemaVersion: 1, acquisitionId: owner.acquisitionId, pid: owner.pid,
+    processIdentity: owner.processIdentity, installationId: locator.installationId,
+    generation: locator.generation, ownerFile: name,
+    ownerSha256: createHash("sha256").update(bytes).digest("hex"), recoveredAt: systemClock.now().toISOString() });
+  const destination = join(history, owner.acquisitionId);
+  const receiptPath = join(history, `${owner.acquisitionId}.json`);
+  if (lstatMaybe(destination)) fail("recovery archive already exists");
+  if (lstatMaybe(receiptPath)) {
+    const existing = readStrict(receiptPath, MutexRecoveryReceiptSchema);
+    if (canonicalJsonStringify({ ...existing, recoveredAt: receipt.recoveredAt })
+      !== canonicalJsonStringify(receipt)) fail("recovery receipt changed");
+  } else atomicJson(receiptPath, receipt);
+  assertRestoreHeld(workspace, restore);
+  const mutexLast = lstatSync(mutexPath);
+  const last = lstatSync(ownerPath);
+  if (mutexLast.dev !== mutexBefore.dev || mutexLast.ino !== mutexBefore.ino
+    || last.dev !== before.dev || last.ino !== before.ino || !readFileSync(ownerPath).equals(bytes)
+    || readdirSync(mutexPath).length !== 1) fail("admission mutex changed before archive");
+  renameSync(mutexPath, destination);
+  syncDir(history);
+  syncDir(control);
+  return Object.freeze({ acquisitionId: owner.acquisitionId, pid: owner.pid, receiptPath });
+}
+
 function activeLeases(control: string): readonly z.infer<typeof LeaseSchema>[] {
   const directory = join(control, "leases");
   privateDirectory(directory);
