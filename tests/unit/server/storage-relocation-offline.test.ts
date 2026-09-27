@@ -4,7 +4,12 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { ArtifactRefSchema } from "../../../src/domain/artifacts.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
+import { AppSettingsSchema } from "../../../src/domain/config/app-settings.js";
+import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
 import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
 import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
@@ -16,6 +21,30 @@ import { cleanupFixtureRoots, clock, durableSnapshot, installation, interruptedR
   plan, relocate, WAL_NOTIFICATION_TITLE } from "./helpers/storage-relocation-fixture.js";
 
 afterEach(cleanupFixtureRoots);
+
+function assertActivation(before: ReturnType<typeof durableSnapshot>, after: ReturnType<typeof durableSnapshot>,
+  destination: Readonly<{ stateRoot: string; artifactRoot: string }>): void {
+  assert.equal(before.appSettings.length, 1);
+  assert.equal(after.appSettings.length, 1);
+  const previous = AppSettingsSchema.parse(JSON.parse(before.appSettings[0] ?? "null") as unknown);
+  const current = AppSettingsSchema.parse(JSON.parse(after.appSettings[0] ?? "null") as unknown);
+  assert.equal(canonicalJsonStringify(current.saved), canonicalJsonStringify(previous.saved));
+  assert.ok(current.saved);
+  assert.ok(current.active);
+  assert.equal(current.active.generation, (previous.active?.generation ?? 0) + 1);
+  assert.equal(current.active.settingsRevision, current.saved.revision);
+  assert.equal(current.active.settingsFingerprint, current.saved.settingsFingerprint);
+  assert.equal(current.active.activatedAt, clock.now().toISOString());
+  assert.equal(after.settingsSnapshots.length, before.settingsSnapshots.length + 1);
+  assert.deepEqual(after.settingsSnapshots.slice(0, -1), before.settingsSnapshots);
+  const snapshot = ConfigSnapshotRecordSchema.parse(JSON.parse(after.settingsSnapshots.at(-1) ?? "null") as unknown);
+  assert.equal(current.active.configSnapshotId, snapshot.configSnapshotId);
+  assert.equal(current.active.configFingerprint, snapshot.fingerprint);
+  const expected = resolveConfigWithProvenance(current.saved.settings, hostConfigFacts({}), clock, destination);
+  assert.equal(snapshot.fingerprint, expected.fingerprint);
+  assert.deepEqual(snapshot.config, expected.config);
+  assert.deepEqual(snapshot.provenance, expected.provenance);
+}
 
 it("prepares a genuine offline relocation fixture with settings, protected data, archive and managed artifacts", async () => {
   const f = await installation();
@@ -68,7 +97,7 @@ it("moves both roots with a stopped WAL-backed domain record and preserves manag
     const after = durableSnapshot(join(destination.stateRoot, "state.db"),
       join(destination.stateRoot, "credentials", "protected.json"),
       join(destination.artifactRoot, `${f.artifact.sha256}.artifact`));
-    assert.deepEqual(after.appSettings, before.appSettings);
+    assertActivation(before, after, destination);
     assert.deepEqual(after.commands, before.commands);
     assert.deepEqual(after.audits, before.audits);
     assert.deepEqual(after.notifications, before.notifications);
@@ -129,7 +158,7 @@ it("moves artifacts first, then state under the prior receipt without changing s
     const after = durableSnapshot(join(stateDestination, "state.db"),
       join(stateDestination, "credentials", "protected.json"),
       join(artifactDestination, `${f.artifact.sha256}.artifact`));
-    assert.deepEqual(after.appSettings, before.appSettings);
+    assertActivation(before, after, { stateRoot: stateDestination, artifactRoot: artifactDestination });
     assert.deepEqual(after.commands, before.commands);
     assert.deepEqual(after.audits, before.audits);
     assert.equal(after.credentialDigest, before.credentialDigest);

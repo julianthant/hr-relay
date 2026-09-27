@@ -198,10 +198,11 @@ export function leaveStoppedWal(workspace: string, authorityPath: string): strin
 export function durableSnapshot(authorityPath: string, credentialFile: string, artifactFile: string) {
   const database = new DatabaseSync(authorityPath, { readOnly: true });
   try {
-    const rows = (table: "app_settings" | "commands" | "command_audits" | "notifications") => database.prepare(
+    const rows = (table: "app_settings" | "settings_snapshots" | "commands" | "command_audits" | "notifications") => database.prepare(
       `SELECT record_json FROM ${table} ORDER BY rowid`,
     ).all().map(row => String(row.record_json));
-    return { appSettings: rows("app_settings"), commands: rows("commands"), audits: rows("command_audits"),
+    return { appSettings: rows("app_settings"), settingsSnapshots: rows("settings_snapshots"),
+      commands: rows("commands"), audits: rows("command_audits"),
       notifications: rows("notifications"),
       credentialDigest: createHash("sha256").update(readFileSync(credentialFile)).digest("hex"),
       artifactDigest: createHash("sha256").update(readFileSync(artifactFile)).digest("hex") };
