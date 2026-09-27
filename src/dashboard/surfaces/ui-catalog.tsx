@@ -196,7 +196,7 @@ function CatalogRecord({
     ...( "role" in entry ? [["Role", entry.role]] : []),
     ...( "effect" in entry ? [["Effect", entry.effect]] : []),
     ...( "authoritativeFor" in entry ? [["Authoritative for", entry.authoritativeFor.join(", ")]] : []),
-    ["Sensitivity", entry.sensitivity],
+    ["Sensitivity", { public: "Public", hr: "HR data", restricted: "Restricted" }[entry.sensitivity]],
   ] as const;
   return <article aria-label={`${kind.word} ${String(entry.id)}`} className="settings-reference-catalog-record">
     <header className="settings-reference-record-heading">
