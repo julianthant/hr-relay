@@ -85,6 +85,7 @@ describe("Performance timeout presentation", () => {
     assert.deepEqual(groups.flatMap(group => group.leaves.map(item => item.path)).sort(), performance.leaves.map(item => item.path).sort());
     for (const item of performance.leaves.filter(candidate => !candidate.path.startsWith("timeouts."))) {
       assert.ok(performancePresentation(item.path), `missing presentation: ${item.path}`);
+      assert.ok((settingNote(item) ?? "").length > 0, `missing description: ${item.path}`);
     }
     for (const [path, display, stored] of [
       ["daemon.idleMs", "900", 900_000], ["daemon.idleRepollMs", "30", 30_000],

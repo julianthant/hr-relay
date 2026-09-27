@@ -49,13 +49,13 @@ it("current authorization claims old and new queued snapshots and still refuses 
 });
 
 it("actual browser launch and execution resources use each run's retained display, timeouts and mode", async () => {
-  const f = fixture(true);
+  const f = settingsFixture(true, ["synthetic-model-a", "synthetic-model-a-fallback"]); cleanups.push(f.close);
   assert.equal(f.save({ "timeouts.taskMs": { set: 60_000 }, "timeouts.sessionAcquireMs": { set: 120_000 },
     "providers.gemini.models": { set: ["synthetic-model-a", "synthetic-model-a-fallback"] } }).state, "applied");
   const old = f.create();
   assert.equal(f.save({ "display.screenWidth": { set: 1980 }, "display.screenHeight": { set: 1080 },
     "browser.headless": { set: false }, "timeouts.taskMs": { set: 90_000 }, "timeouts.sessionAcquireMs": { set: 180_000 },
-    "providers.gemini.models": { set: ["synthetic-model-b", "synthetic-model-b-fallback"] } }).state, "applied");
+    "providers.gemini.models": { set: ["synthetic-model-a-fallback", "synthetic-model-a"] } }).state, "applied");
   const next = f.create();
   const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/artifacts")) }); await artifacts.ready;
   const composeOcr = vi.spyOn(geminiOcr, "createGeminiOcrExtractAdapter");
@@ -64,7 +64,7 @@ it("actual browser launch and execution resources use each run's retained displa
     scheduler: { schedule: () => ({ cancel: () => {} }) }, environment: { GEMINI_API_KEY: "synthetic-key" } });
   const first = factory.forRun(old); const second = factory.forRun(next);
   assert.deepEqual(composeOcr.mock.calls.map(([input]) => input.modelId),
-    ["synthetic-model-a", "synthetic-model-a-fallback", "synthetic-model-b", "synthetic-model-b-fallback"]);
+    ["synthetic-model-a", "synthetic-model-a-fallback", "synthetic-model-a-fallback", "synthetic-model-a"]);
   assert.ok(first.providers?.adapters["ocr.extract"]); assert.ok(second.providers?.adapters["ocr.extract"]);
   assert.notEqual(first.providers?.adapters["ocr.extract"], second.providers?.adapters["ocr.extract"]);
   assert.equal(first.taskDeadlineMs, 60_000); assert.equal(second.taskDeadlineMs, 90_000);
@@ -83,7 +83,7 @@ it("actual browser launch and execution resources use each run's retained displa
   assert.notEqual(launch.mock.calls[0]?.[0], launch.mock.calls[1]?.[0]);
   assert.equal(factory.forRun(old), first);
   assert.equal(ConfigSnapshotRecordSchema.parse(first.providers?.configSnapshots.get(old.envelope.configSnapshotId)).config.providers.gemini?.models[0], "synthetic-model-a");
-  assert.equal(ConfigSnapshotRecordSchema.parse(second.providers?.configSnapshots.get(next.envelope.configSnapshotId)).config.providers.gemini?.models[0], "synthetic-model-b");
+  assert.equal(ConfigSnapshotRecordSchema.parse(second.providers?.configSnapshots.get(next.envelope.configSnapshotId)).config.providers.gemini?.models[0], "synthetic-model-a-fallback");
 });
 
 it("pause/requeue then resume keeps the same run configuration and rejects the former claim", () => {

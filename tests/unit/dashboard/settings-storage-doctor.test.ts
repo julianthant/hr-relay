@@ -110,6 +110,16 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
 }
 
 describe("loaded Settings storage doctor", () => {
+  it("places healthy status at the right and retains evidence below the description", async () => {
+    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
+      spanAuthority: { state: "reconciled", streamRunCount: 2, liveRunCount: 2, archived: [], deleted: [] } });
+    const dom = await mountDoctor(report);
+    const row = [...dom.querySelectorAll(".diagnostic-check-entry")].find(candidate => candidate.textContent?.includes("Database integrity"));
+    assert.ok(row);
+    assert.match(row.querySelector(".ds-result-row-copy")?.textContent ?? "", /Schema v27 · generation 41 · 12 pages/u);
+    assert.equal(row.querySelector(".ds-result-row-side")?.textContent, "Passed");
+    assert.equal(row.querySelector(".ds-result-row-side .ds-badge"), null);
+  });
   it.each(["missing", "restore-loss"] as const)("shows possible external write for %s recovery evidence", async (state) => {
     const runId = "00000000-0000-4000-8000-000000000301";
     const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,

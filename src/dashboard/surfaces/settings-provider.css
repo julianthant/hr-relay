@@ -33,21 +33,6 @@
   padding-block: 0;
 }
 
-.settings-provider-models .ds-ranked-label input {
-  width: 100%;
-}
-
-.settings-provider-model-actions {
-  display: flex;
-  align-items: center;
-  gap: var(--ds-space-base);
-}
-
-.settings-provider-model-actions .settings-provider-add {
-  margin-inline-start: auto;
-  padding-inline: var(--ds-space-cozy);
-}
-
 .settings-provider-error {
   margin: 0;
   color: var(--ds-danger);

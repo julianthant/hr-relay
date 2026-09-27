@@ -18,6 +18,24 @@ const TITLES: Readonly<Record<string, string>> = {
   "paths.duoExtensionDir": "Duo extension folder",
 };
 const NOTES: Readonly<Record<string, string>> = {
+  "concurrency.defaultWorkers": "Configured default worker count for this runtime.",
+  "daemon.idleMs": "Configured idle duration for the daemon.",
+  "daemon.idleRepollMs": "Maximum time between worker queue checks while idle.",
+  "performance.navigationRetries": "Configured limit for navigation retry attempts.",
+  "performance.separationTerminationWindowDays": "Configured separation termination window in days.",
+  "ocr.secondOpinionMax": "Configured limit for OCR second opinions.",
+  "ocr.pageMaxWaitMs": "Configured maximum wait for one OCR page.",
+  "ocr.tier1PatienceMs": "Configured patience for the first OCR provider tier.",
+  "ocr.pageConcurrency": "Configured number of concurrent OCR pages.",
+  "ocr.disambigConcurrency": "Configured concurrent disambiguation requests.",
+  "ocr.suggestConcurrency": "Configured concurrent suggestion requests.",
+  "ocr.backoffBaseMs": "Configured starting delay for OCR retry backoff.",
+  "ocr.backoffCapMs": "Configured maximum delay for OCR retry backoff.",
+  "ocr.maxValidationRetries": "Configured limit for OCR validation retries.",
+  "browserHealth.monitorTickMs": "Configured interval for browser health monitoring.",
+  "browserHealth.maxAutoRefresh": "Configured limit for automatic browser refreshes.",
+  "browserHealth.maxReopen": "Configured limit for browser reopen attempts.",
+  "browser.closeProofMs": "Time allowed to verify a browser session closed.",
   "actor.label": "Name shown in new run records.",
   "browser.headless": "Use headless browser sessions.",
   "features.debugScreenshots": "Capture extra diagnostic images.",
@@ -67,7 +85,7 @@ export function settingTitle(leaf: EditableSettingsLeafWire): string {
 
 export function settingNote(leaf: EditableSettingsLeafWire): string | undefined {
   const timeout = timeoutSetting(leaf.path);
-  if (timeout !== undefined) return timeout.description;
+  if (timeout !== undefined) return timeout.description ?? NOTES[leaf.path];
   if (leaf.path.endsWith(".jobEndDate")) return "Default end date for job records.";
   if (leaf.path.endsWith(".kronosDefaultEndDate")) return "Default end date for Kronos reports";
   if (leaf.path.endsWith(".kronosDefaultStartDate")) return "Default start date for Kronos reports";

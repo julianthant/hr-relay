@@ -84,12 +84,44 @@ it("Settings groups served checks and keeps failures, blocks, and only exact rem
   assert.ok(workflow?.textContent?.includes("Current fiscal year"));
   assert.ok(runtime?.textContent?.includes("Data store readiness"));
   assert.ok(runtime?.textContent?.includes("Browser tools"));
-  assert.match(host.textContent??"",/Blocks: executor.run/u);
-  assert.match(host.textContent??"",/Remedy: Repair browser.assets/u);
+  assert.doesNotMatch(host.textContent??"",/Technical details|Synthetic .* unavailable|Remedy:|Repair browser.assets/u);
+  assert.match(host.textContent??"",/Affected: Run execution/u);
   const buttons=[...host.querySelectorAll("button")].filter(button=>button.textContent?.startsWith("Open "));
   assert.equal(buttons.length,3);
   for(const button of buttons)await act(async()=>button.click());
   assert.deepEqual([storage,sessions,settings],[1,1,1]);
   const rerun=[...host.querySelectorAll("button")].find(button=>button.textContent==="Run checks again");
   assert.ok(rerun);await act(async()=>rerun.click());assert.equal(reruns,1);
+});
+
+it("Settings names missing UCPath fields from presence readback and opens Credentials",async()=>{
+  const served=await report();let destination:string|undefined;
+  const check={id:PreflightCheckIdSchema.parse("secrets.ucpath-sso"),label:"secrets.ucpath-sso",verdict:"fail" as const,
+    detail:"ucpathUserId: missing; ucpathPassword: missing",blocks:["system.ucpath.prod","system.crm.prod"],
+    remediation:"configure protected Settings",checkedAt:served.checkedAt};
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,
+    showSettings(section?:"storage"|"credentials"){destination=section;},showSessions(){}};
+  const client={preflightScopes:()=>Promise.resolve([])} as unknown as DashboardClient;
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:{state:"completed",report:served,checks:[check]},protectedSettings:FIXTURE_EDITABLE_SETTINGS.protectedSettings,onRerun(){}})})}));});
+  assert.match(host.textContent??"",/UCPath username and password are missing/u);
+  assert.match(host.textContent??"",/Affected: UCPath · CRM/u);
+  assert.doesNotMatch(host.textContent??"",/UCPath credentials are configured/u);
+  const configure=[...host.querySelectorAll("button")].find(button=>button.textContent==="Configure credentials");
+  assert.ok(configure);await act(async()=>configure.click());assert.equal(destination,"credentials");
+  assert.doesNotMatch(host.textContent??"",/Technical details|ucpathUserId|ucpathPassword|system.ucpath.prod|Remedy:|configure protected Settings/u);
+  assert.equal(host.querySelector(".diagnostic-technical-content"),null);
+});
+
+it("Settings keeps unknown credential presence unknown while retaining blocked verdict",async()=>{
+  const served=await report();
+  const check={id:PreflightCheckIdSchema.parse("secrets.ucpath-sso"),label:"secrets.ucpath-sso",verdict:"fail" as const,
+    detail:"presence unavailable",blocks:["system.ucpath.prod"],remediation:"review protected Settings",checkedAt:served.checkedAt};
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,showSettings(){},showSessions(){}};
+  const client={preflightScopes:()=>Promise.resolve([])} as unknown as DashboardClient;
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:{state:"completed",report:served,checks:[check]},protectedSettings:{state:"unknown",rows:FIXTURE_EDITABLE_SETTINGS.protectedSettings.rows,reason:"credential-store-unavailable"},onRerun(){}})})}));});
+  assert.match(host.textContent??"",/Credential presence could not be verified/u);
+  assert.doesNotMatch(host.textContent??"",/username and password are missing/u);
+  assert.match(host.textContent??"",/Blocked/u);
 });

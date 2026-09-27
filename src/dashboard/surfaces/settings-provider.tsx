@@ -1,12 +1,11 @@
 import { Form } from "@heroui/react";
-import { Plus, Trash2 } from "lucide-react";
 import { useReducer, useRef } from "react";
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, Disclosure, Field, FormGroup, IconButton, Input, PageHeading, RankedList, Spinner, dsIcon, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, Disclosure, Field, FormGroup, Input, PageHeading, RankedList, Spinner, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
-import { modelRaw, modelRows, removeModelRow, reorderModelRows, updateModelRow, type ProviderModelRow } from "./settings-ranked-models.js";
+import { modelRaw, modelRows, reorderModelRows, type ProviderModelRow } from "./settings-ranked-models.js";
 import { providerFieldPresentation, providerName } from "./ui-settings-records-labels.js";
 import { SettingsRowActions } from "./ui-settings-records-row-actions.js";
 import "./settings-provider.css";
@@ -79,20 +78,11 @@ function ModelEditor({ editor, leaf, first }: { editor: Editor; leaf: EditableSe
     className="settings-provider-disclosure" contentClassName="settings-provider-model-content">
     <div data-settings-path={leaf.path} className="settings-provider-models">
       <RankedList label={`${name} model priority`} disabled={editor.locked} items={rows.map((row, index) => ({
-        id: row.id, label: row.value || `Model ${index + 1}`, role: index === 0 ? "Primary" : "Fallback",
-        content: <Input aria-label={`${name} model ${index + 1}`} value={row.value} maxLength={256} disabled={editor.locked}
-          aria-invalid={(row.value.length === 0 || row.value.length > 256 || /[\s,]/u.test(row.value)) || undefined}
-          onChange={event => update(updateModelRow(rowsRef.current.rows, row.id, event.target.value))} />,
-        actions: <IconButton type="button" size="xs" variant="ghost" label={`Remove ${name} model ${index + 1}`} disabled={editor.locked}
-          icon={<Trash2 aria-hidden className={dsIcon.sm} />} onClick={() => update(removeModelRow(rowsRef.current.rows, row.id))} />,
+        id: row.id, label: row.value, role: index === 0 ? "Primary" : "Fallback",
       }))} onReorder={ordered => update(reorderModelRows(rowsRef.current.rows, ordered.map(item => item.id)))} />
-      <div className="settings-provider-model-actions"><SettingsRowActions editor={editor} leaf={leaf} />
-        <Button type="button" size="md" variant="secondary" icon={<Plus aria-hidden className={dsIcon.sm} />} className="settings-provider-add" disabled={editor.locked || rows.length >= 32}
-          onClick={() => update([...rowsRef.current.rows, { id: crypto.randomUUID(), value: "" }])}>Add model</Button>
-      </div>
-      {editor.errors[leaf.path] !== undefined && <p role="alert" className="settings-provider-error">Enter a model name for each row, without spaces or commas.</p>}
+      {rows.length === 0 && <p className={dsText.meta}>No models are configured for this provider. Model names are managed outside this page.</p>}
+      {editor.errors[leaf.path] !== undefined && <p role="alert" className="settings-provider-error">Model order could not be saved. Refresh the configured list and try again.</p>}
       {editor.save.state === "conflict" && operation !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
-      {leaf.validity === "unset" && rows.length === 0 && <p className={dsText.meta}>No model preference is set.</p>}
       {leaf.hazard !== undefined && <p className={dsText.meta}>{leaf.hazard}</p>}
     </div>
   </Disclosure>;

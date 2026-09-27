@@ -33,15 +33,19 @@ interface CheckResult { tone: CheckTone; value: string; evidence?: string; detai
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
 
 function CheckRow({ name, description, result }: { name: string; description: string; result: CheckResult }) {
-  const badgeTone = result.tone === "pass" ? "success" : result.tone === "attention" ? "warning" : result.tone === "unavailable" ? "danger" : "neutral";
+  const status = result.tone === "pass"
+    ? <span className="diagnostic-check-status"><StatusDot status="verifiedDone" />{result.value}</span>
+    : result.tone === "neutral"
+      ? <span className="diagnostic-check-status diagnostic-check-status-neutral">{result.value}</span>
+      : <Badge tone={result.tone === "attention" ? "warning" : "danger"}>{result.value}</Badge>;
   return <div className="diagnostic-check-entry" role="listitem">
-    <ResultRow label={name} description={description}
-      value={<Badge tone={badgeTone}>{result.value}</Badge>}
-      evidence={result.evidence} />
-    {(result.detail !== undefined || result.extra !== undefined) && <div className="diagnostic-check-detail">
-      {result.detail !== undefined && (result.detailLabel === undefined
-        ? <span>{result.detail}</span>
-        : <span><strong>{result.detailLabel}:</strong> {result.detail}</span>)}
+    <ResultRow label={name} description={<><span>{description}</span>
+      {result.evidence !== undefined && <span className="diagnostic-check-evidence">{result.evidence}</span>}
+      {result.detail !== undefined && <span className="diagnostic-check-evidence">
+        {result.detailLabel !== undefined && <><strong>{result.detailLabel}:</strong> </>}{result.detail}
+      </span>}
+    </>} value={status} />
+    {result.extra !== undefined && <div className="diagnostic-check-detail diagnostic-storage-detail">
       {result.extra}
     </div>}
   </div>;
