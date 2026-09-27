@@ -143,10 +143,9 @@ function CatalogRailView({
     >
       {rail.systems.map((system) => (
         <div key={system.system} role="group" aria-label={system.system}>
-          {/* The screen heading stays visible while its entries scroll. */}
           {system.screens.map(({ screen, children }) => (
             <div key={String(screen.id)} className="settings-reference-catalog-screen">
-              <SectionLabel className="settings-reference-catalog-screen-label sticky top-0 z-10 bg-[var(--ds-surface-1)] text-[color:var(--ds-fg-muted)]">
+              <SectionLabel className="settings-reference-catalog-screen-label text-[color:var(--ds-fg-muted)]">
                 {screenGroupLabel(screen.system, screen.label)}
               </SectionLabel>
               <RailRow
