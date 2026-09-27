@@ -3,7 +3,7 @@ import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
@@ -23,8 +23,8 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
-export function settingsFixture(isolateBrowser = false) {
-  const root = mkdtempSync(join(tmpdir(), "settings-activation-"));
+export function settingsFixture(isolateBrowser = false, configuredModels: readonly string[] = []) {
+  const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-activation-"));
   const path = join(root, "authority.sqlite");
   const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
   const host = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "2560x1440" });
@@ -32,13 +32,18 @@ export function settingsFixture(isolateBrowser = false) {
   const initial = readSettings(database.authority);
   const resolveSettings = (value: unknown) => {
     const result = resolveConfigWithProvenance(value, host, clock);
-    if (!isolateBrowser) return result;
+    const configured = configuredModels.length === 0 ? result : (() => {
+      const models = (value as { providers?: { gemini?: { models?: readonly string[] } } }).providers?.gemini?.models ?? configuredModels;
+      const config = { ...result.config, providers: { ...result.config.providers, gemini: { models } } };
+      return { ...result, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };
+    })();
+    if (!isolateBrowser) return configured;
     // A fixed process configuration for the synthetic launch target; these roots are
     // deliberately not editable settings and never appear in the save patch.
-    const config = { ...result.config, paths: { ...result.config.paths, browserProfileRoot: join(root, "profiles"),
+    const config = { ...configured.config, paths: { ...configured.config.paths, browserProfileRoot: join(root, "profiles"),
       downloadsDir: join(root, "downloads"), duoExtensionDir: join(root, "extension") },
-      features: { ...result.config.features, duoWebAuthn: false } };
-    return { ...result, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };
+      features: { ...configured.config.features, duoWebAuthn: false } };
+    return { ...configured, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };
   };
   const resolved = resolveSettings({});
   const snapshot = { ...resolved, configSnapshotId: randomUUID(), revision: 1,

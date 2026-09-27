@@ -19,6 +19,19 @@ import { providerStoreRequest } from "./provider-key-projection.js";
 import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "./ordinary-path-validator.js";
 
 const VALIDATED_PATHS = new Set(["paths.browserProfileRoot", "paths.duoCredential", "paths.duoExtensionDir"]);
+const MODEL_PATHS = ["gemini", "groq", "mistral", "openRouter", "sambanova"] as const;
+
+function sameModelMembership(current: readonly string[], next: readonly string[]): boolean {
+  if (current.length !== next.length) return false;
+  const counts = new Map<string, number>();
+  for (const model of current) counts.set(model, (counts.get(model) ?? 0) + 1);
+  for (const model of next) {
+    const remaining = counts.get(model);
+    if (remaining === undefined || remaining === 0) return false;
+    counts.set(model, remaining - 1);
+  }
+  return true;
+}
 
 function protectedInput(command: SettingsCommand) {
   const request = ProtectedSettingsCommandRequestSchema.parse(command);
@@ -92,14 +105,24 @@ export function createSettingsApplicationExecutor(
       let settings: SettingsFileRecord["settings"];
       let resolved: ResolvedConfig;
       try {
+        const currentConfig = ResolvedConfigSchema.parse(resolveCandidate(current.settings));
+        for (const providerName of MODEL_PATHS) {
+          const path = `providers.${providerName}.models`;
+          const operation = command.payload.patch[path];
+          if (operation === undefined) continue;
+          const configured = currentConfig.config.providers[providerName]?.models ?? [];
+          if ("clear" in operation || !sameModelMembership(configured, operation.set as readonly string[])) {
+            return SettingsApplyRefusalSchema.parse({ state: "rejected", code: "invalid-value",
+              message: `${path}: model priority may only reorder configured models` });
+          }
+        }
         settings = mergeSettingsPatch(current.settings, command.payload.patch);
         resolved = ResolvedConfigSchema.parse(resolveCandidate(settings));
         if (sha256Hex(canonicalJsonStringify(resolved.config)) !== resolved.fingerprint) {
           throw new Error("settings-resolution-fingerprint-mismatch");
         }
         if (Object.keys(command.payload.patch).some(path => VALIDATED_PATHS.has(path))) {
-          const previous = ResolvedConfigSchema.parse(resolveCandidate(current.settings));
-          validateOrdinaryPathChanges(previous.config, resolved.config);
+          validateOrdinaryPathChanges(currentConfig.config, resolved.config);
         }
       } catch (error) {
         if (error instanceof OrdinaryPathValidationError) {
