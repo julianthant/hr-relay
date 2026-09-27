@@ -69,6 +69,13 @@ const servedEntry = (id: string, label: string): SettingsNavEntry => ({
   source: "served",
 });
 
+const clientEntry = (id: string, label: string, icon: SettingsNavIcon): SettingsNavEntry => ({
+  id,
+  label,
+  icon,
+  source: "client",
+});
+
 
 export interface SettingsNavEntry {
   readonly id: string;
@@ -144,33 +151,26 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 /**
  * The demo's three nav groups, minus the ones this build has no member for.
  *
- * The demo draws `Settings` (the server's strict resolver-owned editable
- * leaves) · `Status` · `Help`. Help carries TWO entries here (D295) where the
- * demo has one: the demo has no generated selector catalog to put anywhere.
- * The Settings group is present only when that
- * exact editor inventory is served; its one revision/schema/patch-bound
- * command applies the reviewed leaves atomically, while environment-owned
- * leaves remain locked. Status is separately read-only and Help remains
- * client-owned, so an absent group is never disguised as a failed load.
+ * The approved Settings page list stays available while the current editor
+ * projection loads or fails. Each page still reads its values and edit
+ * authority from the served projection; Status and Help remain independent.
  */
 export function buildSettingsNav(
   sections: readonly SettingsSection[],
   editor?: EditableSettingsWire,
 ): readonly SettingsNavGroup[] {
   const groups: SettingsNavGroup[] = [];
-  if (editor !== undefined) {
-    const entries = [
-      servedEntry("general", "General"),
-      servedEntry("performance", "Performance"),
-      servedEntry("paths", "Paths"),
-      servedEntry("routes", "Routes"),
-      servedEntry("providers", "Provider budgets & models"),
-      servedEntry("credentials", "Credentials"),
-      ...editor.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
-        .map(section => servedEntry(section.id, section.label)),
-    ];
-    groups.push({ heading: "Settings", entries });
-  }
+  const entries = [
+    clientEntry("general", "General", "general"),
+    clientEntry("performance", "Performance", "performance"),
+    clientEntry("paths", "Paths", "paths"),
+    clientEntry("routes", "Routes", "routes"),
+    clientEntry("providers", "Provider budgets & models", "performance"),
+    clientEntry("credentials", "Credentials", "general"),
+    ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
+      .map(section => servedEntry(section.id, section.label)) ?? []),
+  ];
+  groups.push({ heading: "Settings", entries });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
     statusEntries.push(servedEntry(section.id, section.label));

@@ -26,7 +26,10 @@ type Removal = { kind: "protected"; name: Parameters<Editor["protectedEditor"]["
 function CredentialsSection({ editor }: { editor: Editor }) {
   const [removal, setRemoval] = useState<Removal | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
-  if (editor.editor.state !== "loaded") return <Spinner label="Reading settings authorities" />;
+  if (editor.editor.state === "loading") return <Spinner label="Reading settings authorities" />;
+  if (editor.editor.state === "failed") return <Banner tone="danger" title="Credentials unavailable">
+    {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
+  </Banner>;
   const settingsDocument = editor.editor.document;
   const authority = settingsDocument.protectedSettings;
   const credentials = editor.protectedEditor;

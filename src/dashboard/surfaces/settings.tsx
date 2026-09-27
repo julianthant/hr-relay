@@ -220,6 +220,8 @@ export function SettingsPage({
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
+  const settingsEntries = groups.find(group => group.heading === "Settings")?.entries ?? [];
+  const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
   const providerUncertain = editor.providerEditor.save.state === "unconfirmed";
   const relocationUncertain = editor.relocationEditor.uncertain;
@@ -291,6 +293,13 @@ export function SettingsPage({
 
       <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <DsBodyScope className="settings-tab-body flex flex-col gap-[var(--ds-space-page)]">
+        {editor.editor.state === "failed" && !activeSettingsEditorSection
+          && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
+          && activeId !== SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
+          <Banner tone="danger" title="Editable settings unavailable">
+            {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
+          </Banner>
+        )}
         {/* A link naming a section this build has no entry for is stated, never
             redirected: landing on Storage under `?settings=budgets` tells the
             operator they are reading something they are not. */}
