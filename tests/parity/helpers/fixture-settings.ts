@@ -41,11 +41,11 @@ export const FIXTURE_SETTINGS_FACTS: SettingsFactsWire = buildSettingsFacts({
 
 
 /** Synthetic Settings projection built by the complete production fold. Paths have a stable fixture root. */
-export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1) {
+export function fixtureSettingsDocument(settings: SettingsOverride = {}, revision = 1, configuredModels?: readonly string[]) {
   const clock = manualClock(new Date(FIXTURE_NOW));
   const resolve = (overrides: SettingsOverride) => {
     const resolved = resolveConfigWithProvenance(overrides, hostConfigFacts({}), clock);
-    const config = ConfigSchema.parse({ ...resolved.config, paths: {
+    const config = ConfigSchema.parse({ ...resolved.config, ...(configuredModels === undefined || configuredModels.length === 0 ? {} : { providers: { ...resolved.config.providers, gemini: { models: settings.providers?.gemini?.models ?? configuredModels } } }), paths: {
       ...resolved.config.paths,
       reportsDir: overrides.paths?.reportsDir ?? "/tmp/reports",
       downloadsDir: overrides.paths?.downloadsDir ?? "/tmp/settings-fixture/downloads",

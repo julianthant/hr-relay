@@ -1,3 +1,4 @@
+import { readSettings } from "../../../src/server/settings-runtime.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";
@@ -11,10 +12,13 @@ const cleanups: (() => void)[] = [];
 afterEach(() => { vi.useRealTimers(); for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 async function setup(models: readonly string[] = []) {
-  const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
-  const mounted = await mountSettingsHarness(authority, "providers", () => fixtureSettingsDocument(
-    models.length === 0 ? {} : { providers: { gemini: { models: [...models] } } }, 2,
-  )); cleanups.push(mounted.close);
+  const authority = syntheticSettingsAuthority({ configuredModels: models }); cleanups.push(authority.close);
+  const readDocument = () => {
+    const current = authority.read();
+    const persisted = readSettings(authority.database.authority).settings;
+    return fixtureSettingsDocument(persisted, current.revision, models);
+  };
+  const mounted = await mountSettingsHarness(authority, "providers", readDocument); cleanups.push(mounted.close);
   return { ...mounted, authority };
 }
 
@@ -55,11 +59,14 @@ describe("provider budgets and models", () => {
     const area = modelArea(host);
     assert.equal(area.querySelectorAll("input").length, 0);
     assert.equal(area.querySelector('[aria-label^="Remove "]'), null);
+    const before = [...area.querySelectorAll(".ds-ranked-item")];
     const handle = area.querySelector('button[aria-label="Move same. Position 2 of 3. Use arrow keys to reorder."]');
     if (!(handle instanceof HTMLButtonElement)) throw new Error("move handle missing");
     await act(async () => { handle.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowUp", bubbles: true })); });
     assert.equal((controller().draft["providers.gemini.models"] as { raw: string }).raw, "same\nsame\nthird");
     assert.equal(modelArea(host).querySelectorAll(".ds-ranked-item").length, 3);
+    assert.equal(modelArea(host).querySelectorAll(".ds-ranked-item")[0], before[1]);
+    assert.equal(modelArea(host).querySelectorAll(".ds-ranked-item")[1], before[0]);
   });
 
   it("leaves unconfigured providers empty with no add control", async () => {
@@ -80,7 +87,19 @@ describe("provider budgets and models", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
     assert.equal(commands.length, 1);
     assert.deepEqual((commands[0] as { payload: { patch: unknown } }).payload.patch, { "providers.gemini.models": { set: ["two", "one"] } });
+    assert.equal(controller().save.state, "applied");
+  });
+
+  it("retains the reordered draft on a genuine revision conflict", async () => {
+    const { host, authority, controller, commands } = await setup(["one", "two"]);
+    await act(async () => { controller().update("providers.gemini.models", "two\none"); });
+    const competing = authority.apply({ "providers.gemini.models": { set: ["one", "two"] } });
+    assert.equal(competing.state, "applied");
+    await act(async () => { controller().submit(); });
+    assert.equal(commands.length, 1);
     assert.equal(controller().save.state, "conflict");
+    assert.equal((controller().draft["providers.gemini.models"] as { raw: string }).raw, "two\none");
+    assert.match(modelArea(host).textContent ?? "", /Current value: \["one","two"\]/u);
   });
 
   it("enforces model length, characters and count through the served schema", () => {
