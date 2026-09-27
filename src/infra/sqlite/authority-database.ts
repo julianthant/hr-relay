@@ -1955,6 +1955,24 @@ function relocationUnchangedAuthorityFingerprint(database: DatabaseSync): string
   return hash.digest("hex");
 }
 
+function relocationChangedAuthorityTables(before: DatabaseSync, after: DatabaseSync): readonly string[] {
+  const excluded = new Set(["database_state", "app_settings", "settings_snapshots"]);
+  const beforeNames = new Set(inspectionTableNames(before));
+  const afterNames = new Set(inspectionTableNames(after));
+  return AuthorityTableNameSchema.options.filter((table) => !excluded.has(table)).filter((table) => {
+    if (beforeNames.has(table) !== afterNames.has(table)) return true;
+    if (!beforeNames.has(table)) return false;
+    const fingerprint = (database: DatabaseSync): string => {
+      const hash = createHash("sha256");
+      for (const row of database.prepare(`SELECT * FROM ${table} ORDER BY record_key`).iterate()) {
+        hash.update(canonicalJsonStringify(z.record(z.string(), z.unknown()).parse(row)));
+      }
+      return hash.digest("hex");
+    };
+    return fingerprint(before) !== fingerprint(after);
+  });
+}
+
 function relocationSettingsSnapshots(database: DatabaseSync): readonly string[] {
   return database.prepare("SELECT * FROM settings_snapshots ORDER BY record_key").all().map((raw) => {
     const row = AuthorityRecordFingerprintRowSchema.extend({ created_at: z.string() }).parse(raw);
@@ -3071,7 +3089,7 @@ export class AuthorityDatabase implements Disposable {
         if (authorityContentFingerprint(this.#database) === authorityContentFingerprint(baseline)) return "prestate";
         if (relocationUnchangedAuthorityFingerprint(this.#database)
           !== relocationUnchangedAuthorityFingerprint(baseline)) {
-          throw new Error("storage-relocation: unrelated authority rows changed during activation");
+          throw new Error(`storage-relocation: unrelated authority rows changed during activation: ${relocationChangedAuthorityTables(baseline, this.#database).join(",")}`);
         }
         const snapshots = relocationSettingsSnapshots(this.#database);
         const priorSnapshots = relocationSettingsSnapshots(baseline);

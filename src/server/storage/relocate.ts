@@ -13,6 +13,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
 import { inspectAuthorityBackupReadOnly } from "../../infra/compat/backup-inspection.js";
 import { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
+import { ArchiveDatabase } from "../../infra/sqlite/archive-database.js";
 import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
 import { verifyLifecyclePair } from "../../infra/sqlite/lifecycle-storage.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
@@ -145,9 +146,11 @@ async function verifyPreparation(admission: RuntimeAdmission, evidence: Verified
 }
 
 function inventoryDigest(files: RelocationFileInventory): string {
+  const transientNative = new Set(["state.db-wal", "state.db-shm", "archive.sqlite-wal", "archive.sqlite-shm"]);
   return createHash("sha256").update(canonicalJsonStringify({
     directories: files.directories.map((row) => [row.role, row.relativePath]),
-    files: files.files.map((row) => [row.role, row.relativePath]),
+    files: files.files.filter((row) => row.role !== "state" || !transientNative.has(row.relativePath))
+      .map((row) => [row.role, row.relativePath]),
   })).digest("hex");
 }
 
@@ -186,7 +189,7 @@ function selectActivationIntent(operation: RuntimeRelocationOperation, admission
 }
 
 function applyActivationIntent(admission: RuntimeAdmission, intent: VerifiedRelocationActivationIntent,
-  verifiedStageBackupPath = intent.stageAuthority.backupPath): void {
+  verifiedStageBackupPath = intent.stageAuthority.backupPath, beforeTransaction?: () => void): void {
   const clock = manualClock(new Date(intent.snapshot.capturedAt));
   const inspect = () => {
     const database = AuthorityDatabase.open(admission, { path: intent.nativeDestinationPath,
@@ -196,13 +199,10 @@ function applyActivationIntent(admission: RuntimeAdmission, intent: VerifiedRelo
   };
   const state = inspect();
   if (state === "committed") return;
-  if (intent.nativeDestinationSha256 !== null
-    && digest(intent.nativeDestinationPath) !== intent.nativeDestinationSha256) {
-    throw new Error("storage-relocation: native destination changed before activation");
-  }
   const database = AuthorityDatabase.open(admission, { path: intent.nativeDestinationPath,
     busyTimeoutMs: 5000, migrationOwner: "storage-relocation" }, clock);
   try {
+    beforeTransaction?.();
     database.withAuthorityTransaction((repositories) => {
       repositories.configSnapshots.insert(intent.snapshot);
       repositories.runtimeConfig.activate({ settingsRevision: intent.settingsRevision,
@@ -257,6 +257,15 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
     if (join(pair.root, pair.pair.archiveFile) !== archivePath) {
       throw new Error("storage-relocation: retained archive identity differs");
     }
+    const liveArchivePath = join(intent.destination.stateRoot, "archive.sqlite");
+    const archive = new ArchiveDatabase(destination, liveArchivePath, { readOnly: true });
+    try {
+      if (archive.fingerprint() !== pair.pair.archiveFingerprint) {
+        throw new Error("storage-relocation: destination archive differs from pinned stage");
+      }
+    } finally { archive.close(); }
+  } else if (existsSync(join(intent.destination.stateRoot, "archive.sqlite"))) {
+    throw new Error("storage-relocation: unbound destination archive appeared");
   }
   if (basename(evidence.backupReceiptId) !== evidence.backupReceiptId
     || !/^authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite$/u.test(evidence.backupReceiptId)) {
@@ -276,13 +285,19 @@ async function verifyStageEvidence(operation: RuntimeRelocationOperation, destin
     if (database.classifyRelocationActivation(intent, stageBackupPath) !== "committed") {
       throw new Error("storage-relocation: destination activation not committed");
     }
+    const live = inspectAuthorityBackupReadOnly(destination, intent.nativeDestinationPath, CURRENT_AUTHORITY_SCHEMA_VERSION);
+    if (final.manifest.authorityGeneration !== live.authorityGeneration
+      || final.manifest.authorityContentFingerprint !== live.authorityContentFingerprint) {
+      throw new Error("storage-relocation: final backup differs from committed authority");
+    }
   } finally { database.close(); }
   return evidence;
 }
 
 export async function runOfflineStorageRelocation(input: Readonly<{ workspace: string; command: RelocationCommand;
   admission?: RuntimeAdmission; clock?: Clock; hostFacts?: HostConfigFacts;
-  faults?: Readonly<{ afterNativePublish?(): void; afterActivationIntent?(): void; afterActivationWrite?(): void;
+  faults?: Readonly<{ afterNativePublish?(): void; afterActivationIntent?(): void; beforeActivationTransaction?(): void;
+    afterActivationWrite?(): void; afterFinalBackup?(): void;
     afterVerifiedStage?(): void; afterFence?(): void; afterRetention?(): void; afterSwitch?(): void }> }>): Promise<Readonly<{ operationId: string; generation: number }>> {
   const workspace = resolve(input.workspace);
   const clock = input.clock ?? systemClock;
@@ -421,6 +436,8 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         operation.recordActivationIntent(() => {
           if (digest(intent.stageAuthority.manifestPath) !== intent.stageAuthority.manifestSha256
             || digest(intent.stageAuthority.backupPath) !== intent.stageAuthority.backupSha256
+            || (intent.nativeDestinationSha256 !== null
+              && digest(intent.nativeDestinationPath) !== intent.nativeDestinationSha256)
             || (intent.stageArchive !== null && (digest(intent.stageArchive.pairedManifestPath) !== intent.stageArchive.pairedManifestSha256
               || digest(intent.stageArchive.archivePath) !== intent.stageArchive.archiveSha256))) {
             throw new Error("storage-relocation: activation stage changed");
@@ -448,7 +465,8 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
       const destination = operation.destinationAdmission();
       try {
         verifyRelocationFileCopies({ sourceAdmission: admission, destinationAdmission: destination, inventory: sourceFiles });
-        applyActivationIntent(destination, intent);
+        applyActivationIntent(destination, intent, intent.stageAuthority.backupPath,
+          input.faults?.beforeActivationTransaction);
         input.faults?.afterActivationWrite?.();
         const finalBackup = await backupStoppedAuthority(destination, pending.destination.stateRoot, clock);
         const finalManifest = finalBackup.manifests.at(-1);
@@ -459,6 +477,7 @@ export async function runOfflineStorageRelocation(input: Readonly<{ workspace: s
         if (finalVerified.manifest.sha256 !== finalManifest.sha256) {
           throw new Error("storage-relocation: final backup identity changed");
         }
+        input.faults?.afterFinalBackup?.();
         const finalManifestSha256 = digest(finalManifestPath);
         const evidence: VerifiedRelocationEvidence = {
           operationId: pending.operationId, installationId: pending.installationId,
