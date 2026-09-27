@@ -1,3 +1,7 @@
+import { FingerprintSchema } from "../../../../src/domain/ids.js";
+import { canonicalJsonStringify } from "../../../../src/domain/canonical-json.js";
+import { sha256Hex } from "../../../../src/domain/sha256.js";
+import { createSettingsApplicationExecutor } from "../../../../src/server/dashboard/commands/settings-service.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,7 +34,7 @@ import { SettingsAuthoritySection } from "../../../../src/dashboard/surfaces/set
 import { RoutesSection } from "../../../../src/dashboard/surfaces/settings-routes.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
-export function syntheticSettingsAuthority(options: { providerFile?: string; parentSlots?: NodeJS.ProcessEnv; providerHooks?: ProviderKeyStoreHooks } = {}) {
+export function syntheticSettingsAuthority(options: { providerFile?: string; parentSlots?: NodeJS.ProcessEnv; providerHooks?: ProviderKeyStoreHooks; configuredModels?: readonly string[] } = {}) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "settings-surface-"));
   const clock = manualClock(new Date("2026-09-13T12:00:00.000Z"));
   const admission = RuntimeAdmission.syntheticRoots(root, join(root, "artifacts"));
@@ -43,7 +47,15 @@ export function syntheticSettingsAuthority(options: { providerFile?: string; par
   const providerStore = providerEnvPath === undefined ? undefined : createProviderKeyStore({ admission, envPath: providerEnvPath,
     journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint, hooks: options.providerHooks });
   const hostFacts = hostConfigFacts({ HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080" });
-  const resolved = resolveConfigWithProvenance({}, hostFacts, clock);
+  const resolveConfigured = (settings: unknown) => {
+    const resolved = resolveConfigWithProvenance(settings, hostFacts, clock);
+    if (options.configuredModels === undefined || options.configuredModels.length === 0) return resolved;
+    const value = settings as { providers?: { gemini?: { models?: readonly string[] } } };
+    const models = value.providers?.gemini?.models ?? options.configuredModels;
+    const config = { ...resolved.config, providers: { ...resolved.config.providers, gemini: { models } } };
+    return { ...resolved, config, fingerprint: FingerprintSchema.parse(sha256Hex(canonicalJsonStringify(config))) };
+  };
+  const resolved = resolveConfigured({});
   database.withAuthorityTransaction(repositories => {
     const record = readSettings(repositories); const configSnapshotId = randomUUID();
     repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance, capturedAt: clock.now().toISOString(), capturedBy: "local-operator" });
@@ -52,13 +64,15 @@ export function syntheticSettingsAuthority(options: { providerFile?: string; par
   const composition = composeSettings({ database, clock, hostFacts, active: activeSettingsRuntimeIdentity,
     environment: { HRAUTO_HOST_PRIMARY_DISPLAY: "1920x1080", ...providerEnvironment }, credentials,
     providerKeys: providerStore, providerBoot });
+  const settingsExecutor = options.configuredModels === undefined ? composition.executor
+    : createSettingsApplicationExecutor(resolveConfigured, credentials);
   const execute = (request: unknown) => {
     const retry = ProviderKeysRetryIntentSchema.safeParse(request);
     const resolved = retry.success ? providerCommandFromStore(providerStore!.readPendingRequest({
       commandId: retry.data.retry.commandId, writeId: retry.data.retry.writeId,
       receiptId: retry.data.retry.pendingReceiptId,
     })) : request;
-    return executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings: composition.executor }, resolved);
+    return executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings: settingsExecutor }, resolved);
   };
   const read = () => buildSettingsEditor(composition.routes.settingsEditor);
   const apply = (patch: SettingsPatch, revision = read().revision) => execute({ family: "settings", type: "apply-settings", commandId: randomUUID(), requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", target: { expectedRevision: revision }, payload: { settingsSchemaHash: SETTINGS_SCHEMA_HASH, patchFingerprint: deriveSettingsPatchFingerprint(patch), patch } });

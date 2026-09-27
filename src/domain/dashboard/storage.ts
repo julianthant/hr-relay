@@ -210,3 +210,9 @@ export const StorageDoctorWireSchema = z.strictObject({
 
 export type StorageDoctorWire = z.infer<typeof StorageDoctorWireSchema>;
 export type BackupServiceStateWire = z.infer<typeof BackupServiceStateWireSchema>;
+
+export const StorageDoctorLatestWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("never-run") }),
+  z.strictObject({ state: z.literal("completed"), report: StorageDoctorWireSchema }),
+]);
+export type StorageDoctorLatestWire = z.infer<typeof StorageDoctorLatestWireSchema>;

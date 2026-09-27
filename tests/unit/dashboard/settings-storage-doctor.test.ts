@@ -79,6 +79,7 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
   document.body.append(host);
   const client = {
     editableSettings: () => Promise.reject(new Error("editable settings are outside this fixture")),
+    latestStorageDoctor: () => Promise.resolve({ state: "never-run" }),
     storageDoctor: () => Promise.resolve(report),
   } as unknown as DashboardClient;
   await act(async () => {
