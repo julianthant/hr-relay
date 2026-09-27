@@ -260,6 +260,12 @@ dashboard version whenever it has archived runs. The current runtime version app
 the Archive heading bar; it is not a separate introductory status block or an exclusion rule for
 archive membership.
 
+Plan a bump includes a workflow selector in the selected-workflow option. It defaults to the
+browsed workflow when available and updates the proposed version and impact preview when changed.
+The selected-workflow action leaves the dashboard version unchanged; existing version and
+readiness authorities continue to govern the actual operation. Workflow export is an action in
+the shared heading bar, and numeric, date, version and count columns align right.
+
 The served report may add strictly validated archive-record identity/publication metadata, with
 explicit absence for historical producers. Original private source snapshots and private source
 digests remain outside this projection. This does not remove values already admitted to the
@@ -286,6 +292,9 @@ Archive, Explorer and Activity occupy the Dashboard's full available content wid
 shared shell inset. Their headings use the same rounded, subtly bordered bar and their bodies
 retain cohesive framed surfaces. Actions and internal layouts adapt to each selected design;
 the supplied Archive heading is a style reference, not an exact control-layout requirement.
+The page, grouped panels, controls, borders and text use the existing Settings body tokens in
+both themes. In dark mode, the page is darker than its grouped panels, and controls are lighter
+than those panels; an inverted surface hierarchy is not the selected presentation.
 Centered page-width caps are superseded for these three surfaces. Reading measures may constrain
 individual prose blocks without narrowing the overall surface. The operator requested regenerated
 interactive designs for review before implementation finalization.
