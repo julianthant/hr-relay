@@ -1773,6 +1773,16 @@ ordinary Settings leaves. They autosave through the existing revision CAS and ac
 runs. Existing run snapshots remain immutable. A profile override never implicitly rebases the
 Duo credential path; defaults still derive from the installation's default profile location.
 
+All nine Paths rows use a shared path-value control with a Change button instead of manual text
+entry. The local macOS host opens a native folder picker for directory fields and a file picker for
+the Duo credential and I-9 tracker. A guarded, field-typed picker request returns only a selected
+absolute path, cancellation, or an explicit unavailable/error result. It does not write Settings or
+relocate data. Selection feeds the existing ordinary autosave or D352 relocation-plan command;
+cancellation leaves the current value unchanged. Unsupported hosts report unavailable rather than
+substituting a browser upload or a fabricated path. Picker hints are validated; a valid missing hint
+may omit the default location without replacing the saved value. At most one bounded native dialog
+runs at a time. The shared control retains the full accessible path while shortening its display.
+
 Before activation, validate changed effective paths only. An arbitrary browser-profile target
 must be a fresh, absent or empty location with safe ownership and permissions; no profile is
 copied. Reset may reuse the safe canonical installation default. The Duo file must be an owned

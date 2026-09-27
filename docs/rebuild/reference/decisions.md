@@ -7,7 +7,10 @@ safe canonical-default profile reset, require fresh arbitrary profiles without c
 preserve existing run snapshots. Duo metadata and recognizable identity checks do not replace
 runtime credential usability checks. State/artifact relocation remains D352-owned. The previous
 v55 Settings hash and command fingerprints remain readable through the existing DB-only backup
-contract; historical v2 checks are unchanged. Owner:
+contract; historical v2 checks are unchanged. All Paths rows use a shared current-location display
+and Change button backed by the local native folder/file picker. The guarded picker returns a path
+without writing Settings; selection uses the existing autosave or relocation plan, and cancellation
+does nothing. Unsupported hosts fail explicitly. Owner:
 [clock-config-secrets §D353](clock-config-secrets.md#d353--editable-browser-and-duo-paths--2026-09-26).
 
 **D352 — Planned runtime storage relocation and v56 activation gate (operator-approved, 2026-09-26):**

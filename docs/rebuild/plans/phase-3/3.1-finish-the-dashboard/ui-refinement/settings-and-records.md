@@ -727,3 +727,11 @@ a stale active path; scoped lint passed. The adapter worktree typecheck reported
 from producer changes already integrated in the root, and is not recorded as a pass. Both restore
 consumers, the copy engine, and final integrated checks remain pending. Evidence is under
 `category-6/relocation-control/restore-candidate-*`.
+
+The operator's subsequent Paths amendment replaces manual text inputs in all nine rows with one
+shared path display and Change control. Directory fields open the native folder picker; Duo
+credential and I-9 tracker fields open a file picker. The selected absolute path enters the existing
+autosave or relocation-plan flow, and cancellation leaves it unchanged. The UI lane owns the shared
+primitive, kit specimen, Paths consumers and client; the backend lane owns the guarded native-picker
+endpoint and host adapter. The offline relocation engine remains separately owned. D353 and the
+decision index record this amendment. No new mockup or zoom check is required.
