@@ -1,459 +1,149 @@
 # explorer-transaction--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: explorer-transaction
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- banner:
-  - heading "HR Automation" [level=1]
-  - button "Back" [disabled]
-  - button "Forward" [disabled]
-  - button "Dashboard"
-  - button "Archive"
-  - button "Explorer" [pressed]
-  - button "Activity"
-  - button "Search runs across dates": Search runs… /
-  - button "Previous day — Sun, Aug 2"
-  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
-  - button "No later day" [disabled]
-  - 'button "Preflight: unavailable"'
-  - button "Notifications — 1 unread"
-  - button "Switch to Paper Ink"
-  - button "Settings"
-- main:
-  - region "Workflow explorer":
-    - text: Explorer
-    - region "Registered workflows":
-      - heading "Workflows" [level=2]
-      - text: "2"
-      - button "Version registry"
-      - text: Separations
-      - list:
-        - listitem:
-          - button "Separations 21"
-      - text: Search
-      - list:
-        - listitem:
-          - button "Person Lookup 4"
-    - heading "Separations v1" [level=2]
-    - text: 21 nodes · 273 reads · 30 writes
-    - button "What is this graph? — Separations"
-    - group "Separations identity": code sp version 1 shape single enqueue reject-active subject document systems kuali · new-kronos · ucpath
-    - region "Editable workflow presentation":
-      - text: Presentation
-      - term: Label
-      - definition: Separations
-      - button "Edit workflow label"
-      - term: Icon
-      - definition: ShieldCheck
-      - button "Edit workflow icon"
-      - term: Category
-      - definition: separation
-      - button "Edit workflow category"
-    - list:
-      - listitem:
-        - button "resolve-action Kuali Action Task system kuali 1 contract"
-        - text: always
-      - listitem:
-        - button "document Separation Document Task system kuali 1 contract"
-        - text: always
-      - listitem:
-        - button "plan Separation Plan Task store workflow:separations 1 contract"
-        - text: no edge between them
-      - listitem:
-        - button "termination-type Task store workflow:separations 1 contract"
-        - text: no edge between them
-      - listitem:
-        - button "name-search Task system ucpath 1 contract"
-        - text: always
-      - listitem:
-        - button "subject Separation Subject Task store workflow:separations 1 contract"
-        - text: always
-      - listitem:
-        - button "job-summary Task system ucpath 1 contract"
-        - text: always
-      - listitem:
-        - button "employment Task store workflow:separations 1 contract"
-        - text: always
-      - listitem:
-        - button "department-option Task store workflow:separations 1 contract"
-        - text: no edge between them
-      - listitem:
-        - button "timecard-search Task system new-kronos 1 contract re-runs on every attempt"
-        - text: always
-      - listitem:
-        - button "timecard Task system new-kronos 1 contract"
-        - text: always
-      - listitem:
-        - button "dates Reconciled Dates Task store workflow:separations 1 contract"
-        - text: always
-      - listitem:
-        - button "comparison Identity Comparison Task store workflow:separations 1 contract"
-        - text: always
-      - listitem:
-        - button "identity-approval Gate resolved by operator"
-        - text: always
-      - listitem:
-        - button "approval Approval Check Task store workflow:separations 1 contract re-runs on every attempt"
-        - text: always
-      - listitem:
-        - button "pending-set Read Exact Pending Set Task system ucpath 1 contract"
-        - text: always
-      - listitem:
-        - text: a dry run stops here
-        - button "clear-pending Clear Pending Terminations Transaction system ucpath 2 contracts"
-        - text: always
-      - listitem:
-        - button "file-termination Transaction system ucpath 2 contracts"
-        - text: always
-      - listitem:
-        - button "receipt Termination Receipt Task store workflow:separations 1 contract re-runs on every attempt"
-        - text: always
-      - listitem:
-        - button "filing-presence Verify Current UCPath Filing Task system ucpath 1 contract re-runs on every attempt"
-        - text: always
-      - listitem:
-        - button "finalize-kuali Finalize Kuali Document Transaction system kuali 2 contracts"
-    - region "Scenarios":
-      - text: Scenarios 50 registered person-lookup
-      - table "person-lookup scenarios":
+- dialog "Finalize Kuali Document contract":
+  - banner:
+    - heading "Finalize Kuali Document contract" [level=2]
+    - paragraph: Complete served step contract and source evidence.
+    - button "Close"
+  - heading "finalize-kuali" [level=2]
+  - text: Finalize Kuali Document
+  - button "What is this node? — finalize-kuali"
+  - text: Transaction system kuali changes a system of record a dry run does not commit this Depends on approval resolve-action document plan employment department-option dates receipt filing-presence Write sequence dry run stop-after-prepare probe always probe→fence 45s lease transaction retry before fence none Coverage points transaction:finalize-kuali/dry-run — transaction finalize-kuali previews prepare and creates no intent transaction:finalize-kuali/subject-mismatch — transaction finalize-kuali observes a mismatched subject and never fences transaction:finalize-kuali/committed — transaction finalize-kuali commits once and proves it transaction:finalize-kuali/already-present — transaction finalize-kuali finds its permanent key already satisfied
+  - region "finalize-kuali contract":
+    - text: Writes
+    - group "kuali/stage-separation-finalization contract":
+      - text: kuali/stage-separation-finalization prepares · Stage Kuali Separation Finalization checkpoint in-memory-only Inputs · 14 bound by the graph
+      - list "kuali/stage-separation-finalization inputs":
+        - listitem: actionId string
+        - listitem: documentNumber string
+        - listitem: emplId string
+        - listitem: protectedBindings list · sometimes
+        - listitem: variables.department string
+        - listitem: variables.lastDayWorked string
+        - listitem: variables.observedExistingComments string
+        - listitem: variables.payrollTitle string
+        - listitem: variables.payrollTitleCode string
+        - listitem: variables.separationDate string
+        - listitem: variables.terminationEffectiveDate string
+        - listitem: variables.timekeeperComments string
+        - listitem: variables.timekeeperName string
+        - listitem: variables.transactionNumber string
+      - text: Outputs · 30 not recorded
+      - list "kuali/stage-separation-finalization outputs":
+        - listitem: actionId string
+        - listitem: documentNumber string
+        - listitem: observedAt string
+        - listitem: observedDepartmentOptions list
+        - listitem: observedEid string
+        - listitem: previousFields.department string
+        - listitem: previousFields.finalPay enum · sometimes
+        - listitem: previousFields.lastDayWorked string
+        - listitem: previousFields.payrollTitle string
+        - listitem: previousFields.payrollTitleCode string
+        - listitem: previousFields.requestAcknowledged boolean
+        - listitem: previousFields.separationDate string
+        - listitem: previousFields.submittedTerminationTemplate boolean
+        - listitem: previousFields.terminationEffectiveDate string
+        - listitem: previousFields.timekeeperComments string
+        - listitem: previousFields.timekeeperName string
+        - listitem: previousFields.transactionNumber string
+        - listitem: stagedFields.department string
+        - listitem: stagedFields.finalPay enum
+        - listitem: stagedFields.lastDayWorked string
+        - listitem: stagedFields.payrollTitle string
+        - listitem: stagedFields.payrollTitleCode string
+        - listitem: stagedFields.requestAcknowledged boolean
+        - listitem: stagedFields.separationDate string
+        - listitem: stagedFields.submittedTerminationTemplate boolean
+        - listitem: stagedFields.terminationEffectiveDate string
+        - listitem: stagedFields.timekeeperComments string
+        - listitem: stagedFields.timekeeperName string
+        - listitem: stagedFields.transactionNumber string
+        - listitem: stagedPageState literal
+      - table "kuali/stage-separation-finalization record":
         - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
+          - row "Implemented by store kuali , kind browser":
+            - rowheader "Implemented by"
+            - cell "store kuali , kind browser"
+          - row "Subject binding kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence":
+            - rowheader "Subject binding"
+            - cell "kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence"
+          - row "Errors unexpected-page-state , subject-mismatch , department-option-not-offered , comments-changed-since-read , stage-not-persisted":
+            - rowheader "Errors"
+            - cell "unexpected-page-state , subject-mismatch , department-option-not-offered , comments-changed-since-read , stage-not-persisted"
+          - row "UI vocabulary screen kuali.rrss-document element kuali.rrss-document.department-field , kuali.rrss-document.eid-field , kuali.rrss-document.final-pay-student-radio , kuali.rrss-document.last-day-worked-field , kuali.rrss-document.payroll-title-code-field , kuali.rrss-document.payroll-title-field , kuali.rrss-document.request-acknowledged-checkbox , kuali.rrss-document.separation-date-field , kuali.rrss-document.submitted-template-checkbox , kuali.rrss-document.termination-effective-date-field , kuali.rrss-document.timekeeper-comments-field , kuali.rrss-document.timekeeper-field , kuali.rrss-document.transaction-number-field page-state kuali.rrss-document.finalization-staged , kuali.rrss-document.ready observation kuali.rrss-document.displayed-eid":
+            - rowheader "UI vocabulary"
+            - cell "screen kuali.rrss-document element kuali.rrss-document.department-field , kuali.rrss-document.eid-field , kuali.rrss-document.final-pay-student-radio , kuali.rrss-document.last-day-worked-field , kuali.rrss-document.payroll-title-code-field , kuali.rrss-document.payroll-title-field , kuali.rrss-document.request-acknowledged-checkbox , kuali.rrss-document.separation-date-field , kuali.rrss-document.submitted-template-checkbox , kuali.rrss-document.termination-effective-date-field , kuali.rrss-document.timekeeper-comments-field , kuali.rrss-document.timekeeper-field , kuali.rrss-document.transaction-number-field page-state kuali.rrss-document.finalization-staged , kuali.rrss-document.ready observation kuali.rrss-document.displayed-eid"
+          - row "Scenarios separations-kuali-finalization/stage-refusals":
+            - rowheader "Scenarios"
+            - cell "separations-kuali-finalization/stage-refusals"
+          - row "Source contract src/domain/contracts/kuali/stage-separation-finalization.ts impl src/stores/kuali/tasks/stage-separation-finalization.ts":
+            - rowheader "Source"
+            - cell "contract src/domain/contracts/kuali/stage-separation-finalization.ts impl src/stores/kuali/tasks/stage-separation-finalization.ts"
+      - text: input a398b86a2f7foutput 17238c60292aimpl 3c3416da47f8
+    - group "kuali/save-separation-finalization contract":
+      - text: kuali/save-separation-finalization commits · Save Kuali Separation Finalization proof save-verify Inputs · 14 bound by the graph
+      - list "kuali/save-separation-finalization inputs":
+        - listitem: actionId string
+        - listitem: documentNumber string
+        - listitem: emplId string
+        - listitem: protectedBindings list · sometimes
+        - listitem: variables.department string
+        - listitem: variables.lastDayWorked string
+        - listitem: variables.observedExistingComments string
+        - listitem: variables.payrollTitle string
+        - listitem: variables.payrollTitleCode string
+        - listitem: variables.separationDate string
+        - listitem: variables.terminationEffectiveDate string
+        - listitem: variables.timekeeperComments string
+        - listitem: variables.timekeeperName string
+        - listitem: variables.transactionNumber string
+      - text: Outputs · 17 stored in the transaction checkpoint
+      - list "kuali/save-separation-finalization outputs":
+        - listitem: savedState.actionId string
+        - listitem: savedState.documentNumber string
+        - listitem: savedState.fields.department string
+        - listitem: savedState.fields.finalPay enum
+        - listitem: savedState.fields.lastDayWorked string
+        - listitem: savedState.fields.payrollTitle string
+        - listitem: savedState.fields.payrollTitleCode string
+        - listitem: savedState.fields.requestAcknowledged boolean
+        - listitem: savedState.fields.separationDate string
+        - listitem: savedState.fields.submittedTerminationTemplate boolean
+        - listitem: savedState.fields.terminationEffectiveDate string
+        - listitem: savedState.fields.timekeeperComments string
+        - listitem: savedState.fields.timekeeperName string
+        - listitem: savedState.fields.transactionNumber string
+        - listitem: savedState.kind literal
+        - listitem: savedState.observedEid string
+        - listitem: savedState.source literal
+      - table "kuali/save-separation-finalization record":
         - rowgroup:
-          - row "ambiguous-name structural.scenario.test.ts":
-            - cell "ambiguous-name"
-            - cell "structural.scenario.test.ts"
-          - row "happy-by-eid structural.scenario.test.ts":
-            - cell "happy-by-eid"
-            - cell "structural.scenario.test.ts"
-          - row "not-found structural.scenario.test.ts":
-            - cell "not-found"
-            - cell "structural.scenario.test.ts"
-          - row "ucpath-drill-subject-mismatch structural.scenario.test.ts":
-            - cell "ucpath-drill-subject-mismatch"
-            - cell "structural.scenario.test.ts"
-      - text: separations-identity-check
-      - table "separations-identity-check scenarios":
-        - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
-        - rowgroup:
-          - row "already-terminated-multi-row structural.scenario.test.ts":
-            - cell "already-terminated-multi-row"
-            - cell "structural.scenario.test.ts"
-          - row "already-terminated-single-row structural.scenario.test.ts":
-            - cell "already-terminated-single-row"
-            - cell "structural.scenario.test.ts"
-          - row "concurrent-active-jobs structural.scenario.test.ts":
-            - cell "concurrent-active-jobs"
-            - cell "structural.scenario.test.ts"
-          - row "different-name-two-candidates structural.scenario.test.ts":
-            - cell "different-name-two-candidates"
-            - cell "structural.scenario.test.ts"
-          - row "gate-approved structural.scenario.test.ts":
-            - cell "gate-approved"
-            - cell "structural.scenario.test.ts"
-          - row "gate-evidence-moved structural.scenario.test.ts":
-            - cell "gate-evidence-moved"
-            - cell "structural.scenario.test.ts"
-          - row "gate-rejected structural.scenario.test.ts":
-            - cell "gate-rejected"
-            - cell "structural.scenario.test.ts"
-          - row "job-summary-not-found structural.scenario.test.ts":
-            - cell "job-summary-not-found"
-            - cell "structural.scenario.test.ts"
-          - row "similar-name-never-auto-proceeds structural.scenario.test.ts":
-            - cell "similar-name-never-auto-proceeds"
-            - cell "structural.scenario.test.ts"
-          - row "single-active-job structural.scenario.test.ts":
-            - cell "single-active-job"
-            - cell "structural.scenario.test.ts"
-          - row "unreadable-department structural.scenario.test.ts":
-            - cell "unreadable-department"
-            - cell "structural.scenario.test.ts"
-      - text: separations-kronos-timecard
-      - table "separations-kronos-timecard scenarios":
-        - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
-        - rowgroup:
-          - row "employee-not-found structural.scenario.test.ts":
-            - cell "employee-not-found"
-            - cell "structural.scenario.test.ts"
-          - row "reads-a-real-timecard structural.scenario.test.ts":
-            - cell "reads-a-real-timecard"
-            - cell "structural.scenario.test.ts"
-          - row "search-no-signal structural.scenario.test.ts":
-            - cell "search-no-signal"
-            - cell "structural.scenario.test.ts"
-          - row "timecard-without-punches structural.scenario.test.ts":
-            - cell "timecard-without-punches"
-            - cell "structural.scenario.test.ts"
-          - row "wrong-employee-timecard structural.scenario.test.ts":
-            - cell "wrong-employee-timecard"
-            - cell "structural.scenario.test.ts"
-      - text: separations-kuali-finalization
-      - table "separations-kuali-finalization scenarios":
-        - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
-        - rowgroup:
-          - row "department-option-refusals structural.scenario.test.ts":
-            - cell "department-option-refusals"
-            - cell "structural.scenario.test.ts"
-          - row "save-verify-read-back structural.scenario.test.ts":
-            - cell "save-verify-read-back"
-            - cell "structural.scenario.test.ts"
-          - row "stage-refusals structural.scenario.test.ts":
-            - cell "stage-refusals"
-            - cell "structural.scenario.test.ts"
-      - text: separations-kuali-read
-      - table "separations-kuali-read scenarios":
-        - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
-        - rowgroup:
-          - row "non-separation-document structural.scenario.test.ts":
-            - cell "non-separation-document"
-            - cell "structural.scenario.test.ts"
-          - row "reads-a-real-separation-document structural.scenario.test.ts":
-            - cell "reads-a-real-separation-document"
-            - cell "structural.scenario.test.ts"
-          - row "unknown-termination-type structural.scenario.test.ts":
-            - cell "unknown-termination-type"
-            - cell "structural.scenario.test.ts"
-          - row "unprocessed-document-absent-arms structural.scenario.test.ts":
-            - cell "unprocessed-document-absent-arms"
-            - cell "structural.scenario.test.ts"
-      - text: separations-ucpath-termination
-      - table "separations-ucpath-termination scenarios":
-        - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
-        - rowgroup:
-          - row "dry-run-preview structural.scenario.test.ts":
-            - cell "dry-run-preview"
-            - cell "structural.scenario.test.ts"
-          - row "pending-sweep-nothing-to-do structural.scenario.test.ts":
-            - cell "pending-sweep-nothing-to-do"
-            - cell "structural.scenario.test.ts"
-      - text: separations
-      - table "separations scenarios":
-        - rowgroup:
-          - row "Scenario Walked by":
-            - columnheader "Scenario"
-            - columnheader "Walked by"
-        - rowgroup:
-          - row "action-ambiguous structural.scenario.test.ts":
-            - cell "action-ambiguous"
-            - cell "structural.scenario.test.ts"
-          - row "action-not-in-action-list structural.scenario.test.ts":
-            - cell "action-not-in-action-list"
-            - cell "structural.scenario.test.ts"
-          - row "action-resolved structural.scenario.test.ts":
-            - cell "action-resolved"
-            - cell "structural.scenario.test.ts"
-          - row "date-reconciliation structural.scenario.test.ts":
-            - cell "date-reconciliation"
-            - cell "structural.scenario.test.ts"
-          - row "dry-run-preview structural.scenario.test.ts":
-            - cell "dry-run-preview"
-            - cell "structural.scenario.test.ts"
-          - row "employment-refusals structural.scenario.test.ts":
-            - cell "employment-refusals"
-            - cell "structural.scenario.test.ts"
-          - row "finalization-already-present structural.scenario.test.ts":
-            - cell "finalization-already-present"
-            - cell "structural.scenario.test.ts"
-          - row "finalization-committed structural.scenario.test.ts":
-            - cell "finalization-committed"
-            - cell "structural.scenario.test.ts"
-          - row "finalization-parks-after-termination structural.scenario.test.ts":
-            - cell "finalization-parks-after-termination"
-            - cell "structural.scenario.test.ts"
-          - row "gate-approved structural.scenario.test.ts":
-            - cell "gate-approved"
-            - cell "structural.scenario.test.ts"
-          - row "gate-resume-shape structural.scenario.test.ts":
-            - cell "gate-resume-shape"
-            - cell "structural.scenario.test.ts"
-          - row "kronos-hard-fails structural.scenario.test.ts":
-            - cell "kronos-hard-fails"
-            - cell "structural.scenario.test.ts"
-          - row "pending-sweep-committed structural.scenario.test.ts":
-            - cell "pending-sweep-committed"
-            - cell "structural.scenario.test.ts"
-          - row "pending-sweep-nothing-to-do structural.scenario.test.ts":
-            - cell "pending-sweep-nothing-to-do"
-            - cell "structural.scenario.test.ts"
-          - row "plan-refusals structural.scenario.test.ts":
-            - cell "plan-refusals"
-            - cell "structural.scenario.test.ts"
-          - row "re-read-is-a-new-item structural.scenario.test.ts":
-            - cell "re-read-is-a-new-item"
-            - cell "structural.scenario.test.ts"
-          - row "receipt-refusals structural.scenario.test.ts":
-            - cell "receipt-refusals"
-            - cell "structural.scenario.test.ts"
-          - row "subject-mismatch structural.scenario.test.ts":
-            - cell "subject-mismatch"
-            - cell "structural.scenario.test.ts"
-          - row "subject-resolution structural.scenario.test.ts":
-            - cell "subject-resolution"
-            - cell "structural.scenario.test.ts"
-          - row "termination-already-present structural.scenario.test.ts":
-            - cell "termination-already-present"
-            - cell "structural.scenario.test.ts"
-          - row "termination-committed structural.scenario.test.ts":
-            - cell "termination-committed"
-            - cell "structural.scenario.test.ts"
-    - heading "finalize-kuali" [level=2]
-    - text: Finalize Kuali Document
-    - button "What is this node? — finalize-kuali"
-    - text: Transaction system kuali changes a system of record a dry run does not commit this Depends on approval resolve-action document plan employment department-option dates receipt filing-presence Write sequence dry run stop-after-prepare probe always probe→fence 45s lease transaction retry before fence none Coverage points transaction:finalize-kuali/dry-run — transaction finalize-kuali previews prepare and creates no intent transaction:finalize-kuali/subject-mismatch — transaction finalize-kuali observes a mismatched subject and never fences transaction:finalize-kuali/committed — transaction finalize-kuali commits once and proves it transaction:finalize-kuali/already-present — transaction finalize-kuali finds its permanent key already satisfied
-    - region "finalize-kuali contract":
-      - text: Writes
-      - group "kuali/stage-separation-finalization contract":
-        - text: kuali/stage-separation-finalization prepares · Stage Kuali Separation Finalization checkpoint in-memory-only Inputs · 14 bound by the graph
-        - list "kuali/stage-separation-finalization inputs":
-          - listitem: actionId string
-          - listitem: documentNumber string
-          - listitem: emplId string
-          - listitem: protectedBindings list · sometimes
-          - listitem: variables.department string
-          - listitem: variables.lastDayWorked string
-          - listitem: variables.observedExistingComments string
-          - listitem: variables.payrollTitle string
-          - listitem: variables.payrollTitleCode string
-          - listitem: variables.separationDate string
-          - listitem: variables.terminationEffectiveDate string
-          - listitem: variables.timekeeperComments string
-          - listitem: variables.timekeeperName string
-          - listitem: variables.transactionNumber string
-        - text: Outputs · 30 not recorded
-        - list "kuali/stage-separation-finalization outputs":
-          - listitem: actionId string
-          - listitem: documentNumber string
-          - listitem: observedAt string
-          - listitem: observedDepartmentOptions list
-          - listitem: observedEid string
-          - listitem: previousFields.department string
-          - listitem: previousFields.finalPay enum · sometimes
-          - listitem: previousFields.lastDayWorked string
-          - listitem: previousFields.payrollTitle string
-          - listitem: previousFields.payrollTitleCode string
-          - listitem: previousFields.requestAcknowledged boolean
-          - listitem: previousFields.separationDate string
-          - listitem: previousFields.submittedTerminationTemplate boolean
-          - listitem: previousFields.terminationEffectiveDate string
-          - listitem: previousFields.timekeeperComments string
-          - listitem: previousFields.timekeeperName string
-          - listitem: previousFields.transactionNumber string
-          - listitem: stagedFields.department string
-          - listitem: stagedFields.finalPay enum
-          - listitem: stagedFields.lastDayWorked string
-          - listitem: stagedFields.payrollTitle string
-          - listitem: stagedFields.payrollTitleCode string
-          - listitem: stagedFields.requestAcknowledged boolean
-          - listitem: stagedFields.separationDate string
-          - listitem: stagedFields.submittedTerminationTemplate boolean
-          - listitem: stagedFields.terminationEffectiveDate string
-          - listitem: stagedFields.timekeeperComments string
-          - listitem: stagedFields.timekeeperName string
-          - listitem: stagedFields.transactionNumber string
-          - listitem: stagedPageState literal
-        - table "kuali/stage-separation-finalization record":
-          - rowgroup:
-            - row "Implemented by store kuali , kind browser":
-              - rowheader "Implemented by"
-              - cell "store kuali , kind browser"
-            - row "Subject binding kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence":
-              - rowheader "Subject binding"
-              - cell "kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence"
-            - row "Errors unexpected-page-state , subject-mismatch , department-option-not-offered , comments-changed-since-read , stage-not-persisted":
-              - rowheader "Errors"
-              - cell "unexpected-page-state , subject-mismatch , department-option-not-offered , comments-changed-since-read , stage-not-persisted"
-            - row "UI vocabulary screen kuali.rrss-document element kuali.rrss-document.department-field , kuali.rrss-document.eid-field , kuali.rrss-document.final-pay-student-radio , kuali.rrss-document.last-day-worked-field , kuali.rrss-document.payroll-title-code-field , kuali.rrss-document.payroll-title-field , kuali.rrss-document.request-acknowledged-checkbox , kuali.rrss-document.separation-date-field , kuali.rrss-document.submitted-template-checkbox , kuali.rrss-document.termination-effective-date-field , kuali.rrss-document.timekeeper-comments-field , kuali.rrss-document.timekeeper-field , kuali.rrss-document.transaction-number-field page-state kuali.rrss-document.finalization-staged , kuali.rrss-document.ready observation kuali.rrss-document.displayed-eid":
-              - rowheader "UI vocabulary"
-              - cell "screen kuali.rrss-document element kuali.rrss-document.department-field , kuali.rrss-document.eid-field , kuali.rrss-document.final-pay-student-radio , kuali.rrss-document.last-day-worked-field , kuali.rrss-document.payroll-title-code-field , kuali.rrss-document.payroll-title-field , kuali.rrss-document.request-acknowledged-checkbox , kuali.rrss-document.separation-date-field , kuali.rrss-document.submitted-template-checkbox , kuali.rrss-document.termination-effective-date-field , kuali.rrss-document.timekeeper-comments-field , kuali.rrss-document.timekeeper-field , kuali.rrss-document.transaction-number-field page-state kuali.rrss-document.finalization-staged , kuali.rrss-document.ready observation kuali.rrss-document.displayed-eid"
-            - row "Scenarios separations-kuali-finalization/stage-refusals":
-              - rowheader "Scenarios"
-              - cell "separations-kuali-finalization/stage-refusals"
-            - row "Source contract src/domain/contracts/kuali/stage-separation-finalization.ts impl src/stores/kuali/tasks/stage-separation-finalization.ts":
-              - rowheader "Source"
-              - cell "contract src/domain/contracts/kuali/stage-separation-finalization.ts impl src/stores/kuali/tasks/stage-separation-finalization.ts"
-        - text: input a398b86a2f7foutput 17238c60292aimpl e916bf27fae2
-      - group "kuali/save-separation-finalization contract":
-        - text: kuali/save-separation-finalization commits · Save Kuali Separation Finalization proof save-verify Inputs · 14 bound by the graph
-        - list "kuali/save-separation-finalization inputs":
-          - listitem: actionId string
-          - listitem: documentNumber string
-          - listitem: emplId string
-          - listitem: protectedBindings list · sometimes
-          - listitem: variables.department string
-          - listitem: variables.lastDayWorked string
-          - listitem: variables.observedExistingComments string
-          - listitem: variables.payrollTitle string
-          - listitem: variables.payrollTitleCode string
-          - listitem: variables.separationDate string
-          - listitem: variables.terminationEffectiveDate string
-          - listitem: variables.timekeeperComments string
-          - listitem: variables.timekeeperName string
-          - listitem: variables.transactionNumber string
-        - text: Outputs · 17 stored in the transaction checkpoint
-        - list "kuali/save-separation-finalization outputs":
-          - listitem: savedState.actionId string
-          - listitem: savedState.documentNumber string
-          - listitem: savedState.fields.department string
-          - listitem: savedState.fields.finalPay enum
-          - listitem: savedState.fields.lastDayWorked string
-          - listitem: savedState.fields.payrollTitle string
-          - listitem: savedState.fields.payrollTitleCode string
-          - listitem: savedState.fields.requestAcknowledged boolean
-          - listitem: savedState.fields.separationDate string
-          - listitem: savedState.fields.submittedTerminationTemplate boolean
-          - listitem: savedState.fields.terminationEffectiveDate string
-          - listitem: savedState.fields.timekeeperComments string
-          - listitem: savedState.fields.timekeeperName string
-          - listitem: savedState.fields.transactionNumber string
-          - listitem: savedState.kind literal
-          - listitem: savedState.observedEid string
-          - listitem: savedState.source literal
-        - table "kuali/save-separation-finalization record":
-          - rowgroup:
-            - row "Implemented by store kuali , kind browser":
-              - rowheader "Implemented by"
-              - cell "store kuali , kind browser"
-            - row "Subject binding kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence":
-              - rowheader "Subject binding"
-              - cell "kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence"
-            - row "Write safety completion save-verify verifies with kuali/verify-separation-finalization probes with kuali/match-separation-finalization absence after fence stabilized · 30000ms · 2 reads":
-              - rowheader "Write safety"
-              - cell "completion save-verify verifies with kuali/verify-separation-finalization probes with kuali/match-separation-finalization absence after fence stabilized · 30000ms · 2 reads"
-            - row "Errors save-refused":
-              - rowheader "Errors"
-              - cell "save-refused"
-            - row "UI vocabulary screen kuali.rrss-document element kuali.rrss-document.save-button page-state kuali.rrss-document.finalization-staged":
-              - rowheader "UI vocabulary"
-              - cell "screen kuali.rrss-document element kuali.rrss-document.save-button page-state kuali.rrss-document.finalization-staged"
-            - row "Scenarios separations-kuali-finalization/save-verify-read-back":
-              - rowheader "Scenarios"
-              - cell "separations-kuali-finalization/save-verify-read-back"
-            - row "Source contract src/domain/contracts/kuali/save-separation-finalization.ts impl src/stores/kuali/tasks/save-separation-finalization.ts":
-              - rowheader "Source"
-              - cell "contract src/domain/contracts/kuali/save-separation-finalization.ts impl src/stores/kuali/tasks/save-separation-finalization.ts"
-        - text: input a398b86a2f7foutput 6c3fb3ba8be5impl 7262665a0322
-- region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
-  - button "Add workers"
-  - text: app 0.1
-  - status: Live
+          - row "Implemented by store kuali , kind browser":
+            - rowheader "Implemented by"
+            - cell "store kuali , kind browser"
+          - row "Subject binding kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence":
+            - rowheader "Subject binding"
+            - cell "kind person , identity eid , from input emplId observes kuali.rrss-document.displayed-eid , match normalized-exact-eid , required at after-prepare-before-fence"
+          - row "Write safety completion save-verify verifies with kuali/verify-separation-finalization probes with kuali/match-separation-finalization absence after fence stabilized · 30000ms · 2 reads":
+            - rowheader "Write safety"
+            - cell "completion save-verify verifies with kuali/verify-separation-finalization probes with kuali/match-separation-finalization absence after fence stabilized · 30000ms · 2 reads"
+          - row "Errors save-refused":
+            - rowheader "Errors"
+            - cell "save-refused"
+          - row "UI vocabulary screen kuali.rrss-document element kuali.rrss-document.save-button page-state kuali.rrss-document.finalization-staged":
+            - rowheader "UI vocabulary"
+            - cell "screen kuali.rrss-document element kuali.rrss-document.save-button page-state kuali.rrss-document.finalization-staged"
+          - row "Scenarios separations-kuali-finalization/save-verify-read-back":
+            - rowheader "Scenarios"
+            - cell "separations-kuali-finalization/save-verify-read-back"
+          - row "Source contract src/domain/contracts/kuali/save-separation-finalization.ts impl src/stores/kuali/tasks/save-separation-finalization.ts":
+            - rowheader "Source"
+            - cell "contract src/domain/contracts/kuali/save-separation-finalization.ts impl src/stores/kuali/tasks/save-separation-finalization.ts"
+      - text: input a398b86a2f7foutput 6c3fb3ba8be5impl 30e94469bfb8
