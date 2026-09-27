@@ -16,19 +16,21 @@ async function assertChecks(surface:Locator, served:ServedRead, settings:boolean
   const rows=surface.locator(settings?".diagnostic-check-entry":".settings-preflight-item");
   if(served.state==="unavailable") { await expect(rows).toHaveCount(0);return; }
   await expect(rows).toHaveCount(served.report.results.length);
-  const disclosures=settings?rows.getByRole("button",{name:"Technical details"}):undefined;
-  if(disclosures!==undefined)for(let index=0;index<await disclosures.count();index++)await disclosures.nth(index).click();
-  for(const check of served.report.results) {
-    const row=rows.filter({hasText:check.summary});
-    await expect(row).toHaveCount(1);
-    await expect(row).toContainText(check.summary);
-    await expect(row).toContainText(settings
-      ? check.status==="pass"?"Passed":check.status==="warning"?"Needs attention":"Blocked"
-      : check.status);
+  if(settings) {
+    await expect(surface.getByText("Technical details",{exact:true})).toHaveCount(0);
+    await expect(surface.getByText("Scope details",{exact:true})).toHaveCount(0);
+    await expect(rows.getByText("Passed",{exact:true})).toHaveCount(served.report.results.filter(check=>check.status==="pass").length);
+    await expect(rows.getByText("Needs attention",{exact:true})).toHaveCount(served.report.results.filter(check=>check.status==="warning").length);
+    await expect(rows.getByText("Blocked",{exact:true})).toHaveCount(served.report.results.filter(check=>check.status==="fail").length);
+    return;
+  }
+  for(const [index,check] of served.report.results.entries()) {
+    const row=rows.nth(index);
+    await expect(row).toContainText(check.status);
+    if(check.status!=="pass") await expect(row).toContainText(check.summary);
     if(check.status==="fail")for(const block of check.blocks)await expect(row).toContainText(block);
     if(check.remediation!==undefined)await expect(row).toContainText(check.remediation);
   }
-  if(disclosures!==undefined)for(let index=0;index<await disclosures.count();index++)await disclosures.nth(index).click();
 }
 
 test.beforeAll(()=>{ensureParityBundle();});
@@ -47,25 +49,23 @@ for(const scene of SETUP_SCENES)for(const theme of PARITY_THEMES)for(const viewp
       const read=await page.context().request.get(readUrl.toString());expect(read.ok()).toBe(true);
       const served=await read.json() as ServedRead;
       const a11y=await page.locator("body").ariaSnapshot();info.annotations.push({type:`a11y-attachment-sha256:${a11yName}`,description:createHash("sha256").update(a11y).digest("hex")});await info.attach(a11yName,{body:a11y,contentType:"text/yaml"});
-      await captureParityPair(page,REFERENCES,{stateId:"setup-preflight",viewport:`${String(viewport.width)}x${String(viewport.height)}`,theme:theme.name,adapter:"production-preflight-services",fixtureId:scene.id,descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:scene.id});
       if(served.state==="present") {
         await expect(setup.locator("time")).toHaveAttribute("dateTime",served.report.checkedAt);
         await expect(setup.locator("time")).toHaveText(fmtClock(served.report.checkedAt));
-        await setup.getByRole("button",{name:"Scope details"}).click();
-        for(const capability of served.report.requestedCapabilities)await expect(setup).toContainText(capability);
-        await setup.getByRole("button",{name:"Scope details"}).click();
+        await expect(setup.getByText("Scope details",{exact:true})).toHaveCount(0);
       }else await expect(setup).toContainText(served.reason);
       await assertChecks(setup,served,true);
+      await captureParityPair(page,REFERENCES,{stateId:"setup-preflight",viewport:`${String(viewport.width)}x${String(viewport.height)}`,theme:theme.name,adapter:"production-preflight-services",fixtureId:scene.id,descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:scene.id});
       const trigger=page.getByRole("button",{name:/^Preflight: /u});await trigger.click();
       const doctor=page.getByRole("dialog",{name:"Preflight",exact:true});await expect(doctor).toBeVisible();await expect(doctor).toContainText(scene.expected);
       const box=await doctor.boundingBox();expect(box).not.toBeNull();expect((box?.y??0)+(box?.height??0)).toBeLessThanOrEqual(viewport.height);
-      await captureParityPair(page,REFERENCES,{stateId:"setup-preflight",viewport:`${String(viewport.width)}x${String(viewport.height)}`,theme:theme.name,adapter:"production-preflight-services",fixtureId:scene.id,descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:`${scene.id}-doctor`});
       if(served.state==="present") {
         await expect(doctor.locator("time")).toHaveAttribute("dateTime",served.report.checkedAt);
         await expect(doctor.locator("time")).toHaveText(served.report.checkedAt);
         for(const capability of served.report.requestedCapabilities)await expect(doctor).toContainText(capability);
       }else await expect(doctor).toContainText(served.reason);
       await assertChecks(doctor,served,false);
+      await captureParityPair(page,REFERENCES,{stateId:"setup-preflight",viewport:`${String(viewport.width)}x${String(viewport.height)}`,theme:theme.name,adapter:"production-preflight-services",fixtureId:scene.id,descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:`${scene.id}-doctor`});
       await page.keyboard.press("Escape");await expect(doctor).not.toBeVisible();await expect(trigger).toBeFocused();
       expect(errors).toEqual([]);await info.attach("production-preflight-proof",{body:JSON.stringify({provenance:server.provenance(),requests:server.requests}),contentType:"application/json"});
     }finally{await server.close();}
@@ -78,5 +78,20 @@ test("Setup minimum canvas retains keyboard rerun and authoritative readback",as
     const setup=page.getByRole("region",{name:"Preflight",exact:true});await setup.getByRole("combobox").selectOption(server.scope);await expect(setup).toContainText("Readiness unavailable");const rerun=setup.getByRole("button",{name:"Run checks again",exact:true});await expect(rerun).toBeEnabled();await rerun.focus();await page.keyboard.press("Enter");
     await expect(setup.locator("time")).toHaveAttribute("dateTime",server.now);await expect(setup.locator("time")).toHaveText(fmtClock(server.now));expect(server.requests.some(request=>request.method==="POST"&&request.path==="/api/v1/preflight/rerun"&&request.status===200)).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
+  }finally{await server.close();}
+});
+
+test("Setup keeps an expired check visible as a previous result",async({page},info)=>{
+  const server=await startSetupPreflightServer("stale");
+  try {
+    await page.setViewportSize({width:1280,height:720});await page.clock.setFixedTime(new Date(server.now));
+    await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);
+    const setup=page.getByRole("region",{name:"Preflight",exact:true});
+    await expect(setup).toContainText("Previous result");
+    await expect(setup).toContainText("Last checked");
+    await expect(setup).toContainText("Run checks again for current readiness");
+    await expect(setup).not.toContainText("Ready to run");
+    await expect(setup.locator(".diagnostic-check-entry")).not.toHaveCount(0);
+    await info.attach("historical-preflight.png",{body:await setup.screenshot(),contentType:"image/png"});
   }finally{await server.close();}
 });

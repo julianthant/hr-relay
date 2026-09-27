@@ -135,8 +135,8 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { pr
         </>}
         {displayed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
       </div>
-      <Button variant="secondary" onClick={onRerun} disabled={preflight.state === "running" || preflight.state === "idle"}>
-        {preflight.state === "running" ? "Running checks…" : "Run checks again"}
+      <Button variant="secondary" onClick={onRerun} disabled={preflight.state === "running" || preflight.state === "idle" || (preflight.state === "historical" && preflight.checking)}>
+        {preflight.state === "running" || (preflight.state === "historical" && preflight.checking) ? "Running checks…" : "Run checks again"}
       </Button>
     </div>
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
@@ -170,8 +170,8 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
     <PreflightScopeSelect />
     <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
       {completed !== undefined && <Badge tone={tone}>{verdict}</Badge>}
-      <Button size="sm" variant="secondary" onClick={onRerun} disabled={preflight.state === "running" || preflight.state === "idle"}>
-        {preflight.state === "running" ? "Running preflight…" : "Rerun preflight"}
+      <Button size="sm" variant="secondary" onClick={onRerun} disabled={preflight.state === "running" || preflight.state === "idle" || (preflight.state === "historical" && preflight.checking)}>
+        {preflight.state === "running" || (preflight.state === "historical" && preflight.checking) ? "Running preflight…" : "Rerun preflight"}
       </Button>
     </div>
     {preflight.state === "idle" && <span className={dsText.meta}>No current preflight report. Loading readiness…</span>}

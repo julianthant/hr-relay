@@ -10,7 +10,7 @@ type Report = Extract<PreflightReadinessWire, { state: "present" }>["report"];
 export type PreflightRerunState =
   | { readonly state: "idle" | "running" }
   | { readonly state: "completed"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report }
-  | { readonly state: "historical"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report; readonly message: string }
+  | { readonly state: "historical"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report; readonly message: string; readonly checking?: boolean }
   | { readonly state: "refused"; readonly message: string };
 
 function checksFrom(report: Report): readonly PreflightCheckWire[] {
@@ -21,8 +21,14 @@ function checksFrom(report: Report): readonly PreflightCheckWire[] {
   }));
 }
 
-export function projectPreflight(state: PreflightReadinessWire | { state: "idle" | "running" }, nowMs: number): PreflightRerunState {
-  if (state.state === "idle" || state.state === "running") return { state: state.state };
+export function projectPreflight(state: PreflightReadinessWire | { state: "idle" } | { state: "running"; lastCompleted?: Report }, nowMs: number): PreflightRerunState {
+  if (state.state === "idle") return { state: state.state };
+  if (state.state === "running") {
+    const report = state.lastCompleted;
+    return report === undefined || report.results.length === 0 || Date.parse(report.checkedAt) > nowMs
+      ? { state: "running" }
+      : { state: "historical", message: "Checking current readiness…", report, checks: checksFrom(report), checking: true };
+  }
   if (state.state === "unavailable") {
     const report = state.lastCompleted;
     if (report === undefined || report.results.length === 0 || Date.parse(report.checkedAt) > nowMs) return { state: "refused", message: state.reason };

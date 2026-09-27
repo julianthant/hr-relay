@@ -2,7 +2,8 @@ import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { PreflightReadinessWire, PreflightSelection } from "../../domain/preflight-contract.js";
 import type { PreflightQueries } from "./preflight-queries.js";
 
-type State = PreflightReadinessWire | Readonly<{ state: "idle" | "running" }>;
+type Report = Extract<PreflightReadinessWire, { state: "present" }>["report"];
+type State = PreflightReadinessWire | Readonly<{ state: "idle" }> | Readonly<{ state: "running"; lastCompleted?: Report }>;
 export type PreflightReadinessIdentity = Readonly<{
   configFingerprint: string; descriptorFingerprint: string; selection?: PreflightSelection;
   /** Settings/protected revision and runtime status invalidate still-pending observations. */
@@ -10,26 +11,30 @@ export type PreflightReadinessIdentity = Readonly<{
 }>;
 export function createPreflightReadinessResource(client: PreflightQueries, identity: PreflightReadinessIdentity) {
   let state: State = { state: "idle" };
+  let lastCompleted: Report | undefined;
   let epoch = 0;
   const listeners = new Set<() => void>();
   const publish = (next: State): void => { state = next; for (const listener of listeners) listener(); };
   const observe = async (read: () => Promise<PreflightReadinessWire>): Promise<void> => {
     const started = ++epoch;
-    publish({ state: "running" });
+    publish({ state: "running", ...(lastCompleted === undefined ? {} : { lastCompleted }) });
     try {
       const result = await read();
       if (started !== epoch) return;
       if (result.state === "present" && (result.report.configFingerprint !== identity.configFingerprint || result.report.descriptorFingerprint !== identity.descriptorFingerprint)) {
-        publish({ state: "unavailable", reason: "Preflight identity changed; refresh settings and re-check readiness." });
-      } else publish(result);
+        publish({ state: "unavailable", reason: "Preflight identity changed; refresh settings and re-check readiness.", ...(lastCompleted === undefined ? {} : { lastCompleted }) });
+      } else {
+        lastCompleted = result.state === "present" ? result.report : result.lastCompleted ?? lastCompleted;
+        publish(result.state === "unavailable" ? { ...result, ...(lastCompleted === undefined ? {} : { lastCompleted }) } : result);
+      }
     } catch (error) {
-      if (started === epoch) publish({ state: "unavailable", reason: error instanceof Error ? error.message : "Preflight could not be read." });
+      if (started === epoch) publish({ state: "unavailable", reason: error instanceof Error ? error.message : "Preflight could not be read.", ...(lastCompleted === undefined ? {} : { lastCompleted }) });
     }
   };
   return Object.freeze({
     snapshot: (): State => state,
     subscribe(listener: () => void) { listeners.add(listener); return () => { listeners.delete(listener); }; },
-    invalidate() { epoch += 1; publish({ state: "unavailable", reason: "Runtime state changed; re-check readiness." }); },
+    invalidate() { epoch += 1; publish({ state: "unavailable", reason: "Runtime state changed; re-check readiness.", ...(lastCompleted === undefined ? {} : { lastCompleted }) }); },
     read: () => observe(() => client.readPreflight(identity.selection)),
     rerun: (request: unknown) => observe(async () => {
       await client.rerunPreflight(request);

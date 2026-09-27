@@ -82,3 +82,21 @@ it("preserves a changed-fingerprint report only as unavailable history", async (
   if (observed.state !== "unavailable") throw new Error("changed report accepted");
   assert.deepEqual(observed.lastCompleted, previous);
 });
+
+it("keeps the last report visible only as history during a rerun and after transport failure", async () => {
+  const pending = Promise.withResolvers<Response>();
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async url => {
+    if (String(url).endsWith("/preflight/rerun")) return pending.promise;
+    return response({ state: "present", report });
+  } });
+  const resource = createPreflightReadinessResource(client, identity);
+  await resource.read();
+  const attempt = resource.rerun(command);
+  assert.deepEqual(resource.snapshot(), { state: "running", lastCompleted: report });
+  pending.reject(new Error("network failed"));
+  await attempt;
+  const failed = resource.snapshot();
+  assert.equal(failed.state, "unavailable");
+  if (failed.state !== "unavailable") throw new Error("failed rerun accepted");
+  assert.deepEqual(failed.lastCompleted, report);
+});
