@@ -83,7 +83,6 @@ export function buildSettingsEditor(deps: SettingsEditorQueryDeps): EditableSett
       activationScope: key.startsWith("daemon.") ? "next-idle" : "new-runs",
       ...(control.input === "number" ? { minimum: control.minimum } : {}),
       ...(key.startsWith("display.") ? { unit: "px" } : {}),
-      ...(key === "concurrency.defaultWorkers" ? { hazard: "Review capacity for new worker pools." } : {}),
     };
   };
   const leaves = ordinary.flatMap(row => row.key.startsWith("annualDates.")
