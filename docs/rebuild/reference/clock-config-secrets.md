@@ -1825,11 +1825,11 @@ requires a live installation admission, rechecks the actual locator, and validat
 command epochs through exact activation receipts. These implemented boundaries do not themselves
 copy storage.
 
-Activation requires a later stopped, verified-backup upgrade to authority schema v56. That
+Activation requires an explicit stopped, verified-backup upgrade to authority schema v56. That
 version is a runtime-location capability floor: supported pre-location binaries must refuse a
 v56 authority before touching an archive writer, including when an artifact-only move leaves the
-database path unchanged. v56 is not required to record v55 intent, and this producer does not
-perform the migration or relocation. Normal startup must admit both the exact v55 and v56 layouts
+database path unchanged. v56 is not required to record v55 intent. The stopped upgrade has a
+distinct format-4 receipt; existing upgrade formats remain unchanged. Normal startup must admit both the exact v55 and v56 layouts
 without advancing an existing v55 database. The v56 capability migration is an explicit stopped,
 verified-backup operation; fresh databases may start at v56. v55 DB-only and paired backups retain
 normal verification and restore behavior, without historical archive quarantine. Versions below

@@ -34,7 +34,8 @@ Locator v2 preserves separate marker epochs for unchanged roots. Interrupted mov
 blocks admission until explicit verified recovery, and durable activation receipts preserve
 validation of immutable older-generation plan history.
 The foundation, lifetime runtime admission, intent producer, receipt-aware plan projection, and
-real command composition are implemented. Actual verified movement and v56 activation remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)
+real command composition are implemented. The explicit stopped v56 upgrade is implemented;
+actual verified movement and activation orchestration remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)
 and [dashboard-surfaces §D352](dashboard-surfaces.md#d352--storage-relocation-intent--2026-09-26).
 
 **D351 — Revisioned provider-key file and exact pending recovery (operator-approved, 2026-09-26):**

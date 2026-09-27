@@ -692,3 +692,15 @@ combined root typecheck passed, discharging the preceding control/intent static-
 Receipts are `category-6/relocation-control/fresh-adoption-*` and
 `category-6/runtime-relocation/intent-wiring/fresh-*`. v56 and the offline engine remain separate
 pending outcomes.
+
+The explicit v56 candidate `044ccab14` was applied as `01cb0f52b`. Existing v55 opens without
+automatic migration; fresh databases use v56, and the separate stopped upgrade requires a verified
+current backup and actual installation-bound restore admission. Source upgrade preserves command,
+audit, and ordinary-settings bytes. v55 DB-only and paired backups still restore at v55. Root
+inspected the implementation, focused logs, and frozen-opener proof script. The final focused set
+passed 14/14, compatibility tests passed 85/85, backup tests passed 41/41, and typecheck/scoped lint
+passed. Frozen pre-location `8cdf38b2a` refused an actual upgraded v56 database without changing
+database bytes or state entries. Evidence is under `category-6/runtime-relocation/v56/`, including
+the durable proof script and provenance. M25 remains the documented baseline failure (71/72
+storage-upgrade tests passed); the five status baseline failures were not rerun. This accepts the
+upgrade primitive, not the pending copy engine or its end-to-end activation.
