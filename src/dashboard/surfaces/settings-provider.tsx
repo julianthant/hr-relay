@@ -51,7 +51,7 @@ function BudgetEditor({ editor, leaf, description, first }: { editor: Editor; le
         </Field>;
       })}</div>
       {editor.errors[leaf.path] !== undefined && <p role="alert" className="settings-provider-error">{editor.errors[leaf.path]}</p>}
-      <SettingsRowActions editor={editor} leaf={leaf} />
+      <SettingsRowActions editor={editor} leaf={leaf} textEntry />
       {editor.save.state === "conflict" && operation !== undefined && <p className={dsText.meta}>Current value: {formatSetting(leaf.effectiveValue)}</p>}
       {leaf.hazard !== undefined && <p className={dsText.meta}>{leaf.hazard}</p>}
     </div>

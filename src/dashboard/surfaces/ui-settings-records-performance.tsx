@@ -37,11 +37,11 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
         <div className="settings-compact-control">
           <UnitField type="text" inputMode={unit === "seconds" ? "decimal" : "numeric"} unit={unit} value={raw} disabled={editor.locked}
             aria-invalid={error !== undefined || undefined} onChange={event => editor.update(leaf.path, event.target.value)} />
-          <SettingsRowActions editor={editor} leaf={leaf} standardValue={readableValue(leaf, leaf.defaultValue)} />
+          <SettingsRowActions editor={editor} leaf={leaf} textEntry />
         </div>
       </Field>
       : <div className="settings-performance-fallback"><SettingsValueControl leaf={leaf} operation={operation} error={error} disabled={editor.locked} update={rawValue => editor.update(leaf.path, rawValue)} />
-        <SettingsRowActions editor={editor} leaf={leaf} standardValue={readableValue(leaf, leaf.defaultValue)} /></div>}
+        <SettingsRowActions editor={editor} leaf={leaf} textEntry={leaf.input !== "boolean" && leaf.input !== "models"} /></div>}
     {leaf.validity === "unset" && <p className="settings-performance-hazard">Not set</p>}
     {leaf.hazard !== undefined && <p className="settings-performance-hazard">{leaf.hazard}</p>}
     {editor.save.state === "conflict" && operation !== undefined && <p className={dsText.meta}>Current value: {readableValue(leaf, leaf.effectiveValue)}</p>}

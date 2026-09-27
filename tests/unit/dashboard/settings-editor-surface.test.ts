@@ -183,7 +183,7 @@ describe("editable Settings surface", () => {
       width.dispatchEvent(new Event("input", { bubbles: true }));
       width.dispatchEvent(new Event("change", { bubbles: true }));
     });
-    assert.ok(host.querySelector('button[aria-label="Actions for browser viewport"]'), "the retained draft has an in-row undo action");
+    assert.ok([...host.querySelectorAll<HTMLButtonElement>("button")].some(button => button.textContent === "Undo"), "the retained draft has an in-row undo action");
     if (exitGuard === undefined) throw new Error("Settings exit guard was not registered");
     await act(async () => { exitGuard?.(() => { closeCount += 1; }); });
     assert.equal(closeCount, 0, "a dirty page cannot navigate away without a choice");
@@ -302,6 +302,11 @@ describe("editable Settings surface", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
     assert.equal(input.value, "6/");
     assert.equal(applied.length, 0, "an invalid partial date stays in the local draft without a command");
+    const undo = [...host.querySelectorAll<HTMLButtonElement>(`[data-settings-path="${datePath}"] button`)].find(button => button.textContent === "Undo");
+    assert.ok(undo);
+    await act(async () => { undo.click(); });
+    assert.notEqual(input.value, "6/");
+    assert.equal(applied.length, 0);
   });
 
   it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
