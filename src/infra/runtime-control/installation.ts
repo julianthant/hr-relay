@@ -908,11 +908,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       const pendingOwnReceipt = receipts.length === pending.fromGeneration + 1
         && pending.phase === "switched" && receipts.at(-1)?.operationId === pending.operationId;
       if (receipts.length !== pending.fromGeneration && !pendingOwnReceipt) fail("prior relocation receipt chain mismatch");
-      const source = receipts.at(pending.fromGeneration - 1)?.destination ?? {
+      const prior = pending.fromGeneration === 0 ? undefined : receipts[pending.fromGeneration - 1];
+      const source = prior?.destination ?? {
         stateRoot: resolve(workspace, rebuildRuntimeIsolation.stateRoot),
         artifactRoot: resolve(workspace, rebuildRuntimeIsolation.artifactRoot),
       };
-      const sourceEpochs = receipts.at(pending.fromGeneration - 1)?.destinationEpochs ?? { state: 0, artifact: 0 };
+      const sourceEpochs = prior?.destinationEpochs ?? { state: 0, artifact: 0 };
       if (!equalPair(source, pending.source) || !equalEpochs(sourceEpochs, pending.sourceEpochs)) {
         fail("prior relocation receipt source mismatch");
       }

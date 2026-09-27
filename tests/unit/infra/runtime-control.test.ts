@@ -633,7 +633,7 @@ it("refuses a missing retained source after a completed move", () => {
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/retained|unsafe|ENOENT/u);
 });
 
-it("settles an exact receipt again after a crash before journal clear", () => {
+it("reads only prior receipts when first and later operations publish their own receipt before journal clear", () => {
   const { workspace, pair } = fixture();
   const initial = adoptSynthetic(workspace, pair); initial.release();
   writeFileSync(join(pair.stateRoot, "state.db"), "source");
@@ -661,10 +661,36 @@ it("settles an exact receipt again after a crash before journal clear", () => {
   const resumed = acquireInstallation(workspace, "exclusive", { recoverRelocation: {
     installationId: initial.locator.installationId, fromGeneration: 0, operationId, restoreAdmission: resumedHeld,
   } });
+  expect(resumed.readPriorReceipts()).toEqual([]);
   resumed.settleRelocation(verify);
   resumed.release(); resumedHeld.release();
   expect(readdirSync(join(control, "relocation-receipts"))).toEqual(receipts);
   expect(existsSync(join(control, "journal.json"))).toBe(false);
+
+  const later = acquireInstallation(workspace, "exclusive");
+  const laterHeld = restore(workspace);
+  const laterDestination = { stateRoot: join(workspace, "later-state"), artifactRoot: destination.artifactRoot };
+  const laterPlan = relocationPlan(later, laterDestination);
+  const laterOperationId = later.beginRelocation(laterDestination, laterPlan, laterHeld);
+  expect(later.readPriorReceipts()).toHaveLength(1);
+  prepareDestination(later, laterDestination);
+  const laterVerify = staged(later, laterDestination, laterOperationId, laterPlan);
+  later.recordVerifiedStage(laterVerify);
+  later.fenceRelocationSource();
+  later.retainRelocationSources();
+  later.switchRelocationLocator(laterVerify);
+  const laterJournalBytes = readFileSync(join(control, "journal.json"));
+  later.settleRelocation(laterVerify);
+  later.release(); laterHeld.release();
+  writeFileSync(join(control, "journal.json"), laterJournalBytes, { mode: 0o600 });
+  const laterResumedHeld = restore(workspace);
+  const laterResumed = acquireInstallation(workspace, "exclusive", { recoverRelocation: {
+    installationId: initial.locator.installationId, fromGeneration: 1, operationId: laterOperationId,
+    restoreAdmission: laterResumedHeld,
+  } });
+  expect(laterResumed.readPriorReceipts().map((receipt) => receipt.operationId)).toEqual([operationId]);
+  laterResumed.settleRelocation(laterVerify);
+  laterResumed.release(); laterResumedHeld.release();
 });
 
 it("refuses a duplicate managed entry in a partially retained lock shell", () => {
