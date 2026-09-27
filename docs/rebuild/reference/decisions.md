@@ -1,5 +1,15 @@
 # `reference/decisions.md` — the decision ledger (D1–D351, 2026-07-17 → 2026-09-26)
 
+**Selected dashboard presentations — operator-approved, 2026-09-26:** Archive uses workflow
+folders and complete saved reports with JSON/typed CSV run and workflow exports. Explorer uses a
+source-derived branching timeline with nested delegation and explicit rejoin semantics. Activity
+uses the operating-report layout while keeping date-range totals/exports authoritative; workflow
+focus filters only the separately labeled breakdown. These amend presentation at their existing
+owners, not workflow execution or durable version policy. Owners:
+[Archive D348 presentation](dashboard-surfaces.md#workflow-record-presentation-amendment--2026-09-26),
+[Explorer §5.2.4](operator-trust.md#524-branching-timeline-presentation--2026-09-26),
+[Activity task amendment](../plans/phase-3/3.1-finish-the-dashboard/task-12-finish-activity-search-and-export.md#operating-report-presentation--2026-09-26).
+
 **D351 — Revisioned provider-key file and exact pending recovery (operator-approved, 2026-09-26):**
 `.env.providers` remains the saved key authority for five sparse eight-slot families. A private
 value-free sidecar anchors the latest settled write and one pending reservation; private request

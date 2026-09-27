@@ -1907,6 +1907,28 @@ the existing descriptor graph remains the truthful view. During conversion, reci
 projections must compare equal before the recipe becomes authoritative; Explorer never chooses
 between disagreeing sources at runtime.
 
+#### 5.2.4 Branching timeline presentation — 2026-09-26
+
+The operator selected Explorer A: an ordered explanation of the authored workflow, with branch
+selectors and nested delegated work. Timeline groups, task order, conditions, dependency edges,
+parallel joins and child policies come from the served descriptor/compiled recipe. Selecting an
+authored branch case changes the case-dependent path; shared continuation remains visible when
+the graph establishes a rejoin. A stopped or nonjoining path must not appear to continue.
+Selections are hypothetical path previews, not live run observations or changes to execution.
+
+A selector's scenario is an authored branch case. Executable scenario identifiers remain separate
+source/proof references; absent mapping between a test scenario and branch cases is not inferred.
+Nested branches, multiple controllers and parallel work retain their actual dependency semantics.
+Delegations nest under their caller, naming their declared wait, return, join or fire-and-forget
+policy. Child detail may be shown only from served child metadata, with unavailable detail stated
+explicitly. The legacy Separations identity delegation is design context, not evidence that the
+rebuild executes it. Exact browser-session counts or button-level instructions require authored
+metadata; the client must not manufacture them from system names or prose.
+
+Contract inspection, stable identifiers, source links, presentation editing, version-registry
+navigation and registered scenario evidence remain reachable as secondary detail. This presentation
+amends the former default graph-list layout without weakening its projection or editing boundaries.
+
 ### 5.3 Phase B—safe edits only
 
 <!-- roadmap: def-explorer-edit -->

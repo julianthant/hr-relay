@@ -466,3 +466,22 @@ fail-loud catch classifications with the integrated product behavior. Assertions
 test membership, product behavior and all existing task exclusions remain unchanged. The baseline
 comparison and exact input hashes are retained in `base-guards.json` and its log in this task's
 evidence directory. This amendment does not authorize integration, push or unrelated product edits.
+
+## Operating-report presentation — 2026-09-26
+
+The operator selected Activity A and approved implementation with a Sol worker. It groups the
+served date-range report into outcomes, outstanding work and a per-workflow breakdown, preserving
+all authoritative counts, unknowns, duration semantics, caveats and export snapshot identity.
+A workflow focus control belongs within the breakdown and affects only that section. Headline
+totals and exports remain explicitly date-range-wide; this presentation does not invent a
+workflow-scoped summary/export authority or derive totals from partial client rows. Confirmed
+write-ledger counts retain their separately named authority. The approved visual direction permits
+attributable updates to affected Activity references without assertion or membership weakening.
+
+Candidate: `codex/activity-report` at
+`/Users/julianhein/.codex/worktrees/activity-report/hr-automation-rebuild`, from the committed
+Settings-derived base `897158ece84471dd86b67ca8d49e73477b1280e8`. The previous implementation's
+zero-worker assignment is unchanged historically; this separately approved presentation refinement
+uses one Sol worker under the current coordinator. Focused Phase 3.1 cadence applies, with no
+independent review or automatic integration. The operator retains product integration choice.
+Evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/archive-explorer-activity-2026-09-26/implementation/activity/`.
