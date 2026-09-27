@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { ArchiveReportSchema, sealArchiveReport } from "../../../src/domain/archive/report.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { acquireExclusiveRuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { inspectPendingRelocationStatus } from "../../../src/infra/runtime-control/installation.js";
@@ -20,6 +21,22 @@ async function interruptAfterActivation(workspace: string, commandId: string): P
       faults: { afterActivationWrite: () => { throw new Error("synthetic-activation-interruption"); } } }), (error) => {
       assert.ok(error instanceof StorageRelocationIncompleteError);
       assert.match(String(error.cause), /synthetic-activation-interruption/u);
+      return true;
+    });
+  } finally { admission.release(); }
+  const status = inspectPendingRelocationStatus(workspace);
+  assert.ok(status);
+  return status.operationId;
+}
+
+async function interruptAfterStage(workspace: string, commandId: string): Promise<string> {
+  const admission = acquireExclusiveRuntimeAdmission(workspace);
+  try {
+    await assert.rejects(runOfflineStorageRelocation({ workspace,
+      command: { kind: "plan", id: commandId, json: false }, admission, clock, hostFacts: hostConfigFacts({}),
+      faults: { afterVerifiedStage: () => { throw new Error("synthetic-stage-interruption"); } } }), (error) => {
+      assert.ok(error instanceof StorageRelocationIncompleteError);
+      assert.match(String(error.cause), /synthetic-stage-interruption/u);
       return true;
     });
   } finally { admission.release(); }
@@ -81,4 +98,24 @@ it("refuses a search publication changed beyond the activation generation", asyn
     assert.equal(changed.changes, 1);
   } finally { raw.close(); }
   await assertTamperedResumeRefuses(fixture.workspace, operationId, /search publication differs from activation transaction/u);
+});
+
+it("refuses a live destination archive that differs from the pinned stage", async () => {
+  const fixture = await installation();
+  const destination = { stateRoot: join(fixture.root, "new-state"), artifactRoot: join(fixture.root, "new-artifacts") };
+  const request = plan(fixture.workspace, destination);
+  const operationId = await interruptAfterStage(fixture.workspace, request.commandId);
+  const raw = new DatabaseSync(join(destination.stateRoot, "archive.sqlite"));
+  try {
+    const existing = raw.prepare("SELECT report_json FROM archive_records LIMIT 1").get() as
+      | { report_json: string } | undefined;
+    assert.ok(existing);
+    const original = ArchiveReportSchema.parse(JSON.parse(existing.report_json));
+    const added = sealArchiveReport({ ...original.content, runId: randomUUID(), transferId: randomUUID() });
+    const content = added.content;
+    raw.prepare("INSERT INTO archive_records(run_id,transfer_id,workflow,title,descriptor_version,outcome,completed_at,captured_at,digest,report_json,state) VALUES (?,?,?,?,?,?,?,?,?,?,'published')")
+      .run(content.runId, content.transferId, content.workflow, content.title, content.descriptorVersion,
+        content.outcome, content.completedAt, content.capturedAt, added.digest, canonicalJsonStringify(added));
+  } finally { raw.close(); }
+  await assertTamperedResumeRefuses(fixture.workspace, operationId, /destination archive differs from pinned stage/u);
 });
