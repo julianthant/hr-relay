@@ -611,3 +611,28 @@ relocation: retain managed entries separately, leave the lock shell, and tombsto
 under continuous restore and installation-exclusive admission. Locator v2 preserves separate root
 marker epochs. Runtime admission and control/recovery remain separate parallel worker outcomes;
 actual verified copying, v56 activation, receipt-aware history, and real composition remain pending.
+
+
+### Relocation control and admitted-config prerequisites — 2026-09-26
+
+The Paths correction `686bcccba` refuses a global plan revision rewind even when the locator
+generation advances. Its focused suite passed 11/11 and scoped lint passed; the exact retry and
+dirty-exit behavior are unchanged.
+
+The pure resolver prerequisite `07c337e29` accepts an explicit canonical storage pair without
+changing the ordinary settings document, revision, or earlier resolved snapshots. It recomputes
+the active config fingerprint and retains complete provenance. Its 52 focused tests and scoped
+lint passed; receipts are under `category-6/runtime-relocation/admitted-config/`. Real caller and
+activation wiring remain pending.
+
+The bounded control candidate `26e2f90d7` implements locator v2 marker epochs, exact plan/operation
+binding, verified-stage evidence, fixed restore admission, retained source shells, tombstones,
+and durable activation receipts. The first PLAN uses expected revision zero and applied revision
+one; receipt bindings preserve both. Recovery covers partial entry moves, partial shell witnesses,
+locator publication, receipt publication, and independent root moves, including later moves that
+must preserve earlier receipt witnesses. Root inspected the implementation and deciding logs.
+Its 25 synthetic protocol tests and scoped lint passed. Its separate branch typecheck failed on
+396 consumers awaiting the concurrent admission migration, with no diagnostics in the two owned
+files; integration must discharge that obligation. Evidence is under `category-6/relocation-control/`.
+The typed stage verifier is an engine boundary, not proof that real copy, backup, config activation,
+or CLI composition has been implemented.

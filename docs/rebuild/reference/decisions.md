@@ -26,7 +26,8 @@ Process locks stay checkout-local. Destination activation includes a final-path 
 Journal-bound retained data and tombstones prevent old-path reuse. The default `.tracker` source
 must remain a directory shell around fixed `.tracker/locks`; its managed entries are retained
 separately and its old `state.db` becomes an invalid-SQLite tombstone under continuous restore
-admission. Locator v2 preserves separate marker epochs for unchanged roots. Interrupted movement
+admission. Later moves also preserve prior receipt-bound witnesses in an exact source shell.
+Locator v2 preserves separate marker epochs for unchanged roots. Interrupted movement
 blocks admission until explicit verified recovery, and durable activation receipts preserve
 validation of immutable older-generation plan history.
 The foundation and intent producer are implemented but runtime admission, movement, and activation

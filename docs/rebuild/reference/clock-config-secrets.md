@@ -1851,7 +1851,10 @@ artifact directory beneath that shell can receive its own directory-path tombsto
 and fences remain negative witnesses. The engine holds the existing runtime restore-admission lock
 continuously, as well as installation-exclusive admission, so supported older processes cannot
 start during the entry-rename/tombstone gaps. After settlement their main database opener refuses
-the tombstone before any archive writer. The lock shell is never an alternative active state root.
+the tombstone before any archive writer. The lock shell is never an alternative active state root. Exact tombstones and retained directories
+from prior moves are pinned through their immutable receipt chain. A later state move preserves
+those entries in a witness shell even when the fixed lock authority is elsewhere; it moves only
+the remaining managed entries. Unsupported nested witness layouts are refused explicitly.
 
 An unchanged storage root remains usable only with the new v56 authority and valid root-ownership
 evidence. Locator v2 records the global generation and separate `stateRootGeneration` and
