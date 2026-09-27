@@ -255,6 +255,11 @@ text and explicit unavailability), frozen inputs, results, notes, file metadata,
 and record metadata. A searchable field-path view keeps unrecognized retained fields inspectable;
 unknown, null, false, zero and an empty collection are not interchangeable.
 
+The Archive landing body starts with archived dashboard-version groups, including the current
+dashboard version whenever it has archived runs. The current runtime version appears subtly in
+the Archive heading bar; it is not a separate introductory status block or an exclusion rule for
+archive membership.
+
 The served report may add strictly validated archive-record identity/publication metadata, with
 explicit absence for historical producers. Original private source snapshots and private source
 digests remain outside this projection. This does not remove values already admitted to the

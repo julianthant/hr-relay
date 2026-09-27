@@ -6,7 +6,8 @@ source-derived branching timeline with nested delegation and explicit rejoin sem
 uses the operating-report layout while keeping date-range totals/exports authoritative; workflow
 focus filters only the separately labeled breakdown. These amend presentation at their existing
 owners, not workflow execution or durable version policy. The follow-up requires full Dashboard
-width and a shared heading/body frame; revised designs return for review before finalization.
+width and a shared heading/body frame; revised designs return for review before finalization. Archive groups include
+the current version when it holds archived runs, with the current-version indicator in the heading.
 [Shared frame refinement](dashboard-surfaces.md#shared-surface-frame-refinement--2026-09-26). Owners:
 [Archive D348 presentation](dashboard-surfaces.md#workflow-record-presentation-amendment--2026-09-26),
 [Explorer §5.2.4](operator-trust.md#524-branching-timeline-presentation--2026-09-26),
