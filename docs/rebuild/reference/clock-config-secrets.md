@@ -1824,6 +1824,25 @@ activation receipt. Completed older-generation plan history remains immutable; f
 must validate its source transitions through activation receipts rather than discard it. Retained
 source data is never deleted or made an automatic fallback.
 
+The offline engine must preserve fixed checkout process-lock locations and inspect their stopped
+state in addition to holding installation admission. Only the two storage roots follow the locator.
+It copies managed authority, archive, evidence, credential, backup, and recovery data; a SQLite
+backup captures committed WAL content. Unknown entries, unsafe links, divergent receipts, and
+unverifiable references refuse the move. Nested artifacts are copied once. Old run snapshots and
+path-free artifact identities remain unchanged. The destination receives an explicitly selected
+configuration snapshot for its admitted root pair, with the ordinary Settings revision unchanged,
+and a freshly verified backup bound to the database's final path before activation.
+
+Moved source directories are retained under journal-bound sibling locations. A regular-file
+tombstone at each outermost moved source location prevents an older binary from recreating that
+directory; a moved parent also blocks its former nested artifact path. An unchanged root remains
+usable only with the new v56 authority and valid root-ownership evidence. Each partial rename,
+fence, locator change, and completion receipt must be recoverable from the exact durable operation
+binding. An interrupted operation blocks normal admission until explicit offline recovery verifies
+it. The completion receipt is durable before the transient journal is cleared; later plan projection
+checks completed source generations through those receipts. These are acceptance requirements for
+the pending engine, not claims that movement or recovery is implemented.
+
 ### D351 — Revisioned provider-key file and exact pending recovery · 2026-09-26
 
 The fixed `.env.providers` remains the sole saved provider-key authority. Five registered
