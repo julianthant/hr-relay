@@ -26,12 +26,15 @@ describe("Credentials provider editor", () => {
     const keys = providerDocument(h);
     assert.equal(keys.activeSlots.GROQ_API_KEY3, "synthetic-parent-three");
     assert.equal(keys.slots.GEMINI_API_KEY3, "synthetic-saved-three");
-    assert.equal(h.host.querySelectorAll('input[type="password"]').length >= 7, true);
+    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 4);
+    assert.ok(h.host.querySelector('button[aria-label="Show UCPath password"]'));
+    assert.ok(h.host.querySelector('button[aria-label="Show Historical Activity pseudonym"]'));
+    assert.equal(h.host.querySelectorAll('.settings-provider-families input[type="password"]').length, 2);
     assert.doesNotMatch(h.host.textContent ?? "", /synthetic-saved-one|synthetic-parent-three/u);
     const gemini = [...h.host.querySelectorAll("button")].find(button => button.getAttribute("aria-label") === "Show Gemini Key 1");
     assert.ok(gemini);
     await act(async () => gemini.click());
-    assert.equal(h.host.querySelectorAll('input[type="text"]').length, 1);
+    assert.equal(h.host.querySelectorAll('.settings-provider-families input[type="text"]').length, 1);
     const groqGroup = [...h.host.querySelectorAll("button")].find(button => button.textContent?.includes("Groq") && button.textContent.includes("saved keys"));
     assert.ok(groqGroup); await act(async () => groqGroup.click());
     assert.match(h.host.textContent ?? "", /Key 3/u);
