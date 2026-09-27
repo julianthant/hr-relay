@@ -101,3 +101,31 @@ export const EXPLORER_TIMELINE_BROWSER_WIRE = WorkflowExplorerWireSchema.parse({
 
 export const EXPLORER_TIMELINE_PARENT_ID = "timeline-parent";
 export const EXPLORER_TIMELINE_CHILD_ID = childId;
+
+const nestedTargetId = "timeline-nested-target";
+const leafTargetId = "timeline-leaf-target";
+const callShape = (edgeId: string, targetWorkflowId: string): Shape => ({
+  kind: "child-run", edgeId, targetWorkflowId: targetWorkflowId as ExplorerWorkflowWire["id"],
+  cardinality: "one", await: "terminal", join: "one", onChildFailed: "fail-parent",
+  cascadeCancel: "cascade", afterChildRetry: "resume-parent", visibility: "inline",
+});
+const leafTarget = workflow(leafTargetId, "Identity evidence child", [
+  { id: "evidence-choice", label: "Evidence route", shape: { kind: "branch", cases: [
+    { name: "Check", nodes: ["evidence-check"] }, { name: "Skip", nodes: ["evidence-skip"] },
+  ] } },
+  { id: "evidence-check", label: "Check evidence", dependsOn: ["evidence-choice"] },
+  { id: "evidence-skip", label: "Skip evidence", dependsOn: ["evidence-choice"] },
+]);
+const nestedTarget = workflow(nestedTargetId, "Identity resolver child", [
+  { id: "nested-start", label: "Prepare identity" },
+  { id: "nested-call", label: "Nested evidence call", dependsOn: ["nested-start"], shape: callShape("nested-evidence-edge", leafTargetId) },
+]);
+const multiTargetParent = workflow("timeline-multi-target", "Multiple registered targets", [
+  { id: "resolver-call", label: "Resolve identity call", shape: callShape("resolver-edge", nestedTargetId) },
+  { id: "direct-call", label: "Direct evidence call", shape: callShape("direct-evidence-edge", leafTargetId) },
+]);
+
+export const EXPLORER_MULTI_TARGET_WIRE = WorkflowExplorerWireSchema.parse({
+  ...FIXTURE_EXPLORER_WIRE,
+  workflows: [multiTargetParent, nestedTarget, leafTarget],
+});

@@ -8,7 +8,7 @@ import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";
-import { EXPLORER_TIMELINE_PARENT_ID, EXPLORER_TIMELINE_WIRE } from "../../fixtures/explorer-timeline-wire.js";
+import { EXPLORER_MULTI_TARGET_WIRE, EXPLORER_TIMELINE_PARENT_ID, EXPLORER_TIMELINE_WIRE } from "../../fixtures/explorer-timeline-wire.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -214,6 +214,29 @@ describe("Workflow Explorer timeline interactions", () => {
     assert.ok(popover);
     assert.match(popover.textContent ?? "", /descriptor · module/u);
     assert.equal((popover.textContent?.match(/tests\/fixtures\/explorer-timeline-wire.ts/gu) ?? []).length, 1);
+  });
+
+  it("keeps distinct registered targets and nested child-run controls independent without mutations", async () => {
+    await render("timeline-multi-target", EXPLORER_MULTI_TARGET_WIRE);
+    const context = document.querySelector('[aria-label="Workflow context"]');
+    const occurrences = [...context?.querySelectorAll(".explorer-context-child") ?? []];
+    assert.equal(occurrences.length, 2);
+    assert.match(occurrences[0]?.textContent ?? "", /Resolve identity call.*Identity resolver child/u);
+    assert.match(occurrences[1]?.textContent ?? "", /Direct evidence call.*Identity evidence child/u);
+    const nestedLabel = "Path preview for Evidence route in Resolve identity call → Nested evidence call";
+    const directLabel = "Path preview for Evidence route in Direct evidence call";
+    const nested = labelledSelect(nestedLabel);
+    const direct = labelledSelect(directLabel);
+    assert.notEqual(nested.id, direct.id);
+    assert.equal(nested.value, "Check");
+    assert.equal(direct.value, "Check");
+    await choose(nestedLabel, "Skip");
+    assert.equal(nested.value, "Skip");
+    assert.equal(direct.value, "Check");
+    const nestedOccurrence = [...document.querySelectorAll("[title]")].find(element => element.getAttribute("title") === "Identity evidence child steps for Nested evidence call");
+    assert.match(nestedOccurrence?.textContent ?? "", /Skip evidence/u);
+    assert.doesNotMatch(nestedOccurrence?.textContent ?? "", /Check evidence/u);
+    assert.equal(reads, 1, "preview only reads the wire once; unexpected mutation client calls throw");
   });
 
   it("closes hidden node detail, restores its opener on close, and resets preview state by workflow", async () => {
