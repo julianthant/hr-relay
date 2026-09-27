@@ -15,17 +15,9 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * Copied with provenance and adapted to THIS repository's served wire; nothing
  * here reaches the legacy repository at runtime and nothing may (D93/D94).
  *
- * ## The three panels, and why they are those three
- *
- * The demo's answer, kept: **what you are looking at · its shape · one part of
- * that shape in detail.** A registry column on the left, grouped by each
- * descriptor's own `category` through the SAME projection the workflow rail
- * reads (`groupWorkflowsByCategory`) so the explorer cannot bin a workflow
- * under a heading the product does not use; the graph in the middle, in
- * declaration order with the conditional edges drawn BETWEEN the rows they
- * decide; and the selected node's whole binding on the right, because the
- * question being answered is a lookup and a lookup that hides half its answer
- * behind a second click is a worse index than the source tree.
+ * The workflow rail selects a descriptor. The center timeline previews its
+ * declared paths; the right panel summarizes the selected step. Complete
+ * contract fields stay in a wider dialog so identifiers remain readable.
  *
  * ## What the demo shows that this wire cannot serve — stated, never faked
  *
@@ -33,9 +25,8 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * recorded values, provenance marks). That overlay is ref operator-trust §5.7's first named
  * exclusion — the run-detail timeline already serves those facts per run — so
  * it is absent here rather than approximated, and the toolbar band it occupied
- * carries the workflow's identity instead. The demo's node panel is a
- * FIELD-level contract table (`Wage · ucpath · $18.50/hr`); this one serves the
- * same FIELD census (D227), derived from each contract's own zod shape, but
+ * carries the workflow's identity instead. The full contract dialog serves
+ * the FIELD census (D227), derived from each contract's own zod shape, but
  * draws it as one card per task arm with an Inputs and an Outputs group (D302):
  * the demo's third column carries what one run RECORDED, which varies per row,
  * while this tree's `Recorded` is a per-arm POLICY that does not — so it is
