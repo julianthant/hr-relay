@@ -1,22 +1,27 @@
-import { useState } from "react";
-import { Banner, BodySection, Button, Disclosure, Field, FormGroup, Input, PageHeading, SearchInput, Spinner, dsText } from "../ds/ui.js";
+import { useRef, useState } from "react";
+import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter, Disclosure, Field, FormGroup, Input, PageHeading, SearchInput, Spinner, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingInput } from "./settings-draft-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
 import { routePresentation } from "./settings-routes-model.js";
+import { ProtectedSettingField } from "./settings-protected-field.js";
 
 export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditableSettings> }) {
   const [query, setQuery] = useState("");
   const [open, setOpen] = useState("urls.crm.prod");
+  const [removal, setRemoval] = useState<{ hasSaved: boolean; label: string } | null>(null);
+  const removeTrigger = useRef<HTMLElement | null>(null);
   if (editor.editor.state === "loading") return <Spinner label="Reading routes" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Routes could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "routes");
   if (section === undefined) return <Banner tone="danger" title="Routes unavailable">The settings document did not include Routes.</Banner>;
   const routes = section.leaves.map(leaf => ({ leaf, presentation: routePresentation(leaf) })).sort((a, b) => Number(b.leaf.path === "urls.crm.prod") - Number(a.leaf.path === "urls.crm.prod"));
-  const destinationCount = routes.reduce((count, { leaf }) => count + (leaf.control.input === "object" ? leaf.control.fields.length : 0), 0);
-  const filtered = routes.filter(({ presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
+  const credentials = editor.protectedEditor;
+  const rosterName = "sharepointOnboardingRosterUrl";
+  const destinationCount = routes.reduce((count, { leaf }) => count + (leaf.control.input === "object" ? leaf.control.fields.length : 0) + Number(leaf.path === "urls.sharepoint.prod"), 0);
+  const filtered = routes.filter(({ leaf, presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")} ${leaf.path === "urls.sharepoint.prod" ? "Onboarding roster URL Download the onboarding roster" : ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-page-panel routes-page">
     <PageHeading title="Routes" description="Production destinations, organized by system." />
     <form className="routes-page-form" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
@@ -32,7 +37,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
           const raw = operation?.kind === "set" ? operation.raw : settingInput(leaf, operation?.kind === "clear" ? leaf.defaultValue : leaf.effectiveValue);
           if (typeof raw === "string") throw new Error("routes-section-object-invalid");
           return <Disclosure key={leaf.path} variant="body" summary={presentation.name} description={presentation.description}
-            meta={`${String(leaf.control.input === "object" ? leaf.control.fields.length : 0)} ${leaf.control.input === "object" && leaf.control.fields.length === 1 ? "URL" : "URLs"}`}
+            meta={`${String((leaf.control.input === "object" ? leaf.control.fields.length : 0) + Number(leaf.path === "urls.sharepoint.prod"))} ${leaf.path !== "urls.sharepoint.prod" && leaf.control.input === "object" && leaf.control.fields.length === 1 ? "URL" : "URLs"}`}
             open={expanded} onOpenChange={next => setOpen(next ? leaf.path : "")} className="routes-page-system" contentClassName="routes-page-system-fields">
             {leaf.control.input === "object" && <div data-settings-path={leaf.path}>
               {leaf.control.fields.map(field => {
@@ -44,6 +49,12 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
                     onChange={event => editor.update(leaf.path, { ...raw, [field.name]: event.target.value })} />
                 </Field>;
               })}
+              {leaf.path === "urls.sharepoint.prod" && <>
+                {document.protectedSettings.state === "unknown" && <Banner tone="warning" title="Onboarding roster URL unavailable">The protected value could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
+                <SettingsSaveFeedback save={credentials.save} protectedStore retry={credentials.retry} retryConflict={credentials.submit} />
+                <ProtectedSettingField editor={editor} name={rosterName} description="Download the onboarding roster." controlWidth="wide" className="routes-page-field"
+                  onRemove={(hasSaved, label) => { removeTrigger.current = globalThis.document.activeElement instanceof HTMLElement ? globalThis.document.activeElement : null; setRemoval({ hasSaved, label }); }} />
+              </>}
               {editor.errors[leaf.path] !== undefined && <p role="alert" className="routes-page-error">{editor.errors[leaf.path]}</p>}
               {(leaf.source === "settings" || operation !== undefined) && <div className="routes-page-system-actions">
                 {operation !== undefined && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.reset(leaf.path)}>Undo edit</Button>}
@@ -56,5 +67,13 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
       </BodySection>
       {filtered.length === 0 && <p className={cn(dsText.ui, "text-[color:var(--ds-fg-muted)]")}>No routes match “{query}”.</p>}
     </form>
+    <Dialog open={removal !== null} onOpenChange={next => { if (!next) setRemoval(null); }}>
+      <DialogContent size="sm" hideClose className="ds-body-overlay" title={`Remove ${removal?.label ?? "onboarding roster URL"}?`}
+        description={removal?.hasSaved ? "The stored URL will be removed from the protected store." : "This unsent value will be removed from the editor. No write will be sent."}
+        onCloseAutoFocus={event => { if (removeTrigger.current?.isConnected) { event.preventDefault(); removeTrigger.current.focus(); } removeTrigger.current = null; }}>
+        <DialogFooter><Button variant="secondary" onClick={() => setRemoval(null)}>Cancel</Button>
+          <Button variant="danger" onClick={() => { if (removal === null) return; if (removal.hasSaved) credentials.clear(rosterName); else credentials.reset(rosterName); setRemoval(null); }}>Remove URL</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
   </section>;
 }

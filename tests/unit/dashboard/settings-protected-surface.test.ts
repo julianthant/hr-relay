@@ -15,9 +15,45 @@ function savedText(host: HTMLElement): string {
   return copy.outerHTML;
 }
 describe("independent protected Settings surface", () => {
+  it("edits the protected onboarding roster under SharePoint routes and preserves its authority", async () => {
+    const h = await setup();
+    await h.render("routes");
+    const sharepoint = [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("SharePoint"));
+    assert.ok(sharepoint);
+    await settingsAction(() => sharepoint.click());
+    const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === "SharePoint onboarding roster URL");
+    assert.ok(label);
+    const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
+    assert.ok(input);
+    assert.equal(input.type, "password");
+    assert.match(sharepoint.textContent ?? "", /2 URLs/u);
+    const search = h.host.querySelector<HTMLInputElement>('input[type="search"]');
+    assert.ok(search);
+    await settingsAction(() => {
+      const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
+      setter?.call(search, "roster");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    assert.match(h.host.textContent ?? "", /SharePoint/u);
+    assert.doesNotMatch(h.host.textContent ?? "", /CRM production/u);
+    const url = "https://example.test/onboarding-roster.xlsx";
+    await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", url));
+    assert.equal(input.value, url);
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1300)); });
+    const request = ProtectedSettingsCommandRequestSchema.parse(h.commands[0]);
+    assert.deepEqual(request.payload.entries, { sharepointOnboardingRosterUrl: { set: url } });
+    assert.equal(h.authority.read().revision, 1, "ordinary route authority is unchanged");
+    const show = h.host.querySelector<HTMLButtonElement>('button[aria-label="Show SharePoint onboarding roster URL"]');
+    assert.ok(show);
+    await settingsAction(() => show.click());
+    assert.equal(input.type, "text");
+    await h.render("credentials");
+    assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
+  });
   it("starts empty, validates all five names, and shows saved values after save", async () => {
     const h = await setup(); const ordinary = h.authority.read();
-    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 5);
+    assert.equal(h.host.querySelectorAll('input[type="password"]').length, 4);
+    assert.doesNotMatch(h.host.textContent ?? "", /SharePoint onboarding roster URL/u);
     assert.ok([...h.host.querySelectorAll<HTMLInputElement>("input")].every(input => input.value === ""));
     const values = { ucpathUserId: "synthetic-user-sentinel", ucpathPassword: "synthetic-password-sentinel", timekeeperName: "synthetic-timekeeper-sentinel", sharepointOnboardingRosterUrl: "https://example.test/synthetic-url-sentinel", activityPersonPseudonym: JSON.stringify({ keyHex: "a".repeat(64), keyGeneration: "activity-person-synthetic-sentinel" }) };
     for (const name of ProtectedSettingsNameSchema.options) {

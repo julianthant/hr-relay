@@ -7,6 +7,7 @@ import { ProviderKeySlotSchema } from "../../domain/config/provider-keys.js";
 import { cn } from "../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
+import { ProtectedSettingField } from "./settings-protected-field.js";
 import { formatSetting } from "./settings-draft-model.js";
 import { groupDeploymentFacts, providerName, settingsFactLabel } from "./ui-settings-records-labels.js";
 
@@ -16,7 +17,6 @@ const PROTECTED_DESCRIPTION: Readonly<Record<string, string>> = {
   ucpathUserId: "Login name for UCPath access.",
   ucpathPassword: "Password for UCPath access.",
   timekeeperName: "Name used in timekeeping workflows.",
-  sharepointOnboardingRosterUrl: "Location of the onboarding roster.",
   activityPersonPseudonym: "Identifier used in historical Activity records.",
 };
 
@@ -60,20 +60,10 @@ function CredentialsSection({ editor }: { editor: Editor }) {
     <Form validationBehavior="aria" className="settings-compact-form" onSubmit={event => { event.preventDefault(); credentials.submit(); }}>
       {(["UCPath sign-in", "Workflow configuration"] as const).map((title, groupIndex) => <BodySection key={title} title={title}>
         <FormGroup label={title}>
-          {authority.rows.slice(groupIndex === 0 ? 0 : 2, groupIndex === 0 ? 2 : undefined).map(row => {
-            const operation = credentials.draft[row.name];
-            const stored = authority.state === "available" ? authority.entries[row.name] : undefined;
-            const value = operation?.kind === "set" ? operation.raw : operation?.kind === "clear" ? "" : stored === undefined ? "" : formatSetting(stored.value);
-            const canRemove = stored !== undefined || operation?.kind === "set";
-            return <Field key={row.name} label={row.label} description={PROTECTED_DESCRIPTION[row.name] ?? row.purpose}
-              error={credentials.errors[row.name]} orientation="horizontal" controlWidth="medium"
-              disabled={credentials.locked || authority.state !== "available" || editor.readProblem !== undefined}>
-              <SecretField label={row.label} identity={`${row.name}:${stored?.valueId ?? "empty"}`} value={value}
-                autoComplete="new-password" spellCheck={false} placeholder="Enter value"
-                onChange={event => credentials.update(row.name, event.target.value)}
-                {...(canRemove ? { onRemove: () => askRemove({ kind: "protected", name: row.name, label: row.label, hasSaved: stored !== undefined }) } : {})} />
-            </Field>;
-          })}
+          {authority.rows.slice(groupIndex === 0 ? 0 : 2, groupIndex === 0 ? 2 : undefined)
+            .filter(row => row.name !== "sharepointOnboardingRosterUrl").map(row => <ProtectedSettingField key={row.name}
+              editor={editor} name={row.name} description={PROTECTED_DESCRIPTION[row.name] ?? row.purpose}
+              onRemove={(hasSaved, label) => askRemove({ kind: "protected", name: row.name, label, hasSaved })} />)}
         </FormGroup>
       </BodySection>)}
     </Form>
