@@ -76,6 +76,25 @@ function safeBytes(path:string) {
   const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{return readFileSync(fd);}finally{closeSync(fd);}
 }
 function fileDigest(path:string){return createHash("sha256").update(safeBytes(path)).digest("hex");}
+function assertUnaccompaniedArchiveCopy(path: string): void {
+  if (lstatSync(`${path}-wal`, { throwIfNoEntry: false }) !== undefined
+    || lstatSync(`${path}-shm`, { throwIfNoEntry: false }) !== undefined) {
+    throw new Error("lifecycle-backup-archive-copy-has-preexisting-companion");
+  }
+}
+function removeCreatedArchiveInspectionCompanions(path: string): void {
+  const paths = [`${path}-wal`, `${path}-shm`];
+  for (const candidate of paths) {
+    const info = lstatSync(candidate, { throwIfNoEntry: false });
+    if (info !== undefined && (!info.isFile() || info.isSymbolicLink() || info.nlink !== 1
+      || (process.getuid && info.uid !== process.getuid()) || (info.mode & 0o022) !== 0
+      || (candidate.endsWith("-wal") && info.size !== 0))) {
+      throw new Error("lifecycle-backup-archive-copy-generated-unsafe-companion");
+    }
+  }
+  for (const candidate of paths) if (lstatSync(candidate, { throwIfNoEntry: false }) !== undefined) unlinkSync(candidate);
+  durableDirectory(dirname(path));
+}
 
 /** Pair publication is last: mutation during either native snapshot refuses the whole set. */
 export async function backupLifecyclePair(runtimeAdmission:RuntimeAdmission,source: ConstructorParameters<typeof AuthorityBackupService>[1], stateRoot:string,clock:Clock) {
@@ -94,9 +113,12 @@ export async function backupLifecyclePair(runtimeAdmission:RuntimeAdmission,sour
     const token=randomUUID(),archiveFile=`${token}.archive.sqlite`,fileDirectory=`${token}.archive-files`;
     await archive.onlineBackupTo(join(directory,archiveFile));
     const archiveCopyPath=join(directory,archiveFile);
+    assertUnaccompaniedArchiveCopy(archiveCopyPath);
     const copyAdmission=runtimeAdmission.verifiedReadOnlyCopy(archiveCopyPath,fileDigest(archiveCopyPath),"archive");
-    const copy=new ArchiveDatabase(copyAdmission,archiveCopyPath,{readOnly:true});
-    try{if(copy.fingerprint()!==fingerprint)throw new Error("lifecycle-backup-archive-changed");}finally{copy.close();copyAdmission.release();}
+    try {
+      const copy=new ArchiveDatabase(copyAdmission,archiveCopyPath,{readOnly:true});
+      try{if(copy.fingerprint()!==fingerprint)throw new Error("lifecycle-backup-archive-changed");}finally{copy.close();}
+    } finally { copyAdmission.release(); removeCreatedArchiveInspectionCompanions(archiveCopyPath); }
     mkdirSync(join(directory,fileDirectory),{mode:0o700});
     for(const file of files)writeFileSync(join(directory,fileDirectory,file.digest),archive.readFile(file),{flag:"wx",mode:0o600,flush:true});
     durableDirectory(join(directory,fileDirectory));
@@ -119,9 +141,11 @@ export async function verifyLifecyclePair(runtimeAdmission:RuntimeAdmission,path
   if(fileDigest(liveManifestPath)!==pair.liveManifestDigest || fileDigest(join(root,pair.archiveFile))!==pair.archiveDigest)throw new Error("lifecycle-backup-digest-mismatch");
   const live=await verifyBackupManifestAtPath(runtimeAdmission,liveManifestPath,pair.sourceDatabaseIdentity);
   const archivePath=join(root,pair.archiveFile);
+  assertUnaccompaniedArchiveCopy(archivePath);
   const copyAdmission=runtimeAdmission.verifiedReadOnlyCopy(archivePath,pair.archiveDigest,"archive");
-  const archive=new ArchiveDatabase(copyAdmission,archivePath,{readOnly:true});
+  let archive: ArchiveDatabase | undefined;
   try {
+    archive=new ArchiveDatabase(copyAdmission,archivePath,{readOnly:true});
     if(archive.fingerprint()!==pair.archiveFingerprint)throw new Error("lifecycle-backup-archive-mismatch");
     const liveAdmission=runtimeAdmission.verifiedReadOnlyCopy(live.backupPath,live.manifest.sha256,"authority");
     let pending:ReturnType<typeof backupPendingCaptureFiles>;
@@ -132,7 +156,7 @@ export async function verifyLifecyclePair(runtimeAdmission:RuntimeAdmission,path
     if (new Set(pair.files.map(file=>file.digest)).size !== pair.files.length
       || required.some(file => !pair.files.some(candidate => candidate.digest === file.digest && candidate.byteLength === file.byteLength))
       || pair.files.some(file => !admitted.some(candidate => candidate.digest === file.digest))) throw new Error("lifecycle-backup-file-membership-mismatch");
-  } finally {archive.close();copyAdmission.release();}
+  } finally {archive?.close();copyAdmission.release();removeCreatedArchiveInspectionCompanions(archivePath);}
   for(const file of pair.files){const bytes=safeBytes(join(root,pair.fileDirectory,file.digest));if(bytes.length!==file.byteLength||createHash("sha256").update(bytes).digest("hex")!==file.digest)throw new Error("lifecycle-backup-file-mismatch");}
   return {pair,live,root};
 }

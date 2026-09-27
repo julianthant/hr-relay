@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { archiveFixture, attachFile } from "./fixtures.js";
@@ -24,6 +24,15 @@ for (const step of ["live", "files"] as const) it(`rejects changed pending attac
     const backup = await backupStoppedAuthority(f.base.root, f.base.clock);
     assert.ok("pairedManifestPath" in backup);
     const verified = await verifyLifecyclePair(backup.pairedManifestPath);
+    const archiveCopy = join(verified.root, verified.pair.archiveFile);
+    assert.equal(existsSync(`${archiveCopy}-shm`), false);
+    assert.equal(existsSync(`${archiveCopy}-wal`), false);
+    if (step === "live") {
+      writeFileSync(`${archiveCopy}-shm`, "preexisting", { mode: 0o600 });
+      await assert.rejects(verifyLifecyclePair(backup.pairedManifestPath), /preexisting-companion/u);
+      assert.equal(readFileSync(`${archiveCopy}-shm`, "utf8"), "preexisting");
+      rmSync(`${archiveCopy}-shm`);
+    }
     const processLockRoot = join(f.base.root, "locks");
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(f.base.path);
     const proofs = new RecoveryStopProofStore({processLockRoot, maxProofAgeMs:60000}, f.base.clock);
