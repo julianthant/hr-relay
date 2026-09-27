@@ -65,10 +65,10 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * and a sampled run those rows do not cover announces itself by id rather than
  * by a name this surface would have to invent.
  */
-import { CalendarDays,ChevronDown,Download,Info,TriangleAlert } from "lucide-react";
+import { CalendarDays,ChartNoAxesColumnIncreasing,ChevronDown,Download,Info,TriangleAlert } from "lucide-react";
 import { RangeCalendar as HeroRangeCalendar } from "@heroui/react";
 import { parseDate,type CalendarDate } from "@internationalized/date";
-import { useCallback,useEffect,useMemo,useState,useRef,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useState,useRef,type ReactNode,type Ref } from "react";
 import {
 activityErrorRatePercent,
 activityReportCaveats,
@@ -87,7 +87,6 @@ dsIcon,
 dsSurface,
 dsText,
 MetaLine,
-PageHeading,
 Popover,
 PopoverContent,
 PopoverTrigger,
@@ -109,15 +108,18 @@ import { cn } from "../lib/utils.js";
 import { useActivityClient as useDashboardClient } from "../state/activity-client.js";
 import { failed,LOADING,type AsyncResource } from "../state/async-resource.js";
 import {
+ACTIVITY_DATE_PRESETS,
+activityCompactRangeLabel,
+activityPresetOf,
+activityPresetRange,
+activityRangeDraft,
+applyActivityRangeDraft,
 activityPeopleEvidenceItems,
-activityPeopleMeta,
 activityPeopleNote,
-activityPeriodOf,
-activityPeriodRange,
-activityRangeLabel,
 activityRangeValue,
 parseActivityRange,
 resolveActivityWho,
+type ActivityRangeDraft,
 type QueueRowIdentity,
 } from "./activity-model.js";
 import { fmtClock,plural } from "./format.js";
@@ -129,53 +131,69 @@ function calendarDate(value: string): CalendarDate | null {
   try { return parseDate(value); } catch { return null; }
 }
 
-function dateControlLabel(from: string, to: string): string {
-  const start = new Date(`${from}T12:00:00Z`);
-  const end = new Date(`${to}T12:00:00Z`);
-  const short = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  const full = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  if (from === to) return full(start);
-  if (from.slice(0, 4) !== to.slice(0, 4)) return `${full(start)} – ${full(end)}`;
-  if (from.slice(0, 7) === to.slice(0, 7)) return `${short(start)} – ${to.slice(8)}, ${to.slice(0, 4)}`;
-  return `${short(start)} – ${full(end)}`;
-}
-
-function ActivityDateControl({ from, to, invalid, onRange, open, onOpenChange }: {
+function ActivityDateControl({ from, to, today, invalid, draft, onDraftChange, onApply, open, triggerRef, onOpenChange }: {
   from: string;
   to: string;
+  today: string;
   invalid: boolean;
-  onRange: (value: string) => void;
+  draft: ActivityRangeDraft | null;
+  onDraftChange: (value: ActivityRangeDraft) => void;
+  onApply: () => void;
   open: boolean;
+  triggerRef: Ref<HTMLButtonElement>;
   onOpenChange: (open: boolean) => void;
 }) {
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
-  const start = calendarDate(from);
-  const end = calendarDate(to);
-  const selected = !invalid && start !== null && end !== null;
-  const label = selected ? dateControlLabel(from, to) : "Choose dates";
-  const choose = (first: string, last: string) => {
-    onRange(activityRangeValue({ from: first, to: last }));
-    onOpenChange(false);
+  const start = draft?.from === null || draft === null ? null : calendarDate(draft.from);
+  const end = draft?.to === null || draft === null ? null : calendarDate(draft.to);
+  const draftResult = draft === null ? null : applyActivityRangeDraft(draft);
+  const selected = draftResult?.state === "ready" && start !== null && end !== null;
+  const appliedLabel = invalid ? "Invalid report span" : activityCompactRangeLabel({ from, to });
+  const pendingAnchor = useRef(false);
+  const changeOpen = (next: boolean) => {
+    pendingAnchor.current = false;
+    setYearPickerOpen(false);
+    onOpenChange(next);
   };
-  return <Popover open={open} onOpenChange={next => { onOpenChange(next); if (!next) setYearPickerOpen(false); }}>
+  const noteCalendarActivation = (target: EventTarget | null) => {
+    if (!(target instanceof Element) || target.closest(".range-calendar__cell") === null) return;
+    if (!pendingAnchor.current) {
+      pendingAnchor.current = true;
+      onDraftChange({ from: null, to: null });
+    } else {
+      pendingAnchor.current = false;
+    }
+  };
+  return <Popover open={open} onOpenChange={changeOpen}>
     <PopoverTrigger asChild>
-      <Button size="toolbar" variant="secondary" aria-label={`Select report dates: ${label}`} aria-invalid={invalid || undefined} icon={<CalendarDays aria-hidden className={dsIcon.sm} />}>
-        <span className="tabular-nums">{label}</span><ChevronDown aria-hidden className={dsIcon.sm} />
+      <Button ref={triggerRef} size="toolbar" variant="secondary" aria-label={`Select report dates: ${appliedLabel}`} aria-expanded={open} aria-invalid={invalid || undefined} icon={<CalendarDays aria-hidden className={dsIcon.sm} />}>
+        <span className="tabular-nums">{appliedLabel}</span><ChevronDown aria-hidden className={dsIcon.sm} />
       </Button>
     </PopoverTrigger>
-    <PopoverContent title="Select report dates" hideTitle align="end" width="md" className="ds-date-popover">
-      <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar" isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen} value={selected ? { start, end } : null} onChange={dates => { if (dates !== null) choose(dates.start.toString(), dates.end.toString()); }}>
-        <HeroRangeCalendar.Header>
-          <HeroRangeCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
-          <HeroRangeCalendar.YearPickerTrigger className="w-full justify-center">
-            <HeroRangeCalendar.YearPickerTriggerHeading className="text-foreground" />
-            <HeroRangeCalendar.YearPickerTriggerIndicator className="text-foreground" />
-          </HeroRangeCalendar.YearPickerTrigger>
-          <HeroRangeCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
-        </HeroRangeCalendar.Header>
-        <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
-        {yearPickerOpen && <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>}
-      </HeroRangeCalendar>
+    <PopoverContent title="Select report dates" hideTitle align="end" width="md" className="ds-date-popover activity-range-popover">
+      <div onPointerDownCapture={event => { noteCalendarActivation(event.target); }} onKeyDownCapture={event => {
+        if ((event.key === "Enter" || event.key === " ") && !event.repeat) noteCalendarActivation(event.target);
+      }}>
+        <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar activity-range-calendar" defaultFocusedValue={calendarDate(today)} isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen} value={selected ? { start, end } : null} onChange={dates => {
+          pendingAnchor.current = false;
+          if (dates !== null) onDraftChange({ from: dates.start.toString(), to: dates.end.toString() });
+        }}>
+          <HeroRangeCalendar.Header>
+            <HeroRangeCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
+            <HeroRangeCalendar.YearPickerTrigger className="w-full justify-center">
+              <HeroRangeCalendar.YearPickerTriggerHeading className="text-foreground" />
+              <HeroRangeCalendar.YearPickerTriggerIndicator className="text-foreground" />
+            </HeroRangeCalendar.YearPickerTrigger>
+            <HeroRangeCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
+          </HeroRangeCalendar.Header>
+          <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} className={date.toString() === today ? "activity-range-calendar-report-today" : undefined} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
+          {yearPickerOpen && <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>}
+        </HeroRangeCalendar>
+      </div>
+      <div className="mt-[var(--ds-space-base)] flex justify-end gap-[var(--ds-space-snug)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]">
+        <Button size="sm" variant="secondary" onClick={() => changeOpen(false)}>Cancel</Button>
+        <Button size="sm" variant="primary" className="activity-range-apply" disabled={draftResult?.state !== "ready"} onClick={onApply}>Apply range</Button>
+      </div>
     </PopoverContent>
   </Popover>;
 }
@@ -970,10 +988,14 @@ export function ActivityReport({
     return ()=>{controller.abort();stop();};
   }, [client, requestRange, resolved.from, resolved.to, resolved.refusal,refresh]);
 
-  const spanLabel = resolved.refusal === undefined ? activityRangeLabel(resolved.from, resolved.to) : "Invalid report span";
+  const appliedRangeLabel = resolved.refusal === undefined ? activityCompactRangeLabel(resolved) : "Invalid report span";
   const report = resource.state === "loaded" ? resource.value : undefined;
-  const period = resolved.refusal === undefined ? activityPeriodOf(resolved, today) : "custom";
+  const period = resolved.refusal === undefined ? activityPresetOf(resolved, today) : "custom";
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateDraft, setDateDraft] = useState<ActivityRangeDraft | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const dateTriggerRef = useRef<HTMLButtonElement>(null);
+  const periodSelectRef = useRef<HTMLSelectElement>(null);
 
   const exportRequest=useRef<AbortController|null>(null);
   const [exportState,setExportState]=useState<"idle"|"pending"|"started"|"cancelled"|"failed">("idle");
@@ -989,39 +1011,93 @@ export function ActivityReport({
     } catch {if(!controller.signal.aborted&&exportRequest.current===controller){setExportState("failed");}} finally {if(exportRequest.current===controller)exportRequest.current=null;}
   }, [client,report]);
 
+  const changeDatePickerOpen = (next: boolean, focusAfterClose?: "period" | "date") => {
+    if (next) {
+      setDateDraft(resolved.refusal === undefined
+        ? activityRangeDraft({ from: resolved.from, to: resolved.to })
+        : { from: null, to: null });
+    } else {
+      setDateDraft(null);
+      const target = focusAfterClose ?? (period === "custom" ? "date" : "period");
+      window.requestAnimationFrame(() => {
+        (target === "date" ? dateTriggerRef.current : periodSelectRef.current)?.focus();
+      });
+    }
+    setDatePickerOpen(next);
+  };
+
+  const applyDateDraft = () => {
+    if (dateDraft === null) return;
+    const result = applyActivityRangeDraft(dateDraft);
+    if (result.state !== "ready") return;
+    onRange(activityRangeValue(result.model.selection));
+    changeDatePickerOpen(false, activityPresetOf(result.model.selection, today) === "custom" ? "date" : "period");
+  };
+
+  const choosePreset = (value: string) => {
+    const preset = ACTIVITY_DATE_PRESETS.find(entry => entry.value === value);
+    if (preset === undefined) return;
+    if (preset.value === "custom") {
+      changeDatePickerOpen(true);
+      return;
+    }
+    changeDatePickerOpen(false, "period");
+    onRange(activityRangeValue(activityPresetRange(preset.value, today)));
+  };
+
   return (
     <TakeoverFrame label="Activity report">
-      <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-space-page)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
-        <DsBodyScope className="mx-auto flex flex-col gap-[var(--ds-space-section)]" style={{ maxWidth: "var(--ds-w-body-performance)" }}>
-          <PageHeading
-            title="Activity"
-            description={spanLabel}
-            actions={report === undefined ? undefined : <span role="group" aria-label="Export activity report" className="flex flex-wrap items-center gap-[var(--ds-space-tight)]">
-              <Button size="sm" variant="secondary" icon={<Download aria-hidden className={dsIcon.md} />} disabled={exportState === "pending"} onClick={() => { void exportReport("csv"); }}>Export CSV</Button>
-              <Button size="sm" variant="secondary" disabled={exportState === "pending"} onClick={() => { void exportReport("xlsx"); }}>Export XLSX</Button>
-              {exportState === "pending" && <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setExportState("cancelled"); }}>Cancel download</Button>}
-            </span>}
-          />
+      <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-space-cozy)] py-[var(--ds-space-cozy)]", dsSurface.bodyPage)}>
+        <DsBodyScope className="activity-report-body flex w-full flex-col gap-[var(--ds-space-section)]">
+          <header className="activity-report-heading flex min-h-[var(--ds-h-toolbar)] flex-wrap items-center justify-between gap-[var(--ds-space-base)] rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]">
+            <div className="flex min-w-0 items-center gap-[var(--ds-space-base)]">
+              <ChartNoAxesColumnIncreasing aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
+              <h1 className={cn(dsText.title, dsText.flush, "shrink-0 font-semibold text-[color:var(--ds-fg)]")}>Activity</h1>
+              <span aria-hidden className="h-[var(--ds-h-sm)] w-px shrink-0 bg-[color:var(--ds-border)]" />
+              {period === "custom" || datePickerOpen ? <ActivityDateControl
+                from={resolved.from}
+                to={resolved.to}
+                today={today}
+                invalid={resolved.refusal !== undefined}
+                draft={dateDraft}
+                onDraftChange={setDateDraft}
+                onApply={applyDateDraft}
+                open={datePickerOpen}
+                triggerRef={dateTriggerRef}
+                onOpenChange={changeDatePickerOpen}
+              /> : <span className={cn(dsText.meta, dsText.nums, "whitespace-nowrap text-[color:var(--ds-fg-secondary)]")} aria-label={`Report date range: ${appliedRangeLabel}`}>{appliedRangeLabel}</span>}
+            </div>
 
-          <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-base)]">
-            <label className={cn(dsText.meta, "flex items-center gap-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-              Period
-              <Select variant="toolbar" aria-label="Report period" value={datePickerOpen ? "custom" : period} onChange={(event) => {
-                const next = event.target.value;
-                if (next === "custom") { setDatePickerOpen(true); return; }
-                if (next === "today" || next === "week" || next === "month") onRange(activityRangeValue(activityPeriodRange(next, today)));
-              }}>
-                <option value="today">Today</option><option value="week">This week</option><option value="month">Month to date</option><option value="custom">Custom range</option>
-              </Select>
-            </label>
-            <ActivityDateControl from={resolved.from} to={resolved.to} invalid={resolved.refusal !== undefined} onRange={onRange} open={datePickerOpen} onOpenChange={setDatePickerOpen} />
-            {report !== undefined && <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-muted)]")}>{plural(report.totalRuns, "run")} · all workflows · {activityPeopleMeta(report.people)}</span>}
-            {report !== undefined && <Popover>
+            <div className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">
+              <div className="activity-report-period">
+                <Select ref={periodSelectRef} variant="toolbar" aria-label="Report period" value={datePickerOpen ? "custom" : period} onChange={event => { choosePreset(event.target.value); }}>
+                  {ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+                </Select>
+              </div>
+              <Popover open={exportMenuOpen} onOpenChange={setExportMenuOpen}>
+                <PopoverTrigger asChild>
+                  <Button size="toolbar" variant="outline" aria-label="Export report" disabled={report === undefined} icon={<Download aria-hidden className={dsIcon.sm} />}>
+                    Export report <ChevronDown aria-hidden className={dsIcon.sm} />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent title="Export report" width="sm" align="end">
+                  <div className="flex flex-col gap-[var(--ds-space-tight)]">
+                    <Button variant="ghost" className="w-full justify-start" disabled={exportState === "pending"} onClick={() => { setExportMenuOpen(false); void exportReport("csv"); }}>Export CSV</Button>
+                    <Button variant="ghost" className="w-full justify-start" disabled={exportState === "pending"} onClick={() => { setExportMenuOpen(false); void exportReport("xlsx"); }}>Export XLSX</Button>
+                    {exportState === "pending" && <Button variant="ghost" className="w-full justify-start" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setExportState("cancelled"); setExportMenuOpen(false); }}>Cancel download</Button>}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </header>
+
+          {report !== undefined && <div className="flex flex-wrap items-center justify-end gap-[var(--ds-space-snug)]">
+            <Popover>
               <PopoverTrigger asChild><Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>How it is counted</Button></PopoverTrigger>
               <PopoverContent title="How this report is counted" width="lg" align="end"><BulletList items={[...activityReportCaveats(report)]} /></PopoverContent>
-            </Popover>}
-            {report !== undefined && <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setResponse({ range: requestRange, resource: LOADING }); setRefresh(value => value + 1); }}>Refresh report</Button>}
-          </div>
+            </Popover>
+            <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setResponse({ range: requestRange, resource: LOADING }); setRefresh(value => value + 1); }}>Refresh report</Button>
+          </div>}
 
           {exportState === "failed" && <Refusal code="selection-export-refused" title="Export refused" outcome="No file was downloaded. Refresh the report and retry the reviewed selection.">The selection expired, changed, or failed verification.</Refusal>}
           {exportState === "cancelled" && <p role="status">Download cancelled locally. A registered XLSX export may still finish on the server.</p>}
@@ -1038,12 +1114,10 @@ export function ActivityReport({
 
           <footer className="border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]">
             <MetaLine items={[
-              report === undefined ? `${spanLabel} — not yet generated` : `generated ${fmtClock(report.generatedAt)}`,
+              report === undefined ? "Report not yet generated" : `generated ${fmtClock(report.generatedAt)}`,
               actorId,
               `app ${appVersion}`,
-              spanLabel,
-              report === undefined ? undefined : plural(report.totalRuns, "run"),
-            ].filter((item): item is string => item !== undefined)} />
+            ]} />
           </footer>
         </DsBodyScope>
       </div>
