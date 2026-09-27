@@ -33,7 +33,7 @@ import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
 import {
   createRunQueueProjection,

@@ -19,7 +19,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { notificationWireOf } from "../../src/domain/dashboard/projection.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { createNotificationInbox, type NotificationPublishReport } from "../../src/services/notifications/inbox.js";
 import { createGateParkNotifier } from "../../src/services/notifications/gate-park.js";
 import { NOW, UUID_1, UUID_2 } from "../fixtures/phase1c-contract-fixtures.js";

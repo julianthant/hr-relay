@@ -2,6 +2,7 @@ import { existsSync, statSync } from "node:fs";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "./authority-database.js";
+import type { RuntimeAdmission } from "../runtime-control/admission.js";
 import {
   AuthorityBootReportSchema,
   StorageHealthCauseSchema,
@@ -62,7 +63,7 @@ export class AuthorityBootStore implements Disposable {
     this.#report = report;
   }
 
-  static open(input: unknown, clock: Clock = systemClock): AuthorityBootStore {
+  static open(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): AuthorityBootStore {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
     const checkedAt = clock.now().toISOString();
     const existed = existsSync(options.path);
@@ -77,7 +78,7 @@ export class AuthorityBootStore implements Disposable {
     }
     if (existed) {
       try {
-        AuthorityDatabase.inspectExistingReadOnly(options.path, options.busyTimeoutMs);
+        AuthorityDatabase.inspectExistingReadOnly(admission, options.path, options.busyTimeoutMs);
       } catch (error) {
         return new AuthorityBootStore(undefined, AuthorityBootReportSchema.parse({
           state: "degraded-read-only",
@@ -88,12 +89,12 @@ export class AuthorityBootStore implements Disposable {
       }
     }
     try {
-      const database = AuthorityDatabase.open(options, clock);
+      const database = AuthorityDatabase.open(admission, options, clock);
       return new AuthorityBootStore(database, AuthorityBootReportSchema.parse({
         state: "healthy",
         checkedAt,
         mutationAvailability: "available",
-        inspection: AuthorityDatabase.inspectExistingReadOnly(options.path, options.busyTimeoutMs),
+        inspection: AuthorityDatabase.inspectExistingReadOnly(admission, options.path, options.busyTimeoutMs),
       }));
     } catch (error) {
       return new AuthorityBootStore(undefined, AuthorityBootReportSchema.parse({

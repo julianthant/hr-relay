@@ -10,10 +10,10 @@ import { ConfigSchema } from "../../src/domain/config/schema.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AUTHORITY_TABLE_REGISTRY } from "../../src/domain/authority.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, DATABASE_TABLE_RENAMES, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT as UNPINNED_CONFIG_SNAPSHOT, NOW, HASH_A, HASH_B, UUID_5, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 

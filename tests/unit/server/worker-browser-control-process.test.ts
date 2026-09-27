@@ -16,7 +16,7 @@ import { systemClock } from "../../../src/domain/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
 import type { WorkerProcessSpawner } from "../../../src/server/dashboard/worker-supervisor.js";

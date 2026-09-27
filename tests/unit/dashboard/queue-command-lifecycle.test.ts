@@ -48,7 +48,7 @@ import {
   BulkRunCommandRequestSchema,
   CommandRequestSchema,
 } from "../../../src/domain/commands.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import {
   HASH_A,

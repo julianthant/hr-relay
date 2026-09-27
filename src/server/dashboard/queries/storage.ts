@@ -12,8 +12,10 @@ import {
   type StorageDoctorWire,
 } from "../../../domain/dashboard/storage.js";
 import { doctorAuthorityStorage } from "../../../infra/sqlite/index.js";
+import type { RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
 
 export interface StorageQueryDeps {
+  readonly admission: RuntimeAdmission;
   readonly doctorOptions: Readonly<{
     stateRootTrustAnchor: string;
     stateRoot: string;
@@ -28,7 +30,7 @@ export interface StorageQueryDeps {
 }
 
 export async function buildStorageDoctor(deps: StorageQueryDeps): Promise<StorageDoctorWire> {
-  const report = await doctorAuthorityStorage(deps.doctorOptions, deps.clock);
+  const report = await doctorAuthorityStorage(deps.admission, deps.doctorOptions, deps.clock);
   return StorageDoctorWireSchema.parse({
     mode: report.mode,
     recovery: report.recovery,

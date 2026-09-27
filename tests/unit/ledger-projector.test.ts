@@ -4,7 +4,7 @@ import { readFileSync, rmSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { historyWorld, historicalWorld, historyClock } from "./transaction-history-fixture.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });

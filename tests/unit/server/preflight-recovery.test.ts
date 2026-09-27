@@ -4,16 +4,16 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { runtimeFixture } from "../../fixtures/preflight/runtime-fixture.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { backupStoppedAuthority } from "../../../src/server/storage/upgrade.js";
-import { composeStorageCommand } from "../../../src/server/storage/compose.js";
+import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
+import { composeStorageCommand } from "../../helpers/synthetic-storage-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { restoreLifecyclePair } from "../../../src/infra/sqlite/lifecycle-storage.js";
+import { restoreLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { AuthorityHealthPreflightRunner } from "../../../src/infra/sqlite/authority-health-runner.js";
-import { doctorAuthorityStorage } from "../../../src/infra/sqlite/storage-doctor.js";
+import { AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
+import { doctorAuthorityStorage } from "../../helpers/synthetic-storage-admission.js";
 
 it("fresh private authority is healthy without creating a backup",async()=>{
   const f=runtimeFixture(["dashboard.serve"]);

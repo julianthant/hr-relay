@@ -1,7 +1,7 @@
 import { ProtectedStoreRecordSchema } from "../../../src/domain/config/protected-settings.js";
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { composeRuntimePreflight } from "../../../src/server/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/server/preflight/runtime-runners.js";
 import { createPreflightAuthority } from "../../../src/domain/preflight.js";

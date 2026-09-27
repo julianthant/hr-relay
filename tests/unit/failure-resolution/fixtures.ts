@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { FailureResolutionCommandSchema } from "../../../src/domain/commands.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER, UNSTORED_CONFIG_IDENTITY } from "../../fixtures/intake-kernel-seams.js";

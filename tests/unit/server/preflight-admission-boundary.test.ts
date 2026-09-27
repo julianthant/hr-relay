@@ -12,7 +12,7 @@ import { initialSettingsFileRecord } from "../../../src/domain/config/settings.j
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../src/domain/config/protected-settings.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { composeRuntimePreflight } from "../../../src/server/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/server/preflight/runtime-runners.js";

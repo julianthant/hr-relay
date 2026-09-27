@@ -42,7 +42,7 @@ import type { BrowserSystemId, WorkerId } from "../../src/domain/ids.js";
 import { defineVerifiedLoginRecipe } from "../../src/infra/browser/authenticated-application.js";
 import { DuoTerminalRefusalError } from "../../src/infra/browser/login-contract.js";
 import type { SystemLoginContext } from "../../src/infra/browser/login-contract.js";
-import type { AuthorityDatabase, DuoCeremonyLeaseRepository } from "../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase, DuoCeremonyLeaseRepository } from "../helpers/synthetic-storage-admission.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   duoCeremonyGatesOver,

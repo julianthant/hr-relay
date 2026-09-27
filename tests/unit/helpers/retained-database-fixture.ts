@@ -3,7 +3,7 @@ import { readFileSync,rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { AUTHORITY_APPLICATION_ID,SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
-import { inspectAuthorityBackupReadOnly } from "../../../src/infra/compat/backup-inspection.js";
+import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
 
 /** Replace only a caller-owned synthetic fixture with an inspected frozen schema-46 image. */
 export function restoreRetainedFixture(path:string,source:URL):void {

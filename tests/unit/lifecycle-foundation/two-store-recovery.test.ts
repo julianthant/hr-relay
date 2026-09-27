@@ -1,5 +1,5 @@
 import { storageRecoveryFixture, storageTree, credentialTrap } from "../helpers/storage-recovery-fixture.js";
-import { backupStoppedAuthority } from "../../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -7,7 +7,7 @@ import { writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
 import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
+import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
 
 describe("L archive report/file interruption", () => {
@@ -38,11 +38,12 @@ describe("L archive report/file interruption", () => {
   });
 });
 
-import { backupLifecyclePair, restoreLifecyclePair, createRunLifecycleStorage, verifyLifecyclePair } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { failure, terminalizeFixtureFailure } from "../database-foundation/fixtures.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { existsSync, mkdirSync } from "node:fs";

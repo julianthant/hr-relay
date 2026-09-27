@@ -8,7 +8,7 @@ import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedS
 import { PreflightAdmissionScopeSchema } from "../../../src/domain/preflight-admission.js";
 import { createPreflightAuthority, type PreflightRunner } from "../../../src/domain/preflight.js";
 import { PROVIDER_ADAPTER_SPECS, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } from "../../../src/domain/runtime-dependencies.js";
-import { AuthorityDatabase, AuthorityHealthPreflightRunner } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase, AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/server/preflight/runtime-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
 
@@ -49,7 +49,7 @@ export function runtimeFixture(capabilities: readonly RuntimeCapability[]) {
     for (const capability of provider.capabilities) providerAvailability[`${provider.provider}/${capability}`] = true;
   }
   let record = populatedProtectedRecord();
-  const doctorOptions = { stateRootTrustAnchor: root, stateRoot, authorityPath: databasePath, backupDirectory: join(stateRoot, "backups"), busyTimeoutMs: 100 };
+  const doctorOptions = { stateRootTrustAnchor: root, stateRoot, authorityPath: databasePath, backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 100 };
   const input: RuntimePreflightRunnerInput = { config, providerAvailability, protectedSecrets: { read: () => record }, browserExecutablePath: () => executable,
     scope: PreflightAdmissionScopeSchema.parse({configSnapshotId:"11111111-1111-4111-8111-111111111111", configFingerprint:"a".repeat(64), descriptorFingerprint:"b".repeat(64), requestedCapabilities:capabilities}),
     dashboard: {repoRoot:root, stateRoot, artifactRoot, processLockRoot:join(stateRoot,"locks"), backendPort:0, frontendPort:0, clock,

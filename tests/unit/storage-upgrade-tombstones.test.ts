@@ -8,10 +8,10 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const now = "2026-09-06T12:00:00.000Z";

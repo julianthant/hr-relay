@@ -1,3 +1,4 @@
+import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
 /** Storage-owned test composition: real doctor route; fixture shell/settings/SSE/static responses. */
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -10,14 +11,14 @@ import { createFixtureBff, startFixtureServer, type FixtureServer } from "./fixt
 import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from "./bundle.js";
 import { registerStorageRoutes } from "../../../src/server/dashboard/routes/storage.js";
 import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
-import { backupStoppedAuthority } from "../../../src/server/storage/upgrade.js";
-import { composeStorageCommand } from "../../../src/server/storage/compose.js";
+import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
+import { composeStorageCommand } from "../../helpers/synthetic-storage-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { restoreLifecyclePair, verifyLifecyclePair } from "../../../src/infra/sqlite/lifecycle-storage.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot, type RuntimeProcessLockHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/domain/config/protected-settings.js";
 
 export async function storageRecoveryTarget() {
@@ -71,7 +72,7 @@ export async function storageRecoveryTarget() {
     try {
       shell = await startFixtureServer({distDir: PARITY_DIST_DIR, bundle: {proof: "working-tree"}});
       const app: DashboardApp = new Hono();
-      registerStorageRoutes(app, {storage: {doctorOptions: {stateRootTrustAnchor: repoRoot, stateRoot: root,
+      registerStorageRoutes(app, {storage: {admission: syntheticStateRoot(root), doctorOptions: {stateRootTrustAnchor: repoRoot, stateRoot: root,
         authorityPath: f.base.path, backupDirectory: verified.root, busyTimeoutMs: 500}, clock,
       serviceState: () => ({state: "never-run", reason: "This diagnostic host runs no automatic backups."})}});
       app.route("/", createFixtureBff().app);

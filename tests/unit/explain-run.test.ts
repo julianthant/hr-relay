@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { explainRunFrom } from "../../src/server/explain/compose.js";
 import { renderExplainRun } from "../../src/server/explain/explain-run.js";
 import {

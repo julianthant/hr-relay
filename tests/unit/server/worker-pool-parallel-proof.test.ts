@@ -48,7 +48,7 @@ import {
 import { poolWorkerId, type WorkerPoolMember } from "../../../src/core/worker-loop.js";
 import { manualClock, systemClock, type Clock, type TestClock } from "../../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
 import {

@@ -13,7 +13,7 @@ import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { manualClock } from "../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import {
   HASH_A,

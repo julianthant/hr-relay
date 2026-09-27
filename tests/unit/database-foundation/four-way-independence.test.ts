@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { PositiveIntSchema, ConfigSnapshotIdSchema } from "../../../src/domain/ids.js";
 import { resolutionKernel, resolutionCommand } from "../failure-resolution/fixtures.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
@@ -27,7 +28,7 @@ import { foundationFixture,failure,terminalizeFixtureFailure,update,NOW,HASH,id 
 
 type Fixture=ReturnType<typeof foundationFixture>;
 const scheduler={schedule:()=>({cancel:()=>undefined})};
-const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({workspaceRoot:f.root,artifactRoot:".tracker/artifacts"});
+const artifacts=(f:Fixture)=>createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(f.root, ".tracker"), join(f.root, ".tracker/artifacts"))});
 const flows={
  async P(f:Fixture){
   const value={schemaHash:FingerprintSchema.parse(HASH),value:{synthetic:true}};

@@ -46,7 +46,7 @@ import {
   STANDARD_WORKFLOW_ACTIONS,
   WorkflowCapabilitiesSchema,
 } from "../../src/domain/workflow/presentation.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { HASH_A, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,

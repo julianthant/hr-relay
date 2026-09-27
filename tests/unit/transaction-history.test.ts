@@ -1,7 +1,7 @@
 import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../src/core/run-lifecycle-storage.js";
 import { ArchivedTransactionsSchema } from "../../src/domain/archive/model.js";
 import { HistoricalOperationSourceSchema } from "../../src/events/timeline.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { fixtureUuid } from "./fixtures/ledger-projection-fixtures.js";
 import { TimelineSourceManifestSchema } from "../../src/infra/events/timeline-import.js";
@@ -11,7 +11,7 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
-import { upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { historyWorld, historicalWorld, historyClock } from "./transaction-history-fixture.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });

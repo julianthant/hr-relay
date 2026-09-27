@@ -2,6 +2,7 @@ import { readFileSync, existsSync, mkdirSync, writeFileSync, lstatSync, unlinkSy
 import { dirname, join } from "node:path";
 import { createHash } from "node:crypto";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema,
   type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../domain/run/deleted-run.js";
@@ -84,7 +85,8 @@ export class ArchiveDatabase {
   #schemaVersion: 1 | 2;
   get schemaVersion(): 1 | 2 { return this.#schemaVersion; }
   #memoryFiles: Map<string, Buffer> | undefined;
-  constructor(readonly path: string, options: Readonly<{readOnly?:boolean; validation?:"all"|"selected"}> = {}) {
+  constructor(admission: RuntimeAdmission, readonly path: string, options: Readonly<{readOnly?:boolean; validation?:"all"|"selected"}> = {}) {
+    requireRuntimeAdmission(admission).assertArchiveDatabase(path, options.readOnly === true ? "read-only" : "read-write");
     const existed=existsSync(path); this.#readOnly=options.readOnly===true;
     if(options.validation==="selected"&&!this.#readOnly)throw new Error("archive-selected-validation-requires-read-only");
     if ((!existed && this.#readOnly) || (existed && (!lstatSync(path).isFile() || lstatSync(path).isSymbolicLink() || lstatSync(path).size===0))) throw new Error("archive-database-invalid-path");
@@ -107,9 +109,9 @@ export class ArchiveDatabase {
     } catch(error) {this.#database.close();throw error;}
   }
   /** Called only by the stopped, backed-up storage upgrade. Ordinary opens retain schema 1. */
-  static upgradeStopped(path: string): void {
+  static upgradeStopped(admission: RuntimeAdmission, path: string): void {
     if (!existsSync(path)) throw new Error("archive-database-missing");
-    const archive = new ArchiveDatabase(path);
+    const archive = new ArchiveDatabase(admission, path);
     try {
       if (archive.schemaVersion === 2) return;
       archive.#database.exec("BEGIN EXCLUSIVE");
@@ -122,11 +124,11 @@ export class ArchiveDatabase {
     } finally { archive.close(); }
   }
   /** Disposable preflight snapshot; neither database nor retained files write to disk. */
-  static preflightCopy(path: string): ArchiveDatabase {
-    const copy = new ArchiveDatabase(":memory:");
+  static preflightCopy(admission: RuntimeAdmission, path: string): ArchiveDatabase {
+    const copy = new ArchiveDatabase(admission, ":memory:");
     copy.#memoryFiles = new Map();
     if (!existsSync(path)) return copy;
-    const source = new ArchiveDatabase(path, {readOnly:true});
+    const source = new ArchiveDatabase(admission, path, {readOnly:true});
     try {
       source.#database.exec("BEGIN");
       for (const table of ["archive_records", "archive_deletions"]) {

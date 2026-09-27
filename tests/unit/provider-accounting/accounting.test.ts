@@ -4,8 +4,8 @@ import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
-import { inspectHistoricalAuthorityInvariants } from "../../../src/infra/sqlite/authority-database.js";
-import { inspectAuthorityBackupReadOnly } from "../../../src/infra/compat/backup-inspection.js";
+import { inspectHistoricalAuthorityInvariants } from "../../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
 import { foundationFixture,generic,legacyRequest,historicalFixture,id,NOW } from "./fixtures.js";
 
 describe("P provider accounting integrity",()=>{
@@ -120,8 +120,8 @@ import { fork } from "node:child_process";
 import { z } from "zod";
 import { readFileSync,copyFileSync,rmSync } from "node:fs";
 import { join } from "node:path";
-import { backupStoppedAuthority,upgradeStorage } from "../../../src/server/storage/upgrade.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { backupStoppedAuthority,upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { ProviderAdmissionRecordSchema,ProviderBudgetCounterSchema } from "../../../src/domain/provider-admission.js";
 import { readProviderRequest,readProviderUsage } from "../../../src/infra/sqlite/provider-storage.js";
 const RaceResult=z.strictObject({state:z.literal("result"),outcome:z.enum(["reserved","denied","existing"]),pid:z.number(),attemptedAt:z.number(),finishedAt:z.number()});

@@ -25,7 +25,7 @@ export type ExistingAuthorityEvidence = Readonly<{ kind: "verified-existing"; pa
 export type AuthorityVerifier = (pair: RuntimePair) => ExistingAuthorityEvidence;
 export type VerifiedRelocationEvidence = Readonly<{ installationId: string; sourceGeneration: number; destination: RuntimePair; backupReceiptId: string; stagingReceiptId: string }>;
 export type RelocationVerifier = (source: RuntimeLocator, destination: RuntimePair) => VerifiedRelocationEvidence;
-export type InstallationLease = Readonly<{ locator: RuntimeLocator; release(): void }>;
+export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator: RuntimeLocator; assertHeld(): void; release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   beginRelocation(destination: RuntimePair): void;
   fenceRelocationSource(verify: RelocationVerifier): void;
@@ -36,6 +36,7 @@ export type ExclusiveInstallationLease = InstallationLease & Readonly<{
 const CONTROL = ".runtime-control";
 const MARKER = ".runtime-owner.json";
 const FENCE = ".runtime-source-fence.json";
+const issuedLeases = new WeakSet<object>();
 
 function fail(reason: string): never { throw new Error(`runtime-control: ${reason}`); }
 function inside(parent: string, child: string): boolean {
@@ -257,11 +258,12 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   privateDirectory(control);
   let leasePath = "";
+  let admissionId = "";
   const resolvedLocator = mutex(control, () => {
     const peers = activeLeases(control);
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting) : fail("installation locator missing"));
-    const admissionId = randomUUID();
+    admissionId = randomUUID();
     leasePath = join(control, "leases", `${admissionId}.json`);
     atomicJson(leasePath, { schemaVersion: 1, admissionId, mode, pid: process.pid, processIdentity: identity() });
     return resolved;
@@ -269,21 +271,28 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   const locator = Object.freeze({ ...resolvedLocator });
   const publicLocator = Object.freeze({ ...locator });
   let released = false;
+  function assertHeld(): void {
+    if (released) fail("installation lease released");
+    const record = readStrict(leasePath, LeaseSchema);
+    if (record.admissionId !== admissionId || record.pid !== process.pid || !isLive(record)) fail("installation lease identity changed");
+  }
   const shared = {
+    mode,
     locator: publicLocator,
+    assertHeld,
     release() {
       if (released) return;
-      mutex(control, () => { privateFile(leasePath); unlinkSync(leasePath); syncDir(join(control, "leases")); });
+      mutex(control, () => { assertHeld(); unlinkSync(leasePath); syncDir(join(control, "leases")); });
       released = true;
     },
   };
+  issuedLeases.add(shared);
   if (mode === "shared") return shared;
   let relocationStarted = options?.recoverRelocation !== undefined;
-  function assertHeld(): void { if (released) fail("exclusive lease released"); privateFile(leasePath); }
   function journal(): z.infer<typeof JournalSchema> {
     return readStrict(join(control, "journal.json"), JournalSchema);
   }
-  return {
+  const exclusive: ExclusiveInstallationLease = {
     ...shared,
     beginRelocation(destination) {
       assertHeld();
@@ -339,4 +348,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       unlinkSync(join(control, "journal.json")); syncDir(control);
     },
   };
+  issuedLeases.add(exclusive);
+  return exclusive;
+}
+
+export function assertInstallationLease(value: InstallationLease): void {
+  if (!issuedLeases.has(value)) fail("unissued installation lease");
+  value.assertHeld();
 }

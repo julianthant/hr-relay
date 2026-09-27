@@ -4,7 +4,7 @@ import { ProtectedSettingsCommandRequestSchema } from "../../../src/domain/comma
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/domain/config/protected-settings.js";
 import type { CredentialStore } from "../../../src/domain/config/credential-store.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { executeSettingsCommand } from "../../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
 

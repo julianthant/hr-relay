@@ -4,7 +4,7 @@ import { join } from "node:path";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import { convertImportedArtifacts, createImportedArtifactRepositories } from "../../../src/infra/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../src/domain/intake/imported-artifact.js";

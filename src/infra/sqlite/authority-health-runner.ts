@@ -3,6 +3,7 @@ import { systemClock } from "../../domain/clock.js";
 import type { PreflightRunner, PreflightRunnerContext } from "../../domain/preflight.js";
 import { PreflightObservationSchema } from "../../domain/preflight.js";
 import { PreflightCheckIdSchema } from "../../domain/preflight-contract.js";
+import type { RuntimeAdmission } from "../runtime-control/admission.js";
 import {
   doctorAuthorityStorage,
   StorageDoctorOptionsSchema,
@@ -13,15 +14,17 @@ export class AuthorityHealthPreflightRunner implements PreflightRunner {
   readonly kind = "io" as const;
   #options: ReturnType<typeof StorageDoctorOptionsSchema.parse>;
   #clock: Clock;
+  #admission: RuntimeAdmission;
 
-  constructor(input: unknown, clock: Clock = systemClock) {
+  constructor(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock) {
+    this.#admission = admission;
     this.#options = StorageDoctorOptionsSchema.parse(input);
     this.#clock = clock;
   }
 
   async run(context: PreflightRunnerContext) {
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted before inspection");
-    const report = await doctorAuthorityStorage(this.#options, this.#clock);
+    const report = await doctorAuthorityStorage(this.#admission, this.#options, this.#clock);
     if (context.signal.aborted) throw new Error("authority.health preflight was aborted during inspection");
     const protectedSummary = report.protectedSettings.state === "available"
       ? report.protectedSettings.entries.map(({ name, present }) => `${name}=${present ? "present" : "absent"}`).join(", ")

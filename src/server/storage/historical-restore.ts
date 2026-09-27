@@ -13,18 +13,23 @@ import { OfflineRestoreRequestSchema } from "../../infra/sqlite/recovery-contrac
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
 import { upgradeStorage } from "./upgrade.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 
 function syncDirectory(path:string){const fd=openSync(path,constants.O_RDONLY|constants.O_NOFOLLOW);try{fsyncSync(fd);}finally{closeSync(fd);}}
 /** Explicit old-backup replacement retains suspects and holds stopped admission through conversion.
  * Failures never claim a cross-database rollback; the durable marker blocks ordinary boot. */
-export async function restoreHistoricalStorage(optionsInput:z.input<typeof OfflineRestoreOptionsSchema>,
+export async function restoreHistoricalStorage(runtimeAdmission:RuntimeAdmission,optionsInput:z.input<typeof OfflineRestoreOptionsSchema>,
   requestInput:z.input<typeof OfflineRestoreRequestSchema>,environmentFile:string,clock:Clock,
   afterStep?:(step:"restored"|"quarantined"|"converted")=>void) {
   const options=OfflineRestoreOptionsSchema.parse(optionsInput),request=OfflineRestoreRequestSchema.parse(requestInput);
+  requireRuntimeAdmission(runtimeAdmission).assertExclusive();
+  runtimeAdmission.assertAuthorityDatabase(options.authorityPath);
   const root=dirname(options.authorityPath),identity=AuthorityDatabase.sourceDatabaseIdentity(options.authorityPath);
-  const verified=await verifyBackupManifestAtPath(request.manifestPath,identity);
+  const verified=await verifyBackupManifestAtPath(runtimeAdmission,request.manifestPath,identity);
   requireSupportedRecoverySchema(verified.manifest.schemaVersion);
-  if (backupHasArchiveTransferCustody(verified.backupPath)) throw new Error("paired-lifecycle-backup-required");
+  const backupAdmission=runtimeAdmission.verifiedReadOnlyCopy(verified.backupPath,verified.manifest.sha256,"authority");
+  try { if (backupHasArchiveTransferCustody(backupAdmission,verified.backupPath)) throw new Error("paired-lifecycle-backup-required"); }
+  finally { backupAdmission.release(); }
   if(verified.manifest.schemaVersion>=CURRENT_AUTHORITY_SCHEMA_VERSION)throw new Error("historical-restore-requires-old-backup");
   const marker=join(root,".archive-restore.json"),binding=canonicalJsonStringify({sourceIdentity:identity,backupSha256:verified.manifest.sha256});
   const admission=acquireRuntimeRestoreAdmission({processLockRoot:options.processLockRoot,pid:process.pid},clock);
@@ -37,7 +42,7 @@ export async function restoreHistoricalStorage(optionsInput:z.input<typeof Offli
     } else {writeFileSync(marker,binding,{flag:"wx",mode:0o600,flush:true});syncDirectory(root);}
     started=true;
     const borrowed=()=>({...admission,release(){}});
-    const report=await new OfflineAuthorityRestoreService(options,async()=>{},clock,undefined,borrowed).restore(request);
+    const report=await new OfflineAuthorityRestoreService(runtimeAdmission,options,async()=>{},clock,undefined,borrowed).restore(request);
     afterStep?.("restored");
     // A pre-lifecycle backup has no independent archive half. Preserve the displaced half,
     // then reconstruct only its authenticated historical sources through the stopped route.
@@ -48,7 +53,7 @@ export async function restoreHistoricalStorage(optionsInput:z.input<typeof Offli
       renameSync(path,join(options.suspectDirectory,`${name}.${randomUUID()}`));
     }
     syncDirectory(root);syncDirectory(options.suspectDirectory);afterStep?.("quarantined");
-    const upgrade=await upgradeStorage({stateRoot:root,processLockRoot:options.processLockRoot,environmentFile,plan:false,backupManifest:verified.manifestPath},clock,borrowed);
+    const upgrade=await upgradeStorage(runtimeAdmission,{stateRoot:root,processLockRoot:options.processLockRoot,environmentFile,plan:false,backupManifest:verified.manifestPath},clock,borrowed);
     afterStep?.("converted");
     unlinkSync(marker);syncDirectory(root);
     return {report,upgrade};

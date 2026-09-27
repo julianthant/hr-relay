@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { systemClock } from "../../../src/domain/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";

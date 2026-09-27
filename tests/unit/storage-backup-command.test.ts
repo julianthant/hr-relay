@@ -36,10 +36,10 @@ import { afterEach, describe, it, vi } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { composeStorageCommand } from "../../src/server/storage/compose.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { composeStorageCommand } from "../helpers/synthetic-storage-admission.js";
 import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));

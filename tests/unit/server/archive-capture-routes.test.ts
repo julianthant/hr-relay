@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA4: the real HTTP boundary over an immutable test archive repository. */
@@ -230,8 +231,7 @@ describe("DCA4 exact archived capture routes", () => {
     let leaseCloses = 0;
     const leaseClosed = Promise.withResolvers<void>();
     const artifactReader = createServerVerifiedArtifactReader({
-      workspaceRoot: root,
-      artifactRoot: ".tracker/artifacts",
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
       observeLeaseClosed: () => {
         leaseCloses += 1;
         leaseClosed.resolve();
@@ -273,8 +273,7 @@ describe("DCA4 exact archived capture routes", () => {
     const leaseClosed = Promise.withResolvers<void>();
     const transferReported = Promise.withResolvers<Error>();
     const artifactReader = createServerVerifiedArtifactReader({
-      workspaceRoot: root,
-      artifactRoot: ".tracker/artifacts",
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
       observeLeaseClosed: leaseClosed.resolve,
     });
     const { app } = fixture({

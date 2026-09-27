@@ -1,4 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { existsSync, lstatSync, readFileSync, writeFileSync, unlinkSync, openSync, closeSync, fsyncSync, constants } from "node:fs";
 import { join } from "node:path";
 import { z } from "zod";
@@ -24,7 +25,8 @@ export function finishArchiveUpgrade(root:string) {
   unlinkSync(pathFor(root));syncRoot(root);
 }
 
-export function hasHistoricalArchiveSources(path:string):boolean {
+export function hasHistoricalArchiveSources(admission:RuntimeAdmission,path:string):boolean {
+  requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
   if(!existsSync(path))return false;
   const database=new DatabaseSync(path,{readOnly:true});
   try{return database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='archived_runs'").get()!==undefined

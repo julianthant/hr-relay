@@ -45,6 +45,7 @@ import { D350HistoricalSettingsFileRecordSchema, D350HistoricalSettingsRootAutho
 import { ProtectedSettingsCurrentRecordSchema } from "../../domain/authority.js";
 import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import {
   AuthorityBackupManifestSchema,
@@ -67,12 +68,13 @@ type AuthorityBackupSource = Pick<
 >;
 
 function inspectBackupCopy(
+  admission: RuntimeAdmission,
   backupPath: string,
   expectedSchemaVersion?: number,
 ): ReturnType<typeof inspectAuthorityBackupReadOnly> {
-  const inspection = inspectAuthorityBackupReadOnly(backupPath, expectedSchemaVersion);
+  const inspection = inspectAuthorityBackupReadOnly(admission,backupPath, expectedSchemaVersion);
   if (inspection.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
-    const current = AuthorityDatabase.inspectExistingReadOnly(backupPath);
+    const current = AuthorityDatabase.inspectExistingReadOnly(admission, backupPath);
     for (const field of [
       "applicationId",
       "schemaVersion",
@@ -350,9 +352,11 @@ export function parseBackupManifestFile(manifestPath: string): AuthorityBackupMa
 }
 
 export async function verifyBackupManifestAtPath(
+  admissionInput: RuntimeAdmission,
   manifestPathInput: string,
   expectedSourceDatabaseIdentity?: string,
 ): Promise<VerifiedBackup> {
+  const admission = requireRuntimeAdmission(admissionInput);
   const manifestPath = resolve(z.string().min(1).parse(manifestPathInput));
   if (!existsSync(manifestPath)) throw new Error(`backup manifest ${manifestPath} does not exist`);
   const manifest = parseBackupManifestFile(manifestPath);
@@ -369,7 +373,10 @@ export async function verifyBackupManifestAtPath(
     await verifyBackupBytesAtPath(path, identity, `backup file ${identity.backupFileName}`);
   }
   const backupPath = join(dirname(manifestPath), manifest.backupFileName);
-  const inspection = inspectBackupCopy(backupPath, manifest.schemaVersion);
+  const copyAdmission = admission.verifiedReadOnlyCopy(backupPath, manifest.sha256, "authority");
+  let inspection: ReturnType<typeof inspectBackupCopy>;
+  try { inspection = inspectBackupCopy(copyAdmission, backupPath, manifest.schemaVersion); }
+  finally { copyAdmission.release(); }
   removeReadOnlyInspectionCompanions(backupPath);
   for (const field of ["applicationId", "schemaVersion", "pageCount", "authorityGeneration", "authorityContentFingerprint"] as const) {
     if (inspection[field] !== manifest[field]) {
@@ -403,6 +410,7 @@ export async function verifyBackupManifestAtPath(
 }
 
 export class AuthorityBackupService {
+  #admission: RuntimeAdmission;
   #source: AuthorityBackupSource;
   #directory: string;
   #clock: Clock;
@@ -410,14 +418,17 @@ export class AuthorityBackupService {
   #requiredGeneration = 0;
   #coalescedRequests = 0;
 
-  constructor(source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock) {
+  constructor(admissionInput: RuntimeAdmission, source: AuthorityBackupSource, input: unknown, clock: Clock = systemClock) {
+    this.#admission = requireRuntimeAdmission(admissionInput);
     const options = AuthorityBackupServiceOptionsSchema.parse(input);
     this.#source = source;
     this.#directory = resolve(options.directory);
+    this.#admission.assertStateRoot(this.#directory);
     this.#clock = clock;
   }
 
   request(input: unknown): Promise<AuthorityBackupRunReport> {
+    this.#admission.assertWritable();
     const request = AuthorityBackupRequestSchema.parse(input);
     this.#requiredGeneration = Math.max(this.#requiredGeneration, request.requiredGeneration);
     this.#coalescedRequests += 1;
@@ -473,6 +484,7 @@ export class AuthorityBackupService {
   }
 
   async #createOne(): Promise<AuthorityBackupManifest> {
+    this.#admission.assertWritable();
     mkdirSync(this.#directory, { recursive: true, mode: 0o700 });
     const token = randomUUID();
     const temporaryBackupPath = join(this.#directory, `.authority-${token}.sqlite.tmp`);
@@ -482,7 +494,11 @@ export class AuthorityBackupService {
     let finalManifestPath: string | undefined;
     try {
       await this.#source.onlineBackupTo(temporaryBackupPath);
-      const inspection = inspectBackupCopy(temporaryBackupPath);
+      this.#admission.assertWritable();
+      const copyAdmission = this.#admission.verifiedReadOnlyCopy(temporaryBackupPath, await sha256File(temporaryBackupPath), "authority");
+      let inspection: ReturnType<typeof inspectBackupCopy>;
+      try { inspection = inspectBackupCopy(copyAdmission, temporaryBackupPath); }
+      finally { copyAdmission.release(); }
       removeReadOnlyInspectionCompanions(temporaryBackupPath);
       chmodSync(temporaryBackupPath, 0o600);
       fsyncPath(temporaryBackupPath);
@@ -495,6 +511,7 @@ export class AuthorityBackupService {
       finalPaths.push(finalBackupPath);
       const stats = statSync(finalBackupPath);
       const digest = await sha256File(finalBackupPath);
+      this.#admission.assertWritable();
       fsyncDirectory(this.#directory);
       const verification = {
         state: "verified",
@@ -532,7 +549,7 @@ export class AuthorityBackupService {
       renameSync(temporaryManifestPath, finalManifestPath);
       finalPaths.push(finalManifestPath);
       fsyncDirectory(this.#directory);
-      await verifyBackupManifestAtPath(finalManifestPath, this.#source.getSourceDatabaseIdentity());
+      await verifyBackupManifestAtPath(this.#admission, finalManifestPath, this.#source.getSourceDatabaseIdentity());
       return manifest;
     } catch (error) {
       if (finalManifestPath !== undefined && existsSync(finalManifestPath)) rmSync(finalManifestPath);

@@ -17,7 +17,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { ActorIdSchema, WorkerIdSchema } from "../../../src/domain/ids.js";
 import type { StartPlanWire } from "../../../src/domain/dashboard/start-plan.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";

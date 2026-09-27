@@ -211,7 +211,7 @@ it("keeps source capture linear while applying a twelve-run archive batch", () =
 
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { backupStoppedAuthority } from "../../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
 for (const step of ["readPendingReport", "saveReport"] as const) it(`requires archive custody for a nonempty applying claim after ${step}`, async () => {
   const f = archiveFixture();
   try {
@@ -235,7 +235,7 @@ for (const step of ["readPendingReport", "saveReport"] as const) it(`requires ar
 import { admission } from "../provider-accounting/fixtures.js";
 import { createGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
 import { GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
+import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 it("preserves an applying report while shared provider accounting advances independently", () => {
   const f = archiveFixture();
   try {

@@ -19,7 +19,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
 import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { protectedInputBindings } from "../../src/domain/protected-input.js";
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";

@@ -6,6 +6,7 @@ import {
 import type { BigIntStats } from "node:fs";
 import { basename, dirname, join } from "node:path";
 import { parseEnv } from "node:util";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { ActorIdSchema, SourceSurfaceIdSchema } from "../../domain/ids.js";
@@ -220,11 +221,13 @@ function reconstruct(pending: Pending, file: ObservedFile, markedFingerprint: (r
 }
 
 export function createProviderKeyStore(input: Readonly<{
+  admission: RuntimeAdmission;
   envPath: string; journal: ProviderKeyJournal;
   /** The command family's canonical marked-envelope fingerprint, supplied by command integration. */
   markedFingerprint(request: ProviderKeyWriteRequest): string;
   hooks?: ProviderKeyStoreHooks;
 }>) {
+  const admission = requireRuntimeAdmission(input.admission);
   if (basename(input.envPath) !== ".env.providers") unknown("env-path");
   const metaPath = `${input.envPath}.meta`;
   const lockPath = `${input.envPath}.lock`;
@@ -255,6 +258,7 @@ export function createProviderKeyStore(input: Readonly<{
     return true;
   };
   const withLock = <T>(work: () => T): T => {
+    admission.assertWritable();
     let fd: number;
     try { fd = openSync(lockPath, constants.O_WRONLY | constants.O_CREAT | constants.O_EXCL | constants.O_NOFOLLOW, 0o600); }
     catch (error) {
@@ -284,6 +288,7 @@ export function createProviderKeyStore(input: Readonly<{
     }
   };
   const observe = (inFlight?: Readonly<{ commandId: string; writeId: string }>) => {
+    admission.assertLive();
     const file = readEnv(input.envPath);
     input.hooks?.afterRead?.();
     if (readPrivate(input.envPath, "env", MAX_ENV_BYTES).token !== file.token) unknown("env-read-race");

@@ -12,9 +12,11 @@ import {
 } from "../../scripts/secure-env-bootstrap.js";
 
 import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
+const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:", "authority");
 
 describe("secure environment bootstrap", () => {
   it("resolves the admitted environment file from the bootstrap module when CWD changes", () => {
@@ -34,6 +36,7 @@ describe("secure environment bootstrap", () => {
     let smokeInvocations = 0;
 
     await runSecureEnvironmentBootstrap(["test-target-document-number"], {
+      acquireAdmission: syntheticAdmission,
       admitEnvironmentFile: (path) => {
         admittedPath = path;
       },
@@ -57,6 +60,7 @@ describe("secure environment bootstrap", () => {
       writeFileSync(join(root, ".env"), reference, { mode: 0o600 });
       if (present) writeFileSync(join(root, ".env.providers"), "GEMINI_API_KEY=current-fixture\n", { mode: 0o600 });
       const launch = runSecureEnvironmentBootstrap(["cli"], {
+        acquireAdmission: syntheticAdmission,
         assertEnvironment: () => {},
         admitEnvironmentFile: (path) => admitLocalEnvironmentFile(join(root, basename(path)), env),
         runCli: async () => { ran = true; },
@@ -80,6 +84,7 @@ describe("secure environment bootstrap", () => {
     const events: string[] = [];
     await assert.rejects(
       runSecureEnvironmentBootstrap(["cli"], {
+        acquireAdmission: syntheticAdmission,
         assertEnvironment: () => {
           events.push("assert-parent");
           throw new Error("migrated environment refused");
@@ -104,12 +109,33 @@ describe("secure environment bootstrap", () => {
     const original = [...process.argv]; const events: string[] = [];
     try {
       await runSecureEnvironmentBootstrap(["cli", command, operation], {
+        acquireAdmission: syntheticAdmission,
         assertEnvironment: () => { throw new Error(`${command} must not read parent provider environment`); },
         admitEnvironmentFile: () => { throw new Error(`${command} must not open provider .env.providers`); },
         runCli: async () => { events.push(...process.argv.slice(2)); },
       });
       assert.deepEqual(events, [command, operation]);
     } finally { process.argv.splice(0, process.argv.length, ...original); }
+  });
+
+  it.each([
+    ["backup", "shared"], ["doctor", "shared"], ["transactions", "shared"],
+    ["upgrade", "exclusive"], ["restore", "exclusive"], ["repair", "exclusive"],
+  ] as const)("holds %s admission in %s mode for the full CLI lifetime", async (operation, expectedMode) => {
+    let finish: (() => void) | undefined;
+    const running = new Promise<void>((resolve) => { finish = resolve; });
+    let selectedMode: "shared" | "exclusive" | undefined;
+    let held: RuntimeAdmission | undefined;
+    const launch = runSecureEnvironmentBootstrap(["cli", "storage", operation], {
+      acquireAdmission: (mode) => { selectedMode = mode; held = syntheticAdmission(); return held; },
+      runCli: async () => { held?.assertLive(); await running; held?.assertLive(); },
+    });
+    try {
+      assert.equal(selectedMode, expectedMode);
+      held?.assertLive();
+    } finally { finish?.(); }
+    await launch;
+    assert.throws(() => held?.assertLive(), /released admission/u);
   });
 
   it("does not start the CLI when its module is executed directly", () => {

@@ -59,7 +59,7 @@ import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/doma
 import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workflow/ingress.js";
 import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
-import { AuthorityDatabase } from "../../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
 import { createDashboardCommandService } from "../../../../src/server/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../../src/server/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../../src/server/dashboard/compose.js";

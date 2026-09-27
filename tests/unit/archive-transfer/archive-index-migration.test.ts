@@ -6,8 +6,8 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../../src/server/storage/upgrade.js";
+import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { backupStoppedAuthority, upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
 import { foundationFixture, id, NOW } from "../database-foundation/fixtures.js";
 import { storageRecoveryFixture } from "../helpers/storage-recovery-fixture.js";
 

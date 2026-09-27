@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
 import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";

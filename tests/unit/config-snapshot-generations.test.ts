@@ -15,8 +15,8 @@ import {
   executionConfigFromStored,
 } from "../../src/domain/config/snapshot-generations.js";
 import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../src/domain/config/snapshot.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { AuthorityBootStore } from "../../src/infra/sqlite/authority-boot.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityBootStore } from "../helpers/synthetic-storage-admission.js";
 import { HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];

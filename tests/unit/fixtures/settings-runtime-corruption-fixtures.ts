@@ -16,7 +16,7 @@ import {
 } from "../../../src/domain/commands.js";
 import type { SettingsCurrentRecord } from "../../../src/domain/config/settings-current.js";
 import { derivePersistedSettingsFingerprint } from "../../../src/domain/config/settings.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 
 const COMMAND_ID = "33333333-3333-4333-8333-333333333333";
 const OTHER_COMMAND_ID = "99999999-9999-4999-8999-999999999999";

@@ -19,7 +19,7 @@ import {
   derivePlannedInputFingerprint,
   StartPlanRecordSchema,
 } from "../../src/domain/run/start-plan.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
 import { descriptorRuntimeNodes, workflowDryRunSupport } from "../../src/base/workflow.js";
 import {

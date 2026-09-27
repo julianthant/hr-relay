@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { readRuntimeVersionAuthority, RuntimeVersionAdoptionSchema } from "../../src/infra/sqlite/runtime-versions.js";
 import { planRuntimeVersionTransition } from "../../src/domain/archive/runtime-version.js";

@@ -26,6 +26,7 @@ import { deriveCanonicalPerson } from "../../domain/run/summary-derivation.js";
 import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../domain/archive/change-record.js";
 import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../domain/archive/lifecycle-source.js";
 import { ArchiveDatabase } from "./archive-database.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
@@ -2330,6 +2331,7 @@ function inspectSpanRunAuthorityReadOnly(
   path: string,
   rootsInput: readonly SpanAuthorityRunRoot[],
   busyTimeoutMs: number,
+  admission: RuntimeAdmission,
 ): SpanAuthorityReadSnapshot {
   const parsedPath = z.string().min(1).parse(path);
   const roots = z.array(SpanAuthorityRunRootSchema).readonly().parse(rootsInput);
@@ -2379,7 +2381,7 @@ function inspectSpanRunAuthorityReadOnly(
       if(identity.run.envelope.runId!==row.record_key)throw new Error("archive-transfer-identity-mismatch");
       return [row.record_key,identity] as const;
     }));
-    if(transfers.size>0)archive=new ArchiveDatabase(join(dirname(parsedPath),"archive.sqlite"),{readOnly:true});
+    if(transfers.size>0)archive=new ArchiveDatabase(admission, join(dirname(parsedPath),"archive.sqlite"),{readOnly:true});
     for(const runId of transfers.keys())resolveRunEvidenceOwner(database,()=>{if(archive===undefined)throw new Error("archive-authority-missing");return archive;},runId);
     const archivedRunCount = (hasHistoricalArchiveTables(database) ? CountRowSchema.parse(database.prepare("SELECT count(*) AS count FROM archived_runs").get()).count : 0)+transfers.size;
     const archivedRunById = hasHistoricalArchiveTables(database) ? database.prepare("SELECT record_json FROM archived_runs WHERE record_key = ?") : { get: (_id: string) => undefined };
@@ -2618,14 +2620,15 @@ function inspectSpanRunAuthorityReadOnly(
 
 
 // Private adapter capability: deliberately absent from the public SQLite entrypoint/class.
-let stoppedArchiveConversion: <T>(database: DatabaseSync, path: string, clock: Clock,
+let stoppedArchiveConversion: <T>(admission: RuntimeAdmission, database: DatabaseSync, path: string, clock: Clock,
   archive: ArchiveDatabase | undefined, work: (authority: AuthorityDatabase) => T) => T;
-export function withStoppedArchiveConversion<T>(database: DatabaseSync, path: string, clock: Clock,
+export function withStoppedArchiveConversion<T>(admission: RuntimeAdmission, database: DatabaseSync, path: string, clock: Clock,
   archive: ArchiveDatabase | undefined, work: (authority: AuthorityDatabase) => T): T {
-  return stoppedArchiveConversion(database, path, clock, archive, work);
+  return stoppedArchiveConversion(admission, database, path, clock, archive, work);
 }
 
 export class AuthorityDatabase implements Disposable {
+  readonly #admission: RuntimeAdmission;
   #database: DatabaseSync;
   #clock: Clock;
   #path: string;
@@ -2651,13 +2654,14 @@ export class AuthorityDatabase implements Disposable {
     if (this.#archiveDatabase !== undefined) return this.#archiveDatabase;
     if (this.#path === ":memory:") throw new Error("archive-requires-durable-root");
     if (requireExisting && !existsSync(join(dirname(this.#path), "archive.sqlite"))) throw new Error("archive-authority-missing");
-    this.#archiveDatabase ??= new ArchiveDatabase(join(dirname(this.#path), "archive.sqlite"));
+    this.#archiveDatabase ??= new ArchiveDatabase(this.#admission, join(dirname(this.#path), "archive.sqlite"));
     return this.#archiveDatabase;
   }
 
   readonly authority: AuthorityRepositories;
 
   private constructor(
+    admission: RuntimeAdmission,
     input: unknown,
     clock: Clock,
     writeCommitHooks?: AuthorityWriteCommitHooks,
@@ -2666,6 +2670,8 @@ export class AuthorityDatabase implements Disposable {
     conversion?: Readonly<{ database: DatabaseSync; archive?: ArchiveDatabase }>,
   ) {
     const options = AuthorityDatabaseOptionsSchema.parse(input);
+    this.#admission = requireRuntimeAdmission(admission);
+    this.#admission.assertAuthorityDatabase(options.path);
     const existed = options.path !== ":memory:" && existsSync(options.path);
     if (conversion === undefined && options.openMode === "read-write" && options.path.endsWith("/state.db") && existsSync(join(dirname(options.path), ".lifecycle-restore.json"))) throw new Error("lifecycle-restore-incomplete");
     if (conversion === undefined && options.openMode === "read-write" && options.migrationOwner !== "storage-upgrade-audit" && (existsSync(join(dirname(options.path), ".archive-conversion.json")) || existsSync(join(dirname(options.path), ".archive-restore.json")))) throw new Error("archive-conversion-incomplete");
@@ -2692,7 +2698,7 @@ export class AuthorityDatabase implements Disposable {
     this.#path = options.path;
     this.#credentialCommandIds = options.path === ":memory:"
       ? () => { throw new Error("command identity admission requires a durable authority root"); }
-      : createCredentialStore({ stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
+      : createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     if (conversion !== undefined) {
       if (!conversion.database.isTransaction) throw new Error("archive-conversion-requires-stopped-transaction");
@@ -2752,18 +2758,19 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static open(
+    admission: RuntimeAdmission,
     input: unknown,
     clock: Clock = systemClock,
     writeCommitHooks?: AuthorityWriteCommitHooks,
     terminalizationHooks?: AuthorityTerminalizationHooks,
     lifecycleHooks?: AuthorityLifecycleHooks,
   ): AuthorityDatabase {
-    return new AuthorityDatabase(input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
+    return new AuthorityDatabase(admission, input, clock, writeCommitHooks, terminalizationHooks, lifecycleHooks);
   }
 
   static {
-    stoppedArchiveConversion = (database, path, clock, archive, work) => {
-      const authority = new AuthorityDatabase({path, busyTimeoutMs:5000, migrationOwner:"stopped-archive-conversion"}, clock,
+    stoppedArchiveConversion = (admission, database, path, clock, archive, work) => {
+      const authority = new AuthorityDatabase(admission, {path, busyTimeoutMs:5000, migrationOwner:"stopped-archive-conversion"}, clock,
         undefined, undefined, undefined, {database, archive});
       try { return work(authority); }
       finally { authority.#archiveDatabase?.close(); authority.#closed = true; }
@@ -2776,7 +2783,8 @@ export class AuthorityDatabase implements Disposable {
       .digest("hex");
   }
 
-  static inspectExistingReadOnly(path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
+  static inspectExistingReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250): AuthorityCopyInspection {
+    requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
     return inspectExistingDatabaseReadOnly(path, busyTimeoutMs);
   }
 
@@ -2799,22 +2807,27 @@ export class AuthorityDatabase implements Disposable {
   }
 
   static inspectAuthorityReadIdentityReadOnly(
+    admission: RuntimeAdmission,
     path: string,
     busyTimeoutMs = 250,
   ): AuthorityReadIdentitySnapshot {
+    requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
     return inspectAuthorityReadIdentityReadOnly(path, busyTimeoutMs);
   }
 
   static inspectSpanRunAuthorityReadOnly(
+    admission: RuntimeAdmission,
     path: string,
     roots: readonly SpanAuthorityRunRoot[],
     busyTimeoutMs = 250,
   ): SpanAuthorityReadSnapshot {
-    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs);
+    requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
+    return inspectSpanRunAuthorityReadOnly(path, roots, busyTimeoutMs, admission);
   }
 
   /** Event evidence and its complete authority identity from one read-only snapshot. */
-  static inspectTimelineReadOnly(path: string, busyTimeoutMs = 250, includeRecoveryEvidence = false) {
+  static inspectTimelineReadOnly(admission: RuntimeAdmission, path: string, busyTimeoutMs = 250, includeRecoveryEvidence = false) {
+    requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
     let timeline: ReturnType<typeof readTimelineRecords> | undefined;
     let recoveryEvidence: Readonly<{
       runs: readonly Readonly<{ runId: RunRecord["envelope"]["runId"]; workflow: string; traceId: string; version: number;
@@ -2992,7 +3005,7 @@ export class AuthorityDatabase implements Disposable {
         if (identity === undefined) throw new Error("transaction-history-transfer-missing");
         // Verified custody is sufficient after cleanup, even before publication replay.
         if (this.#path === ":memory:" && this.#archiveDatabase === undefined) throw new Error("archive-requires-durable-root");
-        const archive = this.#archiveDatabase ?? (this.#transactionArchiveDatabase ??= new ArchiveDatabase(join(dirname(this.#path), "archive.sqlite"), {readOnly:true,validation:"selected"}));
+        const archive = this.#archiveDatabase ?? (this.#transactionArchiveDatabase ??= new ArchiveDatabase(this.#admission, join(dirname(this.#path), "archive.sqlite"), {readOnly:true,validation:"selected"}));
         const owner=resolveRunEvidenceOwner(this.#database,()=>archive,runId,false);
         if(owner.state!=="archived")throw new Error("archive-transfer-owner-invalid");
         const report = archive.verifiedReport(runId, identity.reportDigest);
@@ -3113,7 +3126,7 @@ export class AuthorityDatabase implements Disposable {
 
   /** Source custody is rooted beside this authority, never the process cwd. */
   readLifecycleSourceFile(file: import("../../domain/archive/report.js").ArchiveReport["content"]["files"][number]) {
-    const root = join(dirname(this.#path), "artifacts");
+    const root = this.#admission.artifactRoot;
     if (lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) throw new Error("archive-source-file-root-invalid");
     if (!/^[a-f0-9]{64}$/u.test(file.digest)) throw new Error("archive-source-file-digest-invalid");
     const fd = openSync(join(root, `${file.digest}.artifact`), constants.O_RDONLY | constants.O_NOFOLLOW);

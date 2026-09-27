@@ -41,9 +41,9 @@ import {
   AuthorityDatabase,
   type AuthorityLifecycleHooks,
   type AuthorityTerminalizationHooks,
-} from "../../../src/infra/sqlite/authority-database.js";
+} from "../../helpers/synthetic-storage-admission.js";
 import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
-import { doctorAuthorityStorage } from "../../../src/infra/sqlite/storage-doctor.js";
+import { doctorAuthorityStorage } from "../../helpers/synthetic-storage-admission.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { QUEUED_RUN, RUN_SESSION, RUN_SESSION_ID, WORKER_ID, WORKFLOW_ID } from "../../fixtures/phase1f-run-fixtures.js";

@@ -40,7 +40,7 @@ import {
   deriveSettingsPatchFingerprint,
 } from "../../../src/domain/config/settings.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import {
   composeDashboardRuntime,
   composeWorkerProcessControl,

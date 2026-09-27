@@ -36,6 +36,7 @@ import { SpanEventWireSchema } from "../../events/types.js";
 import { readTimelineRecords } from "../../infra/events/timeline-reader.js";
 import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import type { ProcessIdentityObserver } from "../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
@@ -48,6 +49,7 @@ import { composeWorkerRuntime } from "../worker/compose.js";
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();
 
 export interface ProductionDryRunScenarioRuntimeInput {
+  readonly admission?: RuntimeAdmission;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   readonly isolation: RuntimeIsolation;
   readonly repoRoot: string;
@@ -228,8 +230,9 @@ export function createProductionDryRunScenarioRuntime(
   input: ProductionDryRunScenarioRuntimeInput,
 ): DryRunScenarioRuntime {
   assertNoMigratedEnvironmentKeys(input.env);
+  const admission = requireRuntimeAdmission(input.admission);
   const hostFacts = hostConfigFacts(input.env);
-  const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   const databasePath = join(stateRoot, "state.db");
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(input.repoRoot, "package.json"), "utf8")),
@@ -240,12 +243,14 @@ export function createProductionDryRunScenarioRuntime(
   let configIdentity: Readonly<{ fingerprint: string; snapshotId: string }> | undefined;
 
   const open = (): AuthorityDatabase => AuthorityDatabase.open(
+    admission,
     { path: databasePath, busyTimeoutMs: 5000, migrationOwner: "dry-run-scenario-runtime" },
     input.clock,
   );
 
   const drain = input.drainWorker ?? (async (workflow: string): Promise<void> => {
     await composeWorkerRuntime({
+      admission,
       ...(workflow === separationsKualiFinalizationModule.descriptor.id
         ? { scenarioStepProofModule: separationsKualiFinalizationModule }
         : {}),
@@ -332,9 +337,9 @@ export function createProductionDryRunScenarioRuntime(
           withCurrentSettings(repositories, { revision: persistedSettings.revision, settingsFingerprint: persistedSettings.settingsFingerprint }, () => requireCurrentSettings(persistedSettings, repositories));
           repositories.runtimeConfig.requireActive({ settingsRevision: persistedSettings.revision, settingsFingerprint: persistedSettings.settingsFingerprint, configFingerprint: resolved.fingerprint });
         });
-        const preflight = composeRuntimePreflight({ database, clock: input.clock, repoRoot: input.repoRoot, isolation: input.isolation,
+        const preflight = composeRuntimePreflight({ admission, database, clock: input.clock, repoRoot: input.repoRoot, isolation: input.isolation,
           descriptors: { resolve: descriptorFor }, descriptorSetHash: descriptor.contractFingerprint,
-          protectedSecrets: createCredentialSecretSource(createCredentialStore({ stateRoot })), environment: input.env,
+          protectedSecrets: createCredentialSecretSource(createCredentialStore({ admission, stateRoot })), environment: input.env,
           ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
         const preflightScope = preflight.currentScope(request.manifest.workflow);
         await preflight.admission.prepare(preflightScope, new AbortController().signal);
@@ -358,7 +363,7 @@ export function createProductionDryRunScenarioRuntime(
           const plans = createStartPlanService({
             preflight: preflight.admission,
             ...(request.protectedBindings === undefined ? {} : { protectedSubmissionBindings: request.protectedBindings }),
-            protectedSecrets: createCredentialSecretSource(createCredentialStore({ stateRoot })),
+            protectedSecrets: createCredentialSecretSource(createCredentialStore({ admission, stateRoot })),
             authority: { withAuthorityTransaction: (work) => database.withAuthorityTransaction(work) },
             authorityRead: database,
             descriptors: { resolve: descriptorFor },

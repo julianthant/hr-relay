@@ -26,7 +26,7 @@
  */
 import { systemClock } from "../../src/domain/clock.js";
 import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { acquireRuntimeProcessLock } from "../../src/infra/sqlite/runtime-process-locks.js";
 
 const [dbPath, lockRoot, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw] = process.argv.slice(2);

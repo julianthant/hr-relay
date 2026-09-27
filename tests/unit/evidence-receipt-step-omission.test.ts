@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../src/core/evidence-receipt.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   RunCheckpointRecordSchema,
   type RunCheckpointRecord,

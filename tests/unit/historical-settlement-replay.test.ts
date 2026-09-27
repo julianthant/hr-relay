@@ -10,9 +10,9 @@ import { z } from "zod";
 import { RunRecordService, workerRunLifecyclePort } from "../../src/core/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { currentAtomicWriteFixture } from "./helpers/timeline-write-fixture.js";
 import { SequencedWriteCommitInputSchema } from "../../src/infra/sqlite/write-commit-contracts.js";
 

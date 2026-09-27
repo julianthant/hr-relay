@@ -7,7 +7,7 @@ import { ledgerCommitFixture } from "../fixtures/ledger-projection-fixtures.js";
 import { atomicWriteCheckpoint } from "../helpers/timeline-write-fixture.js";
 import { ARCHIVED_RUN, ARCHIVE_RELAUNCH, VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
 import { attachFile } from "./fixtures.js";
-import { withStoppedArchiveConversion, AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { withStoppedArchiveConversion, AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../../src/infra/sqlite/migrations.js";
 
 export function historicalFixture() {

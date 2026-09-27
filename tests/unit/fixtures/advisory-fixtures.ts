@@ -27,7 +27,7 @@ import {
   FAILURE_TRIAGE_ADVICE_SCHEMA_HASH,
 } from "../../../src/domain/trust/advisory.js";
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { QUEUED_RUN, RUN_ID } from "../../fixtures/phase1f-run-fixtures.js";
 
 export const ADVISORY_NOW = "2026-08-09T09:00:00.000Z";

@@ -68,8 +68,8 @@ import { FactProvenanceSchema, checkpointLookupKey } from "../../src/domain/work
 import type { RunCheckpointRecord } from "../../src/domain/workflow/checkpoint.js";
 import { UcpathReadJobSummary } from "../../src/domain/contracts/ucpath/read-job-summary.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/sqlite/index.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../helpers/synthetic-storage-admission.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { planStart } from "../../src/services/start/plan.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
 import { readSettings } from "../../src/server/settings-runtime.js";

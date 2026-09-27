@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync,rmSync } from "node:fs";
@@ -6,7 +7,7 @@ import { join } from "node:path";
 import { afterEach,it } from "vitest";
 import { Hono } from "hono";
 import readXlsxFile from "read-excel-file/node";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { manualClock } from "../../../src/domain/clock.js";
@@ -36,7 +37,7 @@ function fixture() {
   const activity=composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)});
   const search=createCrossDateSearchService({clock,descriptors,sourceIdentity,cursorSigningKey:new Uint8Array(32).fill(42),
     authority:{readSnapshot:read=>database.withAuthorityReadSnapshot(()=>read({authorityGeneration:database.getMeta().authorityGeneration,searchRuns:input=>database.authority.runs.search(input)}))}});
-  const artifacts=createContentAddressedArtifactWriter({workspaceRoot:root,artifactRoot:".tracker/artifacts"});
+  const artifacts=createContentAddressedArtifactWriter({admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts"))});
   const xlsx=createOperatorXlsxExportService({clock,ids:{uuid:randomUUID},sourceIdentity,artifacts,authority:database.authority.operatorXlsxExports,
     search,activityReport:(from,to,token)=>activity.readSelected(from,to,token)});
   const app:DashboardApp=new Hono();app.onError((_error,c)=>c.json({error:"selection refused"},409));registerActivityRoutes(app,{activity});

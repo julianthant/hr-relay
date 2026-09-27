@@ -1,5 +1,5 @@
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { composeStorageCommand } from "../../src/server/storage/compose.js";
+import { composeStorageCommand } from "../helpers/synthetic-storage-admission.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, existsSync, rmSync, copyFileSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,14 +14,14 @@ import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js"
 import { manualClock } from "../../src/domain/clock.js";
 import { createCommandKernel, executeSettingsCommand, type CommandAuthority } from "../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
-import { createCredentialStore, type CredentialStoreHooks } from "../../src/infra/config/credential-store.js";
+import { createCredentialStore, type CredentialStoreHooks } from "../helpers/synthetic-storage-admission.js";
 import { readSettings, createCredentialSecretSource } from "../../src/server/settings-runtime.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { requireSecret } from "../../src/domain/secrets.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
-import { createProviderKeyStore } from "../../src/infra/config/provider-key-store.js";
+import { createProviderKeyStore } from "../helpers/synthetic-storage-admission.js";
 import { createProviderKeyJournal } from "../../src/server/dashboard/commands/provider-key-journal.js";
 import { providerCommandFromStore, providerMarkedFingerprint } from "../../src/server/dashboard/commands/provider-key-projection.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../src/domain/config/provider-keys.js";
@@ -81,11 +81,9 @@ describe("D336 SQLite settings authority", () => {
     writeFileSync(childPath, `
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
-import { AuthorityDatabase } from ${moduleUrl("src/infra/sqlite/authority-database.ts")};
-import { createProviderKeyStore } from ${moduleUrl("src/infra/config/provider-key-store.ts")};
+import { AuthorityDatabase, createProviderKeyStore, createCredentialStore } from ${moduleUrl("tests/helpers/synthetic-storage-admission.ts")};
 import { createProviderKeyJournal } from ${moduleUrl("src/server/dashboard/commands/provider-key-journal.ts")};
 import { providerMarkedFingerprint } from ${moduleUrl("src/server/dashboard/commands/provider-key-projection.ts")};
-import { createCredentialStore } from ${moduleUrl("src/infra/config/credential-store.ts")};
 import { createSettingsApplicationExecutor } from ${moduleUrl("src/server/dashboard/commands/settings-service.ts")};
 import { executeSettingsCommand } from ${moduleUrl("src/core/command-kernel.ts")};
 import { manualClock } from ${moduleUrl("src/domain/clock.ts")};
@@ -234,7 +232,7 @@ try {
       import { manualClock } from './src/domain/clock.ts';
       import { resolveConfigWithProvenance } from './src/domain/config/resolve.ts';
       import { executeSettingsCommand } from './src/core/command-kernel.ts';
-      import { createCredentialStore } from './src/infra/config/credential-store.ts';
+      import { createCredentialStore } from '../helpers/synthetic-storage-admission.js';
       import { createSettingsApplicationExecutor } from './src/server/dashboard/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
       const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);

@@ -4,14 +4,17 @@ import {
   assertNoMigratedEnvironmentKeys,
 } from "../src/domain/secrets.js";
 import { publishProviderBootProvenance } from "../src/domain/config/provider-boot-provenance.js";
+import { acquireEntrypointAdmission } from "../src/infra/runtime-control/bootstrap-admission.js";
+import type { RuntimeAdmission } from "../src/infra/runtime-control/admission.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
 export interface SecureEnvironmentBootstrapDependencies {
   readonly assertEnvironment?: () => void;
   readonly admitEnvironmentFile?: (path: string) => void;
-  readonly runCli?: () => Promise<void>;
+  readonly runCli?: (admission: RuntimeAdmission) => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
+  readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
 }
 
 /** The one production `.env.providers`, anchored to this bootstrap rather than the caller's CWD. */
@@ -34,6 +37,12 @@ export async function runSecureEnvironmentBootstrap(
 ): Promise<void> {
   const [selector, ...entrypointArgs] = args;
   const entrypoint = secureEnvironmentEntrypoint(selector);
+  const workspace = fileURLToPath(new URL("..", import.meta.url));
+  const mode = entrypoint === "cli" && entrypointArgs[0] === "storage"
+    && !["backup", "doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
+    ? "exclusive" : "shared";
+  const admission = (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))(mode);
+  try {
   // `storage` (D322) and `test-data` (D341) are the only entrypoints that never load `.env.providers`:
   // neither reads a credential, and test-data must not depend on the operator's environment.
   if (!(entrypoint === "cli" && (entrypointArgs[0] === "storage" || entrypointArgs[0] === "test-data"))) {
@@ -58,7 +67,7 @@ export async function runSecureEnvironmentBootstrap(
     // Awaited: for `dashboard` this promise is the runtime's lifetime, and a
     // rejection must crash the process loudly rather than becoming an
     // unobserved rejection while the shell reports success.
-    await runCli();
+    await runCli(admission);
     return;
   }
 
@@ -71,6 +80,9 @@ export async function runSecureEnvironmentBootstrap(
   const runTestTargetDocumentNumberSmoke = dependencies.runTestTargetDocumentNumberSmoke
     ?? (await import("./smoke-test-target-document-number.js")).runTestTargetDocumentNumberSmoke;
   process.exitCode = await runTestTargetDocumentNumberSmoke();
+  } finally {
+    admission.release();
+  }
 }
 
 const entryPath = process.argv[1];

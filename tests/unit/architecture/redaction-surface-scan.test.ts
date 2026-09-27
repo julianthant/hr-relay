@@ -67,7 +67,7 @@ import { buildFailureTriagePrompt } from "../../../src/domain/trust/advisory.js"
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
 import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../../src/domain/ledger.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import {
   VerifiedArtifactSourceMissingError,
   type ServerVerifiedArtifactReader,

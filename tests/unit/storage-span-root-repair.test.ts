@@ -7,10 +7,10 @@ import { manualClock } from "../../src/domain/clock.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase, syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
-import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
+import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
 import { OfflineSpanRootRepairService } from "../../src/server/storage/span-root-repair.js";
 import {
   LATER,
@@ -77,7 +77,7 @@ function fixture() {
   const proofs = new RecoveryStopProofStore({ processLockRoot, maxProofAgeMs: 300_000 }, clock);
   proofs.recordRuntimeState(snapshot);
   const stoppedSystemProof = proofs.issue({ observedBy: "local-operator", sourceDatabaseIdentity });
-  const service = new OfflineSpanRootRepairService({
+  const service = new OfflineSpanRootRepairService(syntheticStateRoot(stateRoot),{
     stateRoot,
     authorityPath,
     processLockRoot,

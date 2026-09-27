@@ -14,7 +14,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/
 // D341: D331 sources belong to the LEGACY protected family; the fixture writes what the pinned reader accepts.
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, RETIRED_TEST_TARGET_PROTECTED_NAMES, legacyMarkProtectedSettingsPatch, legacyProtectedSettingsReadback } from "../../src/domain/config/protected-settings-legacy.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { createSettingsFileAuthority, createProtectedSettingsFileAuthority } from "../fixtures/d331-settings-file.js";
 
 const roots: string[] = [];

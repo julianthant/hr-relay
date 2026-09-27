@@ -1,19 +1,19 @@
 import { createHash, randomUUID } from "node:crypto";
+import { constants } from "node:fs";
 import {
   link,
   lstat,
   mkdir,
   open,
-  readFile,
   readdir,
   realpath,
   unlink,
 } from "node:fs/promises";
-import { isAbsolute, join, resolve, sep } from "node:path";
+import { join } from "node:path";
 import { Readable } from "node:stream";
 import { z } from "zod";
 import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
-import { RebuildArtifactRootSchema } from "../../config/define-runtime-isolation.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import {
   ArtifactPutMetadataSchema,
   ArtifactRefSchema,
@@ -33,15 +33,15 @@ export type ArtifactWriteFaultStep =
   | "directory-synced";
 
 export interface ContentAddressedArtifactWriterOptions {
-  readonly workspaceRoot: string;
-  readonly artifactRoot: unknown;
+  readonly admission: RuntimeAdmission;
   readonly injectFault?: (step: ArtifactWriteFaultStep) => void;
 }
 
-async function materialize(source: Uint8Array | Readable): Promise<Uint8Array> {
+async function materialize(source: Uint8Array | Readable, admission: RuntimeAdmission): Promise<Uint8Array> {
   if (source instanceof Uint8Array) return Uint8Array.from(source);
   const chunks: Uint8Array[] = [];
   for await (const chunk of source) {
+    admission.assertLive();
     if (typeof chunk === "string") chunks.push(Buffer.from(chunk));
     else if (chunk instanceof Uint8Array) chunks.push(Uint8Array.from(chunk));
     else throw new Error("artifact source emitted a non-byte chunk");
@@ -60,22 +60,17 @@ async function rejectSymlink(path: string, label: string): Promise<void> {
   }
 }
 
-async function initializeArtifactRoot(workspaceRoot: string, artifactRoot: string): Promise<string> {
-  if (!isAbsolute(workspaceRoot)) throw new Error("artifact workspaceRoot must be absolute");
-  const workspace = resolve(workspaceRoot);
-  if (workspace === sep) throw new Error("artifact workspaceRoot cannot be the filesystem root");
-  await rejectSymlink(workspace, "artifact workspace root");
-  const trackerRoot = join(workspace, ".tracker");
-  const root = join(workspace, artifactRoot);
-  await rejectSymlink(trackerRoot, "rebuild state root");
-  await mkdir(trackerRoot, { recursive: true, mode: 0o700 });
+async function initializeArtifactRoot(admission: RuntimeAdmission): Promise<string> {
+  admission.assertWritable();
+  const root = admission.artifactRoot;
+  admission.assertArtifactRoot(root);
   await rejectSymlink(root, "rebuild artifact root");
+  admission.assertLive();
   await mkdir(root, { recursive: true, mode: 0o700 });
-  const [workspaceReal, rootReal] = await Promise.all([realpath(workspace), realpath(root)]);
-  if (!rootReal.startsWith(`${workspaceReal}${sep}`)) {
-    throw new Error(`artifact root ${rootReal} escapes workspace ${workspaceReal}`);
-  }
-  return rootReal;
+  admission.assertLive();
+  await realpath(root);
+  admission.assertLive();
+  return root;
 }
 
 function decodeStoredArtifact(input: unknown, expectedDigest: string): Readonly<{
@@ -98,7 +93,14 @@ function decodeStoredArtifact(input: unknown, expectedDigest: string): Readonly<
 }
 
 async function readStoredArtifact(path: string, expectedDigest: string) {
-  const text = await readFile(path, "utf8");
+  const handle = await open(path, constants.O_RDONLY | constants.O_NOFOLLOW);
+  let text: string;
+  try {
+    if (!(await handle.stat()).isFile()) throw new Error(`artifact ${expectedDigest} is not a regular file`);
+    text = await handle.readFile("utf8");
+  } finally {
+    await handle.close();
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(text) as unknown;
@@ -175,8 +177,9 @@ function assertMatchingMediaType(stored: Readonly<{ ref: ArtifactRef }>, metadat
 export function createContentAddressedArtifactWriter(
   options: ContentAddressedArtifactWriterOptions,
 ): ContentAddressedArtifactWriter & { readonly ready: Promise<void> } {
-  const artifactRoot = RebuildArtifactRootSchema.parse(options.artifactRoot);
-  const rootPromise = initializeArtifactRoot(options.workspaceRoot, artifactRoot);
+  const admission = requireRuntimeAdmission(options.admission);
+  admission.assertWritable();
+  const rootPromise = initializeArtifactRoot(admission);
   return Object.freeze({
     /**
      * Root initialization starts at construction. A composition MUST await this
@@ -186,19 +189,27 @@ export function createContentAddressedArtifactWriter(
      * itself reject unhandled whenever `put()` already reported the failure.
      */
     get ready(): Promise<void> {
-      return rootPromise.then(() => undefined);
+      return rootPromise.then(() => { admission.assertLive(); });
     },
     async put(source: Uint8Array | Readable, metadataInput: ArtifactPutMetadata) {
+      admission.assertWritable();
       const metadata = ArtifactPutMetadataSchema.parse(metadataInput);
-      const bytes = await materialize(source);
+      admission.assertLive();
+      const bytes = await materialize(source, admission);
+      admission.assertLive();
       const sha256 = createHash("sha256").update(bytes).digest("hex");
       const root = await rootPromise;
+      admission.assertLive();
       const finalPath = join(root, `${sha256}.artifact`);
+      admission.assertArtifactRoot(finalPath);
       await reclaimDeadOwnerTemps(root, sha256);
+      admission.assertLive();
       const existing = await readIfPresent(finalPath, sha256);
+      admission.assertLive();
       if (existing.state === "present") {
         assertMatchingMediaType(existing.value, metadata);
         await syncDirectory(root);
+        admission.assertLive();
         return existing.value.ref;
       }
 
@@ -219,15 +230,19 @@ export function createContentAddressedArtifactWriter(
         tempPresent = true;
         try {
           await handle.writeFile(JSON.stringify(stored), "utf8");
+          admission.assertLive();
           options.injectFault?.("temp-written");
           await handle.sync();
+          admission.assertLive();
           options.injectFault?.("temp-synced");
         } finally {
           await handle.close();
         }
         let result = Object.freeze(ref);
         try {
+          admission.assertLive();
           await link(tempPath, finalPath);
+          admission.assertLive();
           options.injectFault?.("published");
         } catch (error) {
           if (!(error instanceof Error && "code" in error && error.code === "EEXIST")) throw error;
@@ -238,6 +253,7 @@ export function createContentAddressedArtifactWriter(
         await unlink(tempPath);
         tempPresent = false;
         await syncDirectory(root);
+        admission.assertLive();
         options.injectFault?.("directory-synced");
         return result;
       } finally {
@@ -245,14 +261,22 @@ export function createContentAddressedArtifactWriter(
       }
     },
     async open(refInput: ArtifactRef) {
+      admission.assertLive();
       const ref = ArtifactRefSchema.parse(refInput);
       const root = await rootPromise;
-      const stored = await readStoredArtifact(join(root, `${ref.sha256}.artifact`), ref.sha256);
+      admission.assertLive();
+      const path = join(root, `${ref.sha256}.artifact`);
+      admission.assertArtifactRoot(path);
+      const stored = await readStoredArtifact(path, ref.sha256);
+      admission.assertLive();
       if (stored.ref.id !== ref.id || stored.ref.bytes !== ref.bytes
         || stored.ref.mediaType !== ref.mediaType) {
         throw new Error(`artifact ${ref.id} metadata does not match stored content`);
       }
-      return Readable.from([Uint8Array.from(stored.bytes)]);
+      return Readable.from((async function* () {
+        admission.assertLive();
+        yield Uint8Array.from(stored.bytes);
+      })());
     },
   });
 }

@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { createTrustRunReader } from "../../../src/server/trust/canonical-reader.js";
 /** E29/D291: durable D137 bundle readback through request-local verified-byte passes and leases. */
 import assert from "node:assert/strict";
@@ -18,7 +19,7 @@ import {
   createServerVerifiedArtifactReader,
   VerifiedArtifactOperationalError,
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import {
   createArtifactVerificationPass,
@@ -58,11 +59,10 @@ function fixture(): Fixture {
     { path: join(root, "state.sqlite"), busyTimeoutMs: 250, migrationOwner: "diagnostic-readback-test" },
     manualClock(new Date(NOW)),
   );
-  const artifacts = createContentAddressedArtifactWriter({ workspaceRoot: root, artifactRoot: ARTIFACT_ROOT });
+  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ARTIFACT_ROOT)) });
   const sourceReads: number[] = [];
   const artifactReader = createServerVerifiedArtifactReader({
-    workspaceRoot: root,
-    artifactRoot: ARTIFACT_ROOT,
+    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ARTIFACT_ROOT)),
     observeIo(kind, bytes) {
       if (kind === "source-read") sourceReads.push(bytes);
     },

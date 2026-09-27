@@ -10,10 +10,10 @@ import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { AtomicOutboxRecordSchema } from "../../src/domain/outbox.js";
 import { deriveLedgerLineDigest } from "../../src/domain/ledger-projection.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
 import { ledgerCommitFixture, fixtureUuid } from "./fixtures/ledger-projection-fixtures.js";
 

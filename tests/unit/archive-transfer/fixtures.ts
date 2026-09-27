@@ -4,7 +4,7 @@ import { ArchiveFileReferenceSchema } from "../../../src/domain/archive/report.j
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
 import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
 import { createRuntimeVersionChanges } from "../../../src/core/archive-runtime-version-changes.js";

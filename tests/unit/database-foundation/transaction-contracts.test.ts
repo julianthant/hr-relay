@@ -2,7 +2,7 @@ import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { GenericProviderRequestSchema,GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
 import { ArtifactRefSchema } from "../../../src/domain/artifacts.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";

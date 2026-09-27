@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 /** Disposable production Intake pipeline. Surrounding dashboard reads use the named fixture server. */
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
@@ -10,7 +11,7 @@ import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createIntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
 import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
 import { registerIntakeRoutes } from "../../../src/server/dashboard/routes/intake.js";
@@ -38,7 +39,7 @@ export function createIntakeAuthority() {
   database.withAuthorityTransaction(repositories => repositories.configSnapshots.insert(CONFIG_SNAPSHOT));
   database.authority.runtimeConfig.activate({ settingsRevision: 1, settingsFingerprint: CONFIG_SNAPSHOT.fingerprint,
     configSnapshotId: CONFIG_SNAPSHOT.configSnapshotId, configFingerprint: CONFIG_SNAPSHOT.fingerprint, activatedAt: NOW });
-  const artifacts = createContentAddressedArtifactWriter({ workspaceRoot: root, artifactRoot: ".tracker/artifacts" });
+  const artifacts = createContentAddressedArtifactWriter({ admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")) });
   let descriptor: AnyWorkflowDescriptor = intakeFixtureDescriptor;
   const descriptors = { resolve: (id: string) => id === descriptor.id ? descriptor : undefined };
   const projections = { resolve: (id: string) => id === descriptor.id ? intakeFixtureProjection : undefined };

@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
 import { StartStepOmissionRefusedError } from "../../../src/services/start/step-selection.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";

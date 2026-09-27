@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { afterEach, it } from "vitest";
 import { RunRecordService, requireLifecycleApplied } from "../../../src/core/run-record-service.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { listCanonicalRuns } from "../../../src/server/dashboard/queries/canonical-runs.js";
 import { buildRunDetail, readRunDetail, type RunDetailQueryDeps } from "../../../src/server/dashboard/queries/run-detail.js";
 import { buildArchiveIndex, buildArchivedRunDetail, createArchiveSnapshotSource } from "../../../src/server/dashboard/queries/archive.js";

@@ -50,7 +50,7 @@ describe("L summary publication and transaction hooks", () => {
 
 });
 
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { DatabaseSync } from "node:sqlite";
 it("reads a consistent publication across an independent writer and refuses a corrupt generation after restart",()=>{
   const f=foundationFixture();let peer:AuthorityDatabase|undefined;

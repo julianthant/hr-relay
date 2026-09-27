@@ -11,7 +11,7 @@ import { createCommandKernel } from "../../../src/core/command-kernel.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { composeExplorer } from "../../../src/server/dashboard/compose/explorer.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";

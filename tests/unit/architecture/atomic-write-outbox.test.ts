@@ -14,7 +14,7 @@ import {
   AtomicWriteCommitStorageStepSchema,
   AuthorityDatabase,
   type AuthorityWriteCommitHooks,
-} from "../../../src/infra/sqlite/index.js";
+} from "../../helpers/synthetic-storage-admission.js";
 import {
   ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
   LEDGER_OUTBOX_RECORD,

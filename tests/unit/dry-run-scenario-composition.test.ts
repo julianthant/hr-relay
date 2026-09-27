@@ -1,5 +1,5 @@
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
 import assert from "node:assert/strict";
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -14,7 +14,7 @@ import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summa
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { WorkflowIdSchema } from "../../src/domain/ids.js";
 import { parseTestTargetRegistry, TEST_TARGET_REGISTRY } from "../../src/control/test-target-registry.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   composeDryRunScenarioCommand,
   resolveDryRunScenarioTarget,

@@ -52,8 +52,8 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   observeProcessIdentity,

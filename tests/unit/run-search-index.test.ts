@@ -12,7 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { runRecordOf } from "./server/helpers/dashboard-harness.js";
 import { createCrossDateSearchService } from "../../src/server/dashboard/queries/search.js";

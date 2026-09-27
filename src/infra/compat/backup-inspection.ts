@@ -566,7 +566,8 @@ function removeGeneratedReadOnlyCompanions(
 }
 
 /** Internal stopped readers preserve pre-existing SQLite companions and remove only their own empty read artifacts. */
-export function withAuthorityDatabaseReadOnly<Result>(path: string, read: (database: DatabaseSync) => Result): Result {
+export function withAuthorityDatabaseReadOnly<Result>(admission: RuntimeAdmission, path: string, read: (database: DatabaseSync) => Result): Result {
+  requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
   const existing = existingSqliteCompanions(path);
   const database = openReadOnlyDatabase(path, 250);
   try { return read(database); }
@@ -574,11 +575,13 @@ export function withAuthorityDatabaseReadOnly<Result>(path: string, read: (datab
 }
 
 export function inspectAuthorityBackupReadOnly(
+  admission: RuntimeAdmission,
   pathInput: string,
   expectedSchemaVersion?: number,
   busyTimeoutMs = 250,
 ): BackupCopyInspection {
   const path = resolve(z.string().min(1).parse(pathInput));
+  requireRuntimeAdmission(admission).assertReadOnlyAuthorityDatabase(path);
   if (!existsSync(path) || statSync(path).size === 0) {
     throw new Error(`authority database ${path} is missing or empty`);
   }
@@ -612,11 +615,12 @@ export function authorityBackupSourceDatabaseIdentity(pathInput: string): string
  * the backup service re-inspects the copied bytes before publishing a manifest.
  */
 export function openAuthorityBackupSourceReadOnly(
+  admission: RuntimeAdmission,
   pathInput: string,
   busyTimeoutMs = 250,
 ): AuthorityBackupSourceReadOnly {
   const path = resolve(z.string().min(1).parse(pathInput));
-  inspectAuthorityBackupReadOnly(path, undefined, busyTimeoutMs);
+  inspectAuthorityBackupReadOnly(admission,path, undefined, busyTimeoutMs);
   const existingCompanions = existingSqliteCompanions(path);
   const database = openReadOnlyDatabase(path, busyTimeoutMs);
   database.exec("PRAGMA foreign_keys = ON");
@@ -627,6 +631,7 @@ export function openAuthorityBackupSourceReadOnly(
   };
   return Object.freeze({
     getMeta() {
+      admission.assertLive();
       assertOpen();
       const schemaVersion = readIntPragma(database, "user_version");
       const meta = readMeta(database);
@@ -642,10 +647,13 @@ export function openAuthorityBackupSourceReadOnly(
       });
     },
     getSourceDatabaseIdentity() {
+      admission.assertLive();
       assertOpen();
       return authorityBackupSourceDatabaseIdentity(path);
     },
     async onlineBackupTo(destinationPath: string) {
+      admission.assertWritable();
+      admission.assertStateRoot(destinationPath);
       assertOpen();
       return sqliteBackup(database, resolve(z.string().min(1).parse(destinationPath)), { rate: 100 });
     },
@@ -662,8 +670,8 @@ export function openAuthorityBackupSourceReadOnly(
  * An applying claim may already have captured reports before its first live transfer;
  * absent archive bytes cannot prove that capture never happened.
  */
-export function backupHasArchiveTransferCustody(path: string): boolean {
-  return withAuthorityDatabaseReadOnly(path, database => {
+export function backupHasArchiveTransferCustody(admission: RuntimeAdmission,path: string): boolean {
+  return withAuthorityDatabaseReadOnly(admission,path, database => {
     const tables = new Set(database.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name IN ('archive_transfers','version_changes','runtime_version_changes')").all()
       .map(row => z.object({ name: z.string() }).parse(row).name));
     if (tables.has("archive_transfers") && database.prepare("SELECT 1 FROM archive_transfers LIMIT 1").get() !== undefined) return true;
@@ -673,8 +681,8 @@ export function backupHasArchiveTransferCustody(path: string): boolean {
 }
 
 /** Claim-owned bytes are recovery assets before archive report publication. */
-export function backupPendingCaptureFiles(path: string) {
-  return withAuthorityDatabaseReadOnly(path, database => {
+export function backupPendingCaptureFiles(admission: RuntimeAdmission,path: string) {
+  return withAuthorityDatabaseReadOnly(admission,path, database => {
     const legacy = database.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='version_changes'").get() === undefined ? []
       : database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.pendingCaptures') IS NOT NULL").all().flatMap(raw => {
       const change = VersionChangeSchema.parse(JSON.parse(z.object({record_json:z.string()}).parse(raw).record_json));
@@ -691,3 +699,4 @@ export function backupPendingCaptureFiles(path: string) {
     return [...legacy, ...runtime];
   });
 }
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";

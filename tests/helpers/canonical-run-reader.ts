@@ -4,7 +4,7 @@ import type { Clock } from "../../src/domain/clock.js";
 import { RunIdSchema } from "../../src/domain/ids.js";
 import type { DeletedRunRecord } from "../../src/domain/run/deleted-run.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "./synthetic-storage-admission.js";
 import { CanonicalListRunsRequestSchema } from "../../src/infra/sqlite/run-store-contracts.js";
 
 export type CanonicalRunReader = Pick<RunRecordService, "read" | "list" | "withRunTreeSnapshot">;

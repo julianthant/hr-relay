@@ -1,6 +1,6 @@
 import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
 import { storageTree } from "./helpers/storage-recovery-fixture.js";
-import { restoreHistoricalStorage } from "../../src/server/storage/historical-restore.js";
+import { restoreHistoricalStorage } from "../helpers/synthetic-storage-admission.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
@@ -9,7 +9,7 @@ import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queu
 import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../../src/domain/ids.js";
 import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../src/core/run-record-service.js";
 import { randomUUID } from "node:crypto";
-import { upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 /**
  * The 2j restore drill, driven through the OPERATOR'S OWN COMMAND (D181).
@@ -54,18 +54,18 @@ import {
   PROTECTED_SETTINGS_SCHEMA_HASH,
   ProtectedSettingsApplyInputSchema,
 } from "../../src/domain/config/protected-settings.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import {
   inspectAuthorityBackupReadOnly,
   openAuthorityBackupSourceReadOnly,
-} from "../../src/infra/compat/backup-inspection.js";
+} from "../helpers/synthetic-storage-admission.js";
 import {
   AuthorityBackupService,
   AuthorityDatabase,
   OfflineAuthorityRestoreService,
   OfflineRestoreFailure,
   RecoveryStopProofStore,
-} from "../../src/infra/sqlite/index.js";
+} from "../helpers/synthetic-storage-admission.js";
 import {
   AUTHORITY_APPLICATION_ID,
   SQLITE_MIGRATIONS,
@@ -79,7 +79,7 @@ import {
 import {
   composeStorageCommand,
   restoreFailureDisposition,
-} from "../../src/server/storage/compose.js";
+} from "../helpers/synthetic-storage-admission.js";
 import {
   COMMAND_FIXTURES,
   NOW,

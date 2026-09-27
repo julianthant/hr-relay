@@ -6,6 +6,7 @@ import { backupHasArchiveTransferCustody } from "../compat/backup-inspection.js"
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "./migrations.js";
 import { verifyLifecyclePair } from "./lifecycle-storage.js";
+import type { RuntimeAdmission } from "../runtime-control/admission.js";
 import { StorageRecoveryInspectionSchema, type RestoreCandidate } from "./recovery-contracts.js";
 
 const Digest = z.string().regex(/^[a-f0-9]{64}$/u);
@@ -76,20 +77,20 @@ export function inspectStorageRecovery(stateRoot: string, sourceIdentity: string
 }
 
 /** Authenticate the exact existing pair, including pending/published file custody. */
-export async function inspectDoctorPair(path: string, sourceIdentity: string) {
+export async function inspectDoctorPair(admission: RuntimeAdmission,path: string, sourceIdentity: string) {
   // The verifier already refuses leaf aliases. Check parent paths before it reads retained files.
   const envelope = z.object({ fileDirectory: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u),
     liveManifest: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u),
     archiveFile: z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u) }).parse(JSON.parse(noFollowBytes(path).toString("utf8")));
   requireDatabaseSourcePath(join(dirname(path), envelope.fileDirectory, "probe"));
   for (const name of [envelope.liveManifest, envelope.archiveFile]) requireDatabaseSourcePath(join(dirname(path), name));
-  const verified = await verifyLifecyclePair(path);
+  const verified = await verifyLifecyclePair(admission,path);
   if (verified.pair.sourceDatabaseIdentity !== sourceIdentity) throw new Error("lifecycle-restore-identity-mismatch");
   return verified.live;
 }
 
 type Eligibility = Extract<RestoreCandidate, {state: "verified-compatible"}>["restoreEligibility"];
-export function inspectRestoreEligibility(input: { schemaVersion: number; paired: boolean; backupPath: string;
+export function inspectRestoreEligibility(admission: RuntimeAdmission,input: { schemaVersion: number; paired: boolean; backupPath: string; backupSha256:string;
   stateRoot: string; authorityAvailable: boolean }): Eligibility {
   if (input.schemaVersion < UPGRADE_FLOOR_SCHEMA_VERSION) return { state: "unsupported",
     reason: `Below recovery floor ${String(UPGRADE_FLOOR_SCHEMA_VERSION)}. Restore and upgrade with the original compatible release, or start a fresh root.` };
@@ -100,10 +101,14 @@ export function inspectRestoreEligibility(input: { schemaVersion: number; paired
     requireDatabaseSourcePath(archivePath);
     let archivePresent = true;
     try { lstatSync(archivePath); } catch (error) { if (absent(error)) archivePresent = false; else throw error; }
-    if (archivePresent || backupHasArchiveTransferCustody(input.backupPath)) return { state: "incomplete",
+    const copyAdmission=admission.verifiedReadOnlyCopy(input.backupPath,input.backupSha256,"authority");
+    let backupHasCustody:boolean;
+    try { backupHasCustody=backupHasArchiveTransferCustody(copyAdmission,input.backupPath); }
+    finally { copyAdmission.release(); }
+    if (archivePresent || backupHasCustody) return { state: "incomplete",
       reason: "A complete lifecycle pair is required, including the archive and retained files. Select its exact .lifecycle.json manifest." };
     if (!input.authorityAvailable) return { state: "unavailable", reason: "Live archive custody cannot be established from unavailable authority." };
-    if (backupHasArchiveTransferCustody(join(input.stateRoot, "state.db"))) return { state: "incomplete",
+    if (backupHasArchiveTransferCustody(admission,join(input.stateRoot, "state.db"))) return { state: "incomplete",
       reason: "Live archive custody requires a complete lifecycle pair. Preserve the existing evidence." };
     return { state: "eligible" };
   } catch { return { state: "unavailable", reason: "Archive custody could not be inspected safely." }; }

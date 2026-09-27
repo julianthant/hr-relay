@@ -1,4 +1,6 @@
 import { createCredentialStore } from "../src/infra/config/credential-store.js";
+import { acquireEntrypointAdmission } from "../src/infra/runtime-control/bootstrap-admission.js";
+import { fileURLToPath } from "node:url";
 import { hostConfigFacts } from "../src/domain/config/host-display.js";
 /**
  * Live login smoke for the worker browser-session factory.
@@ -48,7 +50,7 @@ import { hostConfigFacts } from "../src/domain/config/host-display.js";
  * Credentials arrive through `domain/secrets.ts` from protected Settings.
  */
 import { randomUUID } from "node:crypto";
-import { mkdirSync, rmSync } from "node:fs";
+import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../src/core/duo-ceremony-gate.js";
@@ -101,7 +103,6 @@ function hostOf(url: string): string {
 }
 
 async function main(): Promise<void> {
-  assertNoMigratedEnvironmentKeys();
   const requested = process.argv[2];
   if (requested === undefined || !SUPPORTED.has(requested)) {
     throw new Error(`usage: live-browser-login-smoke <${[...SUPPORTED].join("|")}> [--headed] [--cold] [--reuse]`);
@@ -112,9 +113,12 @@ async function main(): Promise<void> {
   // the D267 live two-worker cold start (ref execution-and-sessions §10.8).
   const workerFlag = process.argv.indexOf("--worker");
   const workerId = WorkerIdSchema.parse(workerFlag === -1 ? "live-smoke-worker-1" : process.argv[workerFlag + 1]);
-  const stateRoot = join(process.cwd(), rebuildRuntimeIsolation.stateRoot);
-  mkdirSync(stateRoot, { recursive: true });
-  const processLockRoot = join(process.cwd(), rebuildRuntimeIsolation.processLockRoot, "live-smoke", workerId);
+  const workspace = fileURLToPath(new URL("..", import.meta.url));
+  const admission = acquireEntrypointAdmission(workspace, "shared");
+  try {
+  assertNoMigratedEnvironmentKeys();
+  const stateRoot = admission.stateRoot;
+  const processLockRoot = join(workspace, rebuildRuntimeIsolation.processLockRoot, "live-smoke", workerId);
   const processLock = acquireRuntimeProcessLock(
     { processLockRoot, name: "live-smoke", pid: process.pid },
     systemClock,
@@ -123,6 +127,7 @@ async function main(): Promise<void> {
   // D267: the Duo ceremony lease lives in the REAL authority database, so two
   // smokes (or a smoke beside a worker) serialize their ceremonies for real.
   const database = AuthorityDatabase.open(
+    admission,
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "live-smoke" },
     systemClock,
   );
@@ -168,7 +173,7 @@ async function main(): Promise<void> {
 
   const evidence: AuthenticatedApplicationEvidence[] = [];
   const hops: string[] = [];
-  const protectedAuthority = createCredentialStore({ stateRoot });
+  const protectedAuthority = createCredentialStore({ admission, stateRoot });
   const factory = new PlaywrightWorkerSessionFactory({
     config: { ...config, browser: { ...config.browser, headless: !headed } },
     protectedSecrets: createCredentialSecretSource(protectedAuthority),
@@ -252,6 +257,9 @@ async function main(): Promise<void> {
   } finally {
     database.close();
     processLock.release();
+  }
+  } finally {
+    admission.release();
   }
 }
 

@@ -59,7 +59,7 @@ import {
   SpanAuthorityRunRootSchema,
   doctorAuthorityStorage,
   verifyBackupManifestAtPath,
-} from "../../../src/infra/sqlite/index.js";
+} from "../../helpers/synthetic-storage-admission.js";
 import {
   acquireRuntimeProcessLock,
   acquireRuntimeRestoreAdmission,

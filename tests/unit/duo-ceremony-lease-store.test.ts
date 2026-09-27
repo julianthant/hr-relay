@@ -20,7 +20,7 @@ import {
 } from "../../src/base/duo-ceremony-lease.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 
 const CREDENTIAL = FingerprintSchema.parse("ab".repeat(32));
 const OTHER_CREDENTIAL = FingerprintSchema.parse("cd".repeat(32));

@@ -16,7 +16,7 @@ import { createDashboardPreflightRunners as composeRunners, type DashboardPrefli
 import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/server/dashboard/frontend-owner.js";
 import { probeOwnedViteServer } from "../../../src/infra/providers/local-vite-probe.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
-import { AuthorityHealthPreflightRunner } from "../../../src/infra/sqlite/authority-health-runner.js";
+import { AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
 
 const roots: string[] = [];
 const CLOCK = manualClock(new Date("2026-08-28T09:00:00.000-07:00"));

@@ -4,12 +4,12 @@ import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { archiveFixture, attachFile } from "./fixtures.js";
 import { id, NOW } from "../database-foundation/fixtures.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { backupStoppedAuthority } from "../../../src/server/storage/upgrade.js";
-import { restoreLifecyclePair, verifyLifecyclePair } from "../../../src/infra/sqlite/lifecycle-storage.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
+import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { composeStorageCommand } from "../../../src/server/storage/compose.js";
+import { composeStorageCommand } from "../../helpers/synthetic-storage-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 
 for (const step of ["live", "files"] as const) it(`rejects changed pending attachment bytes before paired restore completion after ${step}`, async () => {

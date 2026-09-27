@@ -29,7 +29,7 @@ import {
   projectNotificationTrigger,
 } from "../../../src/domain/notification-triggers.js";
 import type { NotificationRecord } from "../../../src/domain/notifications.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import {
   createNotificationInbox,
   type NotificationInbox,

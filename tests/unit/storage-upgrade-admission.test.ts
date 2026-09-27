@@ -19,20 +19,20 @@ import {
   CommandAuditRecordSchema,
   StartCommandRequestSchema,
 } from "../../src/domain/commands.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
 } from "../../src/infra/sqlite/migrations.js";
-import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { acquireRuntimeProcessLock } from "../../src/infra/sqlite/runtime-process-locks.js";
-import { verifyBackupManifestAtPath } from "../../src/infra/sqlite/backup-service.js";
+import { verifyBackupManifestAtPath } from "../helpers/synthetic-storage-admission.js";
 import {
   backupStoppedAuthority,
   upgradeStorage,
   type StorageUpgradeInput,
-} from "../../src/server/storage/upgrade.js";
+} from "../helpers/synthetic-storage-admission.js";
 
 const NOW = "2026-09-06T12:00:00.000Z";
 const LATER = "2026-09-06T12:01:00.000Z";

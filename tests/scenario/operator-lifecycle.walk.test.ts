@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
 import { genericArchiveSection } from "../../src/services/archive/report-capture.js";
@@ -78,7 +79,7 @@ import { deriveEvidenceReceiptId } from "../../src/domain/trust/evidence-identit
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
 import { createDashboardCommandService } from "../../src/server/dashboard/commands/command-service.js";
 import { publicVersionReviewFingerprint } from "../../src/server/dashboard/commands/version-review-binding.js";
@@ -265,8 +266,7 @@ function createWorld(descriptors: readonly AnyWorkflowDescriptor[]): World {
   };
 
   const artifacts = createContentAddressedArtifactWriter({
-    workspaceRoot: root,
-    artifactRoot: ".tracker/artifacts",
+    admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
   });
   const parser = createIntakeParser({ artifacts });
   const projections = {

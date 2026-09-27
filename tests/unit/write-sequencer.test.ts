@@ -46,7 +46,7 @@ import {
   AuthorityDatabase,
   SequencedWriteCommitStepSchema,
   type AuthorityWriteCommitHooks,
-} from "../../src/infra/sqlite/index.js";
+} from "../helpers/synthetic-storage-admission.js";
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";

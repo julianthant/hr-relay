@@ -2,6 +2,7 @@ import { backfillArchivedTransactionSelection, indexArchivedTransactionSnapshot 
 import { rebuildRunSearchForUpgrade } from "./run-search-index.js";
 import { assertExplorerOverrideSourceUnchanged, importExplorerOverrides, type ExplorerOverrideSourceSnapshot } from "./explorer-override-conversion.js";
 import { AuthorityDatabase } from "./authority-database.js";
+import type { RuntimeAdmission } from "../runtime-control/admission.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import { createRunSummaries } from "./run-summaries.js";
 import { convertHistoricalArchives } from "../../services/archive/archive-transfer.js";
@@ -35,17 +36,17 @@ type ConversionInput = Readonly<{ stateRoot: string; timelineSourceDirectory?: s
   hooks?: Readonly<{ beforeCommit?(): void; afterCommit?(): void; archiveStep?(step: "captured" | "verified" | "cleaned" | "published" | "retired"): void }>;
 }>;
 /** Version refusal precedes historical grammar admission and every mutation. */
-export function inspectRecoveryFloor(path: string): void {
-  withAuthorityDatabaseReadOnly(path, database => { requireSupportedRecoverySchema(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version); });
+export function inspectRecoveryFloor(admission:RuntimeAdmission,path: string): void {
+  withAuthorityDatabaseReadOnly(admission,path, database => { requireSupportedRecoverySchema(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version); });
 }
 /** Supported database conversion never reads or applies displaced settings/credentials. */
-export function readDatabaseSettings(path: string | undefined) {
+export function readDatabaseSettings(admission:RuntimeAdmission,path: string | undefined) {
   if (path === undefined) return { revision: 1, settings: {} };
-  return withAuthorityDatabaseReadOnly(path, database => { const saved = readAppSettings(database)?.saved; return saved ?? { revision: 1, settings: {} }; });
+  return withAuthorityDatabaseReadOnly(admission,path, database => { const saved = readAppSettings(database)?.saved; return saved ?? { revision: 1, settings: {} }; });
 }
-export function inspectHistoricalSettingsExposure(path: string | undefined): readonly "operator.timekeeperName"[] {
+export function inspectHistoricalSettingsExposure(admission:RuntimeAdmission,path: string | undefined): readonly "operator.timekeeperName"[] {
   if (path === undefined) return [];
-  return withAuthorityDatabaseReadOnly(path, database => {
+  return withAuthorityDatabaseReadOnly(admission,path, database => {
     const table = settingsSnapshotsTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version);
     const exposed = database.prepare(table === "settings_snapshots"
       ? "SELECT 1 FROM settings_snapshots WHERE json_type(record_json, '$.config.operator.timekeeperName') IS NOT NULL LIMIT 1"
@@ -53,8 +54,8 @@ export function inspectHistoricalSettingsExposure(path: string | undefined): rea
     return exposed === undefined ? [] : ["operator.timekeeperName"];
   });
 }
-export function readLatestDatabaseUpgrade(path: string): UpgradeRecord | undefined {
-  return withAuthorityDatabaseReadOnly(path, database => {
+export function readLatestDatabaseUpgrade(admission:RuntimeAdmission,path: string): UpgradeRecord | undefined {
+  return withAuthorityDatabaseReadOnly(admission,path, database => {
     const rows = database.prepare(`SELECT record_json FROM ${databaseUpgradesTable(VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version)} ORDER BY rowid DESC`).all()
       .map((row) => AuthorityUpgradeRecordSchema.parse(JSON.parse(RowSchema.parse(row).record_json)));
     return rows[0];
@@ -69,10 +70,10 @@ function appendUpgrade(database: DatabaseSync, input: unknown): void {
 /** A disposable in-memory replay proves the entire post-conversion invariant set
  * before the stopped command creates a lock, directory, credential or SQLite write.
  * Source schema is already authenticated against immutable released DDL. */
-function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
+function cloneAuthorityReadOnly(admission:RuntimeAdmission,path: string | undefined): DatabaseSync {
   const copy = new DatabaseSync(":memory:");
   if (path === undefined) return copy;
-  return withAuthorityDatabaseReadOnly(path, source => {
+  return withAuthorityDatabaseReadOnly(admission,path, source => {
   const quote = (name: string) => `"${name.replaceAll('"', '""')}"`;
   try {
     source.exec("BEGIN");
@@ -97,6 +98,7 @@ function cloneAuthorityReadOnly(path: string | undefined): DatabaseSync {
 }
 
 export function convertStoppedDatabase(args: Readonly<{
+  runtimeAdmission: RuntimeAdmission;
   verifyOnly?: boolean; archiveRecordedAt?: string; timelineSources?: TimelineSourceSnapshot; timelineCopyDirectory?: string;
   explorerSource: ExplorerOverrideSourceSnapshot;
   input: ConversionInput; path: string; existed: boolean; from: number;
@@ -106,7 +108,7 @@ export function convertStoppedDatabase(args: Readonly<{
   const { input, path, existed, from, inspection, backupEvidence } = args;
   if (existed) requireSupportedRecoverySchema(from);
   else if (from !== 0) throw new Error("fresh-conversion-source-version-conflict");
-  const sources = readDatabaseSettings(existed ? path : undefined);
+  const sources = readDatabaseSettings(args.runtimeAdmission,existed ? path : undefined);
   let pending: UpgradeRecord | undefined;
       const now = args.archiveRecordedAt ?? clock.now().toISOString();
       const timelineIdentity = existed ? args.timelineSources?.digest : "fresh";
@@ -118,14 +120,16 @@ export function convertStoppedDatabase(args: Readonly<{
       let database: DatabaseSync | undefined;
       let convertedTransactionSnapshots: readonly import("../../domain/archive/lifecycle-source.js").LifecycleSourceSnapshot[] = [];
       try {
-        database = args.verifyOnly === true ? cloneAuthorityReadOnly(existed ? path : undefined) : new DatabaseSync(path);
+        args.runtimeAdmission.assertExclusive();
+        args.runtimeAdmission.assertAuthorityDatabase(path);
+        database = args.verifyOnly === true ? cloneAuthorityReadOnly(args.runtimeAdmission,existed ? path : undefined) : new DatabaseSync(path);
         database.exec("PRAGMA foreign_keys=ON; PRAGMA synchronous=FULL; BEGIN EXCLUSIVE");
         if (existed && (VersionSchema.parse(database.prepare("PRAGMA user_version").get()).user_version !== from
           || GenerationSchema.parse(database.prepare(`SELECT authority_generation FROM ${databaseStateTable(from)}`).get()).authority_generation !== inspection?.authorityGeneration)) throw new Error("source-changed: re-plan upgrade");
         if (existed && inspectOpenDatabase(database, from).authorityContentFingerprint !== inspection?.authorityContentFingerprint) throw new Error("source-changed: authority differs from verified backup");
         for (const migration of SQLITE_MIGRATIONS.filter(({ version }) => version > from && version < 49)) {
           for (const statement of migration.statements) {
-            if (migration.version === 47 && statement === "DROP TABLE spans" && existed) assertFoundationRetirement(database, backupEvidence);
+            if (migration.version === 47 && statement === "DROP TABLE spans" && existed) assertFoundationRetirement(args.runtimeAdmission,database, backupEvidence);
             database.exec(statement);
           }
           if (migration.version === 1) database.prepare("INSERT INTO authority_meta(singleton_id,schema_version,authority_generation,updated_at) VALUES (1,1,0,?)").run(now);
@@ -149,8 +153,8 @@ export function convertStoppedDatabase(args: Readonly<{
           if (from < 49) {
             // Finish historical transaction presentation while its sources still exist.
             freezeConvertedArchiveTransactions(database, now);
-            const archive = args.verifyOnly === true ? ArchiveDatabase.preflightCopy(join(input.stateRoot, "archive.sqlite")) : undefined;
-            const converted = withStoppedArchiveConversion(database, path, clock, archive, authority => {
+            const archive = args.verifyOnly === true ? ArchiveDatabase.preflightCopy(args.runtimeAdmission,join(input.stateRoot, "archive.sqlite")) : undefined;
+            const converted = withStoppedArchiveConversion(args.runtimeAdmission,database, path, clock, archive, authority => {
               const baseStorage = createRunLifecycleStorage(authority);
               const step = (at: "captured" | "verified" | "cleaned" | "published") => { if(args.verifyOnly !== true) input.hooks?.archiveStep?.(at); };
               const storage = {...baseStorage,
@@ -208,7 +212,7 @@ export function convertStoppedDatabase(args: Readonly<{
         let transactionArchive: ArchiveDatabase | undefined;
         try {
           if (from < 49) for (const snapshot of convertedTransactionSnapshots) indexArchivedTransactionSnapshot(database, snapshot);
-          else backfillArchivedTransactionSelection(database, () => transactionArchive ??= new ArchiveDatabase(join(input.stateRoot, "archive.sqlite"), {readOnly:true}));
+          else backfillArchivedTransactionSelection(database, () => transactionArchive ??= new ArchiveDatabase(args.runtimeAdmission,join(input.stateRoot, "archive.sqlite"), {readOnly:true}));
         } finally { transactionArchive?.close(); }
         inspectConvertedAuthority(database);
         if (args.verifyOnly !== true) {
@@ -237,7 +241,9 @@ export function convertStoppedDatabase(args: Readonly<{
       if (args.verifyOnly !== true) input.hooks?.afterCommit?.();
       return pending;
 }
-export function settleDatabaseUpgrade(path: string, pending: UpgradeRecord, now: string): void {
+export function settleDatabaseUpgrade(admission:RuntimeAdmission,path: string, pending: UpgradeRecord, now: string): void {
+  admission.assertExclusive();
+  admission.assertAuthorityDatabase(path);
   const database = new DatabaseSync(path);
   try {
     database.exec("BEGIN IMMEDIATE");

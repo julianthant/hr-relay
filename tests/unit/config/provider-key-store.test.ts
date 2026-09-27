@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
 import { ActorIdSchema, SourceSurfaceIdSchema } from "../../../src/domain/ids.js";
-import { createProviderKeyStore, ProviderKeyStoreConflictError, ProviderKeyStoreUnknownError, type ProviderKeyJournal, type ProviderKeyWriteRequest } from "../../../src/infra/config/provider-key-store.js";
+import { createProviderKeyStore, ProviderKeyStoreConflictError, ProviderKeyStoreUnknownError, type ProviderKeyJournal, type ProviderKeyWriteRequest } from "../../helpers/synthetic-storage-admission.js";
 import { observeProcessIdentity } from "../../../src/infra/sqlite/runtime-process-locks.js";
 
 const roots: string[] = [];
@@ -279,7 +279,7 @@ describe("private provider key store", () => {
     const f = fixture();
     const request = f.request({ OPEN_ROUTER_API_KEY5: { set: "synthetic-private" } });
     const script = join(f.root, "exit-child.mjs");
-    const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/provider-key-store.ts")).href;
+    const moduleUrl = pathToFileURL(join(process.cwd(), "tests/helpers/synthetic-storage-admission.ts")).href;
     writeFileSync(script, `import { createProviderKeyStore } from ${JSON.stringify(moduleUrl)};
 const [envPath, phase, json] = process.argv.slice(2);
 const store = createProviderKeyStore({ envPath, markedFingerprint: () => "${"b".repeat(64)}",

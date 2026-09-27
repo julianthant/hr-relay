@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { failureResolutionCapability } from "../../../src/core/failure-resolution.js";
 import { readTimelineRecords } from "../../../src/infra/events/timeline-reader.js";
 import { TimelineAppendSchema } from "../../../src/events/timeline.js";

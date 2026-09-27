@@ -14,7 +14,7 @@ import { composeDashboardRuntime } from "../../../src/server/dashboard/compose.j
 import { composeWorkerRuntime } from "../../../src/server/worker/compose.js";
 import { composeDryRunScenarioCommand } from "../../../src/server/dry-run-scenario/compose.js";
 import { createProductionDryRunScenarioRuntime } from "../../../src/server/dry-run-scenario/runtime.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { inventoryEnvironmentAccesses } from "./helpers/environment-read-audit.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 

@@ -21,7 +21,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { workerPoolVersion } from "../../src/domain/run/worker-pool.js";
 import { runSessionActorId, RunSessionRecordSchema } from "../../src/domain/run/session.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { NOW, UUID_6, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, RUN_SESSION, RUN_SESSION_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 

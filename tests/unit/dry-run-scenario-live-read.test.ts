@@ -30,7 +30,7 @@ import { workflowDryRunSupport } from "../../src/base/workflow.js";
 import { DryRunScenarioEvidenceSchema, evaluateDryRunScenarioEvidence } from "../../src/core/dry-run-scenario-runner.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { selectedSettingsFixture } from "./fixtures/dry-run-admission-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";

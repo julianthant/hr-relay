@@ -8,7 +8,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { ExplorerEditApplyRequestSchema, ExplorerEditApplyResultSchema } from "../../src/domain/dashboard/explorer.js";
 import { explorerEditCommandFingerprint } from "../../src/domain/dashboard/explorer-override.js";
-import { AuthorityDatabase, type AuthorityRepositories } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../helpers/synthetic-storage-admission.js";
 import { createExplorerEditService } from "../../src/server/dashboard/commands/explorer-edit-service.js";
 import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "./explorer-seams.js";

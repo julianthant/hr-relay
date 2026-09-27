@@ -32,7 +32,7 @@ import {
 import {
   inspectAuthorityBackupReadOnly,
   openAuthorityBackupSourceReadOnly,
-} from "../../src/infra/compat/backup-inspection.js";
+} from "../helpers/synthetic-storage-admission.js";
 import { SettingsCurrentRecordSchema } from "../../src/infra/compat/d331-settings-current.js";
 import { SettingsRootAuthoritySchema } from "../../src/infra/compat/d331-settings-root.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
@@ -45,8 +45,8 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protecte
 import {
   AuthorityBackupService,
   verifyBackupManifestAtPath,
-} from "../../src/infra/sqlite/backup-service.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+} from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   AUTHORITY_APPLICATION_ID,
   SQLITE_MIGRATIONS,

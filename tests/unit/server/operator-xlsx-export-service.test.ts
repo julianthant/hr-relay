@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -11,7 +12,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { insertMeasuredSearchRun } from "./helpers/cross-date-search-harness.js";
@@ -137,8 +138,7 @@ function exportHarness(label: string) {
     clock,
     database,
     artifacts: createContentAddressedArtifactWriter({
-      workspaceRoot: root,
-      artifactRoot: ".tracker/artifacts",
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
     }),
     close: () => {
       database.close();
@@ -213,8 +213,7 @@ describe("operator XLSX export service", () => {
       migrationOwner: "operator-xlsx-test",
     }, clock);
     const artifacts = createContentAddressedArtifactWriter({
-      workspaceRoot: root,
-      artifactRoot: ".tracker/artifacts",
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
     });
     try {
       const service = createOperatorXlsxExportService({
@@ -303,8 +302,7 @@ describe("operator XLSX export service", () => {
       migrationOwner: "operator-xlsx-foreign-test",
     }, clock);
     const artifacts = createContentAddressedArtifactWriter({
-      workspaceRoot: root,
-      artifactRoot: ".tracker/artifacts",
+      admission: RuntimeAdmission.syntheticRoots(join(root, ".tracker"), join(root, ".tracker/artifacts")),
     });
     try {
       const service = createOperatorXlsxExportService({
