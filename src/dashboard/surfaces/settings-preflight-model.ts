@@ -10,21 +10,31 @@ type Report = Extract<PreflightReadinessWire, { state: "present" }>["report"];
 export type PreflightRerunState =
   | { readonly state: "idle" | "running" }
   | { readonly state: "completed"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report }
+  | { readonly state: "historical"; readonly checks: readonly PreflightCheckWire[]; readonly report: Report; readonly message: string }
   | { readonly state: "refused"; readonly message: string };
 
-export function projectPreflight(state: PreflightReadinessWire | { state: "idle" | "running" }, nowMs: number): PreflightRerunState {
-  if (state.state === "idle" || state.state === "running") return { state: state.state };
-  if (state.state === "unavailable") return { state: "refused", message: state.reason };
-  if (state.state !== "present") throw new Error("Unknown preflight presentation state");
-  const report = state.report;
-  // Display expiry follows the released 60-second admission contract; only server re-check can restore it.
-  const age = nowMs - Date.parse(report.checkedAt);
-  if (report.results.length === 0 || age < 0 || age >= 60_000) return { state: "refused", message: "Preflight report is stale or empty. Re-check readiness." };
-  return { state: "completed", report, checks: report.results.map(check => ({
+function checksFrom(report: Report): readonly PreflightCheckWire[] {
+  return report.results.map(check => ({
     id: check.check, label: check.check, verdict: check.status, detail: check.summary,
     blocks: check.status === "fail" ? check.blocks : [],
     ...(check.status === "pass" ? {} : { remediation: check.remediation }), checkedAt: report.checkedAt,
-  })) };
+  }));
+}
+
+export function projectPreflight(state: PreflightReadinessWire | { state: "idle" | "running" }, nowMs: number): PreflightRerunState {
+  if (state.state === "idle" || state.state === "running") return { state: state.state };
+  if (state.state === "unavailable") {
+    const report = state.lastCompleted;
+    if (report === undefined || report.results.length === 0 || Date.parse(report.checkedAt) > nowMs) return { state: "refused", message: state.reason };
+    return { state: "historical", message: state.reason, report, checks: checksFrom(report) };
+  }
+  if (state.state !== "present") throw new Error("Unknown preflight presentation state");
+  const report = state.report;
+  // Current readiness expires at 60 seconds; an expired report can remain visible as history.
+  const age = nowMs - Date.parse(report.checkedAt);
+  if (report.results.length === 0 || age < 0) return { state: "refused", message: "Preflight report is stale or empty. Re-check readiness." };
+  if (age >= 60_000) return { state: "historical", message: "Preflight evidence expired; re-check readiness.", report, checks: checksFrom(report) };
+  return { state: "completed", report, checks: checksFrom(report) };
 }
 export function useSettingsPreflight(editor: EditableSettingsState, input: { actorId: string; descriptorFingerprint: string }) {
   const scope = usePreflightScope();
@@ -37,7 +47,7 @@ export function useSettingsPreflight(editor: EditableSettingsState, input: { act
   });
   const ready = document !== undefined && document.runtimeStatus.state === "current";
   const read = readiness.read;
-  useEffect(() => { if (ready) void read(); }, [ready, read]);
+  useEffect(() => { if (document !== undefined) void read(); }, [document, read]);
   const checkedAt = readiness.state.state === "present" ? readiness.state.report.checkedAt : undefined;
   useEffect(() => {
     if (checkedAt === undefined) return;
@@ -45,10 +55,12 @@ export function useSettingsPreflight(editor: EditableSettingsState, input: { act
     const timer = window.setTimeout(() => { void read(); }, remaining > 0 ? remaining : 60_000);
     return () => { window.clearTimeout(timer); };
   }, [checkedAt, read]);
+  const projected = projectPreflight(readiness.state, systemClock.nowMs());
   const preflight: PreflightRerunState = document?.runtimeStatus.state === "restart-required"
-    ? { state: "refused", message: "Settings restart required. Restart the runtime before re-checking." }
+    ? projected.state === "historical" ? { ...projected, message: "Settings restart required. Restart the runtime before re-checking." }
+      : { state: "refused", message: "Settings restart required. Restart the runtime before re-checking." }
     : editor.state === "failed" ? { state: "refused", message: "Current settings are unavailable. Reload Settings before re-checking." }
-    : projectPreflight(readiness.state, systemClock.nowMs());
+    : projected;
   const rerunPreflight = (): void => {
     if (!ready || document === undefined) return;
     void readiness.rerun({

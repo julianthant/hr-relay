@@ -12,18 +12,32 @@ export function createPreflightReportService(input: Readonly<{
   dashboard: ReturnType<typeof createPreflightAuthority>; runtime: RuntimePreflight; clock: Clock;
 }>) {
   const commands = new Map<string, { identity: string; result: Promise<Result> }>();
+  const lastCompleted = new Map<string, Extract<PreflightReadinessWire, { state: "present" }>["report"]>();
   const current = (selection: PreflightSelection) => input.runtime.currentScope(selection.workflowId, selection.requestedInstance);
+  const remember = (selection: PreflightSelection, report: Extract<PreflightReadinessWire, { state: "present" }>["report"]): void => {
+    const key = canonicalJsonStringify(selection);
+    lastCompleted.delete(key);
+    if (lastCompleted.size >= 256) lastCompleted.delete(lastCompleted.keys().next().value as string);
+    lastCompleted.set(key, report);
+  };
   return Object.freeze({
     read(selection?: PreflightSelection): PreflightReadinessWire {
+      const selected = selection === undefined ? undefined : PreflightSelectionSchema.parse(selection);
+      let previous = selected === undefined ? undefined : lastCompleted.get(canonicalJsonStringify(selected));
       try {
-        if (selection !== undefined) return { state: "present", report: input.runtime.admission.read(current(PreflightSelectionSchema.parse(selection))) };
+        if (selected !== undefined) {
+          const report = input.runtime.admission.read(current(selected));
+          remember(selected, report);
+          return { state: "present", report };
+        }
         const report = input.dashboard.readLatest();
+        previous = report;
         if (input.runtime.currentScope().configFingerprint !== report.configFingerprint) throw new PreflightAdmissionRefusal("stale", "Settings changed; re-check readiness.");
         const age = input.clock.nowMs() - Date.parse(report.checkedAt);
         if (age < 0 || age >= 60_000) throw new PreflightAdmissionRefusal("stale", "Preflight evidence expired; re-check readiness.");
         return { state: "present", report };
       } catch (error) {
-        if (error instanceof PreflightAdmissionRefusal) return { state: "unavailable", reason: error.message };
+        if (error instanceof PreflightAdmissionRefusal) return { state: "unavailable", reason: error.message, ...(previous === undefined ? {} : { lastCompleted: previous }) };
         throw error;
       }
     },
@@ -50,6 +64,7 @@ export function createPreflightReportService(input: Readonly<{
         }
         const report = await input.runtime.admission.prepare(scope, signal);
         if (canonicalJsonStringify(current(selection)) !== canonicalJsonStringify(scope)) throw new PreflightAdmissionRefusal("stale", "Settings changed during preflight; re-check readiness.");
+        remember(selection, report);
         return PreflightRerunCommandResultWireSchema.parse({ state: "completed", commandId: command.commandId, report });
       });
       commands.set(command.commandId, { identity, result });

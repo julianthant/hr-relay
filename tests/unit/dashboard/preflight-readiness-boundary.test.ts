@@ -69,3 +69,16 @@ it("an exact replay cannot make expired evidence current", async () => {
   assert.equal(reads, 1);
   assert.deepEqual(state.snapshot(), { state: "unavailable", reason: "Preflight evidence expired; re-check readiness." });
 });
+
+it("preserves a changed-fingerprint report only as unavailable history", async () => {
+  const previous = { ...report, configFingerprint: "f".repeat(64) as typeof report.configFingerprint };
+  const client = createDashboardClient({ baseUrl: "http://localhost", fetchImpl: async () => response({
+    state: "unavailable", reason: "Settings changed; re-check readiness.", lastCompleted: previous,
+  }) });
+  const state = createPreflightReadinessResource(client, identity);
+  await state.read();
+  const observed = state.snapshot();
+  assert.equal(observed.state, "unavailable");
+  if (observed.state !== "unavailable") throw new Error("changed report accepted");
+  assert.deepEqual(observed.lastCompleted, previous);
+});

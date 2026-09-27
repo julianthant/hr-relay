@@ -113,10 +113,12 @@ function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings }: 
 function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
   const completed = preflight.state === "completed" ? preflight : undefined;
-  const verdict = completed === undefined ? undefined : preflightVerdict(completed.checks);
-  const workflowChecks = completed?.checks.filter(check => check.id === "fiscal.current" || check.id.startsWith("secrets.")) ?? [];
-  const runtimeChecks = completed?.checks.filter(check => check.id !== "fiscal.current" && !check.id.startsWith("secrets.")) ?? [];
-  const attentionCount = completed?.checks.filter(check => check.verdict !== "pass").length ?? 0;
+  const displayed = preflight.state === "historical" ? preflight : completed;
+  const historical = preflight.state === "historical";
+  const verdict = displayed === undefined ? undefined : preflightVerdict(displayed.checks);
+  const workflowChecks = displayed?.checks.filter(check => check.id === "fiscal.current" || check.id.startsWith("secrets.")) ?? [];
+  const runtimeChecks = displayed?.checks.filter(check => check.id !== "fiscal.current" && !check.id.startsWith("secrets.")) ?? [];
+  const attentionCount = displayed?.checks.filter(check => check.verdict !== "pass").length ?? 0;
   return <section className="diagnostics-page ds-body-stack settings-preflight" aria-label="Preflight" aria-live="polite">
     <PageHeading as="h2" title="Preflight" description="Readiness for the dashboard and its workflows." />
     <div className="diagnostic-toolbar">
@@ -128,30 +130,31 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { pr
           {scope.workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.label}</option>)}
         </Select>
         {scope.state === "unavailable" && <span>Workflow scopes could not be read.</span>}
-        {completed !== undefined && <>
-          <span>Checked <time dateTime={completed.report.checkedAt}>{fmtClock(completed.report.checkedAt)}</time></span>
+        {displayed !== undefined && <>
+          <span>{historical ? "Last checked" : "Checked"} <time dateTime={displayed.report.checkedAt}>{fmtClock(displayed.report.checkedAt)}</time></span>
         </>}
-        {completed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
+        {displayed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
       </div>
       <Button variant="secondary" onClick={onRerun} disabled={preflight.state === "running" || preflight.state === "idle"}>
         {preflight.state === "running" ? "Running checks…" : "Run checks again"}
       </Button>
     </div>
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
+    {historical && <Banner tone="warning" title="Previous result">{preflight.message} Run checks again for current readiness.</Banner>}
     {preflight.state !== "refused" && <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow label={<span className="diagnostic-summary-label">
-        <StatusDot status={completed === undefined ? preflight.state === "running" ? "running" : "queued"
+        <StatusDot status={historical ? "queued" : displayed === undefined ? preflight.state === "running" ? "running" : "queued"
           : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
-        {completed === undefined ? preflight.state === "running" ? "Checking readiness" : "Loading readiness"
+        {historical ? "Previous check" : displayed === undefined ? preflight.state === "running" ? "Checking readiness" : "Loading readiness"
           : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
       </span>}
-        description={completed === undefined ? preflight.state === "running" ? "The current scope is being checked." : "No current preflight report. Loading readiness…"
+        description={historical ? "Last completed result. Run checks again before starting work." : displayed === undefined ? preflight.state === "running" ? "The current scope is being checked." : "No current preflight report. Loading readiness…"
           : attentionCount === 0 ? "All returned checks passed for this scope." : "Review the failed or warning checks before starting the affected workflow."}
-        value={<span className="diagnostic-summary-meta">{completed === undefined ? "No current result" : `${completed.checks.length} returned checks`}</span>} />
+        value={<span className="diagnostic-summary-meta">{displayed === undefined ? "No current result" : `${displayed.checks.length} returned checks`}</span>} />
     </FormGroup>}
-    {completed !== undefined && <>
-      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings and credentials for the selected scope." checks={workflowChecks} protectedSettings={protectedSettings} />
-      <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={protectedSettings} />
+    {displayed !== undefined && <>
+      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings and credentials for the selected scope." checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings} />
+      <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={historical ? undefined : protectedSettings} />
     </>}
   </section>;
 }
@@ -173,9 +176,9 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
     </div>
     {preflight.state === "idle" && <span className={dsText.meta}>No current preflight report. Loading readiness…</span>}
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
+    {preflight.state === "historical" && <Banner tone="warning" title="Previous result">{preflight.message} Run checks again for current readiness.</Banner>}
     {completed !== undefined && <>
       <span className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}>
-        Scope: {completed.report.requestedCapabilities.join(" · ")}<br />
         Checked <time dateTime={completed.report.checkedAt}>{completed.report.checkedAt}</time>
       </span>
       <div className="settings-preflight-list">
@@ -185,9 +188,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
             <span className={cn(dsText.ui, "break-words font-medium")}>{checkCopy(check.id).name}</span>
           </div>
           <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{checkCopy(check.id).description}</span>
-          {check.verdict === "pass"
-            ? <details className={cn(dsText.meta, "break-words text-[color:var(--ds-fg-muted)]")}><summary>Technical details</summary>{check.label}: {check.detail}</details>
-            : <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{check.detail}</span>}
+          {check.verdict !== "pass" && <span className={cn(dsText.body, "break-words text-[color:var(--ds-fg-muted)]")}>{check.detail}</span>}
           {check.blocks.length > 0 && <span className={dsText.meta}>Blocks: {check.blocks.join(" · ")}</span>}
           {check.remediation !== undefined && <span className={cn(dsText.meta, "break-words")}>Remedy: {check.remediation}</span>}
           {check.verdict !== "pass" && <Button size="sm" variant="ghost" onClick={() => {

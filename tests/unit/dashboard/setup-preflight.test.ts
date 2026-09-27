@@ -26,8 +26,10 @@ it("refuses absent, empty, stale and future observations; a fresh served report 
   const served=await report();
   assert.equal(preflightVerdict([]),"unavailable");
   assert.deepEqual(projectPreflight({state:"unavailable",reason:"No current report"},now.valueOf()),{state:"refused",message:"No current report"});
-  for(const [candidate,at] of [[{...served,results:[] as typeof served.results},now.valueOf()],[served,now.valueOf()+60_000],[served,now.valueOf()-1]] as const)
+  for(const [candidate,at] of [[{...served,results:[] as typeof served.results},now.valueOf()],[served,now.valueOf()-1]] as const)
     assert.equal(projectPreflight({state:"present",report:candidate},at).state,"refused");
+  assert.equal(projectPreflight({state:"present",report:served},now.valueOf()+60_000).state,"historical");
+  assert.equal(projectPreflight({state:"unavailable",reason:"Expired",lastCompleted:served},now.valueOf()+60_000).state,"historical");
   const current=projectPreflight({state:"present",report:served},now.valueOf());
   assert.equal(current.state,"completed");if(current.state!=="completed")throw new Error("fresh control refused");
   assert.equal(current.report,served);assert.deepEqual(current.checks.map(check=>check.checkedAt),served.results.map(()=>served.checkedAt));
@@ -40,7 +42,7 @@ it("Setup and doctor subscribers show the same report and command readback, then
   function Subscriber(){const state=useSettingsPreflight({state:"loaded",document:FIXTURE_EDITABLE_SETTINGS},actions);return createElement(PreflightReportContent,{preflight:state.preflight,onRerun:state.rerunPreflight});}
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:[createElement(Subscriber,{key:"setup"}),createElement(Subscriber,{key:"doctor"})]})}));});
-  const sections=host.children;assert.equal(sections.length,2);assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Scope: dashboard/u);
+  const sections=host.children;assert.equal(sections.length,2);assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Checked/u);
   const button=host.querySelector("button");assert.ok(button);await act(async()=>button.click());assert.equal(reruns,1);assert.ok(reads>=3);assert.equal(sections[0].textContent,sections[1].textContent);
   unavailable=true;await act(async()=>{await vi.advanceTimersByTimeAsync(60_000);});
   assert.equal(sections[0].textContent,sections[1].textContent);assert.match(host.textContent??"",/Expired on server/u);assert.equal(host.querySelectorAll("time").length,0);
@@ -48,13 +50,13 @@ it("Setup and doctor subscribers show the same report and command readback, then
 it("restart-required settings refuse without rerunning an obsolete identity",async()=>{
   vi.useFakeTimers();vi.setSystemTime(now);
   let reads=0,reruns=0;
-  const client={preflightScopes:()=>Promise.resolve([]),readPreflight:()=>{reads++;throw new Error("unexpected read");},rerunPreflight:()=>{reruns++;throw new Error("unexpected rerun");}} as unknown as DashboardClient;
+  const client={preflightScopes:()=>Promise.resolve([]),readPreflight:()=>{reads++;return Promise.resolve({state:"unavailable",reason:"Settings restart required"});},rerunPreflight:()=>{reruns++;throw new Error("unexpected rerun");}} as unknown as DashboardClient;
   const documentWithRestart=structuredClone(FIXTURE_EDITABLE_SETTINGS);
   Reflect.set(documentWithRestart,"runtimeStatus",{state:"restart-required"});
   function Subscriber(){const state=useSettingsPreflight({state:"loaded",document:documentWithRestart},{actorId:"local-operator",descriptorFingerprint:"a".repeat(64)});return createElement("button",{onClick:state.rerunPreflight},state.preflight.state==="refused"?state.preflight.message:state.preflight.state);}
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(Subscriber)}));});
-  assert.match(host.textContent??"",/restart required/u);await act(async()=>host?.querySelector("button")?.click());assert.equal(reads,0);assert.equal(reruns,0);
+  assert.match(host.textContent??"",/restart required/u);await act(async()=>host?.querySelector("button")?.click());assert.equal(reads,1);assert.equal(reruns,0);
 });
 it("remedies navigate to their owner and never repair through rendering",async()=>{
   const served=await report();let storage=0,sessions=0,settings=0;
@@ -124,6 +126,21 @@ it("Settings keeps unknown credential presence unknown while retaining blocked v
   assert.match(host.textContent??"",/Credential presence could not be verified/u);
   assert.doesNotMatch(host.textContent??"",/username and password are missing/u);
   assert.match(host.textContent??"",/Blocked/u);
+});
+
+it("Settings labels the last completed report as historical without current-ready status",async()=>{
+  const served=await report();
+  const projected=projectPreflight({state:"unavailable",reason:"Settings changed; re-check readiness.",lastCompleted:served},now.valueOf()+60_000);
+  assert.equal(projected.state,"historical");
+  const client={preflightScopes:()=>Promise.resolve([])} as unknown as DashboardClient;
+  const actions={actorId:"local-operator",descriptorFingerprint:served.descriptorFingerprint,showSettings(){},showSessions(){}};
+  host=document.createElement("div");document.body.append(host);
+  await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:projected,onRerun(){}})})}));});
+  assert.match(host.textContent??"",/Previous result/u);
+  assert.match(host.textContent??"",/Last checked/u);
+  assert.match(host.textContent??"",/Run checks again for current readiness/u);
+  assert.doesNotMatch(host.textContent??"",/Ready to run|Technical details|Scope details/u);
+  assert.equal(host.querySelectorAll("time").length,1);
 });
 
 it("Settings directs missing SharePoint roster configuration to Routes",async()=>{
