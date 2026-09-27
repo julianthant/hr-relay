@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
+import { WorkflowExplorerWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
@@ -22,10 +23,10 @@ afterEach(async () => {
   reads = 0;
 });
 
-function client(): DashboardClient {
+function client(wire = EXPLORER_TIMELINE_WIRE): DashboardClient {
   return new Proxy({
     bootstrap: async () => FIXTURE_BOOTSTRAP,
-    workflowExplorer: async () => { reads += 1; return EXPLORER_TIMELINE_WIRE; },
+    workflowExplorer: async () => { reads += 1; return wire; },
   }, {
     get(target, property): unknown {
       const value = target[property as keyof typeof target];
@@ -35,9 +36,9 @@ function client(): DashboardClient {
   }) as DashboardClient;
 }
 
-function app(workflowId: string): ReactElement {
+function app(workflowId: string, wire = EXPLORER_TIMELINE_WIRE): ReactElement {
   return createElement(DashboardClientProvider, {
-    client: client(),
+    client: client(wire),
     children: createElement(WorkflowExplorer, {
       workflowId,
       onWorkflow: () => undefined,
@@ -46,23 +47,22 @@ function app(workflowId: string): ReactElement {
   });
 }
 
-async function update(workflowId: string): Promise<void> {
-  await act(async () => { root?.render(app(workflowId)); });
+async function update(workflowId: string, wire = EXPLORER_TIMELINE_WIRE): Promise<void> {
+  await act(async () => { root?.render(app(workflowId, wire)); });
   await act(async () => { await Promise.resolve(); });
 }
 
-async function render(workflowId = EXPLORER_TIMELINE_PARENT_ID): Promise<void> {
+async function render(workflowId = EXPLORER_TIMELINE_PARENT_ID, wire = EXPLORER_TIMELINE_WIRE): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await update(workflowId);
+  await update(workflowId, wire);
 }
 
 function text(): string { return (document.body.textContent ?? "").replace(/\s+/gu, " "); }
 
 function labelledSelect(label: string): HTMLSelectElement {
-  const labelNode = [...document.querySelectorAll("label")].find((candidate) => candidate.textContent?.trim() === label);
-  const select = labelNode?.htmlFor ? document.getElementById(labelNode.htmlFor) : undefined;
+  const select = [...document.querySelectorAll("select")].find((candidate) => candidate.getAttribute("aria-label") === label);
   if (!(select instanceof HTMLSelectElement)) throw new Error(`missing path selector ${label}`);
   return select;
 }
@@ -81,7 +81,8 @@ async function choose(label: string, value: string): Promise<void> {
 }
 
 function button(name: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll("button")].find((candidate) => (candidate.textContent ?? "").trim() === name);
+  const found = [...document.querySelectorAll("button")].find((candidate) => (candidate.textContent ?? "").trim() === name)
+    ?? [...document.querySelectorAll("[title]")].find((candidate) => candidate.getAttribute("title") === name)?.querySelector("button");
   if (!(found instanceof HTMLButtonElement)) throw new Error(`missing button ${name}`);
   return found;
 }
@@ -93,6 +94,8 @@ describe("Workflow Explorer timeline interactions", () => {
     assert.doesNotMatch(text(), /Call child B/u);
     const routePanel = labelledSelect("Path preview for Select route").closest("li");
     assert.ok(routePanel?.textContent?.includes("Call child A"), "selected dependent work stays inside its branch panel");
+    assert.ok(!routePanel?.textContent?.includes("After A"), "later parent work stays outside the scenario expansion");
+    assert.equal(document.querySelectorAll('[aria-label="Inspect After A"]').length, 1);
     assert.match(text(), /Shared continuation/u);
     assert.match(text(), /rejoins after Select route/u);
     assert.match(text(), /Preview only; choosing a path does not start a workflow or run\./u);
@@ -100,8 +103,39 @@ describe("Workflow Explorer timeline interactions", () => {
     assert.match(text(), /Call child B/u);
     assert.doesNotMatch(text(), /Call child A/u);
     assert.ok(routePanel?.textContent?.includes("Call child B"), "changing the case updates the same branch panel");
+    const context = document.querySelector('[aria-label="Workflow context"]')?.textContent ?? "";
+    assert.match(context, /Continues without waiting/u, "context describes the active child policy");
+    assert.doesNotMatch(context, /Call child A/u, "bypassed first child must leave the inspector");
+    assert.match(context, /Call child B/u);
+    assert.match(context, /Call child collection/u);
+    assert.match(context, /Call child without join/u, "multiple active child occurrences stay explicit");
     assert.match(text(), /Shared continuation/u);
     assert.equal(reads, 1, "changing the preview must not dispatch or reload a workflow");
+  });
+
+  it("keeps display numbers distinct when a case contains two child occurrences", async () => {
+    const wire = WorkflowExplorerWireSchema.parse({
+      ...EXPLORER_TIMELINE_WIRE,
+      workflows: EXPLORER_TIMELINE_WIRE.workflows.map(workflow => String(workflow.id) !== EXPLORER_TIMELINE_PARENT_ID ? workflow : {
+        ...workflow,
+        nodes: workflow.nodes.map(node => String(node.id) !== "route" || node.shape.kind !== "branch" ? node : {
+          ...node, shape: { ...node.shape, cases: [...node.shape.cases, { name: "Both", nodes: ["call-a", "call-b"] }] },
+        }),
+        edges: [...workflow.edges,
+          { from: "route", to: "call-a", kind: "branch-case", label: "Both" },
+          { from: "route", to: "call-b", kind: "branch-case", label: "Both" },
+        ],
+      }),
+    });
+    await render(EXPLORER_TIMELINE_PARENT_ID, wire);
+    await choose("Path preview for Select route", "Both");
+    const firstNumber = (name: string): string | null | undefined => [...document.querySelectorAll("[title]")]
+      .find(element => element.getAttribute("title") === `Nested timeline child steps for ${name}`)
+      ?.querySelector(".explorer-child-step .explorer-step-heading > span")?.textContent;
+    assert.equal(firstNumber("Call child A"), "2.1.1");
+    assert.equal(firstNumber("Call child B"), "2.2.1");
+    assert.equal(document.querySelectorAll('[title="Nested timeline child steps for Call child A"]').length, 1);
+    assert.equal(document.querySelectorAll('[title="Nested timeline child steps for Call child B"]').length, 1);
   });
 
   it("keeps independent controllers and terminal no-rejoin choices separate", async () => {
@@ -114,22 +148,25 @@ describe("Workflow Explorer timeline interactions", () => {
     assert.match(visible, /Independent skipped step/u);
     assert.match(visible, /Stop here/u);
     assert.doesNotMatch(visible, /Late work|Late follow-up|Unjoined continuation/u);
+    assert.equal(document.querySelectorAll('[aria-label="Inspect Shared continuation"]').length, 1, "the shared rejoin appears exactly once");
     assert.match(visible, /No shared continuation is declared for these cases\./u);
   });
 
   it("keeps nested disclosure occurrences unique, exposes served policy facts, and states unavailable detail", async () => {
     await render();
-    const nestedBranches = [...document.querySelectorAll("label")]
-      .filter((label) => label.textContent?.trim().startsWith("Path preview for Child outcome in "));
+    const nestedBranches = [...document.querySelectorAll("select")]
+      .filter((select) => select.getAttribute("aria-label")?.startsWith("Path preview for Child outcome in "));
     assert.equal(nestedBranches.length, 3, "the active child call sites each show their own child detail");
-    const ids = nestedBranches.map((label) => label.htmlFor);
+    const ids = nestedBranches.map((select) => select.id);
+    assert.equal(document.querySelectorAll(".explorer-child-step .explorer-condition").length, 3, "compact child occurrences retain their authored condition");
+    assert.match(text(), /includeOptional/u);
     assert.equal(new Set(ids).size, ids.length, "repeated child instances need occurrence-unique control ids");
-    assert.equal(new Set(nestedBranches.map((label) => label.textContent?.trim())).size, 3, "repeated child controls need occurrence-specific names");
+    assert.equal(new Set(nestedBranches.map((select) => select.getAttribute("aria-label"))).size, 3, "repeated child controls need occurrence-specific names");
     await choose("Path preview for Child outcome in Call child A", "Stop");
     assert.equal((text().match(/Child stop/gu) ?? []).length, 1, "the nested choice affects one child occurrence");
     assert.equal((text().match(/Return path/gu) ?? []).length, 2, "the other repeated child occurrences keep their defaults");
-    assert.match(text(), /Waits for child terminal state/u);
-    assert.match(text(), /return route is not declared/u);
+    assert.match(text(), /Waits for Nested timeline child/u);
+    assert.match(text(), /parent route is not declared/u);
     assert.match(text(), /no join/u);
     for (const disclosure of [...document.querySelectorAll("button")].filter((candidate) => candidate.textContent?.trim() === "Delegation policy")) {
       await act(async () => { disclosure.click(); });
@@ -141,7 +178,7 @@ describe("Workflow Explorer timeline interactions", () => {
     assert.match(text(), /Return policy and selectable child results are unavailable in the served metadata\./u);
     assert.match(text(), /Child workflow detail is unavailable in the served registry\./u);
     assert.doesNotMatch(text(), /Child result/u);
-    await act(async () => { button("Call child collection").click(); });
+    await act(async () => { button("Inspect Call child collection").click(); });
     await act(async () => { button("Full contract").click(); });
     assert.match(text(), /joinall/u);
     assert.equal(reads, 1);

@@ -40,7 +40,7 @@
       - button "What is this graph? — Person Lookup"
       - paragraph: "Resolves ONE person across UCPath and the CRM: searches Person Org by EID or name, cross-verifies the match against the CRM onboarding record, folds the two into an active / inactive verdict, and reads the CRM onboarding dates when the run asks for them."
       - strong: Workflow
-      - text: Descriptor v1 crm · ucpath Planned behavior This workflow changes no system of record and has no dry-run boundary.
+      - text: Descriptor v1 Planned behavior This workflow changes no system of record and has no dry-run boundary.
       - list:
         - listitem:
           - button "Inspect Searching": Searching
@@ -67,7 +67,7 @@
         - paragraph: search · 4 nodes
         - paragraph: crm · ucpath
         - heading "Path structure" [level=4]
-        - paragraph: 0 branchs · 0 delegations
+        - paragraph: 0 branchs · no delegation on this path
         - heading "Source" [level=4]
         - text: descriptor src/workflows/person-lookup/workflow.ts
 - region "Session Panel":

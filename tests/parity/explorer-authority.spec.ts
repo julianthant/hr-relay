@@ -283,13 +283,13 @@ test("E4 branch and child path controls stay keyboard-readable and launch no exe
     await routeChoice.press("r");
     await expect(routeChoice).toHaveValue("Route B");
     await expect(routeChoice).toBeFocused();
-    await expect(page.getByRole("button", { name: "Inspect Call child B", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Inspect Call child A", exact: true })).toHaveCount(0);
+    await expect(page.getByTitle("Nested timeline child steps for Call child B", { exact: true })).toBeVisible();
+    await expect(page.getByTitle("Nested timeline child steps for Call child A", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Shared continuation", { exact: true })).toBeVisible();
     await expect(page.getByText("rejoins after Select route", { exact: true })).toBeVisible();
     await capture(page, info, "branch-b");
 
-    const nestedDoor = page.getByRole("button", { name: "Nested timeline child steps for Call child B", exact: true });
+    const nestedDoor = page.getByTitle("Nested timeline child steps for Call child B", { exact: true }).getByRole("button").first();
     await nestedDoor.focus();
     await page.keyboard.press("Enter");
     await expect(page.getByRole("combobox", { name: "Path preview for Child outcome in Call child B", exact: true })).toBeHidden();
@@ -321,8 +321,8 @@ test("E4 branch and child path controls stay keyboard-readable and launch no exe
     await routeChoice.focus();
     await page.keyboard.press("Escape");
     await expect(routeChoice).toHaveValue("Route B");
-    await expect(page.getByRole("button", { name: "Inspect Call child B", exact: true })).toBeVisible();
-    await expect(page.getByRole("button", { name: "Inspect Call child A", exact: true })).toHaveCount(0);
+    await expect(page.getByTitle("Nested timeline child steps for Call child B", { exact: true })).toBeVisible();
+    await expect(page.getByTitle("Nested timeline child steps for Call child A", { exact: true })).toHaveCount(0);
     expect(writes).toEqual([]);
   } finally { await server.close(); expect(existsSync(server.root)).toBe(false); }
 });

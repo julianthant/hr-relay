@@ -1,4 +1,5 @@
 import { WorkflowExplorerWireSchema, type ExplorerNodeWire, type ExplorerWorkflowWire } from "../../src/domain/dashboard/explorer.js";
+import { parseNodeCondition } from "../../src/domain/workflow/node-condition.js";
 import { FIXTURE_EXPLORER_WIRE } from "../parity/helpers/fixture-explorer.js";
 
 const template = FIXTURE_EXPLORER_WIRE.workflows.find((workflow) => String(workflow.id) === "person-lookup");
@@ -84,7 +85,7 @@ const child = workflow(childId, "Nested timeline child", [
   { id: "child-choice", label: "Child outcome", shape: { kind: "branch", cases: [
     { name: "Return", nodes: ["child-return"] }, { name: "Stop", nodes: ["child-stop"] },
   ] } },
-  { id: "child-return", label: "Return path", dependsOn: ["child-choice"] },
+  { id: "child-return", label: "Return path", dependsOn: ["child-choice"], shape: { kind: "task", replay: "checkpoint", condition: parseNodeCondition({ kind: "is-true", of: { from: "input", path: "includeOptional" } }) } },
   { id: "child-stop", label: "Child stop", dependsOn: ["child-choice"] },
 ]);
 

@@ -236,6 +236,25 @@ export function explorerTimelinePath(
   return { hidden, selected, rejoins, rejoinAt, commonAt, branchesWithoutRejoin };
 }
 
+/** Only selected direct case members nest; downstream parent work retains its own row. */
+export function explorerTimelineContainment(
+  workflow: ExplorerWorkflowWire,
+  cases: Readonly<Record<string, string>>,
+  path: ExplorerTimelinePath,
+): ReadonlyMap<string, string> {
+  const owner = new Map<string, string>();
+  for (const controller of explorerTimelineOrder(workflow)) {
+    const id = String(controller.id);
+    if (controller.shape.kind !== "branch" || path.hidden.has(id)) continue;
+    const active = controller.shape.cases.find((one) => one.name === cases[id]) ?? controller.shape.cases[0];
+    for (const member of active?.nodes ?? []) {
+      const candidate = String(member);
+      if (path.selected.has(candidate) && !path.hidden.has(candidate) && !owner.has(candidate)) owner.set(candidate, id);
+    }
+  }
+  return owner;
+}
+
 /** Dependencies and control edges order the explanation; tuple order breaks ties only. */
 export function explorerTimelineOrder(workflow: ExplorerWorkflowWire): readonly ExplorerNodeWire[] {
   const declared = workflow.timeline.flatMap((group) => group.nodes.map(String));

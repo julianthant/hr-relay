@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { ExplorerNodeWire, ExplorerWorkflowWire } from "../../../src/domain/dashboard/explorer.js";
-import { explorerTimelineOrder, explorerTimelinePath } from "../../../src/dashboard/surfaces/explorer-model.js";
+import { explorerTimelineContainment, explorerTimelineOrder, explorerTimelinePath } from "../../../src/dashboard/surfaces/explorer-model.js";
 import { FIXTURE_EXPLORER_WIRE } from "../../parity/helpers/fixture-explorer.js";
 
 const template = FIXTURE_EXPLORER_WIRE.workflows[0];
@@ -176,6 +176,28 @@ describe("Explorer branching timeline", () => {
     assert.ok(!active.hidden.has("y"));
     assert.ok(!active.selected.has("x"));
     assert.ok(active.selected.has("y"));
+    assert.deepEqual([...explorerTimelineContainment(graph, { outer: "Nested", inner: "Y" }, active)], [["inner", "outer"], ["y", "inner"]]);
+    assert.deepEqual([...explorerTimelineContainment(graph, { outer: "Direct", inner: "X" }, inactive)], [["direct", "outer"]]);
+  });
+
+  it("contains shared selected members once and leaves downstream work and rejoin outside", () => {
+    const graph = workflow([
+      node("first", [], branch([{ name: "On", nodes: ["common"] }, { name: "Off", nodes: ["first-off"] }])),
+      node("second", [], branch([{ name: "On", nodes: ["common"] }, { name: "Off", nodes: ["second-off"] }])),
+      node("common", ["first", "second"]),
+      node("next", ["common"]),
+      node("first-off", ["first"]),
+      node("second-off", ["second"]),
+      node("rejoin", ["next", "first-off", "second-off"]),
+    ]);
+    const cases = { first: "On", second: "On" };
+    const path = explorerTimelinePath(graph, cases);
+    const owner = explorerTimelineContainment(graph, cases, path);
+    assert.equal(owner.get("common"), "first");
+    assert.equal([...owner.keys()].filter((id) => id === "common").length, 1);
+    assert.equal(owner.has("next"), false);
+    assert.equal(owner.has("rejoin"), false);
+    assert.equal(path.hidden.has("rejoin"), false);
   });
 
   it("uses authored branch-case names without mapping executable scenario ids", () => {
