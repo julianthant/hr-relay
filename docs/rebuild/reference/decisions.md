@@ -15,6 +15,9 @@ The operator may plan and cancel a complete state-root/artifact-root pair throug
 audited SQLite commands while schema v55 and the current paths remain active. The plan binds the
 installation UUID, source generation and pair, desired pair, revision, command/write identities,
 and request/destination digests. Exact retry is idempotent; corrupt or drifting history refuses.
+The relocation intent fingerprint excludes server-stamped provenance while authenticated provenance
+remains durable. Fresh authority initialization finishes within pending adoption; missing authority
+after completed adoption remains an error.
 Actual relocation requires exclusive offline admission, verified backup, a durable source fence,
 an atomic pair locator switch, and an activation receipt. Schema v56 is required before activation
 so supported pre-location binaries refuse the authority even when only artifacts move. v55 backup

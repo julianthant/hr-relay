@@ -1796,7 +1796,10 @@ markers are negative witnesses, never replacement locators. Other isolation valu
 existing authority unless separately admitted, but the adopted state and artifact roots are
 selected only through this installation control. A shared lifetime admission
 precedes any runtime, credential or authority read; an exclusive offline admission blocks every
-shared opener. The current foundation is not yet wired to runtime entrypoints.
+shared opener. A genuinely empty installation initializes its authority while the durable adoption
+journal remains pending, before publishing completed adoption. Initialization uses a temporary,
+path-bound capability. A crash leaves adoption incomplete; an established installation with a
+missing database never becomes a fresh installation merely because only owner markers remain.
 
 At schema v55, `storage-relocation/plan-storage-relocation` and
 `storage-relocation/cancel-storage-relocation` record desired intent as immutable SQLite commands
@@ -1811,6 +1814,10 @@ v55 runtime still uses the old paths. No state-root, artifact-root or credential
 `app_settings`, and no secret-derived fingerprint enters relocation history. A state-only move that
 would leave artifacts nested in the old state root is structurally refused; artifact-only moves
 require a destination outside source-root overlap.
+The relocation request fingerprint binds client-owned command intent, including command identity,
+target, and payload, excluding the fingerprint itself and server-stamped provenance fields
+(`requestedAt`, `requestedBy`, and `source`). Authenticated provenance is still persisted with the
+command and audit. Restamping ingress provenance must not invalidate an unchanged intent or exact retry.
 The generic command arm remains unavailable until its admitted installation lease and dashboard
 composition are wired. The runtime now holds path-bound admission throughout bootstrap, awaited
 CLI composition, database and artifact operations, and credential/provider access. The plan reader
