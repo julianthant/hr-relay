@@ -97,6 +97,7 @@ export type RelocationInventory = Readonly<{ operationId: string; installationId
   phase: "preparing" | "prepared" | "activating" | "staged" | "fenced" | "retaining" | "retained" | "switched";
   preparation?: VerifiedRelocationPreparation;
   activationIntent?: VerifiedRelocationActivationIntent;
+  evidence?: VerifiedRelocationEvidence;
   pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
 export type VerifiedSourceControlEntries = Readonly<{ source: RuntimePair;
   state: readonly string[]; artifact: readonly string[] }>;
@@ -1046,6 +1047,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         ...(pending.phase === "preparing" ? {} : { preparation: Object.freeze({ ...pending.preparation }) }),
         ...(pending.phase === "preparing" || pending.phase === "prepared" ? {}
           : { activationIntent: Object.freeze({ ...pending.activationIntent }) }),
+        ...("evidence" in pending ? { evidence: Object.freeze({ ...pending.evidence,
+          source: Object.freeze({ ...pending.evidence.source }),
+          destination: Object.freeze({ ...pending.evidence.destination }),
+          plan: Object.freeze({ ...pending.evidence.plan }),
+          managedStateEntries: Object.freeze(pending.evidence.managedStateEntries.map((entry) => Object.freeze({ ...entry }))) }) } : {}),
         pinnedEntries: Object.freeze([...pending.pinnedEntries]),
         retentions: Object.freeze(pending.retentions.map((row) => Object.freeze({ ...row }))) });
     },

@@ -216,6 +216,7 @@ it("binds destination and retained source capabilities to one live relocation op
   expect(operation.verifiedSourceControlEntries()).toMatchObject({ source: pair,
     state: [".runtime-owner.json", "locks"], artifact: [".runtime-owner.json"] });
   expect(operation.inventory()).toMatchObject({ operationId: operation.operationId, source: pair, destination, plan, phase: "preparing" });
+  expect(operation.inventory().evidence).toBeUndefined();
   expect(operation.readPriorReceipts()).toHaveLength(0);
   const child = operation.destinationAdmission();
   expect(child.stateRoot).toBe(destination.stateRoot);
@@ -234,6 +235,7 @@ it("binds destination and retained source capabilities to one live relocation op
   const activationIntent = operation.inventory().activationIntent;
   if (activationIntent === undefined) throw new Error("activation intent missing");
   expect(operation.inventory().phase).toBe("activating");
+  expect(operation.inventory().evidence).toBeUndefined();
   operation.recordActivationIntent(() => activationIntent);
   expect(() => operation.recordActivationIntent(() => ({ ...activationIntent,
     managedInventoryDigest: "f".repeat(64) }))).toThrow(/activation intent changed/u);
@@ -244,9 +246,14 @@ it("binds destination and retained source capabilities to one live relocation op
   expect(() => operation.recordVerifiedPreparation(() => ({ ...preparation,
     backupManifestSha256: "3".repeat(64) }))).toThrow(/verified preparation changed/u);
   operation.recordVerifiedStage(verify);
+  const stagedEvidence = verify();
+  expect(operation.inventory().evidence).toEqual(stagedEvidence);
+  expect(Object.isFrozen(operation.inventory().evidence?.managedStateEntries)).toBe(true);
   operation.fenceRelocationSource();
+  expect(operation.inventory().evidence).toEqual(stagedEvidence);
   expect(operation.verifiedSourceControlEntries().artifact).toContain(".runtime-source-fence.json");
   operation.retainRelocationSources();
+  expect(operation.inventory().evidence).toEqual(stagedEvidence);
   const source = operation.sourceVerificationAdmission();
   expect(operation.verifiedSourceControlEntries().source).toEqual({
     stateRoot: source.stateRoot, artifactRoot: source.artifactRoot,
@@ -279,6 +286,7 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
   prepareDestination(lease, destination);
   staged(lease, destination, operation.operationId, operation.inventory().plan);
   const originalPreparation = operation.inventory().preparation;
+  const originalEvidence = operation.inventory().evidence;
   if (originalPreparation === undefined) throw new Error("preparation missing");
   const binding = { installationId: lease.locator.installationId, fromGeneration: lease.locator.generation, operationId: operation.operationId };
   admission.release(); held.release();
@@ -300,6 +308,7 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
   const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, resumedHeld);
   expect(recovered.operation.inventory().destination).toEqual(destination);
   expect(recovered.operation.inventory().preparation).toEqual(originalPreparation);
+  expect(recovered.operation.inventory().evidence).toEqual(originalEvidence);
   recovered.operation.recordVerifiedPreparation(() => originalPreparation);
   expect(() => recovered.operation.recordVerifiedPreparation(() => ({ ...originalPreparation,
     backupFileSha256: "4".repeat(64) }))).toThrow(/verified preparation changed/u);
