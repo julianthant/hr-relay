@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { copyFileSync, cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, utimesSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -7,6 +7,10 @@ import { afterEach, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { storageRelocationDesiredDigest } from "../../src/domain/commands.js";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
+import { hostConfigFacts } from "../../src/domain/config/host-display.js";
+import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { ConfigSnapshotWriteSchema } from "../../src/domain/config/snapshot.js";
 import { NonNegativeIntSchema } from "../../src/domain/ids.js";
 import { ArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
@@ -80,12 +84,27 @@ async function movedFixture(paired: boolean, artifactOnly = false) {
     const managedStateEntries = artifactOnly ? [] : readdirSync(source.stateRoot).filter((name) => !["locks", ".runtime-owner.json", ".runtime-source-fence.json"].includes(name)
       && !pinned.has(name)).map((name) => ({ name,
         kind: statSync(join(source.stateRoot, name)).isDirectory() ? "directory" as const : "file" as const }));
+    const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+    const config = { ...resolved.config, paths: { ...resolved.config.paths,
+      stateRoot: destination.stateRoot, artifactRoot: destination.artifactRoot } };
+    const configFingerprint = createHash("sha256").update(canonicalJsonStringify(config)).digest("hex");
     const evidence: VerifiedRelocationEvidence = { operationId, installationId: lease.locator.installationId,
       sourceGeneration: 0, source, destination, plan, stagingReceiptId: "synthetic-stage", stagingDigest: "b".repeat(64),
       backupReceiptId: "synthetic-backup", backupDigest: "c".repeat(64),
       finalDatabasePath: join(destination.stateRoot, "state.db"), configSnapshotId: randomUUID(),
-      configFingerprint: "d".repeat(64), authorityVersion: 56, databaseIdentity: "synthetic-db", managedStateEntries };
+      configFingerprint, authorityVersion: 56, databaseIdentity: "synthetic-db", managedStateEntries };
     const verify = () => evidence;
+    lease.recordActivationIntent(() => ({ operationId, installationId: lease.locator.installationId,
+      sourceGeneration: 0, source, destination, plan,
+      stageAuthority: { manifestPath: join(backupDir, manifestFileName), manifestSha256: "e".repeat(64),
+        backupPath: join(backupDir, manifest.backupFileName), backupSha256: "f".repeat(64) },
+      stageArchive: null, nativeDestinationPath: join(destination.stateRoot, "state.db"),
+      nativeDestinationSha256: artifactOnly ? null : "f".repeat(64),
+      preAuthorityGeneration: 0, preAuthorityContentFingerprint: "d".repeat(64),
+      managedInventoryDigest: "a".repeat(64), settingsRevision: 1, settingsFingerprint: "b".repeat(64),
+      priorActive: null, snapshot: ConfigSnapshotWriteSchema.parse({ configSnapshotId: evidence.configSnapshotId,
+        revision: 1, fingerprint: configFingerprint, capturedAt: clock.now().toISOString(),
+        capturedBy: "local-operator", config, provenance: resolved.provenance }) }));
     lease.recordVerifiedStage(verify);
     lease.fenceRelocationSource();
     lease.retainRelocationSources();
