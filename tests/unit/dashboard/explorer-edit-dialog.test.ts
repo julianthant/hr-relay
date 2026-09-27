@@ -356,6 +356,7 @@ describe("DCC5 Explorer edit dialog", () => {
         workflowId: String(first.id), onWorkflow: () => undefined, onVersionRegistry: () => undefined,
       }) }));
       await settle();
+      await press("Workflow details");
       const door = button(`Edit ${field.replace("-", " ")}`);
       await press(`Edit ${field.replace("-", " ")}`);
       const input = document.body.querySelector(field === "workflow-label" ? "input" : "select");
@@ -468,6 +469,7 @@ describe("DCC5 Explorer edit dialog", () => {
     }));
     await settle();
     await settle();
+    await press("Workflow details");
     const door = button("Edit workflow icon");
     door.focus();
     await act(async () => { door.click(); });

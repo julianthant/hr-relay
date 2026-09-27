@@ -894,6 +894,11 @@ function workflowWire(
         })),
       coveragePoints: coverageByNode.get(String(node.id)) ?? [],
     })),
+    timeline: descriptor.timeline.map((group) => ({
+      key: group.key,
+      label: group.label,
+      nodes: group.nodes.map((node) => node.id),
+    })),
     edges: edgesOf(nodes),
     scenarios: scenarioWires(descriptor, projections.scenarios.map(String), scenarioSources),
     sources: {
