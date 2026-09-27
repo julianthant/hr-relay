@@ -824,7 +824,7 @@ function FormsSection() {
     { id: "ucpath", label: "UCPath", description: "Primary connection", role: "Primary" },
     { id: "hrms", label: "Legacy HRMS", description: "Fallback connection", role: "Fallback" },
   ]);
-  const [editableModels, setEditableModels] = useState([
+  const [configuredModels, setConfiguredModels] = useState([
     { id: "model-primary", value: "gemini-2.5-pro" },
     { id: "model-fallback", value: "gemini-2.5-flash" },
   ]);
@@ -954,22 +954,16 @@ function FormsSection() {
           />
         </FormGroup>
 
-        <BodySection title="Editable model priority">
-          <FormGroup label="Editable model priority">
+        <BodySection title="Configured model priority">
+          <FormGroup label="Configured model priority">
             <RankedList
-              label="Editable model priority"
-              items={editableModels.map((model, index) => ({
+              label="Configured model priority"
+              items={configuredModels.map((model, index) => ({
                 id: model.id,
-                label: model.value || `Model ${index + 1}`,
+                label: model.value,
                 role: index === 0 ? "Primary" : "Fallback",
-                content: <Input aria-label={`Model ${index + 1}`} value={model.value}
-                  onChange={(event) => setEditableModels((current) => current.map((item) =>
-                    item.id === model.id ? { ...item, value: event.target.value } : item))} />,
-                actions: <IconButton type="button" size="xs" variant="ghost" label={`Remove model ${index + 1}`}
-                  icon={<Trash2 aria-hidden className={dsIcon.sm} />}
-                  onClick={() => setEditableModels((current) => current.filter((item) => item.id !== model.id))} />,
               }))}
-              onReorder={(ordered) => setEditableModels((current) => {
+              onReorder={(ordered) => setConfiguredModels((current) => {
                 const byId = new Map(current.map((model) => [model.id, model]));
                 return ordered.map((item) => {
                   const model = byId.get(item.id);
@@ -978,12 +972,7 @@ function FormsSection() {
                 });
               })}
             />
-            <div className="flex justify-end py-[var(--ds-space-base)]">
-              <Button size="md" variant="secondary" icon={<Plus aria-hidden className={dsIcon.sm} />}
-                onClick={() => setEditableModels((current) => [...current, { id: `model-${crypto.randomUUID()}`, value: "" }])}>
-                Add model
-              </Button>
-            </div>
+            <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Configured model names can be reordered here.</p>
           </FormGroup>
         </BodySection>
 
