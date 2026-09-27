@@ -166,8 +166,8 @@ describe("Workflow Explorer timeline interactions", () => {
     assert.equal((text().match(/Child stop/gu) ?? []).length, 1, "the nested choice affects one child occurrence");
     assert.equal((text().match(/Return path/gu) ?? []).length, 2, "the other repeated child occurrences keep their defaults");
     assert.match(text(), /Waits for Nested timeline child/u);
-    assert.match(text(), /parent route is not declared/u);
-    assert.match(text(), /no join/u);
+    assert.match(text(), /Return routing isn’t defined/u);
+
     for (const disclosure of [...document.querySelectorAll("button")].filter((candidate) => candidate.textContent?.trim() === "Delegation policy")) {
       await act(async () => { disclosure.click(); });
     }
@@ -182,6 +182,38 @@ describe("Workflow Explorer timeline interactions", () => {
     await act(async () => { button("Full contract").click(); });
     assert.match(text(), /joinall/u);
     assert.equal(reads, 1);
+  });
+
+  it("keeps one parent identity and keyboard-readable source warnings for every occurrence", async () => {
+    await render();
+    const context = document.querySelector('[aria-label="Workflow context"]');
+    assert.ok(context);
+    assert.equal([...context.querySelectorAll("dt")].filter(one => one.textContent === "Parent").length, 1);
+    assert.equal(context.querySelectorAll(".explorer-context-child").length, 4);
+    const detail = context.querySelector<HTMLButtonElement>(".explorer-source-details");
+    assert.ok(detail);
+    detail.focus();
+    assert.equal(document.activeElement, detail);
+    assert.equal(detail.getAttribute("aria-expanded"), "false");
+    await act(async () => { detail.click(); });
+    assert.equal(detail.getAttribute("aria-expanded"), "true");
+    const warning = detail.closest(".explorer-source-warning");
+    assert.match(warning?.textContent ?? "", /Attempted path.*Reason/u);
+    assert.ok(warning?.querySelector("dd")?.textContent?.length);
+    assert.equal(warning?.querySelector("a"), null, "unavailable source is not a working link");
+  });
+
+  it("groups an identical source path while retaining both roles", async () => {
+    const wire = WorkflowExplorerWireSchema.parse({ ...EXPLORER_TIMELINE_WIRE, workflows: EXPLORER_TIMELINE_WIRE.workflows.map(workflow => ({ ...workflow, sources: { ...workflow.sources,
+      descriptor: { state: "resolved", path: "tests/fixtures/explorer-timeline-wire.ts" },
+      module: { state: "resolved", path: "tests/fixtures/explorer-timeline-wire.ts" },
+    } })) });
+    await render(EXPLORER_TIMELINE_PARENT_ID, wire);
+    await act(async () => { button("Source").click(); });
+    const popover = document.querySelector('[data-radix-popper-content-wrapper]');
+    assert.ok(popover);
+    assert.match(popover.textContent ?? "", /descriptor · module/u);
+    assert.equal((popover.textContent?.match(/tests\/fixtures\/explorer-timeline-wire.ts/gu) ?? []).length, 1);
   });
 
   it("closes hidden node detail, restores its opener on close, and resets preview state by workflow", async () => {

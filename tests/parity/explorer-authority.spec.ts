@@ -286,7 +286,7 @@ test("E4 branch and child path controls stay keyboard-readable and launch no exe
     await expect(page.getByTitle("Nested timeline child steps for Call child B", { exact: true })).toBeVisible();
     await expect(page.getByTitle("Nested timeline child steps for Call child A", { exact: true })).toHaveCount(0);
     await expect(page.getByText("Shared continuation", { exact: true })).toBeVisible();
-    await expect(page.getByText("rejoins after Select route", { exact: true })).toBeVisible();
+    await expect(page.getByText("Path rejoins after Select route", { exact: true })).toBeVisible();
     await capture(page, info, "branch-b");
 
     const nestedDoor = page.getByTitle("Nested timeline child steps for Call child B", { exact: true }).getByRole("button").first();
