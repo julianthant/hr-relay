@@ -14,6 +14,7 @@ import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
 import { NonNegativeIntSchema } from "../../../src/domain/ids.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../src/infra/runtime-control/admission.js";
+import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
 import { projectStorageRelocationPlanHistory } from "../../../src/core/storage-relocation-plans.js";
@@ -887,7 +888,7 @@ it("refuses unknown managed state entries before source fencing", () => {
   lease.release(); held.release();
 });
 
-it("refuses a mutex left by a crashed child without automatic reaping", async () => {
+it("keeps low-level installation admission from reaping a crashed child's mutex", async () => {
   const { workspace, pair } = fixture();
   const lease = adoptSynthetic(workspace, pair); lease.release();
   const mutex = join(workspace, ".runtime-control", "admission-mutex");
@@ -897,6 +898,54 @@ it("refuses a mutex left by a crashed child without automatic reaping", async ()
   } finally { await stopChild(child); }
   expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex busy or abandoned; offline recovery required/u);
 });
+
+it.each(["temporary", "published"])('startup recovers a proven abandoned %s mutex owner', (kind) => {
+  const { workspace, pair } = fixture();
+  const initial = adoptSynthetic(workspace, pair); initial.release();
+  const mutex = join(workspace, ".runtime-control", "admission-mutex");
+  mkdirSync(mutex, { mode: 0o700 });
+  const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: 99999999,
+    processIdentity: { platform: process.platform, startToken: "synthetic-dead-owner" } };
+  const ownerName = kind === "temporary" ? `.${randomUUID()}.tmp` : "owner.json";
+  writeFileSync(join(mutex, ownerName), `${JSON.stringify(owner)}\n`, { mode: 0o600 });
+  const admitted = acquireEntrypointAdmission(workspace, "shared");
+  admitted.release();
+  expect(existsSync(mutex)).toBe(false);
+  const history = join(workspace, ".runtime-control", "admission-mutex-recovery");
+  expect(JSON.parse(readFileSync(join(history, `${owner.acquisitionId}.json`), "utf8"))).toMatchObject({
+    acquisitionId: owner.acquisitionId, pid: owner.pid, ownerFile: ownerName,
+  });
+  const next = acquireEntrypointAdmission(workspace, "shared"); next.release();
+});
+
+it.each(["live owner", "pending journal", "live lease", "malformed owner"])(
+  "startup preserves an occupied mutex with %s", (condition) => {
+    const { workspace, pair } = fixture();
+    const initial = adoptSynthetic(workspace, pair); initial.release();
+    const control = join(workspace, ".runtime-control");
+    const mutex = join(control, "admission-mutex");
+    mkdirSync(mutex, { mode: 0o700 });
+    const current = observeProcessIdentity(process.pid);
+    if (current.state !== "alive") throw new Error("current process identity unavailable");
+    const owner = { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting",
+      pid: condition === "live owner" ? process.pid : 99999999,
+      processIdentity: condition === "live owner" ? current.identity
+        : { platform: process.platform, startToken: "synthetic-dead-owner" } };
+    const ownerPath = join(mutex, "owner.json");
+    writeFileSync(ownerPath, condition === "malformed owner" ? "not-json" : `${JSON.stringify(owner)}\n`, { mode: 0o600 });
+    if (condition === "pending journal") writeFileSync(join(control, "journal.json"), JSON.stringify({
+      schemaVersion: 1, phase: "adopting", installationId: initial.locator.installationId,
+    }), { mode: 0o600 });
+    if (condition === "live lease") {
+      const admissionId = randomUUID();
+      writeFileSync(join(control, "leases", `${admissionId}.json`), JSON.stringify({ schemaVersion: 1,
+        admissionId, mode: "shared", pid: process.pid, processIdentity: current.identity }), { mode: 0o600 });
+    }
+    expect(() => acquireEntrypointAdmission(workspace, "shared")).toThrow();
+    expect(existsSync(ownerPath)).toBe(true);
+    expect(existsSync(join(control, "admission-mutex-recovery"))).toBe(false);
+  },
+);
 
 it.each(["temporary", "published"])("recovers an exact abandoned %s mutex owner under held offline restore admission", (kind) => {
   const { workspace, pair } = fixture();

@@ -1766,6 +1766,19 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D354 — Proven abandoned admission mutex recovery at startup · 2026-09-27
+
+An ordinary runtime entrypoint that encounters an occupied installation admission mutex may run
+the existing stopped-system recovery proof once, then retry admission once. It first reads the one
+private, schema-valid published or interrupted-publication owner record and proves that its process
+identity is gone or reused. Recovery holds fixed restore admission and rechecks the owner bytes,
+settled locator, root witnesses, installation leases, process locks, and absence of a pending
+installation journal. It archives the mutex with the existing durable recovery receipt. Live or
+unknown owners, malformed or extra entries, live leases, pending operations, and any failed proof
+remain startup refusals. This does not recreate installation identity, select default roots, or
+recover an interrupted relocation. The explicit `storage recover-admission --pid` command remains
+available for diagnosis and controlled recovery.
+
 ### D353 — Editable browser and Duo paths · 2026-09-26
 
 `paths.browserProfileRoot`, `paths.duoCredential`, and `paths.duoExtensionDir` are independent
@@ -1908,14 +1921,15 @@ receipt is durable before the transient journal is cleared; later plan projectio
 source generations through those receipts. These are acceptance requirements for the pending
 engine, not claims that movement or recovery is implemented.
 
-An abandoned installation admission mutex remains a startup refusal. With the runtime stopped,
+An abandoned installation admission mutex remains a low-level admission refusal. With the runtime stopped,
 `npm run cli -- storage recover-admission --pid <owner-pid>` takes fixed restore admission and
 requires a settled installation, valid root witnesses, and proof that the recorded mutex owner,
 installation leases, and runtime process owners are no longer live. It accepts one complete owner
 record, including an interrupted atomic publication, and refuses unknown or unsafe entries. Recovery
 revalidates the same owner and directory before quarantining the mutex with a durable receipt under
 `.runtime-control/admission-mutex-recovery/`. It never deletes installation identity, changes the
-locator, or repairs a relocation journal. Normal startup does not perform this recovery automatically.
+locator, or repairs a relocation journal. Under D354, ordinary entrypoint startup can run this exact
+proof once for a proven abandoned owner.
 
 Before source upgrade, the operation journal records an immutable preparation receipt binding the
 exact verified backup file and manifest paths and both digests, source schema/identity/generation/
