@@ -29,6 +29,12 @@ const EpochsSchema = z.strictObject({ state: GenerationSchema, artifact: Generat
 const PlanBindingSchema = z.strictObject({ commandId: z.uuid(), revision: z.number().int().positive(),
   expectedRevision: GenerationSchema,
   requestFingerprint: DigestSchema, desiredDigest: DigestSchema });
+const PreparationEvidenceSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(),
+  sourceGeneration: GenerationSchema, source: PairSchema, destination: PairSchema, plan: PlanBindingSchema,
+  sourceDatabaseIdentity: DigestSchema, sourceSchemaVersion: z.union([z.literal(55), z.literal(56)]),
+  sourceAuthorityGeneration: GenerationSchema, sourceAuthorityContentFingerprint: DigestSchema,
+  backupReceiptId: z.string().min(1).max(200), backupManifestPath: z.string().min(1),
+  backupManifestSha256: DigestSchema, backupFilePath: z.string().min(1), backupFileSha256: DigestSchema });
 const ManagedEntrySchema = z.strictObject({ name: z.string().regex(/^(?!\.{1,2}$)[A-Za-z0-9._-]+$/u), kind: z.enum(["file", "directory"]) });
 const PinnedEntrySchema = ManagedEntrySchema.shape.name;
 const StageEvidenceSchema = z.strictObject({ operationId: z.uuid(), installationId: z.uuid(), sourceGeneration: GenerationSchema,
@@ -51,34 +57,41 @@ const JournalBase = { schemaVersion: z.literal(2), operationId: z.uuid(), instal
 const JournalSchema = z.discriminatedUnion("phase", [
   z.strictObject({ schemaVersion: z.literal(1), phase: z.literal("adopting"), installationId: z.uuid() }),
   z.strictObject({ ...JournalBase, phase: z.literal("preparing") }),
-  z.strictObject({ ...JournalBase, phase: z.literal("staged"), evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("fenced"), evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("retaining"), evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("retained"), evidence: StageEvidenceSchema }),
-  z.strictObject({ ...JournalBase, phase: z.literal("switched"), evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("prepared"), preparation: PreparationEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("staged"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("fenced"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("retaining"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("retained"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
+  z.strictObject({ ...JournalBase, phase: z.literal("switched"), preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema }),
 ]);
 const CompletionReceiptSchema = z.strictObject({ ...JournalBase, fromGeneration: GenerationSchema, toGeneration: GenerationSchema,
-  evidence: StageEvidenceSchema, completedAt: z.string().datetime() });
+  preparation: PreparationEvidenceSchema, evidence: StageEvidenceSchema, completedAt: z.string().datetime() });
 export type RuntimePair = z.infer<typeof PairSchema>;
 export type RuntimeLocator = z.infer<typeof LocatorSchema>;
 export type RelocationPlanBinding = z.infer<typeof PlanBindingSchema>;
+export type VerifiedRelocationPreparation = z.infer<typeof PreparationEvidenceSchema>;
 export type VerifiedRelocationEvidence = z.infer<typeof StageEvidenceSchema>;
 export type RelocationCompletionReceipt = z.infer<typeof CompletionReceiptSchema>;
 export type RelocationInventory = Readonly<{ operationId: string; installationId: string; fromGeneration: number;
   source: RuntimePair; destination: RuntimePair; plan: RelocationPlanBinding;
-  phase: "preparing" | "staged" | "fenced" | "retaining" | "retained" | "switched";
+  phase: "preparing" | "prepared" | "staged" | "fenced" | "retaining" | "retained" | "switched";
+  preparation?: VerifiedRelocationPreparation;
   pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
 export type ExistingAuthorityEvidence = Readonly<{ kind: "verified-existing"; pair: RuntimePair; authorityGeneration: number; databaseIdentity: string }>;
 export type AuthorityVerifier = (pair: RuntimePair) => ExistingAuthorityEvidence;
 export type FreshInitializationWitness = Readonly<{ installationId: string; pair: RuntimePair; assertHeld(): void }>;
 export type FreshInitializer = (witness: FreshInitializationWitness) => void;
 export type RelocationVerifier = (source: RuntimeLocator, destination: RuntimePair, operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationEvidence;
+export type RelocationPreparationVerifier = (source: RuntimeLocator, destination: RuntimePair,
+  operationId: string, plan: RelocationPlanBinding) => VerifiedRelocationPreparation;
 export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator: RuntimeLocator;
   assertHeld(): void; assertFixedProcessLockRoot(workspaceRoot: string, processLockRoot: string): void;
   readRelocationReceipts(): readonly RelocationCompletionReceipt[]; release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   beginRelocation(destination: RuntimePair, plan: RelocationPlanBinding, restore: RestoreAdmissionHandle): string;
   relocationInventory(): RelocationInventory;
+  readPriorReceipts(): readonly RelocationCompletionReceipt[];
+  recordVerifiedPreparation(verify: RelocationPreparationVerifier): void;
   recordVerifiedStage(verify: RelocationVerifier): void;
   fenceRelocationSource(): void;
   retainRelocationSources(): void;
@@ -163,6 +176,28 @@ function relocationRetentions(workspace: string, source: RuntimePair, destinatio
 type RelocationJournal = Exclude<z.infer<typeof JournalSchema>, { phase: "adopting" }>;
 function sameEvidence(left: VerifiedRelocationEvidence, right: VerifiedRelocationEvidence): boolean {
   return canonicalJsonStringify(left) === canonicalJsonStringify(right);
+}
+function samePreparation(left: VerifiedRelocationPreparation, right: VerifiedRelocationPreparation): boolean {
+  return canonicalJsonStringify(left) === canonicalJsonStringify(right);
+}
+function checkPreparationBinding(pending: RelocationJournal | RelocationCompletionReceipt,
+  preparation: VerifiedRelocationPreparation): void {
+  if (preparation.operationId !== pending.operationId || preparation.installationId !== pending.installationId
+    || preparation.sourceGeneration !== pending.fromGeneration || !equalPair(preparation.source, pending.source)
+    || !equalPair(preparation.destination, pending.destination)
+    || canonicalJsonStringify(preparation.plan) !== canonicalJsonStringify(pending.plan)
+    || ![preparation.backupManifestPath, preparation.backupFilePath].every((path) => isAbsolute(path) && resolve(path) === path)
+    || preparation.backupManifestPath === preparation.backupFilePath) fail("relocation preparation binding mismatch");
+}
+function verifyPreparation(pending: RelocationJournal, verify: RelocationPreparationVerifier): VerifiedRelocationPreparation {
+  const raw: unknown = verify(sourceLocator(pending), Object.freeze({ ...pending.destination }), pending.operationId,
+    Object.freeze({ ...pending.plan }));
+  if (typeof raw === "object" && raw !== null && typeof Reflect.get(raw, "then") === "function") {
+    fail("relocation preparation verifier must complete synchronously");
+  }
+  const preparation = PreparationEvidenceSchema.parse(raw);
+  checkPreparationBinding(pending, preparation);
+  return preparation;
 }
 function verifyStage(journal: RelocationJournal, sourceLocator: RuntimeLocator, verify: RelocationVerifier): VerifiedRelocationEvidence {
   const evidence = StageEvidenceSchema.parse(verify(sourceLocator, Object.freeze({ ...journal.destination }), journal.operationId,
@@ -405,6 +440,7 @@ function readReceiptChain(control: string, workspace: string, installationId: st
         receipt.source, receipt.destination, receipt.plan.expectedRevision)) {
       fail("relocation receipt evidence mismatch");
     }
+    checkPreparationBinding(receipt, receipt.preparation);
     const { toGeneration: _toGeneration, completedAt: _completedAt, ...base } = receipt;
     checkRetainedSource(workspace, { ...base, phase: "switched" });
     source = receipt.destination;
@@ -497,7 +533,8 @@ function validateJournal(workspace: string, pending: RelocationJournal, receipts
       pending.source, pending.destination, pending.plan.expectedRevision)) {
     fail("relocation journal binding mismatch");
   }
-  if (pending.phase !== "preparing") {
+  if (pending.phase !== "preparing") checkPreparationBinding(pending, pending.preparation);
+  if (pending.phase !== "preparing" && pending.phase !== "prepared") {
     const evidence = pending.evidence;
     if (evidence.operationId !== pending.operationId || evidence.installationId !== pending.installationId
       || evidence.sourceGeneration !== pending.fromGeneration || !equalPair(evidence.source, pending.source)
@@ -522,7 +559,7 @@ function checkRetainedSource(workspace: string, pending: RelocationJournal): voi
       dataDirectory(retention.source);
       dataDirectory(retention.retained);
       if (retention.strategy === "lock-shell") privateDirectory(fixedLockRoot(workspace));
-      const entries = pending.phase === "preparing" ? [] : pending.evidence.managedStateEntries;
+      const entries = pending.phase === "preparing" || pending.phase === "prepared" ? [] : pending.evidence.managedStateEntries;
       const expectedNames = new Set([MARKER, FENCE, "state.db", ...pending.pinnedEntries]);
       if (retention.strategy === "lock-shell") expectedNames.add("locks");
       if (movedRole(pending, "artifact") && inside(retention.source, pending.source.artifactRoot)) {
@@ -572,7 +609,7 @@ function retainWholeRoot(pending: RelocationJournal, row: z.infer<typeof Retenti
 function retainEntryShell(workspace: string, pending: RelocationJournal, row: z.infer<typeof RetentionSchema>): void {
   preflightRoot(row.source);
   preflightRoot(row.retained);
-  const entries = pending.phase === "preparing" ? [] : pending.evidence.managedStateEntries;
+  const entries = pending.phase === "preparing" || pending.phase === "prepared" ? [] : pending.evidence.managedStateEntries;
   dataDirectory(row.source);
   if (row.strategy === "lock-shell") privateDirectory(fixedLockRoot(workspace));
   checkMarker(row.source, pending.installationId, workspace, "state", pending.sourceEpochs.state);
@@ -813,7 +850,9 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   }
   function attestStage(pending: RelocationJournal, verify: RelocationVerifier): VerifiedRelocationEvidence {
     const evidence = verifyStage(pending, sourceLocator(pending), verify);
-    if (pending.phase !== "preparing" && !sameEvidence(pending.evidence, evidence)) fail("verified stage changed");
+    if (pending.phase !== "prepared" && pending.phase !== "preparing" && !sameEvidence(pending.evidence, evidence)) {
+      fail("verified stage changed");
+    }
     return evidence;
   }
   const exclusive: ExclusiveInstallationLease = Object.freeze({
@@ -858,15 +897,41 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
       return Object.freeze({ operationId: pending.operationId, installationId: pending.installationId,
         fromGeneration: pending.fromGeneration, source: Object.freeze({ ...pending.source }),
         destination: Object.freeze({ ...pending.destination }), plan: Object.freeze({ ...pending.plan }), phase: pending.phase,
+        ...(pending.phase === "preparing" ? {} : { preparation: Object.freeze({ ...pending.preparation }) }),
         pinnedEntries: Object.freeze([...pending.pinnedEntries]),
         retentions: Object.freeze(pending.retentions.map((row) => Object.freeze({ ...row }))) });
+    },
+    readPriorReceipts() {
+      const pending = journal();
+      assertOperation(pending);
+      const receipts = readReceiptChain(control, workspace, pending.installationId);
+      const pendingOwnReceipt = receipts.length === pending.fromGeneration + 1
+        && pending.phase === "switched" && receipts.at(-1)?.operationId === pending.operationId;
+      if (receipts.length !== pending.fromGeneration && !pendingOwnReceipt) fail("prior relocation receipt chain mismatch");
+      const source = receipts.at(pending.fromGeneration - 1)?.destination ?? {
+        stateRoot: resolve(workspace, rebuildRuntimeIsolation.stateRoot),
+        artifactRoot: resolve(workspace, rebuildRuntimeIsolation.artifactRoot),
+      };
+      const sourceEpochs = receipts.at(pending.fromGeneration - 1)?.destinationEpochs ?? { state: 0, artifact: 0 };
+      if (!equalPair(source, pending.source) || !equalEpochs(sourceEpochs, pending.sourceEpochs)) {
+        fail("prior relocation receipt source mismatch");
+      }
+      return Object.freeze(receipts.slice(0, pending.fromGeneration));
+    },
+    recordVerifiedPreparation(verify) {
+      const pending = journal();
+      assertOperation(pending);
+      const preparation = verifyPreparation(pending, verify);
+      if (pending.phase === "preparing") {
+        writeJournal(control, { ...pending, phase: "prepared", preparation });
+      } else if (!samePreparation(pending.preparation, preparation)) fail("verified preparation changed");
     },
     recordVerifiedStage(verify) {
       const pending = journal();
       assertOperation(pending);
-      if (pending.phase !== "preparing" && pending.phase !== "staged") fail("relocation is not preparing");
+      if (pending.phase !== "prepared" && pending.phase !== "staged") fail("verified preparation required before staging");
       const evidence = attestStage(pending, verify);
-      if (pending.phase === "preparing") {
+      if (pending.phase === "prepared") {
         verifyManagedEntries(pending, evidence);
         for (const role of ["state", "artifact"] as const) {
           if (movedRole(pending, role)) checkMarker(pending.destination[`${role}Root`], pending.installationId,

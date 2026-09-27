@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease,
   type ExclusiveInstallationLease, type FreshInitializationWitness, type RelocationCompletionReceipt, type RelocationInventory,
-  type RelocationPlanBinding, type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
+  type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
@@ -60,8 +60,10 @@ type AdmissionAuthority = Readonly<{
 export type RuntimeRelocationOperation = Readonly<{
   operationId: string;
   inventory(): RelocationInventory;
+  readPriorReceipts(): readonly RelocationCompletionReceipt[];
   destinationAdmission(): RuntimeAdmission;
   sourceVerificationAdmission(): RuntimeAdmission;
+  recordVerifiedPreparation(verify: RelocationPreparationVerifier): void;
   recordVerifiedStage(verify: RelocationVerifier): void;
   fenceRelocationSource(): void;
   retainRelocationSources(): void;
@@ -258,6 +260,7 @@ export class RuntimeAdmission {
       scope === "relocation-destination" ? [join(pair.stateRoot, rebuildRuntimeIsolation.archiveDatabaseFile)] : [],
       scope, "exclusive");
     return Object.freeze({ operationId, inventory,
+      readPriorReceipts: () => { inventory(); return lease.readPriorReceipts(); },
       destinationAdmission: () => child(inventory().destination, "relocation-destination"),
       sourceVerificationAdmission: () => {
         const current = inventory();
@@ -275,6 +278,7 @@ export class RuntimeAdmission {
         return child({ stateRoot, artifactRoot }, "relocation-source-verification");
       },
       recordVerifiedStage: (verify: RelocationVerifier) => { inventory(); lease.recordVerifiedStage(verify); },
+      recordVerifiedPreparation: (verify: RelocationPreparationVerifier) => { inventory(); lease.recordVerifiedPreparation(verify); },
       fenceRelocationSource: () => { inventory(); lease.fenceRelocationSource(); },
       retainRelocationSources: () => { inventory(); lease.retainRelocationSources(); },
       switchRelocationLocator: (verify: RelocationVerifier) => { inventory(); return lease.switchRelocationLocator(verify); },

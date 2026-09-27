@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { acquireInstallation, type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
-  type VerifiedRelocationEvidence } from "../../../src/infra/runtime-control/installation.js";
+  type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../src/infra/runtime-control/installation.js";
 import { acquireRuntimeRestoreAdmission, type RestoreAdmissionHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
@@ -67,6 +67,18 @@ function prepareDestination(lease: ExclusiveInstallationLease, destination: Runt
 }
 function staged(lease: ExclusiveInstallationLease, destination: RuntimePair, operationId: string,
   plan: RelocationPlanBinding): () => VerifiedRelocationEvidence {
+  if (lease.relocationInventory().phase === "preparing") {
+    const preparation: VerifiedRelocationPreparation = { operationId, installationId: lease.locator.installationId,
+      sourceGeneration: lease.locator.generation, source: { stateRoot: lease.locator.stateRoot,
+        artifactRoot: lease.locator.artifactRoot }, destination, plan,
+      sourceDatabaseIdentity: "e".repeat(64), sourceSchemaVersion: 55, sourceAuthorityGeneration: 0,
+      sourceAuthorityContentFingerprint: "f".repeat(64), backupReceiptId: "synthetic-preupgrade-backup",
+      backupManifestPath: join(lease.locator.stateRoot, "backups", "authority", "preupgrade.manifest.json"),
+      backupManifestSha256: "1".repeat(64),
+      backupFilePath: join(lease.locator.stateRoot, "backups", "authority", "preupgrade.sqlite"),
+      backupFileSha256: "2".repeat(64) };
+    lease.recordVerifiedPreparation(() => preparation);
+  }
   const inventory = lease.relocationInventory();
   const pinned = new Set(inventory.pinnedEntries);
   const entryShell = inventory.retentions.find((row) => row.role === "state" && row.strategy !== "whole-root");
@@ -89,6 +101,7 @@ function settledMove(workspace: string, destination: RuntimePair): { operationId
   try {
     const plan = relocationPlan(lease, destination);
     const operationId = lease.beginRelocation(destination, plan, held);
+    expect(lease.readPriorReceipts()).toHaveLength(lease.locator.generation);
     prepareDestination(lease, destination);
     const verify = staged(lease, destination, operationId, plan);
     lease.recordVerifiedStage(verify);
@@ -175,6 +188,7 @@ it("binds destination and retained source capabilities to one live relocation op
   synthetic.release();
   const operation = admission.beginRelocation(destination, plan, held);
   expect(operation.inventory()).toMatchObject({ operationId: operation.operationId, source: pair, destination, plan, phase: "preparing" });
+  expect(operation.readPriorReceipts()).toHaveLength(0);
   const child = operation.destinationAdmission();
   expect(child.stateRoot).toBe(destination.stateRoot);
   expect(child.artifactRoot).toBe(destination.artifactRoot);
@@ -185,7 +199,16 @@ it("binds destination and retained source capabilities to one live relocation op
   expect(() => child.assertAuthorityDatabase(":memory:")).toThrow(/outside admission/u);
   expect(() => child.assertArchiveDatabase(":memory:")).toThrow(/outside admission/u);
   expect(() => child.assertAuthorityDatabase(join(pair.stateRoot, "state.db"))).toThrow(/outside admission/u);
+  expect(() => operation.recordVerifiedStage(() => { throw new Error("stage verifier must not run"); }))
+    .toThrow(/verified preparation required/u);
   const verify = staged(lease, destination, operation.operationId, plan);
+  const preparation = operation.inventory().preparation;
+  expect(preparation).toMatchObject({ sourceSchemaVersion: 55, backupManifestSha256: "1".repeat(64),
+    backupFileSha256: "2".repeat(64) });
+  if (preparation === undefined) throw new Error("preparation missing");
+  operation.recordVerifiedPreparation(() => preparation);
+  expect(() => operation.recordVerifiedPreparation(() => ({ ...preparation,
+    backupManifestSha256: "3".repeat(64) }))).toThrow(/verified preparation changed/u);
   operation.recordVerifiedStage(verify);
   operation.fenceRelocationSource();
   operation.retainRelocationSources();
@@ -199,6 +222,7 @@ it("binds destination and retained source capabilities to one live relocation op
   expect(() => source.assertArchiveDatabase(join(source.stateRoot, "archive.sqlite"), "read-only")).toThrow(/cannot open/u);
   held.release();
   expect(() => operation.inventory()).toThrow(/restore-admission|restore admission|ENOENT/u);
+  expect(() => operation.readPriorReceipts()).toThrow(/restore-admission|restore admission|ENOENT/u);
   expect(() => child.assertLive()).toThrow(/restore-admission|restore admission|ENOENT/u);
   expect(() => source.assertLive()).toThrow(/restore-admission|restore admission|ENOENT/u);
   admission.release();
@@ -214,12 +238,19 @@ it("recovers only the exact operation through a fresh held fixed restore lease",
   const held = restore(workspace);
   const destination = { stateRoot: join(workspace, "new-state"), artifactRoot: join(workspace, "new-artifacts") };
   const operation = admission.beginRelocation(destination, relocationPlan(lease, destination), held);
+  staged(lease, destination, operation.operationId, operation.inventory().plan);
+  const originalPreparation = operation.inventory().preparation;
+  if (originalPreparation === undefined) throw new Error("preparation missing");
   const binding = { installationId: lease.locator.installationId, fromGeneration: lease.locator.generation, operationId: operation.operationId };
   admission.release(); held.release();
   const resumedHeld = restore(workspace);
   expect(() => acquireRecoveryRuntimeRelocation(workspace, { ...binding, operationId: randomUUID() }, resumedHeld)).toThrow(/recovery|operation/u);
   const recovered = acquireRecoveryRuntimeRelocation(workspace, binding, resumedHeld);
   expect(recovered.operation.inventory().destination).toEqual(destination);
+  expect(recovered.operation.inventory().preparation).toEqual(originalPreparation);
+  recovered.operation.recordVerifiedPreparation(() => originalPreparation);
+  expect(() => recovered.operation.recordVerifiedPreparation(() => ({ ...originalPreparation,
+    backupFileSha256: "4".repeat(64) }))).toThrow(/verified preparation changed/u);
   const child = recovered.operation.destinationAdmission();
   recovered.admission.release();
   expect(() => child.assertLive()).toThrow(/released admission/u);
