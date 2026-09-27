@@ -6,6 +6,7 @@ import {
   formatRuntimeVersion,
   planRuntimeVersionTransition,
   RuntimeVersionStateSchema,
+  RuntimeVersionTransitionSchema,
 } from "../../src/domain/archive/runtime-version.js";
 
 const current = RuntimeVersionStateSchema.parse({
@@ -21,6 +22,10 @@ describe("operator-managed runtime versions", () => {
   it("advances only selected workflows and leaves the dashboard unchanged", () => {
     const first = planRuntimeVersionTransition(current, { kind: "workflows", workflowIds: ["separations", "intake"] });
     assert.equal(first.kind, "minor");
+    assert.ok(Object.isFrozen(first));
+    assert.ok(Object.isFrozen(first.affectedWorkflowIds));
+    assert.equal(RuntimeVersionTransitionSchema.safeParse({ ...first, unexpected: true }).success, false);
+    assert.equal(RuntimeVersionTransitionSchema.safeParse({ ...first, affectedWorkflowIds: [""] }).success, false);
     assert.equal(formatRuntimeVersion(first.after.dashboard), "1.0");
     assert.deepEqual(first.after.workflows.map(({ version }) => formatRuntimeVersion(version)), ["1.1", "1.1", "1.0"]);
     const second = planRuntimeVersionTransition(first.after, { kind: "workflows", workflowIds: ["separations"] });

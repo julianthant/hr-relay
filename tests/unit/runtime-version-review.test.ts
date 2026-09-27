@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
 import { planRuntimeVersionTransition } from "../../src/domain/archive/runtime-version.js";
-import { reviewRuntimeVersionTransition } from "../../src/domain/archive/runtime-version-review.js";
+import { reviewRuntimeVersionTransition, RuntimeVersionReviewSchema } from "../../src/domain/archive/runtime-version-review.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
@@ -30,6 +30,13 @@ describe("runtime version review", () => {
     assert.deepEqual(review.candidates.map(row => row.runId), [terminal.envelope.runId]);
     assert.deepEqual(review.blockers.map(row => row.runId), [queued.envelope.runId]);
     assert.equal(review.membershipDigest.length, 64);
+    assert.ok(Object.isFrozen(review));
+    assert.ok(Object.isFrozen(review.members));
+    assert.ok(Object.isFrozen(review.candidates));
+    assert.ok(Object.isFrozen(review.blockers));
+    assert.equal(RuntimeVersionReviewSchema.safeParse({ ...review, unexpected: true }).success, false);
+    assert.equal(RuntimeVersionReviewSchema.safeParse({ ...review, membershipDigest: "not-a-digest" }).success, false);
+    assert.equal(RuntimeVersionReviewSchema.safeParse({ ...review, members: [{ ...review.members[0], unexpected: true }] }).success, false);
   });
 
   it("uses explicit baseline adoption and rejects missing or conflicting attribution", () => {

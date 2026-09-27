@@ -194,7 +194,8 @@ export type StoredConfig = z.infer<typeof StoredConfigSchema>;
 
 /** Execute an authenticated old snapshot with its retired route fields removed. */
 export function executionConfigFromStored(config: StoredConfig): z.output<typeof ConfigSchema> {
-  const { capture: _capture, operator: _operator, ...retained } = config as StoredConfig & { capture?: unknown; operator?: unknown };
+  const withoutCapture = "capture" in config ? (({ capture: _capture, ...rest }) => rest)(config) : config;
+  const retained = "operator" in withoutCapture ? (({ operator: _operator, ...rest }) => rest)(withoutCapture) : withoutCapture;
   const urls = Object.fromEntries(Object.entries(retained.urls).map(([system, endpoints]) => [
     system, { prod: endpoints.prod },
   ]));
