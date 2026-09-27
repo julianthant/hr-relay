@@ -275,6 +275,16 @@ truncated export. A browser export capacity bound must be explicit and refuse be
 file; it must never silently truncate matching runs. This candidate bounds workflow export at
 5,000 reports and 50 MB, with narrowing filters offered when that bound is exceeded.
 
+#### Shared surface frame refinement — 2026-09-26
+
+Archive, Explorer and Activity occupy the Dashboard's full available content width with the
+shared shell inset. Their headings use the same rounded, subtly bordered bar and their bodies
+retain cohesive framed surfaces. Actions and internal layouts adapt to each selected design;
+the supplied Archive heading is a style reference, not an exact control-layout requirement.
+Centered page-width caps are superseded for these three surfaces. Reading measures may constrain
+individual prose blocks without narrowing the overall surface. The operator requested regenerated
+interactive designs for review before implementation finalization.
+
 ### D275 — standing conventions
 
 1. Restore the two documented catalog toolbar entries and retain deep links; B hides navigation, C deletes it. This supersedes the prior corrective statement that no buttons exist: that was as-built, not the future contract. **Amended by D295 (2026-09-01): the `UI catalog` entry is deleted along with the takeover it opened, and the catalog is reached from `Settings -> Help`. Deep links are retained on both — the catalog's are now `?settings=ui-catalog`, with `?catalog=`/`?catalogView=` subordinate to it (§9.5.3). SUPERSEDED IN FULL by D296 (2026-09-01): `Workflow explorer` is deleted too, on the same rule — the Explorer is a Top Bar view-switcher segment, so the button was a second door onto a takeover that already has one. Every deep link still stands; the objection this item was written against was navigation that leads NOWHERE.**
