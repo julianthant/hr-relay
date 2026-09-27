@@ -1895,6 +1895,10 @@ content fingerprint, and existing operation/plan binding. Recovery re-verifies t
 it never selects the latest backup. A strict read-only inspector may recover the typed binding for
 an explicitly named pending operation under held fixed restore admission, without relaxing normal
 startup's refusal of an unfinished journal.
+New destination ownership uses a schema-2 marker bound to that exact operation. Matching installation
+and root epoch alone does not authorize resuming over existing copied content. Preparation may claim
+only an empty destination or resume an exact operation-owned destination; later switched phases must
+not reset its marker to the old source epoch. Existing schema-1 source markers remain readable.
 
 ### D351 — Revisioned provider-key file and exact pending recovery · 2026-09-26
 
