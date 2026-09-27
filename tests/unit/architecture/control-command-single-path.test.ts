@@ -144,6 +144,7 @@ const EXPECTED_ACTIVE = {
     "exclude-intake-row", "validate-intake", "enqueue-intake-manifest",
   ],
   settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
+  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   // D179 (2i-G): the D80 archive model activated — plan, apply, relaunch.
   // D308: the Archive's delete door.
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
@@ -153,7 +154,7 @@ const EXPECTED_ACTIVE = {
 const EXPECTED_DEFERRED = {
   intake: [],
   settings: [],
-  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
+  "storage-relocation": [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -380,7 +381,7 @@ describe("control-command-single-path", () => {
         assert.equal(result.state, "rejected", key);
         assert.equal(harness.database.getMeta().authorityGeneration, generationBefore, key);
         assert.equal(harness.database.authority.commands.get(request.commandId), undefined, key);
-      } else if (DEFERRED_KEYS.has(key)) {
+      } else if (DEFERRED_KEYS.has(key) || request.family === "storage-relocation") {
         assert.equal(result.state, "rejected", key);
         if (result.state !== "rejected") continue;
         assert.equal(result.code, "capability-unavailable", key);

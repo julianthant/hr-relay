@@ -332,7 +332,8 @@ export function createProductionDryRunScenarioRuntime(
         const persistedSettings = database.withAuthorityTransaction((repositories) =>
           readSettings(repositories));
         input.afterSettingsRead?.();
-        const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, input.clock);
+        const resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, input.clock,
+          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot });
         database.withAuthorityTransaction(repositories => {
           withCurrentSettings(repositories, { revision: persistedSettings.revision, settingsFingerprint: persistedSettings.settingsFingerprint }, () => requireCurrentSettings(persistedSettings, repositories));
           repositories.runtimeConfig.requireActive({ settingsRevision: persistedSettings.revision, settingsFingerprint: persistedSettings.settingsFingerprint, configFingerprint: resolved.fingerprint });

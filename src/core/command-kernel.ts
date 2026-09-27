@@ -161,6 +161,7 @@ const PHASE1_ACTIVE = {
     "enqueue-intake-manifest",
   ],
   settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
+  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   // D179 (2i-G): the D80 archive model — plan, apply, relaunch.
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   explorer: ["apply-explorer-edit"],
@@ -169,7 +170,7 @@ const PHASE1_ACTIVE = {
 const PHASE1_DEFERRED = {
   intake: [],
   settings: [],
-  "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
+  "storage-relocation": [],
   "version-archive": [],
   run: [],
   notification: [],
@@ -3132,6 +3133,13 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   const executeSync = (request: CommandRequest, parentCommandId?: string): CommandResult => {
       if (parentCommandId !== undefined && request.family !== "run") throw new Error("command-group children must be run commands");
       if (request.family === "settings") return executeSettingsCommand(dependencies, request);
+      if (request.family === "storage-relocation") {
+        if (dependencies.storageRelocationPlans === undefined) return CommandResultSchema.parse({
+          state: "rejected", commandId: request.commandId, code: "capability-unavailable",
+          message: "storage relocation plan reader is unavailable",
+        });
+        return executeStorageRelocationCommand(dependencies, request);
+      }
       if (DEFERRED_ARM_KEYS.has(`${request.family}/${request.type}`)) {
         // Computed purely: no journal row, no audit row, no generation advance.
         return CommandResultSchema.parse({

@@ -105,6 +105,7 @@ import {
 } from "./worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../core/run-record-service.js";
 import { createRuntimeVersionChanges } from "../../core/archive-runtime-version-changes.js";
+import { createStorageRelocationPlanReader } from "../../core/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../core/write-recovery.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -502,6 +503,7 @@ async function composeDashboardRuntimeStartup(
   const admission = requireRuntimeAdmission(input.admission);
   const stateRoot = admission.stateRoot;
   const artifactRoot = admission.artifactRoot;
+  const runtimeStoragePair = Object.freeze({ stateRoot, artifactRoot });
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
@@ -580,12 +582,14 @@ async function composeDashboardRuntimeStartup(
     });
     return Object.freeze({
       persistedSettings,
-      resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock),
+      resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock, runtimeStoragePair),
     });
   })();
   const { persistedSettings, resolved } = bootConfig;
+  const storageRelocationPlans = createStorageRelocationPlanReader({ authority: database, admission, workspace: repoRoot });
   const settingsBoundary = composeSettings({ database, hostFacts, clock, active: activeSettingsRuntimeIdentity,
-    environment: env, credentials: protectedSettingsAuthority, providerKeys: providerKeysAuthority, providerBoot });
+    environment: env, credentials: protectedSettingsAuthority, providerKeys: providerKeysAuthority, providerBoot,
+    runtimeStoragePair, storageRelocationPlans });
 
   const now = clock.now().toISOString();
   const configSnapshotId = ids.uuid();
@@ -848,6 +852,7 @@ async function composeDashboardRuntimeStartup(
     // from a spreadsheet and one born from the run surface are comparable.
     configIdentity: { configFingerprint: resolved.fingerprint, configSnapshotId },
     settings: settingsBoundary.executor,
+    storageRelocationPlans,
     archiveSnapshots,
     runtimeVersionChanges,
     explorerEdits: explorerBoundary.executor,

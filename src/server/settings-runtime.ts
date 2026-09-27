@@ -5,7 +5,7 @@ import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import type { HostConfigFacts } from "../domain/config/host-display.js";
 import type { CredentialStore } from "../domain/config/credential-store.js";
-import { resolveConfigWithProvenance } from "../domain/config/resolve.js";
+import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../domain/config/resolve.js";
 import {
   SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH,
   initialSettingsFileRecord, settingsRuntimeIdentity,
@@ -85,6 +85,7 @@ export function createSettingsRuntimeReader(input: Readonly<{
   database: CommandAuthority;
   hostFacts: HostConfigFacts;
   clock: Clock;
+  runtimeStoragePair?: AdmittedRuntimeStoragePair;
   active: SettingsRuntimeIdentity | ((repositories: AuthorityRepositories) => SettingsRuntimeIdentity);
 }>): Readonly<{ read(): SettingsRuntimeSnapshot }> {
   return Object.freeze({
@@ -96,7 +97,7 @@ export function createSettingsRuntimeReader(input: Readonly<{
         configFingerprint: active.configFingerprint,
       });
       const record = readSettings(repositories);
-      const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock);
+      const resolved = resolveConfigWithProvenance(record.settings, input.hostFacts, input.clock, input.runtimeStoragePair);
       const persisted = settingsRuntimeIdentity(record, resolved.fingerprint);
       const runtimeStatus = SettingsRuntimeStatusSchema.parse(
         canonicalJsonStringify(persisted) === canonicalJsonStringify(active)

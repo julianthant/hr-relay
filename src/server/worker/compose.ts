@@ -496,7 +496,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     pruneEventStreams({ stateRoot, clock, streams: ["notes"] });
     const persistedSettings = database.withAuthorityTransaction((repositories) =>
       readSettings(repositories));
-    resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock);
+    resolved = resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock,
+      { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot });
 
     const settingsExpectation = Object.freeze({
       revision: persistedSettings.revision,
@@ -769,7 +770,8 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         }) }),
         providers: baselineResources.providers,
         resourcesForRun: resources.forRun,
-        idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock).config.daemon.idleRepollMs,
+        idleCadence: () => resolveConfigWithProvenance(readSettings(database.authority).settings,hostFacts,clock,
+          { stateRoot: admission.stateRoot, artifactRoot: admission.artifactRoot }).config.daemon.idleRepollMs,
         artifacts,
         writeSequencerFor: (sessions, taskDeadlineMs) => createWriteSequencer({
           stores: taskStoreRegistry,

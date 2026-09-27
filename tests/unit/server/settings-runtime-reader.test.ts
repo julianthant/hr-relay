@@ -58,6 +58,25 @@ function fixture(probe: () => void = () => {}) {
 }
 
 describe("SQLite Settings reader snapshot", () => {
+  it("resolves the active physical pair without changing the saved ordinary revision", () => {
+    const f = fixture();
+    const prior = f.database.withAuthorityTransaction(activeSettingsConfig);
+    const pair = { stateRoot: join(f.root, "moved-state"), artifactRoot: join(f.root, "moved-artifacts") };
+    const resolved = resolveConfigWithProvenance(f.initial.settings, hostConfigFacts({}), f.clock, pair);
+    f.database.withAuthorityTransaction((repositories) => {
+      const configSnapshotId = randomUUID();
+      repositories.configSnapshots.insert({ configSnapshotId, revision: 1, fingerprint: resolved.fingerprint,
+        capturedAt: f.clock.now().toISOString(), capturedBy: "local-operator", config: resolved.config, provenance: resolved.provenance });
+      repositories.runtimeConfig.activate({ settingsRevision: f.initial.revision, settingsFingerprint: f.initial.settingsFingerprint,
+        configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: f.clock.now().toISOString() });
+    });
+    const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock,
+      runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
+    assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
+    assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
+    assert.deepEqual(f.database.withAuthorityTransaction(activeSettingsConfig).paths, { ...prior.paths, ...pair });
+    assert.notDeepEqual(prior.paths, pair);
+  });
   it("builds a current editor with exactly one authoritative read and no file authority", () => {
     const f = fixture();
     for (let count = 0; count < 2; count += 1) {

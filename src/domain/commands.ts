@@ -305,7 +305,8 @@ export function storageRelocationDesiredDigest(
 
 export function storageRelocationRequestFingerprint(request: StorageRelocationCommandRequest): string {
   const { requestFingerprint: _fingerprint, ...payload } = request.payload;
-  return sha256Hex(`hrauto:storage-relocation-command:v1\0${canonicalJsonStringify({ ...request, payload })}`);
+  const { requestedAt: _requestedAt, requestedBy: _requestedBy, source: _source, ...intent } = request;
+  return sha256Hex(`hrauto:storage-relocation-command:v1\0${canonicalJsonStringify({ ...intent, payload })}`);
 }
 
 export const ProtectedSettingsCommandRequestSchema = z.strictObject({
