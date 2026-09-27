@@ -3,8 +3,9 @@
 **Selected dashboard presentations — operator-approved, 2026-09-26:** Archive uses workflow
 folders and complete saved reports with JSON/typed CSV run and workflow exports. Explorer uses a
 source-derived branching timeline with nested delegation and explicit rejoin semantics. Activity
-uses the operating-report layout while keeping date-range totals/exports authoritative; workflow
-focus filters only the separately labeled breakdown. These amend presentation at their existing
+uses the operating-report layout while keeping range-wide totals/exports authoritative. Its
+breakdown shows all workflows without a focus selector; the compact heading holds period/export
+controls, with a requested HeroUI custom date/time range design. These amend presentation at their existing
 owners, not workflow execution or durable version policy. The follow-up requires full Dashboard
 width and a shared heading/body frame; revised designs return for review before finalization. Archive groups include
 the current version when it holds archived runs, with the current-version indicator in the heading.

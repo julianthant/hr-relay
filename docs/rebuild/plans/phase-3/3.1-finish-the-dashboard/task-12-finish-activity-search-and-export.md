@@ -472,9 +472,14 @@ evidence directory. This amendment does not authorize integration, push or unrel
 The operator selected Activity A and approved implementation with a Sol worker. It groups the
 served date-range report into outcomes, outstanding work and a per-workflow breakdown, preserving
 all authoritative counts, unknowns, duration semantics, caveats and export snapshot identity.
-A workflow focus control belongs within the breakdown and affects only that section. Headline
-totals and exports remain explicitly date-range-wide; this presentation does not invent a
-workflow-scoped summary/export authority or derive totals from partial client rows. Confirmed
+The breakdown shows all workflows without a workflow focus control, per the subsequent design
+review. Numeric headers and values align right, and ordinary counts remain plain text. Headline
+totals and exports remain explicitly range-wide; this presentation does not invent a
+workflow-scoped summary/export authority or derive totals from partial client rows. The compact
+heading holds period/date selection and export actions. The requested Custom range design reuses
+the existing HeroUI calendar and includes date/time selection with Apply and Cancel. Precise-time
+report and export support requires extending the current day-range wire during implementation;
+the prototype must not imply that unchanged fixture totals were recomputed for a custom interval. Confirmed
 write-ledger counts retain their separately named authority. The approved visual direction permits
 attributable updates to affected Activity references without assertion or membership weakening.
 
