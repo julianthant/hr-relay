@@ -11,6 +11,9 @@ import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
 import { GeneratedArtifactSchema } from "../../../src/domain/generated-artifact.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
 import { insertGeneratedArtifact } from "../../../src/infra/sqlite/generated-artifacts.js";
+import { insertImportedArtifact } from "../../../src/infra/sqlite/imported-artifacts.js";
+import { importedArtifact } from "../../../src/domain/intake/imported-artifact.js";
+import { IntakeSessionSchema } from "../../../src/domain/intake/session.js";
 import { verifyBackupManifestAtPath } from "../../../src/infra/sqlite/backup-service.js";
 import { copyRelocationFile, inspectRelocationFiles, prepareRelocationDirectories,
   verifyRelocationFileCopies, verifyRelocationLiveReferences } from "../../../src/server/storage/relocation-inventory.js";
@@ -163,6 +166,28 @@ it("refuses a generated artifact whose verified SQLite reference has no bytes", 
         createdAt: "2026-09-26T12:00:00.000Z" });
       const raw = new DatabaseSync(path);
       try { insertGeneratedArtifact(raw, record); } finally { raw.close(); }
+      assert.throws(() => verifyRelocationLiveReferences({ admission, source }), /ENOENT|no such file/u);
+    } finally { admission.release(); }
+  } finally { rmSync(workspace, { recursive: true, force: true }); }
+});
+
+it("refuses a durable intake session whose source artifact is missing", () => {
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-intake-reference-")));
+  const source = { stateRoot: join(workspace, "source"), artifactRoot: join(workspace, "source", "artifacts") };
+  try {
+    mkdirSync(source.artifactRoot, { recursive: true, mode: 0o700 });
+    const admission = RuntimeAdmission.syntheticRoots(source.stateRoot, source.artifactRoot);
+    try {
+      const path = join(source.stateRoot, "state.db");
+      AuthorityDatabase.open(admission, { path, busyTimeoutMs: 250, migrationOwner: "relocation-intake-test" }).close();
+      const session = IntakeSessionSchema.parse({ intakeSessionId: randomUUID(), actorId: "local-operator",
+        workflow: "person-lookup", artifact: { id: randomUUID(), sha256: "b".repeat(64), bytes: 5,
+          mediaType: "text/csv" }, sheet: "default", headerRowIndex: null, bindings: [], constants: [],
+        corrections: [], exclusions: [], state: "mapping", validation: { state: "none" },
+        reservedManifestId: randomUUID(), version: 1, createdAt: "2026-09-26T12:00:00.000Z",
+        updatedAt: "2026-09-26T12:00:00.000Z" });
+      const raw = new DatabaseSync(path);
+      try { insertImportedArtifact(raw, importedArtifact(JSON.stringify(session), null)); } finally { raw.close(); }
       assert.throws(() => verifyRelocationLiveReferences({ admission, source }), /ENOENT|no such file/u);
     } finally { admission.release(); }
   } finally { rmSync(workspace, { recursive: true, force: true }); }

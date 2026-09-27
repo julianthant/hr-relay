@@ -13,12 +13,34 @@ import {
 
 import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
 import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { parseRelocationCommand } from "../../src/server/storage/relocate.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");
 const syntheticAdmission = () => RuntimeAdmission.syntheticFixture(":memory:", "authority");
 
 describe("secure environment bootstrap", () => {
+  it("parses only exact offline relocation selectors", () => {
+    assert.deepEqual(parseRelocationCommand(["--status", "--json"]), { kind: "status", json: true });
+    assert.throws(() => parseRelocationCommand(["--status", "extra"]), /storage-relocation-usage/u);
+    assert.throws(() => parseRelocationCommand(["--resume", "latest"]), /storage-relocation-usage/u);
+  });
+
+  it("shows the exact pending recovery operation without normal or provider admission", async () => {
+    const operationId = "11111111-1111-4111-8111-111111111111";
+    const output: string[] = [];
+    const originalWrite = process.stdout.write.bind(process.stdout);
+    process.stdout.write = (value: string) => { output.push(value); return true; };
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "storage", "relocate", "--status"], {
+        acquireAdmission: () => { throw new Error("status must not acquire normal installation admission"); },
+        assertEnvironment: () => { throw new Error("status must not read provider environment"); },
+        inspectRelocationStatus: () => ({ operationId, phase: "fenced", fromGeneration: 0 }),
+        runRelocation: () => { throw new Error("status must not resume operation"); },
+      });
+      assert.deepEqual(output, [`storage relocate: fenced operation ${operationId}; run storage relocate --resume ${operationId}\n`]);
+    } finally { process.stdout.write = originalWrite; }
+  });
   it("resolves the admitted environment file from the bootstrap module when CWD changes", () => {
     const originalDirectory = process.cwd();
     const unrelatedDirectory = mkdtempSync(join(tmpdir(), "hrauto-bootstrap-cwd-"));

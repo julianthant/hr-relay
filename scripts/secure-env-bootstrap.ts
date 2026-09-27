@@ -5,6 +5,7 @@ import {
 } from "../src/domain/secrets.js";
 import { publishProviderBootProvenance } from "../src/domain/config/provider-boot-provenance.js";
 import { acquireEntrypointAdmission } from "../src/infra/runtime-control/bootstrap-admission.js";
+import { inspectPendingRelocationStatus } from "../src/infra/runtime-control/installation.js";
 import type { RuntimeAdmission } from "../src/infra/runtime-control/admission.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
@@ -17,6 +18,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
   readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
+  readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
 }
 
 /** The one production `.env.providers`, anchored to this bootstrap rather than the caller's CWD. */
@@ -43,6 +45,14 @@ export async function runSecureEnvironmentBootstrap(
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "relocate") {
     const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/server/storage/relocate.js");
     const command = parseRelocationCommand(entrypointArgs.slice(2));
+    if (command.kind === "status") {
+      const pending = (dependencies.inspectRelocationStatus ?? inspectPendingRelocationStatus)(workspace);
+      process.stdout.write(command.json ? `${JSON.stringify(pending === undefined
+        ? { state: "settled" } : { state: "pending", ...pending })}\n`
+        : pending === undefined ? "storage relocate: no pending operation\n"
+          : `storage relocate: ${pending.phase} operation ${pending.operationId}; run storage relocate --resume ${pending.operationId}\n`);
+      return;
+    }
     const admission = command.kind === "plan"
       ? (dependencies.acquireAdmission ?? ((requested) => acquireEntrypointAdmission(workspace, requested)))("exclusive")
       : undefined;
