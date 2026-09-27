@@ -103,7 +103,7 @@ export class RuntimeAdmission {
   }
   assertExclusive(): void {
     this.assertLive();
-    if (this.#mode !== "exclusive") throw new Error("runtime-admission: exclusive offline admission required");
+    if (this.#mode !== "exclusive" && this.#mode !== "synthetic") throw new Error("runtime-admission: exclusive offline admission required");
   }
   assertWritable(): void {
     this.assertLive();
@@ -151,7 +151,7 @@ export class RuntimeAdmission {
 
   stoppedStagedAuthority(path: string): RuntimeAdmission {
     this.assertExclusive();
-    if (this.#scope !== "installation" || dirname(resolve(path)) !== this.#stateRoot
+    if ((this.#scope !== "installation" && this.#scope !== "synthetic") || dirname(resolve(path)) !== this.#stateRoot
       || !/^\.restore-[0-9a-f-]{36}\.sqlite\.tmp$/u.test(resolve(path).slice(this.#stateRoot.length + 1))) {
       throw new Error("runtime-admission: staged authority path is not an owned restore copy");
     }

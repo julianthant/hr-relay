@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { mkdtempSync, rmSync } from "node:fs";
+import { mkdtempSync, realpathSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
@@ -13,18 +13,20 @@ import {
 } from "../../../src/domain/commands.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { acquireInstallation } from "../../../src/infra/runtime-control/installation.js";
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 function fixture() {
-  const workspace = mkdtempSync(join(tmpdir(), "relocation-plan-"));
+  const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-plan-")));
   cleanups.push(() => rmSync(workspace, { recursive: true, force: true }));
   const pair = { stateRoot: join(workspace, ".tracker"), artifactRoot: join(workspace, ".tracker", "artifacts") };
   const adoption = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); adoption.release();
   const lease = acquireInstallation(workspace, "shared"); cleanups.push(() => lease.release());
+  const admission = RuntimeAdmission.fromInstallationLease(lease);
   const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));
-  const database = AuthorityDatabase.open({ path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
+  const database = AuthorityDatabase.open(admission, { path: join(pair.stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" }, clock);
   cleanups.push(() => database.close());
   const producer = createStorageRelocationPlanReader({ authority: database, installation: lease, workspace });
   const execute = (value: unknown) => executeStorageRelocationCommand({ authority: database, clock,
@@ -136,7 +138,7 @@ it("refuses incomplete and divergent immutable history, including locator identi
   const orphan = plan(f, 0);
   f.database.withAuthorityTransaction((repositories) => { repositories.commands.insert(orphan); });
   expect(() => f.producer.read()).toThrow(/missing command audit/u);
-  const anotherLease = { locator: { ...f.lease.locator, generation: 1 }, release: () => undefined };
+  const anotherLease = { mode: "shared" as const, locator: { ...f.lease.locator, generation: 1 }, assertHeld: () => undefined, release: () => undefined };
   const drifted = createStorageRelocationPlanReader({ authority: f.database, installation: anotherLease,
     workspace: f.workspace });
   expect(() => drifted.read()).toThrow(/installation or source pair drift/u);

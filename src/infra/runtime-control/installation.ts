@@ -25,7 +25,7 @@ export type ExistingAuthorityEvidence = Readonly<{ kind: "verified-existing"; pa
 export type AuthorityVerifier = (pair: RuntimePair) => ExistingAuthorityEvidence;
 export type VerifiedRelocationEvidence = Readonly<{ installationId: string; sourceGeneration: number; destination: RuntimePair; backupReceiptId: string; stagingReceiptId: string }>;
 export type RelocationVerifier = (source: RuntimeLocator, destination: RuntimePair) => VerifiedRelocationEvidence;
-export type InstallationLease = Readonly<{ locator: RuntimeLocator; assertHeld(): void; release(): void }>;
+export type InstallationLease = Readonly<{ mode: "shared" | "exclusive"; locator: RuntimeLocator; assertHeld(): void; release(): void }>;
 export type ExclusiveInstallationLease = InstallationLease & Readonly<{
   beginRelocation(destination: RuntimePair): void;
   fenceRelocationSource(verify: RelocationVerifier): void;
@@ -277,6 +277,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (record.admissionId !== admissionId || record.pid !== process.pid || !isLive(record)) fail("installation lease identity changed");
   }
   const shared = {
+    mode,
     locator: publicLocator,
     assertHeld,
     release() {
