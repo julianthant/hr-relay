@@ -178,7 +178,7 @@ describe("which section a link opens (D274 item 5)", () => {
   });
 
   it("says so when there is nothing at all to open", () => {
-    assert.equal(resolveSettingsSection([{ heading: "Status", entries: [] }], "").state, "empty");
+    assert.equal(resolveSettingsSection([{ id: "status", heading: "Status", entries: [] }], "").state, "empty");
   });
 });
 
