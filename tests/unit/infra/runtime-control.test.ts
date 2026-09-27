@@ -36,6 +36,23 @@ it("does not silently re-adopt defaults after control is lost", () => {
   expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair })).toThrow(/existing ownership witness without locator/u);
 });
 
+it("refuses a retained default-source fence after control and owner markers are lost", () => {
+  const { workspace, pair } = fixture();
+  const first = acquireInstallation(workspace, "exclusive", { defaultPair: pair }); first.release();
+  writeFileSync(join(pair.stateRoot, "state.db"), "valid synthetic authority");
+  writeFileSync(join(pair.stateRoot, ".runtime-source-fence.json"), "synthetic retained fence", { mode: 0o600 });
+  rmSync(join(workspace, ".runtime-control"), { recursive: true });
+  unlinkSync(join(pair.stateRoot, ".runtime-owner.json"));
+  unlinkSync(join(pair.artifactRoot, ".runtime-owner.json"));
+  let verifierCalled = false;
+  expect(() => acquireInstallation(workspace, "exclusive", { defaultPair: pair, verifyExisting: (candidate) => {
+    verifierCalled = true;
+    return { kind: "verified-existing", pair: candidate, authorityGeneration: 0, databaseIdentity: "synthetic-database" };
+  } })).toThrow(/retained source fence without locator/u);
+  expect(verifierCalled).toBe(false);
+  expect(existsSync(join(workspace, ".runtime-control", "installation.json"))).toBe(false);
+});
+
 it("requires typed validation for existing defaults and refuses interrupted adoption", () => {
   const { workspace, pair } = fixture();
   mkdirSync(pair.stateRoot, { mode: 0o700 });

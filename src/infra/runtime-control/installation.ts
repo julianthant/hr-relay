@@ -118,6 +118,12 @@ function ensureRoot(path: string): void {
   dataDirectory(path);
 }
 function markerPath(root: string): string { return join(root, MARKER); }
+function assertNoDefaultWitness(pair: RuntimePair): void {
+  for (const root of [pair.stateRoot, pair.artifactRoot]) {
+    if (lstatMaybe(markerPath(root))) fail("existing ownership witness without locator");
+    if (lstatMaybe(join(root, FENCE))) fail("retained source fence without locator");
+  }
+}
 function checkMarker(root: string, installationId: string, workspace: string, role: "state" | "artifact", generation: number): void {
   preflightRoot(root);
   dataDirectory(root);
@@ -218,14 +224,14 @@ function adopt(control: string, workspace: string, defaultPair: RuntimePair, ver
   assertKnownDefaults(workspace, pair);
   preflightPair(pair);
   if (existsSync(join(control, "installation.json")) || existsSync(join(control, "locator.json")) || existsSync(join(control, "journal.json"))) fail("incomplete adoption; offline recovery required");
-  if (lstatMaybe(markerPath(pair.stateRoot)) || lstatMaybe(markerPath(pair.artifactRoot))) fail("existing ownership witness without locator");
+  assertNoDefaultWitness(pair);
   if (!defaultEmpty(pair)) {
     if (!verifier) fail("existing authority requires verifier");
     const evidence = verifier(Object.freeze({ ...pair }));
     if (evidence.kind !== "verified-existing" || evidence.pair.stateRoot !== pair.stateRoot || evidence.pair.artifactRoot !== pair.artifactRoot || !Number.isSafeInteger(evidence.authorityGeneration) || evidence.authorityGeneration < 0 || !evidence.databaseIdentity) fail("invalid authority evidence");
   }
   preflightPair(pair);
-  if (lstatMaybe(markerPath(pair.stateRoot)) || lstatMaybe(markerPath(pair.artifactRoot))) fail("existing ownership witness without locator");
+  assertNoDefaultWitness(pair);
   const installationId = randomUUID();
   atomicJson(join(control, "installation.json"), { schemaVersion: 1, installationId, workspace });
   atomicJson(join(control, "journal.json"), { schemaVersion: 1, phase: "adopting", installationId });
@@ -245,6 +251,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     if (mode !== "exclusive" || !options?.defaultPair) fail("installation locator missing");
     assertKnownDefaults(workspace, options.defaultPair);
     preflightPair(options.defaultPair);
+    assertNoDefaultWitness(options.defaultPair);
     mkdirSync(control, { mode: 0o700 }); syncDir(workspace);
     mkdirSync(join(control, "leases"), { mode: 0o700 }); syncDir(control);
   }
