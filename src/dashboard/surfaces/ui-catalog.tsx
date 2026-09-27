@@ -54,11 +54,12 @@ function FactChips({ label, children }: { label?: string; children: React.ReactN
 }
 
 function screenGroupLabel(system: UiCatalogEntry["system"], label: string): string {
-  const trimmed = label.toLowerCase().startsWith(system.toLowerCase())
-    ? label.slice(system.length).replace(/^[\s:·-]+/u, "")
-    : label;
+  const displayName = SYSTEM_HOST_PRESENTATION[system].name;
+  const rawPrefix = new RegExp(`^${system.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?=[\\s:·-]|$)`, "iu");
+  const displayPrefix = new RegExp(`^${displayName.replace(/[.*+?^${}()|[\]\\]/gu, "\\$&")}(?=[\\s:·-]|$)`, "iu");
+  const trimmed = label.replace(rawPrefix, "").replace(displayPrefix, "").replace(/^[\s:·-]+/u, "");
   const readable = trimmed || label;
-  return `${SYSTEM_HOST_PRESENTATION[system].name} · ${readable.charAt(0).toUpperCase()}${readable.slice(1)}`;
+  return `${displayName} · ${readable.charAt(0).toUpperCase()}${readable.slice(1)}`;
 }
 
 /** Each option exposes the full raw id while its visible title stays readable. */

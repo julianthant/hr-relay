@@ -453,6 +453,8 @@
   --ds-w-body-catalog-label: 103.5px;
   --ds-h-body-catalog-search: 36px;
   --ds-h-body-catalog-min: 499.5px;
+  --ds-h-settings-nav-row: 36px;
+  --ds-lh-settings-sidebar-title: 28px;
   --ds-space-body-catalog-record: 22.5px;
   --ds-space-body-catalog-option-gap: 5.4px;
   --ds-space-body-catalog-search-gap: 9px;
@@ -1584,6 +1586,12 @@ body[data-demo-theme="light"] {
   align-items: center;
   gap: var(--ds-space-snug);
   min-width: 0;
+}
+
+.ds-secret-remove {
+  width: var(--ds-h-md);
+  height: var(--ds-h-md);
+  padding: 0;
 }
 
 .ds-secret-input {

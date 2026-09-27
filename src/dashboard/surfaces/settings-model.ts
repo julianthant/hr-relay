@@ -97,6 +97,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
+  readonly id: "personal" | "status" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -170,7 +171,7 @@ export function buildSettingsNav(
     ...(editor?.sections.filter(section => !EDITOR_SECTIONS.has(section.id) && !FOLDED_EDITOR_SECTIONS.has(section.id))
       .map(section => servedEntry(section.id, section.label)) ?? []),
   ];
-  groups.push({ heading: "Settings", entries });
+  groups.push({ id: "personal", heading: "Personal", entries });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
     statusEntries.push(servedEntry(section.id, section.label));
@@ -179,8 +180,9 @@ export function buildSettingsNav(
   if (!statusEntries.some(entry => entry.id === SETTINGS_PREFLIGHT_SECTION_ID)) {
     statusEntries.unshift({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
-  groups.push({ heading: "Status", entries: statusEntries });
+  groups.push({ id: "status", heading: "Status", entries: statusEntries });
   groups.push({
+    id: "help",
     heading: "Help",
     entries: [
       { id: SETTINGS_KEYBOARD_SECTION_ID, label: "Keyboard", icon: "keyboard", source: "client" },

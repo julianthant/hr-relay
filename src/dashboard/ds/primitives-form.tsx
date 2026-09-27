@@ -331,6 +331,7 @@ export const SecretField = forwardRef<HTMLInputElement, SecretFieldProps>(functi
           disabled={effectiveDisabled || props.readOnly}
           variant="danger-outline"
           size="sm"
+          className="ds-secret-remove"
           icon={<Trash2 aria-hidden className={dsIcon.sm} />}
           onClick={onRemove}
         />

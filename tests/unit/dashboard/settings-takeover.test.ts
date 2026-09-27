@@ -126,30 +126,30 @@ describe("the settings route (D272 item 1)", () => {
 describe("the settings page's nav (D274 item 5)", () => {
   it("puts every served section under Status and always offers both Help entries", () => {
     const groups = buildSettingsNav([STORAGE]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Status", "Help"]);
-    assert.deepEqual(groups[0]?.entries.map((entry) => entry.id), ["storage", "preflight"]);
-    assert.equal(groups[0]?.entries[0]?.source, "served");
-    assert.equal(groups[0]?.entries[1]?.source, "client");
+    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Status", "Help"]);
+    assert.deepEqual(groups[1]?.entries.map((entry) => entry.id), ["storage", "preflight"]);
+    assert.equal(groups[1]?.entries[0]?.source, "served");
+    assert.equal(groups[1]?.entries[1]?.source, "client");
     assert.deepEqual(
-      groups[1]?.entries.map((entry) => entry.id),
+      groups[2]?.entries.map((entry) => entry.id),
       [SETTINGS_KEYBOARD_SECTION_ID, SETTINGS_UI_CATALOG_SECTION_ID],
     );
     // Neither is a SERVED section: `settingsSections` lists the keyboard legend
     // nowhere (a fact about THIS bundle's bindings) and lists the catalog
     // nowhere either (D295 — the catalog is not a setting; it is reference
     // material the operator looks up, and its data comes from its own route).
-    assert.deepEqual(groups[1]?.entries.map((entry) => entry.source), ["client", "client"]);
+    assert.deepEqual(groups[2]?.entries.map((entry) => entry.source), ["client", "client"]);
   });
 
   it("keeps Preflight available when no status section is served", () => {
     const groups = buildSettingsNav([]);
-    assert.deepEqual(groups.map((group) => group.heading), ["Status", "Help"]);
-    assert.deepEqual(groups[0]?.entries.map((entry) => entry.id), ["preflight"]);
+    assert.deepEqual(groups.map((group) => group.heading), ["Personal", "Status", "Help"]);
+    assert.deepEqual(groups[1]?.entries.map((entry) => entry.id), ["preflight"]);
   });
 
   it("gives a served section this build cannot render its own glyph", () => {
     const groups = buildSettingsNav([STORAGE, section("budgets", "Budgets")]);
-    assert.deepEqual(groups[0]?.entries.map((entry) => entry.icon), ["storage", "preflight", "unrendered"]);
+    assert.deepEqual(groups[1]?.entries.map((entry) => entry.icon), ["storage", "preflight", "unrendered"]);
   });
 });
 
@@ -159,7 +159,7 @@ describe("which section a link opens (D274 item 5)", () => {
   it("opens the first entry on the empty value", () => {
     const resolved = resolveSettingsSection(groups, "");
     assert.equal(resolved.state, "open");
-    assert.equal(resolved.state === "open" ? resolved.entry.id : undefined, "storage");
+    assert.equal(resolved.state === "open" ? resolved.entry.id : undefined, "general");
   });
 
   it("opens the named entry — this is the Help → Keyboard destination", () => {

@@ -78,7 +78,7 @@ describe("canonical Settings navigation", () => {
 
   it("serves the approved 11 pages under the three shared groups", () => {
     assert.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Settings", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
       ["Status", ["storage", "preflight", "workflow-capabilities"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
@@ -88,7 +88,7 @@ describe("canonical Settings navigation", () => {
   it("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav(servedStatusSections);
     assert.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Settings", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
       ["Status", ["storage", "preflight", "workflow-capabilities"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
