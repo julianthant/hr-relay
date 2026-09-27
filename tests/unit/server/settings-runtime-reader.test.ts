@@ -10,8 +10,8 @@ import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../src/d
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, settingsRuntimeIdentity, type SettingsFileRecord, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsReadbackSchema } from "../../../src/domain/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../src/domain/commands.js";
-import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { executeSettingsCommand, type CommandAuthority } from "../../../src/core/command-kernel.js";
 import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";

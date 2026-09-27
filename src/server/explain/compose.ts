@@ -19,6 +19,7 @@ import { systemClock, type Clock } from "../../domain/clock.js";
 import { descriptorRuntimeNodes } from "../../base/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../domain/ids.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { createTrustRunReader } from "../trust/canonical-reader.js";
 import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from "../trust/run-reader.js";
 import { createReceiptService } from "../trust/receipt-service.js";
@@ -29,6 +30,7 @@ import {
 } from "./explain-run.js";
 
 export interface ExplainComposeInput {
+  readonly admission?: RuntimeAdmission;
   readonly isolation: RuntimeIsolation;
   readonly args: readonly string[];
   readonly repoRoot?: string;
@@ -38,6 +40,7 @@ export interface ExplainComposeInput {
 const SUBJECT_HELP = "usage: cli explain run <traceId|runId> [--json] [--bundle <dir>]";
 
 export function composeExplainRuntime(input: ExplainComposeInput): string {
+  const admission = requireRuntimeAdmission(input.admission);
   const [subject, identity, ...flags] = input.args;
   if (subject !== "run") {
     throw new Error(
@@ -65,9 +68,9 @@ export function composeExplainRuntime(input: ExplainComposeInput): string {
   }
 
   const clock = input.clock ?? systemClock;
-  const repoRoot = input.repoRoot ?? process.cwd();
-  const stateRoot = join(repoRoot, input.isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   const database = AuthorityDatabase.open(
+    admission,
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-explain" },
     clock,
   );

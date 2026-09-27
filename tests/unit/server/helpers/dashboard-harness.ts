@@ -1,4 +1,4 @@
-import { AuthorityDatabase } from "../../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/events/timeline.js";
 import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/infra/sqlite/timeline-repository.js";

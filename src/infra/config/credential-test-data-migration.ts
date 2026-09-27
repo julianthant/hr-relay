@@ -31,6 +31,7 @@ import {
 } from "./credential-store.js";
 
 export interface CredentialTestDataMigrationInput {
+  readonly admission: import("../runtime-control/admission.js").RuntimeAdmission;
   readonly stateRoot: string;
   readonly localPath: string;
   readonly mode: "plan" | "apply";
@@ -81,7 +82,7 @@ function readDestination(localPath: string): Readonly<{ outcome?: TestDataLocalR
 export async function migrateTestDataFromCredentials(
   input: CredentialTestDataMigrationInput,
 ): Promise<CredentialTestDataMigrationReport> {
-  const store = input.store ?? createCredentialStore({ stateRoot: input.stateRoot, ...(input.ids === undefined ? {} : { ids: input.ids }) });
+  const store = input.store ?? createCredentialStore({ admission: input.admission, stateRoot: input.stateRoot, ...(input.ids === undefined ? {} : { ids: input.ids }) });
   const ids = input.ids ?? { randomUUID };
   const now = input.now ?? (() => systemClock.now());
   const destinationPath = { path: TEST_DATA_LOCAL_CONFIG_PATH } as const;

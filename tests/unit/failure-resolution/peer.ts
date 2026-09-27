@@ -1,5 +1,5 @@
 /** Disposable independent-process writer used only by D's concurrency/refresh proofs. */
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FailureResolutionCommandSchema } from "../../../src/domain/commands.js";
 import { resolutionKernel } from "./fixtures.js";

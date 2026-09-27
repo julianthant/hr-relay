@@ -6,6 +6,7 @@ import { selectRunRuntime } from "../../core/run-settings.js";
 import { createRunResourcesFactory } from "./run-resources.js";
 import { bindFailureCapture } from "../../core/failure-resolution.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
@@ -207,6 +208,7 @@ export function parseWorkerArguments(args: readonly string[], scenarioStepProofI
 }
 
 export interface WorkerComposeInput {
+  readonly admission?: RuntimeAdmission;
   readonly preflightRunnerFactory?: RuntimePreflightRunnerFactory;
   readonly isolation: RuntimeIsolation;
   /** Raw CLI args after `worker` — see `parseWorkerArguments`. */
@@ -398,6 +400,7 @@ function startWorkerMaintenance(input: Readonly<{
 }
 
 export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<WorkerLoopReport> {
+  const admission = requireRuntimeAdmission(input.admission);
   const { workflowId, poolIndex, drain } = parseWorkerArguments(
     input.args, input.scenarioStepProofModule?.descriptor.id,
   );
@@ -428,10 +431,10 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
   const hostFacts = hostConfigFacts(env);
-  const stateRoot = join(repoRoot, input.isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   mkdirSync(stateRoot, { recursive: true });
   const taskNotes = createNoteJsonlWriter({ stateRoot, clock });
-  const protectedAuthority = createCredentialStore({ stateRoot });
+  const protectedAuthority = createCredentialStore({ admission, stateRoot });
   /**
    * D181: the `workers` role lock, taken before the database opens. The
    * authority worker LEASE is the richer fence and stays the one that decides
@@ -453,8 +456,9 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   let runtimeError: unknown;
   let runtimeReport: WorkerLoopReport | undefined;
   try {
+    admission.assertAuthorityDatabase(join(stateRoot, "state.db"));
     database = (input.openDatabase ?? ((options, openClock) =>
-      AuthorityDatabase.open(options, openClock)))(
+      AuthorityDatabase.open(admission, options, openClock)))(
       { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-worker" },
       clock,
     );
@@ -483,7 +487,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
     ports: input.gateSourcePorts ?? [],
     clock,
   });
-  const runtimePreflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ admission, database, clock, repoRoot, isolation: input.isolation,
     descriptors: { resolve: resolveDescriptor }, descriptorSetHash: descriptor.contractFingerprint,
     protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
@@ -541,8 +545,7 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
   // D162 (ref data-intake-and-edit-data §4.11): ctx.artifacts' writer, shared with the OCR adapter's
   // page reads. The artifact root is the isolation-pinned literal.
   const artifacts = createContentAddressedArtifactWriter({
-    workspaceRoot: repoRoot,
-    artifactRoot: input.isolation.artifactRoot,
+    admission,
   });
   // The root initializes at construction; a worker never runs a task before it exists.
   await artifacts.ready;

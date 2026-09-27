@@ -14,7 +14,7 @@ import { ManualScheduler, happySessionHarness, EXECUTOR_WORKER_ID, recordingTime
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { chromium } from "playwright";
-import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { createRunResourcesFactory } from "../../../src/server/worker/run-resources.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";

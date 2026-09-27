@@ -20,7 +20,7 @@ import {
   AuthorityBackupService,
   AuthorityDatabase,
   summarizeBackupHealth,
-} from "../../src/infra/sqlite/index.js";
+} from "../helpers/synthetic-storage-admission.js";
 import { NOW, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 

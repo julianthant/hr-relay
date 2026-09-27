@@ -10,7 +10,7 @@ import {
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
 } from "../../../src/domain/dashboard/search.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";

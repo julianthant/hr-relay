@@ -9,7 +9,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { storageTree, credentialTrap } from "./helpers/storage-recovery-fixture.js";
 // Immutable v29 fixture facts; no file importer or recovery algorithm remains here.
 import { EditableSettingsOverrideSchema } from "../../src/domain/config/settings-v29-schema.js";

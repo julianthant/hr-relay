@@ -25,7 +25,7 @@ import {
   planDiagnosticRetention,
   planDiagnosticSweep,
 } from "../../src/domain/trust/diagnostic-capture.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   createDiagnosticCaptureService,
   type DiagnosticCaptureService,

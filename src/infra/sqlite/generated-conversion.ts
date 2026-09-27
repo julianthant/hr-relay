@@ -146,7 +146,9 @@ export function convertGeneratedArtifacts(database:DatabaseSync,manifest:Generat
  }
 }
 
-export function readGeneratedSourcesAtPath(path:string,stateRoot:string,backup:GeneratedSourceBackup,selected?:string):GeneratedSourceManifest {
+export function readGeneratedSourcesAtPath(admission:import("../runtime-control/admission.js").RuntimeAdmission,path:string,stateRoot:string,backup:GeneratedSourceBackup,selected?:string):GeneratedSourceManifest {
+ admission.assertReadOnlyAuthorityDatabase(path);
+ admission.assertStateRoot(stateRoot);
  const source=new DatabaseSync(path,{readOnly:true});
  try{return readGeneratedSources(source,stateRoot,backup,selected);}finally{source.close();}
 }

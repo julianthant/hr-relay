@@ -32,7 +32,7 @@ import {
   CredentialStoreCommitUncertainError,
   createCredentialStore,
   type CredentialStoreHooks,
-} from "../../../src/infra/config/credential-store.js";
+} from "../../helpers/synthetic-storage-admission.js";
 import { observeProcessIdentity } from "../../../src/infra/sqlite/runtime-process-locks.js";
 
 const COMMAND_1 = "11111111-1111-4111-8111-111111111111";
@@ -75,10 +75,9 @@ function fixture(hooks?: CredentialStoreHooks) {
 function crashAfterCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
-    "src",
-    "infra",
-    "config",
-    "credential-store.ts",
+    "tests",
+    "helpers",
+    "synthetic-storage-admission.ts",
   )).href;
   return spawnSync(process.execPath, [
     "--import",
@@ -96,10 +95,9 @@ function crashAfterCredentialRename(stateRoot: string, input: ProtectedSettingsA
 function crashBeforeCredentialRename(stateRoot: string, input: ProtectedSettingsApplyInput) {
   const moduleUrl = pathToFileURL(join(
     process.cwd(),
-    "src",
-    "infra",
-    "config",
-    "credential-store.ts",
+    "tests",
+    "helpers",
+    "synthetic-storage-admission.ts",
   )).href;
   return spawnSync(process.execPath, [
     "--import",
@@ -445,10 +443,9 @@ describe("D336 independent credential store", () => {
     const linkedTracker = join(root, "linked-tracker");
     mkdirSync(physicalTracker, { mode: 0o700 });
     symlinkSync(physicalTracker, linkedTracker);
-    const linkedStore = createCredentialStore({ stateRoot: linkedTracker });
     assert.throws(
-      () => linkedStore.read(),
-      /credential path ancestry contains a symbolic link/u,
+      () => createCredentialStore({ stateRoot: linkedTracker }),
+      /unsafe synthetic fixture ancestor/u,
     );
     assert.equal(existsSync(join(physicalTracker, "credentials")), false);
   });
@@ -625,7 +622,7 @@ describe("D336 independent credential store", () => {
     const f = fixture();
     const upgradeId = "a".repeat(64);
     const entries = { ucpathPassword: { set: PRIVATE_VALUE_1 } };
-    const moduleUrl = pathToFileURL(join(process.cwd(), "src/infra/config/credential-store.ts")).href;
+    const moduleUrl = pathToFileURL(join(process.cwd(), "tests/helpers/synthetic-storage-admission.ts")).href;
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval",
       `import { createCredentialStore } from ${JSON.stringify(moduleUrl)};
        createCredentialStore({ stateRoot: ${JSON.stringify(f.tracker)},

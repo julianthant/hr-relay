@@ -6,7 +6,7 @@ import { RunRecordService, CreateRunRequestSchema } from "../../../src/core/run-
 import { manualClock } from "../../../src/domain/clock.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/domain/config/runtime-generation.js";
 import { CommandIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 
 const data = z.strictObject({
   path: z.string(), now: z.iso.datetime(), runId: RunIdSchema,

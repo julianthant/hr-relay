@@ -31,7 +31,7 @@ import {
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { probeVerdictSchema } from "../../../src/domain/write-safety.js";
 import { taskStoreRegistry } from "../../../src/stores/index.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";
 import { ManualScheduler, recordingLogger } from "../../helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";

@@ -47,7 +47,7 @@ import {
 } from "../../src/domain/ui/kuali-separation-finalization.js";
 import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "./synthetic-storage-admission.js";
 import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,

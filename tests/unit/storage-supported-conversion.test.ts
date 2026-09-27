@@ -5,11 +5,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { storageRecoveryFixture, storageTree, credentialTrap } from "./helpers/storage-recovery-fixture.js";
-import { upgradeStorage } from "../../src/server/storage/upgrade.js";
-import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
-import { readLatestDatabaseUpgrade } from "../../src/infra/sqlite/stopped-database-conversion.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { readLatestDatabaseUpgrade } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
 
 describe("supported stopped database recovery after settings import expiry", () => {

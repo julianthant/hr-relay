@@ -15,7 +15,7 @@ import {
   deriveNotificationDedupeFingerprint,
   projectNotificationTrigger,
 } from "../../src/domain/notification-triggers.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { createDashboardStreamHub } from "../../src/server/dashboard/subscriptions/dashboard-stream.js";
 import { createBackfillGapNotifier } from "../../src/services/notifications/backfill-gap.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";

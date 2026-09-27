@@ -40,7 +40,7 @@ import { deriveItemId } from "../../src/domain/identifiers.js";
 import { ItemIdSchema } from "../../src/domain/ids.js";
 import { detectColumns, headerFingerprint } from "../../src/domain/intake/mapping.js";
 import { IntakeSessionSchema } from "../../src/domain/intake/session.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { deriveIntakeParse } from "../../src/server/intake/intake-parser.js";
 import {
   CONFIG_SNAPSHOT,

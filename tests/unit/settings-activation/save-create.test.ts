@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { selectActiveRunSettings } from "../../../src/core/run-settings.js";
 import { requireLifecycleApplied } from "../../../src/core/run-record-service.js";

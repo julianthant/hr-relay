@@ -5,7 +5,7 @@ import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATT
 import { reconstructConfirmedOperation } from "../../../src/events/confirmed-operation.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { spawnSync } from "node:child_process";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { randomUUID } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync, symlinkSync } from "node:fs";

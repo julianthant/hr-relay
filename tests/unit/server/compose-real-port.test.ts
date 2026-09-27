@@ -53,7 +53,7 @@ import {
   ExplorerEditApplyRequestSchema,
   ExplorerWorkflowOverrideSchema,
 } from "../../../src/domain/dashboard/explorer.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import {
   RuntimeProcessLockFileSchema,

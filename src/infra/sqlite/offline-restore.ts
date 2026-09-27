@@ -19,6 +19,7 @@ import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
 import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 import {
   verifyBackupBytesAtPath,
@@ -204,6 +205,7 @@ function cleanupStagedPaths(
 }
 
 export class OfflineAuthorityRestoreService {
+  readonly #runtimeAdmission: RuntimeAdmission;
   #authorityPath: string;
   #suspectDirectory: string;
   #busyTimeoutMs: number;
@@ -215,6 +217,7 @@ export class OfflineAuthorityRestoreService {
   #admissionFactory: OfflineRestoreAdmissionFactory;
 
   constructor(
+    runtimeAdmissionInput: RuntimeAdmission,
     input: unknown,
     projectionRebuild: (stagedAuthorityPath: string) => Promise<void>,
     clock: Clock = systemClock,
@@ -222,6 +225,10 @@ export class OfflineAuthorityRestoreService {
     admissionFactory: OfflineRestoreAdmissionFactory = acquireRuntimeRestoreAdmission,
   ) {
     const options = OfflineRestoreOptionsSchema.parse(input);
+    this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmissionInput);
+    this.#runtimeAdmission.assertExclusive();
+    this.#runtimeAdmission.assertAuthorityDatabase(resolve(options.authorityPath));
+    this.#runtimeAdmission.assertStateRoot(resolve(options.suspectDirectory));
     this.#authorityPath = resolve(options.authorityPath);
     this.#suspectDirectory = resolve(options.suspectDirectory);
     this.#busyTimeoutMs = options.busyTimeoutMs;
@@ -237,13 +244,14 @@ export class OfflineAuthorityRestoreService {
   }
 
   async restore(input: unknown): Promise<OfflineRestoreReport> {
+    this.#runtimeAdmission.assertExclusive();
     const request = OfflineRestoreRequestSchema.parse(input);
     const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(this.#authorityPath);
     if (!existsSync(this.#authorityPath) || statSync(this.#authorityPath).size === 0) {
       throw new Error(`suspect authority database ${this.#authorityPath} is missing or empty`);
     }
 
-    const verified = await verifyBackupManifestAtPath(request.manifestPath, sourceDatabaseIdentity);
+    const verified = await verifyBackupManifestAtPath(this.#runtimeAdmission,request.manifestPath, sourceDatabaseIdentity);
   requireSupportedRecoverySchema(verified.manifest.schemaVersion);
     const restoreAdmission = this.#admissionFactory({
       processLockRoot: this.#processLockRoot,
@@ -279,6 +287,7 @@ export class OfflineAuthorityRestoreService {
         const stagedPath = join(authorityDirectory, `.restore-${token}.sqlite.tmp`);
         let stagedReport: OfflineRestoreReport | undefined;
         let stagedPrimaryError: Error | undefined;
+        let stagedAdmission: RuntimeAdmission | undefined;
         try {
           copyAndSync(verified.backupPath, stagedPath, this.#fileOperations);
           await verifyBackupBytesAtPath(
@@ -286,7 +295,9 @@ export class OfflineAuthorityRestoreService {
             verified.manifest,
             `staged restore ${basename(stagedPath)}`,
           );
+          stagedAdmission = this.#runtimeAdmission.stoppedStagedAuthority(stagedPath);
           const beforeProjection = inspectAuthorityBackupReadOnly(
+            stagedAdmission,
             stagedPath,
             verified.manifest.schemaVersion,
             this.#busyTimeoutMs,
@@ -304,6 +315,7 @@ export class OfflineAuthorityRestoreService {
           if (verified.manifest.schemaVersion === CURRENT_AUTHORITY_SCHEMA_VERSION) {
             await this.#projectionRebuild(stagedPath);
             afterProjection = inspectAuthorityBackupReadOnly(
+              stagedAdmission,
               stagedPath,
               verified.manifest.schemaVersion,
               this.#busyTimeoutMs,
@@ -440,6 +452,7 @@ export class OfflineAuthorityRestoreService {
         } catch (error) {
           stagedPrimaryError = normalizeError(error, "offline authority restore failed");
         }
+        stagedAdmission?.release();
         const cleanupFailures = cleanupStagedPaths(
           [stagedPath, `${stagedPath}-wal`, `${stagedPath}-shm`],
           this.#fileOperations,

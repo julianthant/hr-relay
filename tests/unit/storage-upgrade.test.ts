@@ -4,7 +4,7 @@ import { readAppSettings } from "../../src/infra/sqlite/settings-storage.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
-import { readLatestDatabaseUpgrade as readLatestSettingsUpgrade } from "../../src/infra/sqlite/stopped-database-conversion.js";
+import { readLatestDatabaseUpgrade as readLatestSettingsUpgrade } from "../helpers/synthetic-storage-admission.js";
 import { databaseStateTable, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST, RUN_SESSION } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
@@ -29,10 +29,10 @@ import { createHash, randomUUID } from "node:crypto";
 import { GATE_RESULT } from "../fixtures/phase1c-contract-fixtures.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
-import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { backupStoppedAuthority, upgradeStorage, syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
 
 const roots: string[] = [];
@@ -127,7 +127,7 @@ describe("D336 stopped SQLite upgrade", () => {
     await f.backup(); await f.run();
     const before = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "before-activation" }, clock);
     try { assert.equal(before.authority.runtimeConfig.get(), undefined); assert.equal(readSettings(before.authority).revision, 2); } finally { before.close(); }
-    const runtime = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, repoRoot: f.repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
+    const runtime = await composeDashboardRuntime({ admission: syntheticStateRoot(f.root), isolation: rebuildRuntimeIsolation, repoRoot: f.repoRoot, env: {}, clock, backendPortOverride: 0, frontendPortOverride: 0 });
     try {
       const after = AuthorityDatabase.open({ path: f.path, busyTimeoutMs: 500, migrationOwner: "after-activation" }, clock);
       try { assert.equal(after.authority.runtimeConfig.get()?.settingsRevision, 2); assert.equal(readSettings(after.authority).settings.concurrency?.defaultWorkers, 3); } finally { after.close(); }

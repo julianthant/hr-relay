@@ -10,14 +10,14 @@ import { resolveConfigWithProvenance } from "../../../../src/domain/config/resol
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/domain/config/settings.js";
 import { ProviderKeysRetryIntentSchema } from "../../../../src/domain/commands.js";
 import { admitLocalEnvironmentFile } from "../../../../src/domain/secrets.js";
-import { createProviderKeyStore } from "../../../../src/infra/config/provider-key-store.js";
+import { createProviderKeyStore } from "../../../helpers/synthetic-storage-admission.js";
 import type { ProviderKeyStoreHooks } from "../../../../src/infra/config/provider-key-store.js";
 import { createProviderKeyJournal } from "../../../../src/server/dashboard/commands/provider-key-journal.js";
 import { providerCommandFromStore, providerMarkedFingerprint } from "../../../../src/server/dashboard/commands/provider-key-projection.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../../src/domain/config/protected-settings.js";
 import { executeSettingsCommand } from "../../../../src/core/command-kernel.js";
-import { AuthorityDatabase } from "../../../../src/infra/sqlite/index.js";
-import { createCredentialStore } from "../../../../src/infra/config/credential-store.js";
+import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
+import { createCredentialStore } from "../../../helpers/synthetic-storage-admission.js";
 import { activeSettingsRuntimeIdentity, readSettings } from "../../../../src/server/settings-runtime.js";
 import { composeSettings } from "../../../../src/server/dashboard/compose/settings.js";
 import { buildSettingsEditor } from "../../../../src/server/dashboard/queries/settings-editor.js";

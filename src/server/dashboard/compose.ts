@@ -79,7 +79,7 @@ import {
   readdirSync,
   readFileSync,
 } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { openStaticBundle } from "./static-bundle.js";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
@@ -137,6 +137,7 @@ import {
 import { acquireRuntimeProcessLock } from "../../infra/sqlite/runtime-process-locks.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 import { createTransactionHistory } from "../../infra/sqlite/transaction-history.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
@@ -173,6 +174,7 @@ export const DashboardFrontendModeSchema = z.enum(["vite-dev", "built-bundle"]);
 export type DashboardFrontendMode = z.infer<typeof DashboardFrontendModeSchema>;
 
 export interface DashboardComposeInput {
+  readonly admission?: RuntimeAdmission;
   readonly isolation: RuntimeIsolation;
   readonly env?: NodeJS.ProcessEnv;
   readonly clock?: Clock;
@@ -497,8 +499,9 @@ async function composeDashboardRuntimeStartup(
   const clock = input.clock ?? systemClock;
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
-  const stateRoot = join(repoRoot, input.isolation.stateRoot);
-  const artifactRoot = join(repoRoot, input.isolation.artifactRoot);
+  const admission = requireRuntimeAdmission(input.admission);
+  const stateRoot = admission.stateRoot;
+  const artifactRoot = admission.artifactRoot;
   const appVersion = PackageVersionSchema.parse(
     JSON.parse(readFileSync(join(repoRoot, "package.json"), "utf8")),
   ).version;
@@ -545,6 +548,7 @@ async function composeDashboardRuntimeStartup(
     processLock.release();
   });
   const database = AuthorityDatabase.open(
+    admission,
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "rebuild-dashboard" },
     clock,
   );
@@ -554,8 +558,8 @@ async function composeDashboardRuntimeStartup(
     databaseClosed = true;
   });
   database.registerRuntimeVersionWorkflows(DESCRIPTORS.map((descriptor) => descriptor.id));
-  const protectedSettingsAuthority = createCredentialStore({ stateRoot });
-  const providerKeysAuthority = createProviderKeyStore({ envPath: join(repoRoot, ".env.providers"),
+  const protectedSettingsAuthority = createCredentialStore({ admission, stateRoot });
+  const providerKeysAuthority = createProviderKeyStore({ admission, envPath: join(repoRoot, ".env.providers"),
     journal: createProviderKeyJournal(database), markedFingerprint: providerMarkedFingerprint });
   const providerBoot = input.providerBoot === undefined ? providerBootProvenance() : normalizeProviderBootProvenance(input.providerBoot);
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
@@ -647,7 +651,7 @@ async function composeDashboardRuntimeStartup(
     resolve: (workflowId: string) => SERVER_REGISTRY[workflowId]?.descriptor,
   };
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
-  const runtimePreflight = composeRuntimePreflight({ database, clock, repoRoot, isolation: input.isolation,
+  const runtimePreflight = composeRuntimePreflight({ admission, database, clock, repoRoot, isolation: input.isolation,
     descriptors, descriptorSetHash: setHash, protectedSecrets, environment: env,
     ...(input.preflightRunnerFactory === undefined ? {} : { runnerFactory: input.preflightRunnerFactory }) });
   const lifecycle = new RunRecordService({ database, clock, ids,
@@ -658,7 +662,7 @@ async function composeDashboardRuntimeStartup(
     },
   });
   const { backfillGapNotifier, observer: notificationObserver } = createTrustNotifications({
-    database, clock, ids, reader: lifecycle, stateRoot,
+    admission, database, clock, ids, reader: lifecycle, stateRoot,
   });
   startupCleanups.push(() => notificationObserver.stop());
 
@@ -676,8 +680,8 @@ async function composeDashboardRuntimeStartup(
       : { frontendOwnerNonce: env[DASHBOARD_LAUNCH_NONCE_ENV] }),
     clock,
     processLockRoot: join(repoRoot, input.isolation.processLockRoot),
-    authorityHealth: new AuthorityHealthPreflightRunner({
-      stateRootTrustAnchor: repoRoot,
+    authorityHealth: new AuthorityHealthPreflightRunner(admission, {
+      stateRootTrustAnchor: resolve(stateRoot, ".."),
       stateRoot,
       authorityPath: join(stateRoot, "state.db"),
       backupDirectory,
@@ -800,12 +804,10 @@ async function composeDashboardRuntimeStartup(
   // one content-addressed writer, and the parser re-derives rows and columns
   // from those immutable bytes for every intake read.
   const artifacts = createContentAddressedArtifactWriter({
-    workspaceRoot: repoRoot,
-    artifactRoot: input.isolation.artifactRoot,
+    admission,
   });
   const artifactReader = createServerVerifiedArtifactReader({
-    workspaceRoot: repoRoot,
-    artifactRoot: input.isolation.artifactRoot,
+    admission,
   });
   const intakeParser = createIntakeParser({ artifacts });
   const intakeProjections = {
@@ -981,7 +983,7 @@ async function composeDashboardRuntimeStartup(
     startPlans,
     intake,
     ...settingsBoundary.routes,
-    ...composeStorage({ repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
+    ...composeStorage({ admission, repoRoot, stateRoot, backupDirectory, clock, serviceState: () => backupServiceState }),
     ...explorerBoundary.routes,
     activity,
     ...(advisory === undefined ? {} : { advisory }),

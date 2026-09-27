@@ -18,10 +18,10 @@ import {
   deriveRunResultDigest,
   deriveTerminalDependencyDigest,
 } from "../../src/domain/run/result.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import type {
   AuthorityTerminalizationHooks,
-} from "../../src/infra/sqlite/index.js";
+} from "../helpers/synthetic-storage-admission.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import {
   HASH_B,

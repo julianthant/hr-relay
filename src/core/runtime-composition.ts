@@ -386,16 +386,9 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         "the storage command needs its composition seam; start it through src/cli.ts, which registers composeStorageCommand",
       );
     }
-    compose(input.isolation, args.slice(1))
-      .then((outcome) => {
-        write(outcome.output);
-        // A degraded store must not look healthy to a caller that only
-        // checks the exit status.
-        if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
-      })
-      .catch((error: unknown) => {
-        throw error instanceof Error ? error : new Error(String(error));
-      });
+    const outcome = await compose(input.isolation, args.slice(1));
+    write(outcome.output);
+    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   if (command === "test-data") {
@@ -405,14 +398,9 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         "the test-data command needs its composition seam; start it through src/cli.ts, which registers composeTestDataCommand",
       );
     }
-    compose(input.isolation, args.slice(1))
-      .then((outcome) => {
-        write(outcome.output);
-        if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
-      })
-      .catch((error: unknown) => {
-        throw error instanceof Error ? error : new Error(String(error));
-      });
+    const outcome = await compose(input.isolation, args.slice(1));
+    write(outcome.output);
+    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   if (command === "activity-person-pseudonyms") {
@@ -425,19 +413,13 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         "the worker command needs its composition seam; start it through src/cli.ts, which registers composeWorkerRuntime",
       );
     }
-    compose(input.isolation, args.slice(1))
-      .then((finished) => {
-        write(JSON.stringify({
-          workerId: finished.workerId,
-          workflowId: finished.workflowId,
-          stopped: finished.stopped,
-          outcomes: finished.outcomes.map(({ state }) => state),
-        }));
-      })
-      .catch((error: unknown) => {
-        // A worker that failed to run must never look finished.
-        throw error instanceof Error ? error : new Error(String(error));
-      });
+    const finished = await compose(input.isolation, args.slice(1));
+    write(JSON.stringify({
+      workerId: finished.workerId,
+      workflowId: finished.workflowId,
+      stopped: finished.stopped,
+      outcomes: finished.outcomes.map(({ state }) => state),
+    }));
     return;
   }
   if (command === "dry-run-scenario") {
@@ -453,14 +435,9 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
         "the dry-run-scenario command needs its composition seam; start it through src/cli.ts, which registers composeDryRunScenarioCommand",
       );
     }
-    compose(input.isolation, commandArgs)
-      .then((outcome) => {
-        write(outcome.output);
-        if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
-      })
-      .catch((error: unknown) => {
-        throw error instanceof Error ? error : new Error(String(error));
-      });
+    const outcome = await compose(input.isolation, commandArgs);
+    write(outcome.output);
+    if (outcome.exitCode !== 0) process.exitCode = outcome.exitCode;
     return;
   }
   throw new Error(`unknown rebuild command: ${command}`);

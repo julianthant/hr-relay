@@ -1,5 +1,5 @@
 import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
+import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
 import { projectArchiveReport, readArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";

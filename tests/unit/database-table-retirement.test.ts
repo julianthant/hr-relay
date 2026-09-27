@@ -3,7 +3,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY } from "../../src/domain/authority.js";
-import { ArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";
+import { ArchiveDatabase } from "../helpers/synthetic-storage-admission.js";
 import { storageRecoveryFixture } from "./helpers/storage-recovery-fixture.js";
 
 // Operator-approved complete inventory: independent literals detect missing and extra tables.

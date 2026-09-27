@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { createNotificationInbox, type NotificationInbox } from "../../src/services/notifications/inbox.js";
 import {
   backupHealthDiagnosticFingerprint,

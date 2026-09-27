@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import type { ArchiveReport } from "../../../src/domain/archive/report.js";
 import { createRunLifecycleStorage } from "../../../src/infra/sqlite/lifecycle-storage.js";

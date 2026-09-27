@@ -8,20 +8,21 @@ import type { NotificationInbox } from "../../../services/notifications/inbox.js
 import { StorageHealthConcernSchema } from "../../../domain/notification-triggers.js";
 import { listCanonicalRuns } from "../queries/canonical-runs.js";
 import type { RunRecordService } from "../../../core/run-record-service.js";
+import type { RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */
-export async function readNotificationHealth(input: { database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
+export async function readNotificationHealth(input: { admission: RuntimeAdmission; database: AuthorityDatabase; reader: Pick<RunRecordService, "list">; stateRoot: string; clock: Clock }): Promise<NotificationHealthReading> {
   const { stateRoot, clock } = input;
   const filesystem = statfsSync(stateRoot, { bigint: true });
   const wal = join(stateRoot, "state.db-wal");
   let integrityFailed = false;
-  try { AuthorityDatabase.inspectExistingReadOnly(join(stateRoot, "state.db")); } catch { integrityFailed = true; }
+  try { AuthorityDatabase.inspectExistingReadOnly(input.admission, join(stateRoot, "state.db")); } catch { integrityFailed = true; }
   let backupFailed = false;
   const backupRoot = join(stateRoot, "backups", "authority");
   if (existsSync(backupRoot)) {
     for (const file of readdirSync(backupRoot).filter(name => name.endsWith(".manifest.json"))) {
-      try { await verifyBackupManifestAtPath(join(backupRoot, file), AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db"))); }
+      try { await verifyBackupManifestAtPath(input.admission,join(backupRoot, file), AuthorityDatabase.sourceDatabaseIdentity(join(stateRoot, "state.db"))); }
       catch { backupFailed = true; }
     }
   }

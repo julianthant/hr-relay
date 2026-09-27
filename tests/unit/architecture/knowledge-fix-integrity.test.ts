@@ -34,7 +34,7 @@ import {
   auditKnowledgeAdmission,
   triageLesson,
 } from "../../../src/domain/trust/knowledge-projection.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { HASH_A, NOW, UUID_1, UUID_2, UUID_3, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 
 const COMMIT = "0123456789abcdef0123456789abcdef01234567";

@@ -30,7 +30,7 @@ import {
   deriveWriteBindingProofDigest,
 } from "../../src/domain/write-safety.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   ManualScheduler,
   recordingLogger,

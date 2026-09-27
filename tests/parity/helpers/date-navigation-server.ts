@@ -1,5 +1,5 @@
 import { DashboardStreamEnvelopeSchema } from "../../../src/domain/dashboard/subscription.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import type { Clock } from "../../../src/domain/clock.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { queryActivitySummaries, queryQueueSummaries } from "../../../src/server/dashboard/queries/run-summaries.js";

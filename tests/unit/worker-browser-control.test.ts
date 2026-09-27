@@ -7,7 +7,7 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { BrowserSessionIdSchema, FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { WorkerSessionManager, type WorkerBrowserSessionFactory } from "../../src/core/worker-sessions.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler } from "../helpers/phase1f-executor-harness.js";

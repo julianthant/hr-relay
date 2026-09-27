@@ -1,18 +1,19 @@
+import { syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { dirname, join } from "node:path";
 import { chmodSync, mkdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { composeStorageCommand } from "../../src/server/storage/compose.js";
-import { verifyLifecyclePair } from "../../src/infra/sqlite/lifecycle-storage.js";
+import { composeStorageCommand } from "../helpers/synthetic-storage-admission.js";
+import { verifyLifecyclePair } from "../helpers/synthetic-storage-admission.js";
 import { StorageDoctorReportSchema } from "../../src/infra/sqlite/recovery-contracts.js";
 import { describe, it } from "vitest";
 import { storageRecoveryFixture, storageTree } from "./helpers/storage-recovery-fixture.js";
 import { archiveFixture, attachFile } from "./archive-transfer/fixtures.js";
-import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { backupStoppedAuthority } from "../../src/server/storage/upgrade.js";
+import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { backupStoppedAuthority } from "../helpers/synthetic-storage-admission.js";
 import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
 
 // Preserve every byte except SQLite's documented shared reader marks (existing doctor proof).
@@ -44,7 +45,7 @@ describe("read-only storage recovery truth", () => {
       const report = await doctorAuthorityStorage(options(f.root), f.clock);
       assert.equal(report.authority.state, "healthy");
       assert.equal(report.recovery.state, "interrupted");
-      const wire = await buildStorageDoctor({ doctorOptions: options(f.root), clock: f.clock,
+      const wire = await buildStorageDoctor({ admission: syntheticStateRoot(f.root), doctorOptions: options(f.root), clock: f.clock,
         serviceState: () => ({state: "never-run", reason: "Explicit backups only"}) });
       assert.deepEqual(wire.recovery, report.recovery);
       assert.deepEqual(snapshot(f.root), before);
@@ -96,7 +97,7 @@ for (const marker of ["lifecycle-restore", "archive-conversion", "archive-restor
       assert.equal(report.counts.state, "unavailable");
       assert.equal(report.protectedSettings.state, "unavailable");
       assert.ok(!outcome.output.includes("SYNTHETIC_PRIVATE_VALUE"));
-      const wire = await buildStorageDoctor({doctorOptions: options(root), clock: f.clock,
+      const wire = await buildStorageDoctor({admission: syntheticStateRoot(root),doctorOptions: options(root), clock: f.clock,
         serviceState: () => ({state: "never-run", reason: "Explicit backups only"})});
       assert.deepEqual(wire.recovery, report.recovery);
       assert.equal(wire.authority.state, "degraded");

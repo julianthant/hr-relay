@@ -38,6 +38,7 @@ import {
   type DryRunScenarioManifest,
 } from "../../domain/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 
 /**
  * One workflow, one resolver. The runner itself is workflow-generic — it reads
@@ -66,11 +67,13 @@ export function resolveDryRunScenarioTarget(
 }
 
 export interface DryRunScenarioComposeInput {
+  readonly admission?: RuntimeAdmission;
   readonly isolation: RuntimeIsolation;
   readonly args: readonly string[];
   readonly loadManifest: (workflow: string) => Promise<unknown>;
   readonly createRuntime: (input: Readonly<{
     isolation: RuntimeIsolation;
+    admission?: RuntimeAdmission;
     repoRoot: string;
     env: NodeJS.ProcessEnv;
     clock: Clock;
@@ -90,6 +93,7 @@ export async function composeDryRunScenarioCommand(
 ): Promise<{ readonly output: string; readonly exitCode: 0 | 1 | 2 }> {
   const args = parseDryRunScenarioArguments(input.args);
   const repoRoot = input.repoRoot;
+  const admission = requireRuntimeAdmission(input.admission);
   // D324: the production environment carries the host's primary display as the `display` default.
   const env = input.env ?? hostAwareResolutionEnvironment(probePrimaryDisplay);
   assertNoMigratedEnvironmentKeys(env);
@@ -97,9 +101,10 @@ export async function composeDryRunScenarioCommand(
   const ids = input.ids ?? systemIdFactory;
   const manifestInput = parseDryRunScenarioManifest(await input.loadManifest(args.workflow));
   const registry = readTestTargetRegistry(repoRoot, [manifestInput]);
-  const stateRoot = join(repoRoot, input.isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   mkdirSync(stateRoot, { recursive: true });
   const database = AuthorityDatabase.open(
+    admission,
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 5000, migrationOwner: "dry-run-scenario" },
     clock,
   );
@@ -116,6 +121,7 @@ export async function composeDryRunScenarioCommand(
       },
       createRuntime: () => input.createRuntime({
         isolation: input.isolation,
+        admission,
         repoRoot,
         env,
         clock,

@@ -32,7 +32,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   UPGRADE_FLOOR_SCHEMA_VERSION,
@@ -1144,7 +1144,7 @@ describe("native SQLite authority schema", () => {
     const before = readFileSync(path);
     await withAuthorityBuildVariant("ddl-derived-layouts", async () => {
       const { AuthorityDatabase: brokenBuild } = await import("../../src/infra/sqlite/authority-database.js");
-      assert.throws(() => brokenBuild.open({
+      assert.throws(() => brokenBuild.open(RuntimeAdmission.syntheticFixture(path, "authority"),{
         path, busyTimeoutMs: 250, migrationOwner: "m21-negative-control",
         openMode: "storage-upgrade-preflight-read-only-no-migrate",
       }, CLOCK), new RegExp(`D290 divergent post-v18 migration suffix: DCC1 v${String(version)}`, "u"));
@@ -2605,3 +2605,4 @@ describe("workflow batch migration and presentation persistence", () => {
     sql.close();
   });
 });
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";

@@ -85,10 +85,10 @@ it("refuses missing, changed and symlinked source bytes before transfer; restore
   } finally { f.dispose(); }
 });
 
-import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../../src/core/run-lifecycle-storage.js";
+import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { mkdirSync } from "node:fs";
 it("backs up and restores explicit deletion with reserved numbering and no report resurrection", async () => {
   const f = archiveFixture(); let restored: AuthorityDatabase | undefined;

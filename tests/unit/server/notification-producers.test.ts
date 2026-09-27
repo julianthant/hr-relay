@@ -1,11 +1,12 @@
 import { describe, expect, it } from "vitest";
+import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
 import { storageRecoveryFixture } from "../helpers/storage-recovery-fixture.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { createTrustNotifications } from "../../../src/server/dashboard/compose/notifications.js";
 import { createNotificationObserver } from "../../../src/services/notifications/observation.js";
 import { mkdirSync, writeFileSync, readdirSync } from "node:fs";
-import { AuthorityBackupService } from "../../../src/infra/sqlite/backup-service.js";
+import { AuthorityBackupService } from "../../helpers/synthetic-storage-admission.js";
 import { createNotificationHealthObserver, readNotificationHealth } from "../../../src/server/dashboard/compose/notification-health.js";
 import { createNotificationInbox } from "../../../src/services/notifications/inbox.js";
 import { sequentialIdFactory, QUEUED_RUN, WORKER_START_REQUEST } from "../../fixtures/phase1f-run-fixtures.js";
@@ -57,7 +58,7 @@ describe("canonical notification producers", () => {
   it("reads actual backup verification, accepts stale generations, and never creates a backup", async () => {
     const f = await fixture();
     try {
-      const read = () => readNotificationHealth({ database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
       expect((await read()).backupFailed).toBe(false); expect((await read()).integrityFailed).toBe(false);
       const directory = join(f.root, "backups", "authority"); mkdirSync(directory, { recursive: true });
       const backup = new AuthorityBackupService(f.db, { directory }, f.clock);
@@ -87,7 +88,7 @@ describe("canonical notification producers", () => {
       if (started.state !== "started") throw new Error("worker did not start");
       expect(f.db.authority.workerLeases.reportLifecycle({ workerId: started.lease.workerId, leaseGeneration: started.lease.leaseGeneration,
         lifecycle: { state: "idle", startedAt: started.lease.lifecycle.startedAt, heartbeatAt: f.clock.now().toISOString() }, now: f.clock.now().toISOString() }).state).toBe("applied");
-      const read = () => readNotificationHealth({ database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
+      const read = () => readNotificationHealth({ admission: syntheticStateRoot(f.root), database: f.db, reader: f.reader, stateRoot: f.root, clock: f.clock });
       f.clock.advanceWall(60_000); expect((await read()).leaseExpired).toBe(false);
       f.clock.advanceWall(1); expect((await read()).leaseExpired).toBe(true);
     } finally { f.close(); }

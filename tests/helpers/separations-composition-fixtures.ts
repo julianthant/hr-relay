@@ -56,7 +56,7 @@ import {
 import type { UcpathTransactionRow } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { isUcpathTerminationInProgress } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "./synthetic-storage-admission.js";
 import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";

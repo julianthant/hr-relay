@@ -17,15 +17,16 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { ArchivedRunRecordSchema, archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../src/domain/run/record.js";
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { OfflineAuthorityRestoreService } from "../../src/infra/sqlite/offline-restore.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { OfflineAuthorityRestoreService } from "../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
 import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { convertRunCompletions } from "../../src/infra/sqlite/completion-conversion.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
-import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 
 const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
 const roots: string[] = [];
@@ -106,7 +107,7 @@ function conversion(path: string) {
       if (migration.version === 43 && statement === "DROP TABLE provider_admissions") convertProviderStorage(raw,clock.now().toISOString());
       if (migration.version === 44 && statement === "DROP TABLE runtime_config") convertAppSettings(raw);
       if (migration.version === 46 && statement === "DROP TABLE artifact_outbox") convertGeneratedArtifacts(raw,undefined);
-      if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(raw,undefined);
+      if (migration.version === 47 && statement === "DROP TABLE spans") assertFoundationRetirement(RuntimeAdmission.syntheticFixture(path, "authority"),raw,undefined);
       raw.exec(statement);
     }
     raw.exec(`UPDATE database_state SET schema_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; PRAGMA user_version=${String(CURRENT_AUTHORITY_SCHEMA_VERSION)}; COMMIT`);

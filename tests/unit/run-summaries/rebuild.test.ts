@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { foundationFixture,id } from "../database-foundation/fixtures.js";
 
 it("keeps a complete prior generation across rollback and independent-reader snapshots",()=>{

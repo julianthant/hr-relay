@@ -23,8 +23,8 @@ import {
   CredentialStoreMigrationRequiredError,
   createCredentialStore,
   type CredentialUpgradeStore,
-} from "../../../src/infra/config/credential-store.js";
-import { migrateTestDataFromCredentials } from "../../../src/infra/config/credential-test-data-migration.js";
+} from "../../helpers/synthetic-storage-admission.js";
+import { migrateTestDataFromCredentials } from "../../helpers/synthetic-storage-admission.js";
 import { observeProcessIdentity } from "../../../src/infra/sqlite/runtime-process-locks.js";
 
 const COMMAND_1 = "11111111-1111-4111-8111-111111111111";

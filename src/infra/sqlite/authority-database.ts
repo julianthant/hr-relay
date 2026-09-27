@@ -2698,7 +2698,7 @@ export class AuthorityDatabase implements Disposable {
     this.#path = options.path;
     this.#credentialCommandIds = options.path === ":memory:"
       ? () => { throw new Error("command identity admission requires a durable authority root"); }
-      : createCredentialStore({ stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
+      : createCredentialStore({ admission, stateRoot: dirname(resolve(options.path)) }).ownsCommandId;
     this.#busyTimeoutMs = options.busyTimeoutMs;
     if (conversion !== undefined) {
       if (!conversion.database.isTransaction) throw new Error("archive-conversion-requires-stopped-transaction");

@@ -20,6 +20,7 @@ import {
 } from "../../../services/notifications/gate-park.js";
 
 import { createTrustRunReader } from "../../trust/canonical-reader.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
 import { listLiveTrustRuns, type TrustRunReader } from "../../trust/run-reader.js";
 
 /** Retained gate-watch adapter; production observation also includes canonical occurrence identity. */
@@ -38,11 +39,11 @@ export function readGateParks(database: AuthorityDatabase, reader: TrustRunReade
   }));
 }
 
-export function createTrustNotifications(input: { database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list">; stateRoot?: string }) {
+export function createTrustNotifications(input: { admission?: RuntimeAdmission; database: AuthorityDatabase; clock: Clock; ids: IdFactory; reader: Pick<RunRecordService, "read" | "list">; stateRoot?: string }) {
   const { database, clock, ids, stateRoot } = input;
   const inbox = createNotificationInbox({ authority: database, clock, ids, runReader: input.reader, actorId: LOCAL_OPERATOR_ACTOR_ID });
   const observer = createNotificationObserver({ inbox, read: () => readNotificationSources(database, input.reader),
-    health: stateRoot === undefined ? async () => {} : createNotificationHealthObserver({ database, clock, inbox, read: () => readNotificationHealth({ database, clock, reader: input.reader, stateRoot }) }),
+    health: stateRoot === undefined ? async () => {} : createNotificationHealthObserver({ database, clock, inbox, read: () => readNotificationHealth({ admission: requireRuntimeAdmission(input.admission), database, clock, reader: input.reader, stateRoot }) }),
   });
   return { observer, inbox, backfillGapNotifier: createBackfillGapNotifier({ inbox }), gateParkNotifier: createGateParkNotifier({ inbox }), readParks: () => readGateParks(database, input.reader) };
 }

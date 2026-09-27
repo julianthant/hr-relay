@@ -8,7 +8,7 @@ import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
  */
 import type { Clock } from "../../src/domain/clock.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   createArchiveSnapshotSource,
   type ArchiveQueryDeps,

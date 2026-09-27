@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import type { CommandResult } from "../../src/domain/commands.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_B, NOW, UUID_4 } from "./phase1c-contract-fixtures.js";
 
 /** Seed the synthetic authority that admits start-plan fan-out through RunRecordService. */

@@ -45,7 +45,7 @@ import {
   COMMAND_FAMILY_REGISTRY,
 } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { AuthorityDatabase, type AuthorityRepositories } from "../../../src/infra/sqlite/index.js";
+import { AuthorityDatabase, type AuthorityRepositories } from "../../helpers/synthetic-storage-admission.js";
 import { planStart } from "../../../src/services/start/plan.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 import { fixtureDescriptor } from "./helpers/descriptor-fixtures.js";

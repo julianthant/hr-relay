@@ -1,3 +1,4 @@
+import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
@@ -69,7 +70,7 @@ import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../helpers/synthetic-storage-admission.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
@@ -88,7 +89,7 @@ import {
 import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
 import type { AdvisoryQueryDeps } from "../../../src/server/dashboard/queries/advisory.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import { createProviderKeyStore, type ProviderKeyStoreHooks } from "../../../src/infra/config/provider-key-store.js";
+import { createProviderKeyStore, type ProviderKeyStoreHooks } from "../../helpers/synthetic-storage-admission.js";
 import { createProviderKeyJournal } from "../../../src/server/dashboard/commands/provider-key-journal.js";
 import { providerMarkedFingerprint } from "../../../src/server/dashboard/commands/provider-key-projection.js";
 import { activeProviderKeySlots, admitLocalEnvironmentFile } from "../../../src/domain/secrets.js";
@@ -525,6 +526,7 @@ function harness(options: {
     settingsEditor: { settings: settingsFile, protectedSettings: createProtectedSettingsRuntimeReader(credentials),
       environment: providerEnvironment, clock, providerKeys: providerStore, providerBoot, activeProviderSlots },
     storage: {
+      admission: syntheticStateRoot(stateRoot),
       doctorOptions: {
         stateRootTrustAnchor: root,
         stateRoot,

@@ -7,7 +7,7 @@ import { createGenericProviderAccounting, inspectGenericProviderAccounting } fro
 import { GenericProviderUsageSchema, type ProviderUsageStorage } from "../../../src/domain/provider-accounting.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 
 const instant = (minute: number) => new Date(Date.parse(NOW) + minute * 60_000).toISOString();
 const finish = (n: number, minute = 0) => ({ requestId: id(n), expectedVersion: 1, now: instant(minute),

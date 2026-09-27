@@ -3,7 +3,7 @@ import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { executeSettingsCommand } from "../../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
-import { createCredentialStore } from "../../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 /** Private launch fixture: real SQLite, planner, command kernel, projection and controlled executor. */
 import { mkdtempSync, rmSync } from "node:fs";

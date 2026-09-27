@@ -30,6 +30,7 @@ import {
 } from "../../events/types.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 import { storageHealthCauseFromError } from "./authority-boot.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "./backup-service.js";
 import {
@@ -661,13 +662,13 @@ export function inspectSpanAuthorityCorpusReadOnly(
   return spanAuthorityCorpus(stateRootTrustAnchor, stateRoot);
 }
 
-function timelineAuthorityCorpus(authorityPath: string, busyTimeoutMs: number, includeRecoveryEvidence = false): SpanAuthorityCorpus & Readonly<{
+function timelineAuthorityCorpus(admission: RuntimeAdmission, authorityPath: string, busyTimeoutMs: number, includeRecoveryEvidence = false): SpanAuthorityCorpus & Readonly<{
   authorityGeneration: number; authorityContentFingerprint: string;
   recoveryEvidence: ReturnType<typeof AuthorityDatabase.inspectTimelineReadOnly>["recoveryEvidence"];
 }> {
   const file = lstatSync(authorityPath);
   if (!file.isFile() || file.isSymbolicLink()) throw new SafeSpanCorpusError("timeline authority is not a regular no-follow file");
-  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(authorityPath, busyTimeoutMs, includeRecoveryEvidence);
+  const snapshot = AuthorityDatabase.inspectTimelineReadOnly(admission, authorityPath, busyTimeoutMs, includeRecoveryEvidence);
   const after = lstatSync(authorityPath);
   if (file.dev !== after.dev || file.ino !== after.ino) throw new SafeSpanCorpusError("timeline authority file changed identity during inspection");
   const rows = snapshot.records;
@@ -728,7 +729,7 @@ function timelineAuthorityCorpus(authorityPath: string, busyTimeoutMs: number, i
 }
 
 /** Quarantined SQLite is diagnostic recovery evidence only; it never feeds a current view. */
-function displacedAuthorityProblems(current: ReturnType<typeof timelineAuthorityCorpus>, busyTimeoutMs: number) {
+function displacedAuthorityProblems(admission: RuntimeAdmission, current: ReturnType<typeof timelineAuthorityCorpus>, busyTimeoutMs: number) {
   return withNoFollowRelativeDirectory("suspects", "preserved authority directory", true, (directory) => {
     const names = readdirSync(".").sort();
     if (names.length > 384) throw new SafeSpanCorpusError("preserved authority file count exceeds the inspection limit");
@@ -753,7 +754,7 @@ function displacedAuthorityProblems(current: ReturnType<typeof timelineAuthority
     const deleted = new Map(currentEvidence.deleted.map((run) => [run.runId, run]));
     const findings = new Map<string, { state: "missing" | "restore-loss"; runId: string; possibleExternalWrite?: true }>();
     for (const name of databases) {
-      const source = AuthorityDatabase.inspectTimelineReadOnly(name, busyTimeoutMs, true).recoveryEvidence;
+      const source = AuthorityDatabase.inspectTimelineReadOnly(admission, name, busyTimeoutMs, true).recoveryEvidence;
       if (source === undefined) throw new SafeSpanCorpusError("preserved recovery evidence was not inspected");
       for (const run of source.runs) {
         const tombstone = deleted.get(run.runId);
@@ -803,6 +804,7 @@ function displacedAuthorityProblems(current: ReturnType<typeof timelineAuthority
 }
 
 function reconcileSpanAuthority(
+  admission: RuntimeAdmission,
   stateRootTrustAnchor: string,
   stateRoot: string,
   authorityPath: string,
@@ -820,8 +822,8 @@ function reconcileSpanAuthority(
       if (authorityName !== basename(authorityName) || authorityName === "." || authorityName === "..") {
         throw new SafeSpanCorpusError("timeline authority must be a direct state-root file");
       }
-      const current = timelineAuthorityCorpus(authorityName, busyTimeoutMs, existsSync("suspects"));
-      displaced = displacedAuthorityProblems(current, busyTimeoutMs);
+      const current = timelineAuthorityCorpus(admission, authorityName, busyTimeoutMs, existsSync("suspects"));
+      displaced = displacedAuthorityProblems(admission, current, busyTimeoutMs);
       return current;
     });
   } catch (error) {
@@ -842,6 +844,7 @@ function reconcileSpanAuthority(
   let snapshot: ReturnType<typeof AuthorityDatabase.inspectSpanRunAuthorityReadOnly>;
   try {
     snapshot = AuthorityDatabase.inspectSpanRunAuthorityReadOnly(
+      admission,
       authorityPath,
       corpus.roots,
       busyTimeoutMs,
@@ -945,6 +948,7 @@ type AuthorityIdentityRead = Readonly<
 >;
 
 function inspectAuthorityIdentity(
+  admission: RuntimeAdmission,
   authorityPath: string,
   busyTimeoutMs: number,
 ): AuthorityIdentityRead {
@@ -952,7 +956,7 @@ function inspectAuthorityIdentity(
     return {
       state: "available",
       identity: authorityIdentityOf(
-        AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(authorityPath, busyTimeoutMs),
+        AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(admission, authorityPath, busyTimeoutMs),
       ),
     };
   } catch (error) {
@@ -1082,6 +1086,7 @@ function backupInvalidCause(_error: unknown) {
  */
 
 async function inspectCandidates(
+  admission: RuntimeAdmission,
   directory: string,
   sourceDatabaseIdentity: string,
   authorityInspection: AuthorityCopyInspection | undefined,
@@ -1101,8 +1106,8 @@ async function inspectCandidates(
     try {
       requireDatabaseSourcePath(manifestPath);
       const paired = manifestFileName.endsWith(".lifecycle.json");
-      const verified = paired ? await inspectDoctorPair(manifestPath, sourceDatabaseIdentity)
-        : await verifyBackupManifestAtPath(manifestPath, sourceDatabaseIdentity);
+      const verified = paired ? await inspectDoctorPair(admission,manifestPath, sourceDatabaseIdentity)
+        : await verifyBackupManifestAtPath(admission,manifestPath, sourceDatabaseIdentity);
       const ageMs = clock.nowMs() - Date.parse(verified.manifest.createdAt);
       if (ageMs < 0) throw new Error(`backup manifest ${manifestFileName} was created in the future`);
       const generationGap = authorityInspection === undefined
@@ -1117,8 +1122,8 @@ async function inspectCandidates(
           state: "verified-compatible",
           selection: paired ? "lifecycle-pair" : "single-database",
           schemaVersion: verified.manifest.schemaVersion,
-          restoreEligibility: inspectRestoreEligibility({ schemaVersion: verified.manifest.schemaVersion, paired,
-            backupPath: verified.backupPath, stateRoot, authorityAvailable: authorityInspection !== undefined }),
+          restoreEligibility: inspectRestoreEligibility(admission,{ schemaVersion: verified.manifest.schemaVersion, paired,
+            backupPath: verified.backupPath, backupSha256:verified.manifest.sha256, stateRoot, authorityAvailable: authorityInspection !== undefined }),
           manifestFileName,
           backupFileName: verified.manifest.backupFileName,
           createdAt: verified.manifest.createdAt,
@@ -1142,9 +1147,9 @@ async function inspectCandidates(
 }
 
 /** No credential value or value-bearing error may escape this presence observer. */
-function inspectCredentialPresence(stateRoot: string) {
+function inspectCredentialPresence(admission: RuntimeAdmission, stateRoot: string) {
   try {
-    const record = createCredentialStore({ stateRoot }).read();
+    const record = createCredentialStore({ admission, stateRoot }).read();
     return ProtectedSettingsInspectionSchema.parse({
       state: "available",
       entries: ProtectedSettingsNameSchema.options.map((name) => ({
@@ -1160,22 +1165,27 @@ function inspectCredentialPresence(stateRoot: string) {
   }
 }
 
-export async function doctorAuthorityStorage(input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
+export async function doctorAuthorityStorage(admission: RuntimeAdmission, input: unknown, clock: Clock = systemClock): Promise<StorageDoctorReport> {
+  requireRuntimeAdmission(admission);
   const options = StorageDoctorOptionsSchema.parse(input);
   const authorityPath = resolve(options.authorityPath);
   const stateRootTrustAnchor = resolve(options.stateRootTrustAnchor);
   const stateRoot = resolve(options.stateRoot);
   const backupDirectory = resolve(options.backupDirectory);
+  if (stateRoot !== admission.stateRoot || authorityPath !== join(stateRoot, "state.db")
+    || backupDirectory !== join(stateRoot, "backups", "authority")) {
+    throw new Error("runtime-admission: storage doctor roots differ from active locator");
+  }
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
   let authorityInspection: AuthorityCopyInspection | undefined;
   let authorityCause: ReturnType<typeof storageHealthCauseFromError> | undefined;
   try {
-    authorityInspection = AuthorityDatabase.inspectExistingReadOnly(authorityPath, options.busyTimeoutMs);
+    authorityInspection = AuthorityDatabase.inspectExistingReadOnly(admission, authorityPath, options.busyTimeoutMs);
   } catch (error) {
     authorityCause = storageHealthCauseFromError(error);
   }
   const initialAuthorityRead: AuthorityIdentityRead = authorityInspection === undefined
-    ? inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs)
+    ? inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs)
     : { state: "available", identity: authorityIdentityOf(authorityInspection) };
   const initialAuthorityIdentity = initialAuthorityRead.state === "available"
     ? initialAuthorityRead.identity
@@ -1185,7 +1195,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   let candidates: readonly CandidateWithMtime[] = [];
   let candidateInspectionFailed = false;
   try {
-    candidates = await inspectCandidates(backupDirectory, sourceDatabaseIdentity, authorityInspection, stateRoot, clock);
+    candidates = await inspectCandidates(admission,backupDirectory, sourceDatabaseIdentity, authorityInspection, stateRoot, clock);
   } catch { candidateInspectionFailed = true; }
   const first = candidates[0];
   const latestVerified = candidates
@@ -1233,6 +1243,7 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
     throw new Error("authority doctor produced neither an inspection nor a failure cause");
   }
   const spanAuthorityRead = reconcileSpanAuthority(
+    admission,
     stateRootTrustAnchor,
     stateRoot,
     authorityPath,
@@ -1244,9 +1255,9 @@ export async function doctorAuthorityStorage(input: unknown, clock: Clock = syst
   const spanAuthorityIdentityMismatch = initialAuthorityIdentity !== undefined
     && spanAuthorityRead.authorityIdentity !== undefined
     && !sameAuthorityIdentity(initialAuthorityIdentity, spanAuthorityRead.authorityIdentity);
-  const protectedSettings = inspectCredentialPresence(stateRoot);
-  const authorityUpgrades = inspectAuthorityUpgradeStatus(authorityPath, options.busyTimeoutMs, clock);
-  const finalAuthorityRead = inspectAuthorityIdentity(authorityPath, options.busyTimeoutMs);
+  const protectedSettings = inspectCredentialPresence(admission, stateRoot);
+  const authorityUpgrades = inspectAuthorityUpgradeStatus(admission, authorityPath, options.busyTimeoutMs, clock);
+  const finalAuthorityRead = inspectAuthorityIdentity(admission, authorityPath, options.busyTimeoutMs);
   if (initialAuthorityRead.state !== finalAuthorityRead.state) {
     throw authorityIdentityChanged(initialAuthorityRead, finalAuthorityRead);
   }

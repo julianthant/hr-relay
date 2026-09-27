@@ -4,8 +4,8 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { foundationFixture, admission, id } from "./fixtures.js";
 import { createGenericProviderAccounting, inspectGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
-import { AuthorityDatabase, AuthorityDatabaseOpenModeSchema, inspectHistoricalAuthorityInvariants } from "../../../src/infra/sqlite/authority-database.js";
-import { inspectAuthorityBackupReadOnly } from "../../../src/infra/compat/backup-inspection.js";
+import { AuthorityDatabase, AuthorityDatabaseOpenModeSchema, inspectHistoricalAuthorityInvariants } from "../../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
 import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 
 const boundaries = [...AuthorityDatabaseOpenModeSchema.options, "backup-inspection", "historical-invariants"] as const;

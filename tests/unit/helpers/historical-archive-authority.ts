@@ -2,7 +2,7 @@ import { existsSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import type { Clock } from "../../../src/domain/clock.js";
-import { withStoppedArchiveConversion, AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { withStoppedArchiveConversion, AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import { createRunSummaries } from "../../../src/infra/sqlite/run-summaries.js";
 

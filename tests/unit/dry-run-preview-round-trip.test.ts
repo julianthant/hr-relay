@@ -33,7 +33,7 @@ import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { RunDryRunPreviewResultSchema } from "../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import {
   FINALIZATION_FIELDS,

@@ -36,7 +36,7 @@ import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { ManualScheduler, recordingEmitter, recordingLogger } from "../helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

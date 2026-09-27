@@ -5,7 +5,7 @@ import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { TransactionOutcomeSchema } from "../../../src/domain/write-safety.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { AtomicWriteCommitInputSchema } from "../../../src/infra/sqlite/write-commit-contracts.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { HASH_A, HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 
 /** Populate the immutable output that real sequencer settlement always supplies. */

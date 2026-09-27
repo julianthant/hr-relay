@@ -58,6 +58,7 @@ import {
   observeProcessIdentity,
   type ProcessIdentityObserver,
 } from "../sqlite/runtime-process-locks.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 
 const CREDENTIAL_DIRECTORY_MODE = 0o700;
 const CREDENTIAL_FILE_MODE = 0o600;
@@ -235,6 +236,7 @@ export interface CredentialStoreHooks {
 }
 
 export interface CredentialStoreOptions {
+  readonly admission: RuntimeAdmission;
   readonly stateRoot: string;
   readonly ids?: CredentialStoreIds;
   readonly hooks?: CredentialStoreHooks;
@@ -921,9 +923,11 @@ function convertLegacyDocument(
 }
 
 export function createCredentialStore(options: CredentialStoreOptions): CredentialUpgradeStore {
+  const admission = requireRuntimeAdmission(options.admission);
   const rawStateRoot = z.string().min(1).parse(options.stateRoot);
   if (rawStateRoot.split(/[/\\]+/u).includes("..")) throw new Error("directory-integrity: raw credential path contains a '..' component");
   const stateRoot = resolve(rawStateRoot);
+  admission.assertStateRoot(stateRoot);
   const credentialDirectory = join(stateRoot, "credentials");
   const protectedPath = join(credentialDirectory, CREDENTIAL_FILE_NAME);
   const lockPath = join(credentialDirectory, CREDENTIAL_LOCK_NAME);
@@ -1579,6 +1583,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
 
   return Object.freeze({
     inspectTestDataMigration(): CredentialTestDataMigrationInspection {
+      admission.assertLive();
       const stored = observeCurrentAny();
       if (stored === undefined) return deepFreeze({ state: "absent" as const });
       if (stored.version === 2) {
@@ -1597,6 +1602,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       });
     },
     convertTestDataMigration(input: CredentialTestDataConversionInput): CredentialTestDataConversionOutcome {
+      admission.assertWritable();
       const migrationId = z.uuid().parse(input.migrationId);
       const migratedAt = IsoInstantSchema.parse(input.migratedAt);
       try {
@@ -1628,6 +1634,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       }
     },
     bindUpgrade(upgradeId: string, entries: ProtectedSettingsPatch): void {
+      admission.assertWritable();
       const binding = upgradeBinding(upgradeId, entries);
       withLock((writer) => {
         const current = readCurrentUnderLock();
@@ -1642,18 +1649,22 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       });
     },
     verifyUpgradeBinding(upgradeId: string, entries: ProtectedSettingsPatch): void {
+      admission.assertLive();
       requireUpgradeBinding(observeCurrent().document, upgradeBinding(upgradeId, entries));
     },
     verifyUpgradePreflight(upgradeId: string, entries: ProtectedSettingsPatch): void {
+      admission.assertLive();
       const document = observeCurrent().document;
       if (document.upgradeBinding !== undefined) {
         requireUpgradeBinding(document, upgradeBinding(upgradeId, entries));
       }
     },
     read(): ProtectedStoreRecord {
+      admission.assertLive();
       return observeCurrent().document.record;
     },
     ownsCommandId(commandId: string): boolean {
+      admission.assertLive();
       const id = z.uuid().parse(commandId);
       const document = observeCurrent().document;
       return document.history.some(({ request }) => request.commandId === id)
@@ -1661,6 +1672,7 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
         || (document.baseline?.retired.commandIds.includes(id) ?? false);
     },
     acceptedAt(commandId: string): string | undefined {
+      admission.assertLive();
       const id = z.uuid().parse(commandId);
       return withLock(() => {
         const latest = readCurrentUnderLock().document.history.at(-1)?.request;
@@ -1668,11 +1680,13 @@ export function createCredentialStore(options: CredentialStoreOptions): Credenti
       });
     },
     apply(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
+      admission.assertWritable();
       const request = admit(input);
       if (!("commandId" in request)) return request;
       return applyAdmitted(request);
     },
     verifyReplay(input: ProtectedSettingsApplyInput): CredentialStoreApplyOutcome {
+      admission.assertLive();
       const request = admit(input);
       if (!("commandId" in request)) return request;
       const replay = evaluateReplay(observeCurrent(), request);

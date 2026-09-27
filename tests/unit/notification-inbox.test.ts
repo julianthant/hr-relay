@@ -17,7 +17,7 @@ import { createCommandKernel, type CommandKernel } from "../../src/core/command-
 import { manualClock } from "../../src/domain/clock.js";
 import { NotificationWireSchema, notificationWireOf } from "../../src/domain/dashboard/projection.js";
 import { NotificationRecordSchema } from "../../src/domain/notifications.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { HASH_A, LATER, NOW, UUID_2, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";

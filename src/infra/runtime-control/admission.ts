@@ -1,4 +1,5 @@
-import { lstatSync, realpathSync } from "node:fs";
+import { closeSync, constants, fstatSync, lstatSync, openSync, readSync, realpathSync } from "node:fs";
+import { createHash } from "node:crypto";
 import { tmpdir } from "node:os";
 import { dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvidence, type InstallationLease, type RuntimeLocator, type RuntimePair } from "./installation.js";
@@ -59,13 +60,13 @@ export class RuntimeAdmission {
   readonly #authorityDatabasePaths: ReadonlySet<string>;
   readonly #archiveDatabasePaths: ReadonlySet<string>;
   readonly #locator: RuntimeLocator | undefined;
-  readonly #scope: "installation" | "adoption-inspection" | "stopped-staged" | "synthetic";
+  readonly #scope: "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged" | "verified-copy" | "synthetic-verified-copy" | "synthetic";
   readonly #mode: "shared" | "exclusive" | "synthetic";
   #released = false;
 
   private constructor(token: typeof issuanceToken, authority: AdmissionAuthority, stateRoot: string, artifactRoot: string,
     authorityDatabasePaths: readonly string[], archiveDatabasePaths: readonly string[],
-    scope: "installation" | "adoption-inspection" | "stopped-staged" | "synthetic",
+    scope: "installation" | "adoption-inspection" | "stopped-staged" | "synthetic-stopped-staged" | "verified-copy" | "synthetic-verified-copy" | "synthetic",
     mode: "shared" | "exclusive" | "synthetic", locator?: RuntimeLocator) {
     if (token !== issuanceToken) throw new Error("runtime-admission: unissued capability");
     this.#authority = authority;
@@ -93,7 +94,7 @@ export class RuntimeAdmission {
   }
   assertStorageRootsSafe(): void {
     this.assertLive();
-    if (this.#scope === "synthetic") {
+    if (this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" || this.#scope === "synthetic-stopped-staged") {
       if (this.#stateRoot !== ":memory:") assertSyntheticDirectory(this.#stateRoot);
       if (this.#artifactRoot !== ":memory:") assertSyntheticDirectory(this.#artifactRoot);
       return;
@@ -108,6 +109,7 @@ export class RuntimeAdmission {
   assertWritable(): void {
     this.assertLive();
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection is read-only");
+    if (this.#scope === "verified-copy" || this.#scope === "synthetic-verified-copy") throw new Error("runtime-admission: verified copy is read-only");
   }
   assertAuthorityDatabase(path: string): void {
     this.assertWritable();
@@ -124,6 +126,11 @@ export class RuntimeAdmission {
     if (this.#scope === "adoption-inspection") throw new Error("runtime-admission: adoption inspection path is outside known default authority");
     const parent = dirname(checked);
     if (parent === join(this.#stateRoot, "suspects") && /^suspect-\d{17}-[0-9a-f-]{36}\.sqlite$/u.test(checked.slice(parent.length + 1))) return;
+    if (parent === join(this.#stateRoot, "backups", "authority")
+      && /^(?:\.authority-[0-9a-f-]{36}\.sqlite\.tmp|authority-g\d+-\d+-[0-9a-f-]{36}\.sqlite)$/u.test(checked.slice(parent.length + 1))) {
+      this.assertStateRoot(parent);
+      return;
+    }
     throw new Error("runtime-admission: read-only authority database path is outside admission");
   }
   assertArchiveDatabase(path: string, mode: "read-only" | "read-write" = "read-write"): void {
@@ -131,7 +138,15 @@ export class RuntimeAdmission {
     this.assertStorageRootsSafe();
     if (mode !== "read-only") this.assertWritable();
     if (path === ":memory:") return;
-    if (!this.#archiveDatabasePaths.has(path === ":memory:" ? path : resolve(path))) throw new Error("runtime-admission: archive database path is outside admission");
+    const checked = resolve(path);
+    if (this.#archiveDatabasePaths.has(checked)) return;
+    const parent = dirname(checked);
+    if (mode === "read-only" && parent === join(this.#stateRoot, "backups", "authority")
+      && /^[0-9a-f-]{36}\.archive\.sqlite$/u.test(checked.slice(parent.length + 1))) {
+      this.assertStateRoot(parent);
+      return;
+    }
+    throw new Error("runtime-admission: archive database path is outside admission");
   }
   assertStateRoot(path: string): void {
     this.assertLive();
@@ -156,7 +171,54 @@ export class RuntimeAdmission {
       throw new Error("runtime-admission: staged authority path is not an owned restore copy");
     }
     return new RuntimeAdmission(issuanceToken, { assertHeld: () => this.assertLive(), release() {} },
-      this.#stateRoot, this.#artifactRoot, [resolve(path)], [], "stopped-staged", "exclusive");
+      this.#stateRoot, this.#artifactRoot, [resolve(path)], [], this.#scope === "synthetic" ? "synthetic-stopped-staged" : "stopped-staged", "exclusive");
+  }
+
+  verifiedReadOnlyCopy(path: string, expectedSha256: string, kind: "authority" | "archive"): RuntimeAdmission {
+    this.assertLive();
+    if (!/^[0-9a-f]{64}$/u.test(expectedSha256)) throw new Error("runtime-admission: invalid copy digest");
+    const checked = resolve(path);
+    if (!within(this.#stateRoot, checked)) this.assertExclusive();
+    const canonical = realpathSync(checked);
+    const temp = resolve(tmpdir());
+    if (canonical !== checked && !(within(temp, checked)
+      && canonical === join(realpathSync(tmpdir()), relative(temp, checked)))) {
+      throw new Error("runtime-admission: inspected copy path contains symlink");
+    }
+    let component = parse(canonical).root;
+    for (const part of relative(component, canonical).split(/[\\/]/u)) {
+      if (part === "") continue;
+      component = join(component, part);
+      const info = lstatSync(component);
+      if (info.isSymbolicLink()) throw new Error("runtime-admission: inspected copy contains symlink");
+    }
+    const verifyBytes = () => {
+      this.assertLive();
+      const file = lstatSync(canonical);
+      if (!file.isFile() || file.isSymbolicLink() || file.nlink !== 1 || (process.getuid && file.uid !== process.getuid()) || (file.mode & 0o022) !== 0) {
+        throw new Error("runtime-admission: inspected copy has unsafe shape");
+      }
+      const descriptor = openSync(canonical, constants.O_RDONLY | constants.O_NOFOLLOW);
+      try {
+        const opened = fstatSync(descriptor);
+        if (opened.dev !== file.dev || opened.ino !== file.ino || opened.size !== file.size) {
+          throw new Error("runtime-admission: inspected copy changed during open");
+        }
+        const hash = createHash("sha256");
+        const buffer = Buffer.allocUnsafe(64 * 1024);
+        let read = 0;
+        while ((read = readSync(descriptor, buffer, 0, buffer.length, null)) > 0) hash.update(buffer.subarray(0, read));
+        const final = fstatSync(descriptor);
+        if (final.dev !== opened.dev || final.ino !== opened.ino || final.size !== opened.size
+          || final.mtimeMs !== opened.mtimeMs || hash.digest("hex") !== expectedSha256) {
+          throw new Error("runtime-admission: inspected copy digest changed");
+        }
+      } finally { closeSync(descriptor); }
+    };
+    verifyBytes();
+    return new RuntimeAdmission(issuanceToken, { assertHeld: verifyBytes, release() {} },
+      this.#stateRoot, this.#artifactRoot, kind === "authority" ? [checked] : [], kind === "archive" ? [checked] : [],
+      this.#scope === "synthetic" || this.#scope === "synthetic-verified-copy" ? "synthetic-verified-copy" : "verified-copy", this.#mode);
   }
 
   static fromInstallationLease(lease: InstallationLease): RuntimeAdmission {

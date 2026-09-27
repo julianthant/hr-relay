@@ -7,14 +7,14 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { ProtectedSettingsApplyInputSchema, PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { BulkRunCommandRequestSchema, deriveBulkRunCommandFingerprint, CommandRequestSchema } from "../../src/domain/commands.js";
-import { AuthorityDatabase, inspectConvertedAuthority } from "../../src/infra/sqlite/authority-database.js";
-import { inspectAuthorityBackupReadOnly } from "../../src/infra/compat/backup-inspection.js";
+import { AuthorityDatabase, inspectConvertedAuthority } from "../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../src/server/storage/upgrade.js";
+import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { DELEGATION_MANIFEST, DEPENDENCY_RECORD } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];

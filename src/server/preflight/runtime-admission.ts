@@ -1,5 +1,5 @@
 import { requiredPreflightChecks } from "../../domain/preflight.js";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { selectActiveRunSettings, selectRunSettings } from "../../core/run-settings.js";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
@@ -11,11 +11,13 @@ import { createPreflightAdmission, PreflightAdmissionRefusal, PreflightAdmission
 import { optionalSecretFamily, providerModelChain, protectedSecretRevision, type ProtectedSecretSource } from "../../domain/secrets.js";
 import type { InstanceSelection, RunEnvelope } from "../../domain/run/envelope.js";
 import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { workflowPreflightScope } from "../../services/start/preflight-scope.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } from "./runtime-runners.js";
 
 export function composeRuntimePreflight(input: Readonly<{
+  admission?: RuntimeAdmission;
   database: AuthorityDatabase; clock: Clock; repoRoot: string; isolation: RuntimeIsolation;
   descriptors: { resolve(workflowId: string): AnyWorkflowDescriptor | undefined };
   descriptorSetHash: string; protectedSecrets: ProtectedSecretSource;
@@ -23,7 +25,8 @@ export function composeRuntimePreflight(input: Readonly<{
   runnerFactory?: RuntimePreflightRunnerFactory;
 }>) {
   const { database, clock } = input;
-  const stateRoot = join(input.repoRoot, input.isolation.stateRoot);
+  const runtimeAdmission = requireRuntimeAdmission(input.admission);
+  const stateRoot = runtimeAdmission.stateRoot;
   const readConfig = (scope: PreflightAdmissionScope) => {
     const snapshot = selectRunSettings(database.authority, scope);
     if (sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint || configSnapshotAbsentLeaves(snapshot.config).length > 0) {
@@ -46,10 +49,10 @@ export function composeRuntimePreflight(input: Readonly<{
         scope, config, protectedSecrets: input.protectedSecrets,
         providerAvailability: { "gemini/ocr.extract": gemini, "gemini/ai.advisory": false, "census/geocode.census": true, "nominatim/geocode.nominatim": true },
         dashboard: {
-          repoRoot: input.repoRoot, stateRoot, artifactRoot: join(input.repoRoot, input.isolation.artifactRoot),
+          repoRoot: input.repoRoot, stateRoot, artifactRoot: runtimeAdmission.artifactRoot,
           backendPort: input.isolation.backendPort, frontendPort: input.isolation.frontendPort,
           processLockRoot: join(input.repoRoot, input.isolation.processLockRoot), clock,
-          authorityHealth: new AuthorityHealthPreflightRunner({ stateRootTrustAnchor: input.repoRoot, stateRoot,
+          authorityHealth: new AuthorityHealthPreflightRunner(runtimeAdmission, { stateRootTrustAnchor: dirname(stateRoot), stateRoot,
             authorityPath: join(stateRoot, "state.db"), backupDirectory: join(stateRoot, "backups", "authority"), busyTimeoutMs: 5000 }, clock),
           listLiveWorkerProcesses: () => database.authority.workerLeases.listLive().map(lease => ({ workerId: lease.workerId, processId: lease.processId })),
         },

@@ -1,3 +1,4 @@
+import { syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
 import assert from "node:assert/strict";
 import fs, { mkdirSync, mkdtempSync, rmSync } from "node:fs";
 import { syncBuiltinESMExports } from "node:module";
@@ -10,10 +11,10 @@ import { manualClock } from "../../src/domain/clock.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { doctorAuthorityStorage, inspectSpanAuthorityCorpusReadOnly } from "../../src/infra/sqlite/storage-doctor.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { doctorAuthorityStorage, inspectSpanAuthorityCorpusReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
-import { composeStorageCommand } from "../../src/server/storage/compose.js";
+import { composeStorageCommand } from "../helpers/synthetic-storage-admission.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
@@ -134,7 +135,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
     } else {
       const report = boundary === "doctor"
         ? await doctorAuthorityStorage(doctorOptions, clock)
-        : await buildStorageDoctor({ doctorOptions, clock, serviceState: () => ({ state: "never-run", reason: "test has no backup service" }) });
+        : await buildStorageDoctor({ admission: syntheticStateRoot(doctorOptions.stateRoot), doctorOptions, clock, serviceState: () => ({ state: "never-run", reason: "test has no backup service" }) });
       output = JSON.stringify(report);
     }
     assert.equal(output.includes(marker), false, `${boundary} must not echo synthetic sensitive path content`);

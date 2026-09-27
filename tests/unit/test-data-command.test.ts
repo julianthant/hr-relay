@@ -14,7 +14,7 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings-legacy.js";
 import { TEST_DATA_USAGE } from "../../src/core/test-data-usage.js";
 import { readTestDataLocalConfig, testDataLocalPath } from "../../src/control/test-data.js";
-import { composeTestDataCommand, type TestDataComposeDependencies } from "../../src/server/test-data/compose.js";
+import { composeTestDataCommand, type TestDataComposeDependencies } from "../helpers/synthetic-storage-admission.js";
 
 const REPO_ROOT = process.cwd();
 const VALUE_DOC = "d0000000-0000-4000-8000-000000000001";

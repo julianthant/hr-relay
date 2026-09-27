@@ -12,7 +12,6 @@
  * Both commands run under the secure bootstrap's environment bypass: they
  * never load `.env`.
  */
-import { join } from "node:path";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import {
   readTestDataFileBytes,
@@ -205,7 +204,8 @@ function fileReport(shared: TestDataShared, local: TestDataLocalReadOutcome, nam
 }
 
 export async function composeTestDataCommand(
-  isolation: RuntimeIsolation,
+  admission: import("../../infra/runtime-control/admission.js").RuntimeAdmission,
+  _isolation: RuntimeIsolation,
   args: readonly string[],
   repoRoot: string,
   dependencies: TestDataComposeDependencies,
@@ -219,7 +219,8 @@ export async function composeTestDataCommand(
   }
   if (parsed.command === "migrate") {
     const report: CredentialTestDataMigrationReport = await migrateTestDataFromCredentials({
-      stateRoot: join(repoRoot, isolation.stateRoot),
+      admission,
+      stateRoot: admission.stateRoot,
       localPath: testDataLocalPath(repoRoot),
       mode: parsed.plan ? "plan" : "apply",
       ...(dependencies.now === undefined ? {} : { now: dependencies.now }),

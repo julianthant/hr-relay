@@ -1,5 +1,5 @@
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
+import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
@@ -8,8 +8,8 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { historicalFixture, withHistoricalAuthority } from "./historical-fixtures.js";
 import { NOW, id } from "../database-foundation/fixtures.js";
-import { backupStoppedAuthority, upgradeStorage } from "../../../src/server/storage/upgrade.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { backupStoppedAuthority, upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { HistoricalVersionChangeSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { ARCHIVE_RELAUNCH } from "../../fixtures/archive-fixtures.js";
@@ -68,7 +68,7 @@ for(const step of ["captured","verified","cleaned","published","retired","commit
   } finally {f.dispose();}
 });
 
-import { restoreHistoricalStorage } from "../../../src/server/storage/historical-restore.js";
+import { restoreHistoricalStorage } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { mkdirSync } from "node:fs";
@@ -161,7 +161,7 @@ for(const interruption of ["beforeCommit","afterCommit"] as const)it(`retires po
   }finally{f.dispose();}
 });
 
-import { restoreLifecyclePair } from "../../../src/infra/sqlite/lifecycle-storage.js";
+import { restoreLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 for(const interruption of ["live","archive","files"] as const)it(`restores the explicit populated schema 49 pair after ${interruption}`,async()=>{
   const f=await populated49Fixture();
   try {
@@ -215,8 +215,8 @@ for (const missing of ["archive.sqlite", "archive-files"] as const) it(`refuses 
   } finally { f.dispose(); }
 });
 
-import { AuthorityBackupService } from "../../../src/infra/sqlite/backup-service.js";
-import { openAuthorityBackupSourceReadOnly } from "../../../src/infra/compat/backup-inspection.js";
+import { AuthorityBackupService } from "../../helpers/synthetic-storage-admission.js";
+import { openAuthorityBackupSourceReadOnly } from "../../helpers/synthetic-storage-admission.js";
 it("selects a published pair rather than a later standalone live manifest", async () => {
   const f = await populated49Fixture();
   try {

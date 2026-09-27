@@ -1,11 +1,12 @@
 import type { Clock } from "../../domain/clock.js";
 import { AuthorityDatabase } from "./authority-database.js";
+import type { RuntimeAdmission } from "../runtime-control/admission.js";
 import { AuthorityUpgradeInspectionSchema } from "./recovery-contracts.js";
 
 /** A doctor observation, with no journal identity, private path, digest or settings payload. */
-export function inspectAuthorityUpgradeStatus(path: string, busyTimeoutMs: number, clock: Clock) {
+export function inspectAuthorityUpgradeStatus(admission: RuntimeAdmission, path: string, busyTimeoutMs: number, clock: Clock) {
   try {
-    const database = AuthorityDatabase.open({ path, busyTimeoutMs,
+    const database = AuthorityDatabase.open(admission, { path, busyTimeoutMs,
       migrationOwner: "storage-doctor", openMode: "storage-doctor-read-only-no-migrate",
     }, clock);
     try {

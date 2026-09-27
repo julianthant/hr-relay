@@ -34,6 +34,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "../../control/workflow-registry.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -288,13 +289,22 @@ function rebuildStagedProjections(
   stateRoot: string,
   appVersion: string,
   clock: Clock,
+  admission: RuntimeAdmission,
 ): (stagedPath: string) => Promise<void> {
   const setHash = descriptorSetHash(DESCRIPTORS.map((descriptor) => descriptor.contractFingerprint));
   return async (stagedPath: string): Promise<void> => {
-    const staged = AuthorityDatabase.open(
-      { path: stagedPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-storage-restore" },
-      clock,
-    );
+    const stagedAdmission = admission.stoppedStagedAuthority(stagedPath);
+    let staged: AuthorityDatabase;
+    try {
+      staged = AuthorityDatabase.open(
+        stagedAdmission,
+        { path: stagedPath, busyTimeoutMs: 5000, migrationOwner: "rebuild-storage-restore" },
+        clock,
+      );
+    } catch (error) {
+      stagedAdmission.release();
+      throw error;
+    }
     try {
       const projection = createRunQueueProjection({
         timeline: staged.authority.timelineEvents,
@@ -335,6 +345,7 @@ function rebuildStagedProjections(
       }
     } finally {
       staged.close();
+      stagedAdmission.release();
     }
   };
 }
@@ -344,6 +355,7 @@ async function restoreCommand(
   rest: readonly string[],
   clock: Clock,
   repoRoot: string,
+  admission: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
   const fromIndex = rest.indexOf("--from");
   const manifestArgument = fromIndex === -1 ? undefined : rest[fromIndex + 1];
@@ -354,7 +366,7 @@ async function restoreCommand(
     };
   }
   const json = rest.includes("--json");
-  const stateRoot = join(repoRoot, isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   const authorityPath = join(stateRoot, "state.db");
   const processLockRoot = join(repoRoot, isolation.processLockRoot);
   const appVersion = PackageVersionSchema.parse(
@@ -376,6 +388,7 @@ async function restoreCommand(
       sourceDatabaseIdentity,
     });
     const service = new OfflineAuthorityRestoreService(
+      admission,
       {
         authorityPath,
         suspectDirectory: join(stateRoot, "suspects"),
@@ -383,32 +396,37 @@ async function restoreCommand(
         processLockRoot,
         stoppedProofMaxAgeMs: RESTORE_STOPPED_PROOF_MAX_AGE_MS,
       },
-      rebuildStagedProjections(stateRoot, appVersion, clock),
+      rebuildStagedProjections(stateRoot, appVersion, clock, admission),
       clock,
     );
     const resolvedManifest = resolve(manifestArgument);
     const paired = resolvedManifest.endsWith(".lifecycle.json");
-    const pairedSelection=paired ? await verifyLifecyclePair(resolvedManifest) : undefined;
-    const selected = paired ? undefined : await verifyBackupManifestAtPath(resolvedManifest,sourceDatabaseIdentity);
+    const pairedSelection=paired ? await verifyLifecyclePair(admission,resolvedManifest) : undefined;
+    const selected = paired ? undefined : await verifyBackupManifestAtPath(admission,resolvedManifest,sourceDatabaseIdentity);
     const historical = selected !== undefined && selected.manifest.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION;
-    if (selected !== undefined && !historical && (existsSync(join(stateRoot,"archive.sqlite"))
-      || backupHasArchiveTransferCustody(selected.backupPath))) throw new Error("paired-lifecycle-backup-required");
+    let selectedHasArchiveCustody = false;
+    if (selected !== undefined && !historical && !existsSync(join(stateRoot,"archive.sqlite"))) {
+      const backupAdmission = admission.verifiedReadOnlyCopy(selected.backupPath,selected.manifest.sha256,"authority");
+      try { selectedHasArchiveCustody = backupHasArchiveTransferCustody(backupAdmission,selected.backupPath); }
+      finally { backupAdmission.release(); }
+    }
+    if (selected !== undefined && !historical && (existsSync(join(stateRoot,"archive.sqlite")) || selectedHasArchiveCustody)) throw new Error("paired-lifecycle-backup-required");
     const { upgradeStorage } = await import("./upgrade.js");
     const { restoreHistoricalStorage } = await import("./historical-restore.js");
-    const historicalResult = historical ? await restoreHistoricalStorage({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
+    const historicalResult = historical ? await restoreHistoricalStorage(admission,{authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
       processLockRoot,stoppedProofMaxAgeMs:RESTORE_STOPPED_PROOF_MAX_AGE_MS},{manifestPath:resolvedManifest,stoppedSystemProof},join(repoRoot,".env"),clock) : undefined;
-    const report = historicalResult !== undefined ? historicalResult.report : paired ? await restoreLifecyclePair({authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
+    const report = historicalResult !== undefined ? historicalResult.report : paired ? await restoreLifecyclePair(admission,{authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
       processLockRoot,stoppedProofMaxAgeMs:RESTORE_STOPPED_PROOF_MAX_AGE_MS},
-      {manifestPath:resolvedManifest,stoppedSystemProof},rebuildStagedProjections(stateRoot,appVersion,clock),clock) : await service.restore({
+      {manifestPath:resolvedManifest,stoppedSystemProof},rebuildStagedProjections(stateRoot,appVersion,clock,admission),clock) : await service.restore({
       manifestPath: resolve(manifestArgument),
       stoppedSystemProof,
     });
     const upgrade = historicalResult?.upgrade ?? (report.schemaVersion < CURRENT_AUTHORITY_SCHEMA_VERSION
-      ? await upgradeStorage({stateRoot,processLockRoot,environmentFile:join(repoRoot,".env"),plan:false,backupManifest:pairedSelection?.live.manifestPath},clock) : undefined);
+      ? await upgradeStorage(admission,{stateRoot,processLockRoot,environmentFile:join(repoRoot,".env"),plan:false,backupManifest:pairedSelection?.live.manifestPath},clock) : undefined);
     // Observe credentials only AFTER successful SQLite replacement. Their failure
     // neither authorizes a rollback nor changes the reported restore outcome.
     const credentials = (() => {
-      try { return { state: "available" as const, ...protectedSettingsReadback(createCredentialStore({ stateRoot }).read()) }; }
+      try { return { state: "available" as const, ...protectedSettingsReadback(createCredentialStore({ admission, stateRoot }).read()) }; }
       catch { return { state: "unavailable" as const, code: "credential-store-unavailable" as const }; }
     })();
     const availability = credentials.state === "available"
@@ -444,6 +462,7 @@ async function repairSpanRootCommand(
   rest: readonly string[],
   clock: Clock,
   repoRoot: string,
+  admission: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
   const runIndex = rest.indexOf("--run");
   const runId = runIndex === -1 ? undefined : rest[runIndex + 1];
@@ -454,7 +473,7 @@ async function repairSpanRootCommand(
     };
   }
   const json = rest.includes("--json");
-  const stateRoot = join(repoRoot, isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   const authorityPath = join(stateRoot, "state.db");
   const processLockRoot = join(repoRoot, isolation.processLockRoot);
   const sourceDatabaseIdentity = AuthorityDatabase.sourceDatabaseIdentity(authorityPath);
@@ -469,7 +488,7 @@ async function repairSpanRootCommand(
       observedBy: LOCAL_OPERATOR_ACTOR_ID,
       sourceDatabaseIdentity,
     });
-    const service = new OfflineSpanRootRepairService({
+    const service = new OfflineSpanRootRepairService(admission, {
       stateRoot,
       authorityPath,
       processLockRoot,
@@ -519,13 +538,14 @@ function describeLocksForRefusal(
  * online backup reads a consistent snapshot under WAL.
  */
 async function backupCommand(
-  isolation: RuntimeIsolation,
+  _isolation: RuntimeIsolation,
   rest: readonly string[],
   clock: Clock,
-  repoRoot: string,
+  _repoRoot: string,
+  admission: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
   const json = rest.includes("--json");
-  const stateRoot = join(repoRoot, isolation.stateRoot);
+  const stateRoot = admission.stateRoot;
   const authorityPath = join(stateRoot, "state.db");
   if (!existsSync(authorityPath)) {
     return {
@@ -535,7 +555,7 @@ async function backupCommand(
     };
   }
   const { backupStoppedAuthority } = await import("./upgrade.js");
-  const report = await backupStoppedAuthority(stateRoot, clock);
+  const report = await backupStoppedAuthority(admission,stateRoot, clock);
     const manifest = report.manifests.at(-1);
     if (manifest === undefined) {
       throw new Error("verified backup run reported no manifest");
@@ -558,7 +578,9 @@ export async function composeStorageCommand(
   args: readonly string[],
   clock: Clock = systemClock,
   repoRoot: string = process.cwd(),
+  admissionInput?: RuntimeAdmission,
 ): Promise<StorageCommandOutcome> {
+  const admission = requireRuntimeAdmission(admissionInput);
   const [subcommand, ...rest] = args;
   if (subcommand === "upgrade") {
     let timelineSourceDirectory: string | undefined;
@@ -574,7 +596,7 @@ export async function composeStorageCommand(
     }
     try {
       const { upgradeStorage } = await import("./upgrade.js");
-      const report = await upgradeStorage({ stateRoot: join(repoRoot, isolation.stateRoot),
+      const report = await upgradeStorage(admission,{ stateRoot: admission.stateRoot,
         processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan"),
         ...(timelineSourceDirectory === undefined ? {} : { timelineSourceDirectory }) }, clock);
       return { output: rest.includes("--json") ? JSON.stringify(report, null, 2) : [
@@ -597,16 +619,16 @@ export async function composeStorageCommand(
       return { output: rest.includes("--json") ? JSON.stringify(report) : `storage upgrade: ${report.code}${key === undefined ? "" : ` { key: ${key} }`}; inspect state before retrying`, exitCode: 1 };
     }
   }
-  if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot);
-  if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot);
-  if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot);
+  if (subcommand === "restore") return restoreCommand(isolation, rest, clock, repoRoot, admission);
+  if (subcommand === "backup") return backupCommand(isolation, rest, clock, repoRoot, admission);
+  if (subcommand === "repair-span-root") return repairSpanRootCommand(isolation, rest, clock, repoRoot, admission);
   if (subcommand !== "doctor") {
     return { output: STORAGE_USAGE, exitCode: subcommand === undefined ? 1 : 2 };
   }
   const json = rest.includes("--json");
-  const stateRoot = join(repoRoot, isolation.stateRoot);
-  const report = await doctorAuthorityStorage({
-    stateRootTrustAnchor: repoRoot,
+  const stateRoot = admission.stateRoot;
+  const report = await doctorAuthorityStorage(admission, {
+    stateRootTrustAnchor: resolve(stateRoot, ".."),
     stateRoot,
     authorityPath: join(stateRoot, "state.db"),
     backupDirectory: join(stateRoot, "backups", "authority"),

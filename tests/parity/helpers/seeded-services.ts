@@ -1,4 +1,5 @@
 import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
+import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
 import { createCalendarQuery } from "../../../src/server/dashboard/queries/calendar.js";
@@ -226,11 +227,11 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
       clock,
     },
     storage: {
+      admission: syntheticStateRoot(stateRoot),
       doctorOptions: {
         stateRootTrustAnchor: root,
         stateRoot,
-        // The seeded database lives at the temp ROOT, not under stateRoot.
-        authorityPath: join(root, "authority.sqlite"),
+        authorityPath: join(stateRoot, "state.db"),
         backupDirectory: join(stateRoot, "backups", "authority"),
         maxBackupAgeMs: 45 * 60 * 1000,
         busyTimeoutMs: 1000,

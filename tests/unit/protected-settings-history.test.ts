@@ -28,7 +28,7 @@ import {
   legacyMarkProtectedSettingsPatch,
 } from "../../src/domain/config/protected-settings-legacy.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 
 /**
  * D341 — historical journal readability is permanent. A pre-D341 protected-settings command

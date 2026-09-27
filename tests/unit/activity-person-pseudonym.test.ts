@@ -7,7 +7,7 @@ import { it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { requireActivityPersonPseudonymDomain } from "../../src/domain/secrets.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,TERMINAL_SEPARATIONS_RUN,seedTerminalSeparationsResult } from "./fixtures/activity-person-pseudonym-fixtures.js";
 
 const runId=TERMINAL_SEPARATIONS_RUN.envelope.runId;

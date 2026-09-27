@@ -1,3 +1,4 @@
+import { syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
 import assert from "node:assert/strict";
 import {
   chmodSync,
@@ -21,10 +22,10 @@ import {
   ProtectedSettingsNameSchema,
   type ProtectedSettingsPatch,
 } from "../../src/domain/config/protected-settings.js";
-import { createCredentialStore } from "../../src/infra/config/credential-store.js";
-import { AuthorityHealthPreflightRunner } from "../../src/infra/sqlite/authority-health-runner.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { doctorAuthorityStorage } from "../../src/infra/sqlite/storage-doctor.js";
+import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityHealthPreflightRunner } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
 
 const COMMAND_ID = "11111111-1111-4111-8111-111111111111";
 const WRITE_ID = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
@@ -215,7 +216,7 @@ describe("D332 read-only upgrade phase reporting", () => {
       const before = snapshot(f.root);
       const meta = f.database.getMeta();
       const report = await doctorAuthorityStorage(f.options);
-      const wire = await buildStorageDoctor({ doctorOptions: f.options, clock: systemClock,
+      const wire = await buildStorageDoctor({ admission: syntheticStateRoot(f.options.stateRoot), doctorOptions: f.options, clock: systemClock,
         serviceState: () => ({ state: "never-run", reason: "No backup requested" }),
       });
       const observation = await new AuthorityHealthPreflightRunner(f.options).run({

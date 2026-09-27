@@ -30,7 +30,7 @@ import {
   WriteIntentRecordSchema,
   type WriteIntentRecord,
 } from "../../src/domain/write-safety.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   WRITE_FIXTURE_ITEM_ID,

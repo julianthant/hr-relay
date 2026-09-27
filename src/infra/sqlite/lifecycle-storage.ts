@@ -60,6 +60,7 @@ import { AuthorityBackupService, verifyBackupManifestAtPath } from "./backup-ser
 import { OfflineAuthorityRestoreService, OfflineRestoreOptionsSchema, OfflineRestoreFailure } from "./offline-restore.js";
 import { OfflineRestoreRequestSchema } from "./recovery-contracts.js";
 import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "./runtime-process-locks.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../runtime-control/admission.js";
 
 const SafeName = z.string().regex(/^[A-Za-z0-9][A-Za-z0-9._-]*$/u).refine(name=>name!==".." && name!==".");
 const PairManifestSchema = z.strictObject({
@@ -76,22 +77,25 @@ function safeBytes(path:string) {
 function fileDigest(path:string){return createHash("sha256").update(safeBytes(path)).digest("hex");}
 
 /** Pair publication is last: mutation during either native snapshot refuses the whole set. */
-export async function backupLifecyclePair(source: ConstructorParameters<typeof AuthorityBackupService>[0], stateRoot:string,clock:Clock) {
+export async function backupLifecyclePair(runtimeAdmission:RuntimeAdmission,source: ConstructorParameters<typeof AuthorityBackupService>[1], stateRoot:string,clock:Clock) {
+  requireRuntimeAdmission(runtimeAdmission).assertStateRoot(stateRoot);
   const archivePath=join(stateRoot,"archive.sqlite"),directory=join(stateRoot,"backups","authority");
-  if (!existsSync(archivePath) && backupHasArchiveTransferCustody(join(stateRoot,"state.db"))) throw new Error("archive-database-missing");
-  const archive=existsSync(archivePath)?new ArchiveDatabase(archivePath,{readOnly:true}):undefined;
+  if (!existsSync(archivePath) && backupHasArchiveTransferCustody(runtimeAdmission,join(stateRoot,"state.db"))) throw new Error("archive-database-missing");
+  const archive=existsSync(archivePath)?new ArchiveDatabase(runtimeAdmission,archivePath,{readOnly:true}):undefined;
   try {
     const generation=source.getMeta().authorityGeneration, fingerprint=archive?.fingerprint();
     // Refuse known missing custody before publishing even the live-half manifest.
-    const files = [...new Map([...(archive?.files() ?? []), ...backupPendingCaptureFiles(join(stateRoot,"state.db"))].map(file => [file.digest, file])).values()];
+    const files = [...new Map([...(archive?.files() ?? []), ...backupPendingCaptureFiles(runtimeAdmission,join(stateRoot,"state.db"))].map(file => [file.digest, file])).values()];
     for (const file of files) archive?.readFile(file);
-    const report=await new AuthorityBackupService(source,{directory},clock).request({trigger:"operator",requiredGeneration:generation});
+    const report=await new AuthorityBackupService(runtimeAdmission,source,{directory},clock).request({trigger:"operator",requiredGeneration:generation});
     if(archive===undefined){if(existsSync(archivePath))throw new Error("lifecycle-backup-source-changed");return report;}
     const manifest=report.manifests.at(-1);if(manifest===undefined)throw new Error("lifecycle-backup-live-missing");
     const token=randomUUID(),archiveFile=`${token}.archive.sqlite`,fileDirectory=`${token}.archive-files`;
     await archive.onlineBackupTo(join(directory,archiveFile));
-    const copy=new ArchiveDatabase(join(directory,archiveFile),{readOnly:true});
-    try{if(copy.fingerprint()!==fingerprint)throw new Error("lifecycle-backup-archive-changed");}finally{copy.close();}
+    const archiveCopyPath=join(directory,archiveFile);
+    const copyAdmission=runtimeAdmission.verifiedReadOnlyCopy(archiveCopyPath,fileDigest(archiveCopyPath),"archive");
+    const copy=new ArchiveDatabase(copyAdmission,archiveCopyPath,{readOnly:true});
+    try{if(copy.fingerprint()!==fingerprint)throw new Error("lifecycle-backup-archive-changed");}finally{copy.close();copyAdmission.release();}
     mkdirSync(join(directory,fileDirectory),{mode:0o700});
     for(const file of files)writeFileSync(join(directory,fileDirectory,file.digest),archive.readFile(file),{flag:"wx",mode:0o600,flush:true});
     durableDirectory(join(directory,fileDirectory));
@@ -102,35 +106,43 @@ export async function backupLifecyclePair(source: ConstructorParameters<typeof A
       archiveFingerprint:fingerprint,fileDirectory,files});
     const pairedManifestPath=join(directory,`${liveManifest}.lifecycle.json`);
     writeFileSync(pairedManifestPath,canonicalJsonStringify(pair),{flag:"wx",mode:0o600,flush:true});durableDirectory(directory);
-    await verifyLifecyclePair(pairedManifestPath);
+    await verifyLifecyclePair(runtimeAdmission,pairedManifestPath);
     return {...report,pairedManifestPath};
   }finally{archive?.close();}
 }
 
-export async function verifyLifecyclePair(path:string) {
+export async function verifyLifecyclePair(runtimeAdmission:RuntimeAdmission,path:string) {
+  requireRuntimeAdmission(runtimeAdmission);
   const pair=PairManifestSchema.parse(JSON.parse(safeBytes(path).toString("utf8"))),root=dirname(path);
   const liveManifestPath=join(root,pair.liveManifest);
   if(fileDigest(liveManifestPath)!==pair.liveManifestDigest || fileDigest(join(root,pair.archiveFile))!==pair.archiveDigest)throw new Error("lifecycle-backup-digest-mismatch");
-  const live=await verifyBackupManifestAtPath(liveManifestPath,pair.sourceDatabaseIdentity);
-  const archive=new ArchiveDatabase(join(root,pair.archiveFile),{readOnly:true});
+  const live=await verifyBackupManifestAtPath(runtimeAdmission,liveManifestPath,pair.sourceDatabaseIdentity);
+  const archivePath=join(root,pair.archiveFile);
+  const copyAdmission=runtimeAdmission.verifiedReadOnlyCopy(archivePath,pair.archiveDigest,"archive");
+  const archive=new ArchiveDatabase(copyAdmission,archivePath,{readOnly:true});
   try {
     if(archive.fingerprint()!==pair.archiveFingerprint)throw new Error("lifecycle-backup-archive-mismatch");
-    const pending = backupPendingCaptureFiles(live.backupPath);
+    const liveAdmission=runtimeAdmission.verifiedReadOnlyCopy(live.backupPath,live.manifest.sha256,"authority");
+    let pending:ReturnType<typeof backupPendingCaptureFiles>;
+    try { pending = backupPendingCaptureFiles(liveAdmission,live.backupPath); }
+    finally { liveAdmission.release(); }
     const required = [...archive.fileReferences(false), ...pending];
     const admitted = [...archive.fileReferences(), ...pending];
     if (new Set(pair.files.map(file=>file.digest)).size !== pair.files.length
       || required.some(file => !pair.files.some(candidate => candidate.digest === file.digest && candidate.byteLength === file.byteLength))
       || pair.files.some(file => !admitted.some(candidate => candidate.digest === file.digest))) throw new Error("lifecycle-backup-file-membership-mismatch");
-  } finally {archive.close();}
+  } finally {archive.close();copyAdmission.release();}
   for(const file of pair.files){const bytes=safeBytes(join(root,pair.fileDirectory,file.digest));if(bytes.length!==file.byteLength||createHash("sha256").update(bytes).digest("hex")!==file.digest)throw new Error("lifecycle-backup-file-mismatch");}
   return {pair,live,root};
 }
 
 /** One stopped admission covers both stores. A durable marker refuses runtime boot after any interruption. */
-export async function restoreLifecyclePair(optionsInput:z.input<typeof OfflineRestoreOptionsSchema>, requestInput:z.input<typeof OfflineRestoreRequestSchema>,
+export async function restoreLifecyclePair(runtimeAdmission:RuntimeAdmission,optionsInput:z.input<typeof OfflineRestoreOptionsSchema>, requestInput:z.input<typeof OfflineRestoreRequestSchema>,
   rebuild:(path:string)=>Promise<void>,clock:Clock,afterStep?:(step:"live"|"archive"|"files")=>void) {
   const options=OfflineRestoreOptionsSchema.parse(optionsInput),request=OfflineRestoreRequestSchema.parse(requestInput);
-  const verified=await verifyLifecyclePair(request.manifestPath),stateRoot=dirname(options.authorityPath);
+  requireRuntimeAdmission(runtimeAdmission).assertExclusive();
+  const verified=await verifyLifecyclePair(runtimeAdmission,request.manifestPath),stateRoot=dirname(options.authorityPath);
+  runtimeAdmission.assertAuthorityDatabase(options.authorityPath);
   requireSupportedRecoverySchema(verified.live.manifest.schemaVersion);
   const {AuthorityDatabase:LiveDatabase}=await import("./authority-database.js");
   if(verified.pair.sourceDatabaseIdentity!==LiveDatabase.sourceDatabaseIdentity(options.authorityPath))throw new Error("lifecycle-restore-identity-mismatch");
@@ -143,7 +155,7 @@ export async function restoreLifecyclePair(optionsInput:z.input<typeof OfflineRe
     if(Object.values(observation.processLocks).some(lock=>lock.state === "active"))throw new Error("lifecycle-restore-runtime-active");
     if(existsSync(journal)){if(safeBytes(journal).toString("utf8")!==identity)throw new Error("lifecycle-restore-resume-mismatch");}
     else {writeFileSync(journal,identity,{flag:"wx",mode:0o600,flush:true});durableDirectory(stateRoot);createdJournal=true;}
-    const report=await new OfflineAuthorityRestoreService(options,rebuild,clock,undefined,()=>({...admission,release(){}}))
+    const report=await new OfflineAuthorityRestoreService(runtimeAdmission,options,rebuild,clock,undefined,()=>({...admission,release(){}}))
       .restore({...request,manifestPath:verified.live.manifestPath});
     changed=true;afterStep?.("live");
     const token=randomUUID(),archivePath=join(stateRoot,"archive.sqlite"),staged=`${archivePath}.${token}.restore`;
@@ -157,7 +169,7 @@ export async function restoreLifecyclePair(optionsInput:z.input<typeof OfflineRe
     durableDirectory(stagedFiles);
     if(existsSync(fileRoot)){if(lstatSync(fileRoot).isSymbolicLink())throw new Error("lifecycle-restore-symlink");renameSync(fileRoot,join(options.suspectDirectory,`archive-files.${token}`));}
     renameSync(stagedFiles,fileRoot);durableDirectory(stateRoot);afterStep?.("files");
-    const archive=new ArchiveDatabase(archivePath,{readOnly:true});try{
+    const archive=new ArchiveDatabase(runtimeAdmission,archivePath,{readOnly:true});try{
       if(archive.fingerprint()!==verified.pair.archiveFingerprint)throw new Error("lifecycle-restore-archive-mismatch");
       archive.files();
       // Pending captures need not have an archive row yet. Verify every copied

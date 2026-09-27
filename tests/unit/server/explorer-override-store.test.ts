@@ -5,12 +5,12 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
-import { readLatestDatabaseUpgrade } from "../../../src/infra/sqlite/stopped-database-conversion.js";
-import { inspectAuthorityBackupReadOnly } from "../../../src/infra/compat/backup-inspection.js";
+import { readLatestDatabaseUpgrade } from "../../helpers/synthetic-storage-admission.js";
+import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
 import { acquireRuntimeRestoreAdmission } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { upgradeStorage } from "../../../src/server/storage/upgrade.js";
+import { upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
 import { storageRecoveryFixture, storageTree } from "../helpers/storage-recovery-fixture.js";
 import { explorerAuthorityFixture } from "../../fixtures/explorer-authority.js";
 

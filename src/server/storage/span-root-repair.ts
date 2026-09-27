@@ -10,6 +10,7 @@ import { SpanEventWireSchema } from "../../events/types.js";
 import { readTimelineRecords } from "../../infra/events/timeline-reader.js";
 import { lifecycleCommandId } from "../../domain/identifiers.js";
 import { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { RecoveryStopProofStore } from "../../infra/sqlite/recovery-stop-proof.js";
 import { StoppedSystemProofSchema } from "../../infra/sqlite/recovery-contracts.js";
 import {
@@ -63,6 +64,7 @@ function withoutProcessRepairFields(event: z.infer<typeof SpanEventWireSchema>):
 }
 
 export class OfflineSpanRootRepairService {
+  readonly #runtimeAdmission: RuntimeAdmission;
   readonly #authorityPath: string;
   readonly #processLockRoot: string;
   readonly #busyTimeoutMs: number;
@@ -72,11 +74,14 @@ export class OfflineSpanRootRepairService {
   readonly #pid: number;
 
   constructor(
+    runtimeAdmission: RuntimeAdmission,
     input: unknown,
     clock: Clock = systemClock,
     admissionFactory: AdmissionFactory = acquireRuntimeRestoreAdmission,
     pid: number = process.pid,
   ) {
+    this.#runtimeAdmission = requireRuntimeAdmission(runtimeAdmission);
+    this.#runtimeAdmission.assertExclusive();
     const options = OfflineSpanRootRepairOptionsSchema.parse(input);
     this.#authorityPath = resolve(options.authorityPath);
     this.#processLockRoot = resolve(options.processLockRoot);
@@ -105,10 +110,11 @@ export class OfflineSpanRootRepairService {
       this.#proofs.consumeAgainstLiveSnapshot(request.stoppedSystemProof, liveSnapshot);
 
       const before = AuthorityDatabase.inspectAuthorityReadIdentityReadOnly(
+        this.#runtimeAdmission,
         this.#authorityPath,
         this.#busyTimeoutMs,
       );
-      const database = AuthorityDatabase.open({
+      const database = AuthorityDatabase.open(this.#runtimeAdmission, {
         path: this.#authorityPath,
         busyTimeoutMs: this.#busyTimeoutMs,
         migrationOwner: "span-root-repair",

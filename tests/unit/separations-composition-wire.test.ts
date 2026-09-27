@@ -37,7 +37,7 @@ import type { IdentityEvidencePacket } from "../../src/domain/separations/identi
 import { SeparationWritePlanSchema } from "../../src/domain/separations/write-plan.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { parseInputRunText, toRawSubmission } from "../../src/domain/workflow/ingress.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { buildRunSection, type RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { planStart } from "../../src/services/start/plan.js";
 import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
