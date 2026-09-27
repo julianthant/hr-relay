@@ -1,34 +1,28 @@
 # Status — Settings redesign — 2026-09-26
 
-Checkpoint: `58c422505` on `codex/settings-design-system`. This is a progress snapshot, not final acceptance.
-Plan owner: [settings-and-records](../rebuild/plans/phase-3/3.1-finish-the-dashboard/ui-refinement/settings-and-records.md).
-Verified against the committed candidate, retained focused checks, and the three active worker assignments.
+Accepted code candidate: `9aad2ff23` on `codex/settings-design-system`.
+Plan owner: [settings-and-records](../rebuild/plans/phase-3/3.1-finish-the-dashboard/ui-refinement/settings-and-records.md#settings-candidate-acceptance--2026-09-26).
+Verified against the committed candidate, retained test results, final typecheck, lint, build and implementation captures.
 
 ## 1 · Complete
 
-| Item | Evidence | Since |
-| --- | --- | --- |
-| Shared compact design system, autosave, Credentials and ranked model controls | [78 focused tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-assembly/kit-combined/combined-tests.log), candidate `f63624c67` | Sept 26 |
-| Ten completed tabs; Paths layout implemented but relocation unfinished | [Owning acceptance record](../rebuild/plans/phase-3/3.1-finish-the-dashboard/ui-refinement/settings-and-records.md#reference-tabs-and-runtime-path-allocation--2026-09-26), [reference-tab checks](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-5/reference-tabs/unit.log) | Sept 26 |
-| Browser-profile and Duo path editing, relocation plan autosave | `fd26da778`, `1a267574c`; [Paths implementation](../../src/dashboard/surfaces/settings-relocation.tsx) | Sept 26 |
-| Relocation admission, explicit v56 upgrade, durable recovery checkpoints and restore safeguards | `01cb0f52b`, `ca1304dd7`, `f1bf98b8e`, `58c422505`; [31 checkpoint tests](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/relocation-control/activation-control-tests.log), [12 restore checks](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/runtime-relocation/v56/restore-consumer-test-final.log) | Sept 26 |
+| Item | Evidence |
+| --- | --- |
+| All eleven Settings tabs and the cohesive shared UI kit | [Owning acceptance record](../rebuild/plans/phase-3/3.1-finish-the-dashboard/ui-refinement/settings-and-records.md#settings-candidate-acceptance--2026-09-26) |
+| All nine native path controls, autosave and relocation-plan command | [50 integrated checks](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/native-picker-integration/focused-final.log), [Paths capture](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/relocation-ui/paths-picker-dark-1440-final.png) |
+| Verified offline database and artifact relocation with interruption recovery | [13 end-to-end cases](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/runtime-relocation/offline-e2e-r1.log), [tamper/inventory proof](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/runtime-relocation/engine/activation-tamper-receipt.txt) |
+| Affected storage architecture and final static/build checks | [94 architecture cases](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/native-picker-integration/storage-architecture-final.log), [typecheck](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/native-picker-integration/typecheck-acceptance.log), [lint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/native-picker-integration/lint-final.log), [build](/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/native-picker-integration/web-build-final.log) |
 
-## 2 · Drift — where implementation differs from the original design work
+## 2 · Drift — approved scope changes and verification limits
 
-| Plan said | Reality | Kind | Consequence |
-| --- | --- | --- | --- |
-| Cohesive Settings redesign | The operator also approved verified database and artifact relocation, including offline recovery. Its engine remains uncommitted and incomplete. | Approved scope expansion | Paths cannot be counted complete until copying and recovery pass end-to-end checks. |
-| Local candidate acceptance | The final combined checks remain outstanding while engine and UI changes are being assembled. | Not done | No claim of final completion, master integration, or push. |
+Verified offline relocation and native folder/file selection were operator-approved additions to the original visual redesign. They are implemented and tested with synthetic installations; no real runtime data was moved.
 
-Zoom checks are explicitly waived. Broad repository gates remain deferred under the owning Phase 3.1 cadence.
+Zoom checks were explicitly waived. Broad repository coverage, lint and parity remain deferred under the owning Phase 3.1 cadence. The build retains its existing large-chunk warning. This is local candidate acceptance, not master integration or phase completion.
 
 ## 3 · Next
 
-1. Runtime worker: finish exact activation recovery, complete file/reference verification, and CLI execution; prove fault recovery using temporary synthetic data.
-2. Parallel test worker: run genuine both-folder, artifact-only, and subsequent state-only moves; verify credentials, artifacts, archive records, Settings history, and committed WAL data survive.
-3. UI worker: add the exact copyable command and concise stop/restart guidance to the existing Paths pending-plan banner.
-4. Root: inspect the completed changes, integrate category commits, and finish affected combined checks. Preserve unrelated worktrees and all real runtime data.
+The Settings assignment is complete. The operator owns integration and any subsequent adoption of these shared components in Dashboard, Archive or other surfaces. Worker worktrees are clean and retained for reuse; owned preview and test processes are closed.
 
 ## 4 · Needs you
 
-None. Current implementation and synthetic verification are authorized. Master integration and push remain outside this assignment.
+None for this assignment. Master integration and push were not authorized or performed.

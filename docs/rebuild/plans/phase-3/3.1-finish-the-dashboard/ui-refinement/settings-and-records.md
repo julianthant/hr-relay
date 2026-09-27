@@ -735,3 +735,53 @@ autosave or relocation-plan flow, and cancellation leaves it unchanged. The UI l
 primitive, kit specimen, Paths consumers and client; the backend lane owns the guarded native-picker
 endpoint and host adapter. The offline relocation engine remains separately owned. D353 and the
 decision index record this amendment. No new mockup or zoom check is required.
+
+### Settings candidate acceptance — 2026-09-26
+
+Candidate `9aad2ff23` on `codex/settings-design-system` completes all eleven Settings tabs, including
+the shared UI kit and the final Paths amendment. This acceptance supersedes the outstanding
+relocation and combined-check obligations in the earlier checkpoints above. Master integration and
+push remain with the operator.
+
+All nine Paths rows use the shared `PathControl`: a muted path with middle truncation and a padded
+32.4px Change button. Seven directory fields open the native macOS folder picker; the Duo credential
+and I-9 tracker fields open a file picker. Cancellation makes no change. Ordinary selections use
+autosave; state and artifact selections record a relocation plan with the exact copyable offline
+command. Unsupported hosts, timeout, a busy picker and dialog failures remain explicit. The same
+primitive appears in the UI kit. Root inspected the final dark 1440px and light 1024px captures at
+normal 100% rendering; the sidebar width is unchanged.
+
+The offline engine preserves saved settings, command/audit history, protected bytes, artifacts,
+archive reports and attachments, empty directories, and committed WAL data. Its durable activation
+intent admits only the exact pre-activation state or the exact committed result. Recovery verifies
+the pinned authority and archive, final backup, retained source and locator before settlement.
+The existing v55 source uses the explicit stopped capability upgrade; ordinary startup does not
+perform that upgrade. All movement and interruption tests used temporary synthetic installations.
+No real runtime files or credentials were moved.
+
+Deciding evidence is under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/settings-global-design-2026-09-26/category-6/`:
+
+- `native-picker-integration/focused-final.log`: 50/50 integrated picker, catalog and Paths checks.
+- `runtime-relocation/offline-e2e-r1.log`: 13/13 genuine moves and recovery cases, including v55,
+  WAL, both roots, artifact-only followed by state-only, eight interruption points, and interruption
+  after the final artifact-only backup.
+- `runtime-relocation/engine/activation-tamper-receipt.txt`: 11/11 inventory, native-copy and
+  activation/archive tamper checks, with scoped lint.
+- `native-picker-integration/storage-architecture-final.log`: 94/94 storage architecture checks.
+  The earlier combined architecture run retained its 44 fixture failures; the other five affected
+  architecture files passed. The repair aligns canonical fixture paths, preserves the released
+  migration boundary and no-follow/transient-swap assertions, and updates the exact SQLite owner
+  inventory without relaxing the no-copy/no-VACUUM checks.
+- `native-picker-integration/typecheck-acceptance.log`, `lint-final.log`,
+  `storage-architecture-eslint-final.log`, and `web-build-final.log`: passed. The build retains the
+  existing large-chunk warning.
+- `native-picker-integration/manifest-check.log`, `stores-check.log`, and `roadmap-check.log`:
+  generated build manifest, store catalog and roadmap are current.
+- `relocation-ui/paths-picker-dark-1440-final.png` and `paths-picker-light-1024.png`: inspected
+  implementation captures. The final button sizing is shown in the dark capture.
+
+The worker worktrees are clean and retained for reuse; owned preview and test processes are closed.
+Earlier accepted category evidence remains applicable to unchanged Settings tabs. Zoom tests were
+explicitly skipped. Broad parity, repository-wide coverage/lint, and phase-exit gates remain deferred
+under the approved Phase 3.1 cadence; no independent review, master merge or push was performed.
