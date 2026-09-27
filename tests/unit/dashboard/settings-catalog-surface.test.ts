@@ -66,14 +66,12 @@ describe("typed Settings catalog controls", () => {
       { label: "Saved and Active", value: "Saved" }, { label: "Default", value: undefined },
     ]);
   });
-  it("renders the current setting without redundant source or identity labels", async () => {
+  it("omits the actor label control while retaining the General settings", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "general", settingsWithDistinctRuntimeValues); cleanups.push(mounted.close);
-    const field = mounted.host.querySelector('[data-settings-path="actor.label"]'); assert.ok(field);
-    assert.equal(field.querySelector("input")?.value, "Saved operator");
-    assert.ok(field.querySelector('button[aria-label="Actions for Operator label"]'), "saved custom values keep in-row restore actions");
+    assert.equal(mounted.host.querySelector('[data-settings-path="actor.label"]'), null);
+    assert.doesNotMatch(mounted.host.textContent ?? "", /Operator identity|Operator label/u);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Setting identities|Using default|Revision 2/u);
-    assert.equal(field.querySelectorAll("details").length, 0);
     const annualRows = [...mounted.host.querySelectorAll('[data-settings-path^="annualDates."]')];
     assert.equal(annualRows.length, 1);
     assert.equal(annualRows[0]?.getAttribute("data-settings-path"), "annualDates.FY2027.jobEndDate");
@@ -91,6 +89,25 @@ describe("typed Settings catalog controls", () => {
     assert.equal((width as HTMLLabelElement).htmlFor, width.querySelector("input")?.id);
     assert.equal((height as HTMLLabelElement).htmlFor, height.querySelector("input")?.id);
     assert.doesNotMatch(mounted.host.textContent ?? "", /Observed host/u);
+  });
+  it("toggles and autosaves each General browser switch", async () => {
+    const h = await setup("general");
+    for (const path of ["browser.headless", "features.debugScreenshots", "features.duoWebAuthn"] as const) {
+      const row = h.host.querySelector(`[data-settings-path="${path}"]`);
+      assert.ok(row);
+      const control = row.querySelector<HTMLInputElement>('[role="switch"]');
+      assert.ok(control);
+      const before = control.checked;
+      const pill = row.querySelector<HTMLElement>(".ds-switch-control");
+      assert.ok(pill);
+      await settingsAction(() => pill.click());
+      assert.equal(row.querySelector<HTMLInputElement>('[role="switch"]')?.checked, !before);
+      assert.deepEqual(h.controller().draft[path], { kind: "set", raw: String(!before) });
+      assert.equal(row.querySelector("button"), null);
+      await settingsAction(() => h.controller().submit());
+      assert.equal(h.controller().save.state, "applied");
+    }
+    assert.equal(h.commands.length, 3);
   });
   it("shows deployment state locations and editable new-run browser locations", async () => {
     const { host } = await setup("paths");
@@ -141,17 +158,19 @@ describe("typed Settings catalog controls", () => {
     assert.equal(host.querySelector("select"), null);
     assert.equal([...host.querySelectorAll("button")].some(button => button.textContent === "Save changes"), false);
   });
-  it("keeps a saved Performance value and its restore action in the same row", async () => {
+  it("offers Undo only for a pending Performance text edit", async () => {
     const authority = syntheticSettingsAuthority(); cleanups.push(authority.close);
     const mounted = await mountSettingsHarness(authority, "performance", () => fixtureSettingsDocument({ timeouts: { navigationMs: 22_000 } }, 2)); cleanups.push(mounted.close);
     const row = mounted.host.querySelector('[data-settings-path="timeouts.navigationMs"]'); assert.ok(row);
     assert.equal(row.querySelector("input")?.value, "22");
-    assert.ok(row.querySelector('button[aria-label="Actions for Standard navigation"]'));
+    assert.equal(row.querySelector("button"), null);
     assert.equal(row.querySelectorAll(".ds-body-row").length, 1);
     assert.equal(row.querySelectorAll(".settings-row-actions").length, 0);
     await settingsAction(() => mounted.controller().clear("timeouts.navigationMs"));
     assert.deepEqual(mounted.controller().draft["timeouts.navigationMs"], { kind: "clear" });
-    await settingsAction(() => mounted.controller().reset("timeouts.navigationMs"));
+    const undo = [...row.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent === "Undo");
+    assert.ok(undo);
+    await settingsAction(() => undo.click());
     assert.equal(mounted.controller().draft["timeouts.navigationMs"], undefined);
     assert.equal(mounted.commands.length, 0);
   });

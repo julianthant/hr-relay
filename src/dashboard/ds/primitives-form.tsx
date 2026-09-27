@@ -551,24 +551,24 @@ export function Switch({
 }) {
   return (
     <HeroSwitch isSelected={checked} onChange={onCheckedChange} isDisabled={disabled} className={cn("ds-switch-row flex items-start gap-[var(--ds-space-base)]", className)}>
-      <HeroSwitch.Control className={cn(
+      <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-1 flex-row-reverse items-center justify-between">
+        <HeroSwitch.Control onClick={event => { event.preventDefault(); event.stopPropagation(); if (!disabled) onCheckedChange(!checked); }} className={cn(
         "ds-switch-control relative inline-flex shrink-0 cursor-pointer items-center rounded-full border",
         checked
           ? "ds-switch-control-checked border-transparent bg-[var(--ds-accent)]"
           : "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)]",
         dsFocus,
         dsMotion.fast,
-      )}><HeroSwitch.Thumb className={cn(
+        )}><HeroSwitch.Thumb className={cn(
         "ds-switch-thumb block shrink-0 rounded-full transition-transform duration-[var(--ds-dur-1)] ease-[var(--ds-ease-out)]",
         checked
           ? "ds-switch-thumb-checked bg-[var(--ds-accent-fg)]"
           : "bg-[var(--ds-fg-muted)]",
-      )} /></HeroSwitch.Control>
-      <HeroSwitch.Content className="ds-switch-content flex min-w-0 flex-col">
-        <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
-        {description && (
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>
-        )}
+        )} /></HeroSwitch.Control>
+        <span className="ds-switch-copy flex min-w-0 flex-1 flex-col">
+          <span className={cn(dsText.ui, "text-[color:var(--ds-fg)]")}>{label}</span>
+          {description && <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{description}</span>}
+        </span>
       </HeroSwitch.Content>
     </HeroSwitch>
   );

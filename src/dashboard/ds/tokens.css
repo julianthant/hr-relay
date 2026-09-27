@@ -1824,8 +1824,13 @@ body[data-demo-theme="light"] {
 
 .ds-body-scope .ds-switch-content {
   flex: 1;
-  align-items: flex-start;
+  align-items: center;
   text-align: left;
+  flex-direction: row-reverse;
+  justify-content: space-between;
+}
+
+.ds-body-scope .ds-switch-copy {
   gap: var(--ds-space-tight);
 }
 
