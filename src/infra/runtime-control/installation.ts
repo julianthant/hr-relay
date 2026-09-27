@@ -59,6 +59,17 @@ function privateDirectory(path: string): void {
   const stat = lstatSync(path);
   if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o700) fail(`unsafe directory ${path}`);
 }
+function dataDirectory(path: string): void {
+  const stat = lstatSync(path);
+  if (!stat.isDirectory() || stat.isSymbolicLink() || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o222) !== 0o200) fail(`unsafe data root ${path}`);
+}
+function lstatMaybe(path: string): ReturnType<typeof lstatSync> | undefined {
+  try { return lstatSync(path); }
+  catch (error) {
+    if (typeof error === "object" && error !== null && Reflect.get(error, "code") === "ENOENT") return undefined;
+    throw error;
+  }
+}
 function privateFile(path: string): void {
   const stat = lstatSync(path);
   if (!stat.isFile() || stat.isSymbolicLink() || stat.nlink !== 1 || (process.getuid && stat.uid !== process.getuid()) || (stat.mode & 0o777) !== 0o600) fail(`unsafe file ${path}`);
@@ -73,14 +84,15 @@ function readStrict<T>(path: string, schema: z.ZodType<T>): T {
     return schema.parse(JSON.parse(readFileSync(fd, "utf8")));
   } finally { closeSync(fd); }
 }
-function atomicJson(path: string, value: unknown): void {
+function atomicJson(path: string, value: unknown, parentKind: "control" | "data" = "control"): void {
   const directory = resolve(path, "..");
-  privateDirectory(directory);
+  if (parentKind === "control") privateDirectory(directory);
+  else dataDirectory(directory);
   const temp = join(directory, `.${randomUUID()}.tmp`);
   try {
     writeFileSync(temp, `${JSON.stringify(value)}\n`, { mode: 0o600, flag: "wx" });
     const fd = openSync(temp, "r"); try { fsyncSync(fd); } finally { closeSync(fd); }
-    if (existsSync(path)) privateFile(path);
+    if (lstatMaybe(path)) privateFile(path);
     renameSync(temp, path);
     syncDir(directory);
   } finally { if (existsSync(temp)) unlinkSync(temp); }
@@ -89,29 +101,36 @@ function assertNoSymlinkComponents(path: string): void {
   let component = parse(path).root;
   for (const part of relative(component, path).split(/[\\/]/u)) {
     component = join(component, part);
-    if (existsSync(component) && lstatSync(component).isSymbolicLink()) fail(`symlink in root path ${component}`);
+    if (lstatMaybe(component)?.isSymbolicLink()) fail(`symlink in root path ${component}`);
   }
 }
-function ensureRoot(path: string): void {
+function preflightRoot(path: string): void {
   assertNoSymlinkComponents(path);
-  if (!existsSync(path)) { mkdirSync(path, { recursive: true, mode: 0o700 }); syncDir(resolve(path, "..")); }
-  const stat = lstatSync(path);
-  if (!stat.isDirectory() || stat.isSymbolicLink()) fail(`unsafe root ${path}`);
+  if (lstatMaybe(path)) dataDirectory(path);
+}
+function preflightPair(pair: RuntimePair): void {
+  preflightRoot(pair.stateRoot);
+  preflightRoot(pair.artifactRoot);
+}
+function ensureRoot(path: string): void {
+  preflightRoot(path);
+  if (!lstatMaybe(path)) { mkdirSync(path, { recursive: true, mode: 0o700 }); syncDir(resolve(path, "..")); }
+  dataDirectory(path);
 }
 function markerPath(root: string): string { return join(root, MARKER); }
 function checkMarker(root: string, installationId: string, workspace: string, role: "state" | "artifact", generation: number): void {
-  assertNoSymlinkComponents(root);
-  privateDirectory(root);
+  preflightRoot(root);
+  dataDirectory(root);
   const marker = readStrict(markerPath(root), MarkerSchema);
   if (marker.installationId !== installationId || marker.workspace !== workspace || marker.role !== role || marker.generation !== generation) fail(`root ownership mismatch: ${role}`);
 }
 function installMarker(root: string, installationId: string, workspace: string, role: "state" | "artifact", generation: number): void {
   ensureRoot(root);
-  if (existsSync(markerPath(root))) fail(`root already owned: ${role}`);
-  atomicJson(markerPath(root), { schemaVersion: 1, installationId, workspace, role, generation });
+  if (lstatMaybe(markerPath(root))) fail(`root already owned: ${role}`);
+  atomicJson(markerPath(root), { schemaVersion: 1, installationId, workspace, role, generation }, "data");
 }
 function ensureDestinationMarker(root: string, installationId: string, workspace: string, role: "state" | "artifact", generation: number): void {
-  if (existsSync(markerPath(root))) checkMarker(root, installationId, workspace, role, generation);
+  if (lstatMaybe(markerPath(root))) checkMarker(root, installationId, workspace, role, generation);
   else installMarker(root, installationId, workspace, role, generation);
 }
 function identity(): ProcessStartIdentity {
@@ -188,27 +207,31 @@ function rawLocator(control: string, workspace: string): RuntimeLocator {
 function defaultEmpty(pair: RuntimePair): boolean {
   const permittedStateEntry = inside(pair.stateRoot, pair.artifactRoot) ? relative(pair.stateRoot, pair.artifactRoot).split(/[\\/]/u)[0] : undefined;
   for (const [root, allowed] of [[pair.stateRoot, permittedStateEntry], [pair.artifactRoot, undefined]] as const) {
-    if (!existsSync(root)) continue;
-    if (!lstatSync(root).isDirectory() || lstatSync(root).isSymbolicLink()) fail("unsafe default root");
+    if (!lstatMaybe(root)) continue;
+    dataDirectory(root);
     if (readdirSync(root).some((name) => name !== allowed)) return false;
   }
   return true;
 }
 function adopt(control: string, workspace: string, defaultPair: RuntimePair, verifier?: AuthorityVerifier): RuntimeLocator {
-  assertKnownDefaults(workspace, defaultPair);
+  const pair = Object.freeze({ stateRoot: defaultPair.stateRoot, artifactRoot: defaultPair.artifactRoot });
+  assertKnownDefaults(workspace, pair);
+  preflightPair(pair);
   if (existsSync(join(control, "installation.json")) || existsSync(join(control, "locator.json")) || existsSync(join(control, "journal.json"))) fail("incomplete adoption; offline recovery required");
-  if (existsSync(markerPath(defaultPair.stateRoot)) || existsSync(markerPath(defaultPair.artifactRoot))) fail("existing ownership witness without locator");
-  if (!defaultEmpty(defaultPair)) {
+  if (lstatMaybe(markerPath(pair.stateRoot)) || lstatMaybe(markerPath(pair.artifactRoot))) fail("existing ownership witness without locator");
+  if (!defaultEmpty(pair)) {
     if (!verifier) fail("existing authority requires verifier");
-    const evidence = verifier(defaultPair);
-    if (evidence.kind !== "verified-existing" || evidence.pair.stateRoot !== defaultPair.stateRoot || evidence.pair.artifactRoot !== defaultPair.artifactRoot || !Number.isSafeInteger(evidence.authorityGeneration) || evidence.authorityGeneration < 0 || !evidence.databaseIdentity) fail("invalid authority evidence");
+    const evidence = verifier(Object.freeze({ ...pair }));
+    if (evidence.kind !== "verified-existing" || evidence.pair.stateRoot !== pair.stateRoot || evidence.pair.artifactRoot !== pair.artifactRoot || !Number.isSafeInteger(evidence.authorityGeneration) || evidence.authorityGeneration < 0 || !evidence.databaseIdentity) fail("invalid authority evidence");
   }
+  preflightPair(pair);
+  if (lstatMaybe(markerPath(pair.stateRoot)) || lstatMaybe(markerPath(pair.artifactRoot))) fail("existing ownership witness without locator");
   const installationId = randomUUID();
   atomicJson(join(control, "installation.json"), { schemaVersion: 1, installationId, workspace });
   atomicJson(join(control, "journal.json"), { schemaVersion: 1, phase: "adopting", installationId });
-  installMarker(defaultPair.stateRoot, installationId, workspace, "state", 0);
-  installMarker(defaultPair.artifactRoot, installationId, workspace, "artifact", 0);
-  const locator = { schemaVersion: 1 as const, installationId, generation: 0, ...defaultPair };
+  installMarker(pair.stateRoot, installationId, workspace, "state", 0);
+  installMarker(pair.artifactRoot, installationId, workspace, "artifact", 0);
+  const locator = { schemaVersion: 1 as const, installationId, generation: 0, ...pair };
   atomicJson(join(control, "locator.json"), locator);
   unlinkSync(join(control, "journal.json")); syncDir(control);
   return locator;
@@ -221,12 +244,13 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   if (!existsSync(control)) {
     if (mode !== "exclusive" || !options?.defaultPair) fail("installation locator missing");
     assertKnownDefaults(workspace, options.defaultPair);
+    preflightPair(options.defaultPair);
     mkdirSync(control, { mode: 0o700 }); syncDir(workspace);
     mkdirSync(join(control, "leases"), { mode: 0o700 }); syncDir(control);
   }
   privateDirectory(control);
   let leasePath = "";
-  const locator = mutex(control, () => {
+  const resolvedLocator = mutex(control, () => {
     const peers = activeLeases(control);
     if (peers.some((peer) => mode === "exclusive" || peer.mode === "exclusive")) fail("installation lease busy");
     const resolved = existsSync(join(control, "installation.json")) ? readLocator(control, workspace, mode === "exclusive" ? options?.recoverRelocation : undefined) : (mode === "exclusive" && options?.defaultPair ? adopt(control, workspace, options.defaultPair, options.verifyExisting) : fail("installation locator missing"));
@@ -235,9 +259,11 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     atomicJson(leasePath, { schemaVersion: 1, admissionId, mode, pid: process.pid, processIdentity: identity() });
     return resolved;
   });
+  const locator = Object.freeze({ ...resolvedLocator });
+  const publicLocator = Object.freeze({ ...locator });
   let released = false;
   const shared = {
-    locator,
+    locator: publicLocator,
     release() {
       if (released) return;
       mutex(control, () => { privateFile(leasePath); unlinkSync(leasePath); syncDir(join(control, "leases")); });
@@ -245,6 +271,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
     },
   };
   if (mode === "shared") return shared;
+  let relocationStarted = options?.recoverRelocation !== undefined;
   function assertHeld(): void { if (released) fail("exclusive lease released"); privateFile(leasePath); }
   function journal(): z.infer<typeof JournalSchema> {
     return readStrict(join(control, "journal.json"), JournalSchema);
@@ -252,22 +279,30 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
   return {
     ...shared,
     beginRelocation(destination) {
-      assertHeld(); validatePair(workspace, destination);
+      assertHeld();
+      if (relocationStarted) fail("one relocation per exclusive lease; reacquire after settlement");
+      const target = Object.freeze({ stateRoot: destination.stateRoot, artifactRoot: destination.artifactRoot });
+      validatePair(workspace, target);
       if (existsSync(join(control, "journal.json"))) fail("relocation already pending");
-      if (destination.stateRoot === locator.stateRoot && destination.artifactRoot === locator.artifactRoot) fail("destination unchanged");
-      if ([destination.stateRoot, destination.artifactRoot].some((root) => inside(locator.stateRoot, root) || inside(root, locator.stateRoot) || inside(locator.artifactRoot, root) || inside(root, locator.artifactRoot))) fail("source and destination overlap");
-      atomicJson(join(control, "journal.json"), { schemaVersion: 1, phase: "preparing", installationId: locator.installationId, fromGeneration: locator.generation, source: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }, destination });
+      if (target.stateRoot === locator.stateRoot && target.artifactRoot === locator.artifactRoot) fail("destination unchanged");
+      if ([target.stateRoot, target.artifactRoot].some((root) => inside(locator.stateRoot, root) || inside(root, locator.stateRoot) || inside(locator.artifactRoot, root) || inside(root, locator.artifactRoot))) fail("source and destination overlap");
+      preflightPair(target);
+      if (lstatMaybe(markerPath(target.stateRoot)) || lstatMaybe(markerPath(target.artifactRoot)) || lstatMaybe(join(target.stateRoot, FENCE)) || lstatMaybe(join(target.artifactRoot, FENCE)) || !defaultEmpty(target)) fail("destination is not fresh and eligible");
+      const current = rawLocator(control, workspace);
+      if (current.installationId !== locator.installationId || current.generation !== locator.generation || current.stateRoot !== locator.stateRoot || current.artifactRoot !== locator.artifactRoot) fail("exclusive locator changed; reacquire lease");
+      atomicJson(join(control, "journal.json"), { schemaVersion: 1, phase: "preparing", installationId: locator.installationId, fromGeneration: locator.generation, source: { stateRoot: locator.stateRoot, artifactRoot: locator.artifactRoot }, destination: target });
+      relocationStarted = true;
     },
     fenceRelocationSource(verify) {
       assertHeld();
       const pending = journal();
       if (pending.phase !== "preparing" || pending.installationId !== locator.installationId || pending.fromGeneration !== locator.generation) fail("relocation is not preparing");
-      const evidence = verify(locator, pending.destination);
+      const evidence = verify(Object.freeze({ ...locator }), Object.freeze({ ...pending.destination }));
       if (evidence.installationId !== locator.installationId || evidence.sourceGeneration !== locator.generation || evidence.destination.stateRoot !== pending.destination.stateRoot || evidence.destination.artifactRoot !== pending.destination.artifactRoot || !evidence.backupReceiptId || !evidence.stagingReceiptId) fail("invalid relocation evidence");
       for (const root of [pending.source.stateRoot, pending.source.artifactRoot]) {
         const path = join(root, FENCE);
-        if (existsSync(path)) fail("source already fenced");
-        atomicJson(path, { schemaVersion: 1, installationId: locator.installationId, generation: locator.generation, destination: pending.destination });
+        if (lstatMaybe(path)) fail("source already fenced");
+        atomicJson(path, { schemaVersion: 1, installationId: locator.installationId, generation: locator.generation, destination: pending.destination }, "data");
       }
       atomicJson(join(control, "journal.json"), { ...pending, phase: "fenced", backupReceiptId: evidence.backupReceiptId, stagingReceiptId: evidence.stagingReceiptId });
     },
@@ -286,7 +321,7 @@ export function acquireInstallation(workspacePath: string, mode: "shared" | "exc
         atomicJson(join(control, "locator.json"), next);
       } else if (locator.generation !== next.generation || locator.stateRoot !== next.stateRoot || locator.artifactRoot !== next.artifactRoot) fail("recovery locator mismatch");
       atomicJson(join(control, "journal.json"), { ...pending, phase: "switched" });
-      return next;
+      return Object.freeze({ ...next });
     },
     settleRelocation() {
       assertHeld();
