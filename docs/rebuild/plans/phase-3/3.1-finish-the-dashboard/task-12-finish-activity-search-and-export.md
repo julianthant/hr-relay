@@ -476,25 +476,31 @@ The breakdown shows all workflows without a workflow focus control, per the subs
 review. Numeric headers and values align right, and ordinary counts remain plain text. Headline
 totals and exports remain explicitly range-wide; this presentation does not invent a
 workflow-scoped summary/export authority or derive totals from partial client rows. The compact
-heading holds period/date selection and export actions. The requested Custom range design reuses
+heading places the selected dates beside Activity after a subtle divider, with Period and Export
+on the right. Custom replaces that plain date label with its date-range trigger. The requested Custom range design reuses
 the existing master HeroUI calendar styling and anchored popover, shown only for Custom, and
-includes date/time selection with Apply and Cancel. Presets include Today, This week, Last month,
+includes date-only selection with Apply and Cancel. Both selected dates are included as whole
+report-timezone calendar days; the operator removed the earlier time-field proposal. Presets include Today, This week, Last month,
 Last 3 months, Last 6 months and Last year. Month presets are rolling calendar ranges ending today;
-the heading shows their exact dates. Precise-time
-report and export support requires extending the current day-range wire during implementation;
-the prototype must not imply that unchanged fixture totals were recomputed for a custom interval. Confirmed
+the heading shows their exact dates. The prototype must not imply that unchanged fixture totals
+were recomputed for a custom interval. Confirmed
 write-ledger counts retain their separately named authority. The approved visual direction permits
 attributable updates to affected Activity references without assertion or membership weakening.
 
-The range-aware graph design aggregates hourly for intervals up to 24 hours, daily for up to 31
+The range-aware graph design aggregates hourly for one selected calendar day (including 23- or
+25-hour daylight-saving days), daily for up to 31
 calendar days, weekly for up to 180 days, monthly for up to 730 days, and yearly for longer
 intervals. Extreme ranges may group multiple years to bound the visible bar count. Calendar bins
 use the report timezone, Sunday week boundaries, and clipped first/last intervals. Axis labels
-thin with available width while every bar remains inspectable by pointer and keyboard with its
-exact interval and count. Known zero intervals remain visible; missing coverage is unavailable,
+thin with available width while every bar remains inspectable by pointer and keyboard. Visible
+tooltips show a concise date range and count; hourly bars include time. Exact interval semantics
+remain available to accessibility output without verbose timezone prose in the visual tooltip.
+Known zero intervals remain visible; missing coverage is unavailable,
 not zero. The prototype uses one synthetic selection for chart, summary, workflow rows and export.
 Production retains the authoritative report and separate write-ledger semantics rather than
 adopting the prototype dataset as an authority.
+Hourly production bins require authoritative run timing or an hourly report series; the existing
+day-range payload must not be interpolated into invented hourly counts.
 
 Candidate: `codex/activity-report` at
 `/Users/julianhein/.codex/worktrees/activity-report/hr-automation-rebuild`, from the committed
