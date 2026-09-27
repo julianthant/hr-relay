@@ -1833,15 +1833,29 @@ path-free artifact identities remain unchanged. The destination receives an expl
 configuration snapshot for its admitted root pair, with the ordinary Settings revision unchanged,
 and a freshly verified backup bound to the database's final path before activation.
 
-Moved source directories are retained under journal-bound sibling locations. A regular-file
-tombstone at each outermost moved source location prevents an older binary from recreating that
-directory; a moved parent also blocks its former nested artifact path. An unchanged root remains
-usable only with the new v56 authority and valid root-ownership evidence. Each partial rename,
-fence, locator change, and completion receipt must be recoverable from the exact durable operation
-binding. An interrupted operation blocks normal admission until explicit offline recovery verifies
-it. The completion receipt is durable before the transient journal is cleared; later plan projection
-checks completed source generations through those receipts. These are acceptance requirements for
-the pending engine, not claims that movement or recovery is implemented.
+Moved source data is retained under journal-bound sibling locations. An outermost moved source
+directory normally becomes a regular-file tombstone; a moved parent also blocks its former nested
+artifact path. The default state root has one necessary exception: `.tracker/locks` is the fixed
+checkout process-lock authority. Its ancestor directory must remain as a lock shell. Move managed
+non-lock entries into the retained sibling with an exact per-entry journal, leave the lock subtree
+in place, and install an invalid-SQLite regular-file tombstone at the old `state.db` path. A moved
+artifact directory beneath that shell can receive its own directory-path tombstone. Source markers
+and fences remain negative witnesses. The engine holds the existing runtime restore-admission lock
+continuously, as well as installation-exclusive admission, so supported older processes cannot
+start during the entry-rename/tombstone gaps. After settlement their main database opener refuses
+the tombstone before any archive writer. The lock shell is never an alternative active state root.
+
+An unchanged storage root remains usable only with the new v56 authority and valid root-ownership
+evidence. Locator v2 records the global generation and separate `stateRootGeneration` and
+`artifactRootGeneration` marker epochs; an unchanged role retains its epoch. A v1 locator reads as
+both marker epochs equal to its global generation. Generation-zero v1 adoption remains valid;
+a nonzero generation without its complete activation receipt chain is refused. No real relocation
+was admitted through the earlier foundation alone. Each partial rename, fence, locator change, and
+completion receipt must be recoverable from the exact durable operation binding. An interrupted
+operation blocks normal admission until explicit offline recovery verifies it. The completion
+receipt is durable before the transient journal is cleared; later plan projection checks completed
+source generations through those receipts. These are acceptance requirements for the pending
+engine, not claims that movement or recovery is implemented.
 
 ### D351 — Revisioned provider-key file and exact pending recovery · 2026-09-26
 

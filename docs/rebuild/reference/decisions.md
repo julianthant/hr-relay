@@ -19,10 +19,13 @@ Actual relocation requires exclusive offline admission, verified backup, a durab
 an atomic pair locator switch, and an activation receipt. Schema v56 is required before activation
 so supported pre-location binaries refuse the authority even when only artifacts move. v55 backup
 readability is retained. SQLite stores desired intent, not a second active-root authority.
-Process locks stay checkout-local. Destination activation includes a final-path verified backup;
-journal-bound retained source directories and outermost regular-file tombstones prevent old-path
-recreation. Interrupted movement blocks admission until explicit verified recovery, and durable
-activation receipts preserve validation of immutable older-generation plan history.
+Process locks stay checkout-local. Destination activation includes a final-path verified backup.
+Journal-bound retained data and tombstones prevent old-path reuse. The default `.tracker` source
+must remain a directory shell around fixed `.tracker/locks`; its managed entries are retained
+separately and its old `state.db` becomes an invalid-SQLite tombstone under continuous restore
+admission. Locator v2 preserves separate marker epochs for unchanged roots. Interrupted movement
+blocks admission until explicit verified recovery, and durable activation receipts preserve
+validation of immutable older-generation plan history.
 The foundation and intent producer are implemented but runtime admission, movement, and activation
 remain pending. Owners: [clock-config-secrets §D352](clock-config-secrets.md#d352--planned-runtime-storage-relocation-and-the-v56-activation-gate--2026-09-26)
 and [dashboard-surfaces §D352](dashboard-surfaces.md#d352--storage-relocation-intent--2026-09-26).

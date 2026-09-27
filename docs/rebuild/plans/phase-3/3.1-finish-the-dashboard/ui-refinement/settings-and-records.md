@@ -589,3 +589,25 @@ Commit exact owned paths and this worker record. Return candidate/base/plan SHAs
 attribution and deferred proof to finalizer 3.1.23.3. No merge, push, shared roadmap/manifest edits,
 new roadmap task or nested worker dispatch.
 ```
+
+
+### Paths relocation plan controls — 2026-09-26
+
+Commit `1a267574c` adds the compact coupled state/artifact plan editor, strict read and command
+adapters, 700 ms autosave, exact uncertain retry, cancellation, stale-read refusal, and dirty-exit
+handling. The query returns an explicit unavailable response until the runtime reader is composed;
+this commit does not enable the command kernel or perform relocation. The Paths form preserves the
+approved body density and distinguishes active locations from a pending desired pair.
+
+Focused checks passed 43/43, followed by current affected reruns of 10 relocation tests and 5
+route/client tests. Scoped lint, typecheck, and web build passed. The earlier failed narrow run is
+retained; the repaired rerun passed without changing its timeout. Dark/light captures at 1024 and
+1440 pixels, including pending plans, are retained under `category-6/relocation-ui/` in the existing
+evidence directory. Root inspected the model, actual logs, and rendered captures. A subsequent
+bounded correction must also refuse a global plan revision rewind across a newer locator generation.
+
+D352 now specifies preservation of the fixed `.tracker/locks` authority during default-state
+relocation: retain managed entries separately, leave the lock shell, and tombstone the old database
+under continuous restore and installation-exclusive admission. Locator v2 preserves separate root
+marker epochs. Runtime admission and control/recovery remain separate parallel worker outcomes;
+actual verified copying, v56 activation, receipt-aware history, and real composition remain pending.
