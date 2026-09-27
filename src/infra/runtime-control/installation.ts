@@ -90,6 +90,9 @@ export type RuntimeLocator = z.infer<typeof LocatorSchema>;
 export type RelocationPlanBinding = z.infer<typeof PlanBindingSchema>;
 export type VerifiedRelocationPreparation = z.infer<typeof PreparationEvidenceSchema>;
 export type VerifiedRelocationEvidence = z.infer<typeof StageEvidenceSchema>;
+export type RelocationEvidenceView = Readonly<Omit<VerifiedRelocationEvidence, "source" | "destination" | "plan" | "managedStateEntries"> & {
+  source: Readonly<RuntimePair>; destination: Readonly<RuntimePair>; plan: Readonly<RelocationPlanBinding>;
+  managedStateEntries: readonly Readonly<z.infer<typeof ManagedEntrySchema>>[] }>;
 export type VerifiedRelocationActivationIntent = z.infer<typeof ActivationIntentSchema>;
 export type RelocationCompletionReceipt = z.infer<typeof CompletionReceiptSchema>;
 export type RelocationInventory = Readonly<{ operationId: string; installationId: string; fromGeneration: number;
@@ -97,7 +100,7 @@ export type RelocationInventory = Readonly<{ operationId: string; installationId
   phase: "preparing" | "prepared" | "activating" | "staged" | "fenced" | "retaining" | "retained" | "switched";
   preparation?: VerifiedRelocationPreparation;
   activationIntent?: VerifiedRelocationActivationIntent;
-  evidence?: VerifiedRelocationEvidence;
+  evidence?: RelocationEvidenceView;
   pinnedEntries: readonly string[]; retentions: readonly z.infer<typeof RetentionSchema>[] }>;
 export type VerifiedSourceControlEntries = Readonly<{ source: RuntimePair;
   state: readonly string[]; artifact: readonly string[] }>;
