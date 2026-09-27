@@ -17,7 +17,7 @@ import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { UiCatalogSection } from "../../../src/dashboard/surfaces/ui-catalog.js";
-import { foldCatalogRail } from "../../../src/dashboard/surfaces/ui-catalog-model.js";
+import { foldCatalogRail, siblingsOnScreen } from "../../../src/dashboard/surfaces/ui-catalog-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -86,9 +86,9 @@ function record(): HTMLElement {
 }
 
 function recordId(): string {
-  const heading = record().querySelector("h3");
-  assert.ok(heading !== null);
-  return heading.textContent ?? "";
+  const id = record().querySelector(".settings-reference-record-id");
+  assert.ok(id !== null);
+  return id.textContent ?? "";
 }
 
 describe("the UI catalog rail and record", () => {
@@ -103,6 +103,7 @@ describe("the UI catalog rail and record", () => {
     const first = expected.matches[0];
     assert.ok(first !== undefined);
     assert.equal(recordId(), String(first.id));
+    assert.equal(record().querySelector("h3")?.textContent, first.label, "the readable label leads the record");
     const selected = options().filter((option) => option.getAttribute("aria-selected") === "true");
     assert.equal(selected.length, 1);
     assert.equal(selected[0]?.getAttribute("title"), String(first.id));
@@ -159,10 +160,11 @@ describe("the UI catalog rail and record", () => {
   });
 
   it("offers the other entries on the same screen, and selecting one moves the record", async () => {
-    const element = ENTRIES.find((entry) => entry.kind === "element");
+    const element = ENTRIES.find((entry) => entry.kind === "element" && siblingsOnScreen(ENTRIES, entry).length > 0);
     assert.ok(element !== undefined && element.kind === "element");
     await mountCatalog(String(element.id));
-    const strip = record().querySelector('section[aria-label="On the same screen"]');
+    const strip = [...record().querySelectorAll("section")]
+      .find((section) => section.querySelector("h3")?.textContent === "On the same screen");
     assert.ok(strip instanceof HTMLElement);
     const siblingChips = [...strip.querySelectorAll<HTMLButtonElement>("button")];
     const expected = ENTRIES.filter(

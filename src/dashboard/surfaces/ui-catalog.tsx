@@ -1,12 +1,11 @@
 import { observeAsyncResource } from "../state/async-resource.js";
 import "./reference-settings.css";
 /** The committed catalog is read-only; a stale artifact is a visible refusal. */
-import { CircleAlert } from "lucide-react";
+import { BookOpen, CircleAlert } from "lucide-react";
 import { useCallback,useEffect,useId,useMemo,useState,type KeyboardEvent } from "react";
 import type { UiCatalogWire } from "../../domain/dashboard/explorer.js";
 import type { UiCatalogEntry } from "../../domain/ui/contracts.js";
 import {
-Badge,
 Banner,
 Chip,
 EmptyState,
@@ -31,6 +30,7 @@ import { LOADING,type AsyncResource } from "../state/async-resource.js";
 import { useExplorerClient as useDashboardClient } from "../state/explorer-client.js";
 import { parseCatalogView,type CatalogView } from "./row-catalog-model.js";
 import { RowCatalogView } from "./row-catalog.js";
+import { SYSTEM_HOST_PRESENTATION } from "./settings-hosts-model.js";
 import {
 ENTRY_KIND,
 catalogRowDomId,
@@ -51,6 +51,14 @@ function FactChips({ label, children }: { label?: string; children: React.ReactN
       {children}
     </div>
   );
+}
+
+function screenGroupLabel(system: UiCatalogEntry["system"], label: string): string {
+  const trimmed = label.toLowerCase().startsWith(system.toLowerCase())
+    ? label.slice(system.length).replace(/^[\s:·-]+/u, "")
+    : label;
+  const readable = trimmed || label;
+  return `${SYSTEM_HOST_PRESENTATION[system].name} · ${readable.charAt(0).toUpperCase()}${readable.slice(1)}`;
 }
 
 /** Each option exposes the full raw id while its visible title stays readable. */
@@ -77,21 +85,21 @@ function RailRow({
       title={String(entry.id)}
       aria-label={`${entry.label} · ${String(entry.id)} · ${ENTRY_KIND[entry.kind].word} · Verified ${entry.verification.verifiedAt}`}
       className={cn(
-        "flex min-w-0 cursor-pointer items-start gap-[var(--ds-space-base)] border-l-[length:var(--ds-border-w-rail)]",
-        "py-[var(--ds-space-snug)] pr-[var(--ds-space-cozy)] rounded-[var(--ds-radius-md)]",
-        nested ? "pl-[var(--ds-space-cozy)]" : "pl-[var(--ds-space-base)]",
+        "flex min-w-0 cursor-pointer items-start rounded-[var(--ds-radius-md)]",
+        "px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
+        nested ? "settings-reference-catalog-child" : "",
         dsFocus,
         dsMotion.base,
         selected
-          ? "border-l-[color:var(--ds-accent)] bg-[var(--ds-surface-selected)]"
-          : "border-l-transparent hover:bg-[var(--ds-surface-3)]",
+          ? "bg-[var(--ds-surface-selected)]"
+          : "hover:bg-[var(--ds-surface-3)]",
       )}
     >
       <span className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-tight)]">
         <span className={cn(dsText.ui, "settings-reference-rail-label", selected || entry.kind === "screen" ? "font-semibold text-[color:var(--ds-fg)]" : "font-medium text-[color:var(--ds-fg-secondary)]")}>
           {entry.label}
         </span>
-        <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
+        <span className={cn(dsText.meta, "settings-reference-rail-meta text-[color:var(--ds-fg-muted)]")}>
           {ENTRY_KIND[entry.kind].word} · {entry.verification.verifiedAt}
         </span>
       </span>
@@ -134,25 +142,12 @@ function CatalogRailView({
     >
       {rail.systems.map((system) => (
         <div key={system.system} role="group" aria-label={system.system}>
-          {/*
-            Grouping is not decoration: an operator debugging a Kuali page has
-            no use for a CRM element between two of theirs, and the systems ARE
-            the top-level partition of the registries the catalog is composed
-            from. Sticky, so the system a row belongs to is always in view.
-          */}
-          <div
-            className={cn(
-              "sticky top-0 z-10 flex items-center gap-[var(--ds-space-snug)] border-y border-[color:var(--ds-border)]",
-              "h-[var(--ds-h-sm)] bg-[var(--ds-recess-bg)] px-[var(--ds-space-cozy)]",
-            )}
-          >
-            <SectionLabel className="text-[color:var(--ds-fg-secondary)]">{system.system}</SectionLabel>
-            <SectionLabel>
-              · {String(system.matchedCount)} entr{system.matchedCount === 1 ? "y" : "ies"}
-            </SectionLabel>
-          </div>
+          {/* The screen heading stays visible while its entries scroll. */}
           {system.screens.map(({ screen, children }) => (
             <div key={String(screen.id)} className="settings-reference-catalog-screen">
+              <SectionLabel className="settings-reference-catalog-screen-label sticky top-0 z-10 bg-[var(--ds-surface-1)] text-[color:var(--ds-fg-muted)]">
+                {screenGroupLabel(screen.system, screen.label)}
+              </SectionLabel>
               <RailRow
                 entry={screen}
                 domId={catalogRowDomId(baseId, String(screen.id))}
@@ -195,7 +190,7 @@ function CatalogRecord({
   const kind = ENTRY_KIND[entry.kind];
   const verification = entry.verification;
   const propertyRows = [
-    ["System", entry.system],
+    ["System", SYSTEM_HOST_PRESENTATION[entry.system].name],
     ...( "screen" in entry ? [["Screen", String(entry.screen)]] : []),
     ...( "role" in entry ? [["Role", entry.role]] : []),
     ...( "effect" in entry ? [["Effect", entry.effect]] : []),
@@ -204,11 +199,12 @@ function CatalogRecord({
   ] as const;
   return <article aria-label={`${kind.word} ${String(entry.id)}`} className="settings-reference-catalog-record">
     <header className="settings-reference-record-heading">
-      <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
-        <Badge tone={kind.tone}>{kind.word}</Badge>
-        <h3 className={cn(dsText.title, dsText.nums, "min-w-0 break-all font-semibold text-[color:var(--ds-fg)]")}>{String(entry.id)}</h3>
+      <div className="settings-reference-catalog-kind">
+        <BookOpen aria-hidden className={dsIcon.sm} />
+        <span>{kind.word} · {SYSTEM_HOST_PRESENTATION[entry.system].name}</span>
       </div>
-      <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{entry.label}</p>
+      <h3 className="settings-reference-catalog-title">{entry.label}</h3>
+      <p className={cn(dsText.nums, "settings-reference-record-id")}>{String(entry.id)}</p>
     </header>
     <BodySection as="h3" title="Properties">
       <FormGroup label="Catalog properties">
@@ -305,7 +301,7 @@ export function UiCatalogSection({
           <div className="settings-reference-catalog-toolbar">
             <SearchInput className="settings-reference-catalog-search" value={query}
               aria-label="Search the UI catalog by id, label, system or search term"
-              placeholder="kuali save · observation · ucpath person org"
+              placeholder="Search systems, screens, or controls"
               onChange={(event) => onQuery(event.currentTarget.value)} onClear={() => onQuery("")} />
             {wire !== undefined && <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
               {rail.matchedCount === wire.entries.length
@@ -313,7 +309,6 @@ export function UiCatalogSection({
                 : `${String(rail.matchedCount)} of ${String(wire.entries.length)} entries`}
             </span>}
           </div>
-          {wire !== undefined && <p className={cn(dsText.meta, "settings-reference-source")}>Source: {wire.sourcePath}</p>}
           {resource.state === "loading" && <div className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">
             <Spinner label="Loading the UI catalog" /><span className={dsText.body}>Reading the committed catalog…</span>
           </div>}
@@ -322,7 +317,9 @@ export function UiCatalogSection({
             title={`Nothing in the catalog matches “${query}”`}
             description={`All ${String(wire.entries.length)} entries were searched by id, label, system, kind and registered search terms. Try one word — a system (kuali), a kind (observation), or part of an id (timekeeper).`} />}
           {wire !== undefined && selected !== undefined && <FormGroup label="UI catalog browser" className="settings-reference-catalog-browser">
-            <CatalogRailView rail={rail} baseId={baseId} selectedId={String(selected.id)} onSelect={select} />
+            <div className="settings-reference-catalog-rail-frame">
+              <CatalogRailView rail={rail} baseId={baseId} selectedId={String(selected.id)} onSelect={select} />
+            </div>
             <div className="settings-reference-catalog-detail"><CatalogRecord entry={selected} siblings={siblings} onSelect={select} /></div>
           </FormGroup>}
         </TabPanel>
