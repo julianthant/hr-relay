@@ -163,6 +163,36 @@ they do not replace a retained original on the operator surface. A value
 already discarded from an older record cannot be reconstructed by its read
 projection. Provider prompts and OS notifications have separate egress rules.
 
+### D356 — Frozen complete operation display per run · 2026-09-27
+
+A complete v1 operation display is historical run evidence, not a live descriptor
+lookup. At the one enqueue transaction, the descriptor compiler projects its complete
+declaration into a strict, canonical, redacted serializable snapshot and stamps its
+domain-separated digest into the immutable `RunEnvelope`. The snapshot binds the
+envelope's `contractFingerprint` and retains the static operation/action identities,
+occurrence paths, logical page/session references, typed reference kinds and paths,
+templates, conditions, outcomes, and graph-derived execution edges. It deliberately
+does not retain Zod objects, pure implementation functions, examples, configuration
+values, run input values, credentials, or other secret-bearing data.
+
+The existing `workflow_runs.record_json` authority is the storage owner: the snapshot
+and its reference are inserted atomically with the run; same-run requeues and lifecycle
+transfers retain it unchanged, and a fingerprint-matched retry retains its source snapshot
+unchanged. This is an envelope-format addition, not an ordinary-startup SQLite schema
+mutation. A reader parses and hash-verifies the retained bytes before using them. A current complete-format run
+without a valid matching snapshot fails by name; it is never rebuilt from the current
+registry. Historical envelopes without the field remain explicit legacy format and
+are not backfilled.
+
+Action evidence remains one completed driver gesture, appended only after the task or
+transaction settles. Its identity joins the existing run/span sequence to the frozen
+definition fingerprint, node/task, task retry, claim generation, operation invocation
+and occurrence, logical action id, child edge where present, and physical session
+incarnation. An absent completed gesture is no evidence of start, failure, or
+not-run. Value provenance records the exact consumed value's immediate declared
+producer while prior reads remain traversable evidence; protected inputs are redacted
+before a note is durable or projected.
+
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
 These decisions ratify the 49 A recommendations in the six 2026-08-25 sheets. They are **not

@@ -1315,7 +1315,10 @@ descriptor field absent. A `capability: "complete", version: 1` definition must 
 contract occurrence and is refused for duplicate ids, continuation cycles, unresolved schema fields,
 cross-system identities, invalid branch targets, unavailable child references, invalid page
 continuations, or missing template variables. Existing workflows remain legacy in P1.1; P1.2 owns
-runtime action binding and frozen-run identity, and P1.3 owns dashboard/server projection.
+runtime action binding and frozen-run identity, and P1.3 owns dashboard/server projection. D356
+freezes a serializable projection of a complete display in each new run envelope; runtime keeps the
+existing driver and graph execution paths and binds only completed driver gestures to that frozen
+projection. No current descriptor is a substitute for missing historical structure.
 
 ---
 

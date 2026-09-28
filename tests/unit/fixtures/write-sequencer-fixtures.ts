@@ -42,6 +42,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presenta
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/core/write-sequencer.js";
+import { recordBrowserAction } from "../../../src/infra/browser/action-notes.js";
 import { HASH_C, UUID_2, UUID_3, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -257,6 +258,7 @@ export const WRITE_FIXTURE_TASK_IDS = Object.freeze([
 export interface WriteFixtureDriver {
   readonly system: "ucpath";
   read(id: string): Promise<string>;
+  prepare(id: string): Promise<{ filled: true }>;
   commit(id: string, capability: MutationCapability): Promise<{ clicked: true }>;
 }
 
@@ -326,13 +328,18 @@ function createFixtureDriver(world: WriteFixtureWorld): WriteFixtureDriver {
     world.lastCapability = capability;
     world.onCommitClick?.();
     world.events.push(`commit-click:${id}`);
+    recordBrowserAction("clicked", id);
     return { clicked: true };
+  };
+  const prepare = async (id: string): Promise<{ filled: true }> => {
+    recordBrowserAction("typed", id, WRITE_FIXTURE_EID);
+    return { filled: true };
   };
   // The read-less variant deliberately violates the driver interface so the
   // sequencer's "no semantic read()" refusal has a real target; the single
   // assertion mirrors what a mis-built production driver would look like.
-  if (world.omitDriverRead) return { system: "ucpath", commit } as WriteFixtureDriver;
-  return { system: "ucpath", read, commit };
+  if (world.omitDriverRead) return { system: "ucpath", prepare, commit } as WriteFixtureDriver;
+  return { system: "ucpath", read, prepare, commit };
 }
 
 export interface WriteFixtureRegistry {
@@ -368,6 +375,7 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
     async run({ ctx }) {
       world.events.push("prepare");
       world.onPrepare?.();
+      await ctx.driver.prepare("ucpath.write-fixture.eid-input");
       const staged = { staged: true as const, stagedPageState: WRITE_FIXTURE_STAGED_STATE };
       ctx.recordData([
         { direction: "write", field: "staged", value: staged.staged },

@@ -7,6 +7,7 @@ import { REPO_ROOT, repoRelative } from "./helpers/guard-files.js";
 
 const NODE_BUILTINS = new Set(builtinModules);
 const DISPLAY_DECLARATION = "src/domain/workflow/operation-display.ts";
+const DISPLAY_SNAPSHOT = "src/domain/workflow/operation-display-snapshot.ts";
 
 function isTypeOnlyImport(statement: ts.ImportDeclaration | ts.ExportDeclaration): boolean {
   if (ts.isExportDeclaration(statement)) return statement.isTypeOnly;
@@ -79,6 +80,7 @@ export function auditOperationDisplayImportClosure(entry: string): readonly stri
 describe("workflow operation display browser boundary", () => {
   it("keeps the bundle-safe declaration closure free of Node and driver imports", () => {
     expect(auditOperationDisplayImportClosure(DISPLAY_DECLARATION)).toEqual([]);
+    expect(auditOperationDisplayImportClosure(DISPLAY_SNAPSHOT)).toEqual([]);
   });
 
   it("detects both classes of forbidden runtime reach", () => {

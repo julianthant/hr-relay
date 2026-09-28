@@ -115,6 +115,7 @@ import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { SpanEmitter } from "./span-emitter.js";
 import { ExecutorSpanEventSchema } from "./span-emitter.js";
 import { redactObservedDataPoints } from "./observed-data.js";
+import { withBrowserActionBinding } from "../infra/browser/action-notes.js";
 import { WriteParkedError } from "./run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
@@ -2008,10 +2009,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             context.signal,
             (innerSignal, recordData) => {
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-              return runImpl({
+              return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
                 input: prepareInput,
                 ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
-              });
+              }));
             },
           );
           prepareOutput = prepareContract.output.parse(raw);
@@ -2159,10 +2160,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           context.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
-            return runImpl({
+            return withBrowserActionBinding(context.operationActionBinders?.commit, () => runImpl({
               input: commitInput,
               ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
-            });
+            }));
           },
           (batch) => bufferedCommitObservations.push(batch),
         );
@@ -2556,10 +2557,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           context.signal,
           (innerSignal, recordData) => {
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
-            return runImpl({
+            return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
               input: prepareInput,
               ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
-            });
+            }));
           },
         );
         prepareOutput = prepareContract.output.parse(raw);

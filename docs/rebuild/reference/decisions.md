@@ -1,4 +1,14 @@
-# `reference/decisions.md` — the decision ledger (D1–D355, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D356, 2026-07-17 → 2026-09-27)
+
+**D356 — Frozen complete operation display per run (approved Plan 1 P1.2, 2026-09-27):**
+Every new complete-format run atomically carries a strict canonical serializable operation-display
+snapshot and domain-separated digest in its immutable envelope. It binds the retained definition
+fingerprint but excludes live Zod/functions, examples, configuration and run values, and secrets.
+Readers parse and hash-verify it; missing or corrupt complete snapshots refuse rather than looking
+up current code. Historical missing snapshots remain explicit legacy and are never backfilled.
+Completed driver gestures bind to this snapshot with the existing ordered evidence stream and
+physical-session/claim/task occurrence identities; absence does not manufacture an action outcome.
+Owner: [dashboard-surfaces D356](dashboard-surfaces.md#d356--frozen-complete-operation-display-per-run--2026-09-27).
 
 **D355 — Versioned operation display declaration (approved Plan 1 P1.1, 2026-09-27):**
 One bundle-safe, versioned operation/action declaration is task-owned and compiled through the

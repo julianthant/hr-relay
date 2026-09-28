@@ -5,8 +5,11 @@ import {
   defineWorkflow,
 } from "../../src/base/workflow-definition.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { EidSchema, ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
+import { RunEnvelopeSchema } from "../../src/domain/run/envelope.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../src/domain/ui/ucpath-person-org.js";
@@ -18,6 +21,10 @@ import {
   compileWorkflowOperationDisplay,
   renderOperationTemplate,
 } from "../../src/domain/workflow/operation-display.js";
+import {
+  freezeWorkflowOperationDisplaySnapshot,
+  requireWorkflowOperationDisplaySnapshot,
+} from "../../src/domain/workflow/operation-display-snapshot.js";
 import type {
   TaskOperationDeclaration,
   WorkflowOperationDisplayCompileInput,
@@ -28,6 +35,7 @@ import type {
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
 import { fixtureBuildManifest } from "./fixtures/workflow-definition-fixtures.js";
 
 const DISPLAY_NESTED_ID = "fixture-operation-display-nested";
@@ -526,6 +534,92 @@ describe("workflow operation display declarations", () => {
     const legacy = compileDisplayWorkflow(legacyWorkflow);
     expect(legacy.operationDisplay).toEqual({ capability: "legacy", version: 0 });
     expect(legacy.descriptor.operationDisplay).toBeUndefined();
+  });
+
+  it("mints, reopens, and integrity-checks a redacted serializable complete display snapshot", () => {
+    const compiled = compileDisplayWorkflow(forwardWorkflow);
+    const snapshot = freezeWorkflowOperationDisplaySnapshot({
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+      display: compiled.descriptor.operationDisplay,
+    });
+    expect(snapshot).toMatchObject({
+      capability: "complete",
+      declarationVersion: OPERATION_DISPLAY_FORMAT_VERSION,
+      snapshotVersion: 1,
+      workflowId: DISPLAY_FORWARD_ID,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+    });
+    if (snapshot === undefined) throw new Error("complete descriptor did not produce a snapshot");
+    expect(snapshot.invocations.map(({ taskId }) => taskId)).toEqual([
+      SearchPersonOrg.id,
+      SearchPersonOrg.id,
+    ]);
+    expect(requireWorkflowOperationDisplaySnapshot(snapshot, {
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+    })).toEqual(snapshot);
+
+    const serialized = canonicalJsonStringify(snapshot);
+    expect(serialized).not.toContain("\"example\"");
+    expect(serialized).not.toContain("10800000");
+    expect(serialized).not.toContain("\"normal\"");
+    const configurationReference = snapshot.transforms[0]?.inputs[2]?.value;
+    if (configurationReference?.kind !== "configuration") throw new Error("configuration reference was not frozen");
+    expect(configurationReference.key).toBe("explorer.search.mode");
+    expect(configurationReference.schemaHash).toMatch(/^[a-f0-9]{64}$/u);
+    const constantReference = snapshot.invocations[0]?.bindings[0]?.value;
+    if (constantReference?.kind !== "constant") throw new Error("constant reference was not redacted");
+    expect(constantReference.valueDigest).toMatch(/^[a-f0-9]{64}$/u);
+
+    expect(() => requireWorkflowOperationDisplaySnapshot(undefined, {
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+    })).toThrow(/missing its frozen operation display snapshot/u);
+    expect(() => requireWorkflowOperationDisplaySnapshot({
+      ...snapshot,
+      contentDigest: "0".repeat(64),
+    }, {
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+    })).toThrow(/corrupt frozen operation display snapshot digest/u);
+  });
+
+  it("attaches the complete snapshot when buildQueuedRun mints the immutable envelope", () => {
+    const compiled = compileDisplayWorkflow(forwardWorkflow);
+    const run = buildQueuedRun({
+      descriptor: compiled.descriptor,
+      appVersion: "0.1.0",
+      runId: "aaaaaaaa-0001-4000-8000-000100000000",
+      itemId: "aaaaaaaa-0002-4000-8000-000200000000",
+      traceId: "fdo-170000-aaaa",
+      rawInput: { firstEid: "10800000", secondEid: "10800001" },
+      canonicalInput: {
+        schemaHash: deriveSchemaHash(DisplayCanonicalInput, "output"),
+        value: { firstEid: "10800000", secondEid: "10800001" },
+      },
+      ingressSchemaHash: deriveSchemaHash(DisplayInput, "input"),
+      configFingerprint: "a".repeat(64),
+      configSnapshotId: "aaaaaaaa-0003-4000-8000-000300000000",
+      resolvedInstance: { ucpath: "prod" },
+      shape: "single",
+      priority: "bulk",
+      dryRun: false,
+      attempt: 1,
+      runNumber: 1,
+      now: "2026-09-27T12:00:00.000Z",
+    });
+    const snapshot = run.envelope.operationDisplaySnapshot;
+    expect(snapshot).toBeDefined();
+    expect(requireWorkflowOperationDisplaySnapshot(snapshot, {
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+    }).contentDigest).toBe(snapshot?.contentDigest);
+    if (snapshot === undefined) throw new Error("complete run envelope has no snapshot");
+    expect(() => RunEnvelopeSchema.parse({
+      ...run.envelope,
+      operationDisplaySnapshot: { ...snapshot, contentDigest: "0".repeat(64) },
+    })).toThrow(/corrupt frozen operation display snapshot digest/u);
   });
 });
 

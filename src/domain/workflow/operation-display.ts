@@ -15,6 +15,7 @@ import {
   ElementIdSchema,
   NodeIdSchema,
   ScreenIdSchema,
+  TaskIdSchema,
   WorkflowIdSchema,
   slugSchema,
 } from "../ids.js";
@@ -582,6 +583,8 @@ export interface CompleteWorkflowOperationDisplay {
   readonly transforms: readonly WorkflowDisplayTransformDeclaration[];
   readonly invocations: readonly (OperationInvocationDeclaration & Readonly<{
     operation: TaskOperationDeclaration;
+    /** Exact sealed task contract that owns the reusable operation. */
+    taskId: string;
   }>)[];
   readonly presentation: readonly WorkflowOperationPresentationNode[];
   /** Derived from the existing graph only; presentation is never an edge source. */
@@ -750,7 +753,10 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
   const invocationIds = new Set<string>();
   const invocationPaths = new Set<string>();
   const invoked = new Set<string>();
-  const compiledInvocations: (OperationInvocationDeclaration & Readonly<{ operation: TaskOperationDeclaration }>)[] = [];
+  const compiledInvocations: (OperationInvocationDeclaration & Readonly<{
+    operation: TaskOperationDeclaration;
+    taskId: string;
+  }>)[] = [];
   for (const invocation of declaration.invocations) {
     OperationIdSchema.parse(invocation.id);
     if (invocationIds.has(invocation.id)) throw new Error(`workflow ${input.workflowId} operation display repeats invocation "${invocation.id}"`);
@@ -792,6 +798,7 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
     validateWorkflowOutcomes(invocation.outcomes, `workflow ${input.workflowId} invocation "${invocation.id}"`, input.input, entries, transforms);
     compiledInvocations.push(Object.freeze({
       ...invocation,
+      taskId: TaskIdSchema.parse(expectedContract.contract.id),
       occurrencePath: Object.freeze(occurrencePath),
       ...(invocation.bindings === undefined ? {} : { bindings: Object.freeze([...invocation.bindings]) }),
       ...(invocation.outcomes === undefined ? {} : { outcomes: Object.freeze([...invocation.outcomes]) }),

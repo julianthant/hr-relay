@@ -17,6 +17,7 @@ import type { BrowserDriver } from "../base/task.js";
 import type { RunBrowserScreenshotCapture } from "../base/diagnostics.js";
 import type { Clock } from "../domain/clock.js";
 import { DuoTerminalRefusalError } from "../infra/browser/login-contract.js";
+import { withBrowserActionSession } from "../infra/browser/action-notes.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "./duo-ceremony-gate.js";
 import {
@@ -609,7 +610,7 @@ export class WorkerSessionManager {
       const poisonCloseFailures: unknown[] = [];
       try {
         this.#observe(resource, "unknown");
-        const result = await use(resource.driver);
+        const result = await withBrowserActionSession(resource.sessionId, () => use(resource.driver));
         operationCompleted = true;
         await this.#captureLeaseScreenshot(resource, "succeeded", configFingerprint);
         await resource.reset({ signal });

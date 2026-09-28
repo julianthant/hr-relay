@@ -29,6 +29,7 @@ import {
   type WriteSequencerHooks,
 } from "../../src/core/write-sequencer.js";
 import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import { withBrowserActionNotes } from "../../src/infra/browser/action-notes.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { ActorIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import { classifyEvidenceLeaf } from "../../src/domain/trust/evidence-classification.js";
@@ -301,6 +302,74 @@ function contextFor(
 function intentByKey(database: AuthorityDatabase) {
   return database.authority.writeIntents.findByPermanentKey("ucpath", WRITE_FIXTURE_KEY);
 }
+
+describe("completed transaction gesture binding", () => {
+  it("binds prepare and commit inside their bounded task roles before the post-settlement drain", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    const bound: { role: "prepare" | "commit"; targetId: string; physicalSessionId?: string }[] = [];
+    const drained: string[] = [];
+
+    const outcome = await withBrowserActionNotes(
+      h.clock,
+      () => h.execute({
+        ...contextFor(run, claim),
+        operationActionBinders: {
+          prepare: (action) => {
+            bound.push({ role: "prepare", targetId: action.targetId, physicalSessionId: action.physicalSessionId });
+            return action;
+          },
+          commit: (action) => {
+            bound.push({ role: "commit", targetId: action.targetId, physicalSessionId: action.physicalSessionId });
+            return action;
+          },
+        },
+      }),
+      (actions) => drained.push(...actions.map((action) => action.targetId)),
+    );
+
+    assert.deepEqual(outcome, {
+      disposition: "committed",
+      proofSource: "normal-output",
+      output: { transactionId: "T123456" },
+      proof: { transactionId: "T123456" },
+    });
+    assert.deepEqual(bound.map(({ role, targetId }) => [role, targetId]), [
+      ["prepare", "ucpath.write-fixture.eid-input"],
+      ["commit", "ucpath.write-fixture.save-submit"],
+    ]);
+    assert.ok(bound.every(({ physicalSessionId }) => physicalSessionId !== undefined));
+    assert.equal(bound[0]?.physicalSessionId, bound[1]?.physicalSessionId);
+    assert.deepEqual(drained, ["ucpath.write-fixture.eid-input", "ucpath.write-fixture.save-submit"]);
+  });
+
+  it("parks a fenced write when the completed commit gesture cannot bind", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    const drained: string[] = [];
+
+    await assert.rejects(
+      () => withBrowserActionNotes(
+        h.clock,
+        () => h.execute({
+          ...contextFor(run, claim),
+          operationActionBinders: {
+            commit: () => { throw new Error("declared commit target mismatch"); },
+          },
+        }),
+        (actions) => drained.push(...actions.map((action) => action.targetId)),
+      ),
+      (error: unknown) => error instanceof WriteParkedError && /declared commit target mismatch/u.test(error.message),
+    );
+
+    assert.ok(h.world.events.includes("commit-click:ucpath.write-fixture.save-submit"));
+    assert.equal(intentByKey(h.database)?.status, "parked");
+    assert.equal(h.database.authority.runs.get(WRITE_FIXTURE_RUN_ID)?.lifecycle.state, "parked-write");
+    assert.deepEqual(drained, ["ucpath.write-fixture.eid-input"]);
+  });
+});
 
 function foreignBindingProof(runId: string, leaseId: string) {
   return {

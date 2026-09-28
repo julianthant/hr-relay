@@ -11,7 +11,20 @@ import { z } from "zod";
 import { GateIdSchema } from "./ids.js";
 import { JsonValueSchema } from "./canonical-json.js";
 import { ContractFieldPathSchema } from "./contracts/base.js";
+import { ProtectedInputBindingSchema } from "./protected-input.js";
 import {
+  ConfigurationReferenceKeySchema,
+  OperationActionIdSchema,
+  OperationIdSchema,
+  OperationOccurrenceSegmentSchema,
+  OperationSessionIdSchema,
+  OperationTransformIdSchema,
+  OperationValueIdSchema,
+} from "./workflow/operation-display.js";
+import {
+  BrowserSessionIdSchema,
+  DelegationEdgeIdSchema,
+  FingerprintSchema,
   IsoInstantSchema,
   NodeIdSchema,
   PositiveIntSchema,
@@ -43,6 +56,59 @@ export const TaskExecutionIdentitySchema = z.strictObject({
   taskId: TaskIdSchema,
 });
 export type TaskExecutionIdentity = z.infer<typeof TaskExecutionIdentitySchema>;
+
+/**
+ * The immediate source a declared browser field consumed.  A task-output or
+ * transformation reference remains a navigable source reference; it never
+ * pretends an older page observation is the later value actually entered.
+ */
+export const ActionValueProducerSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run-input"), path: ContractFieldPathSchema }),
+  z.strictObject({ kind: z.literal("configuration"), key: ConfigurationReferenceKeySchema, schemaHash: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("constant"), valueDigest: FingerprintSchema }),
+  z.strictObject({ kind: z.literal("task-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema }),
+  z.strictObject({ kind: z.literal("transformation"), transformId: OperationTransformIdSchema, path: ContractFieldPathSchema }),
+  z.strictObject({ kind: z.literal("child-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema }),
+]);
+export type ActionValueProducer = z.infer<typeof ActionValueProducerSchema>;
+
+/** Exact local value when safe, otherwise the retained protected-source identity. */
+export const ActionConsumedValueSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("observed"), value: JsonValueSchema }),
+  z.strictObject({ state: z.literal("redacted"), binding: ProtectedInputBindingSchema }),
+]);
+export type ActionConsumedValue = z.infer<typeof ActionConsumedValueSchema>;
+
+export const ActionValueProvenanceSchema = z.strictObject({
+  slot: OperationValueIdSchema,
+  fieldPath: ContractFieldPathSchema,
+  producer: ActionValueProducerSchema,
+  consumed: ActionConsumedValueSchema,
+});
+export type ActionValueProvenance = z.infer<typeof ActionValueProvenanceSchema>;
+
+/**
+ * Identity for one completed declared driver gesture.  It is self-contained so
+ * a retained note can be joined to its frozen structure without current code.
+ */
+export const DeclaredActionOccurrenceSchema = z.strictObject({
+  runId: RunIdSchema,
+  definitionFingerprint: FingerprintSchema,
+  nodeId: NodeIdSchema,
+  taskId: TaskIdSchema,
+  childInvocation: z.strictObject({ parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema }).optional(),
+  attempt: PositiveIntSchema,
+  claimGeneration: PositiveIntSchema,
+  taskAttempt: PositiveIntSchema,
+  invocationId: OperationIdSchema,
+  occurrencePath: z.array(OperationOccurrenceSegmentSchema).min(1),
+  logicalActionId: OperationActionIdSchema,
+  occurrence: PositiveIntSchema,
+  logicalSessionId: OperationSessionIdSchema,
+  physicalSessionId: BrowserSessionIdSchema,
+  value: ActionValueProvenanceSchema.optional(),
+});
+export type DeclaredActionOccurrence = z.infer<typeof DeclaredActionOccurrenceSchema>;
 
 export const RecordedDataPointSchema = DataPointSchema.extend({
   execution: TaskExecutionIdentitySchema,

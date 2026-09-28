@@ -14,6 +14,7 @@ import type { RunRecordRefusal } from "../domain/authority.js";
 import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, type RunRecordService } from "./run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../domain/config/runtime-generation.js";
 import type { RunEnvelope } from "../domain/run/envelope.js";
+import { freezeWorkflowOperationDisplaySnapshot } from "../domain/workflow/operation-display-snapshot.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../domain/run/envelope.js";
@@ -113,6 +114,11 @@ export function fanOutQueuedRuns(
   origin: string,
 ): Readonly<{ affectedTargets: readonly TargetReference[]; versionChanges: readonly VersionChange[]; runs: readonly RunRecord[] }> {
   if (envelope.relaunch !== undefined) refuse("archive relaunch is retired", { reason: "invalid-state" });
+  const operationDisplaySnapshot = freezeWorkflowOperationDisplaySnapshot({
+    workflowId: descriptor.id,
+    definitionFingerprint: descriptor.contractFingerprint,
+    display: descriptor.operationDisplay,
+  });
   const runs: RunRecord[] = [];
   const activeConfig = repositories.runtimeConfig.get();
   if (activeConfig === undefined) throw new Error("fan-out has no active runtime config");
@@ -173,6 +179,7 @@ export function fanOutQueuedRuns(
       commandId: lifecycleCommandId("operator-create", { commandId: envelope.commandId, entry: runs.length }),
       code: descriptor.code, matchKey: entry.matchKey, workflow: envelope.workflow,
       descriptorVersion: envelope.descriptorVersion, contractFingerprint: envelope.contractFingerprint,
+      operationDisplaySnapshot,
       requestedInstance: envelope.requestedInstance, resolvedInstance: envelope.resolvedInstance,
       configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,
       shape: envelope.shape, priority: envelope.priority, dryRun: envelope.dryRun,

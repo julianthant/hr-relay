@@ -33,6 +33,10 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { CheckpointPatchSchema, FreshnessOverrideSchema } from "../workflow/checkpoint.js";
+import {
+  WorkflowOperationDisplaySnapshotSchema,
+  requireWorkflowOperationDisplaySnapshot,
+} from "../workflow/operation-display-snapshot.js";
 import { StepOmissionsSchema } from "../workflow/step-omission.js";
 
 export const SystemInstanceSchema = z.enum(["prod", "test"]);
@@ -87,6 +91,8 @@ export const RunEnvelopeSchema = z.strictObject({
   traceId: TraceIdSchema,
   descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
+  /** D356 — present only for a complete display minted with this exact run. */
+  operationDisplaySnapshot: WorkflowOperationDisplaySnapshotSchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
   resolvedInstance: InstanceSelectionSchema,
   configFingerprint: FingerprintSchema,
@@ -123,6 +129,20 @@ export const RunEnvelopeSchema = z.strictObject({
   attempt: PositiveIntSchema,
   enqueuedAt: IsoInstantSchema,
 }).superRefine((envelope, context) => {
+  if (envelope.operationDisplaySnapshot !== undefined) {
+    try {
+      requireWorkflowOperationDisplaySnapshot(envelope.operationDisplaySnapshot, {
+        workflowId: envelope.workflow,
+        definitionFingerprint: envelope.contractFingerprint,
+      });
+    } catch (error) {
+      context.addIssue({
+        code: "custom",
+        path: ["operationDisplaySnapshot"],
+        message: error instanceof Error ? error.message : "operation display snapshot is corrupt",
+      });
+    }
+  }
   if (envelope.retryOf === envelope.runId) {
     context.addIssue({ code: "custom", path: ["retryOf"], message: "a run cannot be a cross-run retry of itself" });
   }
