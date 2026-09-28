@@ -33,7 +33,7 @@
     - button "removed-workflow"
     - strong: Saved run
   - heading "Synthetic retained report" [level=1]
-  - paragraph: removed-workflow · 00000000-0000-4000-8000-000000000081
+  - paragraph: removed-workflow
   - article "Saved archive report":
     - term: Dashboard version
     - definition: Not recorded

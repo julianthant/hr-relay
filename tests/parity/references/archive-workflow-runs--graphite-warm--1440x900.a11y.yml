@@ -31,6 +31,7 @@
     - button "Archive"
     - button "Dashboard Version not recorded"
     - strong: removed-workflow
+  - button "Filters"
   - heading "removed-workflow" [level=1]
   - paragraph: Archived runs and their retained workflow data
   - text: Dashboard version
@@ -59,10 +60,10 @@
         - columnheader "Archived"
         - columnheader "Files"
     - rowgroup:
-      - row "Synthetic retained report 00000000-0000-4000-8000-000000000081 Synthetic subject null 0 false true Not recorded Aug 2, 2026 1":
-        - cell "Synthetic retained report 00000000-0000-4000-8000-000000000081":
+      - row "Synthetic retained report 00000000… · Full ID in report Synthetic subject null 0 false true Not recorded Aug 2, 2026 1":
+        - cell "Synthetic retained report 00000000… · Full ID in report":
           - button "Synthetic retained report"
-          - text: 00000000-0000-4000-8000-000000000081
+          - text: 00000000… · Full ID in report
         - cell "Synthetic subject"
         - cell "null"
         - cell "0"
@@ -71,10 +72,10 @@
         - cell "Not recorded"
         - cell "Aug 2, 2026"
         - cell "1"
-      - row "Second saved report 00000000-0000-4000-8000-000000000083 Synthetic subject null 0 false true Not recorded Aug 2, 2026 1":
-        - cell "Second saved report 00000000-0000-4000-8000-000000000083":
+      - row "Second saved report 00000000… · Full ID in report Synthetic subject null 0 false true Not recorded Aug 2, 2026 1":
+        - cell "Second saved report 00000000… · Full ID in report":
           - button "Second saved report"
-          - text: 00000000-0000-4000-8000-000000000083
+          - text: 00000000… · Full ID in report
         - cell "Synthetic subject"
         - cell "null"
         - cell "0"
@@ -83,8 +84,7 @@
         - cell "Not recorded"
         - cell "Aug 2, 2026"
         - cell "1"
-  - text: 2 archived runs Click a run to open its complete report →
-  - paragraph: Full selection export, up to 5,000 reports or 50 MB. Exports include all public fields, including columns hidden here. Columns are discovered from loaded report pages; use Next reports to add later retained fields.
+  - text: 2 loaded runs Open a run for its complete report →
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

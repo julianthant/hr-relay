@@ -25,13 +25,29 @@
       - text: All workflows
       - paragraph: Dashboard 1.2 → 2.0 · All workflow versions advance together
     - heading "Review" [level=3]
-    - paragraph: Review the affected runs before applying this change.
-    - button "Review affected runs"
-    - heading "Reviewed version change" [level=3]
-    - status: Review is stale for the current selection. Review affected runs again.
-    - paragraph: Dashboard 1.2 → 1.2 · 1 affected runs · 1 blockers · 0 archived
-    - paragraph: "Person lookup: 1.1 → 1.2"
-    - status: person-lookup · 00000000-0000-4000-8000-000000000099 · Blocked · running
-    - button "Apply reviewed change" [disabled]
+    - paragraph: Not reviewed. Review the affected runs before applying this change.
+    - group:
+      - text: Previous version reviews · 1
+      - group:
+        - text: planned · 2026-08-03T12:00:00.000Z
+        - region "Reviewed version change":
+          - status: Review is stale for the current selection. Review affected runs again.
+          - term: Scope
+          - definition: Person lookup
+          - term: Dashboard
+          - definition: 1.2 → 1.2
+          - term: Affected runs
+          - definition: "1"
+          - term: Blockers
+          - definition: "1"
+          - term: Archived
+          - definition: "0"
+          - term: "Person lookup:"
+          - definition: 1.1 → 1.2
+          - status: Blocked by 1 active or pending run. Finish or resolve these runs before applying.
+          - group:
+            - status "Person lookup · 00000000…00000099 · Blocked · running"
+            - paragraph: person-lookup · 00000000-0000-4000-8000-000000000099 · Blocked · running
   - contentinfo:
     - button "Cancel"
+    - button "Review affected runs"

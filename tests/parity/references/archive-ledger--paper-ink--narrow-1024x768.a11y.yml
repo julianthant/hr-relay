@@ -26,9 +26,9 @@
   - text: Archive Current · 1.0
   - button "Version archives" [pressed]
   - button "Plan a bump"
-  - button "Filters"
   - heading "Version not recorded" [level=2]
   - text: Historical runs
+  - button "Filters"
   - region "Version not recorded archives":
     - button "retired-synthetic-workflow Workflow version not recorded 1 run":
       - strong: retired-synthetic-workflow

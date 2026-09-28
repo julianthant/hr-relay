@@ -33,7 +33,7 @@
     - button "retired-synthetic-workflow"
     - strong: Saved run
   - heading "Synthetic saved lookup" [level=1]
-  - paragraph: retired-synthetic-workflow · aa11bb22-0001-4000-8000-aa11bb220001
+  - paragraph: retired-synthetic-workflow
   - article "Saved archive report":
     - term: Dashboard version
     - definition: Not recorded
@@ -65,7 +65,7 @@
       - term: Result
       - definition: Verified
       - term: Unrecorded fact
-      - definition: "null"
+      - definition: "Null"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"
