@@ -24,7 +24,7 @@ import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
-import { createArchiveSnapshotSource } from "../../../src/server/dashboard/queries/archive.js";
+import { createArchiveSnapshotSource } from "../../../src/server/dashboard/queries/archive-snapshot.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import {
   claimEventOf,

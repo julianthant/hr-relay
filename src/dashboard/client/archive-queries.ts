@@ -55,7 +55,7 @@ export interface ArchiveQueries {
   savedRuntimeVersions(): Promise<SavedRuntimeVersionIndexWire>;
   savedArchiveGroups(query: ArchiveGroupQuery): Promise<SavedArchiveGroupsWire>;
 
-  savedArchiveIndex(query: SavedArchiveQuery): Promise<SavedArchiveIndexWire>;
+  savedArchiveIndex(query: SavedArchiveQuery, signal?: AbortSignal): Promise<SavedArchiveIndexWire>;
 
   savedArchiveReport(runId: string): Promise<SavedArchiveDetailWire>;
 
@@ -96,11 +96,11 @@ export function createArchiveQueries(transport: DashboardTransport): ArchiveQuer
       return parseOrThrow(SavedArchiveGroupsWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 
-    async savedArchiveIndex(input: SavedArchiveQuery): Promise<SavedArchiveIndexWire> {
+    async savedArchiveIndex(input: SavedArchiveQuery, signal?: AbortSignal): Promise<SavedArchiveIndexWire> {
       const query = SavedArchiveQuerySchema.parse(input);
       const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
       const path = `/api/v1/archive/reports?${params.toString()}`;
-      return parseOrThrow(SavedArchiveIndexWireSchema, `GET ${path}`, await transport.requestJson(path));
+      return parseOrThrow(SavedArchiveIndexWireSchema, `GET ${path}`, await transport.requestJson(path, signal === undefined ? undefined : { signal }));
     },
 
     async savedArchiveReport(runId: string): Promise<SavedArchiveDetailWire> {

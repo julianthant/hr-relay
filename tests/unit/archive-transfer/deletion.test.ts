@@ -19,6 +19,18 @@ it("authenticates public references, resumes a failed final audit after reopenin
     let storage = createRunLifecycleStorage(f.database);
     const report = storage.readReport(f.base.run.envelope.runId); assert.ok(report);
     const view = projectArchiveReport(report); assert.ok(view.state === "available");
+    assert.equal(view.publicationState, "published");
+    assert.equal(view.reportIntegrity, "verified");
+    const privateMemberDigest = report.content.versionChange?.review.members[0]?.sourceDigest;
+    assert.ok(privateMemberDigest);
+    const privateDigests = [report.digest, report.content.sourceDigest, privateMemberDigest,
+      ...report.content.sources.map(source => source.digest)];
+    for (const digest of privateDigests) {
+      assert.deepEqual(queryArchiveReports(storage, { limit: 10, search: digest }).items, [], "private source/sealed digests must not be searchable");
+    }
+    for (const publicValue of [report.content.transferId, report.content.itemId]) {
+      assert.deepEqual(queryArchiveReports(storage, { limit: 10, search: publicValue }).items.map(item => item.state === "available" ? item.runId : "missing"), [report.content.runId]);
+    }
     const request = { commandId: id(9903), requestedBy: "local-operator", requestedAt: NOW, family: "version-archive", source: "archive", type: "delete-archived-run",
       target: { archivedRunId: report.content.runId, archiveFingerprint: view.archiveFingerprint } };
     const wrong = f.kernel.execute({ ...request, target: { ...request.target, archiveFingerprint: report.digest } });

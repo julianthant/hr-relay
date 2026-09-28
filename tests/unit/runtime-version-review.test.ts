@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
 import { planRuntimeVersionTransition } from "../../src/domain/archive/runtime-version.js";
-import { reviewRuntimeVersionTransition } from "../../src/domain/archive/runtime-version-review.js";
+import { RuntimeVersionReviewSchema, reviewRuntimeVersionTransition } from "../../src/domain/archive/runtime-version-review.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { QUEUED_RUN, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
@@ -42,5 +42,19 @@ describe("runtime version review", () => {
     assert.throws(() => reviewRuntimeVersionTransition({ transition,
       runs: [RunRecordSchema.parse({ ...QUEUED_RUN, runtimeVersion: stamp })], adoption: () => adopted,
     }), /attribution-conflict/u);
+  });
+
+  it("keeps candidates, blockers, and the membership digest on one strict schema boundary", () => {
+    const terminal = RunRecordSchema.parse({ ...QUEUED_RUN,
+      envelope: { ...QUEUED_RUN.envelope, runId: "10000000-0000-4000-8000-000000000013" },
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW }, runtimeVersion: stamp,
+    });
+    const review = reviewRuntimeVersionTransition({
+      transition: planRuntimeVersionTransition(state, { kind: "workflows", workflowIds: [WORKFLOW_ID] }),
+      runs: [terminal], adoption: () => undefined,
+    });
+    assert.equal(RuntimeVersionReviewSchema.safeParse(review).success, true);
+    assert.equal(RuntimeVersionReviewSchema.safeParse({ ...review, blockers: review.candidates }).success, false);
+    assert.equal(RuntimeVersionReviewSchema.safeParse({ ...review, membershipDigest: "0".repeat(64) }).success, false);
   });
 });

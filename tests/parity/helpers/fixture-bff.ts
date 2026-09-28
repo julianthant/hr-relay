@@ -221,6 +221,7 @@ export async function startFixtureServer(
     profile?: FixtureDashboardProfile;
     dayWire?: DashboardDayWire;
     archiveScenario?: "evidence";
+    archiveComparison?: FixtureBffOptions["archiveComparison"];
     savedArchiveFileResponse?: (runId: string, digest: string) => Response | Promise<Response>;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";
@@ -235,6 +236,7 @@ export async function startFixtureServer(
   const { app } = createFixtureBff({ profile, dayWire,
     ...(input.savedArchiveFileResponse === undefined ? {} : { savedArchiveFileResponse: input.savedArchiveFileResponse }),
     ...(input.archiveScenario === undefined ? {} : { archiveScenario: input.archiveScenario }),
+    ...(input.archiveComparison === undefined ? {} : { archiveComparison: input.archiveComparison }),
     ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
     ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
   });

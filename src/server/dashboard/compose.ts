@@ -158,7 +158,7 @@ import { createProviderPool } from "../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../scheduling/timeout-deadline-scheduler.js";
 import { optionalSecretFamily, providerModelChain } from "../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "./queries/advisory.js";
-import { createArchiveSnapshotSource } from "./queries/archive.js";
+import { createArchiveSnapshotSource } from "./queries/archive-snapshot.js";
 
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
 

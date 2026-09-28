@@ -463,6 +463,27 @@ describe("the explorer and catalog route keys", () => {
     assert.deepEqual(parseRoute("?archiveView=versions"), { start: false });
   });
 
+  it("round-trips a complete Archive folder context and drops a half-folder", () => {
+    const route = parseRoute("?archive=&archiveView=runs&archiveDashboard=2.0&archiveWorkflow=person-lookup");
+
+    assert.deepEqual(route, {
+      start: false,
+      archive: "",
+      archiveView: "runs",
+      archiveDashboard: "2.0",
+      archiveWorkflow: "person-lookup",
+    });
+    assert.equal(
+      routeToSearch(route),
+      "?archive=&archiveView=runs&archiveDashboard=2.0&archiveWorkflow=person-lookup",
+    );
+    assert.deepEqual(parseRoute("?archive=&archiveDashboard=2.0"), { start: false, archive: "" });
+    assert.equal(
+      routeToSearch({ start: false, archive: "", archiveDashboard: "2.0" }),
+      "?archive=",
+    );
+  });
+
   it("drops an empty explore value, because a workflow id is never blank", () => {
     assert.equal(parseRoute("?explore=").explore, undefined);
     assert.equal(activeTakeover(parseRoute("?explore=")), "none");

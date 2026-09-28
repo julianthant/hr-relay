@@ -1,3 +1,4 @@
+import { createArchiveSnapshotSource } from "../../src/server/dashboard/queries/archive-snapshot.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 /**
  * The archive dependency blocks, built ONCE and shared by every harness that
@@ -10,7 +11,6 @@ import type { Clock } from "../../src/domain/clock.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
 import {
-  createArchiveSnapshotSource,
   type ArchiveQueryDeps,
 } from "../../src/server/dashboard/queries/archive.js";
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";

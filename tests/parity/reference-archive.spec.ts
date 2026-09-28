@@ -10,7 +10,7 @@ type ParityTheme
 } from "./helpers/capture.js";
 import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 import { ANCHORS,SCENES } from "./helpers/reference-archive-scenes.js";
-import { REFERENCES,dismissWorkflowWindow,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
+import { REFERENCES,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
 import { registerReferenceScenes } from "./helpers/reference-scenes.js";
 const servers = registerReferenceServers(["server"]);
 registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
@@ -41,16 +41,14 @@ test.describe("version bump", () => {
         archive: "",
         archiveView: "versions",
       });
-      await dismissWorkflowWindow(page);
       await assertThemeApplied(page, theme satisfies ParityTheme);
 
       const bump=page.getByRole("region",{name:"Plan a version bump"});
       await expect(bump).toBeVisible();
-      await expect(bump.getByRole("heading",{name:"What is changing?"})).toBeVisible();
-      await expect(bump.getByRole("button",{name:/Workflow version Advance one or several workflows/u})).toHaveAttribute("aria-pressed","true");
-      await expect(bump.getByRole("button",{name:/Dashboard version Advance every workflow/u})).toBeVisible();
+      await expect(bump.getByRole("radio",{name:"Selected workflow"})).toBeChecked();
+      await expect(bump.getByRole("radio",{name:"All workflows"})).toBeVisible();
       await expect(page.getByRole("button",{name:"Apply reviewed change"})).toBeDisabled();
-      await expect(bump).toContainText(`Blocked: person-lookup · ${blocker} · running`);
+      await expect(bump).toContainText(`person-lookup · ${blocker} · Blocked · running`);
       expect(errors,"page errors while opening the served version review").toEqual([]);
 
       await captureParityPair(page, REFERENCES, {

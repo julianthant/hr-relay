@@ -40,7 +40,7 @@ import {
   type RunQueueProjection,
 } from "../../src/server/dashboard/projectors/run-queue-projection.js";
 import type { ArchiveQueryDeps } from "../../src/server/dashboard/queries/archive.js";
-import { createArchiveSnapshotSource } from "../../src/server/dashboard/queries/archive.js";
+import { createArchiveSnapshotSource } from "../../src/server/dashboard/queries/archive-snapshot.js";
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";

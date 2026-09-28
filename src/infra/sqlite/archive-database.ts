@@ -6,6 +6,7 @@ import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, Ar
   type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { attestPublishedArchiveReport } from "./archive-records.js";
 import { z } from "zod";
 
 export const ARCHIVE_APPLICATION_ID = 1213350482;
@@ -168,7 +169,17 @@ export class ArchiveDatabase {
     const clauses = ["state='published'"], values: (string | number)[] = [];
     if (q.workflow !== undefined) { clauses.push("workflow=?"); values.push(q.workflow); }
     if(q.title!==undefined){clauses.push("title=?");values.push(q.title);}
-    if(q.search!==undefined){clauses.push("(instr(lower(title),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(report_json,'$.content.files') AS file WHERE instr(lower(json_extract(file.value,'$.name')),lower(?))>0))");values.push(q.search,q.search);}
+    if(q.search!==undefined){
+      const publicPaths=["$.content.runId","$.content.transferId","$.content.workflow","$.content.itemId","$.content.attempt",
+        "$.content.runNumber","$.content.title","$.content.descriptorVersion","$.content.outcome","$.content.completedAt",
+        "$.content.capturedAt","$.content.sections","$.content.files","$.content.runtimeVersion",
+        "$.content.versionChange.review.changeId","$.content.versionChange.review.change",
+        "$.content.versionChange.review.scope","$.content.versionChange.review.targetVersion",
+        "$.content.versionChange.review.reviewedAt","$.content.versionChange.application.actorId",
+        "$.content.versionChange.application.startedAt"];
+      clauses.push(`(${publicPaths.map(path=>`instr(lower(coalesce(cast(json_extract(report_json,'${path}') as text),'')),lower(?))>0`).join(" OR ")})`);
+      values.push(...publicPaths.map(()=>q.search!));
+    }
     if(q.capturedFrom!==undefined){clauses.push("captured_at>=?");values.push(q.capturedFrom);}
     if(q.capturedTo!==undefined){clauses.push("captured_at<=?");values.push(q.capturedTo);}
     if(q.from!==undefined){clauses.push("completed_at>=?");values.push(q.from);}
@@ -276,7 +287,7 @@ export class ArchiveDatabase {
     return this.verified(runId,digest);
   }
   publish(runId:string,digest:string):void{this.verified(runId,digest);if(this.state(runId)!=="published")this.advance(runId,digest,"verified","published");}
-  readPublishedReport(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return this.verifiedReport(runId,report.digest);}
+  readPublishedReport(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return attestPublishedArchiveReport(this.verifiedReport(runId,report.digest));}
   readPublished(runId:string):ArchiveReport|undefined{const report=this.readPublishedReport(runId);return report===undefined?undefined:this.verified(runId,report.digest);}
   /** Metadata-only membership for independently located backup file bundles. */
   fileReferences(includeCaptured = true): ArchiveReport["content"]["files"] {

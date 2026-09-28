@@ -1,6 +1,7 @@
 import { useEffect,useState } from "react";
 import { systemClock } from "../../domain/clock.js";
 import { SavedArchiveFileWireSchema,type SavedArchiveQuery,type SavedArchiveReportWire,type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
+import type { ArchiveReportCell } from "../../domain/archive/report.js";
 import { observeResource } from "../state/async-resource.js";
 
 export type SavedResource<T> = { state: "loading" } | { state: "loaded"; value: T } | { state: "error"; message: string };
@@ -14,8 +15,19 @@ export function useSavedResource<T>(read: () => Promise<T>, revision = 0): Saved
   const resource: SavedResource<T> = settled?.read === read && settled.revision === revision ? settled.resource : { state: "loading" };
   return resource;
 }
-export function savedCell(value: string | number | boolean | null): string {
-  return value === null ? "Not recorded" : typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+export function savedCell(value: ArchiveReportCell): string {
+  if (value === null) return "null";
+  if (typeof value === "boolean") return String(value);
+  if (typeof value === "string" && value === "") return '""';
+  if (Array.isArray(value)) return value.length === 0 ? "[]" : archiveCellJson(value);
+  if (typeof value === "object") return Object.keys(value).length === 0 ? "{}" : archiveCellJson(value);
+  return String(value);
+}
+
+function archiveCellJson(value: ArchiveReportCell): string {
+  const serialized = JSON.stringify(value);
+  if (serialized === undefined) throw new Error("Saved archive cell cannot be serialized.");
+  return serialized;
 }
 export function savedCommandEnvelope(actorId: string) {
   return { commandId: crypto.randomUUID(), requestedAt: systemClock.now().toISOString(), requestedBy: actorId, source: "archive", family: "version-archive" };
@@ -32,15 +44,6 @@ export function savedDownload(input: unknown, runId: string, digest: string) {
   const file = SavedArchiveFileWireSchema.parse(input);
   if (file.runId !== runId || file.digest !== digest) throw new Error("Saved attachment identity mismatch.");
   return file.resource;
-}
-
-/** Export the already-served public wire; never reconstruct a second report projection. */
-export function savedReportExport(report: SavedArchiveReportWire) {
-  const json = JSON.stringify(report);
-  return {
-    filename: `archive-${report.runId}.json`,
-    href: `data:application/json;charset=utf-8,${encodeURIComponent(json)}`,
-  };
 }
 
 export function savedOutcomeLabel(outcome: SavedArchiveReportWire["outcome"]): string {

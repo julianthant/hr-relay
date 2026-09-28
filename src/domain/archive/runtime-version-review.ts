@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { canonicalJsonStringify } from "../canonical-json.js";
-import { WorkflowIdSchema } from "../ids.js";
+import { FingerprintSchema, WorkflowIdSchema } from "../ids.js";
 import { sha256Hex } from "../sha256.js";
 import type { RunRecord } from "../run/record.js";
 import { RunRuntimeVersionStampSchema, RuntimeVersionStateSchema, type RuntimeVersionTransition } from "./runtime-version.js";
@@ -15,12 +15,31 @@ export const RuntimeVersionMemberSchema = z.strictObject({
 });
 export type RuntimeVersionMember = z.infer<typeof RuntimeVersionMemberSchema>;
 
-export type RuntimeVersionReview = Readonly<{
-  members: readonly RuntimeVersionMember[];
-  candidates: readonly RuntimeVersionMember[];
-  blockers: readonly RuntimeVersionMember[];
-  membershipDigest: string;
-}>;
+/** The exact review partition the authority will later claim. */
+export const RuntimeVersionReviewSchema = z.strictObject({
+  members: z.array(RuntimeVersionMemberSchema),
+  candidates: z.array(RuntimeVersionMemberSchema),
+  blockers: z.array(RuntimeVersionMemberSchema),
+  membershipDigest: FingerprintSchema,
+}).superRefine((review, context) => {
+  const members = review.members;
+  const ids = members.map(member => member.runId);
+  if (new Set(ids).size !== ids.length) {
+    context.addIssue({ code: "custom", path: ["members"], message: "runtime-version-review-members-duplicate" });
+  }
+  const expectedCandidates = members.filter(member => member.state === "terminal");
+  const expectedBlockers = members.filter(member => member.state !== "terminal");
+  if (canonicalJsonStringify(review.candidates) !== canonicalJsonStringify(expectedCandidates)) {
+    context.addIssue({ code: "custom", path: ["candidates"], message: "runtime-version-review-candidates-mismatch" });
+  }
+  if (canonicalJsonStringify(review.blockers) !== canonicalJsonStringify(expectedBlockers)) {
+    context.addIssue({ code: "custom", path: ["blockers"], message: "runtime-version-review-blockers-mismatch" });
+  }
+  if (review.membershipDigest !== sha256Hex(canonicalJsonStringify(members))) {
+    context.addIssue({ code: "custom", path: ["membershipDigest"], message: "runtime-version-review-membership-digest-mismatch" });
+  }
+});
+export type RuntimeVersionReview = z.infer<typeof RuntimeVersionReviewSchema>;
 
 /** Calculate membership from one authority snapshot before showing or claiming a bump. */
 export function reviewRuntimeVersionTransition(input: Readonly<{
@@ -59,5 +78,5 @@ export function reviewRuntimeVersionTransition(input: Readonly<{
   members.sort((left, right) => left.workflowId.localeCompare(right.workflowId) || left.runId.localeCompare(right.runId));
   const candidates = members.filter(row => row.state === "terminal");
   const blockers = members.filter(row => row.state !== "terminal");
-  return Object.freeze({ members, candidates, blockers, membershipDigest: sha256Hex(canonicalJsonStringify(members)) });
+  return RuntimeVersionReviewSchema.parse({ members, candidates, blockers, membershipDigest: sha256Hex(canonicalJsonStringify(members)) });
 }

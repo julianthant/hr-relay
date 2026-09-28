@@ -43,7 +43,8 @@ async function routes(page:Page) {
 async function openEvidence(page:Page) {
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:RUN_ID});
   const report=page.getByRole("article",{name:"Saved archive report"});
-  await expect(report).toContainText(REPORT.title);
+  await expect(page.getByRole("heading",{name:REPORT.title,exact:true,level:1})).toBeVisible();
+  await expect(report).toBeVisible();
   await expect(report.getByRole("tab")).toHaveCount(0);
   await expect(report.getByRole("img")).toHaveCount(0);
   return report;
@@ -53,6 +54,9 @@ async function frozenFacts(report:Locator) {
   for(const value of [CAPTURE.digest,CAPTURE.artifactId,CAPTURE.bundleId,CAPTURE.mediaType,String(CAPTURE.byteLength),"1440 × 900","Declared retention","2026-09-02T09:11:00.000Z"])await expect(facts).toContainText(value);
   await expect(facts).not.toContainText(/purged/iu);
   return facts;
+}
+async function openFiles(report:Locator) {
+  await report.getByRole("button",{name:"Retained files",exact:true}).click();
 }
 async function downloadedBytes(download:Download) {
   expect(download.suggestedFilename()).toBe(FILE_NAME);
@@ -72,9 +76,9 @@ for(const view of [
   test(`verified archived capture evidence ${view.theme.name} @ ${view.viewport.name}`,async({page})=>{
     await routes(page);await installTheme(page,view.theme);const report=await openEvidence(page);
     await assertThemeApplied(page,view.theme);await frozenFacts(report);
+    await openFiles(report);
     const link=report.getByRole("link",{name:FILE_NAME});await expect(link).toHaveAttribute("href",BYTE_PATH);
     await download(page,link);
-    await page.getByRole("group",{name:"Filter version archives"}).scrollIntoViewIfNeeded();
     await captureParityPair(page,REFERENCES,{stateId:"archive-evidence",viewport:view.viewport.name,theme:view.theme.name,
       adapter:"fixture",fixtureId:"archive-evidence-verified",descriptorHash:FIXTURE_DESCRIPTOR_HASH,appVersion:FIXTURE_APP_VERSION,capturedAt:FIXTURE_DAY,variant:"default"});
   });
@@ -84,20 +88,28 @@ for(const view of [
     respondBytes=async()=>{byteRequests++;await bytes.promise;return fileResponse();};
     try {
       const report=await openEvidence(page),facts=await frozenFacts(report),before=await facts.innerText();
+      await openFiles(report);
       await expect(report.getByText(`Checking ${FILE_NAME}…`)).toBeVisible();expect(byteRequests).toBe(0);
       resource.release();const link=report.getByRole("link",{name:FILE_NAME});await expect(link).toBeVisible();
+      await report.getByRole("button",{name:"Frozen capture facts",exact:true}).click();
       expect(await facts.innerText()).toBe(before);expect(byteRequests).toBe(0);
+      await openFiles(report);await expect(link).toBeVisible();
       const pending=page.waitForEvent("download");await link.click({noWaitAfter:true});
-      await expect.poll(()=>byteRequests).toBe(1);expect(await facts.innerText()).toBe(before);
-      bytes.release();await downloadedBytes(await pending);expect(await facts.innerText()).toBe(before);
+      await expect.poll(()=>byteRequests).toBe(1);
+      bytes.release();await downloadedBytes(await pending);
+      await report.getByRole("button",{name:"Frozen capture facts",exact:true}).click();
+      expect(await facts.innerText()).toBe(before);
     }finally{resource.release();bytes.release();}
   });
 });
 test("desktop keyboard downloads natively and inspects an image with dialog focus restoration",async({page})=>{
   await routes(page);await page.setViewportSize({width:1280,height:720});
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
+  await page.getByRole("button",{name:new RegExp(REPORT.workflow,"u")}).click();
   const select=page.getByRole("button",{name:new RegExp(REPORT.title,"u")});await select.focus();await page.keyboard.press("Enter");
+  await expect(page.getByRole("heading",{name:REPORT.title,exact:true,level:1})).toBeVisible();
   const report=page.getByRole("article",{name:"Saved archive report"});await frozenFacts(report);
+  await openFiles(report);
   const link=report.getByRole("link",{name:FILE_NAME});await link.focus();
   const pending=page.waitForEvent("download");await page.keyboard.press("Enter");await downloadedBytes(await pending);
   await expect(link).toBeFocused();await expect(page.getByRole("dialog")).toHaveCount(0);
@@ -108,7 +120,7 @@ test("desktop keyboard downloads natively and inspects an image with dialog focu
   await page.keyboard.press("Escape");await expect(dialog).toHaveCount(0);await expect(inspect).toBeFocused();
 });
 test("narrow desktop keeps frozen facts readable and the native download reachable",async({page})=>{
-  await routes(page);await page.setViewportSize({width:1024,height:768});const report=await openEvidence(page);await frozenFacts(report);
+  await routes(page);await page.setViewportSize({width:1024,height:768});const report=await openEvidence(page);await frozenFacts(report);await openFiles(report);
   const link=report.getByRole("link",{name:FILE_NAME});await link.focus();await expect(link).toBeInViewport();
   const geometry=await report.evaluate(node=>({width:node.getBoundingClientRect().width,scroll:node.scrollWidth,client:node.clientWidth}));
   expect(geometry.width).toBeGreaterThan(0);expect(geometry.scroll).toBeLessThanOrEqual(geometry.client+1);
@@ -117,9 +129,9 @@ test("narrow desktop keeps frozen facts readable and the native download reachab
 for(const refusal of ["missing","corrupt","request","foreign-identity","foreign-download"] as const)test(`keeps frozen facts accessible for a visible ${refusal} refusal`,async({page})=>{
   await routes(page);
   await page.route(`**${RESOURCE_PATH}`,route=>refusal==="request" ? route.fulfill({status:503,json:{state:"error",code:"ARCHIVE_FIXTURE_UNAVAILABLE",message:"Synthetic unavailable service",retryable:true}})
-    :route.fulfill({json:{runId:refusal==="foreign-identity"?"99999999-9999-4999-8999-999999999999":RUN_ID,digest:CAPTURE.digest,
+      :route.fulfill({json:{runId:refusal==="foreign-identity"?"99999999-9999-4999-8999-999999999999":RUN_ID,digest:CAPTURE.digest,
       resource:refusal==="missing"?{state:"missing",reason:"Synthetic retained bytes missing"}:refusal==="corrupt"?{state:"error",message:"Synthetic retained bytes corrupt"}:{state:"available",downloadUrl:refusal==="foreign-download"?"https://example.invalid/foreign":BYTE_PATH}}}));
-  const report=await openEvidence(page);await frozenFacts(report);
+  const report=await openEvidence(page);await frozenFacts(report);await openFiles(report);
   await expect(report.locator('[role="status"], [role="alert"]')).toBeVisible();
   await expect(report.getByRole("link",{name:FILE_NAME})).toHaveCount(0);
   await expect(report.getByRole("img")).toHaveCount(0);
@@ -127,14 +139,15 @@ for(const refusal of ["missing","corrupt","request","foreign-identity","foreign-
 
 test("native byte failure leaves the exact frozen report available",async({page})=>{
   await routes(page);respondBytes=()=>new Response("Synthetic native byte failure",{status:503});
-  const report=await openEvidence(page),facts=await frozenFacts(report),before=await facts.innerText();
+  const report=await openEvidence(page),facts=await frozenFacts(report),before=await facts.innerText();await openFiles(report);
   const pending=page.waitForEvent("download");await report.getByRole("link",{name:FILE_NAME}).click();
   const result=await pending;expect(await result.failure()).not.toBeNull();
+  await report.getByRole("button",{name:"Frozen capture facts",exact:true}).click();
   expect(await facts.innerText()).toBe(before);await expect(report).toBeVisible();
 });
 test("retained image inspection reports decode failure without losing the native download",async({page})=>{
   await routes(page);respondBytes=()=>new Response(Buffer.from("not an image"),{headers:{"Content-Type":"image/png"}});
-  const report=await openEvidence(page);
+  const report=await openEvidence(page);await frozenFacts(report);await openFiles(report);
   await report.getByRole("button",{name:`Inspect ${FILE_NAME}`,exact:true}).click();
   const dialog=page.getByRole("dialog",{name:FILE_NAME,exact:true});
   await expect(dialog.getByRole("alert")).toContainText(`${FILE_NAME}: retained image bytes could not be decoded.`);

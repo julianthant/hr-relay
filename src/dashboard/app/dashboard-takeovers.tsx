@@ -91,9 +91,13 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
             <ArchiveWorkspace
               selection={route.archive ?? ARCHIVE_INDEX}
               view={route.archiveView ?? "runs"}
+              folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
+                ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}
               actorId={boot.actor.id}
               onSelection={(next) => setRoute({ ...route, archive: next })}
               onView={(next) => setRoute({ ...route, archiveView: next })}
+              onFolder={(folder) => setRoute({ ...route, archive: ARCHIVE_INDEX,
+                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow })}
             />
           ) : takeover === "activity" ? (
             /*
@@ -137,6 +141,8 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 intake: undefined,
                 archive: ARCHIVE_INDEX,
                 archiveView: "versions",
+                archiveDashboard: undefined,
+                archiveWorkflow: undefined,
                 activity: undefined,
                 explore: undefined,
                 catalog: undefined,

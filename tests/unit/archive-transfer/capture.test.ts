@@ -4,6 +4,7 @@ import { it } from "vitest";
 import { foundationFixture, NOW, id } from "../database-foundation/fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
 import { ArchiveReportSchema } from "../../../src/domain/archive/report.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
@@ -37,7 +38,8 @@ it("captures every source group as generic typed values or explicit absence, wit
   const f = foundationFixture();
   try {
     f.db.authority.runs.transition({ runId: f.run.envelope.runId, expectedVersion: f.run.version, lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW }, now: NOW });
-    const snapshot = createRunLifecycleStorage(f.db).capture(f.run.envelope.runId);
+    const storage = createRunLifecycleStorage(f.db);
+    const snapshot = storage.capture(f.run.envelope.runId);
     const report = captureArchiveReport({ snapshot, transferId: id(9301), capturedAt: NOW, files: [], sections: [] });
     assert.equal(snapshot.records.length, 24);
     assert.equal(snapshot.records.some(group => group.table === "archive_relaunches"), false);
@@ -45,9 +47,26 @@ it("captures every source group as generic typed values or explicit absence, wit
     assert.notEqual(report.digest, report.content.sourceDigest);
     assert.throws(() => ArchiveReportSchema.parse({ ...report, content: { ...report.content, sources: [{ ...report.content.sources[0], json: '{}' }] } }), /digest-mismatch/u);
     assert.throws(() => projectArchiveReport({ ...report, content: { ...report.content, title: "corrupt" } }), /digest-mismatch/u);
+    const unpublished = projectArchiveReport(report);
+    assert.equal("publicationState" in unpublished, false);
+    assert.equal("reportIntegrity" in unpublished, false);
+    transferArchiveReport(storage, report, snapshot.run.version);
+    const publishedReport = storage.readReport(report.content.runId);
+    assert.ok(publishedReport);
     f.db.close();
-    assert.equal(projectArchiveReport(report).state, "available", "generic viewing requires no live database or descriptor");
+    const publicReport = projectArchiveReport(publishedReport);
+    assert.equal(publicReport.state, "available", "generic viewing requires no live database or descriptor");
+    if (publicReport.state !== "available") throw new Error("expected projected report");
+    assert.equal(publicReport.transferId, report.content.transferId);
+    assert.equal(publicReport.itemId, report.content.itemId);
+    assert.equal(publicReport.attempt, report.content.attempt);
+    assert.equal(publicReport.runNumber, report.content.runNumber);
+    assert.equal(publicReport.publicationState, "published");
+    assert.equal(publicReport.reportIntegrity, "verified");
+    assert.notEqual(publicReport.archiveFingerprint, report.digest);
     assert.equal("sources" in projectArchiveReport(report), false);
+    assert.equal("sourceDigest" in publicReport, false);
+    assert.equal("digest" in publicReport, false);
   } finally { f.dispose(); }
 });
 

@@ -6,6 +6,7 @@ import {
   formatRuntimeVersion,
   planRuntimeVersionTransition,
   RuntimeVersionStateSchema,
+  RuntimeVersionTransitionSchema,
 } from "../../src/domain/archive/runtime-version.js";
 
 const current = RuntimeVersionStateSchema.parse({
@@ -46,5 +47,18 @@ describe("operator-managed runtime versions", () => {
     assert.throws(() => planRuntimeVersionTransition(current, {
       kind: "workflows", workflowIds: ["unknown"],
     }), /runtime-version-invalid-selection/u);
+  });
+
+  it("keeps the returned transition on a strict before-and-after schema boundary", () => {
+    const transition = planRuntimeVersionTransition(current, { kind: "dashboard" });
+    assert.equal(RuntimeVersionTransitionSchema.safeParse(transition).success, true);
+    assert.equal(RuntimeVersionTransitionSchema.safeParse({
+      ...transition,
+      after: { ...transition.after, dashboard: current.dashboard },
+    }).success, false);
+    assert.equal(RuntimeVersionTransitionSchema.safeParse({
+      ...transition,
+      affectedWorkflowIds: ["access", "separations", "intake"],
+    }).success, false);
   });
 });

@@ -2,22 +2,20 @@ import { z } from "zod";
 import { NoteWireSchema, projectNoteForOperator } from "../../events/types.js";
 import { hasProtectedTransactionInput, retainedRunProtectedBindings, valueFreeProtectedData } from "../../domain/protected-input.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/storage-records.js";
-import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport, type ArchiveReportCell } from "../../domain/archive/report.js";
 import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
 import { RunRuntimeVersionStampSchema } from "../../domain/archive/runtime-version.js";
 
 type Section = ArchiveReport["content"]["sections"][number];
-type Cell = string | number | boolean | null;
-
 /** Flatten structure into labelled, typed cells. No live schema is needed to view it. */
 export function genericArchiveSection(title: string, value: JsonValue): Section {
-  const rows: { label: string; value: Cell }[] = [];
+  const rows: { label: string; value: ArchiveReportCell }[] = [];
   const visit = (entry: JsonValue, path: string): void => {
     if (entry === null || typeof entry !== "object") { rows.push({ label: path || "Value", value: entry }); return; }
     const entries = Object.entries(entry);
-    if (entries.length === 0) { rows.push({ label: path || "Value", value: Array.isArray(entry) ? "Empty list" : "Empty record" }); return; }
+    if (entries.length === 0) { rows.push({ label: path || "Value", value: entry }); return; }
     for (const [key, child] of entries) visit(child, path ? `${path}.${key}` : key);
   };
   visit(value, "");

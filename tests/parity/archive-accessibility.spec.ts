@@ -1,7 +1,4 @@
-/**
- * H stores warnings as frozen generic report sections and filters terminal outcomes.
- * Preserve warning-count accessibility, exact rows and route-history proof on that surface.
- */
+/** Archive warnings remain readable in the public search and saved-report flow. */
 import { expect,test,type Page } from "@playwright/test";
 import { SavedArchiveReportWireSchema } from "../../src/domain/dashboard/archive.js";
 import { gotoAppState,routeUrl } from "./helpers/app-driver.js";
@@ -24,7 +21,7 @@ async function expectExactSearch(page: Page, search: string): Promise<void> {
 async function expectVersionRegistry(page: Page, search: string): Promise<void> {
   await expectExactSearch(page, search);
   await expect(page.getByRole("region", { name: "Plan a version bump" })).toBeVisible();
-  await expect(page.getByRole("button", { name: "Plan a bump", exact: true }).first())
+  await expect(page.locator("button[aria-pressed='true']").filter({ hasText: "Plan a bump" }).first())
     .toHaveAttribute("aria-pressed", "true");
 }
 
@@ -58,33 +55,44 @@ for (const warning of [
   });
 }
 
-test("archive outcome filter uses terminal outcomes and retains warning facts in the report", async ({page})=>{
-  const failed=SavedArchiveReportWireSchema.parse({...FIXTURE_SAVED_REPORT,runId:PARTIAL_RUN_ID,title:"Failed saved lookup",outcome:"failed"});
-  const requests:string[]=[];
-  const groupRequests:string[]=[];
+test("archive search filters public groups and the saved report retains failed warning facts", async ({page})=>{
+  const failed=SavedArchiveReportWireSchema.parse({...FIXTURE_SAVED_REPORT,runId:PARTIAL_RUN_ID,title:"Failed saved lookup",outcome:"failed",
+    sections:[{kind:"table",title:"Warning facts",columns:["Warning"],rows:[[FIRST_WARNING]]}]});
+  const searchRequests:string[]=[];
+  const workflowGroup={dashboardVersion:null,workflow:failed.workflow,workflowVersion:null,reportCount:1,latestCompletedAt:failed.completedAt};
   await page.route("**/api/v1/archive/groups?*",route=>{
-    const outcome=new URL(route.request().url()).searchParams.get("outcome");groupRequests.push(outcome??"");
-    return route.fulfill({json:{groups:[{dashboardVersion:null,workflow:failed.workflow,workflowVersion:null,
-      reportCount:outcome==="failed"?1:2,latestCompletedAt:failed.completedAt}]}});
+    const search=new URL(route.request().url()).searchParams.get("search")??"";searchRequests.push(search);
+    return route.fulfill({json:{groups:search===""||failed.title.toLowerCase().includes(search.toLowerCase())?[workflowGroup]:[]}});
   });
   await page.route("**/api/v1/archive/reports?*",route=>{
-    const outcome=new URL(route.request().url()).searchParams.get("outcome");requests.push(outcome??"");
-    return route.fulfill({json:{items:outcome==="failed"?[failed]:[FIXTURE_SAVED_REPORT,failed],next:null}});
+    const search=new URL(route.request().url()).searchParams.get("search")??"";
+    return route.fulfill({json:{items:search===""||failed.title.toLowerCase().includes(search.toLowerCase())?[failed]:[],next:null}});
   });
+  await page.route(`**/api/v1/archive/reports/${failed.runId}`,route=>route.fulfill({json:failed}));
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
-  const filter=page.getByRole("combobox",{name:"Outcome",exact:true});
-  await expect(filter.getByRole("option")).toHaveText(["All","Done","Failed","Cancelled","Discarded","Interrupted","Superseded"]);
-  await filter.selectOption("failed");
-  await expect.poll(()=>groupRequests.at(-1)).toBe("failed");
-  await expect.poll(()=>requests.at(-1)).toBe("failed");
-  await expect(page.getByRole("button",{name:new RegExp(failed.title,"u")})).toBeVisible();
-  await expect(page.getByRole("button",{name:new RegExp(FIXTURE_SAVED_REPORT.title,"u")})).toHaveCount(0);
+  await page.getByRole("button",{name:"Filters"}).click();
+  const search=page.getByRole("textbox",{name:"Search all public archive fields",exact:true});
+  await search.fill("does-not-match");
+  await expect(page.getByText("No saved reports match these filters.",{exact:true})).toBeVisible();
+  await search.fill(failed.title);
+  await expect.poll(()=>searchRequests.at(-1)).toBe(failed.title);
+  await page.getByRole("button",{name:new RegExp(failed.workflow,"u")}).click();
+  await expect(page.getByRole("table").first()).toBeVisible();
+  await expect.poll(()=>searchRequests.at(-1)).toBe(failed.title);
+  await page.getByRole("button",{name:failed.title,exact:true}).click();
+  await expect(page.getByRole("heading",{name:failed.title,exact:true,level:1})).toBeVisible();
+  const article=page.getByRole("article",{name:"Saved archive report"});
+  await expect(article).toContainText("Failed");
+  const warnings=page.getByRole("region",{name:"Warning facts",exact:true});
+  await expect(warnings).toContainText(FIRST_WARNING);
+  await expect(warnings.getByRole("row")).toHaveCount(2);
 });
 
-test("one-workflow dashboard permits that workflow's minor bump review", async ({ page }) => {
+test("one-workflow dashboard normalizes that workflow's selection to a major bump review", async ({ page }) => {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
   const bump = page.getByRole("region", { name: "Plan a version bump" });
-  await expect(bump.getByRole("checkbox", { name: /Person lookup/u })).toBeChecked();
+  await expect(bump.getByRole("combobox", { name: "Workflow to bump" })).toHaveValue("person-lookup");
+  await expect(bump).toContainText("Every registered workflow selected: dashboard major bump");
   await expect(bump.getByRole("button", { name: "Review affected runs" })).toBeEnabled();
   await expect(bump.getByText("For every workflow, choose Dashboard version.")).toHaveCount(0);
 });

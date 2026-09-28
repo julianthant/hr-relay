@@ -1,268 +1,559 @@
-import { Archive, ArrowRight, ChevronDown, ChevronUp, Layers3, Search, Workflow } from "lucide-react";
-import { useCallback, useMemo, useRef, useState } from "react";
+import { Archive, ArrowRight, ChevronDown, ChevronRight, Download, Folder, Layers3, Search } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ArchiveGroupQuery } from "../../domain/archive/report.js";
 import type { SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { Badge, Button, Card, Checkbox, DateInput, dsIcon, dsText, Input, PageHeader, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select } from "../ds/ui.js";
+import { Button, Card, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DsBodyScope, dsIcon, dsSurface, dsText, Input, PageHeader, PageHeading, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select, Table, TBody, TD, TH, THead, TR } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient } from "../state/archive-client.js";
-import { archiveDisplayDate, archiveReportCount, archiveVersionKey, archiveVersionLabel, archiveWorkflowMark, groupArchiveVersions, sameArchiveGroup, type ArchiveGroup } from "./archive-runtime-model.js";
+import { archiveDisplayDate, archiveInitialSummaryColumns, archiveReportCount, archiveRuntimeVersionPreview, archiveSummaryColumnAlignment, archiveSummaryColumnLabel, archiveSummaryColumns, archiveSummaryValue, archiveVersionKey, archiveVersionLabel, archiveWorkflowVersionLabels, groupArchiveVersions, mergeArchiveSummaryColumns, type ArchiveSummaryColumn, type DashboardArchiveGroup } from "./archive-runtime-model.js";
+import type { ArchiveExportFormat } from "../../domain/dashboard/archive-export.js";
+import { archiveExportBlob, readWorkflowExport } from "./archive-export-model.js";
 import { SavedArchiveDeletion, SavedArchiveDeletionStatus, SavedArchiveReport } from "./archive-report.js";
-import { savedCommandEnvelope, savedOutcomeLabel, useSavedResource } from "./archive-report-model.js";
+import { savedCommandEnvelope, useSavedResource } from "./archive-report-model.js";
 
 type Props = {
   selection: string;
   view: "runs" | "versions";
+  folder: Folder | null;
   actorId: string;
   onSelection: (id: string) => void;
   onView: (view: "runs" | "versions") => void;
+  onFolder: (folder: Folder | null) => void;
 };
 
-export function RuntimeArchiveWorkspace({ selection, view, actorId, onSelection, onView }: Props) {
+type Folder = Readonly<{ dashboardKey: string; workflow: string }>;
+type WorkflowExportHandle = { start: (format: ArchiveExportFormat) => void; cancel: () => void };
+type RunExportHandle = { identity: string; runId: string; start: (format: ArchiveExportFormat) => void };
+const EXPORT_SELECTION_CHANGED = "Archive export stopped because its selection changed. Start it again for this selection.";
+const RUN_EXPORT_SELECTION_CHANGED = "Run export stopped because the selected report changed. Start it again for this run.";
+
+export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSelection, onView, onFolder }: Props) {
   const client = useArchiveClient();
   const [revision, setRevision] = useState(0);
+  const [workflowExportVisible, setWorkflowExportVisible] = useState(false);
+  const [workflowExportActive, setWorkflowExportActive] = useState(false);
+  const [workflowExportMenuOpen, setWorkflowExportMenuOpen] = useState(false);
+  const [runExportVisible, setRunExportVisible] = useState(false);
+  const [runExportMenuOpen, setRunExportMenuOpen] = useState(false);
+  const workflowExportHandle = useRef<WorkflowExportHandle | null>(null);
+  const runExportHandle = useRef<RunExportHandle | null>(null);
+  const bumpTrigger = useRef<HTMLButtonElement | null>(null);
   const refresh = useCallback(() => setRevision(value => value + 1), []);
   const versionsRead = useCallback(() => client.savedRuntimeVersions(), [client]);
   const versions = useSavedResource(versionsRead, revision);
+  useEffect(() => {
+    if (view !== "runs" || !workflowExportVisible) setWorkflowExportMenuOpen(false);
+    if (view !== "runs" || !runExportVisible) setRunExportMenuOpen(false);
+  }, [view, workflowExportVisible, runExportVisible]);
   return <div className="flex min-h-0 flex-1 flex-col">
-    <PageHeader title="Archive" icon={<Archive className={dsIcon.md} />} actions={<>
-      <Button size="toolbar" variant={view === "runs" ? "secondary" : "ghost"} aria-pressed={view === "runs"} onClick={() => onView("runs")}>Version archives</Button>
-      <Button size="toolbar" variant={view === "versions" ? "secondary" : "ghost"} aria-pressed={view === "versions"} onClick={() => onView("versions")}>Plan a bump</Button>
-    </>} />
-    <div className="min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]">
-      {view === "versions"
-        ? <RuntimeBumpPanel actorId={actorId} versions={versions} onChanged={refresh} />
-        : <ArchiveGroupsPanel selection={selection} onSelection={onSelection} versions={versions} revision={revision} onRefresh={refresh} onPlan={() => onView("versions")} actorId={actorId} />}
-    </div>
+    <PageHeader
+      className="min-h-[48px]"
+      title="Archive"
+      icon={<Archive className={dsIcon.md} />}
+      badge={versions.state === "loaded" ? <span className={cn(dsText.meta, "border-l border-[color:var(--ds-border)] pl-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>Current · {archiveVersionLabel(versions.value.dashboard)}</span> : undefined}
+      actions={<>
+        <Button size="toolbar" variant={view === "runs" ? "secondary" : "ghost"} aria-pressed={view === "runs"} onClick={() => onView("runs")}>Version archives</Button>
+        {view === "runs" && workflowExportVisible && <Popover open={workflowExportMenuOpen} onOpenChange={setWorkflowExportMenuOpen}>
+          <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export workflow</Button></PopoverTrigger>
+          <PopoverContent title="Export workflow" align="end" width="sm">
+            <div className="flex flex-col gap-[var(--ds-space-tight)] p-[var(--ds-space-cozy)]">
+              <Button variant="ghost" className="justify-start" onClick={() => { setWorkflowExportMenuOpen(false); workflowExportHandle.current?.start("json"); }}>JSON</Button>
+              <Button variant="ghost" className="justify-start" onClick={() => { setWorkflowExportMenuOpen(false); workflowExportHandle.current?.start("csv"); }}>CSV</Button>
+              {workflowExportActive && <Button variant="ghost" className="justify-start" onClick={() => { setWorkflowExportMenuOpen(false); workflowExportHandle.current?.cancel(); }}>Cancel export</Button>}
+            </div>
+          </PopoverContent>
+        </Popover>}
+        {view === "runs" && runExportVisible && <Popover open={runExportMenuOpen} onOpenChange={setRunExportMenuOpen}>
+          <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export run</Button></PopoverTrigger>
+          <PopoverContent title="Export saved run" align="end" width="sm">
+            <div className="flex flex-col gap-[var(--ds-space-tight)] p-[var(--ds-space-cozy)]">
+              <Button variant="ghost" className="justify-start" onClick={() => { setRunExportMenuOpen(false); runExportHandle.current?.start("json"); }}>JSON</Button>
+              <Button variant="ghost" className="justify-start" onClick={() => { setRunExportMenuOpen(false); runExportHandle.current?.start("csv"); }}>CSV</Button>
+            </div>
+          </PopoverContent>
+        </Popover>}
+        <Button ref={bumpTrigger} size="toolbar" variant={view === "versions" ? "secondary" : "ghost"} aria-pressed={view === "versions"} onClick={() => onView("versions")}>Plan a bump</Button>
+      </>}
+    />
+    <div className={cn("min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]", dsSurface.bodyPage)}><div className="relative min-h-full rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] p-[var(--ds-space-section)]">
+      <ArchiveGroupsPanel active={view === "runs" || selection !== "" || folder !== null} selection={selection} folder={folder} onSelection={onSelection} onFolder={onFolder} versions={versions} revision={revision} onRefresh={refresh} actorId={actorId}
+        exportHandle={workflowExportHandle} onExportVisibilityChange={setWorkflowExportVisible} onExportActivityChange={setWorkflowExportActive}
+        runExportHandle={runExportHandle} onRunExportVisibilityChange={setRunExportVisible} />
+    </div></div>
+    <Dialog open={view === "versions"} onOpenChange={open => { if (!open) onView("runs"); }}>
+      {view === "versions" && <DialogContent size="md" className="max-w-[650px]" title="Plan a version bump" description={`Current dashboard ${versions.state === "loaded" ? formatRuntimeVersion(versions.value.dashboard) : "version unavailable"}`} onCloseAutoFocus={event => { event.preventDefault(); bumpTrigger.current?.focus(); }}>
+        <DialogBody><RuntimeBumpPanel actorId={actorId} contextRunId={selection} contextWorkflowId={folder?.workflow} versions={versions} onChanged={refresh} /></DialogBody>
+        <DialogFooter><Button variant="secondary" onClick={() => onView("runs")}>Cancel</Button></DialogFooter>
+      </DialogContent>}
+    </Dialog>
   </div>;
 }
 
-function ArchiveGroupsPanel({ selection, onSelection, versions, revision, onRefresh, onPlan, actorId }: {
-  selection: string; onSelection: (id: string) => void; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>;
-  revision: number; onRefresh: () => void; onPlan: () => void; actorId: string;
+function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, versions, revision, onRefresh, actorId, exportHandle, onExportVisibilityChange, onExportActivityChange, runExportHandle, onRunExportVisibilityChange }: {
+  active: boolean; selection: string; folder: Folder | null; onSelection: (id: string) => void; onFolder: (folder: Folder | null) => void; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>;
+  revision: number; onRefresh: () => void; actorId: string;
+  exportHandle: { current: WorkflowExportHandle | null };
+  onExportVisibilityChange: (visible: boolean) => void;
+  onExportActivityChange: (active: boolean) => void;
+  runExportHandle: { current: RunExportHandle | null };
+  onRunExportVisibilityChange: (visible: boolean) => void;
 }) {
   const client = useArchiveClient();
   const [filters, setFilters] = useState<ArchiveGroupQuery>({});
   const [after, setAfter] = useState<SavedArchiveQuery["after"]>();
-  const [expandedDashboard, setExpandedDashboard] = useState<string | null>(null);
-  const [expandedWorkflow, setExpandedWorkflow] = useState<string | null>(null);
-  const [selectedGroup, setSelectedGroup] = useState<ArchiveGroup | null>(null);
-  const [showAllReports, setShowAllReports] = useState(false);
-  const allRead = useCallback(() => client.savedArchiveGroups({}), [client]);
+  const [selectedSummaryColumns, setSelectedSummaryColumns] = useState<string[] | null>(null);
+  const [discoveredSummaryColumns, setDiscoveredSummaryColumns] = useState<ArchiveSummaryColumn[]>([]);
+  const [exportState, setExportState] = useState("");
+  const [exportStateIsError, setExportStateIsError] = useState(false);
+  const [runExportState, setRunExportState] = useState("");
+  const [runExportStateIsError, setRunExportStateIsError] = useState(false);
+  const exportController = useRef<{ controller: AbortController; identity: string } | null>(null);
+  const allRead = useCallback(() => active ? client.savedArchiveGroups({}) : Promise.resolve({ groups: [] }), [active, client]);
   const allGroups = useSavedResource(allRead, revision);
-  const groupRead = useCallback(() => client.savedArchiveGroups(filters), [client, filters]);
+  const groupRead = useCallback(() => active ? client.savedArchiveGroups(filters) : Promise.resolve({ groups: [] }), [active, client, filters]);
   const groups = useSavedResource(groupRead, revision);
   const hierarchy = useMemo(() => groups.state === "loaded" ? groupArchiveVersions(groups.value.groups) : [], [groups]);
-  const firstGroup = hierarchy[0]?.workflows[0]?.versions[0] ?? null;
-  const activeGroup = selectedGroup !== null && groups.state === "loaded" && groups.value.groups.some(group => sameArchiveGroup(selectedGroup, group))
-    ? selectedGroup : firstGroup;
-  const reportQuery = useMemo<SavedArchiveQuery | null>(() => activeGroup === null ? null : {
-    ...filters, workflow: activeGroup.workflow, limit: 50,
-    ...(activeGroup.dashboardVersion === null ? { versionState: "unrecorded" as const } : { dashboardVersion: activeGroup.dashboardVersion }),
-    ...(activeGroup.workflowVersion === null ? {} : { workflowVersion: activeGroup.workflowVersion }),
+  const stableHierarchy = useMemo(() => allGroups.state === "loaded" ? groupArchiveVersions(allGroups.value.groups) : [], [allGroups]);
+  const dashboard = folder === null ? undefined : stableHierarchy.find(row => row.key === folder.dashboardKey);
+  const workflow = dashboard?.workflows.find(row => row.workflow === folder?.workflow);
+  const hasWorkflowExport = selection === "" && dashboard !== undefined && workflow !== undefined;
+  const selectionIdentity = JSON.stringify({ dashboardKey: folder?.dashboardKey ?? null, workflow: folder?.workflow ?? null,
+    dashboardVersion: dashboard?.version ?? null, filters, selection });
+  const selectionIdentityRef = useRef(selectionIdentity);
+  const abortForSelectionChange = () => exportController.current?.controller.abort(new Error(EXPORT_SELECTION_CHANGED));
+  useLayoutEffect(() => {
+    selectionIdentityRef.current = selectionIdentity;
+    const active = exportController.current;
+    if (active !== null && active.identity !== selectionIdentity) active.controller.abort(new Error(EXPORT_SELECTION_CHANGED));
+  }, [selectionIdentity]);
+  useLayoutEffect(() => {
+    setRunExportState("");
+    setRunExportStateIsError(false);
+  }, [selectionIdentity]);
+  useEffect(() => () => {
+    exportController.current?.controller.abort();
+    exportHandle.current = null;
+    runExportHandle.current = null;
+    onExportVisibilityChange(false);
+    onExportActivityChange(false);
+    onRunExportVisibilityChange(false);
+  }, [exportHandle, onExportActivityChange, onExportVisibilityChange, onRunExportVisibilityChange, runExportHandle]);
+  const reportQuery = useMemo<SavedArchiveQuery | null>(() => workflow === undefined || dashboard === undefined ? null : {
+    ...filters, workflow: workflow.workflow, limit: 50,
+    ...(dashboard.version === null ? { versionState: "unrecorded" as const } : { dashboardVersion: dashboard.version }),
     ...(after === undefined ? {} : { after }),
-  }, [activeGroup, after, filters]);
-  const reportsRead = useCallback(() => reportQuery === null ? Promise.resolve({ items: [], next: null }) : client.savedArchiveIndex(reportQuery), [client, reportQuery]);
+  }, [workflow, dashboard, after, filters]);
+  const reportsRead = useCallback(() => !active || reportQuery === null ? Promise.resolve({ items: [], next: null }) : client.savedArchiveIndex(reportQuery), [active, client, reportQuery]);
   const reports = useSavedResource(reportsRead, revision);
-  const detailRead = useCallback(() => selection === "" ? Promise.resolve(null) : client.savedArchiveReport(selection), [client, selection]);
+  const pageSummaryColumns = useMemo(() => reports.state === "loaded" ? archiveSummaryColumns(reports.value.items) : [], [reports]);
+  const summaryColumns = useMemo(() => mergeArchiveSummaryColumns(discoveredSummaryColumns, pageSummaryColumns), [discoveredSummaryColumns, pageSummaryColumns]);
+  const initialSummaryColumns = useMemo(() => archiveInitialSummaryColumns(summaryColumns), [summaryColumns]);
+  const visibleSummaryColumns = selectedSummaryColumns === null
+    ? initialSummaryColumns
+    : summaryColumns.filter(column => selectedSummaryColumns.includes(column.id));
+  const detailRead = useCallback(() => !active || selection === "" ? Promise.resolve(null) : client.savedArchiveReport(selection), [active, client, selection]);
   const detail = useSavedResource(detailRead, revision);
-  const setFilter = (next: ArchiveGroupQuery) => {
-    setFilters(Object.fromEntries(Object.entries(next).filter(([, value]) => value !== undefined)));
-    setAfter(undefined); setSelectedGroup(null); onSelection("");
-  };
-  const chooseGroup = (group: ArchiveGroup) => { setSelectedGroup(group); setAfter(undefined); setShowAllReports(false); onSelection(""); };
-  const available = allGroups.state === "loaded" ? allGroups.value.groups : [];
-  const dashboardOptions = [...new Map(available.filter(group => group.dashboardVersion !== null).map(group => [archiveVersionKey(group.dashboardVersion), group.dashboardVersion])).entries()];
-  const workflowOptions = [...new Set([...available.map(group => group.workflow), ...(versions.state === "loaded" ? versions.value.workflows.map(row => row.workflowId) : [])])].sort();
-  const workflowVersionOptions = [...new Map(available.filter(group => group.workflowVersion !== null).map(group => [archiveVersionKey(group.workflowVersion), group.workflowVersion])).entries()];
-  const dashboardFilter = filters.versionState === "unrecorded" ? "unrecorded" : filters.dashboardVersion === undefined ? "" : archiveVersionKey(filters.dashboardVersion);
-  const reportTotal = hierarchy.reduce((count, dashboard) => count + dashboard.reportCount, 0);
-  const filtered = Object.keys(filters).length > 0;
-  const toggleDashboard = (dashboard: (typeof hierarchy)[number], open: boolean) => {
-    setExpandedDashboard(open ? "" : dashboard.key);
-    if (!open && dashboard.workflows[0]?.versions[0] !== undefined) {
-      setExpandedWorkflow(`${dashboard.key}:${dashboard.workflows[0].workflow}`);
-      chooseGroup(dashboard.workflows[0].versions[0]);
+  const selectedReport = detail.state === "loaded" && detail.value?.state === "available" && detail.value.runId === selection ? detail.value : null;
+  const hasRunExport = selection !== "" && selectedReport !== null;
+  const openFolder = (dashboardKey: string, workflowId: string) => { abortForSelectionChange(); onFolder({ dashboardKey, workflow: workflowId }); setAfter(undefined); setSelectedSummaryColumns(null); setDiscoveredSummaryColumns([]); setExportState(""); setExportStateIsError(false); };
+  const goFolders = () => { abortForSelectionChange(); onFolder(null); setAfter(undefined); };
+  const selectReport = (runId: string) => { abortForSelectionChange(); onSelection(runId); };
+  const startExport = async (format: ArchiveExportFormat) => {
+    if (dashboard === undefined || workflow === undefined) return;
+    exportController.current?.controller.abort();
+    const identity = selectionIdentityRef.current;
+    const controller = new AbortController(); exportController.current = { controller, identity };
+    const isCurrent = () => selectionIdentityRef.current === identity && exportController.current?.controller === controller;
+    const assertCurrent = () => {
+      controller.signal.throwIfAborted();
+      if (selectionIdentityRef.current !== identity) throw new Error(EXPORT_SELECTION_CHANGED);
+      if (exportController.current?.controller !== controller) throw new Error("Workflow export was superseded. Start it again.");
+      controller.signal.throwIfAborted();
+    };
+    setExportState("Preparing workflow export…");
+    setExportStateIsError(false);
+    onExportActivityChange(true);
+    try {
+      const query = { ...filters, workflow: workflow.workflow,
+        ...(dashboard.version === null ? { versionState: "unrecorded" as const } : { dashboardVersion: dashboard.version }) };
+      const records = await readWorkflowExport((page, signal) => client.savedArchiveIndex(page, signal), query,
+        controller.signal, format, count => { if (isCurrent()) setExportState(`Reading ${count} saved reports…`); }, isCurrent);
+      assertCurrent();
+      if (records.length === 0) throw new Error("No saved reports remain in this workflow selection.");
+      const blob = archiveExportBlob(records, format);
+      assertCurrent();
+      if (blob.size > 50_000_000) throw new Error("Archive export exceeds 50 MB. Narrow the search and export each selection.");
+      assertCurrent();
+      const url = URL.createObjectURL(blob);
+      let link: HTMLAnchorElement | null = null;
+      let clicked = false;
+      try {
+        link = document.createElement("a");
+        link.href = url;
+        link.download = `archive-${workflow.workflow}-${dashboard.key}.${format}`;
+        assertCurrent();
+        document.body.append(link);
+        assertCurrent();
+        link.click();
+        clicked = true;
+      } finally {
+        link?.remove();
+        if (!clicked) URL.revokeObjectURL(url);
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExportState(`Downloaded ${records.length} saved reports.`);
+      setExportStateIsError(false);
+    } catch (error) {
+      if (exportController.current?.controller === controller) {
+        const reason: unknown = controller.signal.reason;
+        const selectionChanged = controller.signal.aborted && reason instanceof Error && reason.message === EXPORT_SELECTION_CHANGED;
+        if (controller.signal.aborted) {
+          setExportState(selectionChanged ? EXPORT_SELECTION_CHANGED : "Workflow export cancelled.");
+          setExportStateIsError(false);
+        } else {
+          setExportState(error instanceof Error ? error.message : "Workflow export failed.");
+          setExportStateIsError(true);
+        }
+      }
+    } finally {
+      if (exportController.current?.controller === controller) {
+        exportController.current = null;
+        onExportActivityChange(false);
+      }
     }
   };
-  const toggleWorkflow = (dashboardKey: string, workflow: (typeof hierarchy)[number]["workflows"][number], open: boolean) => {
-    setExpandedWorkflow(open ? "" : `${dashboardKey}:${workflow.workflow}`);
-    if (!open && workflow.versions[0] !== undefined) chooseGroup(workflow.versions[0]);
+  const startRunExport = (format: ArchiveExportFormat) => {
+    if (selectedReport === null) return;
+    const report = selectedReport;
+    const runId = selection;
+    const identity = selectionIdentity;
+    const assertCurrent = () => {
+      if (selectionIdentityRef.current !== identity || selection !== runId
+        || runExportHandle.current?.identity !== identity || runExportHandle.current.runId !== runId
+        || report.runId !== runId) {
+        throw new Error(RUN_EXPORT_SELECTION_CHANGED);
+      }
+    };
+    setRunExportState("Preparing saved report export…");
+    setRunExportStateIsError(false);
+    try {
+      assertCurrent();
+      const blob = archiveExportBlob([report], format);
+      assertCurrent();
+      const url = URL.createObjectURL(blob);
+      let link: HTMLAnchorElement | null = null;
+      let clicked = false;
+      try {
+        link = document.createElement("a");
+        link.href = url;
+        link.download = `archive-${runId}.${format}`;
+        assertCurrent();
+        document.body.append(link);
+        assertCurrent();
+        link.click();
+        clicked = true;
+      } finally {
+        link?.remove();
+        if (!clicked) URL.revokeObjectURL(url);
+      }
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setRunExportState(`Downloaded saved report ${runId}.`);
+      setRunExportStateIsError(false);
+    } catch (error) {
+      if (selectionIdentityRef.current === identity) {
+        setRunExportState(error instanceof Error ? error.message : "Saved report export failed.");
+        setRunExportStateIsError(true);
+      }
+    }
   };
-  const selectedDetail = selection !== "" && <Panel aria-label="Selected saved report"><PanelBody className="space-y-[var(--ds-space-base)] p-[var(--ds-space-cozy)]"><Button variant="ghost" onClick={() => onSelection("")}>Close report</Button>
-    {detail.state === "loading" ? <p role="status">Loading saved report…</p> : detail.state === "error" ? <p role="alert">{detail.message}</p> : detail.value === null ? null
-      : detail.value.state === "deleted" ? <SavedArchiveDeletionStatus status={detail.value.deletion} onRefresh={onRefresh} />
+  exportHandle.current = hasWorkflowExport ? {
+    start: format => { void startExport(format); },
+    cancel: () => exportController.current?.controller.abort(),
+  } : null;
+  useLayoutEffect(() => {
+    onExportVisibilityChange(hasWorkflowExport);
+    if (!hasWorkflowExport) onExportActivityChange(false);
+  }, [hasWorkflowExport, onExportActivityChange, onExportVisibilityChange]);
+  runExportHandle.current = hasRunExport && selectedReport !== null ? {
+    identity: selectionIdentity,
+    runId: selectedReport.runId,
+    start: format => startRunExport(format),
+  } : null;
+  useLayoutEffect(() => {
+    onRunExportVisibilityChange(hasRunExport);
+  }, [hasRunExport, onRunExportVisibilityChange]);
+  const workflowLabel = (id: string) => versions.state === "loaded" ? versions.value.workflows.find(row => row.workflowId === id)?.label ?? id : id;
+  const detailDashboard = detail.state === "loaded" && detail.value?.state === "available" && detail.value.runId === selection ? archiveVersionLabel(detail.value.runtimeVersion?.dashboard ?? null) : dashboard === undefined ? "Version not recorded" : archiveVersionLabel(dashboard.version);
+  const detailWorkflow = detail.state === "loaded" && detail.value?.state === "available" && detail.value.runId === selection ? workflowLabel(detail.value.workflow) : workflow === undefined ? "Workflow" : workflowLabel(workflow.workflow);
+  const goRuns = () => { abortForSelectionChange(); const report = detail.state === "loaded" && detail.value?.state === "available" && detail.value.runId === selection ? detail.value : null; if (report !== null) onFolder({ dashboardKey: archiveVersionKey(report.runtimeVersion?.dashboard ?? null), workflow: report.workflow }); else onSelection(""); };
+  useEffect(() => { setSelectedSummaryColumns(null); setDiscoveredSummaryColumns([]); }, [folder?.dashboardKey, folder?.workflow]);
+  useEffect(() => {
+    if (pageSummaryColumns.length === 0) return;
+    setDiscoveredSummaryColumns(current => {
+      const merged = mergeArchiveSummaryColumns(current, pageSummaryColumns);
+      return merged.length === current.length && merged.every((column, index) => {
+        const prior = current[index];
+        return prior !== undefined && prior.id === column.id && prior.path === column.path && prior.section === column.section
+          && prior.sectionOccurrence === column.sectionOccurrence && prior.label === column.label
+          && prior.labelOccurrence === column.labelOccurrence && prior.type === column.type;
+      }) ? current : merged;
+    });
+  }, [pageSummaryColumns]);
+  if (selection !== "") return <DsBodyScope style={{ maxWidth: "none" }} className="w-full min-w-0 space-y-[var(--ds-space-page)]">
+    <ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: `Dashboard ${detailDashboard}`, onClick: goFolders }, { label: detailWorkflow, onClick: goRuns }, { label: "Saved run" }]} />
+    {detail.state === "loading" ? <p role="status">Loading saved report…</p> : detail.state === "error" ? <p role="alert">{detail.message}</p> : detail.value === null ? <p role="status">No report selected.</p>
+      : detail.value.runId !== selection ? <p role="alert">Saved report identity does not match selected run {selection}.</p>
+        : detail.value.state === "deleted" ? <SavedArchiveDeletionStatus status={detail.value.deletion} onRefresh={onRefresh} />
         : detail.value.state !== "available" ? <p role="status">Report {detail.value.state}: {detail.value.reason}</p>
-          : <><SavedArchiveReport report={detail.value} /><SavedArchiveDeletion report={detail.value} actorId={actorId} onChanged={onRefresh} /></>}
-  </PanelBody></Panel>;
-  return <Panel aria-label="Version archives" className="min-h-full"><PanelBody className="min-w-0 space-y-[var(--ds-space-loose)] p-[var(--ds-space-section)]">
-    <div role="group" aria-label="Filter version archives" className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
-      <label className="relative min-w-[var(--ds-w-archive-search)] flex-1">
-        <span className="sr-only">Search reports and retained files</span>
-        <Search aria-hidden className={cn(dsIcon.sm, "pointer-events-none absolute left-[var(--ds-space-cozy)] top-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")} />
-        <Input className="h-[var(--ds-h-bar)] pl-[var(--ds-space-page)]" placeholder="Search reports and retained files" value={filters.search ?? ""} onChange={event => setFilter({ ...filters, search: event.target.value || undefined })} />
-      </label>
-      <label className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)] pl-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]">Dashboard
-        <Select variant="toolbar" className="w-[var(--ds-w-archive-filter)] border-0 bg-transparent pl-0 font-semibold text-[color:var(--ds-fg)]" value={dashboardFilter} onChange={event => {
-        const value = event.target.value; const { dashboardVersion: _version, versionState: _state, ...rest } = filters;
-        setFilter(value === "unrecorded" ? { ...rest, versionState: "unrecorded", workflowVersion: undefined }
-          : value === "" ? rest : { ...rest, dashboardVersion: dashboardOptions.find(([key]) => key === value)?.[1] ?? undefined });
-      }}><option value="">All</option>{dashboardOptions.map(([key]) => <option key={key} value={key}>{key}</option>)}<option value="unrecorded">Not recorded</option></Select></label>
-      <label className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)] pl-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]">Workflow
-        <Select variant="toolbar" className="w-[var(--ds-w-archive-filter)] border-0 bg-transparent pl-0 font-semibold text-[color:var(--ds-fg)]" value={filters.workflow ?? ""} onChange={event => setFilter({ ...filters, workflow: event.target.value || undefined })}><option value="">All</option>{workflowOptions.map(workflow => <option key={workflow} value={workflow}>{versions.state === "loaded" ? versions.value.workflows.find(row => row.workflowId === workflow)?.label ?? workflow : workflow}</option>)}</Select></label>
-      <label className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)] pl-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]">Workflow version
-        <Select variant="toolbar" className="w-[var(--ds-w-archive-filter)] border-0 bg-transparent pl-0 font-semibold text-[color:var(--ds-fg)]" disabled={filters.versionState === "unrecorded"} value={filters.workflowVersion === undefined ? "" : archiveVersionKey(filters.workflowVersion)} onChange={event => setFilter({ ...filters, workflowVersion: workflowVersionOptions.find(([key]) => key === event.target.value)?.[1] ?? undefined })}><option value="">All</option>{workflowVersionOptions.map(([key]) => <option key={key} value={key}>{key}</option>)}</Select></label>
-      <label className="flex h-[var(--ds-h-bar)] items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)] pl-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]">Outcome
-        <Select variant="toolbar" className="w-[var(--ds-w-archive-filter)] border-0 bg-transparent pl-0 font-semibold text-[color:var(--ds-fg)]" value={filters.outcome ?? ""} onChange={event => setFilter({ ...filters, outcome: event.target.value || undefined })}><option value="">All</option>{["done", "failed", "cancelled", "discarded", "interrupted", "superseded"].map(outcome => <option key={outcome} value={outcome}>{savedOutcomeLabel(outcome as "done")}</option>)}</Select></label>
-      <Popover><PopoverTrigger asChild><Button variant="secondary" size="toolbar" className="shrink-0">Date <strong className="text-[color:var(--ds-fg)]">{filters.from === undefined && filters.to === undefined ? "Any" : "Set"}</strong></Button></PopoverTrigger>
-        <PopoverContent title="Completed date filters" align="end" width="lg"><div className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
-          <DateInput label="Completed from (UTC)" value={filters.from?.slice(0, 10) ?? ""} onChange={date => setFilter({ ...filters, from: date === "" ? undefined : `${date}T00:00:00.000Z` })} />
-          <DateInput label="Completed through (UTC)" value={filters.to?.slice(0, 10) ?? ""} onChange={date => setFilter({ ...filters, to: date === "" ? undefined : `${date}T23:59:59.999Z` })} />
-        </div></PopoverContent>
-      </Popover>
-      <span className={cn(dsText.meta, "ml-auto whitespace-nowrap text-[color:var(--ds-fg-muted)]")}>{reportTotal} saved {reportTotal === 1 ? "report" : "reports"}</span>
-    </div>
-    {filtered && hierarchy.length > 0 && <Button variant="ghost" onClick={() => setFilter({})}>Clear filters</Button>}
-    {versions.state === "loaded" && <Card className="flex-row items-center gap-[var(--ds-space-loose)] border-[color:var(--ds-archive-current-border)] bg-[var(--ds-archive-current-bg)] p-[var(--ds-space-cozy)]">
-      <span className="flex h-[var(--ds-h-bar)] w-[var(--ds-h-bar)] shrink-0 items-center justify-center rounded-[var(--ds-radius-md)] border border-[color:var(--ds-archive-current-border)] text-[color:var(--ds-accent-mark)]"><Layers3 className={dsIcon.md} aria-hidden /></span>
-      <div className="min-w-0 flex-1"><strong className={dsText.title}>Dashboard {formatRuntimeVersion(versions.value.dashboard)} is current</strong><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>{versions.value.workflows.length} current workflows · new runs use their current versions</p></div>
-      <Button variant="primary" iconAfter={<ArrowRight className={dsIcon.sm} aria-hidden />} onClick={onPlan}>Plan a bump</Button>
-    </Card>}
+          : <>{runExportState !== "" && <p role={runExportStateIsError ? "alert" : "status"}>{runExportState}</p>}<PageHeading title={<span className="block min-w-0 break-words [overflow-wrap:anywhere]">{detail.value.title}</span>} description={<span className="break-words [overflow-wrap:anywhere]">{detailWorkflow} · {detail.value.runId}</span>} />
+            <SavedArchiveReport key={detail.value.runId} report={detail.value} deletion={<SavedArchiveDeletion report={detail.value} actorId={actorId} onChanged={onRefresh} />} /></>}
+  </DsBodyScope>;
+  if (workflow !== undefined && dashboard !== undefined) {
+    return <DsBodyScope style={{ maxWidth: "none" }} className="w-full space-y-[var(--ds-space-page)]">
+      <ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: `Dashboard ${archiveVersionLabel(dashboard.version)}`, onClick: goFolders }, { label: workflowLabel(workflow.workflow) }]} />
+      <PageHeading title={<span className="flex items-center gap-[var(--ds-space-base)]"><span className="flex size-[var(--ds-h-topbar)] shrink-0 items-center justify-center rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg-muted)]"><Folder className={dsIcon.md} aria-hidden /></span>{workflowLabel(workflow.workflow)}</span>} description="Archived runs and their retained workflow data" />
+      <div className={cn(dsText.meta, "flex flex-wrap gap-x-[var(--ds-space-section)] gap-y-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-loose)]")}>
+        <span>Dashboard version <strong className="block text-[color:var(--ds-fg)]">{archiveVersionLabel(dashboard.version)}</strong></span>
+        <span>Archived runs <strong className="block text-[color:var(--ds-fg)]">{workflow.reportCount}</strong></span>
+        <span>Workflow versions <strong className="block text-[color:var(--ds-fg)]">{workflow.versions.map(row => archiveVersionLabel(row.workflowVersion)).join(" · ")}</strong></span>
+        <span>Data view <strong className="block text-[color:var(--ds-fg)]">Retained at archive time</strong></span>
+      </div>
+      <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
+        <label className="relative w-[var(--ds-w-archive-search)] max-w-full"><span className="sr-only">Search all run data</span><Search aria-hidden className={cn(dsIcon.sm, "pointer-events-none absolute left-[var(--ds-space-cozy)] top-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")} /><Input className="h-[var(--ds-h-lg)] pl-[var(--ds-space-page)]" placeholder="Search names, documents, or any field" value={filters.search ?? ""} onChange={event => { abortForSelectionChange(); setAfter(undefined); setFilters({ ...filters, search: event.target.value || undefined }); }} /></label>
+        <span className={cn(dsText.meta, "ml-auto text-[color:var(--ds-fg-muted)]")}>{reports.state === "loaded" ? `${reports.value.items.length} ${reports.value.items.length === 1 ? "run" : "runs"}` : "Loading"}</span>
+        <Popover><PopoverTrigger asChild><Button variant="secondary" size="toolbar" iconAfter={<ChevronDown className={dsIcon.sm} aria-hidden />}>Columns</Button></PopoverTrigger><PopoverContent title="Workflow table columns" align="end" width="sm"><div className="flex flex-col gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+          {summaryColumns.length === 0 ? <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>No snapshot fields are available.</p> : summaryColumns.map(column => <Checkbox key={column.id} label={archiveSummaryColumnLabel(column, summaryColumns)} checked={visibleSummaryColumns.some(visible => visible.id === column.id)} onCheckedChange={checked => setSelectedSummaryColumns(current => {
+            const selected = current ?? initialSummaryColumns.map(item => item.id);
+            return checked === true ? [...new Set([...selected, column.id])] : selected.filter(value => value !== column.id);
+          })} />)}
+        </div></PopoverContent></Popover>
+      </div>
+      {exportState !== "" && <p role={exportStateIsError ? "alert" : "status"}>{exportState}</p>}
+      {reports.state === "loading" ? <p role="status">Loading saved reports…</p> : reports.state === "error" ? <p role="alert">{reports.message}</p> : <>
+        <Card className="overflow-hidden"><div className="overflow-x-auto"><Table className="min-w-max" label={`${workflowLabel(workflow.workflow)} saved runs`}><THead><TR><TH className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Run</TH>{visibleSummaryColumns.map(column => <TH key={column.id} align={archiveSummaryColumnAlignment(column)} className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">{archiveSummaryColumnLabel(column, summaryColumns)}</TH>)}<TH align="right" className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Workflow version</TH><TH align="right" className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Archived</TH><TH align="right" className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Files</TH></TR></THead><TBody>{reports.value.items.map(report => <TR key={report.runId}><TD><Button variant="ghost" className="h-auto min-w-0 justify-start whitespace-nowrap p-0 text-left font-semibold text-[color:var(--ds-fg)]" onClick={() => selectReport(report.runId)}>{report.title}</Button><span className={cn(dsText.meta, "block break-all text-[color:var(--ds-fg-muted)]")}>{report.runId}</span></TD>{visibleSummaryColumns.map(column => { const align = archiveSummaryColumnAlignment(column); return <TD key={column.id} align={align} numeric={align === "right"} className="whitespace-nowrap">{archiveSummaryValue(report, column)}</TD>; })}<TD align="right" numeric>{report.runtimeVersion === undefined ? "Not recorded" : archiveVersionLabel(report.runtimeVersion.workflow)}</TD><TD align="right">{archiveDisplayDate(report.capturedAt)}</TD><TD align="right" numeric>{report.files.length}</TD></TR>)}</TBody></Table></div><div className={cn(dsText.meta, "flex justify-between border-t border-[color:var(--ds-border)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}><span>{reports.value.items.length} archived {reports.value.items.length === 1 ? "run" : "runs"}</span><span>Click a run to open its complete report →</span></div></Card>
+        <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Full selection export, up to 5,000 reports or 50 MB. Exports include all public fields, including columns hidden here. Columns are discovered from loaded report pages; use Next reports to add later retained fields.</p>
+        {reports.value.items.length === 0 && <p>No saved reports match this query.</p>}
+        {reports.value.next !== null && <Button onClick={() => setAfter(reports.value.next ?? undefined)}>Next reports</Button>}
+        {after !== undefined && <Button variant="ghost" onClick={() => setAfter(undefined)}>First reports</Button>}
+      </>}
+    </DsBodyScope>;
+  }
+  if (folder !== null) return <DsBodyScope style={{ maxWidth: "none" }} className="w-full space-y-[var(--ds-space-section)]">
+    <ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: "Saved folder" }]} />
+    {allGroups.state === "loading" ? <p role="status">Loading saved folder…</p>
+      : allGroups.state === "error" ? <p role="alert">{allGroups.message}</p>
+        : <div role="alert" className="space-y-[var(--ds-space-base)]"><p className="m-0">Archived dashboard folder {folder.dashboardKey} / {folder.workflow} is unavailable. It was not replaced with another workflow.</p><Button variant="secondary" onClick={goFolders}>Return to version archives</Button></div>}
+  </DsBodyScope>;
+  return <DsBodyScope style={{ maxWidth: "none" }} className="relative w-full">
     {versions.state === "error" && <p role="alert">{versions.message}</p>}
-    {groups.state === "loading" ? <p role="status">Loading version archives…</p> : groups.state === "error" ? <p role="alert">{groups.message}</p>
-      : hierarchy.length === 0 ? <><Card><PanelBody className="space-y-[var(--ds-space-base)] p-[var(--ds-space-section)]"><h2 className={dsText.title}>No saved reports yet</h2><p className={dsText.body}>{filtered ? "No saved reports match these filters." : "Completed runs appear here after a reviewed version change."}</p>{filtered ? <Button onClick={() => setFilter({})}>Clear filters</Button> : <Button onClick={onPlan}>Plan a bump</Button>}</PanelBody></Card>{selectedDetail}</>
-        : <div className={cn(dsText.body, "space-y-[var(--ds-space-base)]")}>
-          <h2 className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>Archived dashboard versions</h2>
-          <div className={cn(selection === "" ? "" : "grid gap-[var(--ds-space-base)] xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]")}>
-            <div className="min-w-0 space-y-[var(--ds-space-base)]">{hierarchy.map((dashboard, dashboardIndex) => {
-              const open = expandedDashboard === null ? dashboardIndex === 0 : expandedDashboard === dashboard.key;
-              const latest = dashboard.workflows.flatMap(workflow => workflow.versions).reduce<string | null>((date, group) => date === null || group.latestCompletedAt > date ? group.latestCompletedAt : date, null);
-              return <Card key={dashboard.key} className="min-w-0 overflow-hidden">
-                <Button variant="ghost" className="h-auto w-full justify-start gap-[var(--ds-space-loose)] rounded-none px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] text-left" aria-expanded={open} onClick={() => toggleDashboard(dashboard, open)}>
-                  <span className="flex h-[var(--ds-h-bar)] w-[var(--ds-h-bar)] shrink-0 items-center justify-center rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)] font-semibold text-[color:var(--ds-fg)]">{dashboard.version === null ? "—" : archiveVersionLabel(dashboard.version)}</span>
-                  <span className="min-w-0 flex-1"><strong className={cn(dsText.title, "block text-[color:var(--ds-fg)]")}>{dashboard.version === null ? "Version not recorded" : `Dashboard ${archiveVersionLabel(dashboard.version)}`}</strong><span className={cn(dsText.meta, "block text-[color:var(--ds-fg-muted)]")}>{dashboard.version === null ? "Older saved reports · runtime version not recorded" : `${dashboard.workflows.length} archived ${dashboard.workflows.length === 1 ? "workflow" : "workflows"}${latest === null ? "" : ` · latest ${archiveDisplayDate(latest)}`}`}</span></span>
-                  <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-fg-muted)]")}>{archiveReportCount(dashboard.reportCount)}</span>
-                  <span className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg)]">{open ? "Hide" : "Show"}{open ? <ChevronUp className={dsIcon.sm} aria-hidden /> : <ChevronDown className={dsIcon.sm} aria-hidden />}</span>
-                </Button>
-                {open && <div className="space-y-[var(--ds-space-snug)] border-t border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">{dashboard.workflows.map((workflow, workflowIndex) => {
-                  const workflowKey = `${dashboard.key}:${workflow.workflow}`;
-                  const workflowOpen = expandedWorkflow === null ? dashboardIndex === 0 && workflowIndex === 0 : expandedWorkflow === workflowKey;
-                  const label = versions.state === "loaded" ? versions.value.workflows.find(row => row.workflowId === workflow.workflow)?.label ?? workflow.workflow : workflow.workflow;
-                  return <Card key={workflowKey} className="overflow-hidden bg-[var(--ds-surface-1)]">
-                    <Button variant="ghost" className="h-auto w-full justify-start gap-[var(--ds-space-cozy)] rounded-none px-[var(--ds-space-cozy)] py-[var(--ds-space-base)] text-left" aria-expanded={workflowOpen} onClick={() => toggleWorkflow(dashboard.key, workflow, workflowOpen)}>
-                      <span className="flex h-[var(--ds-h-md)] w-[var(--ds-h-md)] shrink-0 items-center justify-center rounded-[var(--ds-radius-sm)] border border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg)]">{archiveWorkflowMark(label)}</span>
-                      <strong className="min-w-0 truncate text-[color:var(--ds-fg)]">{label}</strong>
-                      {workflow.versions.length === 1 && <Badge tone="neutral">{workflow.versions[0]?.workflowVersion === null ? "Version not recorded" : `Workflow ${archiveVersionLabel(workflow.versions[0]?.workflowVersion ?? null)}`}</Badge>}
-                      <span className={cn(dsText.meta, "ml-auto whitespace-nowrap text-[color:var(--ds-fg-muted)]")}>{archiveReportCount(workflow.reportCount)}</span>
-                      <span className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg)]">{workflowOpen ? "Hide" : "Show"}{workflowOpen ? <ChevronUp className={dsIcon.sm} aria-hidden /> : <ChevronDown className={dsIcon.sm} aria-hidden />}</span>
-                    </Button>
-                    {workflowOpen && <div className="border-t border-[color:var(--ds-border)] bg-[var(--ds-surface-2)]">
-                      {workflow.versions.length > 1 && <div className="flex flex-wrap gap-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] p-[var(--ds-space-base)]">{workflow.versions.map(group => <Button key={archiveVersionKey(group.workflowVersion)} size="sm" variant={sameArchiveGroup(activeGroup, group) ? "secondary" : "ghost"} aria-pressed={sameArchiveGroup(activeGroup, group)} onClick={() => chooseGroup(group)}>{group.workflowVersion === null ? "Version not recorded" : `Workflow ${archiveVersionLabel(group.workflowVersion)}`} · {archiveReportCount(group.reportCount)}</Button>)}</div>}
-                      {workflow.versions.some(group => sameArchiveGroup(activeGroup, group)) && <div className="min-w-0">
-                        {reports.state === "loading" ? <p role="status">Loading saved reports…</p> : reports.state === "error" ? <p role="alert">{reports.message}</p> : <>
-                          {(showAllReports ? reports.value.items : reports.value.items.slice(0, 2)).map(report => <Button key={report.runId} variant="ghost" className={cn("h-auto w-full justify-start rounded-none border-b border-[color:var(--ds-border)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)] text-left", selection === report.runId && "bg-[var(--ds-surface-selected)]")} onClick={() => onSelection(report.runId)}>
-                            <span className="grid w-full min-w-0 grid-cols-[minmax(0,1fr)_auto_auto_auto] items-center gap-[var(--ds-space-section)]">
-                              <span className="min-w-0 truncate font-semibold text-[color:var(--ds-fg)]">{report.title}</span>
-                              <Badge tone={report.outcome === "done" ? "success" : report.outcome === "failed" ? "danger" : "neutral"}>{savedOutcomeLabel(report.outcome)}</Badge>
-                              <span className={cn(dsText.meta, "whitespace-nowrap text-[color:var(--ds-fg-muted)]")}>{archiveDisplayDate(report.completedAt)}</span>
-                              <span className="flex items-center gap-[var(--ds-space-tight)] whitespace-nowrap text-[color:var(--ds-fg)]">Open report <ArrowRight className={dsIcon.sm} aria-hidden /></span>
-                            </span>
-                          </Button>)}
-                          {reports.value.items.length === 0 && <p className="p-[var(--ds-space-cozy)]">No saved reports match this query.</p>}
-                          {!showAllReports && reports.value.items.length > 2 && <Button variant="ghost" className="w-full justify-start rounded-none px-[var(--ds-space-cozy)]" onClick={() => setShowAllReports(true)}>View all {archiveReportCount(workflow.reportCount)} and attachments <ArrowRight className={dsIcon.sm} aria-hidden /></Button>}
-                          {showAllReports && reports.value.next !== null && <Button onClick={() => setAfter(reports.value.next ?? undefined)}>Next reports</Button>}
-                          {showAllReports && after !== undefined && <Button variant="ghost" onClick={() => setAfter(undefined)}>First reports</Button>}
-                        </>}
-                      </div>}
-                    </div>}
-                  </Card>;
-                })}</div>}
-              </Card>;
-            })}</div>
-            {selectedDetail}
-          </div>
-        </div>}
-  </PanelBody></Panel>;
+    <div className="absolute right-[175px] top-[var(--ds-space-tight)]"><Popover><PopoverTrigger asChild><Button variant="secondary" size="toolbar" iconAfter={<ChevronDown className={dsIcon.sm} aria-hidden />}>Filters</Button></PopoverTrigger><PopoverContent title="Filter version archives" align="end" width="sm"><div role="group" aria-label="Filter version archives" className="grid gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+      <label className={dsText.meta}>Search all public archive fields<Input aria-label="Search all public archive fields" value={filters.search ?? ""} onChange={event => { abortForSelectionChange(); setFilters({ ...filters, search: event.target.value || undefined }); }} /></label>
+      <label className={dsText.meta}>Dashboard version<Select value={filters.dashboardVersion === undefined ? "" : JSON.stringify(filters.dashboardVersion)} onChange={event => setFilters({ ...filters, dashboardVersion: event.target.value === "" ? undefined : JSON.parse(event.target.value) as NonNullable<ArchiveGroupQuery["dashboardVersion"]> })}><option value="">All dashboards</option>{stableHierarchy.filter(row => row.version !== null).map(row => <option key={row.key} value={JSON.stringify(row.version)}>{archiveVersionLabel(row.version)}</option>)}</Select></label>
+      <label className={dsText.meta}>Workflow<Select value={filters.workflow ?? ""} onChange={event => setFilters({ ...filters, workflow: event.target.value || undefined })}><option value="">All workflows</option>{[...new Set(stableHierarchy.flatMap(row => row.workflows.map(item => item.workflow)))].map(id => <option key={id} value={id}>{workflowLabel(id)}</option>)}</Select></label>
+      <label className={dsText.meta}>Completed from<Input type="date" value={filters.from?.slice(0, 10) ?? ""} onChange={event => setFilters({ ...filters, from: event.target.value === "" ? undefined : `${event.target.value}T00:00:00.000Z` })} /></label>
+      <label className={dsText.meta}>Completed through<Input type="date" value={filters.to?.slice(0, 10) ?? ""} onChange={event => setFilters({ ...filters, to: event.target.value === "" ? undefined : `${event.target.value}T23:59:59.999Z` })} /></label>
+      <Button variant="ghost" onClick={() => setFilters({})}>Clear filters</Button>
+    </div></PopoverContent></Popover></div>
+    {groups.state === "loading" ? <p role="status">Loading version archives…</p> : groups.state === "error" ? <div><p role="alert">{groups.message}</p><Button variant="secondary" onClick={onRefresh}>Retry version archives</Button></div> : hierarchy.length === 0
+      ? <Card className="p-[var(--ds-space-section)]"><h2 className={dsText.title}>{Object.keys(filters).length === 0 ? "No saved reports yet" : "No saved reports match these filters."}</h2><p>{Object.keys(filters).length === 0 ? "Completed runs appear here after a reviewed version change." : "Clear filters to view other archives."}</p></Card>
+      : <div className="space-y-[var(--ds-space-section)] pt-[var(--ds-space-base)]">{hierarchy.map(row => <ArchiveDashboardFolder key={row.key} dashboard={row} workflowLabel={workflowLabel} onOpen={openFolder} />)}</div>}
+  </DsBodyScope>;
 }
 
-function RuntimeBumpPanel({ actorId, versions, onChanged }: { actorId: string; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>; onChanged: () => void }) {
+function ArchiveBreadcrumb({ items }: { items: { label: string; onClick?: () => void }[] }) {
+  return <nav aria-label="Archive path" className={cn(dsText.meta, "flex flex-wrap items-center gap-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
+    {items.map((item, index) => <span key={`${index}:${item.label}`} className="flex items-center gap-[var(--ds-space-snug)]">{index > 0 && <span aria-hidden>›</span>}{item.onClick ? <Button variant="ghost" className="h-auto p-0 text-[color:var(--ds-fg-muted)]" onClick={item.onClick}>{item.label}</Button> : <strong className="text-[color:var(--ds-fg)]">{item.label}</strong>}</span>)}
+  </nav>;
+}
+
+function ArchiveDashboardFolder({ dashboard, workflowLabel, onOpen }: { dashboard: DashboardArchiveGroup; workflowLabel: (id: string) => string; onOpen: (key: string, workflow: string) => void }) {
+  const latestCompletedAt = dashboard.workflows.flatMap(workflow => workflow.versions).reduce<string | undefined>((latest, group) => latest === undefined || group.latestCompletedAt > latest ? group.latestCompletedAt : latest, undefined);
+  const archiveMoment = dashboard.version === null ? "Historical runs" : latestCompletedAt === undefined ? "Archived time unavailable" : `Archived ${archiveDisplayDate(latestCompletedAt)}`;
+  return <section className="space-y-[var(--ds-space-base)]">
+    <header className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+      <Layers3 className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-fg-muted)]")} aria-hidden />
+      <h2 className={cn(dsText.section, "m-0 min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>{dashboard.version === null ? "Version not recorded" : `Dashboard ${archiveVersionLabel(dashboard.version)}`}</h2>
+      <span className={cn(dsText.meta, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>{archiveMoment}</span>
+    </header>
+    <Panel aria-label={dashboard.version === null ? "Version not recorded archives" : `Dashboard ${archiveVersionLabel(dashboard.version)} archives`}>
+      <PanelBody className="overflow-visible p-0"><div className="divide-y divide-[color:var(--ds-border)]">{dashboard.workflows.map(workflow => {
+        const label = workflowLabel(workflow.workflow);
+        const versions = archiveWorkflowVersionLabels(workflow.versions);
+        const versionLabel = versions.length === 1 ? "Workflow version" : "Workflow versions";
+        const versionText = versions.length === 1 && versions[0] === "Version not recorded" ? "Workflow version not recorded" : `${versionLabel} ${versions.join(" · ")}`;
+        return <Button key={workflow.workflow} variant="ghost" className="min-h-[var(--ds-h-body-row)] w-full justify-start gap-[var(--ds-space-base)] rounded-none px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] text-left" onClick={() => onOpen(dashboard.key, workflow.workflow)}><span className="flex size-[var(--ds-h-bar)] shrink-0 items-center justify-center rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg-muted)]"><Folder className={dsIcon.sm} aria-hidden /></span><span className="min-w-0 flex-1"><strong className="block truncate text-[color:var(--ds-fg)]">{label}</strong><small className={cn(dsText.meta, "block truncate text-[color:var(--ds-fg-muted)]")}>{versionText}</small></span><span className={cn(dsText.meta, "shrink-0 text-[color:var(--ds-fg-muted)]")}>{archiveReportCount(workflow.reportCount)}</span><ChevronRight className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} aria-hidden /></Button>;
+      })}</div></PanelBody>
+    </Panel>
+  </section>;
+}
+
+function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, onChanged }: { actorId: string; contextRunId: string; contextWorkflowId?: string; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>; onChanged: () => void }) {
   const client = useArchiveClient();
   const [kind, setKind] = useState<"workflows" | "dashboard">("workflows");
   const [selected, setSelected] = useState<string[] | null>(null);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
+  const [activeReview, setActiveReview] = useState<{ changeId: string; scopeKey: string; generation: number; authorityRevision?: number } | null>(null);
   const applyRequests = useRef(new Map<string, unknown>());
-  if (versions.state === "loading") return <p role="status">Loading runtime versions…</p>;
+  const busyRef = useRef(false);
+  const generation = useRef(0);
+  const previousScopeKey = useRef<string | null>(null);
+  const previousContextKey = useRef(JSON.stringify([contextRunId, contextWorkflowId]));
+  const cachedWire = useRef<SavedRuntimeVersionIndexWire | undefined>(undefined);
+  const contextRead = useCallback(() => contextRunId === "" ? Promise.resolve(null) : client.savedArchiveReport(contextRunId), [client, contextRunId]);
+  const contextReport = useSavedResource(contextRead);
+  if (versions.state === "loaded") cachedWire.current = versions.value;
+  const wire = versions.state === "error" ? undefined : versions.state === "loaded" ? versions.value : cachedWire.current;
+  const eligible = wire?.workflows.map(row => row.workflowId) ?? [];
+  const contextWorkflow = contextReport.state === "loaded" && contextReport.value?.state === "available"
+    ? contextReport.value.workflow : contextWorkflowId;
+  const defaultWorkflow = contextWorkflow === undefined ? eligible[0]
+    : eligible.find(id => id === contextWorkflow);
+  const contextPending = contextRunId !== "" && selected === null && contextReport.state === "loading";
+  const selectedIds = wire === undefined ? [] : selected === null
+    ? (defaultWorkflow === undefined ? [] : [defaultWorkflow])
+    : selected.filter(id => eligible.some(eligibleId => eligibleId === id));
+  const preview = wire === undefined ? null : archiveRuntimeVersionPreview(wire, kind, selectedIds);
+  const scope = preview?.scope ?? null;
+  const allSelected = scope?.kind === "dashboard";
+  const scopeKey = wire === undefined || contextPending ? null : JSON.stringify(scope);
+
+  useLayoutEffect(() => {
+    const contextKey = JSON.stringify([contextRunId, contextWorkflowId]);
+    if (previousContextKey.current === contextKey) return;
+    previousContextKey.current = contextKey;
+    setSelected(null);
+    setActiveReview(null);
+    setMessage("");
+  }, [contextRunId, contextWorkflowId]);
+  useLayoutEffect(() => {
+    if (scopeKey === null) return;
+    if (previousScopeKey.current === null) {
+      previousScopeKey.current = scopeKey;
+      return;
+    }
+    if (previousScopeKey.current === scopeKey) return;
+    previousScopeKey.current = scopeKey;
+    generation.current += 1;
+    setActiveReview(null);
+    setMessage("");
+  }, [scopeKey]);
+  useLayoutEffect(() => {
+    if (activeReview === null || wire === undefined) return;
+    if (activeReview.authorityRevision === undefined) {
+      if (wire.changes.some(change => change.changeId === activeReview.changeId && change.state === "planned")) {
+        setActiveReview({ ...activeReview, authorityRevision: wire.revision });
+      }
+      return;
+    }
+    if (activeReview.authorityRevision !== wire.revision) {
+      setActiveReview(null);
+      setMessage("Review is stale. Review affected runs again.");
+    }
+  }, [activeReview, wire]);
+
   if (versions.state === "error") return <p role="alert">{versions.message}</p>;
-  const wire = versions.value;
-  const selectedIds = selected === null && wire.workflows[0] !== undefined ? [wire.workflows[0].workflowId] : selected ?? [];
-  const submit = (request: unknown) => {
-    setBusy(true); setMessage("");
+  if (wire === undefined) return <p role="status">Loading runtime versions…</p>;
+  if (contextPending) return <p role="status">Loading the selected report’s workflow…</p>;
+  if (selected === null && contextWorkflow !== undefined && !eligible.some(id => id === contextWorkflow)) return <div role="alert" className="space-y-[var(--ds-space-base)]"><p className="m-0">Archived workflow {contextWorkflow} is no longer registered. It was not replaced with another workflow.</p><Button variant="secondary" onClick={() => setSelected([])}>Choose a registered workflow</Button></div>;
+  const selectedScopeKey = scopeKey ?? "";
+  const reviewMatches = activeReview !== null && activeReview.scopeKey === selectedScopeKey
+    && activeReview.generation === generation.current && wire.revision === activeReview.authorityRevision && versions.state === "loaded";
+  const submit = (request: unknown, action: "review" | "apply", reviewBasis?: { changeId: string; scopeKey: string; generation: number }) => {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setBusy(true);
+    setMessage(action === "review" ? "Reviewing affected runs…" : "Applying version change…");
     void client.executeCommand(request).then(result => {
       const settled = settleCommandResult(result);
-      setMessage(settled.kind === "applied" ? "Version review updated." : settled.reason === "rejected" ? `${settled.code}: ${settled.message}` : settled.problem);
+      if (settled.kind === "applied") {
+        if (action === "review" && reviewBasis !== undefined) {
+          if (generation.current === reviewBasis.generation && previousScopeKey.current === reviewBasis.scopeKey) {
+            setActiveReview(reviewBasis);
+            setMessage("Version review updated.");
+          } else setMessage("Review is stale because the workflow selection changed. Review affected runs again.");
+        } else {
+          setActiveReview(null);
+          setMessage(settled.replayed ? "Version change was already applied." : "Version change applied.");
+        }
+      } else {
+        const refusal = settled.reason === "rejected" ? `${settled.code}: ${settled.message}` : settled.problem;
+        setMessage(/stale|membership|version basis/iu.test(refusal) ? "Review is stale. Review affected runs again." : refusal);
+      }
       onChanged();
-    }, (error: unknown) => setMessage(error instanceof Error ? error.message : "Version command failed.")).finally(() => setBusy(false));
+    }, (error: unknown) => setMessage(error instanceof Error ? error.message : "Version command failed.")).finally(() => {
+      busyRef.current = false;
+      setBusy(false);
+    });
   };
-  const review = () => submit({ ...savedCommandEnvelope(actorId), type: "plan-runtime-version",
-    target: { scope: kind === "dashboard" ? { kind: "dashboard" } : { kind: "workflows", workflowIds: selectedIds } } });
+  const review = () => {
+    if (scope === null || selectedScopeKey === "" || versions.state !== "loaded") return;
+    const request = { ...savedCommandEnvelope(actorId), type: "plan-runtime-version",
+      target: { scope } };
+    submit(request, "review", { changeId: request.commandId, scopeKey: selectedScopeKey, generation: generation.current });
+  };
   const apply = (change: SavedRuntimeVersionIndexWire["changes"][number]) => {
+    if (busyRef.current) return;
+    if (change.state === "planned" && (!reviewMatches || activeReview.changeId !== change.changeId)) {
+      setMessage("Review is stale for the current selection. Review affected runs again.");
+      return;
+    }
     let request = applyRequests.current.get(change.changeId);
     if (request === undefined) {
       if (change.state === "applying") {
         if (change.resumeRequest === undefined) { setMessage("This change is applying, but its original command request is unavailable."); return; }
         request = change.resumeRequest;
       } else {
-      request = { ...savedCommandEnvelope(actorId), type: "apply-runtime-version", target: { changeId: change.changeId, reviewFingerprint: change.reviewFingerprint } };
+        request = { ...savedCommandEnvelope(actorId), type: "apply-runtime-version", target: { changeId: change.changeId, reviewFingerprint: change.reviewFingerprint } };
       }
       applyRequests.current.set(change.changeId, request);
     }
-    submit(request);
+    submit(request, "apply");
   };
-  return <Panel aria-label="Plan a version bump" className="min-h-full"><PanelBody className="p-[var(--ds-space-section)]">
-    <Card className="space-y-[var(--ds-space-loose)] p-[var(--ds-space-section)]">
-      <div><span className={cn(dsText.caps, "text-[color:var(--ds-fg-muted)]")}>Version change</span><h2 className={cn(dsText.section, "m-0 font-semibold")}>What is changing?</h2><p className={cn(dsText.body, "m-0 text-[color:var(--ds-fg-muted)]")}>Dashboard {formatRuntimeVersion(wire.dashboard)} · {wire.workflows.length} workflows</p></div>
-      <div className="grid grid-cols-2 gap-[var(--ds-space-cozy)]">
-        <Button variant="outline" className={cn("h-auto min-h-[var(--ds-h-archive-choice)] flex-col items-start justify-start gap-[var(--ds-space-base)] whitespace-normal p-[var(--ds-space-loose)] text-left", kind === "workflows" && "border-[color:var(--ds-archive-current-border)] bg-[var(--ds-archive-current-bg)]")} aria-pressed={kind === "workflows"} onClick={() => setKind("workflows")}>
-          <Workflow aria-hidden className={cn(dsIcon.md, "text-[color:var(--ds-accent-mark)]")} />
-          <strong className={cn(dsText.title, "text-[color:var(--ds-fg)]")}>Workflow version</strong>
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>Advance one or several workflows. Their completed runs stay with the version that produced them.</span>
-          <Badge tone="neutral">{wire.workflows[0] === undefined ? "No workflows" : `${formatRuntimeVersion(wire.workflows[0].version)} → ${wire.workflows[0].version.major}.${wire.workflows[0].version.minor + 1}`}</Badge>
-        </Button>
-        <Button variant="outline" className={cn("h-auto min-h-[var(--ds-h-archive-choice)] flex-col items-start justify-start gap-[var(--ds-space-base)] whitespace-normal p-[var(--ds-space-loose)] text-left", kind === "dashboard" && "border-[color:var(--ds-archive-current-border)] bg-[var(--ds-archive-current-bg)]")} aria-pressed={kind === "dashboard"} onClick={() => setKind("dashboard")}>
-          <Layers3 aria-hidden className={cn(dsIcon.md, "text-[color:var(--ds-accent-mark)]")} />
-          <strong className={cn(dsText.title, "text-[color:var(--ds-fg)]")}>Dashboard version</strong>
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>Advance every workflow together to the next major version.</span>
-          <Badge tone="neutral">{formatRuntimeVersion(wire.dashboard)} → {wire.dashboard.major + 1}.0</Badge>
-        </Button>
+  const workflowLabel = (id: string) => wire.workflows.find(row => row.workflowId === id)?.label ?? id;
+  const latestApplied = [...wire.changes].filter(change => change.state === "applied")
+    .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))[0];
+  const visibleChanges = wire.changes.filter(change => change.state !== "applied" || change.changeId === latestApplied?.changeId);
+  return <section aria-label="Plan a version bump" className="space-y-[var(--ds-space-base)]">
+    {versions.state === "loading" && <p role="status">Refreshing runtime versions…</p>}
+    <fieldset aria-label="Version bump scope" className="space-y-[var(--ds-space-base)] border-0 p-0">
+      <div className={cn("rounded-[var(--ds-radius-md)] border p-[var(--ds-space-cozy)]", kind === "workflows" ? "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-3)]" : "border-[color:var(--ds-border)]") }>
+        <label className={cn(dsText.ui, "flex items-center gap-[var(--ds-space-snug)] font-semibold")}><input type="radio" name="archive-bump-scope" checked={kind === "workflows"} disabled={eligible.length === 0} onChange={() => setKind("workflows")} />Selected workflow</label>
+        {kind === "workflows" && <div className="ml-[var(--ds-space-section)] mt-[var(--ds-space-base)] space-y-[var(--ds-space-snug)]">
+          <label className={cn(dsText.meta, "block text-[color:var(--ds-fg-muted)]")}>Workflow to bump<Select value={selectedIds[0] ?? ""} onChange={event => setSelected(event.target.value === "" ? [] : [event.target.value])}><option value="">Choose workflow</option>{wire.workflows.map(row => <option key={row.workflowId} value={row.workflowId}>{row.label}</option>)}</Select></label>
+          {wire.workflows.length > 1 && <details><summary className={cn(dsText.meta, "cursor-pointer text-[color:var(--ds-fg-secondary)]")}>Select multiple workflows</summary><div className="mt-[var(--ds-space-snug)] grid gap-[var(--ds-space-snug)]">{wire.workflows.map(row => { const after = selectedIds.includes(row.workflowId) && allSelected
+            ? preview?.transition.after.workflows.find(item => item.workflowId === row.workflowId)?.version ?? row.version
+            : { major: row.version.major, minor: row.version.minor + 1 }; return <Checkbox key={row.workflowId} label={`${row.label} · ${formatRuntimeVersion(row.version)} → ${formatRuntimeVersion(after)}`} checked={selectedIds.includes(row.workflowId)} onCheckedChange={checked => setSelected(checked ? [...selectedIds, row.workflowId] : selectedIds.filter(id => id !== row.workflowId))} />; })}</div></details>}
+          {preview !== null && <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>{preview.transition.affectedWorkflowIds.map(id => { const before = preview.transition.before.workflows.find(row => row.workflowId === id)?.version; const after = preview.transition.after.workflows.find(row => row.workflowId === id)?.version; return `${workflowLabel(id)} ${before === undefined ? "unavailable" : formatRuntimeVersion(before)} → ${after === undefined ? "unavailable" : formatRuntimeVersion(after)}`; }).join(" · ")} · Dashboard {formatRuntimeVersion(preview.transition.before.dashboard)} → {formatRuntimeVersion(preview.transition.after.dashboard)}</p>}
+          {allSelected && <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>All-workflow dashboard version · Every registered workflow selected: dashboard major bump</p>}
+        </div>}
       </div>
-      <div className="border-t border-[color:var(--ds-border)] pt-[var(--ds-space-loose)]">
-        {kind === "workflows" ? <fieldset><legend className={cn(dsText.ui, "mb-[var(--ds-space-cozy)] font-semibold")}>Workflows</legend><div className="grid grid-cols-2 gap-[var(--ds-space-base)]">{wire.workflows.map(row => <Card key={row.workflowId} className="p-[var(--ds-space-cozy)]"><Checkbox label={<span>{row.label} · {formatRuntimeVersion(row.version)} → {row.version.major}.{row.version.minor + 1}</span>} checked={selectedIds.includes(row.workflowId)} onCheckedChange={checked => setSelected(checked ? [...selectedIds, row.workflowId] : selectedIds.filter(id => id !== row.workflowId))} /></Card>)}</div></fieldset>
-          : <div><h3 className={cn(dsText.ui, "m-0 font-semibold")}>All workflows</h3><p className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>Dashboard and every workflow advance to {wire.dashboard.major + 1}.0.</p></div>}
+      <div className={cn("rounded-[var(--ds-radius-md)] border p-[var(--ds-space-cozy)]", kind === "dashboard" ? "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-3)]" : "border-[color:var(--ds-border)]") }>
+        <label className={cn(dsText.ui, "flex items-center gap-[var(--ds-space-snug)] font-semibold")}><input type="radio" name="archive-bump-scope" checked={kind === "dashboard"} disabled={eligible.length === 0} onChange={() => setKind("dashboard")} />All workflows</label>
+        <p className={cn(dsText.meta, "mb-0 ml-[var(--ds-space-section)] mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>Dashboard {formatRuntimeVersion(wire.dashboard)} → {formatRuntimeVersion({ major: wire.dashboard.major + 1, minor: 0 })} · All workflow versions advance together</p>
       </div>
-      <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]">
-        <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Review the affected runs before applying this change.</p>
-        <Button variant="primary" iconAfter={<ArrowRight className={dsIcon.sm} aria-hidden />} disabled={busy || (kind === "workflows" && (selectedIds.length === 0 || (wire.workflows.length > 1 && selectedIds.length === wire.workflows.length)))} onClick={review}>Review affected runs</Button>
-      </div>
-      {kind === "workflows" && wire.workflows.length > 1 && selectedIds.length === wire.workflows.length && <p role="status">For every workflow, choose Dashboard version.</p>}
-      {wire.applyingChangeId !== undefined && <p role="status">Version change {wire.applyingChangeId} is applying.</p>}
-    </Card>
-    {wire.changes.filter(change => change.state !== "applied").map(change => {
+    </fieldset>
+    {wire.workflows.length === 0 && <p role="status">No eligible workflows are registered for a version change.</p>}
+    <div className="space-y-[var(--ds-space-base)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-cozy)]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>Review</h3><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Review the affected runs before applying this change.</p><div className="flex justify-end"><Button variant="primary" iconAfter={<ArrowRight className={dsIcon.sm} aria-hidden />} disabled={busy || scope === null || versions.state !== "loaded"} onClick={review}>Review affected runs</Button></div></div>
+    {wire.applyingChangeId !== undefined && <p role="status">Version change {wire.applyingChangeId} is applying.</p>}
+    {visibleChanges.map(change => {
       const affected = change.scope.kind === "dashboard" ? change.before.workflows.map(row => row.workflowId) : change.scope.workflowIds;
       const blockers = change.members.filter(member => member.state !== "terminal");
-      return <Card key={change.changeId} className="mt-[var(--ds-space-loose)] space-y-[var(--ds-space-base)] p-[var(--ds-space-section)]"><h3 className={dsText.title}>Reviewed {change.scope.kind === "dashboard" ? "dashboard" : "workflow"} change</h3>
-        <p className={dsText.body}>{affected.join(", ")} · {change.members.length} affected runs · {blockers.length} blockers · {change.completedRunIds.length} archived</p>
-        {affected.map(id => {
-          const before = change.before.workflows.find(row => row.workflowId === id)?.version;
-          const after = change.after.workflows.find(row => row.workflowId === id)?.version;
-          return <p key={id} className={dsText.meta}>{id}: {before === undefined ? "Version unavailable" : formatRuntimeVersion(before)} → {after === undefined ? "Version unavailable" : formatRuntimeVersion(after)}</p>;
-        })}
-        {blockers.map(member => <p key={member.runId} role="status">Blocked: {member.workflowId} · {member.runId} · {member.state}</p>)}
-        {change.state === "planned" && <Button disabled={busy || blockers.length > 0} onClick={() => apply(change)}>Apply reviewed change</Button>}
-        {change.state === "applying" && <Button disabled={busy || (change.resumeRequest === undefined && !applyRequests.current.has(change.changeId))} onClick={() => apply(change)}>Resume version change</Button>}
-      </Card>;
+      const canApply = change.state === "planned" && reviewMatches && activeReview.changeId === change.changeId;
+      const title = change.state === "applied" ? "Version change applied" : change.state === "applying" ? "Version change applying" : "Reviewed version change";
+      return <section key={change.changeId} className="space-y-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>{title}</h3>
+        {change.state === "planned" && !canApply && <p role="status">Review is stale for the current selection. Review affected runs again.</p>}
+        {change.state === "applying" && <p role="status">Transfer interrupted or still applying. Resume with the original command request.</p>}
+        {change.state === "applied" && <p role="status">{change.completedRunIds.length} {change.completedRunIds.length === 1 ? "run was" : "runs were"} archived.</p>}
+        <p className={cn(dsText.meta, "m-0")}>Dashboard {formatRuntimeVersion(change.before.dashboard)} → {formatRuntimeVersion(change.after.dashboard)} · {change.members.length} affected runs · {blockers.length} blockers · {change.completedRunIds.length} archived</p>
+        {affected.map(id => { const before = change.before.workflows.find(row => row.workflowId === id)?.version; const after = change.after.workflows.find(row => row.workflowId === id)?.version; return <p key={id} className={cn(dsText.meta, "m-0")}>{workflowLabel(id)}: {before === undefined ? "Version unavailable" : formatRuntimeVersion(before)} → {after === undefined ? "Version unavailable" : formatRuntimeVersion(after)}</p>; })}
+        {change.members.map(member => <p key={member.runId} className={cn(dsText.meta, "m-0")} role={member.state === "terminal" ? undefined : "status"}>{member.workflowId} · {member.runId} · {member.state === "terminal" ? "will be archived" : `Blocked · ${member.state}`}</p>)}
+        {change.state === "planned" && <Button disabled={busy || blockers.length > 0 || !canApply} onClick={() => apply(change)}>Apply reviewed change</Button>}
+        {change.state === "applying" && (change.resumeRequest === undefined && !applyRequests.current.has(change.changeId) ? <p role="status">The original apply request is unavailable. No replacement request will be created.</p> : <Button disabled={busy || versions.state !== "loaded"} onClick={() => apply(change)}>Resume version change</Button>)}
+      </section>;
     })}
     {message !== "" && <p role="status">{message}</p>}
-  </PanelBody></Panel>;
+  </section>;
 }
