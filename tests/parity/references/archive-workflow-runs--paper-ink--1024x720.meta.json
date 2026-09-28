@@ -1,0 +1,11 @@
+{
+  "stateId": "archive-workflow-runs",
+  "viewport": "1024x720",
+  "theme": "paper-ink",
+  "adapter": "fixture",
+  "fixtureId": "H retained document without live workflow",
+  "descriptorHash": "477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7",
+  "appVersion": "0.1.0",
+  "capturedAt": "2026-09-10T00:00:00.000Z",
+  "variant": "default"
+}

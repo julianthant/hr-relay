@@ -1,56 +1,37 @@
 # archive-version-bump--graphite-warm--1440x900
 # adapter: fixture
 # fixture: archive-version-bump
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
 
-- banner:
-  - heading "HR Automation" [level=1]
-  - button "Back" [disabled]
-  - button "Forward" [disabled]
-  - button "Dashboard"
-  - button "Archive" [pressed]
-  - button "Explorer"
-  - button "Activity"
-  - button "Search runs across dates": Search runs… /
-  - button "Previous day — Sun, Aug 2"
-  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
-  - button "No later day" [disabled]
-  - 'button "Preflight: unavailable"'
-  - button "Notifications — 1 unread"
-  - button "Switch to Paper Ink"
-  - button "Settings"
-- main:
-  - text: Archive
-  - button "Version archives"
-  - button "Plan a bump" [pressed]
+- dialog "Plan a version bump":
+  - banner:
+    - heading "Plan a version bump" [level=2]
+    - paragraph: Current dashboard 1.2
+    - button "Close"
   - region "Plan a version bump":
-    - text: Version change
-    - heading "What is changing?" [level=2]
-    - paragraph: Dashboard 1.2 · 2 workflows
-    - button "Workflow version Advance one or several workflows. Their completed runs stay with the version that produced them. 1.1 → 1.2" [pressed]:
-      - strong: Workflow version
-      - text: Advance one or several workflows. Their completed runs stay with the version that produced them. 1.1 → 1.2
-    - button "Dashboard version Advance every workflow together to the next major version. 1.2 → 2.0":
-      - strong: Dashboard version
-      - text: Advance every workflow together to the next major version. 1.2 → 2.0
-    - group "Workflows":
-      - text: Workflows
-      - checkbox "Person lookup · 1.1 → 1.2" [checked]
-      - text: Person lookup · 1.1 → 1.2
-      - checkbox "Separation documents · 1.2 → 1.3"
-      - text: Separation documents · 1.2 → 1.3
+    - group "Version bump scope":
+      - radio "Selected workflow" [checked]
+      - text: Selected workflow Workflow to bump
+      - combobox "Workflow to bump":
+        - option "Choose workflow"
+        - option "Person lookup" [selected]
+        - option "Separation documents"
+      - group: Select multiple workflows
+      - paragraph: Person lookup 1.1 → 1.2 · Dashboard 1.2 → 1.2
+      - radio "All workflows"
+      - text: All workflows
+      - paragraph: Dashboard 1.2 → 2.0 · All workflow versions advance together
+    - heading "Review" [level=3]
     - paragraph: Review the affected runs before applying this change.
     - button "Review affected runs"
-    - heading "Reviewed workflow change" [level=3]
-    - paragraph: person-lookup · 1 affected runs · 1 blockers · 0 archived
-    - paragraph: "person-lookup: 1.1 → 1.2"
-    - status: "Blocked: person-lookup · 00000000-0000-4000-8000-000000000099 · running"
+    - heading "Reviewed version change" [level=3]
+    - status: Review is stale for the current selection. Review affected runs again.
+    - paragraph: Dashboard 1.2 → 1.2 · 1 affected runs · 1 blockers · 0 archived
+    - paragraph: "Person lookup: 1.1 → 1.2"
+    - status: person-lookup · 00000000-0000-4000-8000-000000000099 · Blocked · running
     - button "Apply reviewed change" [disabled]
-- region "Session Panel":
-  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
-  - button "Add workers"
-  - text: app 0.1
-  - status: Live
+  - contentinfo:
+    - button "Cancel"

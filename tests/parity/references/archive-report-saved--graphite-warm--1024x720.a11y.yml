@@ -1,7 +1,7 @@
 # archive-report-saved--graphite-warm--1024x720
 # adapter: fixture
 # fixture: H retained document without live workflow
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
 # appVersion: 0.1.0
 # viewport: 1024x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-09-10T00:00:00.000Z
@@ -23,119 +23,56 @@
   - button "Switch to Paper Ink"
   - button "Settings"
 - main:
-  - text: Archive
+  - text: Archive Current · 1.0
   - button "Version archives" [pressed]
+  - button "Export run"
   - button "Plan a bump"
-  - region "Version archives":
-    - group "Filter version archives":
-      - text: Search reports and retained files
-      - textbox "Search reports and retained files"
-      - text: Dashboard
-      - combobox "Dashboard":
-        - option "All" [selected]
-        - option "Not recorded"
-      - text: Workflow
-      - combobox "Workflow":
-        - option "All" [selected]
-        - option "Person lookup"
-        - option "retired-synthetic-workflow"
-      - text: Workflow version
-      - combobox "Workflow version":
-        - option "All" [selected]
-      - text: Outcome
-      - combobox "Outcome":
-        - option "All" [selected]
-        - option "Done"
-        - option "Failed"
-        - option "Cancelled"
-        - option "Discarded"
-        - option "Interrupted"
-        - option "Superseded"
-      - button "Date Any":
-        - text: Date
-        - strong: Any
-      - text: 1 saved report
-    - strong: Dashboard 1.0 is current
-    - paragraph: 1 current workflows · new runs use their current versions
-    - button "Plan a bump"
-    - heading "Archived dashboard versions" [level=2]
-    - button "— Version not recorded Older saved reports · runtime version not recorded 1 report Hide" [expanded]:
-      - text: —
-      - strong: Version not recorded
-      - text: Older saved reports · runtime version not recorded 1 report Hide
-    - button "RS retired-synthetic-workflow Version not recorded 1 report Hide" [expanded]:
-      - text: RS
-      - strong: retired-synthetic-workflow
-      - text: Version not recorded 1 report Hide
-    - button "Synthetic retained report Superseded Aug 1, 2026 Open report"
-    - button "Second saved report Superseded Aug 1, 2026 Open report"
-    - region "Selected saved report":
-      - button "Close report"
-      - article "Saved archive report":
-        - heading "Synthetic retained report" [level=2]
-        - paragraph: removed-workflow · Runtime version not recorded · descriptor retired-v7
-        - text: Outcome Superseded
-        - term: Completed
-        - definition: 2026-08-01T12:00:00.000Z
-        - term: Captured
-        - definition: 2026-08-02T12:00:00.000Z
-        - paragraph: Saved record · read-only
-        - button "Report identity"
-        - link "Export report":
-          - /url: data:application/json;charset=utf-8,%7B%22state%22%3A%22available%22%2C%22runId%22%3A%2200000000-0000-4000-8000-000000000081%22%2C%22title%22%3A%22Synthetic%20retained%20report%22%2C%22workflow%22%3A%22removed-workflow%22%2C%22descriptorVersion%22%3A%22retired-v7%22%2C%22outcome%22%3A%22superseded%22%2C%22completedAt%22%3A%222026-08-01T12%3A00%3A00.000Z%22%2C%22capturedAt%22%3A%222026-08-02T12%3A00%3A00.000Z%22%2C%22sections%22%3A%5B%7B%22kind%22%3A%22values%22%2C%22title%22%3A%22Captured%20facts%22%2C%22values%22%3A%5B%7B%22label%22%3A%22Subject%22%2C%22value%22%3A%22Synthetic%20subject%22%7D%2C%7B%22label%22%3A%22Count%22%2C%22value%22%3A0%7D%2C%7B%22label%22%3A%22Verified%22%2C%22value%22%3Atrue%7D%2C%7B%22label%22%3A%22Submitted%22%2C%22value%22%3Afalse%7D%2C%7B%22label%22%3A%22Absent%22%2C%22value%22%3Anull%7D%5D%7D%2C%7B%22kind%22%3A%22table%22%2C%22title%22%3A%22Retained%20work%22%2C%22columns%22%3A%5B%22Step%22%2C%22Result%22%5D%2C%22rows%22%3A%5B%5B%22Review%22%2C%22Recorded%22%5D%2C%5B%22Resolution%22%2C%22Captured%20approval%22%5D%5D%7D%2C%7B%22kind%22%3A%22text%22%2C%22title%22%3A%22Saved%20logs%22%2C%22text%22%3A%22Review%20recorded%5CnNo%20live%20resolution%20is%20available.%20%3Cscript%3Eunsafe()%3C%2Fscript%3E%22%7D%2C%7B%22kind%22%3A%22unavailable%22%2C%22title%22%3A%22Old%20evidence%22%2C%22reason%22%3A%22These%20bytes%20were%20not%20retained.%22%7D%5D%2C%22files%22%3A%5B%7B%22digest%22%3A%22bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%22%2C%22byteLength%22%3A17%2C%22mediaType%22%3A%22text%2Fplain%22%2C%22name%22%3A%22Synthetic%20receipt.txt%22%7D%5D%2C%22archiveFingerprint%22%3A%22aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa%22%2C%22versionChange%22%3A%7B%22changeId%22%3A%2200000000-0000-4000-8000-000000000082%22%2C%22change%22%3A%7B%22kind%22%3A%22major%22%2C%22what%22%3A%22Archived%20old%20workflow%22%2C%22why%22%3A%22Replaced%20input%20contract%22%2C%22commit%22%3A%7B%22state%22%3A%22absent%22%2C%22reason%22%3A%22Commit%20not%20captured%22%7D%7D%2C%22scope%22%3A%7B%22kind%22%3A%22workflows%22%2C%22workflowIds%22%3A%5B%22removed-workflow%22%5D%7D%2C%22targetVersion%22%3A%228%22%2C%22reviewedAt%22%3A%222026-08-02T10%3A00%3A00.000Z%22%2C%22appliedBy%22%3A%22Synthetic%20operator%22%2C%22startedAt%22%3A%222026-08-02T11%3A00%3A00.000Z%22%7D%7D
-        - region "Captured facts":
-          - heading "Captured facts" [level=3]
-          - term: Subject
-          - definition: Synthetic subject
-          - term: Count
-          - definition: "0"
-          - term: Verified
-          - definition: "Yes"
-          - term: Submitted
-          - definition: "No"
-          - term: Absent
-          - definition: Not recorded
-        - region "Retained work":
-          - heading "Retained work" [level=3]
-          - table "Retained work":
-            - rowgroup:
-              - row "Step Result":
-                - columnheader "Step"
-                - columnheader "Result"
-            - rowgroup:
-              - row "Review Recorded":
-                - cell "Review"
-                - cell "Recorded"
-              - row "Resolution Captured approval":
-                - cell "Resolution"
-                - cell "Captured approval"
-        - region "Saved logs":
-          - heading "Saved logs" [level=3]
-          - text: Review recorded No live resolution is available. <script>unsafe()</script>
-        - region "Old evidence":
-          - heading "Old evidence" [level=3]
-          - status: These bytes were not retained.
-        - region "Recorded version change":
-          - heading "Archived old workflow" [level=3]
-          - paragraph: Replaced input contract
-          - term: Reviewed
-          - definition: 2026-08-02T10:00:00.000Z
-          - term: Started
-          - definition: 2026-08-02T11:00:00.000Z
-          - term: Scope
-          - definition: removed-workflow
-          - term: Version
-          - definition: major · target 8
-          - term: Applied by
-          - definition: Synthetic operator
-          - term: Commit
-          - definition: Commit not captured
-        - region "Retained attachments":
-          - heading "Retained attachments" [level=3]
-          - link "Synthetic receipt.txt":
-            - /url: /artifacts/v1/archive/00000000-0000-4000-8000-000000000081/files/bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb
-      - region "Delete saved report":
-        - button "Delete saved report"
+  - navigation "Archive path":
+    - button "Archive"
+    - button "Dashboard Version not recorded"
+    - button "removed-workflow"
+    - strong: Saved run
+  - heading "Synthetic retained report" [level=1]
+  - paragraph: removed-workflow · 00000000-0000-4000-8000-000000000081
+  - article "Saved archive report":
+    - term: Dashboard version
+    - definition: Not recorded
+    - term: Workflow version
+    - definition: Not recorded
+    - term: Archived
+    - definition:
+      - time: Aug 2, 2026, 12:00 PM UTC
+    - term: Outcome
+    - definition: Superseded
+    - term: Retained files
+    - definition: "1"
+    - navigation "Run sections":
+      - text: Archived report
+      - button "Captured facts"
+      - button "Retained work"
+      - button "Saved logs"
+      - button "Old evidence"
+      - button "Recorded version change"
+      - button "Retained files"
+      - button "Record details"
+      - button "All fields"
+      - paragraph: The saved record, as it was when archived.
+    - heading "Retained work" [level=2]
+    - text: Saved at archive time
+    - region "Retained work":
+      - heading "Retained work" [level=3]
+      - table "Retained work":
+        - rowgroup:
+          - row "Step Result":
+            - columnheader "Step"
+            - columnheader "Result"
+        - rowgroup:
+          - row "Review Recorded":
+            - cell "Review"
+            - cell "Recorded"
+          - row "Resolution Captured approval":
+            - cell "Resolution"
+            - cell "Captured approval"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

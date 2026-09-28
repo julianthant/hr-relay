@@ -1,0 +1,92 @@
+# archive-workflow-runs--paper-ink--1440x900
+# adapter: fixture
+# fixture: H retained document without live workflow
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
+# appVersion: 0.1.0
+# viewport: 1440x900  theme: paper-ink  variant: default
+# capturedAt: 2026-09-10T00:00:00.000Z
+
+- banner:
+  - heading "HR Automation" [level=1]
+  - button "Back" [disabled]
+  - button "Forward" [disabled]
+  - button "Dashboard"
+  - button "Archive" [pressed]
+  - button "Explorer"
+  - button "Activity"
+  - button "Search runs across dates": Search runs… /
+  - button "Previous day — Sun, Aug 2"
+  - button "Pick a day — showing Mon, Aug 3, 14 rows": Mon, Aug 3 14
+  - button "No later day" [disabled]
+  - 'button "Preflight: unavailable"'
+  - button "Notifications — 1 unread"
+  - button "Switch to Graphite Warm"
+  - button "Settings"
+- main:
+  - text: Archive Current · 1.0
+  - button "Version archives" [pressed]
+  - button "Export workflow"
+  - button "Plan a bump"
+  - navigation "Archive path":
+    - button "Archive"
+    - button "Dashboard Version not recorded"
+    - strong: removed-workflow
+  - heading "removed-workflow" [level=1]
+  - paragraph: Archived runs and their retained workflow data
+  - text: Dashboard version
+  - strong: Version not recorded
+  - text: Archived runs
+  - strong: "2"
+  - text: Workflow versions
+  - strong: Version not recorded
+  - text: Data view
+  - strong: Retained at archive time
+  - text: Search all run data
+  - textbox "Search all run data":
+    - /placeholder: Search names, documents, or any field
+  - text: 2 runs
+  - button "Columns"
+  - table "removed-workflow saved runs":
+    - rowgroup:
+      - row "Run Subject Absent Count Submitted Verified Workflow version Archived Files":
+        - columnheader "Run"
+        - columnheader "Subject"
+        - columnheader "Absent"
+        - columnheader "Count"
+        - columnheader "Submitted"
+        - columnheader "Verified"
+        - columnheader "Workflow version"
+        - columnheader "Archived"
+        - columnheader "Files"
+    - rowgroup:
+      - row "Synthetic retained report 00000000-0000-4000-8000-000000000081 Synthetic subject null 0 false true Not recorded Aug 2, 2026 1":
+        - cell "Synthetic retained report 00000000-0000-4000-8000-000000000081":
+          - button "Synthetic retained report"
+          - text: 00000000-0000-4000-8000-000000000081
+        - cell "Synthetic subject"
+        - cell "null"
+        - cell "0"
+        - cell "false"
+        - cell "true"
+        - cell "Not recorded"
+        - cell "Aug 2, 2026"
+        - cell "1"
+      - row "Second saved report 00000000-0000-4000-8000-000000000083 Synthetic subject null 0 false true Not recorded Aug 2, 2026 1":
+        - cell "Second saved report 00000000-0000-4000-8000-000000000083":
+          - button "Second saved report"
+          - text: 00000000-0000-4000-8000-000000000083
+        - cell "Synthetic subject"
+        - cell "null"
+        - cell "0"
+        - cell "false"
+        - cell "true"
+        - cell "Not recorded"
+        - cell "Aug 2, 2026"
+        - cell "1"
+  - text: 2 archived runs Click a run to open its complete report →
+  - paragraph: Full selection export, up to 5,000 reports or 50 MB. Exports include all public fields, including columns hidden here. Columns are discovered from loaded report pages; use Next reports to add later retained fields.
+- region "Session Panel":
+  - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
+  - button "Add workers"
+  - text: app 0.1
+  - status: Live

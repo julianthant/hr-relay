@@ -1,7 +1,7 @@
 # archive-ledger--paper-ink--1440x900
 # adapter: fixture
 # fixture: archive-ledger
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -23,51 +23,16 @@
   - button "Switch to Graphite Warm"
   - button "Settings"
 - main:
-  - text: Archive
+  - text: Archive Current · 1.0
   - button "Version archives" [pressed]
   - button "Plan a bump"
-  - region "Version archives":
-    - group "Filter version archives":
-      - text: Search reports and retained files
-      - textbox "Search reports and retained files"
-      - text: Dashboard
-      - combobox "Dashboard":
-        - option "All" [selected]
-        - option "Not recorded"
-      - text: Workflow
-      - combobox "Workflow":
-        - option "All" [selected]
-        - option "Person lookup"
-        - option "retired-synthetic-workflow"
-      - text: Workflow version
-      - combobox "Workflow version":
-        - option "All" [selected]
-      - text: Outcome
-      - combobox "Outcome":
-        - option "All" [selected]
-        - option "Done"
-        - option "Failed"
-        - option "Cancelled"
-        - option "Discarded"
-        - option "Interrupted"
-        - option "Superseded"
-      - button "Date Any":
-        - text: Date
-        - strong: Any
-      - text: 1 saved report
-    - strong: Dashboard 1.0 is current
-    - paragraph: 1 current workflows · new runs use their current versions
-    - button "Plan a bump"
-    - heading "Archived dashboard versions" [level=2]
-    - button "— Version not recorded Older saved reports · runtime version not recorded 1 report Hide" [expanded]:
-      - text: —
-      - strong: Version not recorded
-      - text: Older saved reports · runtime version not recorded 1 report Hide
-    - button "RS retired-synthetic-workflow Version not recorded 1 report Hide" [expanded]:
-      - text: RS
+  - button "Filters"
+  - heading "Version not recorded" [level=2]
+  - text: Historical runs
+  - region "Version not recorded archives":
+    - button "retired-synthetic-workflow Workflow version not recorded 1 run":
       - strong: retired-synthetic-workflow
-      - text: Version not recorded 1 report Hide
-    - button "Synthetic saved lookup Done Aug 3, 2026 Open report"
+      - text: Workflow version not recorded 1 run
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"
