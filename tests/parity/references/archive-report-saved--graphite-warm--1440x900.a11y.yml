@@ -60,7 +60,6 @@
     - heading "Retained work" [level=2]
     - text: Saved at archive time
     - region "Retained work":
-      - heading "Retained work" [level=3]
       - table "Retained work":
         - rowgroup:
           - row "Step Result":

@@ -59,7 +59,6 @@
     - heading "Saved facts" [level=2]
     - text: Saved at archive time
     - region "Saved facts":
-      - heading "Saved facts" [level=3]
       - term: Subject
       - definition: Synthetic person
       - term: Result

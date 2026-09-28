@@ -60,7 +60,6 @@
     - heading "Record details" [level=2]
     - text: Saved at archive time
     - region "Record details":
-      - heading "Record details" [level=3]
       - term: Report state
       - definition: available
       - term: Title

@@ -24,7 +24,6 @@
   - button "Settings"
 - main:
   - text: Archive Current · 1.0
-  - button "Filters"
   - button "Version archives" [pressed]
   - button "Plan a bump"
   - heading "Version not recorded" [level=2]

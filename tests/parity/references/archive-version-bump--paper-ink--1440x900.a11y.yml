@@ -13,13 +13,10 @@
     - button "Close"
   - region "Plan a version bump":
     - group "Version bump scope":
-      - radio "Choose workflows" [checked]
-      - text: Choose workflows
-      - group "Workflows to bump":
-        - checkbox "Person lookup · 1.1 → 1.2" [checked]
-        - text: Person lookup · 1.1 → 1.2
-        - checkbox "Separation documents · Unchanged · 1.2"
-        - text: Separation documents · Unchanged · 1.2
+      - radio "Selected workflow" [checked]
+      - text: Selected workflow
+      - paragraph: Workflow to bump
+      - button "Workflow to bump": Person lookup
       - paragraph: 1 workflow selected
       - paragraph: Person lookup 1.1 → 1.2 · Dashboard 1.2 → 1.2
       - radio "All workflows"
@@ -47,8 +44,10 @@
           - definition: 1.1 → 1.2
           - status: Blocked by 1 active or pending run. Finish or resolve these runs before applying.
           - group:
-            - status "Person lookup · 00000000…00000099 · Blocked · running"
-            - paragraph: person-lookup · 00000000-0000-4000-8000-000000000099 · Blocked · running
+            - text: Affected runs · 1
+            - group:
+              - status "Person lookup · 00000000…00000099 · Blocked · running"
+              - paragraph: person-lookup · 00000000-0000-4000-8000-000000000099 · Blocked · running
   - contentinfo:
     - button "Cancel"
     - button "Review affected runs"

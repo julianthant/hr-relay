@@ -24,7 +24,6 @@
   - button "Settings"
 - main:
   - text: Archive Current · 1.0
-  - button "Filters"
   - button "Version archives" [pressed]
   - button "Export workflow"
   - button "Plan a bump"
@@ -42,11 +41,21 @@
   - strong: Version not recorded
   - text: Data view
   - strong: Retained at archive time
-  - text: Search all run data
-  - textbox "Search all run data":
-    - /placeholder: Search names, documents, or any field
-  - text: 2 runs
-  - button "Columns"
+  - group "Filter version archives":
+    - text: Search all public archive fields
+    - textbox "Search all public archive fields":
+      - /placeholder: Search saved reports
+    - text: Dashboard version
+    - combobox "Dashboard version":
+      - option "All dashboards" [selected]
+    - text: Workflow
+    - combobox "Workflow":
+      - option "All workflows" [selected]
+      - option "removed-workflow"
+    - text: Completed from
+    - textbox "Completed from"
+    - text: Completed through
+    - textbox "Completed through"
   - table "removed-workflow saved runs":
     - rowgroup:
       - row "Run Subject Absent Count Submitted Verified Workflow version Archived Files":

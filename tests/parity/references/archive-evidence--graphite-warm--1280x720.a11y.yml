@@ -56,7 +56,6 @@
     - heading "Retained files" [level=2]
     - text: Saved at archive time
     - region "Retained attachments":
-      - heading "Retained files" [level=3]
       - region "File Synthetic screenshot.png":
         - strong: Synthetic screenshot.png
         - text: image/png · 3281 bytes Available
