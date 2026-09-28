@@ -1,6 +1,7 @@
 import { EMPTY_ARCHIVE_BROWSE, ArchiveBrowseStateSchema, type ArchiveBrowseState } from "../app/archive-route-model.js";
 import { Archive, ArrowRight, ChevronDown, ChevronRight, Download, Folder, Layers3, Search } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
 import type { ArchiveGroupQuery } from "../../domain/archive/report.js";
 import type { SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
@@ -39,6 +40,7 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
   const [workflowExportMenuOpen, setWorkflowExportMenuOpen] = useState(false);
   const [runExportVisible, setRunExportVisible] = useState(false);
   const [runExportMenuOpen, setRunExportMenuOpen] = useState(false);
+  const [filtersTarget, setFiltersTarget] = useState<HTMLSpanElement | null>(null);
   const workflowExportHandle = useRef<WorkflowExportHandle | null>(null);
   const runExportHandle = useRef<RunExportHandle | null>(null);
   const bumpTrigger = useRef<HTMLButtonElement | null>(null);
@@ -49,13 +51,14 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
     if (view !== "runs" || !workflowExportVisible) setWorkflowExportMenuOpen(false);
     if (view !== "runs" || !runExportVisible) setRunExportMenuOpen(false);
   }, [view, workflowExportVisible, runExportVisible]);
-  return <div className="flex min-h-0 flex-1 flex-col">
+  return <div className="ds-body-overlay flex min-h-0 flex-1 flex-col bg-[var(--ds-surface-page)]">
     <PageHeader
-      className="ds-body-scope !max-w-none min-h-[48px]"
+      className="min-w-0 !flex-nowrap"
       title="Archive"
       icon={<Archive className={dsIcon.md} />}
       badge={versions.state === "loaded" ? <span className={cn(dsText.meta, "border-l border-[color:var(--ds-border)] pl-[var(--ds-space-base)] text-[color:var(--ds-fg-muted)]")}>Current · {archiveVersionLabel(versions.value.dashboard)}</span> : undefined}
       actions={<>
+        {selection === "" && <span ref={setFiltersTarget} className="shrink-0" />}
         <Button size="toolbar" variant={view === "runs" ? "secondary" : "ghost"} aria-pressed={view === "runs"} onClick={() => onView("runs")}>Version archives</Button>
         {view === "runs" && workflowExportVisible && <Popover open={workflowExportMenuOpen} onOpenChange={setWorkflowExportMenuOpen}>
           <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export workflow</Button></PopoverTrigger>
@@ -81,7 +84,7 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
     />
     <div className={cn("min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]", dsSurface.bodyPage)}><div className="relative min-h-full rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] px-[18px] pt-[22px] pb-[75px] min-[1200px]:px-[25px] min-[1200px]:pt-[26px] min-[1200px]:pb-[84px]">
       {browseInvalid && <p role="alert">Invalid Archive browsing state. Exports are blocked until you choose a valid scope. <Button variant="secondary" onClick={() => onBrowse?.({ filters: {} }, "replace")}>Use unfiltered archives</Button></p>}
-      <ArchiveGroupsPanel active={view === "runs" || selection !== "" || folder !== null} selection={selection} folder={folder} onSelection={onSelection} onFolder={onFolder} versions={versions} revision={revision} onRefresh={refresh} actorId={actorId}
+      <ArchiveGroupsPanel active={view === "runs" || selection !== "" || folder !== null} selection={selection} folder={folder} filtersTarget={filtersTarget} onSelection={onSelection} onFolder={onFolder} versions={versions} revision={revision} onRefresh={refresh} actorId={actorId}
         exportHandle={workflowExportHandle} onExportVisibilityChange={setWorkflowExportVisible} onExportActivityChange={setWorkflowExportActive}
         runExportHandle={runExportHandle} onRunExportVisibilityChange={setRunExportVisible} browse={browse} browseInvalid={browseInvalid} onBrowse={onBrowse} />
     </div></div>
@@ -93,8 +96,8 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
   </div>;
 }
 
-function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, versions, revision, onRefresh, actorId, exportHandle, onExportVisibilityChange, onExportActivityChange, runExportHandle, onRunExportVisibilityChange, browse, browseInvalid, onBrowse }: BrowseProps & {
-  active: boolean; selection: string; folder: Folder | null; onSelection: (id: string) => void; onFolder: (folder: Folder | null) => void; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>;
+function ArchiveGroupsPanel({ active, selection, folder, filtersTarget, onSelection, onFolder, versions, revision, onRefresh, actorId, exportHandle, onExportVisibilityChange, onExportActivityChange, runExportHandle, onRunExportVisibilityChange, browse, browseInvalid, onBrowse }: BrowseProps & {
+  active: boolean; selection: string; folder: Folder | null; filtersTarget: HTMLSpanElement | null; onSelection: (id: string) => void; onFolder: (folder: Folder | null) => void; versions: ReturnType<typeof useSavedResource<SavedRuntimeVersionIndexWire>>;
   revision: number; onRefresh: () => void; actorId: string;
   exportHandle: { current: WorkflowExportHandle | null };
   onExportVisibilityChange: (visible: boolean) => void;
@@ -313,14 +316,14 @@ function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, 
       }) ? current : merged;
     });
   }, [pageSummaryColumns]);
-  const filterControls = <div className="shrink-0"><Popover><PopoverTrigger asChild><Button variant="secondary" size="toolbar" iconAfter={<ChevronDown className={dsIcon.sm} aria-hidden />}>Filters{Object.values(filters).filter(value => value !== undefined).length > 0 ? ` · ${Object.values(filters).filter(value => value !== undefined).length}` : ""}</Button></PopoverTrigger><PopoverContent className="ds-body-scope ds-body-overlay !w-[320px] !max-w-[calc(100vw-var(--ds-space-section))] !bg-[var(--ds-surface-overlay)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto" title="Filter version archives" align="end" width="sm"><div role="group" aria-label="Filter version archives" className="grid gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
+  const filterControls = <div className="flex shrink-0 items-center gap-[var(--ds-space-tight)]"><Popover><PopoverTrigger asChild><Button variant="secondary" size="toolbar" iconAfter={<ChevronDown className={dsIcon.sm} aria-hidden />}>Filters{Object.values(filters).filter(value => value !== undefined).length > 0 ? ` · ${Object.values(filters).filter(value => value !== undefined).length}` : ""}</Button></PopoverTrigger><PopoverContent className="ds-body-scope ds-body-overlay !w-[320px] !max-w-[calc(100vw-var(--ds-space-section))] !bg-[var(--ds-surface-overlay)] max-h-[var(--radix-popover-content-available-height)] overflow-y-auto" title="Filter version archives" align="end" width="sm"><div role="group" aria-label="Filter version archives" className="grid gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]">
       <label className={dsText.meta}>Search all public archive fields<Input maxLength={120} aria-label="Search all public archive fields" value={filters.search ?? ""} onChange={event => { abortForSelectionChange(); setFilters({ ...filters, search: event.target.value.trim() === "" ? undefined : event.target.value }, "replace"); }} /></label>
       <label className={dsText.meta}>Dashboard version<Select value={filters.dashboardVersion === undefined ? "" : JSON.stringify(filters.dashboardVersion)} onChange={event => setFilters({ ...filters, dashboardVersion: event.target.value === "" ? undefined : JSON.parse(event.target.value) as NonNullable<ArchiveGroupQuery["dashboardVersion"]> })}><option value="">All dashboards</option>{stableHierarchy.filter(row => row.version !== null).map(row => <option key={row.key} value={JSON.stringify(row.version)}>{archiveVersionLabel(row.version)}</option>)}</Select></label>
       <label className={dsText.meta}>Workflow<Select value={filters.workflow ?? ""} onChange={event => setFilters({ ...filters, workflow: event.target.value || undefined })}><option value="">All workflows</option>{[...new Set(stableHierarchy.flatMap(row => row.workflows.map(item => item.workflow)))].map(id => <option key={id} value={id}>{workflowLabel(id)}</option>)}</Select></label>
       <label className={dsText.meta}>Completed from<Input type="date" value={filters.from?.slice(0, 10) ?? ""} onChange={event => setFilters({ ...filters, from: event.target.value === "" ? undefined : `${event.target.value}T00:00:00.000Z` })} /></label>
       <label className={dsText.meta}>Completed through<Input type="date" value={filters.to?.slice(0, 10) ?? ""} onChange={event => setFilters({ ...filters, to: event.target.value === "" ? undefined : `${event.target.value}T23:59:59.999Z` })} /></label>
       <Button variant="ghost" onClick={() => setFilters({})}>Clear filters</Button>
-    </div></PopoverContent></Popover></div>;
+    </div></PopoverContent></Popover><span aria-hidden className="h-4 w-px shrink-0 bg-[var(--ds-border)]" /></div>;
   if (selection !== "") return <DsBodyScope style={{ maxWidth: "none" }} className="w-full min-w-0 space-y-[22px] [&>.ds-page-heading]:!mb-[24px]">
     <ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: `Dashboard ${detailDashboard}`, onClick: goFolders }, { label: detailWorkflow, onClick: goRuns }, { label: "Saved run" }]} />
     {detail.state === "loading" ? <p role="status">Loading saved report…</p> : detail.state === "error" ? <p role="alert">{detail.message}</p> : detail.value === null ? <p role="status">No report selected.</p>
@@ -331,8 +334,8 @@ function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, 
             <SavedArchiveReport section={browsing.section} onSection={onBrowse === undefined ? undefined : section => updateBrowse({ ...browsing, section })} key={detail.value.runId} report={detail.value} deletion={<SavedArchiveDeletion report={detail.value} actorId={actorId} onChanged={onRefresh} />} /></>}
   </DsBodyScope>;
   if (workflow !== undefined && dashboard !== undefined) {
-    return <DsBodyScope style={{ maxWidth: "none" }} className="w-full space-y-[var(--ds-space-page)]">
-      <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: `Dashboard ${archiveVersionLabel(dashboard.version)}`, onClick: goFolders }, { label: workflowLabel(workflow.workflow) }]} />{filterControls}</div>
+    return <>{filtersTarget && createPortal(filterControls, filtersTarget)}<DsBodyScope style={{ maxWidth: "none" }} className="w-full space-y-[var(--ds-space-page)]">
+      <ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: `Dashboard ${archiveVersionLabel(dashboard.version)}`, onClick: goFolders }, { label: workflowLabel(workflow.workflow) }]} />
       <PageHeading title={<span className="flex items-center gap-[var(--ds-space-base)]"><span className="flex size-[var(--ds-h-topbar)] shrink-0 items-center justify-center rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg-muted)]"><Folder className={dsIcon.md} aria-hidden /></span>{workflowLabel(workflow.workflow)}</span>} description="Archived runs and their retained workflow data" />
       <div className={cn(dsText.meta, "flex flex-wrap gap-x-[var(--ds-space-section)] gap-y-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-loose)]")}>
         <span>Dashboard version <strong className="block text-[color:var(--ds-fg)]">{archiveVersionLabel(dashboard.version)}</strong></span>
@@ -356,7 +359,7 @@ function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, 
       {reports.state === "loading" ? <p role="status">Loading saved reports…</p> : reports.state === "error" ? <p role="alert">{reports.message}</p> : <>
         <Card className="overflow-hidden"><div className="overflow-x-auto"><Table className="min-w-max" label={`${workflowLabel(workflow.workflow)} saved runs`}><THead><TR><TH className="w-[220px] !text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Run</TH>{visibleSummaryColumns.map(column => <TH key={column.id} align={archiveSummaryColumnAlignment(column)} className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">{archiveSummaryColumnLabel(column, summaryColumns)}</TH>)}<TH align="right" className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Workflow version</TH><TH align="right" className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Archived</TH><TH align="right" className="!text-[length:var(--ds-text-ui)] !normal-case !tracking-normal">Files</TH></TR></THead><TBody>{reports.value.items.length === 0 && <TR><TD colSpan={visibleSummaryColumns.length + 4}>No saved reports match this scope. <Button variant="ghost" onClick={() => setFilters({})}>Clear filters</Button></TD></TR>}{reports.value.items.map(report => <TR key={report.runId}><TD><Button variant="ghost" className="h-auto max-w-[200px] min-w-0 justify-start whitespace-normal break-words p-0 text-left font-semibold text-[color:var(--ds-fg)]" onClick={() => selectReport(report.runId)}>{report.title}</Button><span className={cn(dsText.meta, "block break-all text-[color:var(--ds-fg-muted)]")} title={report.runId}>{report.runId.slice(0, 8)}… · Full ID in report</span></TD>{visibleSummaryColumns.map(column => { const align = archiveSummaryColumnAlignment(column); return <TD key={column.id} align={align} numeric={align === "right"} className="whitespace-nowrap">{archiveSummaryValue(report, column)}</TD>; })}<TD align="right" numeric>{report.runtimeVersion === undefined ? "Not recorded" : archiveVersionLabel(report.runtimeVersion.workflow)}</TD><TD align="right">{archiveDisplayDate(report.capturedAt)}</TD><TD align="right" numeric>{report.files.length}</TD></TR>)}</TBody></Table></div><div className={cn(dsText.meta, "flex justify-between border-t border-[color:var(--ds-border)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}><span>{reports.value.items.length} loaded {reports.value.items.length === 1 ? "run" : "runs"}{reports.value.next === null ? "" : " · More available"}</span><div className="flex items-center gap-[var(--ds-space-snug)]">{after !== undefined && <Button variant="ghost" size="toolbar" onClick={() => setAfter(undefined)}>First reports</Button>}{reports.value.next !== null && <Button variant="secondary" size="toolbar" onClick={() => setAfter(reports.value.next ?? undefined)}>Next reports</Button>}<span>Open a run for its complete report →</span></div></div></Card>
       </>}
-    </DsBodyScope>;
+    </DsBodyScope></>;
   }
   if (folder !== null) return <DsBodyScope style={{ maxWidth: "none" }} className="w-full space-y-[var(--ds-space-section)]">
     <ArchiveBreadcrumb items={[{ label: "Archive", onClick: goFolders }, { label: "Saved folder" }]} />
@@ -364,15 +367,15 @@ function ArchiveGroupsPanel({ active, selection, folder, onSelection, onFolder, 
       : allGroups.state === "error" ? <p role="alert">{allGroups.message}</p>
         : <div role="alert" className="space-y-[var(--ds-space-base)]"><p className="m-0">Archived dashboard folder {folder.dashboardKey} / {folder.workflow} is unavailable. It was not replaced with another workflow.</p><Button variant="secondary" onClick={goFolders}>Return to version archives</Button></div>}
   </DsBodyScope>;
-  return <DsBodyScope style={{ maxWidth: "none" }} className="w-full">
-    <div className="flex min-h-[32px] min-w-0 flex-wrap items-start justify-end gap-[11px]">{groups.state === "loaded" && hierarchy[0] !== undefined && <ArchiveDashboardHeading dashboard={hierarchy[0]} />}{filterControls}</div>
+  return <>{filtersTarget && createPortal(filterControls, filtersTarget)}<DsBodyScope style={{ maxWidth: "none" }} className="w-full">
+    {groups.state === "loaded" && hierarchy[0] !== undefined && <div className="flex min-w-0 flex-wrap items-center gap-[11px]"><ArchiveDashboardHeading dashboard={hierarchy[0]} /></div>}
     {filterMessage !== "" && <p role="alert">{filterMessage}</p>}
     {versions.state === "error" && <p role="alert">{versions.message}</p>}
 
     {groups.state === "loading" ? <p role="status">Loading version archives…</p> : groups.state === "error" ? <div><p role="alert">{groups.message}</p><Button variant="secondary" onClick={onRefresh}>Retry version archives</Button></div> : hierarchy.length === 0
       ? <Card className="p-[var(--ds-space-section)]"><h2 className={dsText.title}>{Object.keys(filters).length === 0 ? "No saved reports yet" : "No saved reports match these filters."}</h2><p>{Object.keys(filters).length === 0 ? "Completed runs appear here after a reviewed version change." : "Clear filters to view other archives."}</p></Card>
       : <div className="space-y-[var(--ds-space-section)] pt-[4px]">{hierarchy.map((row, index) => <ArchiveDashboardFolder key={row.key} dashboard={row} workflowLabel={workflowLabel} onOpen={openFolder} hideHeading={index === 0} />)}</div>}
-  </DsBodyScope>;
+  </DsBodyScope></>;
 }
 
 function ArchiveBreadcrumb({ items }: { items: { label: string; onClick?: () => void }[] }) {

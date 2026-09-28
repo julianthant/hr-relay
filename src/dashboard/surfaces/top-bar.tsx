@@ -4,7 +4,7 @@ Moon,
 ShieldCheck,
 Sun
 } from "lucide-react";
-import { type ReactElement,memo } from "react";
+import { Fragment,type ReactElement,memo } from "react";
 import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
 import { BareButton,DEMO_THEME_LABEL,type DemoTheme,IconButton,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -52,25 +52,27 @@ function ShellViewSwitcher({
 }): ReactElement {
   return (
     <div className={SEGMENTED_FRAME}>
-      {SHELL_VIEWS.map((candidate) => (
-        <BareButton
-          key={candidate}
-          type="button"
-          aria-pressed={view === candidate}
-          onClick={() => onView(candidate)}
-          className={cn(
-            "inline-flex h-full cursor-pointer items-center px-[var(--ds-space-base)]",
-            dsRadius.sm,
-            dsText.meta,
-            dsFocus,
-            dsMotion.fast,
-            view === candidate
-              ? "bg-[var(--ds-surface-3)] font-semibold text-[color:var(--ds-fg)]"
-              : "font-medium text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
-          )}
-        >
-          {SHELL_VIEW_LABEL[candidate]}
-        </BareButton>
+      {SHELL_VIEWS.map((candidate, index) => (
+        <Fragment key={candidate}>
+          {index > 0 && <span aria-hidden className="h-4 w-px shrink-0 bg-[var(--ds-border)]" />}
+          <BareButton
+            type="button"
+            aria-pressed={view === candidate}
+            onClick={() => onView(candidate)}
+            className={cn(
+              "inline-flex h-full cursor-pointer items-center px-[var(--ds-space-base)]",
+              dsRadius.sm,
+              dsText.meta,
+              dsFocus,
+              dsMotion.fast,
+              view === candidate
+                ? "bg-[var(--ds-surface-3)] font-semibold text-[color:var(--ds-fg)]"
+                : "font-medium text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
+            )}
+          >
+            {SHELL_VIEW_LABEL[candidate]}
+          </BareButton>
+        </Fragment>
       ))}
     </div>
   );
