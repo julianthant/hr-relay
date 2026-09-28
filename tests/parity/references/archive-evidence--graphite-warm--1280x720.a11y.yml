@@ -56,10 +56,14 @@
     - heading "Retained files" [level=2]
     - text: Saved at archive time
     - region "Retained attachments":
-      - button "Inspect Synthetic screenshot.png"
-      - link "Synthetic screenshot.png":
-        - /url: /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/files/f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847
-      - paragraph: image/png · 3281 bytes · digest f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847 · artifacts aa11bb22-000a-4000-8000-aa11bb22000a
+      - heading "Retained files" [level=3]
+      - region "File Synthetic screenshot.png":
+        - strong: Synthetic screenshot.png
+        - text: image/png · 3281 bytes Available
+        - button "Inspect Synthetic screenshot.png"
+        - link "Download Synthetic screenshot.png":
+          - /url: /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/files/f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847
+        - button "Details"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

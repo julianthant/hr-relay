@@ -13,13 +13,14 @@
     - button "Close"
   - region "Plan a version bump":
     - group "Version bump scope":
-      - radio "Selected workflow" [checked]
-      - text: Selected workflow Workflow to bump
-      - combobox "Workflow to bump":
-        - option "Choose workflow"
-        - option "Person lookup" [selected]
-        - option "Separation documents"
-      - group: Select multiple workflows
+      - radio "Choose workflows" [checked]
+      - text: Choose workflows
+      - group "Workflows to bump":
+        - checkbox "Person lookup · 1.1 → 1.2" [checked]
+        - text: Person lookup · 1.1 → 1.2
+        - checkbox "Separation documents · Unchanged · 1.2"
+        - text: Separation documents · Unchanged · 1.2
+      - paragraph: 1 workflow selected
       - paragraph: Person lookup 1.1 → 1.2 · Dashboard 1.2 → 1.2
       - radio "All workflows"
       - text: All workflows
