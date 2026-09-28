@@ -4,7 +4,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it, vi } from "vitest";
 import { useRoute, type NativeRouteHistory, type RouteHistoryTarget } from "../../../src/dashboard/app/route-history-model.js";
-import type { AppRouteState } from "../../../src/dashboard/app/url-state.js";
+import { parseRoute, type AppRouteState } from "../../../src/dashboard/app/url-state.js";
 import { DashboardApp } from "../../../src/dashboard/app/dashboard-app.js";
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
@@ -175,7 +175,7 @@ it("toolbar history restores the selected tab without adding an intermediate tab
 async function mountHistory() {
   window.history.replaceState({hrDashboardRouteCursor:2}, "", "/?settings=display");
   let api: NativeRouteHistory | undefined;
-  let navigate: ((route: AppRouteState) => void) | undefined;
+  let navigate: ((route: AppRouteState, mode?: "push" | "replace") => void) | undefined;
   let guarded: (() => void) | undefined;
   let target: RouteHistoryTarget | undefined;
   const handler = {current:(next: RouteHistoryTarget) => {
@@ -195,7 +195,7 @@ async function mountHistory() {
       window.dispatchEvent(new PopStateEvent("popstate",{state:{hrDashboardRouteCursor:cursor}}));
     });
   };
-  return {pop,go,navigate:(route: AppRouteState) => navigate?.(route),confirm:() => guarded?.(),target:() => target};
+  return {pop,go,navigate:(route: AppRouteState, mode?: "push" | "replace") => navigate?.(route, mode),confirm:() => guarded?.(),target:() => target};
 }
 it("defers a newer door until an in-flight restoration settles and revokes its abandoned guard", async () => {
   const history=await mountHistory();
@@ -318,4 +318,37 @@ it("native date history preserves a dirty Settings draft, then restores the acce
   await historyMove("back"); await click(button("Discard changes")); await settle();
   assert.equal(new URLSearchParams(location.search).get("day"), "2026-08-02");
   assert.equal(new URLSearchParams(location.search).has("settings"), false);
+});
+
+it("replaces transient Archive search without creating history and preserves queued replacement mode", async () => {
+  const history = await mountHistory();
+  const pushes = vi.spyOn(window.history, "pushState");
+  const route: AppRouteState = { start: false, archive: "", archiveBrowse: { filters: { search: "M" } } };
+  await act(async () => history.navigate(route, "replace"));
+  assert.equal(pushes.mock.calls.length, 0);
+  assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), 2);
+  await history.pop(1, "?archive=");
+  await act(async () => history.navigate({ ...route, archiveBrowse: { filters: { search: "Morgan" } } }, "replace"));
+  await history.pop(2, "?archive=");
+  assert.equal(pushes.mock.calls.length, 0);
+  assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), 2);
+  assert.match(location.search, /Morgan/);
+});
+
+it("queues transient Archive replacement during dirty Settings restoration without replaying an abandoned guard", async () => {
+  const history = await mountHistory();
+  const pushes = vi.spyOn(window.history, "pushState");
+  await history.pop(1, "?day=2026-08-02");
+  await act(async () => history.navigate({ start: false, archive: "", archiveBrowse: { filters: { search: "public query" } } }, "replace"));
+  assert.equal(location.search, "?day=2026-08-02");
+  assert.equal(pushes.mock.calls.length, 0);
+  await history.pop(2, "?settings=display");
+  assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), 2);
+  assert.deepEqual(history.go.mock.calls, [[1]]);
+  assert.equal(pushes.mock.calls.length, 0);
+  assert.equal(parseRoute(location.search).archiveBrowse?.filters.search, "public query");
+  const accepted = location.search;
+  await act(async () => history.confirm());
+  assert.equal(location.search, accepted);
+  assert.deepEqual(history.go.mock.calls, [[1]]);
 });

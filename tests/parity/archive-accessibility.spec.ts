@@ -93,7 +93,7 @@ test("one-workflow dashboard normalizes that workflow's selection to a major bum
   const bump = page.getByRole("region", { name: "Plan a version bump" });
   await expect(bump.getByRole("combobox", { name: "Workflow to bump" })).toHaveValue("person-lookup");
   await expect(bump).toContainText("Every registered workflow selected: dashboard major bump");
-  await expect(bump.getByRole("button", { name: "Review affected runs" })).toBeEnabled();
+  await expect(page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review affected runs" })).toBeEnabled();
   await expect(bump.getByText("For every workflow, choose Dashboard version.")).toHaveCount(0);
 });
 

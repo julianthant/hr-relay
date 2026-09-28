@@ -7,6 +7,14 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme } from "./helpers/capture.js";
 import { startArchiveAuthorityServer } from "./helpers/fixture-archive-authority.js";
 
+async function expectReviewedCounts(page: Page, runs: number, blockers: number, archived: number, applying = false): Promise<void> {
+  const review = page.getByRole("region", { name: applying ? "Version change applying" : "Reviewed version change", exact: true });
+  const values = review.locator("dl").getByRole("definition");
+  await expect(values.nth(2)).toHaveText(String(runs));
+  await expect(values.nth(3)).toHaveText(String(blockers));
+  await expect(values.nth(4)).toHaveText(String(archived));
+}
+
 async function bytes(download: Download): Promise<Buffer> {
   const stream = await download.createReadStream();
   if (stream === null) throw new Error("browser exposed no downloaded bytes");
@@ -113,10 +121,15 @@ for (const view of [
       await expect(inspect).toBeFocused();
 
       await page.goBack();
-      await expect(page).toHaveURL(/archive=&archiveDashboard=unrecorded&archiveWorkflow=person-lookup$/u);
+      await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
+      await expect(article).toBeVisible();
+      await page.goBack();
+      await expect.poll(() => { const params = new URL(page.url()).searchParams; return [params.get("archive"), params.get("archiveDashboard"), params.get("archiveWorkflow")]; }).toEqual(["", "unrecorded", "person-lookup"]);
       await page.goForward();
       await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
       await expect(article).toBeVisible();
+      await page.goForward();
+      await expect(article.getByRole("button", { name: "Retained files", exact: true })).toHaveAttribute("aria-current", "page");
       await page.getByRole("button", { name: "Plan a bump", exact: true }).first().click();
       const versions = page.getByRole("dialog", { name: "Plan a version bump" });
       await expect(versions).toContainText("Archived workflow person-lookup is no longer registered");
@@ -188,19 +201,19 @@ test("real major review renews changed membership and resumes a partial transfer
   page.on("pageerror", error => errors.push(error.message));
   try {
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
-    const bump = page.getByRole("region", { name: "Plan a version bump" });
+    const bump = page.getByRole("dialog", { name: "Plan a version bump" });
     await bump.getByRole("radio", { name: "All workflows" }).check();
     await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("1 affected runs · 0 blockers · 0 archived");
+    await expectReviewedCounts(page, 1, 0, 0);
     const added = server.addRun(91001);
     await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
     await expect(bump.getByText("Review is stale. Review affected runs again.", { exact: true })).toBeVisible();
     await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("2 affected runs · 0 blockers · 0 archived");
+    await expectReviewedCounts(page, 2, 0, 0);
     expect(server.database.savedReportOwner(server.runId).state).toBe("live");
     expect(server.database.savedReportOwner(added).state).toBe("live");
     server.interruptTransfer("verified", 2);
-    await bump.getByText("2 affected runs · 0 blockers · 0 archived").locator("..").getByRole("button", { name: "Apply reviewed change" }).click();
+    await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
     await expect(bump.getByRole("status").filter({ hasText: /injected|failed|500/i })).toBeVisible();
     const before = server.database.readRuntimeVersionIndex().changes.find(row => row.state === "applying");
     if (before === undefined) throw new Error("partial apply claim missing");
@@ -210,7 +223,7 @@ test("real major review renews changed membership and resumes a partial transfer
     await page.goto("about:blank");
     await server.restart();
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
-    await expect(bump).toContainText("2 affected runs · 0 blockers · 1 archived");
+    await expectReviewedCounts(page, 2, 0, 1, true);
     const wire = SavedRuntimeVersionIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/runtime-versions`)).json());
     const applying = wire.changes.find(change => change.state === "applying");
     if (applying?.resumeRequest === undefined) throw new Error("authenticated original request missing");
@@ -247,15 +260,16 @@ test("real workflow minor review waits for active runs and archives that workflo
   try {
     const active = server.addRun(91002, false);
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
-    const bump = page.getByRole("region", { name: "Plan a version bump" });
+    const bump = page.getByRole("dialog", { name: "Plan a version bump" });
     await expect(bump.getByRole("combobox", { name: "Workflow to bump" })).toHaveValue("person-lookup");
     await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("2 affected runs · 1 blockers · 0 archived");
-    await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toBeDisabled();
+    await expectReviewedCounts(page, 2, 1, 0);
+    await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toHaveCount(0);
+    await expect(bump.getByRole("button", { name: "Review affected runs" })).toBeEnabled();
     server.finishRun(active);
     await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("2 affected runs · 0 blockers · 0 archived");
-    await bump.getByText("2 affected runs · 0 blockers · 0 archived").locator("..").getByRole("button", { name: "Apply reviewed change" }).click();
+    await expectReviewedCounts(page, 2, 0, 0);
+    await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
     await expect(bump.getByRole("status").filter({ hasText: "Version change applied." })).toBeVisible();
     expect(server.database.savedReportOwner(server.runId).state).toBe("archived");
     expect(server.database.savedReportOwner(active).state).toBe("archived");
@@ -298,15 +312,17 @@ test("real bounded pages retain history selection outside the current page and i
     const oldResponse = page.waitForResponse(response => response.url().endsWith(`/reports/${chosen.runId}`));
     old.release(); await oldResponse;
     await expect(page.getByRole("article")).toContainText(other.title);
-    await page.goBack();
+    await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(other.workflow) }).click();
     await expect(page.getByRole("table").first()).toBeVisible();
     await page.getByRole("button", { name: "Next reports", exact: true }).click();
     const table = page.getByRole("table").first();
     await expect(table.getByRole("button", { name: secondPageRun.title, exact: true })).toBeVisible();
     await expect(table.getByRole("button", { name: other.title, exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "First reports", exact: true })).toBeVisible();
-    // The current page no longer includes the run; browser history still restores that exact report.
-    await page.goForward();
+    // Page navigation is route-owned; revisit the retained report through its exact route.
+    await page.goBack();
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await page.goBack();
     await expect(page.getByRole("article")).toContainText(other.title);
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: "Archive", exact: true }).click();
     await page.getByRole("button", { name: "Filters" }).click();
@@ -350,6 +366,8 @@ test("late real deletion of A leaves B selected and history reads A's current di
     await expect(page.getByText(/permanent idempotency keys/)).toBeVisible();
     await page.getByRole("button", { name: "Delete this report", exact: true }).click();
     await delayed.ready;
+    await page.goBack();
+    await expect(page.getByRole("article")).toContainText(reportA.title);
     await page.goBack();
     await expect(page.getByRole("table").first()).toBeVisible();
     await page.goBack();

@@ -9,7 +9,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let dispose: (() => Promise<void>) | undefined;
 afterEach(async () => { await dispose?.(); dispose = undefined; document.body.replaceChildren(); });
 async function clickSection(label: string) {
-  const button = [...document.querySelectorAll<HTMLButtonElement>("nav[aria-label='Run sections'] button")].find(row => row.textContent?.trim() === label);
+  const button = [...document.querySelectorAll<HTMLButtonElement>("nav[aria-label='Run sections'] button")].find(row => (row.getAttribute("aria-label") ?? row.textContent?.trim()) === label);
   if (button === undefined) throw new Error(`Missing report section ${label}.`);
   await act(async () => { button.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 }

@@ -195,7 +195,7 @@ test("honest loading, empty, error, missing, deleted, unavailable and attachment
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "" });
   await page.getByRole("button", { name: H_REPORT.workflow }).click();
   await expect(page.getByText("Loading saved reports…", { exact: true })).toBeVisible(); release();
-  await expect(page.getByText("No saved reports match this query.")).toBeVisible();
+  await expect(page.getByRole("cell").filter({ hasText: "No saved reports match this scope." })).toBeVisible();
   await page.route("**/api/v1/archive/reports?*", route => route.abort("failed"));
   await page.reload();
   await expect(page.locator('[role="alert"]')).toBeVisible();

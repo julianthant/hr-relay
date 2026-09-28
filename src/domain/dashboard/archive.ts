@@ -435,7 +435,7 @@ export type SavedArchiveIndexWire = z.infer<typeof SavedArchiveIndexWireSchema>;
 export const SavedArchiveGroupsWireSchema = z.strictObject({ groups: z.array(z.strictObject({
   dashboardVersion: RuntimeVersionSchema.nullable(), workflow: z.string().min(1),
   workflowVersion: RuntimeVersionSchema.nullable(), reportCount: z.number().int().positive(),
-  latestCompletedAt: IsoInstantSchema,
+  latestCompletedAt: IsoInstantSchema, latestCapturedAt: IsoInstantSchema.optional(),
 })) });
 export type SavedArchiveGroupsWire = z.infer<typeof SavedArchiveGroupsWireSchema>;
 

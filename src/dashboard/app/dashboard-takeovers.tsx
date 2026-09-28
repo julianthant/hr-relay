@@ -21,7 +21,7 @@ type AppRouteState
 } from "./url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
  workflowLabelOf,supportsDryRun,today,queueRows,closeTakeoverTo,onSettingsExitGuardChange,children}: {
- takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState) => void;
+ takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
  workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  supportsDryRun: boolean; today: string; queueRows: ComponentProps<typeof ActivityReport>["queueRows"];
@@ -94,10 +94,13 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
                 ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}
               actorId={boot.actor.id}
-              onSelection={(next) => setRoute({ ...route, archive: next })}
+              browse={route.archiveBrowse}
+              browseInvalid={route.archiveBrowseInvalid}
+              onBrowse={(browse, mode) => setRoute({ ...route, archiveBrowse: browse, archiveBrowseInvalid: undefined }, mode)}
+              onSelection={(next) => setRoute({ ...route, archive: next, archiveBrowse: { ...route.archiveBrowse, filters: route.archiveBrowse?.filters ?? {}, section: undefined } })}
               onView={(next) => setRoute({ ...route, archiveView: next })}
               onFolder={(folder) => setRoute({ ...route, archive: ARCHIVE_INDEX,
-                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow })}
+                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: route.archiveBrowse?.filters ?? {} } })}
             />
           ) : takeover === "activity" ? (
             /*

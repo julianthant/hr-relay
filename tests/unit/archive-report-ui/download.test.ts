@@ -13,7 +13,7 @@ Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 const digest = H_REPORT.files[0].digest;
 const url = `/artifacts/v1/archive/${H_REPORT.runId}/files/${digest}`;
 async function showRetainedFiles(host: HTMLElement) {
-  const button = [...host.querySelectorAll<HTMLButtonElement>("nav[aria-label='Run sections'] button")].find(row => row.textContent?.trim() === "Retained files");
+  const button = [...host.querySelectorAll<HTMLButtonElement>("nav[aria-label='Run sections'] button")].find(row => (row.getAttribute("aria-label") ?? row.textContent?.trim()) === "Retained files");
   if (button === undefined) throw new Error("Missing Retained files section.");
   await act(async () => { button.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
   await act(async () => { await Promise.resolve(); });

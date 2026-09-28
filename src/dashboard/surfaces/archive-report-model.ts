@@ -16,11 +16,11 @@ export function useSavedResource<T>(read: () => Promise<T>, revision = 0): Saved
   return resource;
 }
 export function savedCell(value: ArchiveReportCell): string {
-  if (value === null) return "null";
-  if (typeof value === "boolean") return String(value);
+  if (value === null) return "Null";
+  if (typeof value === "boolean") return value ? "Yes" : "No";
   if (typeof value === "string" && value === "") return '""';
-  if (Array.isArray(value)) return value.length === 0 ? "[]" : archiveCellJson(value);
-  if (typeof value === "object") return Object.keys(value).length === 0 ? "{}" : archiveCellJson(value);
+  if (Array.isArray(value)) return value.length === 0 ? "Empty list" : archiveCellJson(value);
+  if (typeof value === "object") return Object.keys(value).length === 0 ? "Empty record" : archiveCellJson(value);
   return String(value);
 }
 

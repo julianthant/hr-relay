@@ -9,36 +9,38 @@ import { useArchiveClient as useDashboardClient } from "../state/archive-client.
 import { savedCell,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource } from "./archive-report-model.js";
 import { archiveFieldRows } from "../../domain/dashboard/archive-export.js";
 
-export function SavedArchiveReport({ report, deletion }: { report: SavedArchiveReportWire; deletion?: ReactNode }) {
+export function SavedArchiveReport({ report, deletion, section, onSection }: { report: SavedArchiveReportWire; deletion?: ReactNode; section?: number; onSection?: (section: number) => void }) {
   const defaultSection = report.sections.length === 0 && report.versionChange === undefined ? 1 : 0;
   const [active, setActive] = useState(() => ({ runId: report.runId, section: defaultSection }));
   const [search, setSearch] = useState(() => ({ runId: report.runId, value: "" }));
-  const activeSection = active.runId === report.runId ? active.section : defaultSection;
+  const requestedSection = section ?? (active.runId === report.runId ? active.section : defaultSection);
   const fieldSearch = search.runId === report.runId ? search.value : "";
   const sectionItems = [...report.sections.map((section, index) => ({ label: index === 0 && section.title.startsWith("Identity and ") ? "Workflow details" : section.title, key: index })),
     ...(report.versionChange === undefined ? [] : [{ label: "Recorded version change", key: report.sections.length }]),
     { label: "Retained files", key: report.sections.length + 1 },
     { label: "Record details", key: report.sections.length + 2 },
     { label: "All fields", key: report.sections.length + 3 }];
+  const activeSection = sectionItems.some(item => item.key === requestedSection) ? requestedSection : defaultSection;
   const fields = archiveFieldRows([report]).filter(([, path, type, value]) => `${path} ${type} ${value}`.toLowerCase().includes(fieldSearch.toLowerCase()));
   const dashboardVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.dashboard);
   const workflowVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.workflow);
-  return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[var(--ds-space-page)]`}>
-    <dl className={cn(dsText.meta, "flex flex-wrap gap-x-[var(--ds-space-section)] gap-y-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pb-[var(--ds-space-loose)]")}>
+  return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[26px]`}>
+    {requestedSection !== activeSection && <p role="alert">Saved report section is unavailable. Select a retained section.</p>}
+    <dl className={cn(dsText.meta, "flex flex-wrap gap-x-[32px] gap-y-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pt-[18px] pb-[21px] [&>div]:grid [&>div]:gap-[7px] [&_dt]:text-[10.5px] [&_dt]:leading-[15.225px] [&_dd]:text-[12px] [&_dd]:leading-[17.4px]")}>
       <div><dt>Dashboard version</dt><dd className="m-0 text-[color:var(--ds-fg)]">{dashboardVersion}</dd></div>
       <div><dt>Workflow version</dt><dd className="m-0 text-[color:var(--ds-fg)]">{workflowVersion}</dd></div>
-      {report.runtimeVersion !== undefined && <div><dt>Version attribution</dt><dd className="m-0 text-[color:var(--ds-fg)]">{report.runtimeVersion.state}</dd></div>}
+
       <div><dt>Archived</dt><dd className="m-0 text-[color:var(--ds-fg)]"><SavedArchiveTime value={report.capturedAt} /></dd></div>
       <div><dt>Outcome</dt><dd className="m-0 text-[color:var(--ds-fg)]">{savedOutcomeLabel(report.outcome)}</dd></div>
       <div><dt>Retained files</dt><dd className="m-0 text-[color:var(--ds-fg)]">{report.files.length}</dd></div>
     </dl>
-    <div className="grid min-w-0 gap-[var(--ds-space-section)] md:grid-cols-[11.5rem_minmax(0,1fr)]">
-      <nav aria-label="Run sections" className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]"><span className={cn(dsText.caps, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Archived report</span>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-current={activeSection === item.key ? "page" : undefined} className="min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]" onClick={() => setActive({ runId: report.runId, section: item.key })}>{item.label}</Button>)}<p className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>The saved record, as it was when archived.</p></nav>
-      <div className="min-w-0 space-y-[var(--ds-space-base)]"><div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><h2 className={dsText.title}>{sectionItems.find(item => item.key === activeSection)?.label}</h2><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Saved at archive time</span></div>
-    {report.sections.map((section, index) => activeSection !== index ? null : <section key={`${String(index)}:${section.title}`} aria-label={section.title} className="min-w-0 overflow-hidden rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)]">
-      <h3 className={cn(dsText.ui, "m-0 border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-cozy)] font-semibold")}>{section.title}</h3>
+    <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] gap-[22px] min-[1200px]:grid-cols-[185px_minmax(0,1fr)] min-[1200px]:gap-[30px]">
+      <nav aria-label="Run sections" className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]"><span className={cn(dsText.caps, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Archived report</span>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className="min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]" onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}<p className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>The saved record, as it was when archived.</p></nav>
+      <div className="min-w-0 space-y-[22px]"><div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{sectionItems.find(item => item.key === activeSection)?.label}</h2><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Saved at archive time</span></div>
+    {report.sections.map((section, index) => activeSection !== index ? null : <section key={`${String(index)}:${section.title}`} aria-label={section.title} className="min-w-0 overflow-hidden bg-[var(--ds-surface-1)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)]">
+      <h3 className={cn(dsText.ui, "m-0 border-b border-[color:var(--ds-border)] px-[20px] py-[17px] !text-[12px] !leading-[17.4px] font-semibold")}>{section.title}</h3>
       {section.kind === "unavailable" ? <p role="status" className="m-[var(--ds-space-cozy)] break-words [overflow-wrap:anywhere]">{section.reason}</p> : section.kind === "text" ? <pre className="m-[var(--ds-space-cozy)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</pre>
-        : section.kind === "values" ? section.values.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No saved values were captured.</p> : <dl className="grid min-w-0 grid-cols-1 md:grid-cols-2">{section.values.map((cell, n) => <div key={n} className="flex min-h-[46px] min-w-0 flex-wrap items-center justify-between gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] py-[var(--ds-space-snug)] md:[&:nth-child(odd)]:border-r"><dt className="min-w-0 break-words text-[color:var(--ds-fg-muted)] [overflow-wrap:anywhere]">{cell.label}</dt><dd className="m-0 min-w-0 break-words text-right font-medium [overflow-wrap:anywhere]">{savedCell(cell.value)}</dd></div>)}</dl>
+        : section.kind === "values" ? section.values.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No saved values were captured.</p> : <dl className="grid min-w-0 grid-cols-1 min-[1200px]:grid-cols-2">{section.values.map((cell, n) => <div key={n} className={cn("grid min-h-[46px] min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-[color:var(--ds-border)] px-[20px] py-[14px] text-[12px] leading-[17.4px] min-[1200px]:[&:nth-child(odd)]:border-r", n < section.values.length - 1 ? "border-b" : "border-b-0", n >= section.values.length - (section.values.length % 2 === 0 ? 2 : 1) && "min-[1200px]:border-b-0")}><dt className="min-w-0 break-words text-[color:var(--ds-fg-muted)] [overflow-wrap:anywhere]">{cell.label}</dt><dd className="m-0 min-w-0 break-words text-right font-medium [overflow-wrap:anywhere]">{savedCell(cell.value)}</dd></div>)}</dl>
           : <div className="overflow-x-auto"><Table className="min-w-max" label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.length === 0 ? <TR><TD colSpan={section.columns.length}>No saved rows were captured.</TD></TR> : section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}>{savedCell(cell)}</TD>)}</TR>)}</TBody></Table></div>}
     </section>)}
     {report.versionChange !== undefined && activeSection === report.sections.length && <section aria-label="Recorded version change" className="min-w-0 rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"><h3 className={cn(dsText.ui, "break-words font-semibold [overflow-wrap:anywhere]")}>{report.versionChange.change.what}</h3>
@@ -48,7 +50,7 @@ export function SavedArchiveReport({ report, deletion }: { report: SavedArchiveR
         <div key={`${report.runId}:${file.digest}`} className="min-w-0"><SavedAttachment runId={report.runId} digest={file.digest} name={file.name} mediaType={file.mediaType} />
           <p className={cn(dsText.meta, "break-all")}>{file.mediaType} · {file.byteLength} bytes · digest {file.digest}{file.artifactIds === undefined ? "" : ` · artifacts ${file.artifactIds.join(", ")}`}</p></div>)}
     </section>}
-    {activeSection === report.sections.length + 2 && <section aria-label="Record details" className="rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
+    {activeSection === report.sections.length + 2 && <section aria-label="Record details" className="bg-[var(--ds-surface-1)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
       <dl className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-snug)] sm:grid-cols-2">{([
         ["Report state", report.state], ["Title", report.title], ["Run ID", report.runId], ["Transfer ID", report.transferId],
         ["Workflow", report.workflow], ["Item ID", report.itemId], ["Attempt", report.attempt], ["Run number", report.runNumber],
@@ -61,7 +63,7 @@ export function SavedArchiveReport({ report, deletion }: { report: SavedArchiveR
       ] as const).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[color:var(--ds-fg-muted)]">{label}</dt><dd className="m-0 break-all">{savedRecordDetailValue(label, value)}</dd></div>)}</dl>
       {deletion}
     </section>}
-    {activeSection === report.sections.length + 3 && <section aria-label="All fields" className="rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
+    {activeSection === report.sections.length + 3 && <section aria-label="All fields" className="bg-[var(--ds-surface-1)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
       <label className="block"><span className="sr-only">Search all report fields</span><Input value={fieldSearch} onChange={event => setSearch({ runId: report.runId, value: event.target.value })} placeholder="Search all report fields" /></label>
       <p className={dsText.meta}>{fields.length} matching fields · public retained record</p>
       <div className="overflow-x-auto"><Table className="min-w-max" label="All public retained fields"><THead><TR><TH>Field path</TH><TH>Type</TH><TH>Value</TH></TR></THead><TBody>{fields.map(([, path, type, value]) => <TR key={path}><TD>{path}</TD><TD>{type}</TD><TD>{archiveFieldValue(type, value)}</TD></TR>)}</TBody></Table></div>

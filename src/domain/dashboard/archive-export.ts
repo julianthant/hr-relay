@@ -6,6 +6,12 @@ export type ArchiveExportFormat = z.infer<typeof ArchiveExportFormatSchema>;
 
 export const ARCHIVE_CSV_HEADER = '"runId","fieldPath","type","value"\r\n';
 
+export function archiveObjectFieldPath(path: string, key: string): string {
+  return /^[A-Za-z_$][A-Za-z0-9_$]*$/u.test(key)
+    ? (path === "" ? key : `${path}.${key}`)
+    : `${path}[${JSON.stringify(key)}]`;
+}
+
 const ArchiveFieldRowSchema = z.tuple([z.string(), z.string(), z.string(), z.string()]);
 
 export function archiveFieldRows(records: readonly SavedArchiveReportWire[]) {
@@ -25,7 +31,7 @@ export function archiveFieldRows(records: readonly SavedArchiveReportWire[]) {
     if (typeof value === "object") {
       const entries: readonly [string, unknown][] = Object.entries(value);
       if (entries.length === 0) addRow(runId, path, "object", "{}");
-      else entries.forEach(([key, item]) => visit(runId, path === "" ? key : `${path}.${key}`, item));
+      else entries.forEach(([key, item]) => visit(runId, archiveObjectFieldPath(path, key), item));
       return;
     }
     if (typeof value === "string") { addRow(runId, path, "string", value); return; }

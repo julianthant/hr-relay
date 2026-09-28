@@ -4,6 +4,7 @@ import { SavedArchiveGroupsWireSchema, SavedArchiveReportWireSchema, SavedRuntim
 import {
   archiveInitialSummaryColumns,
   archiveReportCount,
+  archiveReviewRunLabel,
   archiveRuntimeVersionPreview,
   archiveSummaryColumnAlignment,
   archiveSummaryColumnLabel,
@@ -218,4 +219,23 @@ describe("Archive workflow summary columns", () => {
     assert.equal(archiveSummaryValue(duplicateLabels, primary), "Primary retained identity");
     assert.equal(archiveSummaryValue(duplicateLabels, secondary), "Second retained identity");
   });
+});
+
+it("right-aligns the exact retained Termination effective date column", () => {
+  const report = SavedArchiveReportWireSchema.parse({ ...H_REPORT, sections: [{ kind: "values", title: "Employment", values: [
+    { label: "Termination effective date", value: "2026-08-01" }, { label: "Employee", value: "Synthetic person" },
+  ] }] });
+  const columns = archiveSummaryColumns([report]);
+  assert.equal(archiveSummaryColumnAlignment(required(columns.find(column => column.label === "Termination effective date"))), "right");
+  assert.equal(archiveSummaryColumnAlignment(required(columns.find(column => column.label === "Employee"))), "left");
+});
+
+it("uses distinct compact reviewed run identities and full IDs when abbreviations collide", () => {
+  const first = "aa11bb22-0100-4000-8000-000000000001";
+  const second = "aa11bb22-0100-4000-8000-000000000002";
+  const collision = "aa11bb22-0200-4000-8000-000000000001";
+  assert.equal(archiveReviewRunLabel(first, [first, second]), "aa11bb22…00000001");
+  assert.equal(archiveReviewRunLabel(second, [first, second]), "aa11bb22…00000002");
+  assert.equal(archiveReviewRunLabel(first, [first, collision]), first);
+  assert.equal(archiveReviewRunLabel(collision, [first, collision]), collision);
 });

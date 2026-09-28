@@ -2,6 +2,7 @@
 import { act, createElement, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { afterEach, expect, it, vi } from "vitest";
+import type { ArchiveBrowseState } from "../../../src/dashboard/app/archive-route-model.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { RuntimeArchiveWorkspace } from "../../../src/dashboard/surfaces/archive-runtime.js";
 import * as archiveExportModel from "../../../src/dashboard/surfaces/archive-export-model.js";
@@ -24,7 +25,7 @@ const runtime = SavedRuntimeVersionIndexWireSchema.parse({ revision: 1, dashboar
 
 async function mount(savedArchiveIndex: (query: SavedArchiveQuery, signal?: AbortSignal) => Promise<SavedArchiveIndexWire> = async () => ({ items: [H_REPORT], next: null }),
   savedArchiveGroups: () => Promise<SavedArchiveGroupsWire> = async () => groups, savedRuntimeVersions: () => Promise<SavedRuntimeVersionIndexWire> = async () => runtime,
-  savedArchiveReport: () => Promise<SavedArchiveDetailWire> = async () => H_REPORT) {
+  savedArchiveReport: () => Promise<SavedArchiveDetailWire> = async () => H_REPORT, initialBrowse?: ArchiveBrowseState, initialFolder: { dashboardKey: string; workflow: string } | null = null) {
   const calls = { savedRuntimeVersions: vi.fn(savedRuntimeVersions), savedArchiveGroups: vi.fn(savedArchiveGroups),
     savedArchiveIndex: vi.fn(savedArchiveIndex),
     savedArchiveReport: vi.fn(savedArchiveReport),
@@ -36,11 +37,13 @@ async function mount(savedArchiveIndex: (query: SavedArchiveQuery, signal?: Abor
     return Reflect.get(target, key) as unknown;
   } }) as unknown as DashboardClient;
   function Harness() {
+    const [browse, setBrowse] = useState(initialBrowse);
     const [view, setView] = useState<"runs" | "versions">("runs");
     const [selection, setSelection] = useState("");
-    const [folder, setFolder] = useState<{ dashboardKey: string; workflow: string } | null>(null);
+    const [folder, setFolder] = useState<{ dashboardKey: string; workflow: string } | null>(initialFolder);
     return createElement(DashboardClientProvider, { client, children: createElement(RuntimeArchiveWorkspace, {
       view, selection, folder, actorId: "local-operator", onView: setView, onSelection: setSelection, onFolder: setFolder,
+      ...(initialBrowse === undefined ? {} : { browse, onBrowse: setBrowse }),
     }) });
   }
   const host = document.createElement("div"); document.body.append(host);
@@ -328,4 +331,29 @@ it("discards late pages after the operator opens a different report", async () =
   expect(downloads.createObjectURL).not.toHaveBeenCalled();
   expect(downloads.click).not.toHaveBeenCalled();
   expect(document.querySelector('[aria-label="Saved archive report"]')).not.toBeNull();
+});
+
+it("shows unchecked workflow versions unchanged in a normalized multi-workflow preview", async () => {
+  await mount();
+  await click("Plan a bump");
+  expect(document.body.textContent).toContain("First workflow · 1.1 → 1.2");
+  expect(document.body.textContent).toContain("Second workflow · Unchanged · 1.0");
+  await toggleCheckbox("Second workflow · Unchanged · 1.0");
+  expect(document.body.textContent).toContain("First workflow · 1.1 → 2.0");
+  expect(document.body.textContent).toContain("Second workflow · 1.0 → 2.0");
+});
+
+it("announces missing persisted columns and resets only the column selection explicitly", async () => {
+  const calls = await mount(undefined, undefined, undefined, undefined, { filters: { search: "Synthetic" }, columns: ["no-longer-retained"] }, { dashboardKey: "unrecorded", workflow: H_REPORT.workflow });
+  expect(document.body.textContent).toContain("Saved column selection includes fields unavailable in this scope.");
+  await click("Reset columns");
+  expect(document.body.textContent).not.toContain("Saved column selection includes fields unavailable in this scope.");
+  expect(document.querySelector("table")?.textContent).toContain("Synthetic subject");
+  expect(calls.savedArchiveIndex).toHaveBeenLastCalledWith(expect.objectContaining({ search: "Synthetic" }));
+});
+
+it("keeps unavailable page-local columns distinct from a confirmed stale complete scope", async () => {
+  await mount(undefined, undefined, undefined, undefined, { filters: {}, columns: ["not-yet-loaded"], after: cursorOf(H_REPORT) }, { dashboardKey: "unrecorded", workflow: H_REPORT.workflow });
+  expect(document.body.textContent).toContain("Other pages may retain these fields.");
+  expect(document.body.textContent).not.toContain("Saved column selection includes fields unavailable in this scope.");
 });

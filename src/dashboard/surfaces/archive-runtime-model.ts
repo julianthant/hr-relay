@@ -82,7 +82,7 @@ export type ArchiveSummaryColumn = Readonly<{
 const SUMMARY_PRIORITY = [/^(?:employee|person|subject).*name$|^name$|^subject$/iu, /^document number$/iu,
   /^last day worked$/iu, /^separation date$/iu, /^(?:termination )?effective date$/iu,
   /employee.*id|eid/iu, /document/iu, /last day worked/iu, /result/iu];
-const LEGACY_RIGHT_ALIGNED_FIELDS = new Set(["last day worked", "separation date", "effective date", "hours", "count", "files", "version"]);
+const LEGACY_RIGHT_ALIGNED_FIELDS = new Set(["last day worked", "separation date", "effective date", "termination effective date", "hours", "count", "files", "version"]);
 
 function summaryType(value: unknown): Exclude<ArchiveSummaryValueType, "mixed"> {
   if (value === null) return "null";
@@ -232,4 +232,10 @@ export function archiveRuntimeVersionPreview(
   const transition = planRuntimeVersionTransition({ dashboard: wire.dashboard,
     workflows: wire.workflows.map(row => ({ workflowId: row.workflowId, version: row.version })) }, scope);
   return Object.freeze({ scope, transition });
+}
+
+export function archiveReviewRunLabel(runId: string, runIds: readonly string[]): string {
+  const compact = (id: string) => `${id.slice(0, 8)}…${id.slice(-8)}`;
+  const label = compact(runId);
+  return runIds.filter(id => compact(id) === label).length > 1 ? runId : label;
 }

@@ -60,7 +60,7 @@ async function mount(savedReport = report) {
 }
 
 async function clickSection(label: string) {
-  const button = [...document.querySelectorAll<HTMLButtonElement>("nav[aria-label='Run sections'] button")].find(row => row.textContent?.trim() === label);
+  const button = [...document.querySelectorAll<HTMLButtonElement>("nav[aria-label='Run sections'] button")].find(row => (row.getAttribute("aria-label") ?? row.textContent?.trim()) === label);
   if (button === undefined) throw new Error(`Missing report section ${label}.`);
   await act(async () => { button.dispatchEvent(new MouseEvent("click", { bubbles: true })); });
 }
@@ -68,7 +68,7 @@ async function clickSection(label: string) {
 it("renders retained document with no provider, descriptors, live records, or files", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...H_REPORT, files: [] } }));
   expect(html).toContain("Captured facts"); expect(html).toContain("Synthetic subject");
-  expect(html).toContain("true"); expect(html).toContain("false"); expect(html).toContain("null");
+  expect(html).toContain("Yes"); expect(html).toContain("No"); expect(html).toContain("Null");
   expect(html).toContain("Dashboard version"); expect(html).toContain("Workflow version");
   expect(html).toContain('aria-current="page"'); expect(html).not.toContain("Export report");
   expect(html.match(/<a /gu)).toBeNull();
@@ -80,9 +80,9 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   expect(document.body.textContent).toContain('""');
   expect(document.body.textContent).toContain("0");
   expect(document.body.textContent).toContain("false");
-  expect(document.body.textContent).toContain("null");
-  expect(document.body.textContent).toContain("[]");
-  expect(document.body.textContent).toContain("{}");
+  expect(document.body.textContent).toContain("Null");
+  expect(document.body.textContent).toContain("Empty list");
+  expect(document.body.textContent).toContain("Empty record");
   expect(document.body.textContent).toContain('"München"');
   expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.textContent).toBe("Captured facts");
 
@@ -101,7 +101,7 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   expect(document.body.textContent).toContain("Bytes unavailable in this synthetic report.");
   expect(document.body.textContent).toContain("artifact");
   await clickSection("Record details");
-  for (const value of [report.runId, report.transferId!, report.itemId!, "2", "null", "failed", "verified", "4.1", "6.2", "adopted", "Absent", report.archiveFingerprint]) {
+  for (const value of [report.runId, report.transferId!, report.itemId!, "2", "Null", "failed", "verified", "4.1", "6.2", "adopted", "Absent", report.archiveFingerprint]) {
     expect(document.body.textContent).toContain(value);
   }
   await clickSection("All fields");
@@ -112,6 +112,8 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   expect(document.body.textContent).toContain("sections[0].values[5].value");
   expect(document.body.textContent).toContain("sections[0].values[6].value");
   expect(document.body.textContent).toContain("sections[0].values[7].value");
+  const rawFields = document.querySelector('section[aria-label="All public retained fields"]')?.textContent ?? document.body.textContent;
+  for (const raw of ["false", "null", "[]", "{}", "0"]) expect(rawFields).toContain(raw);
   expect(calls.savedArchiveFile).toHaveBeenCalledWith(report.runId, report.files[0].digest);
 });
 
@@ -122,7 +124,14 @@ it("resets a selected pane and field search when the saved run changes", async (
   const nextReport = SavedArchiveReportWireSchema.parse({ ...withoutVersionChange,
     runId: "00000000-0000-4000-8000-000000000086", sections: [], files: [] });
   await rerender(nextReport);
-  expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.textContent).toBe("Retained files");
+  expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.getAttribute("aria-label")).toBe("Retained files");
   expect(document.body.textContent).toContain("No attachment was retained with this report.");
   expect(document.body.textContent).not.toContain("All public retained fields");
+});
+
+it("announces a stale routed report section instead of silently selecting its default", () => {
+  const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report, section: 999 }));
+  expect(html).toContain("Saved report section is unavailable. Select a retained section.");
+  expect(html).toContain('role="alert"');
+  expect(html).toContain("Captured facts");
 });

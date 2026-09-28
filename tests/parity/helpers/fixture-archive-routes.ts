@@ -1,5 +1,7 @@
+import { ArchiveGroupQuerySchema } from "../../../src/domain/archive/report.js";
+import { matchesArchiveComparisonQuery } from "./fixture-archive-query.js";
 import { Hono } from "hono";
-import { ArchivedCaptureResourceWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema, SavedArchiveIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveQuerySchema, ArchivedCaptureResourceWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema, SavedArchiveIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
 import {
 archiveEvidenceResponseBody,
 FIXTURE_ARCHIVE_EVIDENCE_BYTES,
@@ -27,18 +29,12 @@ export function registerFixtureArchiveRoutes({ app, archiveEvidence, archivedRun
 
   app.get("/api/v1/archive/reports", c => {
     if (input.archiveComparison === undefined) return c.json({ items: c.req.query("workflow") && c.req.query("workflow") !== FIXTURE_SAVED_REPORT.workflow ? [] : [FIXTURE_SAVED_REPORT], next: null });
-    const dashboard = c.req.query("dashboardVersion");
-    const requested = dashboard === undefined ? null : JSON.parse(dashboard) as { major: number; minor: number };
-    const after = c.req.query("after");
-    const cursor = after === undefined ? null : JSON.parse(after) as { completedAt: string; runId: string };
-    const limit = Number(c.req.query("limit") ?? "50");
-    const reports = input.archiveComparison.reports.filter(report =>
-      (c.req.query("workflow") === undefined || report.workflow === c.req.query("workflow"))
-      && (c.req.query("versionState") !== "unrecorded" || report.runtimeVersion === undefined)
-      && (requested === null || (report.runtimeVersion?.dashboard.major === requested.major && report.runtimeVersion.dashboard.minor === requested.minor))
-      && (c.req.query("search") === undefined || JSON.stringify(report).toLowerCase().includes((c.req.query("search") ?? "").toLowerCase())))
+    const query = SavedArchiveQuerySchema.parse(parseArchiveFixtureQuery(c.req.query(), true));
+    const limit = query.limit;
+    const reports = input.archiveComparison.reports.filter(report => matchesArchiveComparisonQuery(report, query))
       .sort((a, b) => a.completedAt.localeCompare(b.completedAt) || a.runId.localeCompare(b.runId))
-      .filter(report => cursor === null || report.completedAt > cursor.completedAt || (report.completedAt === cursor.completedAt && report.runId > cursor.runId));
+      .filter(report => query.after === undefined || report.completedAt > query.after.completedAt
+        || (report.completedAt === query.after.completedAt && report.runId > query.after.runId));
     const items = reports.slice(0, limit);
     const last = items.at(-1);
     return c.json(SavedArchiveIndexWireSchema.parse({ items, next: reports.length > items.length && last !== undefined
@@ -49,16 +45,17 @@ export function registerFixtureArchiveRoutes({ app, archiveEvidence, archivedRun
     (c.req.query("workflow") && c.req.query("workflow") !== FIXTURE_SAVED_REPORT.workflow)
       || (c.req.query("outcome") && c.req.query("outcome") !== FIXTURE_SAVED_REPORT.outcome)
       ? [] : [{ dashboardVersion: null, workflow: FIXTURE_SAVED_REPORT.workflow, workflowVersion: null,
-        reportCount: 1, latestCompletedAt: FIXTURE_SAVED_REPORT.completedAt }] : [...input.archiveComparison.reports.reduce((groups, report) => {
+        reportCount: 1, latestCompletedAt: FIXTURE_SAVED_REPORT.completedAt }] : [...input.archiveComparison.reports.filter(report => matchesArchiveComparisonQuery(report, ArchiveGroupQuerySchema.parse(parseArchiveFixtureQuery(c.req.query(), false)))).reduce((groups, report) => {
           const dashboard = report.runtimeVersion?.dashboard ?? null;
           const workflowVersion = report.runtimeVersion?.workflow ?? null;
           const key = `${JSON.stringify(dashboard)}:${report.workflow}:${JSON.stringify(workflowVersion)}`;
           const existing = groups.get(key);
           groups.set(key, { dashboardVersion: dashboard, workflow: report.workflow, workflowVersion,
             reportCount: (existing?.reportCount ?? 0) + 1,
-            latestCompletedAt: existing?.latestCompletedAt && existing.latestCompletedAt > report.completedAt ? existing.latestCompletedAt : report.completedAt });
+            latestCompletedAt: existing?.latestCompletedAt && existing.latestCompletedAt > report.completedAt ? existing.latestCompletedAt : report.completedAt,
+            latestCapturedAt: existing?.latestCapturedAt && existing.latestCapturedAt > report.capturedAt ? existing.latestCapturedAt : report.capturedAt });
           return groups;
-        }, new Map<string, { dashboardVersion: { major: number; minor: number } | null; workflow: string; workflowVersion: { major: number; minor: number } | null; reportCount: number; latestCompletedAt: string }>()).values()] })));
+        }, new Map<string, { dashboardVersion: { major: number; minor: number } | null; workflow: string; workflowVersion: { major: number; minor: number } | null; reportCount: number; latestCompletedAt: string; latestCapturedAt: string }>()).values()] })));
 
   app.get("/api/v1/archive/runtime-versions", c => c.json(input.archiveComparison?.versions ?? SavedRuntimeVersionIndexWireSchema.parse({
     revision: 1, dashboard: { major: 1, minor: 0 },
@@ -116,4 +113,13 @@ export function registerFixtureArchiveRoutes({ app, archiveEvidence, archivedRun
       },
     });
   });
+}
+
+function parseArchiveFixtureQuery(raw: Record<string, string>, paged: boolean): unknown {
+  const query: Record<string, unknown> = { ...raw };
+  for (const key of ["dashboardVersion", "workflowVersion", "after"]) {
+    const value = raw[key]; if (value !== undefined) query[key] = JSON.parse(value);
+  }
+  if (paged) query.limit = Number(raw.limit ?? 50);
+  return query;
 }

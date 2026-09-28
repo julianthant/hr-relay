@@ -88,7 +88,7 @@ async function runtimePress(label:string){
 }
 async function flushRuntime(){await act(async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();});}
 function checkbox(label:string){
-  const copy=[...document.querySelectorAll("label")].find(node=>node.textContent?.includes(label));
+  const copy=[...document.querySelectorAll("label")].find(node=>node.textContent?.startsWith(`${label.split(" · ")[0]} · `));
   const control=copy?.previousElementSibling;
   assert.ok(control instanceof HTMLButtonElement,`checkbox ${label} exists`);
   return control;
@@ -147,7 +147,8 @@ it("defaults to the selected report's eligible workflow and plans each served se
   const second=CommandRequestSchema.parse(h.commands[1]);assert.equal(second.type,"plan-runtime-version");if(second.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(second.target.scope,{kind:"workflows",workflowIds:["person-lookup"]});
   assert.match(runtimeText(),/Workflow A: 1\.2 → 1\.3/u);assert.match(runtimeText(),new RegExp(`${RUNTIME_RUN_A} · will be archived`));
-  assert.ok(runtimeButtons().filter(button=>button.textContent==="Apply reviewed change").some(button=>button.disabled));
+  assert.equal(runtimeButtons().filter(button=>button.textContent==="Apply reviewed change").length,1);
+  assert.equal(document.querySelector("details details button"),null, "older blocked review cannot apply");
   assert.equal(h.reads()>=3,true);
 });
 
@@ -225,13 +226,14 @@ it("invalidates workflow A when selection moves to blocked workflow B",async()=>
   const firstApply=runtimeButtons().find(button=>button.textContent==="Apply reviewed change");assert.ok(firstApply);assert.equal(firstApply.disabled,false);
   await toggleRuntimeCheckbox("Workflow A · 1.2 → 1.3");await flushRuntime();
   await toggleRuntimeCheckbox("Workflow B · 1.7 → 1.8");await flushRuntime();
-  const stale=runtimeButtons().find(button=>button.textContent==="Apply reviewed change");assert.ok(stale);assert.equal(stale.disabled,true);
+  const stale=runtimeButtons().find(button=>button.textContent==="Apply reviewed change");assert.equal(stale,undefined);
   assert.match(runtimeText(),/Review is stale for the current selection/u);
   await runtimePress("Review affected runs");await flushRuntime();
   assert.match(runtimeText(),/Dashboard 1\.0 → 1\.0/u);assert.match(runtimeText(),/Workflow B: 1\.7 → 1\.8/u);
   assert.match(runtimeText(),new RegExp(`${RUNTIME_RUN_B} · Blocked · queued`));assert.doesNotMatch(runtimeText(),new RegExp(RUNTIME_RUN_C));
   const blocked=runtimeButtons().filter(button=>button.textContent==="Apply reviewed change").find(button=>!button.disabled);
   assert.equal(blocked,undefined);
+  assert.equal(runtimeButtons().find(button=>button.textContent==="Review affected runs")?.disabled,false);
   assert.equal(h.commands.filter(value=>CommandRequestSchema.parse(value).type==="apply-runtime-version").length,0);
 });
 

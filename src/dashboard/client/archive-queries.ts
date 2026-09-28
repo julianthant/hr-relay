@@ -91,14 +91,14 @@ export function createArchiveQueries(transport: DashboardTransport): ArchiveQuer
 
     async savedArchiveGroups(input: ArchiveGroupQuery): Promise<SavedArchiveGroupsWire> {
       const query = ArchiveGroupQuerySchema.parse(input);
-      const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
+      const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
       const path = "/api/v1/archive/groups" + (params.size === 0 ? "" : `?${params.toString()}`);
       return parseOrThrow(SavedArchiveGroupsWireSchema, `GET ${path}`, await transport.requestJson(path));
     },
 
     async savedArchiveIndex(input: SavedArchiveQuery, signal?: AbortSignal): Promise<SavedArchiveIndexWire> {
       const query = SavedArchiveQuerySchema.parse(input);
-      const params = new URLSearchParams(Object.entries(query).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
+      const params = new URLSearchParams(Object.entries(query).filter(([, value]) => value !== undefined).map(([key, value]) => [key, typeof value === "object" ? JSON.stringify(value) : String(value)]));
       const path = `/api/v1/archive/reports?${params.toString()}`;
       return parseOrThrow(SavedArchiveIndexWireSchema, `GET ${path}`, await transport.requestJson(path, signal === undefined ? undefined : { signal }));
     },

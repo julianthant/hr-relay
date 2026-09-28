@@ -218,7 +218,7 @@ export class ArchiveDatabase {
         json_extract(report_json,'$.content.runtimeVersion.dashboard.minor') AS dashboard_minor,
         json_extract(report_json,'$.content.runtimeVersion.workflow.major') AS workflow_major,
         json_extract(report_json,'$.content.runtimeVersion.workflow.minor') AS workflow_minor,
-        count(*) AS report_count, max(completed_at) AS latest_completed_at
+        count(*) AS report_count, max(completed_at) AS latest_completed_at, max(captured_at) AS latest_captured_at
         FROM archive_records WHERE ${clauses.join(" AND ")}
         GROUP BY workflow,dashboard_major,dashboard_minor,workflow_major,workflow_minor
         ORDER BY dashboard_major DESC,dashboard_minor DESC,workflow,workflow_major DESC,workflow_minor DESC`).all(...values);
@@ -226,13 +226,13 @@ export class ArchiveDatabase {
         const row = z.strictObject({ workflow: z.string().min(1), dashboard_major: z.number().int().nullable(),
           dashboard_minor: z.number().int().nullable(), workflow_major: z.number().int().nullable(),
           workflow_minor: z.number().int().nullable(), report_count: z.number().int().positive(),
-          latest_completed_at: z.string().datetime() }).parse(raw);
+          latest_completed_at: z.string().datetime(), latest_captured_at: z.string().datetime() }).parse(raw);
         if ((row.dashboard_major === null) !== (row.dashboard_minor === null)
           || (row.workflow_major === null) !== (row.workflow_minor === null)
           || (row.dashboard_major === null) !== (row.workflow_major === null)) throw new Error("archive-group-version-invalid");
         return { dashboardVersion: row.dashboard_major === null ? null : { major: row.dashboard_major, minor: row.dashboard_minor! },
           workflow: row.workflow, workflowVersion: row.workflow_major === null ? null : { major: row.workflow_major, minor: row.workflow_minor! },
-          reportCount: row.report_count, latestCompletedAt: row.latest_completed_at };
+          reportCount: row.report_count, latestCompletedAt: row.latest_completed_at, latestCapturedAt: row.latest_captured_at };
       });
       this.#database.exec("COMMIT");
       return groups;
