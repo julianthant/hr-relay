@@ -2,12 +2,13 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
   compileWorkflow,
+  composeWorkflowModule,
   defineWorkflow,
 } from "../../src/base/workflow-definition.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
-import { EidSchema, ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
+import { EidSchema, FingerprintSchema, ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { RunEnvelopeSchema } from "../../src/domain/run/envelope.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import {
@@ -37,6 +38,10 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
+import { taskStoreRegistry } from "../../src/stores/index.js";
+import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";
+import { manualClock } from "../../src/domain/clock.js";
+import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 import { fixtureBuildManifest } from "./fixtures/workflow-definition-fixtures.js";
 
 const DISPLAY_NESTED_ID = "fixture-operation-display-nested";
@@ -622,6 +627,26 @@ describe("workflow operation display declarations", () => {
       workflowId: compiled.descriptor.id,
       definitionFingerprint: compiled.descriptor.contractFingerprint,
     })).toThrow(/corrupt frozen operation display snapshot digest/u);
+  });
+
+  it("serves the exact compiled complete structure through the real Explorer projection", () => {
+    const compiled = compileDisplayWorkflow(forwardWorkflow);
+    const module = composeWorkflowModule(compiled, taskStoreRegistry.stores);
+    const explorer = buildWorkflowExplorer({
+      ...explorerQueryDeps(manualClock(new Date("2026-09-27T12:00:00.000Z")), FingerprintSchema.parse("c".repeat(64))),
+      modules: [module],
+      buildManifest: fixtureBuildManifest([DISPLAY_FORWARD_ID]),
+    });
+    const workflow = explorer.workflows[0];
+    if (workflow === undefined || workflow.operationStructure.state !== "declared") {
+      throw new Error("Explorer did not serve the complete operation declaration");
+    }
+    const expected = freezeWorkflowOperationDisplaySnapshot({
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+      display: compiled.descriptor.operationDisplay,
+    });
+    expect(workflow.operationStructure.definition).toEqual(expected);
   });
 
   it("attaches the complete snapshot when buildQueuedRun mints the immutable envelope", () => {

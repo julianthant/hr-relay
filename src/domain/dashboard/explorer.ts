@@ -54,6 +54,7 @@ import {
   WorkflowCodeSchema,
 } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
+import { ExplorerOperationStructureWireSchema } from "./operation-structure.js";
 
 /**
  * A repository-relative source path. Anchored and slash-separated, with no
@@ -457,6 +458,8 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   role: WorkflowModuleRoleSchema,
   version: z.number().int().positive(),
   contractFingerprint: FingerprintSchema,
+  /** One declared operation tree, or explicit legacy absence. */
+  operationStructure: ExplorerOperationStructureWireSchema,
   /** The exact closed subset the safe-edit protocol derives for this descriptor. */
   edit: z.strictObject({
     overrideRevision: z.number().int().nonnegative(),

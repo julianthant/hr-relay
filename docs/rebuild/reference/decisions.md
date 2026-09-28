@@ -1,4 +1,14 @@
-# `reference/decisions.md` — the decision ledger (D1–D356, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D357, 2026-07-17 → 2026-09-27)
+
+**D357 — Shared Explorer/Logs operation structure (approved Plan 1 P1.3, 2026-09-27):**
+Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs
+serve the run's retained snapshot plus only the current page's completed action occurrences,
+joined by exact run, fingerprint, invocation, action, occurrence, and target identities. A
+current registry descriptor never fills a historical gap. New Plan 1 envelopes stamp complete or
+legacy capability, so a removed complete snapshot fails by name; pre-Plan-1 envelopes remain
+explicit legacy. Browser action raw values remain out of the Logs row; protected provenance stays
+redacted.
+Owner: [dashboard-surfaces D357](dashboard-surfaces.md#d357--shared-explorerlogs-operation-structure--2026-09-27).
 
 **D356 — Frozen complete operation display per run (approved Plan 1 P1.2, 2026-09-27):**
 Every new complete-format run atomically carries a strict canonical serializable operation-display

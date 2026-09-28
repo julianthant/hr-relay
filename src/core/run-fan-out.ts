@@ -179,6 +179,7 @@ export function fanOutQueuedRuns(
       commandId: lifecycleCommandId("operator-create", { commandId: envelope.commandId, entry: runs.length }),
       code: descriptor.code, matchKey: entry.matchKey, workflow: envelope.workflow,
       descriptorVersion: envelope.descriptorVersion, contractFingerprint: envelope.contractFingerprint,
+      operationDisplayCapability: operationDisplaySnapshot === undefined ? "legacy" : "complete",
       operationDisplaySnapshot,
       requestedInstance: envelope.requestedInstance, resolvedInstance: envelope.resolvedInstance,
       configFingerprint: envelope.configFingerprint, configSnapshotId: envelope.configSnapshotId,

@@ -40,6 +40,7 @@ import {
 import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
 import { buildRunLogsSection } from "../../src/server/dashboard/queries/run-logs.js";
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail-types.js";
+import { ObservedOperationStructureWireSchema } from "../../src/domain/dashboard/operation-structure.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
@@ -343,7 +344,9 @@ describe("complete operation display action binding", () => {
     const page = buildRunLogsSection({
       stateRoot,
       projection: { runLogSnapshot: () => ({ entries: [] }) },
-      descriptors: { resolve: () => actionBindingCompiled.descriptor },
+      // Historical Logs must use the envelope snapshot, not a current
+      // registry lookup for this now-unregistered synthetic workflow.
+      descriptors: { resolve: () => undefined },
     } as unknown as RunDetailQueryDeps, UUID_5, undefined, terminal);
     if (page.section !== "logs") throw new Error("expected action log page");
     assert.deepEqual(page.payload.rows?.map((row) => row.sequence), [0, 1, 2]);
@@ -352,6 +355,45 @@ describe("complete operation display action binding", () => {
       "Clicked ucpath person org search button",
       "Clicked ucpath person org search button",
     ]);
+    if (page.payload.operationStructure?.state !== "observed") {
+      throw new Error("complete action run did not retain an observed operation structure");
+    }
+    assert.equal(
+      page.payload.operationStructure.definition.contentDigest,
+      terminal.envelope.operationDisplaySnapshot?.contentDigest,
+    );
+    assert.deepEqual(
+      page.payload.operationStructure.observations.map(({ occurrence }) => [
+        occurrence.invocationId,
+        occurrence.logicalActionId,
+        occurrence.occurrence,
+      ]),
+      [
+        ["search-operation", "fill-eid", 1],
+        ["search-operation", "run-search", 1],
+        ["search-operation", "run-search", 2],
+      ],
+    );
+    assert.equal(
+      page.payload.operationStructure.observations[0]?.occurrence.value?.state,
+      "redacted",
+    );
+    const firstObservation = page.payload.operationStructure.observations[0];
+    assert.ok(firstObservation);
+    assert.equal(ObservedOperationStructureWireSchema.safeParse({
+      ...page.payload.operationStructure,
+      observations: [{
+        ...firstObservation,
+        occurrence: { ...firstObservation.occurrence, logicalActionId: "missing-action" },
+      }],
+    }).success, false, "a new-format unknown action must not be assigned a nearby frozen action");
+    assert.equal(ObservedOperationStructureWireSchema.safeParse({
+      ...page.payload.operationStructure,
+      observations: [{
+        ...firstObservation,
+        occurrence: { ...firstObservation.occurrence, definitionFingerprint: "0".repeat(64) },
+      }],
+    }).success, false, "a mismatched snapshot fingerprint must refuse");
   });
 
   it("keeps retry attempts distinct while retaining completed-gesture append order", async () => {
@@ -537,22 +579,27 @@ describe("complete operation display action binding", () => {
     }
   });
 
-  it("refuses missing and corrupt complete snapshots at executor entry before a driver opens", async () => {
+  it("refuses missing complete snapshots at record admission and corrupt snapshots before a driver opens", async () => {
     const missingHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const missingQueued = actionBindingQueuedRun(missingHarness.authority.clock.now().toISOString());
     const { operationDisplaySnapshot: _snapshot, ...missingEnvelope } = missingQueued.envelope;
-    const missing = RunRecordSchema.parse({ ...missingQueued, envelope: missingEnvelope });
-    const missingClaim = enqueueAndClaim(
-      missingHarness.authority.database,
-      missing,
-      missingHarness.authority.clock.now().toISOString(),
-      ACTION_BINDING_WORKFLOW_ID,
-    );
-    await assert.rejects(
-      () => executeClaimedRun(missingHarness.deps, { ...missingClaim, signal: SIGNAL }),
+    assert.throws(
+      () => RunRecordSchema.parse({ ...missingQueued, envelope: missingEnvelope }),
       /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
     );
     assert.equal(missingHarness.sessions.opens(), 0);
+
+    assert.throws(
+      () => buildRunLogsSection({
+        stateRoot: missingHarness.authority.stateRoot,
+        projection: { runLogSnapshot: () => ({ entries: [] }) },
+        descriptors: { resolve: () => undefined },
+      } as unknown as RunDetailQueryDeps, UUID_5, undefined, {
+        ...missingQueued,
+        envelope: missingEnvelope,
+      }),
+      /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
+    );
 
     const corruptHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
     const corruptClaim = enqueueAndClaim(

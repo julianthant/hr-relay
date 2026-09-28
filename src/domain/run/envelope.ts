@@ -91,6 +91,11 @@ export const RunEnvelopeSchema = z.strictObject({
   traceId: TraceIdSchema,
   descriptorVersion: PositiveIntSchema,
   contractFingerprint: FingerprintSchema,
+  /**
+   * Stamped for Plan 1-era enqueues so a missing complete snapshot cannot be
+   * quietly read as a legacy run.  Absence remains readable for older history.
+   */
+  operationDisplayCapability: z.enum(["legacy", "complete"]).optional(),
   /** D356 — present only for a complete display minted with this exact run. */
   operationDisplaySnapshot: WorkflowOperationDisplaySnapshotSchema.optional(),
   requestedInstance: InstanceSelectionSchema.optional(),
@@ -129,6 +134,20 @@ export const RunEnvelopeSchema = z.strictObject({
   attempt: PositiveIntSchema,
   enqueuedAt: IsoInstantSchema,
 }).superRefine((envelope, context) => {
+  if (envelope.operationDisplayCapability === "complete" && envelope.operationDisplaySnapshot === undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["operationDisplaySnapshot"],
+      message: `complete run ${envelope.workflow} is missing its frozen operation display snapshot`,
+    });
+  }
+  if (envelope.operationDisplayCapability === "legacy" && envelope.operationDisplaySnapshot !== undefined) {
+    context.addIssue({
+      code: "custom",
+      path: ["operationDisplaySnapshot"],
+      message: `legacy run ${envelope.workflow} cannot carry a complete operation display snapshot`,
+    });
+  }
   if (envelope.operationDisplaySnapshot !== undefined) {
     try {
       requireWorkflowOperationDisplaySnapshot(envelope.operationDisplaySnapshot, {

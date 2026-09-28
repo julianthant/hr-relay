@@ -72,6 +72,7 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     traceId: spec.traceId,
     descriptorVersion: spec.descriptor.version,
     contractFingerprint: spec.descriptor.contractFingerprint,
+    operationDisplayCapability: operationDisplaySnapshot === undefined ? "legacy" : "complete",
     ...(operationDisplaySnapshot === undefined ? {} : { operationDisplaySnapshot }),
     ...(spec.requestedInstance === undefined ? {} : { requestedInstance: spec.requestedInstance }),
     resolvedInstance: spec.resolvedInstance,

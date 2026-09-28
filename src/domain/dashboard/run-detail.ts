@@ -49,6 +49,7 @@ import {
   wireResourceSchema,
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
+import { RunOperationStructureWireSchema } from "./operation-structure.js";
 import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../../events/types.js";
 
 export const RunIdentityWireSchema = z.strictObject({
@@ -492,6 +493,8 @@ export const LogPageCursorSchema = z.string()
 
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
+  /** Live Logs always send this; older frozen archive pages predate it. */
+  operationStructure: RunOperationStructureWireSchema.optional(),
   /**
    * D270 / L3 — the one combined page. Optional only so a frozen archive
    * written before observed-log rows existed remains readable; a live query

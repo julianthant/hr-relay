@@ -197,6 +197,19 @@ not-run. Value provenance records the exact consumed value's immediate declared
 producer while prior reads remain traversable evidence; protected inputs are redacted
 before a note is durable or projected.
 
+### D357 — Shared Explorer/Logs operation structure · 2026-09-27
+
+Explorer's complete-format projection is the same canonical, redacted definition that a
+new enqueue freezes. Logs reads only the immutable envelope definition and completed action
+occurrences retained in the selected log page. Each observation must name one exact run,
+definition fingerprint, invocation, action, occurrence and target; an unknown or mismatched
+identity refuses rather than matching current descriptor text or a similarly named action.
+The existing Logs cursor remains authoritative: a page carries only its own observations, while
+older envelope records without a Plan 1 capability stamp remain explicit legacy. New enqueues
+stamp `complete` or `legacy`, so a missing complete snapshot cannot silently downgrade. The
+normal note row continues to omit raw browser action payloads; any field value is read from the
+already-redacted provenance arm.
+
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
 These decisions ratify the 49 A recommendations in the six 2026-08-25 sheets. They are **not
