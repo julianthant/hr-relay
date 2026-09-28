@@ -95,7 +95,25 @@ export function captureArchiveReport(input: Readonly<{
   };
   const safe = z.object({ run: JsonValueSchema, records: z.array(JsonValueSchema), sections: z.array(ArchiveReportSectionSchema) })
     .parse(scrub(valueFreeProtectedData(original, bindings)));
-  const sections: Section[] = [genericArchiveSection("Run and frozen inputs", safe.run)];
+  const member = (value: JsonValue | undefined, key: string): JsonValue | undefined =>
+    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Readonly<Record<string, JsonValue>>)[key] : undefined;
+  const envelope = member(safe.run, "envelope");
+  const frozenInput = member(safe.run, "input");
+  const settingsIndex = snapshot.records.findIndex(group => group.table === "settings_snapshots");
+  const retainedSettings = settingsIndex < 0 ? undefined : member(safe.records[settingsIndex], "rows");
+  const settingsRows: readonly JsonValue[] = Array.isArray(retainedSettings) ? retainedSettings as JsonValue[] : [];
+  const settings = settingsRows.length === 1 ? member(settingsRows[0], "value") : undefined;
+  const runMode = member(envelope, "dryRun");
+  const submittedInput = member(frozenInput, "raw");
+  const parsedInput = member(member(frozenInput, "parsed"), "value");
+  const inputSection: Section = { kind: "values", title: "Inputs & settings", values: [
+    { label: "Run mode", value: runMode === true ? "Dry run" : runMode === false ? "Live run" : "Unavailable" },
+    { label: "Submitted input", value: submittedInput === undefined ? { state: "unavailable", reason: "Submitted input was not retained" } : submittedInput },
+    { label: "Parsed input", value: parsedInput === undefined ? { state: "unavailable", reason: "Parsed input was not retained" } : parsedInput },
+    { label: "Captured settings", value: settings ?? { state: "unavailable", reason: "No settings snapshot was retained for this run" } },
+  ] };
+  const sections: Section[] = [genericArchiveSection("Run and frozen inputs", safe.run), inputSection];
   for (const [index, group] of snapshot.records.entries()) {
     sections.push(group.rows.length === 0
       ? { kind: "unavailable", title: group.table, reason: "No source record was retained at capture" }

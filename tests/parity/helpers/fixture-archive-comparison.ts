@@ -2,23 +2,30 @@ import { SavedArchiveReportWireSchema, SavedRuntimeVersionIndexWireSchema } from
 import type { SavedArchiveReportWire } from "../../../src/domain/dashboard/archive.js";
 
 const v = (major: number, minor: number) => ({ major, minor });
+const personName = (person: number) => ["", "Morgan Vale", "Avery Reed", "Jordan Quinn", "Taylor Finch", "Casey Rowan", "Riley Park", "Devon Moss"][person] ?? `Example person ${person}`;
 const fields = (person: number) => [
-  { label: "Employee name", value: `Sample Person ${String(person).padStart(2, "0")}` },
+  { label: "Employee name", value: personName(person) },
   { label: "Employee ID", value: `DEMO-${String(person).padStart(2, "0")}` },
   { label: "Document number", value: `SAMPLE-${String(person).padStart(2, "0")}` },
-  { label: "Last day worked", value: "09/18/2026" },
-  { label: "Separation date", value: "09/20/2026" },
-  { label: "Termination effective date", value: "09/21/2026" },
+  { label: "Last day worked", value: "09/14/2026" },
+  { label: "Separation date", value: "09/15/2026" },
+  { label: "Termination effective date", value: "09/16/2026" },
   { label: "Date source", value: "kronos-timesheet" },
-  { label: "Kuali last day worked", value: "09/18/2026" },
-  { label: "Kuali separation date", value: "09/18/2026" },
+  { label: "Kuali last day worked", value: "09/14/2026" },
+  { label: "Kuali separation date", value: "09/14/2026" },
   { label: "Last day worked changed", value: false },
   { label: "Separation date changed", value: true },
-  { label: "Latest sick date", value: "09/20/2026" },
+  { label: "Latest sick date", value: "09/15/2026" },
   { label: "First holiday date", value: null },
   { label: "Latest holiday date", value: null },
   { label: "Separation determining leave", value: "sick" },
   { label: "Unclassified pay codes", value: [] },
+];
+const lookupFields = (person: number) => [
+  { label: "Employee name", value: personName(person) },
+  { label: "Employee ID", value: `DEMO-${String(person).padStart(2, "0")}` },
+  { label: "Lookup status", value: "Record found" },
+  { label: "Source system", value: "UCPath" },
 ];
 
 function report(number: number, dashboard: { major: number; minor: number } | null,
@@ -27,15 +34,17 @@ function report(number: number, dashboard: { major: number; minor: number } | nu
   const runId = `aa11bb22-0100-4000-8000-${String(number).padStart(12, "0")}`;
   const isSeparation = workflow === "separations";
   return SavedArchiveReportWireSchema.parse({
-    state: "available", runId, title: isSeparation ? `Run ${number}` : `Person lookup ${number}`,
+    state: "available", runId, title: isSeparation ? `${personName(number)} · Separation ${number}` : `${personName(number)} · Lookup ${number}`,
     workflow, descriptorVersion: "1", outcome: "done", completedAt: `2026-09-${String(day).padStart(2, "0")}T11:00:00.000Z`,
     capturedAt: `2026-09-${String(day).padStart(2, "0")}T11:30:00.000Z`, archiveFingerprint: "e".repeat(64),
     ...(dashboard === null ? {} : { runtimeVersion: { state: "stamped", dashboard, workflow: workflowVersion } }),
     sections: [
-      { kind: "values", title: isSeparation ? "Identity and separation" : "Identity and lookup", values: fields(number) },
+      { kind: "values", title: isSeparation ? "Identity and separation" : "Identity and lookup", values: isSeparation ? fields(number) : lookupFields(number) },
       { kind: "values", title: "Inputs & settings", values: [
-        { label: "Dry run", value: true }, { label: "Hours", value: 0 },
-        { label: "Input options", value: { source: "synthetic", codes: ["A", "B"] } },
+        { label: "Run mode", value: "Dry run" },
+        { label: "Submitted input", value: isSeparation ? { employeeId: `DEMO-${String(number).padStart(2, "0")}`, lastDayWorked: "2026-09-14", separationDate: "2026-09-15" } : { employeeId: `DEMO-${String(number).padStart(2, "0")}` } },
+        { label: "Parsed input", value: isSeparation ? { employeeId: `DEMO-${String(number).padStart(2, "0")}`, lastDayWorked: "2026-09-14", separationDate: "2026-09-15" } : { employeeId: `DEMO-${String(number).padStart(2, "0")}` } },
+        { label: "Captured settings", value: { state: "unavailable", reason: "No settings snapshot was retained for this example" } },
       ] },
       { kind: "table", title: "Steps & results", columns: ["Step", "Result"], rows: [["Prepare", "Done"], ["Verify", "Done"]] },
       { kind: "text", title: "Record notes", text: "Synthetic saved record with complete public field density for design comparison." },

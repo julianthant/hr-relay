@@ -87,13 +87,18 @@ async function runtimePress(label:string){
   await act(async()=>{matches[0].click();await Promise.resolve();await Promise.resolve();});
 }
 async function flushRuntime(){await act(async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();});}
-function checkbox(label:string){
+async function checkbox(label:string){
+  if (![...document.querySelectorAll("label")].some(node=>node.textContent?.startsWith(`${label.split(" · ")[0]} · `))) {
+    const trigger=[...document.querySelectorAll("button")].find(node=>node.getAttribute("aria-label")==="Workflow to bump");
+    assert.ok(trigger,"workflow picker exists");
+    await act(async()=>{trigger.click();await Promise.resolve();});
+  }
   const copy=[...document.querySelectorAll("label")].find(node=>node.textContent?.startsWith(`${label.split(" · ")[0]} · `));
   const control=copy?.previousElementSibling;
   assert.ok(control instanceof HTMLButtonElement,`checkbox ${label} exists`);
   return control;
 }
-async function toggleRuntimeCheckbox(label:string){await act(async()=>checkbox(label).click());}
+async function toggleRuntimeCheckbox(label:string){const control=await checkbox(label);await act(async()=>control.click());}
 async function mountRuntime(options:{
   index?:SavedRuntimeVersionIndexWire;
   contextRunId?:string;
@@ -132,8 +137,8 @@ it("defaults to the selected report's eligible workflow and plans each served se
   const report={...H_REPORT,workflow:"other-workflow"};
   const h=await mountRuntime({contextRunId:H_REPORT.runId,contextReport:report});
   await flushRuntime();
-  assert.equal(checkbox("Workflow B · 1.7 → 1.8").getAttribute("aria-checked"),"true");
-  assert.equal(checkbox("Workflow A · 1.2 → 1.3").getAttribute("aria-checked"),"false");
+  assert.equal((await checkbox("Workflow B · 1.7 → 1.8")).getAttribute("aria-checked"),"true");
+  assert.equal((await checkbox("Workflow A · 1.2 → 1.3")).getAttribute("aria-checked"),"false");
   await runtimePress("Review affected runs");await flushRuntime();
   const first=CommandRequestSchema.parse(h.commands[0]);assert.equal(first.type,"plan-runtime-version");if(first.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(first.target.scope,{kind:"workflows",workflowIds:["other-workflow"]});
@@ -156,8 +161,8 @@ it("uses the route-addressable folder workflow before any generic default",async
   const h=await mountRuntime({contextWorkflowId:"other-workflow"});
   await flushRuntime();
 
-  assert.equal(checkbox("Workflow B · 1.7 → 1.8").getAttribute("aria-checked"),"true");
-  assert.equal(checkbox("Workflow A · 1.2 → 1.3").getAttribute("aria-checked"),"false");
+  assert.equal((await checkbox("Workflow B · 1.7 → 1.8")).getAttribute("aria-checked"),"true");
+  assert.equal((await checkbox("Workflow A · 1.2 → 1.3")).getAttribute("aria-checked"),"false");
   await runtimePress("Review affected runs");await flushRuntime();
   const command=CommandRequestSchema.parse(h.commands[0]);assert.equal(command.type,"plan-runtime-version");if(command.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(command.target.scope,{kind:"workflows",workflowIds:["other-workflow"]});
@@ -170,7 +175,7 @@ it("refuses a retired route folder until an operator chooses a registered workfl
   assert.match(document.querySelector('[role="alert"]')?.textContent??"",/not replaced with another workflow/u);
   assert.equal(h.commands.length,0);
   await runtimePress("Choose a registered workflow");await flushRuntime();
-  assert.equal(checkbox("Workflow A · 1.2 → 1.3").getAttribute("aria-checked"),"false");
+  assert.equal((await checkbox("Workflow A · 1.2 → 1.3")).getAttribute("aria-checked"),"false");
   await toggleRuntimeCheckbox("Workflow C · 1.4 → 1.5");await flushRuntime();
   await runtimePress("Review affected runs");await flushRuntime();
   const command=CommandRequestSchema.parse(h.commands[0]);assert.equal(command.type,"plan-runtime-version");if(command.type!=="plan-runtime-version")throw new Error("wrong runtime plan");

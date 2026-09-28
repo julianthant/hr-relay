@@ -70,13 +70,12 @@ test("archive search filters public groups and the saved report retains failed w
   });
   await page.route(`**/api/v1/archive/reports/${failed.runId}`,route=>route.fulfill({json:failed}));
   await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:""});
-  await page.getByRole("button",{name:"Filters"}).click();
+  await page.getByRole("button",{name:new RegExp(failed.workflow,"u")}).click();
   const search=page.getByRole("textbox",{name:"Search all public archive fields",exact:true});
   await search.fill("does-not-match");
-  await expect(page.getByText("No saved reports match these filters.",{exact:true})).toBeVisible();
+  await expect(page.getByRole("cell",{name:/No saved reports match this scope/})).toBeVisible();
   await search.fill(failed.title);
   await expect.poll(()=>searchRequests.at(-1)).toBe(failed.title);
-  await page.getByRole("button",{name:new RegExp(failed.workflow,"u")}).click();
   await expect(page.getByRole("table").first()).toBeVisible();
   await expect.poll(()=>searchRequests.at(-1)).toBe(failed.title);
   await page.getByRole("button",{name:failed.title,exact:true}).click();
@@ -91,7 +90,7 @@ test("archive search filters public groups and the saved report retains failed w
 test("one-workflow dashboard normalizes that workflow's selection to a major bump review", async ({ page }) => {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
   const bump = page.getByRole("region", { name: "Plan a version bump" });
-  await expect(bump.getByRole("group", { name: "Workflows to bump" }).getByRole("checkbox", { name: /Person lookup/iu })).toBeChecked();
+  await expect(bump.getByRole("button", { name: "Workflow to bump" })).toContainText("Person lookup");
   await expect(bump).toContainText("Every registered workflow selected: dashboard major bump");
   await expect(page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review affected runs" })).toBeEnabled();
   await expect(bump.getByText("For every workflow, choose Dashboard version.")).toHaveCount(0);

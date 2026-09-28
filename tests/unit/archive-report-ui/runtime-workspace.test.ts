@@ -114,7 +114,7 @@ it("shows version groups with report detail and keeps the two views in the top h
   expect(calls.savedArchiveIndex).toHaveBeenCalledWith(expect.objectContaining({workflow:H_REPORT.workflow,versionState:"unrecorded",limit:50}));
 });
 
-it("keeps column choices local to the workflow table and preserves the saved report for detail and export", async () => {
+it("keeps workflow table presentation and the saved report for detail and export", async () => {
   const blob = vi.spyOn(archiveExportModel, "archiveExportBlob");
   stubDownloadApis();
   await mount();
@@ -131,10 +131,7 @@ it("keeps column choices local to the workflow table and preserves the saved rep
   expect(header("Archived")?.className).toContain("text-right");
   expect(header("Files")?.className).toContain("text-right");
 
-  await click("Columns");
-  await toggleCheckbox("Subject");
-  expect(header("Subject")).toBeUndefined();
-  expect(table?.textContent).not.toContain("Synthetic subject");
+  expect(document.querySelector('button[aria-label="Columns"]')).toBeNull();
 
   await click(H_REPORT.title);
   expect(document.querySelector("article")?.textContent).toContain("Synthetic subject");
@@ -219,7 +216,7 @@ it("resets report pagination when search changes while keeping the selected work
   await click("Next reports");
 
   expect(read).toHaveBeenLastCalledWith(expect.objectContaining({ after: cursorOf(H_REPORT) }));
-  const search = document.querySelector<HTMLInputElement>('input[placeholder="Search names, documents, or any field"]');
+  const search = document.querySelector<HTMLInputElement>('input[placeholder="Search saved reports"]');
   expect(search).not.toBeNull();
   await act(async () => {
     if (search === null) throw new Error("Workflow search input is missing");
@@ -336,6 +333,7 @@ it("discards late pages after the operator opens a different report", async () =
 it("shows unchecked workflow versions unchanged in a normalized multi-workflow preview", async () => {
   await mount();
   await click("Plan a bump");
+  await act(async () => document.querySelector<HTMLButtonElement>('button[aria-label="Workflow to bump"]')?.click());
   expect(document.body.textContent).toContain("First workflow · 1.1 → 1.2");
   expect(document.body.textContent).toContain("Second workflow · Unchanged · 1.0");
   await toggleCheckbox("Second workflow · Unchanged · 1.0");

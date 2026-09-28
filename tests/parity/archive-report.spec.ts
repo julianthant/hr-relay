@@ -90,13 +90,11 @@ for (const viewport of [{ width: 1024, height: 720 }, { width: 1440, height: 900
     await page.getByRole("button", { name: /Second saved report/u }).click();
     await expect(page.getByRole("heading", { name: second.title, level: 1 })).toBeVisible();
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: "Archive" }).click();
-    await page.getByRole("button", { name: "Filters" }).click();
-    await page.getByRole("textbox", { name: "Search all public archive fields" }).fill("does-not-match");
-    await expect(page.getByText("No saved reports match these filters.")).toBeVisible();
-    await page.getByRole("button", { name: "Clear filters" }).click();
-    await page.keyboard.press("Escape");
-    await expect(page.getByRole("button", { name: "Filters" })).toBeFocused();
     await page.getByRole("button", { name: H_REPORT.workflow }).click();
+    await page.getByRole("textbox", { name: "Search all public archive fields" }).fill("does-not-match");
+    await expect(page).toHaveURL(/does-not-match/u);
+    await page.getByRole("button", { name: /Clear filters/ }).first().click();
+    await expect(page.getByRole("textbox", { name: "Search all public archive fields" })).toHaveValue("");
     await page.getByRole("button", { name: new RegExp(H_REPORT.title,"u") }).click();
     await page.getByRole("button", { name: "Record details" }).click();
     await page.evaluate(() => { document.documentElement.style.zoom = "1.25"; });

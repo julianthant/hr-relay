@@ -251,3 +251,16 @@ it("uses distinct compact reviewed run identities and full IDs when abbreviation
   assert.equal(archiveReviewRunLabel(first, [first, collision]), first);
   assert.equal(archiveReviewRunLabel(collision, [first, collision]), collision);
 });
+
+it("retains distinct stable field catalog identities for large saved reports", () => {
+  for (const count of [19, 50, 100]) {
+    const report = SavedArchiveReportWireSchema.parse({ ...H_REPORT,
+      sections: [{ kind: "values", title: "Retained fields", values: Array.from({ length: count }, (_, index) => ({ label: index % 9 === 0 ? "Repeated" : `Field ${index}`, value: index })) }],
+    });
+    const catalog = archiveSummaryColumns([report]);
+    assert.equal(catalog.length, count);
+    assert.equal(new Set(catalog.map(column => column.id)).size, count);
+    assert.deepEqual(mergeArchiveSummaryColumns(catalog, catalog).map(column => column.id), catalog.map(column => column.id));
+    assert.ok(catalog.some(column => archiveSummaryValue(report, column) === String(count - 1)));
+  }
+});

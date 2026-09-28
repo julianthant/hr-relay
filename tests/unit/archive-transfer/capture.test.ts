@@ -41,6 +41,29 @@ it("captures every source group as generic typed values or explicit absence, wit
     const storage = createRunLifecycleStorage(f.db);
     const snapshot = storage.capture(f.run.envelope.runId);
     const report = captureArchiveReport({ snapshot, transferId: id(9301), capturedAt: NOW, files: [], sections: [] });
+    const inputSection = report.content.sections.find(section => section.title === "Inputs & settings");
+    assert.equal(inputSection?.kind, "values");
+    if (inputSection?.kind !== "values") throw new Error("frozen inputs section missing");
+    assert.deepEqual(inputSection.values.map(row => row.label), ["Run mode", "Submitted input", "Parsed input", "Captured settings"]);
+    assert.equal(inputSection.values.find(row => row.label === "Run mode")?.value, snapshot.run.envelope.dryRun ? "Dry run" : "Live run");
+    for (const [dryRun, expected] of [[true, "Dry run"], [false, "Live run"]] as const) {
+      const modeReport = captureArchiveReport({ snapshot: { ...snapshot, run: RunRecordSchema.parse({
+        ...snapshot.run, envelope: { ...snapshot.run.envelope, dryRun },
+      }) }, transferId: id(dryRun ? 9351 : 9352), capturedAt: NOW, files: [], sections: [] });
+      const modeSection = modeReport.content.sections.find(section => section.title === "Inputs & settings");
+      assert.equal(modeSection?.kind === "values" ? modeSection.values.find(row => row.label === "Run mode")?.value : undefined, expected);
+    }
+    assert.ok(inputSection.values.find(row => row.label === "Submitted input")?.value);
+    assert.ok(inputSection.values.find(row => row.label === "Parsed input")?.value);
+    assert.equal(JSON.stringify(inputSection).includes("10873698"), false, "protected input stays out of the public section");
+    const settingsSource = snapshot.records.find(group => group.table === "settings_snapshots")?.rows[0];
+    const capturedSettings = inputSection.values.find(row => row.label === "Captured settings")?.value;
+    if (settingsSource === undefined) assert.deepEqual(capturedSettings, { state: "unavailable", reason: "No settings snapshot was retained for this run" });
+    else {
+      const stored = JSON.parse(settingsSource.json) as { configSnapshotId: string; fingerprint: string };
+      assert.equal((capturedSettings as { configSnapshotId: string }).configSnapshotId, stored.configSnapshotId);
+      assert.equal((capturedSettings as { fingerprint: string }).fingerprint, "[protected digest]");
+    }
     assert.equal(snapshot.records.length, 24);
     assert.equal(snapshot.records.some(group => group.table === "archive_relaunches"), false);
     for (const group of snapshot.records) assert.equal(report.content.sections.find(section => section.title === group.table)?.kind, group.rows.length ? "values" : "unavailable");

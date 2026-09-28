@@ -129,7 +129,7 @@ it("keeps All fields search explicit and restores focus after clearing no matche
   const input = document.querySelector<HTMLInputElement>('input[placeholder="Search all report fields"]');
   expect(input).not.toBeNull();
   await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "no-such-retained-field"); input!.dispatchEvent(new Event("input", { bubbles: true })); });
-  expect(table?.textContent).toContain("No public fields match");
+  expect(table?.textContent).toContain("No fields match your search");
   const clear = [...table!.querySelectorAll("button")].find(button => button.textContent?.trim() === "Clear search");
   expect(clear).toBeDefined();
   await act(async () => clear!.click());

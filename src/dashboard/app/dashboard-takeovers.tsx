@@ -100,7 +100,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               onSelection={(next) => setRoute({ ...route, archive: next, archiveBrowse: { ...route.archiveBrowse, filters: route.archiveBrowse?.filters ?? {}, section: undefined } })}
               onView={(next) => setRoute({ ...route, archiveView: next })}
               onFolder={(folder) => setRoute({ ...route, archive: ARCHIVE_INDEX,
-                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: route.archiveBrowse?.filters ?? {} } })}
+                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
             />
           ) : takeover === "activity" ? (
             /*

@@ -84,16 +84,13 @@ for (const view of [
 
       await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
       await assertThemeApplied(page, view.theme);
-      await page.getByRole("button", { name: "Filters" }).click();
+      const workflow = page.getByRole("button", { name: workflowName(report.workflow) });
+      await workflow.click();
       const titleFilter = page.getByRole("textbox", { name: "Search all public archive fields" });
       await titleFilter.fill("does-not-match");
-      await expect(page.getByText("No saved reports match these filters.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: /No saved reports match this scope/ })).toBeVisible();
       await titleFilter.fill(report.title);
-      await page.keyboard.press("Escape");
-      await expect(titleFilter).toBeHidden();
-      const workflow = page.getByRole("button", { name: workflowName(report.workflow) });
-      await expect(workflow).toBeVisible();
-      await workflow.click();
+      await expect(titleFilter).toHaveValue(report.title);
       await expect(page.getByRole("table").first()).toBeVisible();
       await selectSavedRun(page, report.title);
       await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
@@ -136,7 +133,7 @@ for (const view of [
       const versions = page.getByRole("dialog", { name: "Plan a version bump" });
       await expect(versions).toContainText("Archived workflow person-lookup is no longer registered");
       await versions.getByRole("button", { name: "Choose a registered workflow" }).click();
-      await expect(versions).toContainText("Choose workflows");
+      await expect(versions).toContainText("Selected workflow");
       await expect(versions).toContainText("No eligible workflows are registered for a version change.");
       await expect(versions).toContainText("Dashboard");
       await page.evaluate(() => { document.documentElement.style.zoom = "1.25"; });
@@ -263,7 +260,7 @@ test("real workflow minor review waits for active runs and archives that workflo
     const active = server.addRun(91002, false);
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
     const bump = page.getByRole("dialog", { name: "Plan a version bump" });
-    await expect(bump.getByRole("group", { name: "Workflows to bump" }).getByRole("checkbox", { name: /Person lookup/iu })).toBeChecked();
+    await expect(bump.getByRole("button", { name: "Workflow to bump" })).toContainText(/Person lookup/iu);
     await bump.getByRole("button", { name: "Review affected runs" }).click();
     await expectReviewedCounts(page, 2, 1, 0);
     await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toHaveCount(0);
@@ -327,18 +324,18 @@ test("real bounded pages retain history selection outside the current page and i
     await page.goBack();
     await expect(page.getByRole("article")).toContainText(other.title);
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: "Archive", exact: true }).click();
-    await page.getByRole("button", { name: "Filters" }).click();
-    const delayedList = server.delayNextResponse("/api/v1/archive/groups?search=old-query"); releases.push(delayedList.release);
+    await page.getByRole("button", { name: workflowName(other.workflow) }).click();
+    const delayedList = server.delayNextResponse("/api/v1/archive/reports?"); releases.push(delayedList.release);
     const search = page.getByRole("textbox", { name: "Search all public archive fields" });
     await search.fill("old-query");
     await delayedList.ready;
     await search.fill(other.title);
-    await expect(page.getByRole("button", { name: workflowName(other.workflow) })).toBeVisible();
-    const listResponse = page.waitForResponse(response => response.url().endsWith("search=old-query"));
+    await expect(page.getByRole("table").first()).toBeVisible();
+    const listResponse = page.waitForResponse(response => response.url().includes("search=old-query"));
     delayedList.release(); await listResponse;
-    await expect(page.getByRole("button", { name: workflowName(other.workflow) })).toBeVisible();
-    await expect(page.getByText("No saved reports match these filters.", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Clear filters", exact: true }).click();
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await expect(page.getByRole("cell", { name: /No saved reports match this scope/ })).toHaveCount(0);
+    await page.getByRole("button", { name: /Clear filters/ }).first().click();
     await expect(search).toHaveValue("");
     expect(errors).toEqual([]);
   } finally { for (const release of releases) release(); await server.close(); }

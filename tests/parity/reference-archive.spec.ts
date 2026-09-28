@@ -45,12 +45,13 @@ test.describe("version bump", () => {
 
       const bump=page.getByRole("region",{name:"Plan a version bump"});
       await expect(bump).toBeVisible();
-      await expect(bump.getByRole("radio",{name:"Choose workflows"})).toBeChecked();
+      await expect(bump.getByRole("radio",{name:"Selected workflow"})).toBeChecked();
       await expect(bump.getByRole("radio",{name:"All workflows"})).toBeVisible();
       await expect(page.getByRole("button",{name:"Apply reviewed change"})).toHaveCount(0);
       await expect(page.getByRole("button",{name:"Review affected runs"})).toBeEnabled();
       await bump.locator("summary").filter({hasText:"Previous version reviews"}).click();
       await bump.locator("summary").filter({hasText:"planned"}).click();
+      await bump.locator("summary").filter({hasText:"Affected runs"}).last().click();
       await bump.locator("summary").filter({hasText:/Person lookup · .* · Blocked · running/u}).click();
       await expect(bump).toContainText(`person-lookup · ${blocker} · Blocked · running`);
       expect(errors,"page errors while opening the served version review").toEqual([]);

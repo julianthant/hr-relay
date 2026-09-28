@@ -5,17 +5,18 @@ import { Button, dsIcon, dsText, Table } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { savedCell } from "./archive-report-model.js";
 
-export function ArchiveTable({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
+export function ArchiveTable({ label, children, className, roomy = false }: { label: string; children: ReactNode; className?: string; roomy?: boolean }) {
   return <Table label={label} className={cn(
     "min-w-max [&_thead_tr]:!h-[40px] [&_thead_th]:!h-[40px] [&_thead_th]:!px-[var(--ds-space-cozy)] [&_thead_th]:!py-[var(--ds-space-snug)] [&_thead_th]:!text-[12px] [&_thead_th]:!font-semibold [&_thead_th]:!normal-case [&_thead_th]:!tracking-normal",
     "[&_tbody_tr]:h-[46px] [&_tbody_td]:!px-[var(--ds-space-cozy)] [&_tbody_td]:!py-[var(--ds-space-snug)] [&_tbody_td]:!text-[12px] [&_tbody_tr:hover]:bg-[var(--ds-surface-2)]",
+    roomy && "[&_thead_tr]:!h-[44px] [&_thead_th]:!h-[44px] [&_thead_th]:!px-[16px] [&_tbody_tr]:!min-h-[52px] [&_tbody_td]:!px-[16px] [&_tbody_td]:!py-[16px]",
     className,
   )}>{children}</Table>;
 }
 
-export function ArchiveFieldGroup({ title, ariaLabel, children, className }: { title: string; ariaLabel?: string; children: ReactNode; className?: string }) {
+export function ArchiveFieldGroup({ title, ariaLabel, children, className, showHeading = true }: { title: string; ariaLabel?: string; children: ReactNode; className?: string; showHeading?: boolean }) {
   return <section aria-label={ariaLabel ?? title} className={cn("min-w-0 overflow-hidden rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]", className)}>
-    <h3 className={cn(dsText.ui, "m-0 border-b border-[color:var(--ds-border)] px-[20px] py-[17px] !text-[12px] !leading-[17.4px] font-semibold")}>{title}</h3>
+    {showHeading && <h3 className={cn(dsText.ui, "m-0 border-b border-[color:var(--ds-border)] px-[20px] py-[17px] !text-[12px] !leading-[17.4px] font-semibold")}>{title}</h3>}
     {children}
   </section>;
 }
