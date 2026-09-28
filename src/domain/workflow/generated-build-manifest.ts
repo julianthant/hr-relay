@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "02491c305b0863ae5432bf799ab8162fd1aab30b5bda7ca31669e07b0983a5ad",
+      "fingerprint": "17a37229d37ec96f181a7c841ae20478a3696fe3fe6cf5c0e78d8c5a7ee51e95",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -231,7 +231,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -281,7 +281,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "8c996b63c8b08682b6ebc29309f6a29e87500d09e13c1542d2f58d75051f6dbb",
+      "fingerprint": "ebcba75f8094ebcb7de1d52cacfc854c1afee4dabe700b2aea029e59a792b049",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -669,7 +669,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -719,7 +719,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "23247993a7d5a4f107c4ae7a2b0541b0f1aa2267066a0e9ac00bf094532f2b3e",
+      "fingerprint": "a41fadb4edbaf76f85dbe2ebc634d2c92fd817f47b367e8de4a570515c3267e3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1107,7 +1107,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -1161,7 +1161,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "62b730669f7f5c608758bbe3e5034c86b83a7e0f52f4eb6241dcd152e6975e24",
+      "fingerprint": "49dd9a35e59baae3e834a6b747aeaf25f0c35e87250e5b442a0aa2d2a802bbb0",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1549,7 +1549,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -1603,7 +1603,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "47c0374e90ea1c9823ef6f1a51cb3dabc902adbc379e1ec7a51311c4fcf39f3e",
+      "fingerprint": "8d6860c657b2a2530d0c7b260335b953038ee9c0a9e38d35dccc8b46516817c7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -1991,7 +1991,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -2045,7 +2045,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "44b0196e3593e0f4bc65e515e2c78c918ac1d8fd0c9da3ec0a1c3fe7fd4148cd",
+      "fingerprint": "e25f8fb713dd577fd06ef0f11a227f63a986d13b4f4df640f4220fadef8a38d3",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2433,7 +2433,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -2487,7 +2487,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "0a275ede67501fab35905174ec42a43b55404ab3d2976f8cd88407dde398c6be",
+      "fingerprint": "03a1ec09db3dcf383c258668790775217fce349f8f4e570e8b5a2c117b468bea",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -2875,7 +2875,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -2931,7 +2931,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "1db5daba56aa4ce8cd3cbe95f6485b33cd65810a7ec43f5b3e933e352473e07d",
+      "fingerprint": "c0b3964f4941cf0d33540aaa16e25ddc68a0075261bfe6bfb55b77fd5d07fc12",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3103,7 +3103,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -3149,7 +3149,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "6f5d147f3c1f0f57a3d91b8ed457caafbca1c831d4ca9ad1724cb4a0e8f278b3",
+      "fingerprint": "5aa58da594a354719efe7c7e786537589effb57aeddd573c379f57ff407fa916",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3321,7 +3321,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -3671,7 +3671,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "438737ca02d878a692d12adeea781c5a6be01f8d52f788814bd1a07b19bed9c6",
+      "fingerprint": "0faf4111b6df831d9d5b7cae12c79bc162f49e7a4a3b3a803066a71e160f9ae8",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -3855,7 +3855,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -3913,7 +3913,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "b32122fd2c6c3a29546e2d6e5113f5294ba5841335b448ea692404a9ac031c9d",
+      "fingerprint": "82020e7c4bdcde023be643bf8b117f2a299224c2dc4c41004646d4063d73d6c4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4093,7 +4093,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -4139,7 +4139,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "7a926c0bebfa8ed5f8e3abf81bb369aee05a9109c9b29b89335429f797bd3a03",
+      "fingerprint": "fcd5a57bfd3ea18f0559a141cf6dbfddfc74096565b8395ec58d94483b236888",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4323,7 +4323,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -4369,7 +4369,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "a17fceb9a38b0a36f52a49ae0249eeae29fb9409c6b9af4030893d63d3cbe1f2",
+      "fingerprint": "55083b89a11ef6ddff55d4b381ebdb86392ea541dfafc19b3d74acccea1c00e7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4549,7 +4549,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -4595,7 +4595,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "968d712edea3741c315ce18eafacc583c3ca369cb0e0489a716995add200e44b",
+      "fingerprint": "0b81b741cf85591504878658030e7b1a1a675002d20e7c24126c8b1147e868f4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -4779,7 +4779,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -4825,7 +4825,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "cb3a8bf3e3bf6d9176e17cfdb882b9ae988a612a8d8e92b4dabc00d1b0934d56",
+      "fingerprint": "8f27103e79f044a431b466474c51261a7cc0fc322e69c80acca6f3efa8d398fb",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5013,7 +5013,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -5071,7 +5071,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "061c90396f45f57a85b3f35c7555bbcf76c0658a903c32c25b7f9f39684df018",
+      "fingerprint": "b8b82ec6f3612fe25c3e5142266a8fbf8977fb433e1a7795a42d23cac40a2da4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5247,7 +5247,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -5301,7 +5301,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "f47bc2dc2439b85bf45f0043cf5e65f09ed8157ddd0d12ab0cd6e7559b55ce0e",
+      "fingerprint": "497eb58ea73cf6ed5e209bb1f50b8820fa2b20256e7d441c6693ccaf1ccb27f4",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -5477,7 +5477,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -6049,7 +6049,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "30c02700206f76e687d605914e139738f5ba21dfd5d0e9108ab012fd6d87b190",
+      "fingerprint": "42814c5a7b7c1937c1cfd6a000b6471de6b94baaa4971a0624c8fadec3238326",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6269,7 +6269,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -6339,7 +6339,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "a942ea3d11de9adc179609cbcad9bef333d766e84485cea560d6e0372ffff480",
+      "fingerprint": "f7e039cc2b5f8d67aaee45e222d386f4f7d46c14dc0259ff7645b7c729f48ee7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6559,7 +6559,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -6629,7 +6629,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "590f2cbc93c2f4355a2ca1072e698b746faad83229521629d26c051bba76eeb3",
+      "fingerprint": "fcd79c6096fa21c8e93fd475bf27db086d08f857388dea66cebba612dd0f3632",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -6849,7 +6849,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -6919,7 +6919,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "7df6fccbf5628b0f35582bbec85b1e45d96bd5f2232b7a05c9140ee006f2d84b",
+      "fingerprint": "c88ec9aa5b29288ba481af6fe451d212259aaf6f3cc48f4d6e41500a2a2db2b5",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7139,7 +7139,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -7209,7 +7209,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "5ef837efc8194bbe98da78d926c5961007bd4ed71e21066aaec4a145b1d67d83",
+      "fingerprint": "5f4afdac4e690cb9a1dcfaa4dec538d134f0bc3aefbfee9d666606a8181c347c",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7433,7 +7433,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -7503,7 +7503,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "16952e378f2e58413732c8503fec772c5555a43215e83847e724303c37383dbf",
+      "fingerprint": "fa916a70222c0a58180b0532a2eb2cd0d28ed271ea15547cf3fd3c9c0e868729",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -7727,7 +7727,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -7797,7 +7797,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "c50ee21f3c09c4b55bf60e6bcd82d471cf84f8b135ce2b2489eac6967643e40a",
+      "fingerprint": "0dc69fb981b181afc9072c21dde10ee7a3fdd46343e93a2aaa183d996e40eef7",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8017,7 +8017,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -8087,7 +8087,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "74fd417ee3852e6c1046335806fce6540219f1f3d7c203566d1b9726340fcfa1",
+      "fingerprint": "70658c60f1f5b404fd40823e2ad98be2aa3efc0090640d46ebe4409d09ec1237",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8311,7 +8311,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -8381,7 +8381,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "894ed79faf2d167369bef9d3efc0fc44a2d49e987bcf39670b9c8d6b6ad8767b",
+      "fingerprint": "28ce8597bcaeb3ac9fd1c8565b3edb41386d4cf557148c131158a8ecd9f39a7a",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8605,7 +8605,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -8675,7 +8675,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "87fb48f8fa55c35b048018f4cc4c90ededce2ab2772cf0e2855cebe77290a0d3",
+      "fingerprint": "004cb6c7756024cc7cfbfd14ab683308aeba13260a8565804bb45224e110dd6b",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -8899,7 +8899,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -8969,7 +8969,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "d188276f969c1bd25beff4b1ba6df620c473ded7672ffe1da558395a773fc825",
+      "fingerprint": "f2a53718e643279754b2c842822c077885624b17e51411e778e81d477dde8022",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -9193,7 +9193,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",
@@ -9263,7 +9263,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "fd48acf64169396fb9c52a4c641d4ce8f316aec81ce79c9506087f143c9a2738",
+      "fingerprint": "f3bff36f7ceaf83c69a7689b9dd16769d92983e75130edae5643b46140ad9b28",
       "sources": [
         {
           "path": "src/base/artifacts.ts",
@@ -9487,7 +9487,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/domain/workflow/operation-display-snapshot.ts",
-          "sha256": "f86d46aaf1e5f668a705f1fa4e5940887ef9331176e01dcad876b657a965684f"
+          "sha256": "bab3cbe65978acd3a770a15d67c6ebd529868f2b784db1ea0d7cfb34ab38b1b9"
         },
         {
           "path": "src/domain/workflow/operation-display.ts",

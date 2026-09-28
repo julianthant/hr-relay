@@ -4,8 +4,10 @@
 Every new complete-format run atomically carries a strict canonical serializable operation-display
 snapshot and domain-separated digest in its immutable envelope. It binds the retained definition
 fingerprint but excludes live Zod/functions, examples, configuration and run values, and secrets.
-Readers parse and hash-verify it; missing or corrupt complete snapshots refuse rather than looking
-up current code. Historical missing snapshots remain explicit legacy and are never backfilled.
+Its equality and inequality clauses retain only bounded public declaration literals plus their
+digests; generic workflow constants remain digest-only. Readers parse and hash-verify it; missing
+or corrupt complete snapshots refuse rather than looking up current code. Historical missing
+snapshots remain explicit legacy and are never backfilled.
 Completed driver gestures bind to this snapshot with the existing ordered evidence stream and
 physical-session/claim/task occurrence identities; absence does not manufacture an action outcome.
 Owner: [dashboard-surfaces D356](dashboard-surfaces.md#d356--frozen-complete-operation-display-per-run--2026-09-27).

@@ -24,6 +24,7 @@ import {
 import {
   freezeWorkflowOperationDisplaySnapshot,
   requireWorkflowOperationDisplaySnapshot,
+  WorkflowOperationDisplaySnapshotSchema,
 } from "../../src/domain/workflow/operation-display-snapshot.js";
 import type {
   TaskOperationDeclaration,
@@ -546,7 +547,7 @@ describe("workflow operation display declarations", () => {
     expect(snapshot).toMatchObject({
       capability: "complete",
       declarationVersion: OPERATION_DISPLAY_FORMAT_VERSION,
-      snapshotVersion: 1,
+      snapshotVersion: 2,
       workflowId: DISPLAY_FORWARD_ID,
       definitionFingerprint: compiled.descriptor.contractFingerprint,
     });
@@ -564,13 +565,51 @@ describe("workflow operation display declarations", () => {
     expect(serialized).not.toContain("\"example\"");
     expect(serialized).not.toContain("10800000");
     expect(serialized).not.toContain("\"normal\"");
+    const historical = requireWorkflowOperationDisplaySnapshot(JSON.parse(serialized), {
+      workflowId: compiled.descriptor.id,
+      definitionFingerprint: compiled.descriptor.contractFingerprint,
+    });
+    const taskCondition = historical.invocations[0]?.operation.actions
+      .find(({ id }) => id === "choose-search-mode")?.outcomes?.[0]?.when;
+    expect(taskCondition).toMatchObject({
+      kind: "equals",
+      variable: "search-kind",
+      value: "by-eid",
+    });
+    const workflowCondition = historical.presentation
+      .find(({ id }) => id === "selection-outcome")?.outcomes?.[0]?.when;
+    expect(workflowCondition).toMatchObject({
+      kind: "equals",
+      expected: "resolved",
+    });
     const configurationReference = snapshot.transforms[0]?.inputs[2]?.value;
     if (configurationReference?.kind !== "configuration") throw new Error("configuration reference was not frozen");
     expect(configurationReference.key).toBe("explorer.search.mode");
     expect(configurationReference.schemaHash).toMatch(/^[a-f0-9]{64}$/u);
+    expect(configurationReference).not.toHaveProperty("example");
     const constantReference = snapshot.invocations[0]?.bindings[0]?.value;
     if (constantReference?.kind !== "constant") throw new Error("constant reference was not redacted");
     expect(constantReference.valueDigest).toMatch(/^[a-f0-9]{64}$/u);
+    expect(constantReference).not.toHaveProperty("value");
+
+    const protectedComparison = {
+      ...snapshot,
+      invocations: snapshot.invocations.map((invocation) => ({
+        ...invocation,
+        operation: {
+          ...invocation.operation,
+          actions: invocation.operation.actions.map((action) => action.id === "choose-search-mode"
+            ? {
+              ...action,
+              outcomes: action.outcomes?.map((outcome) => outcome.id === "by-eid"
+                ? { ...outcome, when: { ...outcome.when, value: "10800000" } }
+                : outcome),
+            }
+            : action),
+        },
+      })),
+    };
+    expect(WorkflowOperationDisplaySnapshotSchema.safeParse(protectedComparison).success).toBe(false);
 
     expect(() => requireWorkflowOperationDisplaySnapshot(undefined, {
       workflowId: compiled.descriptor.id,

@@ -45,7 +45,7 @@ import {
 } from "./operation-display.js";
 
 /** Bump only when the serializable payload grammar changes. */
-export const OPERATION_DISPLAY_SNAPSHOT_VERSION = 1 as const;
+export const OPERATION_DISPLAY_SNAPSHOT_VERSION = 2 as const;
 
 const FieldPathSchema = z.string().regex(
   /^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*$/,
@@ -53,19 +53,37 @@ const FieldPathSchema = z.string().regex(
 );
 const AvailabilitySchema = z.enum(["owned", "offered"]);
 const TemplateConditionKindSchema = z.enum(["is-present", "is-absent", "equals", "not-equals"]);
+const PublicStaticComparisonLiteralSchema = z.union([
+  z.null(),
+  z.boolean(),
+  z.string()
+    .max(80)
+    .regex(/^[a-z]+(?:-[a-z]+)*$/, "public comparison literal must be a kebab-case declaration symbol"),
+]);
 
 const SnapshotTemplateConditionSchema = z.strictObject({
   kind: TemplateConditionKindSchema,
   variable: OperationValueIdSchema,
-  /** A comparison literal is bound without making it durable readable data. */
+  /** Public declaration grammar needed to render the archived conditional clause. */
+  value: PublicStaticComparisonLiteralSchema.optional(),
   valueDigest: FingerprintSchema.optional(),
 }).superRefine((condition, context) => {
   const compares = condition.kind === "equals" || condition.kind === "not-equals";
-  if (compares !== (condition.valueDigest !== undefined)) {
+  const hasLiteral = condition.value !== undefined;
+  const hasDigest = condition.valueDigest !== undefined;
+  if (compares !== hasLiteral || compares !== hasDigest) {
+    context.addIssue({
+      code: "custom",
+      path: ["value"],
+      message: compares
+        ? "comparison condition requires a public literal and digest"
+        : "presence condition cannot carry a comparison literal or digest",
+    });
+  } else if (hasLiteral && hasDigest && snapshotValueDigest(condition.value) !== condition.valueDigest) {
     context.addIssue({
       code: "custom",
       path: ["valueDigest"],
-      message: compares ? "comparison condition requires valueDigest" : "presence condition cannot carry valueDigest",
+      message: "comparison condition literal digest does not match",
     });
   }
 });
@@ -174,14 +192,26 @@ type SnapshotWorkflowValueReference = z.infer<typeof SnapshotWorkflowValueRefere
 const SnapshotWorkflowOutcomePredicateSchema = z.strictObject({
   kind: TemplateConditionKindSchema,
   value: SnapshotWorkflowValueReferenceSchema,
+  /** Public declaration grammar needed to render the archived conditional clause. */
+  expected: PublicStaticComparisonLiteralSchema.optional(),
   expectedDigest: FingerprintSchema.optional(),
 }).superRefine((predicate, context) => {
   const compares = predicate.kind === "equals" || predicate.kind === "not-equals";
-  if (compares !== (predicate.expectedDigest !== undefined)) {
+  const hasLiteral = predicate.expected !== undefined;
+  const hasDigest = predicate.expectedDigest !== undefined;
+  if (compares !== hasLiteral || compares !== hasDigest) {
+    context.addIssue({
+      code: "custom",
+      path: ["expected"],
+      message: compares
+        ? "comparison predicate requires a public literal and digest"
+        : "presence predicate cannot carry a comparison literal or digest",
+    });
+  } else if (hasLiteral && hasDigest && snapshotValueDigest(predicate.expected) !== predicate.expectedDigest) {
     context.addIssue({
       code: "custom",
       path: ["expectedDigest"],
-      message: compares ? "comparison predicate requires expectedDigest" : "presence predicate cannot carry expectedDigest",
+      message: "comparison predicate literal digest does not match",
     });
   }
 });
@@ -272,7 +302,10 @@ function snapshotTemplateCondition(condition: TemplateCondition): SnapshotTempla
   return SnapshotTemplateConditionSchema.parse({
     kind: condition.kind,
     variable: condition.variable,
-    ...(condition.value === undefined ? {} : { valueDigest: snapshotValueDigest(condition.value) }),
+    ...(condition.value === undefined ? {} : {
+      value: PublicStaticComparisonLiteralSchema.parse(condition.value),
+      valueDigest: snapshotValueDigest(condition.value),
+    }),
   });
 }
 
@@ -364,7 +397,10 @@ function snapshotWorkflowPredicate(predicate: WorkflowOutcomePredicate): Snapsho
   return SnapshotWorkflowOutcomePredicateSchema.parse({
     kind: predicate.kind,
     value: snapshotWorkflowReference(predicate.value),
-    ...(predicate.expected === undefined ? {} : { expectedDigest: snapshotValueDigest(predicate.expected) }),
+    ...(predicate.expected === undefined ? {} : {
+      expected: PublicStaticComparisonLiteralSchema.parse(predicate.expected),
+      expectedDigest: snapshotValueDigest(predicate.expected),
+    }),
   });
 }
 
@@ -392,7 +428,7 @@ function snapshotPresentation(node: WorkflowOperationPresentationNode): Snapshot
 
 function displaySnapshotDigest(snapshot: Omit<WorkflowOperationDisplaySnapshot, "contentDigest">): z.infer<typeof FingerprintSchema> {
   return FingerprintSchema.parse(sha256Hex(
-    `hrauto:operation-display-snapshot:v1\0${canonicalJsonStringify(snapshot)}`,
+    `hrauto:operation-display-snapshot:v2\0${canonicalJsonStringify(snapshot)}`,
   ));
 }
 

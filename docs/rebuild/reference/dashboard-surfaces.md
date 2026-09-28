@@ -171,9 +171,13 @@ declaration into a strict, canonical, redacted serializable snapshot and stamps 
 domain-separated digest into the immutable `RunEnvelope`. The snapshot binds the
 envelope's `contractFingerprint` and retains the static operation/action identities,
 occurrence paths, logical page/session references, typed reference kinds and paths,
-templates, conditions, outcomes, and graph-derived execution edges. It deliberately
-does not retain Zod objects, pure implementation functions, examples, configuration
-values, run input values, credentials, or other secret-bearing data.
+templates, conditions, outcomes, and graph-derived execution edges. Equality and
+inequality clauses retain their bounded public declaration literal with its digest, so
+historical readers can render the exact branch. Generic workflow constants remain
+digest-only. It deliberately does not retain Zod objects, pure implementation
+functions, examples, configuration values, run input values, credentials, or other
+secret-bearing data; a comparison literal outside the public declaration grammar
+refuses snapshot minting.
 
 The existing `workflow_runs.record_json` authority is the storage owner: the snapshot
 and its reference are inserted atomically with the run; same-run requeues and lifecycle
