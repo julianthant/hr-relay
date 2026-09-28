@@ -89,6 +89,8 @@ for (const view of [
       await titleFilter.fill("does-not-match");
       await expect(page.getByText("No saved reports match these filters.", { exact: true })).toBeVisible();
       await titleFilter.fill(report.title);
+      await page.keyboard.press("Escape");
+      await expect(titleFilter).toBeHidden();
       const workflow = page.getByRole("button", { name: workflowName(report.workflow) });
       await expect(workflow).toBeVisible();
       await workflow.click();
@@ -134,8 +136,8 @@ for (const view of [
       const versions = page.getByRole("dialog", { name: "Plan a version bump" });
       await expect(versions).toContainText("Archived workflow person-lookup is no longer registered");
       await versions.getByRole("button", { name: "Choose a registered workflow" }).click();
-      await expect(versions).toContainText("Selected workflow");
-      await expect(versions).toContainText("Workflow to bump");
+      await expect(versions).toContainText("Choose workflows");
+      await expect(versions).toContainText("No eligible workflows are registered for a version change.");
       await expect(versions).toContainText("Dashboard");
       await page.evaluate(() => { document.documentElement.style.zoom = "1.25"; });
       await expect(versions).toBeVisible();
@@ -261,7 +263,7 @@ test("real workflow minor review waits for active runs and archives that workflo
     const active = server.addRun(91002, false);
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
     const bump = page.getByRole("dialog", { name: "Plan a version bump" });
-    await expect(bump.getByRole("combobox", { name: "Workflow to bump" })).toHaveValue("person-lookup");
+    await expect(bump.getByRole("group", { name: "Workflows to bump" }).getByRole("checkbox", { name: /Person lookup/iu })).toBeChecked();
     await bump.getByRole("button", { name: "Review affected runs" }).click();
     await expectReviewedCounts(page, 2, 1, 0);
     await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toHaveCount(0);

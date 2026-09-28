@@ -1,4 +1,4 @@
-import { Archive,Download,RefreshCw,ZoomIn } from "lucide-react";
+import { Archive,Download,FileText,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState, type ReactNode } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
@@ -8,11 +8,14 @@ import { cn } from "../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
 import { savedCell,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource } from "./archive-report-model.js";
 import { archiveFieldRows } from "../../domain/dashboard/archive-export.js";
+import { ArchiveReportCellSchema } from "../../domain/archive/report.js";
+import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveStructuredValue, ArchiveTable } from "./archive-visual.js";
 
 export function SavedArchiveReport({ report, deletion, section, onSection }: { report: SavedArchiveReportWire; deletion?: ReactNode; section?: number; onSection?: (section: number) => void }) {
   const defaultSection = report.sections.length === 0 && report.versionChange === undefined ? 1 : 0;
   const [active, setActive] = useState(() => ({ runId: report.runId, section: defaultSection }));
   const [search, setSearch] = useState(() => ({ runId: report.runId, value: "" }));
+  const fieldSearchRef = useRef<HTMLInputElement>(null);
   const requestedSection = section ?? (active.runId === report.runId ? active.section : defaultSection);
   const fieldSearch = search.runId === report.runId ? search.value : "";
   const sectionItems = [...report.sections.map((section, index) => ({ label: index === 0 && section.title.startsWith("Identity and ") ? "Workflow details" : section.title, key: index })),
@@ -36,22 +39,30 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
     </dl>
     <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] gap-[22px] min-[1200px]:grid-cols-[185px_minmax(0,1fr)] min-[1200px]:gap-[30px]">
       <nav aria-label="Run sections" className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]"><span className={cn(dsText.caps, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Archived report</span>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className="min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]" onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}<p className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>The saved record, as it was when archived.</p></nav>
-      <div className="min-w-0 space-y-[22px]"><div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{sectionItems.find(item => item.key === activeSection)?.label}</h2><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Saved at archive time</span></div>
-    {report.sections.map((section, index) => activeSection !== index ? null : <section key={`${String(index)}:${section.title}`} aria-label={section.title} className="min-w-0 overflow-hidden bg-[var(--ds-surface-1)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)]">
-      <h3 className={cn(dsText.ui, "m-0 border-b border-[color:var(--ds-border)] px-[20px] py-[17px] !text-[12px] !leading-[17.4px] font-semibold")}>{section.title}</h3>
-      {section.kind === "unavailable" ? <p role="status" className="m-[var(--ds-space-cozy)] break-words [overflow-wrap:anywhere]">{section.reason}</p> : section.kind === "text" ? <pre className="m-[var(--ds-space-cozy)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</pre>
-        : section.kind === "values" ? section.values.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No saved values were captured.</p> : <dl className="grid min-w-0 grid-cols-1 min-[1200px]:grid-cols-2">{section.values.map((cell, n) => <div key={n} className={cn("grid min-h-[46px] min-w-0 grid-cols-[minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-[color:var(--ds-border)] px-[20px] py-[14px] text-[12px] leading-[17.4px] min-[1200px]:[&:nth-child(odd)]:border-r", n < section.values.length - 1 ? "border-b" : "border-b-0", n >= section.values.length - (section.values.length % 2 === 0 ? 2 : 1) && "min-[1200px]:border-b-0")}><dt className="min-w-0 break-words text-[color:var(--ds-fg-muted)] [overflow-wrap:anywhere]">{cell.label}</dt><dd className="m-0 min-w-0 break-words text-right font-medium [overflow-wrap:anywhere]">{savedCell(cell.value)}</dd></div>)}</dl>
-          : <div className="overflow-x-auto"><Table className="min-w-max" label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.length === 0 ? <TR><TD colSpan={section.columns.length}>No saved rows were captured.</TD></TR> : section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}>{savedCell(cell)}</TD>)}</TR>)}</TBody></Table></div>}
-    </section>)}
-    {report.versionChange !== undefined && activeSection === report.sections.length && <section aria-label="Recorded version change" className="min-w-0 rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"><h3 className={cn(dsText.ui, "break-words font-semibold [overflow-wrap:anywhere]")}>{report.versionChange.change.what}</h3>
-      <p className="break-words [overflow-wrap:anywhere]">{report.versionChange.change.why}</p><dl className={cn(dsText.meta, "grid min-w-0 grid-cols-1 gap-x-[var(--ds-space-cozy)] gap-y-[var(--ds-space-tight)] sm:grid-cols-2")}><div><dt>Change ID</dt><dd className="m-0 break-all">{report.versionChange.changeId}</dd></div><div><dt>Change kind</dt><dd className="m-0">{report.versionChange.change.kind}</dd></div><div><dt>Reviewed</dt><dd className="m-0 break-words"><SavedArchiveTime value={report.versionChange.reviewedAt} /></dd></div><div><dt>Started</dt><dd className="m-0 break-words"><SavedArchiveTime value={report.versionChange.startedAt} /></dd></div><div><dt>Scope</dt><dd className="m-0 break-words [overflow-wrap:anywhere]">{report.versionChange.scope.kind === "application" ? `Application ${report.versionChange.scope.applicationVersion}` : report.versionChange.scope.workflowIds.join(", ")}</dd></div><div><dt>Target version</dt><dd className="m-0 break-words">{report.versionChange.targetVersion}</dd></div><div><dt>Applied by</dt><dd className="m-0 break-words [overflow-wrap:anywhere]">{report.versionChange.appliedBy}</dd></div><div><dt>Commit</dt><dd className="m-0 break-words [overflow-wrap:anywhere]">{report.versionChange.change.commit.state} · {report.versionChange.change.commit.state === "present" ? report.versionChange.change.commit.value : report.versionChange.change.commit.reason}</dd></div></dl></section>}
-    {activeSection === report.sections.length + 1 && <section aria-label="Retained attachments" className="flex min-w-0 flex-col gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
-      {report.files.length === 0 ? <p className="m-0">No attachment was retained with this report.</p> : report.files.map(file =>
-        <div key={`${report.runId}:${file.digest}`} className="min-w-0"><SavedAttachment runId={report.runId} digest={file.digest} name={file.name} mediaType={file.mediaType} />
-          <p className={cn(dsText.meta, "break-all")}>{file.mediaType} · {file.byteLength} bytes · digest {file.digest}{file.artifactIds === undefined ? "" : ` · artifacts ${file.artifactIds.join(", ")}`}</p></div>)}
-    </section>}
-    {activeSection === report.sections.length + 2 && <section aria-label="Record details" className="bg-[var(--ds-surface-1)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
-      <dl className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-snug)] sm:grid-cols-2">{([
+      <div className="min-w-0 space-y-[22px]"><div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{sectionItems.find(item => item.key === activeSection)?.label}</h2><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{activeSection === report.sections.length + 3 ? `${fields.length} matching ${fields.length === 1 ? "field" : "fields"}` : "Saved at archive time"}</span></div>
+    {report.sections.map((section, index) => activeSection !== index ? null : <ArchiveFieldGroup key={`${String(index)}:${section.title}`} title={section.title}>
+      {section.kind === "unavailable" ? <p role="status" className="m-[var(--ds-space-cozy)] break-words [overflow-wrap:anywhere]">{section.reason}</p> : section.kind === "text" ? <p className="m-[var(--ds-space-cozy)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</p>
+        : section.kind === "values" ? section.values.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No saved values were captured.</p> : <ArchiveFieldRows rows={section.values.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />
+          : <div className="overflow-x-auto"><ArchiveTable label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.length === 0 ? <TR><TD colSpan={section.columns.length}>No saved rows were captured.</TD></TR> : section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}><ArchiveStructuredValue value={cell} /></TD>)}</TR>)}</TBody></ArchiveTable></div>}
+    </ArchiveFieldGroup>)}
+    {report.versionChange !== undefined && activeSection === report.sections.length && <ArchiveFieldGroup title="Recorded version change">
+      <div className="border-b border-[color:var(--ds-border)] px-[20px] py-[var(--ds-space-cozy)]"><h4 className={cn(dsText.ui, "m-0 break-words font-semibold [overflow-wrap:anywhere]")}>{report.versionChange.change.what}</h4><p className="mb-0 break-words [overflow-wrap:anywhere]">{report.versionChange.change.why}</p></div>
+      <ArchiveFieldRows columns="one" rows={[
+        { label: "Change ID", value: report.versionChange.changeId, copyValue: report.versionChange.changeId },
+        { label: "Change kind", value: report.versionChange.change.kind },
+        { label: "Reviewed", value: <SavedArchiveTime value={report.versionChange.reviewedAt} /> },
+        { label: "Started", value: <SavedArchiveTime value={report.versionChange.startedAt} /> },
+        { label: "Scope", value: report.versionChange.scope.kind === "application" ? `Application ${report.versionChange.scope.applicationVersion}` : report.versionChange.scope.workflowIds.join(", ") },
+        { label: "Target version", value: report.versionChange.targetVersion },
+        { label: "Applied by", value: report.versionChange.appliedBy },
+        { label: "Commit", value: `${report.versionChange.change.commit.state} · ${report.versionChange.change.commit.state === "present" ? report.versionChange.change.commit.value : report.versionChange.change.commit.reason}` },
+      ]} />
+    </ArchiveFieldGroup>}
+    {activeSection === report.sections.length + 1 && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments">
+      {report.files.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No attachment was retained with this report.</p> : report.files.map(file => <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} file={file} />)}
+    </ArchiveFieldGroup>}
+    {activeSection === report.sections.length + 2 && <ArchiveFieldGroup title="Record details">
+      <ArchiveFieldRows columns="one" rows={([
         ["Report state", report.state], ["Title", report.title], ["Run ID", report.runId], ["Transfer ID", report.transferId],
         ["Workflow", report.workflow], ["Item ID", report.itemId], ["Attempt", report.attempt], ["Run number", report.runNumber],
         ["Descriptor version", report.descriptorVersion], ["Outcome", report.outcome], ["Publication", report.publicationState],
@@ -60,14 +71,13 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
         ["Workflow runtime version", report.runtimeVersion === undefined ? undefined : formatRuntimeVersion(report.runtimeVersion.workflow)],
         ["Runtime attribution", report.runtimeVersion?.state], ["Version change ID", report.versionChange?.changeId],
         ["Public fingerprint", report.archiveFingerprint],
-      ] as const).map(([label, value]) => <div key={label} className="min-w-0"><dt className="text-[color:var(--ds-fg-muted)]">{label}</dt><dd className="m-0 break-all">{savedRecordDetailValue(label, value)}</dd></div>)}</dl>
+      ] as const).map(([label, value]) => ({ label, value: savedRecordDetailValue(label, value), copyValue: typeof value === "string" && ["Run ID", "Transfer ID", "Item ID", "Public fingerprint", "Version change ID"].includes(label) ? value : undefined }))} />
       {deletion}
-    </section>}
-    {activeSection === report.sections.length + 3 && <section aria-label="All fields" className="bg-[var(--ds-surface-1)] rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]">
-      <label className="block"><span className="sr-only">Search all report fields</span><Input value={fieldSearch} onChange={event => setSearch({ runId: report.runId, value: event.target.value })} placeholder="Search all report fields" /></label>
-      <p className={dsText.meta}>{fields.length} matching fields · public retained record</p>
-      <div className="overflow-x-auto"><Table className="min-w-max" label="All public retained fields"><THead><TR><TH>Field path</TH><TH>Type</TH><TH>Value</TH></TR></THead><TBody>{fields.map(([, path, type, value]) => <TR key={path}><TD>{path}</TD><TD>{type}</TD><TD>{archiveFieldValue(type, value)}</TD></TR>)}</TBody></Table></div>
-    </section>}
+    </ArchiveFieldGroup>}
+    {activeSection === report.sections.length + 3 && <ArchiveFieldGroup title="All fields">
+      <div className="border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"><label className="block"><span className="sr-only">Search all report fields</span><Input ref={fieldSearchRef} value={fieldSearch} onChange={event => setSearch({ runId: report.runId, value: event.target.value })} placeholder="Search all report fields" /></label></div>
+      <div className="overflow-x-auto"><ArchiveTable label="All public retained fields"><THead><TR><TH>Field</TH><TH>Saved value</TH><TH>Type</TH></TR></THead><TBody>{fields.length === 0 ? <TR><TD colSpan={3}>No public fields match “{fieldSearch}”. <Button variant="ghost" size="toolbar" onClick={() => { setSearch({ runId: report.runId, value: "" }); fieldSearchRef.current?.focus(); }}>Clear search</Button></TD></TR> : fields.map(([, path, type, value]) => <TR key={path}><TD className="max-w-[420px] break-all font-medium text-[color:var(--ds-fg)]">{path}</TD><TD className="max-w-[560px] break-words [overflow-wrap:anywhere]">{archiveFieldValue(type, value)}</TD><TD>{type}</TD></TR>)}</TBody></ArchiveTable></div>
+    </ArchiveFieldGroup>}
       </div>
     </div>
   </article>;
@@ -85,43 +95,52 @@ function SavedArchiveTime({ value }: { value: string }) {
   const label = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(instant);
   return <time dateTime={value} title={value}>{label} UTC</time>;
 }
-function archiveFieldValue(type: string, value: string): string {
+function archiveFieldValue(type: string, value: string): ReactNode {
   if (type === "null") return "null";
+  if (value === "[]" || value === "{}") return value;
+  if (type === "object" || type === "array") return <ArchiveStructuredValue value={ArchiveReportCellSchema.parse(JSON.parse(value))} />;
   return type === "string" && value === "" ? '""' : value;
 }
-function SavedAttachment({ runId, digest, name, mediaType }: { runId: string; digest: string; name: string; mediaType: string }) {
+function SavedAttachment({ runId, file: retained }: { runId: string; file: SavedArchiveReportWire["files"][number] }) {
   const client = useDashboardClient();
   const [open, setOpen] = useState(false);
+  const [detailsOpen, setDetailsOpen] = useState(false);
   const [imageError, setImageError] = useState(false);
   const inspectButton = useRef<HTMLButtonElement>(null);
   const changeOpen = (next: boolean) => {
     setOpen(next);
     if (!next) requestAnimationFrame(() => inspectButton.current?.focus());
   };
-  const read = useCallback(async () => savedDownload(await client.savedArchiveFile(runId, digest), runId, digest), [client, runId, digest]);
+  const read = useCallback(async () => savedDownload(await client.savedArchiveFile(runId, retained.digest), runId, retained.digest), [client, runId, retained.digest]);
   const resource = useSavedResource(read);
-  if (resource.state === "loading") return <p role="status">Checking {name}…</p>;
-  if (resource.state === "error") return <p role="alert">{name}: {resource.message}</p>;
-  const file = resource.value;
-  if (file.state !== "available") return <p role="status">{name}: {file.state === "missing" ? file.reason : file.message}</p>;
-  const image = /^image\//u.test(mediaType);
-  return <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
-    {image && <Button ref={inspectButton} className="max-w-full whitespace-normal break-all" icon={<ZoomIn />} onClick={() => { setImageError(false); setOpen(true); }}>Inspect {name}</Button>}
-    <ButtonLink className="max-w-full whitespace-normal break-all" href={file.downloadUrl} download={name}>{name}</ButtonLink>
-    {image && <Dialog open={open} onOpenChange={changeOpen}>
-      <DialogContent size="lg" title={name} description="Verified retained image">
+  const available = resource.state === "loaded" && resource.value.state === "available" ? resource.value : null;
+  const image = /^image\//u.test(retained.mediaType);
+  return <section aria-label={`File ${retained.name}`} className="min-w-0 border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)] last:border-b-0">
+    <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-base)]">
+      <FileText className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-fg-muted)]")} aria-hidden />
+      <div className="min-w-0 flex-1"><strong className="block break-words [overflow-wrap:anywhere]">{retained.name}</strong><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{retained.mediaType} · {retained.byteLength} bytes</span></div>
+      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{resource.state === "loading" ? <span role="status">Checking {retained.name}…</span> : resource.state === "error" ? <span role="alert">{resource.message}</span> : resource.value.state === "available" ? "Available" : <span role="status">{resource.value.state === "missing" ? resource.value.reason : resource.value.message}</span>}</span>
+      <div className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">
+        {available !== null && image && <Button ref={inspectButton} size="toolbar" variant="secondary" icon={<ZoomIn className={dsIcon.sm} aria-hidden />} onClick={() => { setImageError(false); setOpen(true); }}>Inspect {retained.name}</Button>}
+        {available !== null && <ButtonLink size="toolbar" className="max-w-full whitespace-normal break-all" href={available.downloadUrl} download={retained.name}>{retained.name}</ButtonLink>}
+        <Button size="toolbar" variant="ghost" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(value => !value)}>Details</Button>
+      </div>
+    </div>
+    {detailsOpen && <dl className={cn(dsText.meta, "mt-[var(--ds-space-cozy)] grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-cozy)]")}><dt>Digest</dt><dd className="m-0 select-text break-all">{retained.digest}</dd><dt>Artifact IDs</dt><dd className="m-0 select-text break-all">{retained.artifactIds === undefined || retained.artifactIds.length === 0 ? "Not recorded" : retained.artifactIds.join(", ")}</dd></dl>}
+    {available !== null && image && <Dialog open={open} onOpenChange={changeOpen}>
+      <DialogContent size="lg" title={retained.name} description="Verified retained image">
         <DialogBody className="flex min-h-0 items-center justify-center">
           {imageError
-            ? <p role="alert">{name}: retained image bytes could not be decoded.</p>
-            : <img src={file.downloadUrl} alt={name} loading="lazy" className="h-auto max-h-full max-w-full object-contain" onError={() => setImageError(true)} />}
+            ? <p role="alert">{retained.name}: retained image bytes could not be decoded.</p>
+            : <img src={available.downloadUrl} alt={retained.name} loading="lazy" className="h-auto max-h-full max-w-full object-contain" onError={() => setImageError(true)} />}
         </DialogBody>
         <DialogFooter>
           <Button variant="secondary" onClick={() => changeOpen(false)}>Close</Button>
-          <ButtonLink href={file.downloadUrl} download={name} icon={<Download />}>Download image</ButtonLink>
+          <ButtonLink href={available.downloadUrl} download={retained.name} icon={<Download />}>Download image</ButtonLink>
         </DialogFooter>
       </DialogContent>
     </Dialog>}
-  </div>;
+  </section>;
 }
 function SavedVersions({ actorId, nonce, onChanged, onArchive }: { actorId: string; nonce: number; onChanged: () => void; onArchive: () => void }) {
   const client = useDashboardClient();

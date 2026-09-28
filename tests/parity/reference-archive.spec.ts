@@ -45,7 +45,7 @@ test.describe("version bump", () => {
 
       const bump=page.getByRole("region",{name:"Plan a version bump"});
       await expect(bump).toBeVisible();
-      await expect(bump.getByRole("radio",{name:"Selected workflow"})).toBeChecked();
+      await expect(bump.getByRole("radio",{name:"Choose workflows"})).toBeChecked();
       await expect(bump.getByRole("radio",{name:"All workflows"})).toBeVisible();
       await expect(page.getByRole("button",{name:"Apply reviewed change"})).toHaveCount(0);
       await expect(page.getByRole("button",{name:"Review affected runs"})).toBeEnabled();

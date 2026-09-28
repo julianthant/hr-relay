@@ -99,7 +99,11 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   expect(document.body.textContent).toContain("Commit not captured");
   await clickSection("Retained files");
   expect(document.body.textContent).toContain("Bytes unavailable in this synthetic report.");
-  expect(document.body.textContent).toContain("artifact");
+  const fileDetails = document.querySelector<HTMLButtonElement>('section[aria-label="Retained attachments"] button[aria-expanded]');
+  expect(fileDetails).not.toBeNull();
+  await act(async () => fileDetails!.click());
+  expect(document.body.textContent).toContain("Artifact IDs");
+  expect(document.body.textContent).toContain(report.files[0].artifactIds[0]);
   await clickSection("Record details");
   for (const value of [report.runId, report.transferId!, report.itemId!, "2", "Null", "failed", "verified", "4.1", "6.2", "adopted", "Absent", report.archiveFingerprint]) {
     expect(document.body.textContent).toContain(value);
@@ -115,6 +119,38 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   const rawFields = document.querySelector('section[aria-label="All public retained fields"]')?.textContent ?? document.body.textContent;
   for (const raw of ["false", "null", "[]", "{}", "0"]) expect(rawFields).toContain(raw);
   expect(calls.savedArchiveFile).toHaveBeenCalledWith(report.runId, report.files[0].digest);
+});
+
+it("keeps All fields search explicit and restores focus after clearing no matches", async () => {
+  await mount();
+  await clickSection("All fields");
+  const table = document.querySelector<HTMLTableElement>('table[aria-label="All public retained fields"]');
+  expect([...table!.querySelectorAll("th")].map(cell => cell.textContent)).toEqual(["Field", "Saved value", "Type"]);
+  const input = document.querySelector<HTMLInputElement>('input[placeholder="Search all report fields"]');
+  expect(input).not.toBeNull();
+  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "no-such-retained-field"); input!.dispatchEvent(new Event("input", { bubbles: true })); });
+  expect(table?.textContent).toContain("No public fields match");
+  const clear = [...table!.querySelectorAll("button")].find(button => button.textContent?.trim() === "Clear search");
+  expect(clear).toBeDefined();
+  await act(async () => clear!.click());
+  expect(input?.value).toBe("");
+  expect(document.activeElement).toBe(input);
+  expect(table?.querySelectorAll("tbody tr").length).toBeGreaterThan(1);
+});
+
+it("discloses structured values with exact JSON and keeps public identifiers selectable", async () => {
+  await mount();
+  const summary = [...document.querySelectorAll("summary")].find(node => node.textContent?.startsWith("Record ·"));
+  expect(summary).toBeDefined();
+  await act(async () => summary!.click());
+  expect(summary?.parentElement?.textContent).toContain('"city":"München"');
+  await clickSection("Record details");
+  const run = [...document.querySelectorAll("dt")].find(node => node.textContent === "Run ID")?.parentElement;
+  expect(run?.textContent).toContain(report.runId);
+  const copy = run?.querySelector<HTMLButtonElement>('button[aria-label="Copy Run ID"]');
+  expect(copy).not.toBeNull();
+  await act(async () => copy!.click());
+  expect(run?.textContent).toContain("could not be copied");
 });
 
 it("resets a selected pane and field search when the saved run changes", async () => {

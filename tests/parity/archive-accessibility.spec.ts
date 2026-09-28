@@ -91,7 +91,7 @@ test("archive search filters public groups and the saved report retains failed w
 test("one-workflow dashboard normalizes that workflow's selection to a major bump review", async ({ page }) => {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
   const bump = page.getByRole("region", { name: "Plan a version bump" });
-  await expect(bump.getByRole("combobox", { name: "Workflow to bump" })).toHaveValue("person-lookup");
+  await expect(bump.getByRole("group", { name: "Workflows to bump" }).getByRole("checkbox", { name: /Person lookup/iu })).toBeChecked();
   await expect(bump).toContainText("Every registered workflow selected: dashboard major bump");
   await expect(page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review affected runs" })).toBeEnabled();
   await expect(bump.getByText("For every workflow, choose Dashboard version.")).toHaveCount(0);
