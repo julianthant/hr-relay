@@ -7,7 +7,7 @@ import { savedCell } from "./archive-report-model.js";
 
 export function ArchiveTable({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return <Table label={label} className={cn(
-    "min-w-max [&_thead_th]:!h-[40px] [&_thead_th]:!px-[var(--ds-space-cozy)] [&_thead_th]:!py-[var(--ds-space-snug)] [&_thead_th]:!text-[12px] [&_thead_th]:!font-semibold [&_thead_th]:!normal-case [&_thead_th]:!tracking-normal",
+    "min-w-max [&_thead_tr]:!h-[40px] [&_thead_th]:!h-[40px] [&_thead_th]:!px-[var(--ds-space-cozy)] [&_thead_th]:!py-[var(--ds-space-snug)] [&_thead_th]:!text-[12px] [&_thead_th]:!font-semibold [&_thead_th]:!normal-case [&_thead_th]:!tracking-normal",
     "[&_tbody_tr]:h-[46px] [&_tbody_td]:!px-[var(--ds-space-cozy)] [&_tbody_td]:!py-[var(--ds-space-snug)] [&_tbody_td]:!text-[12px] [&_tbody_tr:hover]:bg-[var(--ds-surface-2)]",
     className,
   )}>{children}</Table>;

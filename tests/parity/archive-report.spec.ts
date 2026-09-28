@@ -79,7 +79,7 @@ for (const viewport of [{ width: 1024, height: 720 }, { width: 1440, height: 900
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: H_REPORT.runId });
     await assertThemeApplied(page, theme);
     await page.getByRole("button", { name: "Retained files" }).click();
-    await expect(page.getByRole("link", { name: "Synthetic receipt.txt" })).toHaveAttribute("href", download);
+    await expect(page.getByRole("link", { name: "Download Synthetic receipt.txt" })).toHaveAttribute("href", download);
     await page.getByRole("button", { name: "Retained work" }).click();
     await expect(page.getByRole("article")).toContainText("Captured approval");
     await expect(page.getByRole("button", { name: /Relaunch|Restart|Retry/ })).toHaveCount(0);
@@ -94,6 +94,8 @@ for (const viewport of [{ width: 1024, height: 720 }, { width: 1440, height: 900
     await page.getByRole("textbox", { name: "Search all public archive fields" }).fill("does-not-match");
     await expect(page.getByText("No saved reports match these filters.")).toBeVisible();
     await page.getByRole("button", { name: "Clear filters" }).click();
+    await page.keyboard.press("Escape");
+    await expect(page.getByRole("button", { name: "Filters" })).toBeFocused();
     await page.getByRole("button", { name: H_REPORT.workflow }).click();
     await page.getByRole("button", { name: new RegExp(H_REPORT.title,"u") }).click();
     await page.getByRole("button", { name: "Record details" }).click();
@@ -219,7 +221,7 @@ test("honest loading, empty, error, missing, deleted, unavailable and attachment
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: H_REPORT.runId });
   await page.getByRole("button", { name: "Retained files", exact: true }).click();
   await expect(page.getByRole("article").getByRole("alert")).toBeVisible();
-  await expect(page.getByRole("link", { name: "Synthetic receipt.txt" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Download Synthetic receipt.txt" })).toHaveCount(0);
 });
 test("late old detail cannot replace the selected report; valid file downloads", async ({ page }) => {
   await routes(page);
@@ -240,6 +242,6 @@ test("late old detail cannot replace the selected report; valid file downloads",
   await page.getByRole("button", { name: new RegExp(H_REPORT.title,"u") }).click();
   await page.getByRole("button", { name: "Retained files" }).click();
   await expect(page.getByRole("heading", { name: H_REPORT.title, exact: true, level: 1 })).toBeVisible();
-  const downloaded = page.waitForEvent("download"); await page.getByRole("link", { name: "Synthetic receipt.txt" }).click();
+  const downloaded = page.waitForEvent("download"); await page.getByRole("link", { name: "Download Synthetic receipt.txt" }).click();
   expect((await downloaded).suggestedFilename()).toBe("synthetic.txt");
 });

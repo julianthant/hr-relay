@@ -234,6 +234,27 @@ export function archiveRuntimeVersionPreview(
   return Object.freeze({ scope, transition });
 }
 
+export function archiveReviewMatchesPreview(
+  preview: ArchiveRuntimeVersionPreview | null,
+  change: SavedRuntimeVersionIndexWire["changes"][number],
+): boolean {
+  if (preview === null || change.scope.kind !== preview.scope.kind) return false;
+  const previewScope = preview.scope;
+  if (change.scope.kind === "workflows" && previewScope.kind === "workflows"
+    && (change.scope.workflowIds.length !== previewScope.workflowIds.length
+      || change.scope.workflowIds.some(id => !previewScope.workflowIds.includes(id)))) return false;
+  const sameVersion = (a: RuntimeVersion, b: RuntimeVersion) => a.major === b.major && a.minor === b.minor;
+  const sameState = (a: RuntimeVersionTransition["before"], b: RuntimeVersionTransition["before"]) => {
+    if (!sameVersion(a.dashboard, b.dashboard) || a.workflows.length !== b.workflows.length) return false;
+    const versions = new Map(b.workflows.map(row => [row.workflowId, row.version]));
+    return a.workflows.every(row => {
+      const version = versions.get(row.workflowId);
+      return version !== undefined && sameVersion(row.version, version);
+    });
+  };
+  return sameState(change.before, preview.transition.before) && sameState(change.after, preview.transition.after);
+}
+
 export function archiveReviewRunLabel(runId: string, runIds: readonly string[]): string {
   const compact = (id: string) => `${id.slice(0, 8)}…${id.slice(-8)}`;
   const label = compact(runId);

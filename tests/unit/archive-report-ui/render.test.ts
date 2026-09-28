@@ -103,7 +103,7 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   expect(fileDetails).not.toBeNull();
   await act(async () => fileDetails!.click());
   expect(document.body.textContent).toContain("Artifact IDs");
-  expect(document.body.textContent).toContain(report.files[0].artifactIds[0]);
+  expect(document.body.textContent).toContain(report.files[0].artifactIds![0]);
   await clickSection("Record details");
   for (const value of [report.runId, report.transferId!, report.itemId!, "2", "Null", "failed", "verified", "4.1", "6.2", "adopted", "Absent", report.archiveFingerprint]) {
     expect(document.body.textContent).toContain(value);

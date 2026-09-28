@@ -108,7 +108,7 @@ for (const view of [
       expect(JSON.parse((await bytes(exported)).toString("utf8"))).toEqual(detail);
 
       await article.getByRole("button", { name: "Retained files", exact: true }).click();
-      const imageLink = article.getByRole("link", { name: server.file.name, exact: true });
+      const imageLink = article.getByRole("link", { name: `Download ${server.file.name}`, exact: true });
       const nativePending = page.waitForEvent("download");
       await imageLink.click();
       expect(await bytes(await nativePending)).toEqual(server.bytes);

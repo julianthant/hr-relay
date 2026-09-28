@@ -1,9 +1,10 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { SavedArchiveGroupsWireSchema, SavedArchiveReportWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveGroupsWireSchema, SavedArchiveReportWireSchema, SavedRuntimeVersionIndexWireSchema, type SavedRuntimeVersionIndexWire } from "../../../src/domain/dashboard/archive.js";
 import {
   archiveInitialSummaryColumns,
   archiveReportCount,
+  archiveReviewMatchesPreview,
   archiveReviewRunLabel,
   archiveRuntimeVersionPreview,
   archiveSummaryColumnAlignment,
@@ -94,6 +95,17 @@ describe("Archive normalized version previews", () => {
     assert.equal(archiveRuntimeVersionPreview(wire, "workflows", []), null);
     assert.equal(archiveRuntimeVersionPreview(wire, "workflows", ["retired-workflow"]), null);
     assert.equal(archiveRuntimeVersionPreview(SavedRuntimeVersionIndexWireSchema.parse({ ...wire, workflows: [] }), "dashboard", []), null);
+  });
+
+  it("refuses a review whose returned versions disagree with the normalized selection", () => {
+    const minor = archiveRuntimeVersionPreview(wire, "workflows", ["person-lookup"]);
+    const all = archiveRuntimeVersionPreview(wire, "workflows", ["person-lookup", "separations-kuali-read"]);
+    assert.ok(minor !== null && all !== null);
+    const reviewed = { scope: minor.scope, before: minor.transition.before, after: minor.transition.after } as SavedRuntimeVersionIndexWire["changes"][number];
+    assert.equal(archiveReviewMatchesPreview(minor, reviewed), true);
+    assert.equal(archiveReviewMatchesPreview(all, reviewed), false);
+    assert.equal(archiveReviewMatchesPreview(minor, { ...reviewed, after: all.transition.after }), false);
+    assert.equal(archiveReviewMatchesPreview(minor, { ...reviewed, before: { ...reviewed.before, workflows: reviewed.before.workflows.map(row => row.workflowId === "person-lookup" ? { ...row, version: { major: 2, minor: 0 } } : row) } }), false);
   });
 });
 

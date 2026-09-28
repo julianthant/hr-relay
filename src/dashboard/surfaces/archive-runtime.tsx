@@ -9,7 +9,7 @@ import { settleCommandResult } from "../app/command-result.js";
 import { Button, Card, Checkbox, Dialog, DialogBody, DialogContent, DialogFooter, DsBodyScope, dsIcon, dsSurface, dsText, Input, PageHeader, PageHeading, Panel, PanelBody, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient } from "../state/archive-client.js";
-import { archiveDisplayDate, archiveInitialSummaryColumns, archiveReportCount, archiveReviewRunLabel, archiveRuntimeVersionPreview, archiveSummaryColumnAlignment, archiveSummaryColumnLabel, archiveSummaryColumns, archiveSummaryValue, archiveVersionKey, archiveVersionLabel, archiveWorkflowVersionLabels, groupArchiveVersions, mergeArchiveSummaryColumns, type ArchiveSummaryColumn, type DashboardArchiveGroup } from "./archive-runtime-model.js";
+import { archiveDisplayDate, archiveInitialSummaryColumns, archiveReportCount, archiveReviewMatchesPreview, archiveReviewRunLabel, archiveRuntimeVersionPreview, archiveSummaryColumnAlignment, archiveSummaryColumnLabel, archiveSummaryColumns, archiveSummaryValue, archiveVersionKey, archiveVersionLabel, archiveWorkflowVersionLabels, groupArchiveVersions, mergeArchiveSummaryColumns, type ArchiveSummaryColumn, type DashboardArchiveGroup } from "./archive-runtime-model.js";
 import type { ArchiveExportFormat } from "../../domain/dashboard/archive-export.js";
 import { archiveExportBlob, readWorkflowExport } from "./archive-export-model.js";
 import { SavedArchiveDeletion, SavedArchiveDeletionStatus, SavedArchiveReport } from "./archive-report.js";
@@ -433,6 +433,7 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
     ? (defaultWorkflow === undefined ? [] : [defaultWorkflow])
     : selected.filter(id => eligible.some(eligibleId => eligibleId === id));
   const preview = wire === undefined ? null : archiveRuntimeVersionPreview(wire, kind, selectedIds);
+  const dashboardPreview = wire === undefined ? null : archiveRuntimeVersionPreview(wire, "dashboard", []);
   const scope = preview?.scope ?? null;
   const allSelected = scope?.kind === "dashboard";
   const scopeKey = wire === undefined || contextPending ? null : JSON.stringify(scope);
@@ -477,12 +478,15 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
   if (contextPending) return stateBody(<p role="status">Loading the selected report’s workflow…</p>);
   if (selected === null && contextWorkflow !== undefined && !eligible.some(id => id === contextWorkflow)) return stateBody(<div role="alert" className="space-y-[var(--ds-space-base)]"><p className="m-0">Archived workflow {contextWorkflow} is no longer registered. It was not replaced with another workflow.</p><Button variant="secondary" onClick={() => setSelected([])}>Choose a registered workflow</Button></div>);
   const selectedScopeKey = scopeKey ?? "";
+  const activeChange = activeReview === null ? undefined : wire.changes.find(change => change.changeId === activeReview.changeId && change.state === "planned");
+  const reviewPayloadMatches = activeChange !== undefined && archiveReviewMatchesPreview(preview, activeChange);
   const reviewMatches = activeReview !== null && activeReview.scopeKey === selectedScopeKey
-    && activeReview.generation === generation.current && wire.revision === activeReview.authorityRevision && versions.state === "loaded";
+    && activeReview.generation === generation.current && wire.revision === activeReview.authorityRevision && versions.state === "loaded" && reviewPayloadMatches;
   const submit = (request: unknown, action: "review" | "apply", reviewBasis?: { changeId: string; scopeKey: string; generation: number }) => {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    if (action === "review") setActiveReview(null);
     setMessage(action === "review" ? "Reviewing affected runs…" : "Applying version change…");
     void client.executeCommand(request).then(result => {
       const settled = settleCommandResult(result);
@@ -569,14 +573,14 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
       </div>
       <div className={cn("rounded-[var(--ds-radius-md)] border p-[var(--ds-space-cozy)]", kind === "dashboard" ? "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-3)]" : "border-[color:var(--ds-border)]") }>
         <label className={cn(dsText.ui, "flex min-h-[32px] cursor-pointer items-center gap-[var(--ds-space-snug)] font-semibold")}><input type="radio" name="archive-bump-scope" checked={kind === "dashboard"} disabled={eligible.length === 0} onChange={() => setKind("dashboard")} />All workflows</label>
-        <p className={cn(dsText.meta, "mb-0 ml-[var(--ds-space-section)] mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>Dashboard {formatRuntimeVersion(wire.dashboard)} → {formatRuntimeVersion({ major: wire.dashboard.major + 1, minor: 0 })} · All workflow versions advance together</p>
+        <p className={cn(dsText.meta, "mb-0 ml-[var(--ds-space-section)] mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>{dashboardPreview === null ? "Dashboard version preview unavailable until a workflow is registered." : `Dashboard ${formatRuntimeVersion(dashboardPreview.transition.before.dashboard)} → ${formatRuntimeVersion(dashboardPreview.transition.after.dashboard)} · All workflow versions advance together`}</p>
       </div>
     </fieldset>
     {wire.workflows.length === 0 && <p role="status">No eligible workflows are registered for a version change.</p>}
-    <div className="space-y-[var(--ds-space-base)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-cozy)]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>Review</h3>{currentChange === undefined ? <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Not reviewed. Review the affected runs before applying this change.</p> : changeSummary(currentChange)}</div>
+    <div className="space-y-[var(--ds-space-base)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-cozy)]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>Review</h3>{currentChange === undefined ? <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Not reviewed. Review the affected runs before applying this change.</p> : changeSummary(currentChange)}{activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && <p role="status" className={cn(dsText.meta, "m-0")}>The reviewed versions do not match this selection. Review affected runs again.</p>}</div>
     {wire.applyingChangeId !== undefined && <p role="status">Version change {wire.applyingChangeId} is applying.</p>}
     {history.length > 0 && <details><summary className={cn(dsText.meta, "cursor-pointer")}>Previous version reviews · {history.length}</summary><div className="mt-[var(--ds-space-base)] max-h-[220px] space-y-[var(--ds-space-section)] overflow-y-auto">{history.map(change => <details key={change.changeId}><summary className={cn(dsText.meta, "cursor-pointer")}>{change.state} · {change.reviewedAt}</summary>{changeSummary(change)}</details>)}</div></details>}
-    {message !== "" && <p role="status" className={cn(dsText.meta, "m-0")}>{message}</p>}
+    {message !== "" && !(activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && message === "Version review updated.") && <p role="status" className={cn(dsText.meta, "m-0")}>{message}</p>}
   </section></DialogBody><DialogFooter><Button variant="secondary" onClick={onCancel}>Cancel</Button>
     {currentChange?.state === "applying" ? (currentChange.resumeRequest === undefined && !applyRequests.current.has(currentChange.changeId) ? null : <Button variant="primary" disabled={busy || versions.state !== "loaded" || (currentChange.resumeRequest === undefined && !applyRequests.current.has(currentChange.changeId))} onClick={() => apply(currentChange)}>Resume version change</Button>)
       : currentChange?.state === "planned" && currentChange.members.every(member => member.state === "terminal") ? <Button variant="primary" disabled={busy || currentChange.members.some(member => member.state !== "terminal") || !reviewMatches} onClick={() => apply(currentChange)}>Apply reviewed change</Button>

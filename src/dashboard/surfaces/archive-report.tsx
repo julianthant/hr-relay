@@ -1,4 +1,4 @@
-import { Archive,Download,FileText,RefreshCw,ZoomIn } from "lucide-react";
+import { Archive,Download,FileText,RefreshCw,Search,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState, type ReactNode } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
@@ -74,10 +74,10 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       ] as const).map(([label, value]) => ({ label, value: savedRecordDetailValue(label, value), copyValue: typeof value === "string" && ["Run ID", "Transfer ID", "Item ID", "Public fingerprint", "Version change ID"].includes(label) ? value : undefined }))} />
       {deletion}
     </ArchiveFieldGroup>}
-    {activeSection === report.sections.length + 3 && <ArchiveFieldGroup title="All fields">
-      <div className="border-b border-[color:var(--ds-border)] p-[var(--ds-space-cozy)]"><label className="block"><span className="sr-only">Search all report fields</span><Input ref={fieldSearchRef} value={fieldSearch} onChange={event => setSearch({ runId: report.runId, value: event.target.value })} placeholder="Search all report fields" /></label></div>
-      <div className="overflow-x-auto"><ArchiveTable label="All public retained fields"><THead><TR><TH>Field</TH><TH>Saved value</TH><TH>Type</TH></TR></THead><TBody>{fields.length === 0 ? <TR><TD colSpan={3}>No public fields match “{fieldSearch}”. <Button variant="ghost" size="toolbar" onClick={() => { setSearch({ runId: report.runId, value: "" }); fieldSearchRef.current?.focus(); }}>Clear search</Button></TD></TR> : fields.map(([, path, type, value]) => <TR key={path}><TD className="max-w-[420px] break-all font-medium text-[color:var(--ds-fg)]">{path}</TD><TD className="max-w-[560px] break-words [overflow-wrap:anywhere]">{archiveFieldValue(type, value)}</TD><TD>{type}</TD></TR>)}</TBody></ArchiveTable></div>
-    </ArchiveFieldGroup>}
+    {activeSection === report.sections.length + 3 && <section aria-label="All fields" className="min-w-0 space-y-[var(--ds-space-loose)]">
+      <label className="relative block"><span className="sr-only">Search all report fields</span><Search aria-hidden className={cn(dsIcon.sm, "pointer-events-none absolute left-[var(--ds-space-cozy)] top-1/2 -translate-y-1/2 text-[color:var(--ds-fg-muted)]")} /><Input ref={fieldSearchRef} className="pl-[var(--ds-space-page)]" value={fieldSearch} onChange={event => setSearch({ runId: report.runId, value: event.target.value })} placeholder="Search all report fields" /></label>
+      <div className="overflow-x-auto rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]"><ArchiveTable label="All public retained fields"><THead><TR><TH>Field</TH><TH>Saved value</TH><TH>Type</TH></TR></THead><TBody>{fields.length === 0 ? <TR><TD colSpan={3}>No public fields match “{fieldSearch}”. <Button variant="ghost" size="toolbar" onClick={() => { setSearch({ runId: report.runId, value: "" }); fieldSearchRef.current?.focus(); }}>Clear search</Button></TD></TR> : fields.map(([, path, type, value]) => <TR key={path}><TD className="max-w-[420px] break-all font-medium text-[color:var(--ds-fg)]">{path}</TD><TD className="max-w-[560px] break-words [overflow-wrap:anywhere]">{archiveFieldValue(type, value)}</TD><TD>{type}</TD></TR>)}</TBody></ArchiveTable></div>
+    </section>}
       </div>
     </div>
   </article>;
@@ -122,7 +122,7 @@ function SavedAttachment({ runId, file: retained }: { runId: string; file: Saved
       <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{resource.state === "loading" ? <span role="status">Checking {retained.name}…</span> : resource.state === "error" ? <span role="alert">{resource.message}</span> : resource.value.state === "available" ? "Available" : <span role="status">{resource.value.state === "missing" ? resource.value.reason : resource.value.message}</span>}</span>
       <div className="ml-auto flex shrink-0 items-center gap-[var(--ds-space-tight)]">
         {available !== null && image && <Button ref={inspectButton} size="toolbar" variant="secondary" icon={<ZoomIn className={dsIcon.sm} aria-hidden />} onClick={() => { setImageError(false); setOpen(true); }}>Inspect {retained.name}</Button>}
-        {available !== null && <ButtonLink size="toolbar" className="max-w-full whitespace-normal break-all" href={available.downloadUrl} download={retained.name}>{retained.name}</ButtonLink>}
+        {available !== null && <ButtonLink size="toolbar" className="max-w-full whitespace-normal break-all" href={available.downloadUrl} download={retained.name}>Download {retained.name}</ButtonLink>}
         <Button size="toolbar" variant="ghost" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(value => !value)}>Details</Button>
       </div>
     </div>
@@ -311,7 +311,7 @@ export function SavedArchiveDeletion({ report, actorId, onChanged }: { report: S
       }
     }).finally(() => { pending.current = false; if (active.current) setBusy(false); });
   };
-  return <section aria-label="Delete saved report" className="border-t border-[color:var(--ds-border)] pt-[var(--ds-space-cozy)]">
+  return <section aria-label="Delete saved report" className="border-t border-[color:var(--ds-border)] px-[20px] py-[var(--ds-space-loose)]">
     <Dialog open={confirming} onOpenChange={open => { if (!busy) { setConfirming(open); if (open) setProblem(""); } }}>
       <DialogTrigger asChild><Button variant="danger">Delete saved report</Button></DialogTrigger>
       <DialogContent size="md" title={`Delete ${report.title}?`} description="Deleting this report is permanent and cannot be undone.">
