@@ -16,6 +16,7 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
   const [active, setActive] = useState(() => ({ runId: report.runId, section: defaultSection }));
   const [search, setSearch] = useState(() => ({ runId: report.runId, value: "" }));
   const fieldSearchRef = useRef<HTMLInputElement>(null);
+  const sectionNavRef = useRef<HTMLElement>(null);
   const requestedSection = section ?? (active.runId === report.runId ? active.section : defaultSection);
   const fieldSearch = search.runId === report.runId ? search.value : "";
   const sectionItems = [...report.sections.map((section, index) => ({ label: index === 0 && section.title.startsWith("Identity and ") ? "Workflow details" : section.title, key: index })),
@@ -24,6 +25,16 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
     { label: "Record details", key: report.sections.length + 2 },
     { label: "All fields", key: report.sections.length + 3 }];
   const activeSection = sectionItems.some(item => item.key === requestedSection) ? requestedSection : defaultSection;
+  useEffect(() => {
+    const nav = sectionNavRef.current;
+    if (nav === null || nav.scrollHeight <= nav.clientHeight) return;
+    const selected = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    if (selected === null) return;
+    const bounds = nav.getBoundingClientRect();
+    const item = selected.getBoundingClientRect();
+    if (item.top < bounds.top) nav.scrollTop += item.top - bounds.top;
+    else if (item.bottom > bounds.bottom) nav.scrollTop += item.bottom - bounds.bottom;
+  }, [activeSection, report.runId]);
   const fields = archiveFieldRows([report]).filter(([, path, type, value]) => `${path} ${type} ${value}`.toLowerCase().includes(fieldSearch.toLowerCase()));
   const dashboardVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.dashboard);
   const workflowVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.workflow);
@@ -38,7 +49,7 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       <div><dt>Retained files</dt><dd className="m-0 text-[color:var(--ds-fg)]">{report.files.length}</dd></div>
     </dl>
     <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] gap-[22px] min-[1200px]:grid-cols-[185px_minmax(0,1fr)] min-[1200px]:gap-[30px]">
-      <nav aria-label="Run sections" className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]"><span className={cn(dsText.caps, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Archived report</span>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left outline outline-1 [overflow-wrap:anywhere]", activeSection === item.key ? "border-[color:var(--ds-control-border)] outline-[color:var(--ds-control-border)]" : "border-transparent outline-transparent")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}<p className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>The saved record, as it was when archived.</p></nav>
+      <nav ref={sectionNavRef} aria-label="Run sections" className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]", sectionItems.length > 10 && "max-h-[max(160px,min(480px,calc(100vh-420px)))] overflow-y-auto [&>button]:shrink-0")}><span className={cn(dsText.caps, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Archived report</span>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left outline outline-1 [overflow-wrap:anywhere]", activeSection === item.key ? "border-[color:var(--ds-control-border)] outline-[color:var(--ds-control-border)]" : "border-transparent outline-transparent")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}<p className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>The saved record, as it was when archived.</p></nav>
       <div className="min-w-0 space-y-[22px]"><div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{sectionItems.find(item => item.key === activeSection)?.label}</h2><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{activeSection === report.sections.length + 3 ? `${fields.length} matching ${fields.length === 1 ? "field" : "fields"}` : "Saved at archive time"}</span></div>
     {report.sections.map((section, index) => activeSection !== index ? null : <ArchiveFieldGroup key={`${String(index)}:${section.title}`} title={section.title} showHeading={section.title !== sectionItems[index]?.label}>
       {section.kind === "unavailable" ? <p role="status" className="m-[var(--ds-space-cozy)] break-words [overflow-wrap:anywhere]">{section.reason}</p> : section.kind === "text" ? <p className="m-[var(--ds-space-cozy)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</p>

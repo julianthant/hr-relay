@@ -35,3 +35,39 @@ test("run-list filters retain the table without a visible column control or coun
     await expect(controls.getByText(/^\d+ runs?$/u)).toHaveCount(0);
   } finally { await server.close(); }
 });
+
+test("long retained section navigation scrolls independently of selected content", async ({ page }) => {
+  ensureParityBundle();
+  const report = { ...ARCHIVE_COMPARISON_REPORTS[0], sections: Array.from({ length: 26 }, (_, index) => ({
+    kind: "text" as const, title: `Retained source ${index + 1}`, text: `Frozen content ${index + 1}`,
+  })) };
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" },
+    archiveComparison: { reports: [report], versions: ARCHIVE_COMPARISON_VERSIONS } });
+  try {
+    for (const width of [1024, 1440]) {
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
+      await page.goto(`${server.baseUrl}/?archive=${report.runId}`);
+      const nav = page.getByRole("navigation", { name: "Run sections" });
+      await nav.getByRole("button", { name: "Retained source 26", exact: true }).focus();
+      await page.keyboard.press("Enter");
+      const content = page.getByRole("region", { name: "Retained source 26", exact: true });
+      await expect(content).toContainText("Frozen content 26");
+      const contentBox = await content.boundingBox();
+      expect(contentBox?.y).toBeGreaterThanOrEqual(0);
+      expect(contentBox?.y).toBeLessThan(width === 1024 ? 650 : 830);
+      expect(await nav.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
+      await nav.getByRole("button", { name: "All fields", exact: true }).focus();
+      await expect(nav.getByRole("button", { name: "All fields", exact: true })).toBeFocused();
+      expect(await nav.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
+      await page.goto(`${server.baseUrl}/?archive=${report.runId}&archiveBrowse=${encodeURIComponent(JSON.stringify({ filters: {}, section: 25 }))}`);
+      const selected = nav.getByRole("button", { name: "Retained source 26", exact: true });
+      await expect(selected).toHaveAttribute("aria-current", "page");
+      await expect.poll(async () => {
+        const item = await selected.boundingBox();
+        const rail = await nav.boundingBox();
+        return item !== null && rail !== null && item.y >= rail.y - 1 && item.y + item.height <= rail.y + rail.height + 1;
+      }).toBe(true);
+      expect((await content.boundingBox())?.y).toBeLessThan(width === 1024 ? 650 : 830);
+    }
+  } finally { await server.close(); }
+});

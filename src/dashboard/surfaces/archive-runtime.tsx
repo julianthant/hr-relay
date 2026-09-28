@@ -1,6 +1,6 @@
 import { EMPTY_ARCHIVE_BROWSE, ArchiveBrowseStateSchema, type ArchiveBrowseState } from "../app/archive-route-model.js";
 import { Archive, ArrowRight, ChevronDown, ChevronRight, Download, Folder, Layers3, Search } from "lucide-react";
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ArchiveGroupQuery } from "../../domain/archive/report.js";
 import type { SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
@@ -61,7 +61,7 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
         {view === "runs" && workflowExportVisible && <Popover open={workflowExportMenuOpen} onOpenChange={setWorkflowExportMenuOpen}>
           <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export workflow</Button></PopoverTrigger>
           <PopoverContent className="ds-body-scope ds-body-overlay !w-[320px] !max-w-[calc(100vw-var(--ds-space-section))] !bg-[var(--ds-surface-overlay)]" title="Export workflow" align="end" width="sm">
-            <div className="flex flex-col gap-[12px] p-[16px]"><p className={cn(dsText.ui, "m-0 font-semibold")}>Export workflow</p><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>All saved runs in this filtered workflow, including hidden fields.</p>
+            <div className="flex flex-col gap-[12px] p-[16px]"><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>All saved runs in this filtered workflow, including hidden fields.</p>
               <div className="flex gap-[8px]"><Button variant="secondary" className="h-[32px] flex-1" onClick={() => { setWorkflowExportMenuOpen(false); workflowExportHandle.current?.start("json"); }}>JSON</Button><Button variant="secondary" className="h-[32px] flex-1" onClick={() => { setWorkflowExportMenuOpen(false); workflowExportHandle.current?.start("csv"); }}>CSV</Button></div>
               <p className={cn(dsText.meta, "m-0 border-t border-[color:var(--ds-border)] pt-[12px] text-[color:var(--ds-fg-muted)]")}>JSON preserves types. CSV uses typed field paths. Limit: 5,000 reports or 50 MB.</p>
               {workflowExportActive && <Button variant="secondary" className="h-[32px]" onClick={() => { setWorkflowExportMenuOpen(false); workflowExportHandle.current?.cancel(); }}>Cancel export</Button>}
@@ -71,7 +71,7 @@ export function RuntimeArchiveWorkspace({ selection, view, folder, actorId, onSe
         {view === "runs" && runExportVisible && <Popover open={runExportMenuOpen} onOpenChange={setRunExportMenuOpen}>
           <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<Download className={dsIcon.sm} aria-hidden />}>Export run</Button></PopoverTrigger>
           <PopoverContent className="ds-body-scope ds-body-overlay !w-[320px] !max-w-[calc(100vw-var(--ds-space-section))] !bg-[var(--ds-surface-overlay)]" title="Export saved run" align="end" width="sm">
-            <div className="flex flex-col gap-[12px] p-[16px]"><p className={cn(dsText.ui, "m-0 font-semibold")}>Export saved run</p><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>Complete public report, including hidden fields.</p>
+            <div className="flex flex-col gap-[12px] p-[16px]"><p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-secondary)]")}>Complete public report, including hidden fields.</p>
               <div className="flex gap-[8px]"><Button variant="secondary" className="h-[32px] flex-1" onClick={() => { setRunExportMenuOpen(false); runExportHandle.current?.start("json"); }}>JSON</Button><Button variant="secondary" className="h-[32px] flex-1" onClick={() => { setRunExportMenuOpen(false); runExportHandle.current?.start("csv"); }}>CSV</Button></div>
               <p className={cn(dsText.meta, "m-0 border-t border-[color:var(--ds-border)] pt-[12px] text-[color:var(--ds-fg-muted)]")}>JSON preserves types. CSV uses typed field paths. Limit: 5,000 reports or 50 MB.</p>
             </div>
@@ -546,7 +546,7 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
         <dt>Scope</dt><dd className="m-0 text-right">{affected.map(workflowLabel).join(" · ")}</dd>
         <dt>{"Dashboard "}</dt><dd className="m-0 text-right">{formatRuntimeVersion(change.before.dashboard)} → {formatRuntimeVersion(change.after.dashboard)}</dd>
         <dt>Affected runs</dt><dd className="m-0 text-right">{change.members.length}</dd><dt>Blockers</dt><dd className="m-0 text-right">{blockers.length}</dd><dt>Archived</dt><dd className="m-0 text-right">{change.completedRunIds.length}</dd>
-        {affected.map(id => { const before = change.before.workflows.find(row => row.workflowId === id)?.version; const after = change.after.workflows.find(row => row.workflowId === id)?.version; return <div key={id} className="contents"><dt>{`${workflowLabel(id)}: `}</dt><dd className="m-0 text-right">{before === undefined ? "Version unavailable" : formatRuntimeVersion(before)} → {after === undefined ? "Version unavailable" : formatRuntimeVersion(after)}</dd></div>; })}
+        {affected.map(id => { const before = change.before.workflows.find(row => row.workflowId === id)?.version; const after = change.after.workflows.find(row => row.workflowId === id)?.version; return <Fragment key={id}><dt>{`${workflowLabel(id)}: `}</dt><dd className="m-0 text-right">{before === undefined ? "Version unavailable" : formatRuntimeVersion(before)} → {after === undefined ? "Version unavailable" : formatRuntimeVersion(after)}</dd></Fragment>; })}
       </dl>
       {blockers.length > 0 && <p role="status" className={cn(dsText.meta, "m-0")}>Blocked by {blockers.length} active or pending {blockers.length === 1 ? "run" : "runs"}. Finish or resolve these runs before applying.</p>}
       <details className={dsText.meta}><summary className="cursor-pointer">Affected runs · {change.members.length}</summary><div className="mt-[12px] max-h-[160px] space-y-[var(--ds-space-tight)] overflow-y-auto">{change.members.map(member => <details key={member.runId} className={dsText.meta}><summary className="cursor-pointer" role={member.state === "terminal" ? undefined : "status"}>{workflowLabel(member.workflowId)} · {archiveReviewRunLabel(member.runId, change.members.map(row => row.runId))} · {member.state === "terminal" ? "will be archived" : `Blocked · ${member.state}`}</summary><p className="m-0 break-all">{member.workflowId} · {member.runId} · {member.state === "terminal" ? "will be archived" : `Blocked · ${member.state}`}</p></details>)}</div></details>
