@@ -14,6 +14,7 @@ import {
 import { EidSchema, ObservationIdSchema, ScenarioIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import { taskFailer } from "../../src/base/task.js";
 import { TaskError, wrapUnhandledTaskError } from "../../src/base/errors.js";
+import type { TaskOperationDeclaration } from "../../src/domain/workflow/operation-display.js";
 
 const INPUT = z.strictObject({ eid: EidSchema });
 const READ_OUTPUT = z.strictObject({ eid: EidSchema, found: z.literal(true) });
@@ -119,6 +120,27 @@ function commitContract() {
 }
 
 describe("sealed task contracts", () => {
+  it("seals a reusable operation declaration and refuses a cross-system one", () => {
+    const operation = {
+      version: 1,
+      id: "search-person",
+      system: "ucpath",
+      session: { kind: "browser", id: "ucpath-browser", system: "ucpath" },
+      page: { screen: "ucpath.person-org.search", form: "person-org" },
+      values: [
+        { id: "eid", source: { kind: "contract-input", path: "eid" } },
+        { id: "found", source: { kind: "contract-output", path: "found" } },
+      ],
+      actions: [{ id: "open", kind: "open-page" }],
+    } satisfies TaskOperationDeclaration;
+    const contract = defineTaskContract({ ...readDefinition(), operation });
+    assert.equal(contract.operation?.id, "search-person");
+    assert.throws(() => defineTaskContract({
+      ...readDefinition(),
+      operation: { ...operation, system: "crm" } as unknown as TaskOperationDeclaration,
+    }), /belongs to "ucpath"/);
+  });
+
   it("seals and freezes all three effect contracts", () => {
     for (const contract of [readContract(), prepareContract(), commitContract()]) {
       assert.equal(contract.__sealed, true);

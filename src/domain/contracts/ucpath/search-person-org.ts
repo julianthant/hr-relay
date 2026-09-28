@@ -15,6 +15,13 @@
 import { z } from "zod";
 import { EidSchema, taskId } from "../../ids.js";
 import { defineTaskContract } from "../base.js";
+import type { TaskOperationDeclaration } from "../../workflow/operation-display.js";
+import {
+  UCPATH_PERSON_ORG_EID_INPUT,
+  UCPATH_PERSON_ORG_RESULTS_GRID,
+  UCPATH_PERSON_ORG_SEARCH_BUTTON,
+  UCPATH_PERSON_ORG_SEARCH_SCREEN,
+} from "../../ui/ucpath-person-org.js";
 
 export const UcpathCandidateSchema = z.strictObject({
   emplId: EidSchema,
@@ -77,6 +84,72 @@ export const SearchPersonOrg = defineTaskContract({
     defaultOverride: "forbidden",
   },
   provenance: { default: "live" },
+  operation: {
+    version: 1,
+    id: "person-org-search",
+    system: "ucpath",
+    session: { kind: "browser", id: "ucpath-worker", system: "ucpath" },
+    page: { screen: UCPATH_PERSON_ORG_SEARCH_SCREEN, form: "person-org-search" },
+    values: [
+      { id: "search-kind", source: { kind: "contract-input", path: "kind" } },
+      { id: "empl-id", source: { kind: "contract-input", path: "emplId", availability: "offered" } },
+      { id: "name", source: { kind: "contract-input", path: "name", availability: "offered" } },
+      { id: "selection-status", source: { kind: "contract-output", path: "selection.status" } },
+    ],
+    templates: [{
+      id: "search-summary",
+      variables: [{ id: "kind", slot: "search-kind" }],
+      segments: [{ kind: "literal", value: "Search mode" }, { kind: "variable", variable: "kind" }],
+      join: { separator: ": ", trim: "outer" },
+    }],
+    transforms: [{
+      id: "selection-summary",
+      input: z.strictObject({ status: z.string().min(1) }),
+      output: z.strictObject({ text: z.string().min(1) }),
+      example: { status: "resolved" },
+      derive: (input) => {
+        const { status } = z.strictObject({ status: z.string().min(1) }).parse(input);
+        return { text: `Selection ${status}` };
+      },
+    }],
+    actions: [{
+      id: "open-search",
+      kind: "open-page",
+    }, {
+      id: "choose-search-mode",
+      kind: "branch",
+      outcomes: [{
+        id: "by-eid",
+        label: "Search by EID",
+        when: { kind: "equals", variable: "search-kind", value: "by-eid" },
+        continuation: "fill-eid",
+      }, {
+        id: "by-name",
+        label: "Search by name",
+        when: { kind: "equals", variable: "search-kind", value: "by-name" },
+        continuation: "run-search",
+      }],
+    }, {
+      id: "fill-eid",
+      kind: "fill-field",
+      target: UCPATH_PERSON_ORG_EID_INPUT,
+      valueSlot: "empl-id",
+    }, {
+      id: "run-search",
+      kind: "click",
+      target: UCPATH_PERSON_ORG_SEARCH_BUTTON,
+      children: [{
+        id: "read-selection",
+        kind: "read-field",
+        target: UCPATH_PERSON_ORG_RESULTS_GRID,
+        valueSlot: "selection-status",
+      }, {
+        id: "summarize-selection",
+        kind: "compute",
+        transform: "selection-summary",
+      }],
+    }],
+  } satisfies TaskOperationDeclaration,
   scenarios: [
     "person-lookup/happy-by-eid",
     "person-lookup/ambiguous-name",

@@ -20,6 +20,8 @@ import {
   assertSchemaOwnsPath,
   sealDeclarativeMetadata,
 } from "../../validation/contract-boundary.js";
+import { assertTaskOperationDeclaration } from "../workflow/operation-display.js";
+import type { TaskOperationDeclaration } from "../workflow/operation-display.js";
 import {
   REVIEWED_UNVERIFIABLE_BY_PAGE_POLICY,
   ReadTaskReferenceSchema,
@@ -147,6 +149,8 @@ interface TaskContractBase<
   readonly subject: SubjectBindingSpec;
   readonly scenarios: readonly z.input<typeof ScenarioIdSchema>[];
   readonly example: z.input<Output>;
+  /** Bundle-safe reusable action structure, when this task participates in complete display format v1. */
+  readonly operation?: TaskOperationDeclaration;
 }
 
 export interface ReadTaskContract<
@@ -217,6 +221,7 @@ interface RuntimeTaskContractBase {
   readonly subject: SubjectBindingSpec;
   readonly scenarios: readonly z.input<typeof ScenarioIdSchema>[];
   readonly example: unknown;
+  readonly operation?: TaskOperationDeclaration;
 }
 interface RuntimeReadTaskContract extends RuntimeTaskContractBase {
   readonly effect: "read";
@@ -259,6 +264,7 @@ const RuntimeTaskContractCommonShape = {
   subject: SubjectBindingSpecSchema,
   scenarios: z.array(ScenarioIdSchema),
   example: RuntimeDeferredExampleSchema,
+  operation: z.unknown().optional(),
 };
 export const RuntimeTaskContractDefinitionSchema = z.discriminatedUnion("effect", [
   z.strictObject({
@@ -310,6 +316,7 @@ function assertCommon(contract: RuntimeTaskContract): void {
   assertContractBoundarySchema(contract.output, `${id} output`);
   const parsedExample = contract.output.parse(contract.example);
   canonicalJsonStringify(parsedExample);
+  if (contract.operation !== undefined) assertTaskOperationDeclaration(contract.operation, contract);
   const codes = contract.errorCodes.map((code) => TaskErrorCodeSchema.parse(code));
   if (new Set(codes).size !== codes.length) throw new Error(`${id} errorCodes must be unique`);
   for (const name of contract.requires ?? []) SecretNameSchema.parse(name);

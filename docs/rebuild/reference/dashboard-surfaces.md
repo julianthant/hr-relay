@@ -2907,6 +2907,11 @@ labels and kinds), `surfaces`, `capabilities`, `details` (as a DECLARATION — D
 `artifactProjections`, `scenarios`, and the version/fingerprint pair. There is no second
 `archetype` declaration.
 
+D355 adds an optional compiler-produced `operationDisplay` only for complete v1 definitions;
+legacy descriptors omit it. It is not a dashboard wire field in P1.1: P1.3 owns the bounded BFF
+projection and the frozen-run join, so this layer neither mirrors the declaration nor invents a
+second action tree.
+
 Three more the factory DERIVES and this layer reads, none of which was in this list before
 2026-08-20:
 

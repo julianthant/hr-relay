@@ -1,4 +1,13 @@
-# `reference/decisions.md` — the decision ledger (D1–D354, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D355, 2026-07-17 → 2026-09-27)
+
+**D355 — Versioned operation display declaration (approved Plan 1 P1.1, 2026-09-27):**
+One bundle-safe, versioned operation/action declaration is task-owned and compiled through the
+existing workflow definition seam. Complete v1 definitions bind reusable task occurrences and
+compose presentation-only outcomes; the existing graph remains the sole source of execution,
+parallel, transaction, and child authority. Absent declarations are explicit legacy capability and
+do not add a descriptor field. Scenario ids remain executable test corpus identifiers, not display
+outcomes. P1.1 does not migrate active workflows or bind runtime events; those are P1.2/P1.3 work.
+Owner: [workflow-model §1.6.4](workflow-model.md#164-versioned-operation-display-declarations-d355-2026-09-27).
 
 **D354 — Proven abandoned admission mutex recovery at startup (operator-directed, 2026-09-27):**
 An ordinary runtime entrypoint may retry admission once after the existing stopped-system proof

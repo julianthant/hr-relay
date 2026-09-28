@@ -33,6 +33,12 @@ import { DelegationEdgeIdSchema, WorkflowIdSchema } from "../domain/ids.js";
 import type { ItemId } from "../domain/ids.js";
 import type { NodeConditionSpec } from "../domain/workflow/node-condition.js";
 import type { CompletionProgram } from "../domain/workflow/completion.js";
+import {
+  compileWorkflowOperationDisplay,
+  type WorkflowOperationDisplay,
+  type WorkflowOperationDisplayDeclaration,
+  type WorkflowOperationEntryProjection,
+} from "../domain/workflow/operation-display.js";
 import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../domain/workflow/build-manifest.js";
 import type { BuildManifest } from "../domain/workflow/build-manifest.js";
 import { DelegationPolicySchema } from "../domain/workflow/delegation-policy.js";
@@ -760,6 +766,7 @@ export type WorkflowDefinitionPresentation<
     readonly string[]
   >,
   "flow" | "timeline" | "contractFingerprint"
+  | "operationDisplay"
 >;
 
 export interface WorkflowDefinitionSpec<
@@ -772,6 +779,8 @@ export interface WorkflowDefinitionSpec<
   readonly role: WorkflowModuleRole;
   /** Ref data-intake-and-edit-data §1 — the spreadsheet-capable declaration, when one exists. */
   readonly intake?: IntakeProjection;
+  /** Optional v1 action display declaration; omitted definitions remain legacy. */
+  readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
   /**
    * The graph, authored through the typed author so every entry's input and
    * output binds to THIS input schema. Returns the ordered timeline tuples and
@@ -792,6 +801,7 @@ export interface WorkflowDefinition<
   readonly input: InputSchema;
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
+  readonly operationDisplay?: WorkflowOperationDisplayDeclaration;
   readonly steps: readonly WorkflowTimelineTuple[];
   readonly result: WorkflowResultDeclaration<InputSchema, ResultSchema>;
 }
@@ -812,7 +822,7 @@ export function defineWorkflow<
 ): WorkflowDefinition<InputSchema, ResultSchema, Completion> {
   const id = WorkflowIdSchema.parse(spec.id);
   WorkflowModuleRoleSchema.parse(spec.role);
-  const { steps: authorSteps, input, role, intake, ...presentation } = spec;
+  const { steps: authorSteps, input, role, intake, operationDisplay, ...presentation } = spec;
   const authored = authorSteps(workflowAuthor<InputSchema>());
   validateSteps(id, authored.steps, authored.result.references);
   for (const entry of flattenEntries(authored.steps)) Object.freeze(entry.references);
@@ -823,6 +833,7 @@ export function defineWorkflow<
     input,
     role,
     ...(intake === undefined ? {} : { intake }),
+    ...(operationDisplay === undefined ? {} : { operationDisplay }),
     steps: Object.freeze(authored.steps.map(([group, entries]) => Object.freeze([
       Object.freeze({ ...group }),
       Object.freeze([...entries]),
@@ -1013,6 +1024,8 @@ export interface CompiledWorkflow<
   readonly definition: WorkflowDefinition<InputSchema, ResultSchema, Completion>;
   readonly descriptor: CompiledWorkflowDescriptor<InputSchema, ResultSchema, Completion>;
   readonly contracts: readonly (AnyReadTaskContract | AnyPrepareTaskContract | AnyCommitTaskContract)[];
+  /** Complete v1 projection or explicit legacy capability for existing definitions. */
+  readonly operationDisplay: WorkflowOperationDisplay;
   /** Task-store namespaces the definition's contracts belong to, first-use order. */
   readonly storeNamespaces: readonly string[];
 }
@@ -1035,6 +1048,62 @@ function defaultEntryLabel(entry: RuntimeEntry): string | undefined {
     case "delegate":
       return undefined;
   }
+}
+
+/**
+ * The operation display receives a read-only projection of the existing entry
+ * graph. It can validate identities and field references, but it never builds
+ * an edge or gives nested presentation children scheduler meaning.
+ */
+function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly WorkflowOperationEntryProjection[] {
+  const entries = flattenEntries(definition.steps) as readonly RuntimeEntry[];
+  return Object.freeze(entries.map((entry) => {
+    const base = {
+      id: entry.id,
+      kind: entry.kind,
+      dependsOn: Object.freeze(entry.references.map(({ id }) => id)),
+    } as const;
+    if (entry.kind === "task") {
+      return Object.freeze({
+        ...base,
+        kind: "task" as const,
+        contracts: Object.freeze([{ role: "task" as const, contract: entry.contract }]),
+        output: entry.contract.output,
+      });
+    }
+    if (entry.kind === "transaction") {
+      return Object.freeze({
+        ...base,
+        kind: "transaction" as const,
+        contracts: Object.freeze([
+          { role: "prepare" as const, contract: entry.prepareContract },
+          { role: "commit" as const, contract: entry.commitContract },
+        ]),
+        output: entry.commitContract.output,
+      });
+    }
+    if (entry.kind === "delegate") {
+      return Object.freeze({
+        ...base,
+        kind: "delegate" as const,
+        contracts: Object.freeze([]),
+        child: Object.freeze({ workflowId: String(entry.target.id), result: entry.target.result }),
+      });
+    }
+    if (entry.kind === "gate") {
+      return Object.freeze({
+        ...base,
+        kind: "gate" as const,
+        contracts: Object.freeze([]),
+        output: entry.result,
+      });
+    }
+    return Object.freeze({
+      ...base,
+      kind: "parallel" as const,
+      contracts: Object.freeze([]),
+    });
+  }));
 }
 
 /**
@@ -1074,12 +1143,19 @@ export function compileWorkflow<
   if (definition.kind !== "workflow-definition") {
     throw new Error("compileWorkflow requires a value produced by defineWorkflow");
   }
-  const { kind, input, role, intake, steps, result, ...presentation } = definition;
+  const { kind, input, role, intake, operationDisplay: operationDisplayDeclaration, steps, result, ...presentation } = definition;
   void kind;
   void input;
   void role;
   void intake;
+  void operationDisplayDeclaration;
   void result;
+  const operationDisplay = compileWorkflowOperationDisplay({
+    workflowId: String(definition.id),
+    input: definition.input,
+    entries: operationDisplayEntries(definition),
+    ...(definition.operationDisplay === undefined ? {} : { declaration: definition.operationDisplay }),
+  });
   const timeline = steps.map(([group, entries]) => ({
     key: group.key,
     label: group.label,
@@ -1097,6 +1173,7 @@ export function compileWorkflow<
     contractFingerprint: resolveWorkflowFingerprint(manifest, WorkflowIdSchema.parse(definition.id)),
     flow: compileFlow(definition),
     ...(usesDefaultTimeline ? {} : { timeline }),
+    ...(operationDisplay.capability === "complete" ? { operationDisplay } : {}),
   });
   const contracts = Object.freeze(flattenEntries(steps).flatMap(({ contracts: owned }) => owned));
   const compiled: CompiledWorkflow<InputSchema, ResultSchema, Completion> = Object.freeze({
@@ -1104,6 +1181,7 @@ export function compileWorkflow<
     definition,
     descriptor,
     contracts,
+    operationDisplay,
     storeNamespaces: Object.freeze([...new Set(contracts.map(storeNamespace))]),
   });
   COMPILED.set(definition, Object.freeze({ compiled, manifest }));
@@ -1120,6 +1198,7 @@ export interface WorkflowModule<
   readonly role: WorkflowModuleRole;
   readonly intake?: IntakeProjection;
   readonly definition: AnyWorkflowDefinition;
+  readonly operationDisplay: WorkflowOperationDisplay;
 }
 
 /**
@@ -1166,6 +1245,7 @@ export function composeWorkflowModule<
     role: definition.role,
     ...(definition.intake === undefined ? {} : { intake: definition.intake }),
     definition,
+    operationDisplay: compiled.operationDisplay,
   });
 }
 
