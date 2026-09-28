@@ -1,13 +1,16 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/archive.js";
+import { SavedArchiveGroupsWireSchema, SavedArchiveReportWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
 import {
   archiveInitialSummaryColumns,
+  archiveReportCount,
+  archiveRuntimeVersionPreview,
   archiveSummaryColumnAlignment,
   archiveSummaryColumnLabel,
   archiveSummaryColumns,
   archiveSummaryValue,
   mergeArchiveSummaryColumns,
+  groupArchiveVersions,
 } from "../../../src/dashboard/surfaces/archive-runtime-model.js";
 import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
 
@@ -15,6 +18,23 @@ function required<T>(value: T | undefined): T {
   assert.ok(value !== undefined);
   return value;
 }
+
+it("retains current, multiple historical and unknown groups without merging workflows or run counts", () => {
+  const groups = SavedArchiveGroupsWireSchema.parse({ groups: [
+    { dashboardVersion: { major: 2, minor: 0 }, workflow: "person-lookup", workflowVersion: { major: 2, minor: 1 }, reportCount: 1, latestCompletedAt: H_REPORT.completedAt },
+    { dashboardVersion: { major: 1, minor: 1 }, workflow: "person-lookup", workflowVersion: { major: 1, minor: 2 }, reportCount: 2, latestCompletedAt: H_REPORT.completedAt },
+    { dashboardVersion: { major: 1, minor: 0 }, workflow: "person-lookup", workflowVersion: { major: 1, minor: 1 }, reportCount: 3, latestCompletedAt: H_REPORT.completedAt },
+    { dashboardVersion: { major: 1, minor: 0 }, workflow: "separations", workflowVersion: { major: 1, minor: 0 }, reportCount: 1, latestCompletedAt: H_REPORT.completedAt },
+    { dashboardVersion: null, workflow: "retired-workflow", workflowVersion: null, reportCount: 1, latestCompletedAt: H_REPORT.completedAt },
+  ] });
+  const projected = groupArchiveVersions(groups.groups);
+  assert.deepEqual(projected.map(row => [row.key, row.reportCount, row.workflows.length]), [
+    ["2.0", 1, 1], ["1.1", 2, 1], ["1.0", 4, 2], ["unrecorded", 1, 1],
+  ]);
+  assert.equal(archiveReportCount(1), "1 run");
+  assert.equal(archiveReportCount(4), "4 runs");
+  assert.deepEqual(groupArchiveVersions([]), []);
+});
 
 const first = SavedArchiveReportWireSchema.parse({
   ...H_REPORT,
@@ -33,6 +53,47 @@ const first = SavedArchiveReportWireSchema.parse({
     ] },
     { kind: "values", title: "Retained outcome", values: [{ label: "Status", value: "confirmed" }] },
   ],
+});
+
+describe("Archive normalized version previews", () => {
+  const wire = SavedRuntimeVersionIndexWireSchema.parse({ revision: 1,
+    dashboard: { major: 2, minor: 0 }, changes: [], workflows: [
+      { workflowId: "person-lookup", label: "Person lookup", version: { major: 2, minor: 1 } },
+      { workflowId: "separations-kuali-read", label: "Separations", version: { major: 2, minor: 4 } },
+    ] });
+
+  it("keeps a two-workflow proper subset minor with unchanged dashboard", () => {
+    const preview = archiveRuntimeVersionPreview(wire, "workflows", ["person-lookup"]);
+    assert.ok(preview !== null);
+    assert.deepEqual(preview.scope, { kind: "workflows", workflowIds: ["person-lookup"] });
+    assert.deepEqual(preview.transition.after.dashboard, wire.dashboard);
+    assert.deepEqual(preview.transition.after.workflows, [
+      { workflowId: "person-lookup", version: { major: 2, minor: 2 } },
+      { workflowId: "separations-kuali-read", version: { major: 2, minor: 4 } },
+    ]);
+  });
+
+  it("normalizes two selected workflows and explicit all scope to the same major transition", () => {
+    const selected = archiveRuntimeVersionPreview(wire, "workflows", ["separations-kuali-read", "person-lookup"]);
+    const all = archiveRuntimeVersionPreview(wire, "dashboard", []);
+    assert.ok(selected !== null);
+    assert.deepEqual(selected, all);
+    assert.deepEqual(selected.scope, { kind: "dashboard" });
+    assert.deepEqual(selected.transition.after.dashboard, { major: 3, minor: 0 });
+    assert.ok(selected.transition.after.workflows.every(row => row.version.major === 3 && row.version.minor === 0));
+  });
+
+  it("normalizes a one-workflow registry and refuses empty or retired selection", () => {
+    const sole = SavedRuntimeVersionIndexWireSchema.parse({ ...wire, workflows: wire.workflows.slice(0, 1) });
+    const preview = archiveRuntimeVersionPreview(sole, "workflows", ["person-lookup"]);
+    assert.ok(preview !== null);
+    assert.deepEqual(preview.scope, { kind: "dashboard" });
+    assert.deepEqual(preview.transition.after.dashboard, { major: 3, minor: 0 });
+    assert.deepEqual(preview.transition.after.workflows[0]?.version, { major: 3, minor: 0 });
+    assert.equal(archiveRuntimeVersionPreview(wire, "workflows", []), null);
+    assert.equal(archiveRuntimeVersionPreview(wire, "workflows", ["retired-workflow"]), null);
+    assert.equal(archiveRuntimeVersionPreview(SavedRuntimeVersionIndexWireSchema.parse({ ...wire, workflows: [] }), "dashboard", []), null);
+  });
 });
 
 const heterogeneous = SavedArchiveReportWireSchema.parse({
