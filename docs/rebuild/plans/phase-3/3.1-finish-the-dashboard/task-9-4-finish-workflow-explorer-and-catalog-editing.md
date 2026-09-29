@@ -386,3 +386,17 @@ support a scope/planning amendment. The observed context compaction resumed the 
 resizing or delegation. Retained logs establish the listed events, not a complete timing breakdown
 or estimated savings. Routine finalizer transfer uses this owner record; no separate handoff plan
 or cleanup of the implementation checkout is performed by this worker.
+
+## Branching timeline presentation — 2026-09-26
+
+The operator selected Explorer A and approved implementation with a Sol worker. The default view
+becomes the source-derived branching timeline in [operator-trust §5.2.4](../../../reference/operator-trust.md#524-branching-timeline-presentation--2026-09-26).
+Existing contract/editing/catalog behavior remains, with secondary detail accessible. This amended
+visual assignment permits attributable updates to Explorer's affected reference scenes rather than
+retaining their old layout unchanged. It does not admit new execution policies or a live-run overlay.
+
+Candidate: `codex/explorer-timeline` at
+`/Users/julianhein/.codex/worktrees/explorer-timeline/hr-automation-rebuild`, from the committed
+Settings-derived base `897158ece84471dd86b67ca8d49e73477b1280e8`. Focused Phase 3.1 cadence applies.
+The coordinator owns shared contracts and acceptance; the operator retains integration choice.
+Evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/archive-explorer-activity-2026-09-26/implementation/explorer/`.

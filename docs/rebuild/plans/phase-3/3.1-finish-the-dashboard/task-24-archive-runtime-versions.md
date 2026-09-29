@@ -10,7 +10,7 @@ Source baseline: `4b22f03a04ba5c70329f172d3266474135964431` on branch `codex/arc
 - A single workflow change may include one or several selected workflows. Each selected workflow advances its own minor number once; unselected workflows do not change. The all-workflow action is the major bump. The review names every affected workflow and its before/after version.
 - A workflow bump archives the selected workflows' completed old-version runs. An all-workflow bump archives completed old-version runs across all workflows. Queued, running, parked, or otherwise nonterminal affected runs block the bump and remain visible in review. No partial version publication.
 - New runs after publication carry the actual dashboard and workflow runtime versions. Existing build semver, descriptor integer version, and contract fingerprint remain separate code/runtime compatibility identities.
-- Archive browsing groups **Dashboard version → Workflow → Workflow version → saved reports and files**. Search and filters cover dashboard version, workflow, workflow version, outcome, and dates. A report opens its existing immutable detail and verified attachments; the list does not recreate reports from current descriptors.
+- Archive browsing groups **Dashboard version → Workflow folder → saved runs and files**. The selected Archive 1 presentation shows workflow version as a run column/filter and removes outcome browse badges/filters. Search and filters retain dashboard version, workflow, workflow version, and dates. A run opens its complete public immutable report, searchable fields and verified attachments; JSON/typed CSV exports include all selected public record fields and all matching runs rather than just visible columns or one page. The list does not recreate reports from current descriptors.
 - The current Archive navigation has no Back button. Do not restore the Back button shown in the earlier synthetic prototypes.
 - Initialize the new dashboard and registered workflow counters at **1.0** during the controlled upgrade. Historical reports without trustworthy runtime-version provenance display **Version not recorded**. Do not rewrite old report bytes. At initial activation, record an explicit 1.0 baseline assignment for currently live runs without altering their historical run envelope; show it as an adopted baseline rather than a version they were originally stamped with.
 
@@ -36,3 +36,16 @@ The approved visual direction is retained as `archive-dashboard-workflow-groups.
 ## Approval and release
 
 The operator approved this plan with “do it” on 2026-09-24 after reviewing the concrete proposal, including the 1.0 starting version. The operator then explicitly authorized isolated backend work before 3.1.23.3 finishes. Archive UI changes and integration wait for accepted 3.1.23.3; task release precedes 3.1.16–3.1.19. The operator chooses integration after focused proof; these approvals grant no push.
+
+## Workflow-record presentation implementation — 2026-09-26
+
+The operator selected and approved the revised Archive 1 artboard for implementation with a Sol
+worker. Its contract is [D348's workflow-record amendment](../../../reference/dashboard-surfaces.md#workflow-record-presentation-amendment--2026-09-26).
+The current candidate base is the committed Settings-derived `897158ece84471dd86b67ca8d49e73477b1280e8`;
+branch `codex/archive-records` uses the attached managed worktree
+`/Users/julianhein/.codex/worktrees/archive-records/hr-automation-rebuild`. The local coordinator
+owns shared contract updates and acceptance; the operator retains product integration choice.
+Evidence and the exact parallel ownership record live in
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/archive-explorer-activity-2026-09-26/`.
+The accepted visual direction authorizes attributable reference changes. Focused Phase 3.1 checks
+apply; no independent review or automatic merge. Runtime bump/transfer authority is unchanged.

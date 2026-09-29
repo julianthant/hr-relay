@@ -283,12 +283,68 @@ A failed or partial transfer cannot expose a new version. Every subsequent start
 retry and restart stamps both current runtime counters from durable authority within its creation
 transaction. Historical code/build identity remains separately stamped and validated.
 
-Archive browsing groups saved reports by dashboard version, workflow, then workflow version.
-Search and filters cover dashboard version, workflow, workflow version, outcome and dates with
-bounded, deterministic pagination. New reports freeze both runtime versions; old report bytes are
-never rewritten. Existing report integrity, attachment custody, deletion/disposition, export and
+Archive browsing uses dashboard-version groups containing workflow folders. Opening a workflow
+shows its retained runs across workflow versions; workflow version remains a record column and
+filter rather than a mandatory navigation level. Search and filters cover dashboard version,
+workflow, workflow version and dates with bounded, deterministic pagination. The browsing surface
+has no Done/Failed outcome badges or outcome filter; the stored outcome remains a plain field in
+the complete report. New reports freeze both runtime versions; old report bytes are never
+rewritten. Existing report integrity, attachment custody, deletion/disposition, export and
 descriptor-independent rendering remain binding. The approved [3.1.24 task plan](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md)
 owns implementation and focused proof. The 3.1.23 UI finalizer remains its prerequisite.
+
+#### Workflow-record presentation amendment — 2026-09-26
+
+The operator selected Archive 1: workflow folders, a workflow-specific run table, and a complete
+run report. Summary columns may use retained report fields, but must not depend on current workflow
+code to interpret an archive. The run report preserves all public section kinds (values, tables,
+text and explicit unavailability), frozen inputs, results, notes, file metadata, version evidence
+and record metadata. A searchable field-path view keeps unrecognized retained fields inspectable;
+unknown, null, false, zero and an empty collection are not interchangeable.
+
+The Archive landing body starts with archived dashboard-version groups, including the current
+dashboard version whenever it has archived runs. The current runtime version appears subtly in
+the Archive heading bar; it is not a separate introductory status block or an exclusion rule for
+archive membership.
+
+Plan a bump includes a workflow selector in the selected-workflow option. It defaults to the
+browsed workflow when available and updates the proposed version and impact preview when changed.
+The selected-workflow action leaves the dashboard version unchanged; existing version and
+readiness authorities continue to govern the actual operation. Workflow export is an action in
+the shared heading bar, and numeric, date, version and count columns align right.
+
+The served report may add strictly validated archive-record identity/publication metadata, with
+explicit absence for historical producers. Original private source snapshots and private source
+digests remain outside this projection. This does not remove values already admitted to the
+operator report by D346. The raw sealed-report digest also stays private: it changes with protected
+source bytes, unlike the stable public archive fingerprint. Expose verified report integrity and
+the existing public fingerprint without revealing the sealed digest or changing deletion citations.
+The dashboard and exports consume this same public report, without
+rebuilding it from live inputs or silently replacing missing evidence.
+
+Run export offers the complete public report as JSON and a typed field-path CSV. Workflow export
+covers the selected dashboard/workflow and current search/filter membership, across every matching
+page; the dialog states its scope. Visible columns do not truncate either export. CSV preserves
+nested values through one field per row with run identity, path, type and encoded value, and uses
+the admitted spreadsheet-safe encoding policy. Exports preserve explicit absences and file
+metadata; attachment bytes continue through the verified attachment path. Loading, cancellation,
+changed selection, partial failure and bounded paging must not produce an apparently complete
+truncated export. A browser export capacity bound must be explicit and refuse before offering a
+file; it must never silently truncate matching runs. This candidate bounds workflow export at
+5,000 reports and 50 MB, with narrowing filters offered when that bound is exceeded.
+
+#### Shared surface frame refinement — 2026-09-26
+
+Archive, Explorer and Activity occupy the Dashboard's full available content width with the
+shared shell inset. Their headings use the same rounded, subtly bordered bar and their bodies
+retain cohesive framed surfaces. Actions and internal layouts adapt to each selected design;
+the supplied Archive heading is a style reference, not an exact control-layout requirement.
+The page, grouped panels, controls, borders and text use the existing Settings body tokens in
+both themes. In dark mode, the page is darker than its grouped panels, and controls are lighter
+than those panels; an inverted surface hierarchy is not the selected presentation.
+Centered page-width caps are superseded for these three surfaces. Reading measures may constrain
+individual prose blocks without narrowing the overall surface. The operator requested regenerated
+interactive designs for review before implementation finalization.
 
 ### D275 — standing conventions
 
@@ -7637,10 +7693,12 @@ controls remain owned by 3.1.13 and cross-surface convergence by 3.1.16; this am
 those obligations into Archive.
 
 **Saved-report export and outcomes.** C0's generic saved report retains D223's whole-report Export
-control. Its file is `archive-<runId>.json`, containing exactly the public `SavedArchiveReportWire`
-already served to the selected viewer. This updates D223's old wire/trace-ID naming to the current
-report model; do not re-derive content, include private source payloads/digests, bundle attachment
-bytes, or create a second projection. Frozen sections and explicit absence remain intact even when
+control. Its JSON file is `archive-<runId>.json`, containing exactly the public
+`SavedArchiveReportWire` already served to the selected viewer. The D348 workflow-record
+presentation amendment adds typed field-path CSV and scoped multi-run exports from that same
+public record. This updates D223's old wire/trace-ID naming to the current report model; do not
+re-derive content, include private source payloads/digests, bundle attachment bytes, or create a
+second projection. Frozen sections and explicit absence remain intact even when
 the originating workflow is retired. Generic outcome `done` is not evidence of a confirmed external
 write; labels/tooltips may not claim verification from that outcome alone. Attachments still require
 exact membership and verified bytes before image/lightbox/download availability.
