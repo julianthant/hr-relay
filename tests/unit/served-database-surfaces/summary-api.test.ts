@@ -170,6 +170,10 @@ it("contains operation members once and preserves protected titles and missing w
     assert.deepEqual(root.memberRunIds, [memberId]);
     assert.equal(root.memberRollup.total, 1);
     assert.equal(root.warnings.state, "absent");
+    assert.deepEqual(root.displayName, {
+      state: "absent",
+      reason: "the operator's display name is withheld because this run carries protected input",
+    });
     assert.equal(JSON.stringify(wire).includes("10812345"), false);
     const report = f.projection.buildActivityReportWire("2026-09-09", "2026-09-09");
     assert.equal(report.totalRuns, 1);

@@ -534,10 +534,12 @@ export const TooltipProvider = TooltipPrimitive.Provider;
 export function Tooltip({
   content,
   side = "top",
+  collisionBoundary,
   children,
 }: {
   content: ReactNode;
   side?: "top" | "right" | "bottom" | "left";
+  collisionBoundary?: Element | null;
   children: ReactNode;
 }) {
   return (
@@ -547,6 +549,7 @@ export function Tooltip({
         <TooltipPrimitive.Content
           side={side}
           sideOffset={6}
+          collisionBoundary={collisionBoundary}
           collisionPadding={8}
           className={cn(
             "max-w-[280px] border px-[var(--ds-space-base)] py-[var(--ds-space-tight)]",

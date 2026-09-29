@@ -192,14 +192,22 @@ export const StoredConfigSchema = z.union([CurrentStoredConfigSchema, PreRouteSt
 
 export type StoredConfig = z.infer<typeof StoredConfigSchema>;
 
+const ExecutionConfigFromStoredSchema = StoredConfigSchema.transform((config) => {
+  const { urls, ...storedWithoutUrls } = config;
+  const value: unknown = {
+    ...Object.fromEntries(
+      Object.entries(storedWithoutUrls).filter(([key]) => key !== "capture" && key !== "operator"),
+    ),
+    urls: Object.fromEntries(Object.entries(urls).map(([system, endpoints]) => [
+      system, { prod: endpoints.prod },
+    ])),
+  };
+  return ConfigSchema.parse(value);
+});
+
 /** Execute an authenticated old snapshot with its retired route fields removed. */
-export function executionConfigFromStored(config: StoredConfig): z.output<typeof ConfigSchema> {
-  const withoutCapture = "capture" in config ? (({ capture: _capture, ...rest }) => rest)(config) : config;
-  const retained = "operator" in withoutCapture ? (({ operator: _operator, ...rest }) => rest)(withoutCapture) : withoutCapture;
-  const urls = Object.fromEntries(Object.entries(retained.urls).map(([system, endpoints]) => [
-    system, { prod: endpoints.prod },
-  ]));
-  return ConfigSchema.parse({ ...retained, urls });
+export function executionConfigFromStored(config: unknown): z.output<typeof ConfigSchema> {
+  return ExecutionConfigFromStoredSchema.parse(config);
 }
 
 /**
