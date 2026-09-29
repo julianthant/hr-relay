@@ -131,10 +131,10 @@ describe("queue-row action descriptors — the per-status set", () => {
     // since D308, the run can be DELETED. `delete` is last in `SERVED_ORDER`
     // so its 🗑 sits at the right end of the footer, after the ✕.
     // D335: eligible sources open Rerun; cancelled sources are not eligible.
-    done: ["rerun", "rename", "delete"],
-    failed: ["rerun", "rename", "delete"],
-    cancelled: ["rename", "delete"],
-    partial: ["rerun", "rename", "delete"],
+    done: ["rerun", "archive", "rename", "delete"],
+    failed: ["rerun", "archive", "rename", "delete"],
+    cancelled: ["archive", "rename", "delete"],
+    partial: ["rerun", "archive", "rename", "delete"],
   };
 
   it("serves exactly the declared set for every queue status", () => {
@@ -171,7 +171,8 @@ describe("queue-row action descriptors — the per-status set", () => {
       rerun: ["footer", "menu", "data"],
       rename: ["menu"],
       // D308's 🗑, back in the footer slot D234 emptied.
-      delete: ["footer", "menu"],
+      archive: ["footer", "menu"],
+      delete: ["menu"],
     });
     for (const status of QueueStatusSchema.options) {
       for (const action of queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status))) {
@@ -190,7 +191,7 @@ describe("queue-row action descriptors — the per-status set", () => {
    */
   it("drops Rerun for a delegated child, and keeps rename", () => {
     assert.deepEqual(keysFor("failed", { isChild: true }), ["rename"]);
-    assert.deepEqual(keysFor("failed"), ["rerun", "rename", "delete"]);
+    assert.deepEqual(keysFor("failed"), ["rerun", "archive", "rename", "delete"]);
   });
 
   /**
@@ -225,6 +226,15 @@ describe("queue-row action descriptors — the per-status set", () => {
    * `linked` child is not a `member`, so an admission written against
    * `isMember` would serve a 🗑 the kernel refuses on every click.
    */
+  it("archives terminal roots through a neutral retained-evidence action", () => {
+    for (const status of QueueStatusSchema.options) {
+      const archive = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor(status)).find(action => action.key === "archive");
+      assert.equal(archive !== undefined, ["done", "failed", "cancelled", "partial"].includes(status));
+      if (archive !== undefined) { assert.equal(archive.intent, "neutral"); assert.equal(archive.icon, "archive"); }
+      assert.ok(!keysFor(status, { isChild: true }).includes("archive"));
+    }
+  });
+
   it("serves delete on every terminal row and on no other, never for a delegated child", () => {
     const TERMINAL: readonly Status[] = ["done", "failed", "cancelled", "partial"];
     for (const status of QueueStatusSchema.options) {
@@ -257,7 +267,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     const single = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("done"))
       .find(({ key }) => key === "delete");
     assert.ok(single?.kind === "command" && single.command === "delete");
-    assert.equal(single.label, "Delete run");
+    assert.equal(single.label, "Permanently delete");
     assert.equal(single.intent, "destructive");
     assert.equal(single.icon, "delete");
     assert.equal(single.confirm?.title, "Delete this run");
@@ -274,7 +284,7 @@ describe("queue-row action descriptors — the per-status set", () => {
     const group = queueRowActions(STANDARD_WORKFLOW_ACTIONS, factsFor("failed", { memberCount: 9 }))
       .find(({ key }) => key === "delete");
     assert.ok(group?.kind === "command");
-    assert.equal(group.label, "Delete group");
+    assert.equal(group.label, "Permanently delete");
     assert.equal(group.confirm?.title, "Delete this group");
     assert.match(group.confirm?.body ?? "", /its 9 delegated members with it/);
     // The idempotency sentence does not become optional for a group.

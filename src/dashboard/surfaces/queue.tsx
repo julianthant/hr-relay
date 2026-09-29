@@ -50,6 +50,7 @@ import {
   dsRadius,
   dsSize,
   dsSurface,
+  openContextMenuFor,
   dsText,
 } from "../ds/ui.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
@@ -1364,7 +1365,8 @@ export function QueueRow({
         {...(onAction === undefined ? {} : { onAction })}
       >
         <div
-          onClick={() => handlers.onSelect(surface.runId)}
+          onClick={(event) => { if (event.detail < 2) handlers.onSelect(surface.runId); }}
+          onDoubleClick={(event) => { if (!(event.target instanceof Element) || event.target.closest("button, a, input")) return; openContextMenuFor(event.currentTarget); }}
           role="button"
           tabIndex={0}
           aria-pressed={selected}
@@ -1382,6 +1384,11 @@ export function QueueRow({
             // Nested controls keep native Enter/Space activation. Only the
             // focused row itself uses those keys to open its detail.
             if (event.target !== event.currentTarget) return;
+            if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+              event.preventDefault();
+              openContextMenuFor(event.currentTarget);
+              return;
+            }
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
               handlers.onSelect(surface.runId);

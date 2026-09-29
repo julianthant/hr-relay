@@ -89,7 +89,7 @@ export { deriveBulkChildCommandId } from "../../../domain/command-groups.js";
  * the operator resolves the write and the queue keeps saying `blocked`.
  */
 const SPANLESS_RUN_TYPES = new Set([
-  "rename", "bump", "cancel", "delete",
+  "rename", "bump", "cancel", "archive", "delete",
   "resolve-write-present", "resolve-write-absent",
 ]);
 
@@ -135,7 +135,9 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
       }
 
       if (request.family === "run" && SPANLESS_RUN_TYPES.has(request.type)) {
-        deps.projection.refreshRun(request.target.runId);
+        if (request.type === "archive") {
+          for (const target of result.affectedTargets) if (target.family === "run") deps.projection.refreshRun(target.runId);
+        } else deps.projection.refreshRun(request.target.runId);
       }
       return result;
   }

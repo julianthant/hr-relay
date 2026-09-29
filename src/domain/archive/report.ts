@@ -33,6 +33,10 @@ export const ArchiveReportContentSchema = z.strictObject({
   completedAt: IsoInstantSchema, capturedAt: IsoInstantSchema,
   sourceDigest: FingerprintSchema,
   runtimeVersion: ArchiveRuntimeVersionAttributionSchema.optional(),
+  manualArchive: z.strictObject({
+    commandId: z.string().uuid(), actorId: z.string().min(1), requestFingerprint: FingerprintSchema, rootRunId: RunIdSchema,
+    members: z.array(z.strictObject({ runId: RunIdSchema, version: z.number().int().positive() })).min(1),
+  }).optional(),
   versionChange: ArchiveVersionChangeSchema.optional(),
   sources: z.array(z.strictObject({ kind: z.string().min(1), digest: FingerprintSchema, json: z.string().min(1) })),
   sections: z.array(ArchiveReportSectionSchema), files: z.array(ArchiveFileReferenceSchema),

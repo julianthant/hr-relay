@@ -233,6 +233,7 @@ export function composeCommandRequest(
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "cancel":
     case "bump":
+    case "archive":
     case "delete":
       /*
        * Four verbs whose whole payload is the target. `rename` is deliberately

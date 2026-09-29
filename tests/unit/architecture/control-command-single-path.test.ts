@@ -127,7 +127,7 @@ const EXPECTED_ACTIVE = {
     "retry",
     // D314: Restart from start — the second ordinary recovery choice.
     "restart",
-    "cancel", "bump", "rename",
+    "cancel", "bump", "rename", "archive",
     // D308: delete means delete — the terminal queue run's own door.
     "delete",
     "resolve-write-present", "resolve-write-absent",

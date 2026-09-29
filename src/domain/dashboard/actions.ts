@@ -17,7 +17,7 @@ import { WriteIntentIdSchema } from "../ids.js";
 
 export const ActionPlacementSchema = z.enum(["footer", "banner", "outcome", "menu", "data", "review"]);
 export const ActionIntentSchema = z.enum(["primary", "neutral", "destructive", "violet", "success", "info", "warning"]);
-export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", "review", "resolve", "rename", "external", "drill"]);
+export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "archive", "delete", "review", "resolve", "rename", "external", "drill"]);
 /**
  * The command verbs a served action may name (kernel-accepted only).
  *
@@ -55,7 +55,7 @@ export const ActionIconKeySchema = z.enum(["retry", "cancel", "bump", "delete", 
  * carries a confirm.
  */
 export const ActionCommandKeySchema = z.enum([
-  "retry", "restart", "cancel", "bump", "rename", "delete", "resolve-gate",
+  "retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-gate",
   "resolve-write-present", "resolve-write-absent",
 ]);
 

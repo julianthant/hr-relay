@@ -798,7 +798,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             clock: fmtClock(nowIso),
             actorId: boot.actor.id,
           });
-          if (actionToSettle.command === "delete") {
+          if (actionToSettle.command === "delete" || actionToSettle.command === "archive") {
             const deletedRunIds = new Set<string>();
             deletedRunIds.add(targetToSettle.runId);
             if ("affectedTargets" in result && Array.isArray(result.affectedTargets)) {

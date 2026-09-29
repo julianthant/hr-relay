@@ -825,17 +825,19 @@ export function openContextMenuFor(element: Element | null | undefined): boolean
  */
 export function ContextMenuContent({
   label,
+  variant = "default",
   className,
   children,
 }: {
   /** REQUIRED — the menu's accessible name ("Commands for Maria Lopez"). */
   label: string;
+  variant?: "default" | "compact";
   className?: string;
   children: ReactNode;
 }) {
   return (
     <ContextMenuPrimitive.Portal>
-      <ContextMenuSurface label={label} className={className}>
+      <ContextMenuSurface label={label} variant={variant} className={className}>
         {children}
       </ContextMenuSurface>
     </ContextMenuPrimitive.Portal>
@@ -844,10 +846,12 @@ export function ContextMenuContent({
 
 function ContextMenuSurface({
   label,
+  variant = "default",
   className,
   children,
 }: {
   label: string;
+  variant?: "default" | "compact";
   className?: string;
   children: ReactNode;
 }) {
@@ -866,6 +870,7 @@ function ContextMenuSurface({
         dsMotion.enter,
         "origin-[var(--radix-context-menu-content-transform-origin)]",
         entered ? "opacity-100 scale-100" : "opacity-0 scale-[0.97]",
+        variant === "compact" && "p-[var(--ds-space-tight)] rounded-[var(--ds-radius-xl)]",
         className,
       )}
     >
@@ -891,6 +896,7 @@ export function ContextMenuLabel({ children }: { children: ReactNode }) {
  */
 export function ContextMenuItem({
   icon,
+  variant = "default",
   tone = "neutral",
   hint,
   disabled,
@@ -898,6 +904,7 @@ export function ContextMenuItem({
   children,
 }: {
   icon?: ReactNode;
+  variant?: "default" | "compact";
   tone?: "neutral" | "destructive";
   /** a trailing keyboard hint or short qualifier — never an explanation */
   hint?: ReactNode;
@@ -913,11 +920,12 @@ export function ContextMenuItem({
         "flex cursor-pointer select-none items-center gap-[var(--ds-space-snug)] outline-none",
         "px-[var(--ds-space-cozy)] py-[var(--ds-space-tight)]",
         dsText.body,
+        variant === "compact" && "rounded-[var(--ds-radius-md)] min-h-[var(--ds-h-md)] data-[highlighted]:bg-[var(--ds-menu-selection)] data-[highlighted]:text-[color:var(--ds-menu-selection-fg)]",
         dsMotion.fast,
         tone === "destructive" ? "text-[color:var(--ds-danger)]" : "text-[color:var(--ds-fg-secondary)]",
-        tone === "destructive"
+        variant !== "compact" && (tone === "destructive"
           ? "data-[highlighted]:bg-[var(--ds-danger-quiet)]"
-          : "data-[highlighted]:bg-[var(--ds-surface-3)] data-[highlighted]:text-[color:var(--ds-fg)]",
+          : "data-[highlighted]:bg-[var(--ds-surface-3)] data-[highlighted]:text-[color:var(--ds-fg)]"),
         "data-[disabled]:pointer-events-none data-[disabled]:opacity-45",
       )}
     >
