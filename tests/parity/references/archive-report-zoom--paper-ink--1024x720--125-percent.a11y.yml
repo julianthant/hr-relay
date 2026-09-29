@@ -51,6 +51,21 @@
       - button "Logs"
       - button "Retained files"
     - heading "Workflow details" [level=2]
+    - heading "Run summary" [level=3]
+    - region "Run summary":
+      - term: Verification result
+      - definition: Not recorded
+      - term: Queued
+      - definition: Not recorded
+      - term: Completed
+      - definition:
+        - time: Aug 1, 2026, 12:00 PM UTC
+      - term: Total elapsed
+      - definition: Not recorded
+      - term: Run mode
+      - definition: Not recorded
+      - term: Attempt
+      - definition: Not recorded
     - heading "Details" [level=3]
     - region "Details":
       - term: Subject
