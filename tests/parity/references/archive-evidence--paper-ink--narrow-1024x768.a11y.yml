@@ -47,14 +47,10 @@
     - term: Retained files
     - definition: "1"
     - navigation "Run sections":
-      - text: Archived report
-      - button "Frozen capture facts"
+      - button "Workflow details"
+      - button "Logs"
       - button "Retained files"
-      - button "Record details"
-      - button "All fields"
-      - paragraph: The saved record, as it was when archived.
     - heading "Retained files" [level=2]
-    - text: Saved at archive time
     - region "Retained attachments":
       - region "File Synthetic screenshot.png":
         - strong: Synthetic screenshot.png
@@ -63,6 +59,8 @@
         - link "Download Synthetic screenshot.png":
           - /url: /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/files/f3ede4591dd6034661d8d63aef43ce4734610be67edbc7e30ce68834ebcd3847
         - button "Details"
+    - region "Delete saved report":
+      - button "Delete saved report"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"
