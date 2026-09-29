@@ -35,7 +35,6 @@ import { retainedRunProtectedBindings } from "../../../domain/protected-input.js
  */
 import { z } from "zod";
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { descriptorRuntimeNodes } from "../../../base/workflow.js";
 import type { Clock } from "../../../domain/clock.js";
 import { localDatePart } from "../../../domain/clock.js";
 import {
@@ -84,7 +83,7 @@ import type { EventStreamLine } from "../../../infra/events/jsonl-streams.js";
 import type { TimelineRepository } from "../../../events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../../infra/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../support.js";
-import { deriveRunStatus, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
+import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../run-status.js";
 import { ProjectionDegradedError } from "../../failures.js";
 
 /* ── the in-memory evidence fold shape ─ */
@@ -1225,16 +1224,15 @@ export class RunQueueProjection {
     );
   }
 
-  #pipeline(row: RunFoldRecord | undefined, workflow: string): QueueSurfaceWire["pipeline"] {
+  #pipeline(row: RunFoldRecord | undefined, workflow: string, runTerminal: boolean): QueueSurfaceWire["pipeline"] {
     if (row === undefined) return [];
     const descriptor = this.#deps.descriptors.resolve(workflow);
     const spanByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>>();
     /**
      * Every execution of each node, not just the last one. `spanByNode` above
-     * is deliberately latest-wins — one node draws ONE chip, and two chips for
-     * one step would show it in two states at once — but the chip's DURATION is
-     * time spent on the step, which a node re-executed across a gate resume
-     * (D214) genuinely spent twice. Two maps, two questions.
+     * is deliberately latest-wins for state, while duration includes every
+     * measured execution across a gate resume (D214). The category below
+     * groups those node facts into one step.
      */
     const executionsByNode = new Map<string, z.infer<typeof TaskSpanFoldSchema>[]>();
     for (const span of row.taskSpans) {
@@ -1249,14 +1247,14 @@ export class RunQueueProjection {
       span: z.infer<typeof TaskSpanFoldSchema> | undefined,
     ): "pending" | TaskExecutionState => (span === undefined ? "pending" : taskStateOf(span.outcome));
     /**
-     * The measured half of a step, in the same shape the run-detail timeline
+     * The measured half of a node, in the same shape the run-detail timeline
      * computes it (`spanDuration` there) — and with the same refusals. A span
      * with no end, no folded start, unreadable instants, or an end before its
-     * start contributes NOTHING; a step where nothing measured carries no
+     * start contributes NOTHING; a node where nothing measured carries no
      * duration at all rather than a zero, because zero is a measurement and
      * "unmeasured" is not.
      */
-    const stepMeasurement = (nodeId: string): { durationSec?: number; executions?: number } => {
+    const stepMeasurement = (nodeId: string): { durationMs?: number; executions?: number } => {
       const executions = executionsByNode.get(nodeId) ?? [];
       let ms = 0;
       let measured = false;
@@ -1269,35 +1267,48 @@ export class RunQueueProjection {
         measured = true;
       }
       return {
-        ...(measured ? { durationSec: Math.round(ms / 1000) } : {}),
+        ...(measured ? { durationMs: ms } : {}),
         ...(executions.length >= 2 ? { executions: executions.length } : {}),
       };
     };
     if (descriptor === undefined) {
       // No registered descriptor (e.g. a replayed historical workflow): the
       // pipeline shows exactly the observed nodes, never an invented step
-      // list. One node still renders ONE chip — a node re-run under a later
-      // run attempt repeats its span path, and two chips for one step would
-      // show the same node in two states at once.
+      // list. One observed node still renders one chip; repeated executions
+      // of that node do not create more chips.
       const observed = new Map<string, { label: string; span: z.infer<typeof TaskSpanFoldSchema> }>();
       for (const span of row.taskSpans) {
         observed.set(nodeIdOfTaskSpanPath(span.spanPath) ?? span.name, { label: span.name, span });
       }
-      return [...observed].map(([id, { label, span }]) => ({
-        id,
-        label,
-        state: stepState(span),
-        ...stepMeasurement(id),
-      }));
+      return [...observed].map(([id, { label, span }]) => {
+        const { durationMs, executions } = stepMeasurement(id);
+        return {
+          id,
+          label,
+          state: stepState(span),
+          ...(durationMs === undefined ? {} : { durationSec: Math.round(durationMs / 1000) }),
+          ...(executions === undefined ? {} : { executions }),
+        };
+      });
     }
-    return descriptorRuntimeNodes(descriptor)
-      .filter((node) => node.kind === "task" || node.kind === "transaction" || node.kind === "child-run")
-      .map((node) => ({
-        id: String(node.id),
-        label: String(node.id),
-        state: stepState(spanByNode.get(String(node.id))),
-        ...stepMeasurement(String(node.id)),
-      }));
+    return descriptor.timeline.map((category) => {
+      const states = category.nodes.map(({ id }) => {
+        const nodeId = String(id);
+        if (row.openGates.some((gate) => gate.gate === nodeId)) return "blocked";
+        if (row.resolvedGates.some((gate) => gate.gate === nodeId)) return "done";
+        return stepState(spanByNode.get(nodeId));
+      });
+      const measurements = category.nodes.map(({ id }) => stepMeasurement(String(id)));
+      const measured = measurements.filter((entry) => entry.durationMs !== undefined);
+      const executions = Math.max(0, ...measurements.map((entry) => entry.executions ?? 0));
+      return {
+        id: String(category.key),
+        label: category.label,
+        state: foldCategoryState(states, runTerminal),
+        ...(measured.length > 0 ? { durationSec: Math.round(measured.reduce((sum, entry) => sum + (entry.durationMs ?? 0), 0) / 1000) } : {}),
+        ...(executions >= 2 ? { executions } : {}),
+      };
+    });
   }
 
   /**
@@ -1531,7 +1542,7 @@ export class RunQueueProjection {
       status,
       liveMessage: this.#liveMessage(authority, status),
       warnings: this.#warnings(warningVerdict),
-      pipeline: this.#pipeline(row, queued.workflow),
+      pipeline: this.#pipeline(row, queued.workflow, authority.lifecycle.state === "terminal"),
       panelKind: panelKindOf(shape),
       availableSections: [
         "logs",

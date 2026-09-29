@@ -49,6 +49,25 @@ export type TaskSpanOutcome =
 /** What ONE execution of a node did, in the words both surfaces print. */
 export type TaskExecutionState = "active" | "done" | "failed" | "skipped" | "cancelled" | "blocked";
 
+type PipelineCategoryState = "pending" | TaskExecutionState;
+type TimelineCategoryState = PipelineCategoryState | "replayed";
+
+/** Fold category members loudest-first; a mixed unfinished category is pending on a terminal run. */
+export function foldCategoryState(states: readonly PipelineCategoryState[], runTerminal: boolean): PipelineCategoryState;
+export function foldCategoryState(states: readonly TimelineCategoryState[], runTerminal: boolean): TimelineCategoryState;
+export function foldCategoryState(states: readonly TimelineCategoryState[], runTerminal: boolean): TimelineCategoryState {
+  if (states.includes("failed")) return "failed";
+  if (states.includes("blocked")) return "blocked";
+  if (states.includes("active")) return "active";
+  if (states.includes("cancelled")) return "cancelled";
+  if (states.every((state) => state === "pending")) return "pending";
+  if (states.every((state) => state === "replayed")) return "replayed";
+  if (states.every((state) => state === "done" || state === "skipped" || state === "replayed")) {
+    return states.includes("done") ? "done" : states.includes("replayed") ? "replayed" : "skipped";
+  }
+  return runTerminal ? "pending" : "active";
+}
+
 /**
  * The task-level outcome vocabulary — ONE mapping, for the pipeline chip and
  * the timeline step alike (D268).

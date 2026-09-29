@@ -639,7 +639,7 @@ every tick, and it holds today because the span half is real.
 |---|---|---|---|
 | Queue row | latest `TrackerEntry` snapshot | the run span's `run.queued` identity attributes ⊕ open gates ⊕ `span.ended`, joined with the authority run row | `#surface` in `run-queue-projection.ts` → `QueueSurfaceWire` |
 | Status badge | status + sentinel step + `statusExtensions` | the run's state machine: `queued` → `queued`, claimed → `running`, an open gate → `awaiting-approval`, ended → the outcome verbatim | `QueueStatusSchema`'s eight values; no sentinel decoding anywhere |
-| Step pipeline | registered steps + a `step` string + reconstructed durations | the descriptor's nodes ⊕ task spans — a task span IS the duration | `pipeline: PipelineStepWireSchema[]` |
+| Step pipeline | registered steps + a `step` string + reconstructed durations | the descriptor's timeline categories ⊕ member task spans and gate records | `pipeline: PipelineStepWireSchema[]` |
 | Run-detail timeline | rows + logs + filtered session events (pid heuristics) | the run's own span fold — task spans, gate open/resolve, and D259's `replayed` arm for a node whose checkpoint another run wrote | `timelineEvents` in `queries/run-detail.ts`; **spans, not notes** |
 | Logs | log lines per run | one immutable-snapshot page of bounded-scope action/task notes plus indexed `transaction.fenced` rows | `logLinesForRun` + `RunQueueProjection.runLogSnapshot`; browser actions are buffered and written to `notes/` after their task or transaction settles (D345) |
 | Run data | extracted fields | exact-run indexed `data.observed` plus editable checkpoint fields | `buildContextDataPayload` serves the observation ledger even when no checkpoint field was declared (D345) |
@@ -3979,9 +3979,10 @@ the moment it arrived and a projection serving none of them.
   gets screenshotted into tickets, so it is the last surface that may print a dropped or transformed
   value, and flattening an object into a string would author a presentation the receipt never did.
   Both exclusions are COUNTED into the absent reason.
-- **`pipeline[].durationSec` / `executions`.** Summed over EVERY execution of the node rather than
-  taken from the last, because a node re-executed across a gate resume (D214) genuinely spent both
-  intervals. The same refusals as the run-detail timeline: a step with no end, no folded start,
+- **`pipeline[].durationSec` / `executions`.** One entry per descriptor timeline category. Duration
+  sums every measured execution of every member node before rounding; `executions` is the largest
+  member execution count. A node re-executed across a gate resume (D214) genuinely spent both
+  intervals. The same refusals as the run-detail timeline: a span with no end, no folded start,
   unreadable instants, or an end before its start carries NO duration — zero is a measurement, and
   "unmeasured" is not. `executions` is present only at two or more, because one is the ordinary case.
 - **`memberPreview`** (operation rows only). Composed from the member rows' OWN titles, through the
@@ -5104,6 +5105,10 @@ finalization. Legacy's seventh step, `transaction-check`, folds into *UCPath tra
 standing alone, because in this tree the pending check IS the sweep transaction plus the write
 sequencer's own probes. The gate is a member of *Identity check*.
 
+The queue row and worker's claimed-run strip serve these same descriptor categories. Each category
+has one progress mark; the state folds member task spans and open/resolved gates with the run-detail
+precedence. Measured member durations sum before rounding. A build without the run's descriptor
+continues to show only observed nodes, with no invented category names.
 
 **Since D265 (2026-08-21) the six categories ARE the six step folders under `src/workflows/separations/`**
 — `kuali-extraction` · `identity-check` · `job-summary` · `kronos-timecard` · `ucpath-transaction` ·

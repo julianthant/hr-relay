@@ -66,26 +66,23 @@ const PipelineStepWireSchema = z.strictObject({
    */
   state: z.enum(["pending", "active", "done", "failed", "skipped", "blocked", "cancelled"]),
   /**
-   * How long this step's spans took, summed over EVERY execution of the node.
+   * How long this category's member spans took, summed before rounding.
    *
    * Optional in the same shape (and for the same reason) as the run-detail
-   * timeline's `durationMs` one surface over: a step that has not ended, a step
-   * whose `span.started` was never folded because a restart closed a span an
-   * earlier process opened, and a step whose two instants disagree all carry
-   * NO duration rather than a zero. A zero would read as "instant", which is a
-   * measurement, and none of those three states measured anything.
+   * timeline's `durationMs` one surface over: a category with no measured
+   * member spans carries NO duration rather than a zero. A span still open, a
+   * span whose start was never folded, and a span whose two instants disagree
+   * each contribute nothing. Zero would claim a measurement.
    *
    * Summed rather than latest-wins because a node re-executed across a gate
-   * resume (D214) genuinely spent both intervals, and the chip is reporting
-   * time spent on the step — not the length of its last try. `executions`
-   * beside it is what keeps the two readings apart.
+   * resume (D214) genuinely spent both intervals. `executions` beside it is
+   * what keeps the two readings apart.
    */
   durationSec: z.number().int().nonnegative().optional(),
   /**
-   * How many times this node executed, present only when it is more than once
+   * The largest execution count of a member node, present only at two or more
    * (D214/D225 — a gate park and its resume are two executions inside one
-   * attempt). Absence means exactly one execution, which is the ordinary case
-   * and needs no chip decoration.
+   * attempt). Absence means no member reran.
    */
   executions: z.number().int().min(2).optional(),
 });

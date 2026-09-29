@@ -56,7 +56,7 @@ import type { RunRecord } from "../../../domain/run/record.js";
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { resolveSubjectTitle } from "../projectors/run-subject-title.js";
 import { deterministicUuid, nodeIdOfTaskSpanPath } from "../support.js";
-import { deriveRunStatus, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../run-status.js";
+import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskSpanOutcome } from "../run-status.js";
 import {
   ProjectionDegradedError,
 } from "../../failures.js";
@@ -147,33 +147,6 @@ function spanNotRunReason(
     );
   }
   return reason;
-}
-
-/**
- * Fold the member node states into ONE category state. Precedence tells the
- * truth loudest-first: a failure anywhere in the category is the category's
- * fact; a gate waiting beats everything but a failure; live work beats a
- * cancellation record. The last arm is the only judgement call: a category
- * with some members executed and the rest never started is IN PROGRESS on a
- * live run (the executor is between two of its nodes) and is rendered
- * `pending` on a terminal one — the run stopped elsewhere and the members that
- * never ran never ran; the member list carries the exact breakdown either way.
- */
-function foldCategoryState(states: readonly TimelineStepState[], runTerminal: boolean): TimelineStepState {
-  if (states.includes("failed")) return "failed";
-  if (states.includes("blocked")) return "blocked";
-  if (states.includes("active")) return "active";
-  if (states.includes("cancelled")) return "cancelled";
-  if (states.every((state) => state === "pending")) return "pending";
-  if (states.every((state) => state === "replayed")) return "replayed";
-  // D259 — a category where something executed is a category that RAN; a
-  // replayed member is settled work, so it never holds the fold back. Only a
-  // category whose members ALL replayed is `replayed`, and the member list
-  // carries the breakdown in every mixed case.
-  if (states.every((state) => state === "done" || state === "skipped" || state === "replayed")) {
-    return states.includes("done") ? "done" : states.includes("replayed") ? "replayed" : "skipped";
-  }
-  return runTerminal ? "pending" : "active";
 }
 
 /**
