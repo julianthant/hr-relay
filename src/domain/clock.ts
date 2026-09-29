@@ -13,6 +13,18 @@ export interface TestClock extends Clock {
   setWall(at: Date): void;
 }
 
+/** IANA zone used by the runtime's local Date getters and local calendar derivations. */
+export function runtimeTimeZone(): string {
+  try {
+    const timeZone = new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (typeof timeZone !== "string" || timeZone.length === 0) throw new Error("unavailable");
+    new Intl.DateTimeFormat("en-US", { timeZone }).format(new Date(0));
+    return timeZone;
+  } catch {
+    throw new Error("runtime-time-zone-unavailable");
+  }
+}
+
 function pad(value: number): string {
   return String(value).padStart(2, "0");
 }

@@ -42,6 +42,7 @@ import { WorkflowCodeSchema } from "../workflow/presentation.js";
 import { DashboardWireVersionSchema } from "./primitives.js";
 import { QueueStatusSchema, TERMINAL_QUEUE_STATUSES } from "./projection.js";
 import { displayStatusProseLabelOf } from "./status-vocabulary.js";
+import { ActivityVolumeSchema, chooseActivityVolumeGranularity } from "./activity-volume.js";
 
 /**
  * How many exemplar run ids an aggregate row may carry.
@@ -345,6 +346,8 @@ export const ActivityReportWireSchema = z.strictObject({
    */
   completion: ActivityCompletionSchema,
   days: z.array(ActivityDayTotalSchema),
+  /** New summary-backed report series; absent only on legacy in-memory projection compatibility paths. */
+  volume: ActivityVolumeSchema.optional(),
   workflows: z.array(ActivityWorkflowTotalSchema),
   categories: z.array(ActivityCategoryTotalSchema),
   statuses: z.array(ActivityStatusTotalSchema),
@@ -360,6 +363,23 @@ export const ActivityReportWireSchema = z.strictObject({
 }).superRefine((report, context) => {
   if (report.from > report.to) {
     context.addIssue({ code: "custom", path: ["from"], message: "an activity range starts on or before it ends" });
+  }
+  if (report.volume !== undefined && report.volume.coveredRuns !== report.totalRuns) {
+    context.addIssue({
+      code: "custom",
+      path: ["volume", "coveredRuns"],
+      message: `volume covers ${String(report.volume.coveredRuns)} runs but the report counts ${String(report.totalRuns)}`,
+    });
+  }
+  if (report.volume !== undefined) {
+    const expectedGranularity = chooseActivityVolumeGranularity({ from: report.from, to: report.to }).kind;
+    if (report.volume.granularity !== expectedGranularity) {
+      context.addIssue({
+        code: "custom",
+        path: ["volume", "granularity"],
+        message: `volume uses ${report.volume.granularity} buckets but this range requires ${expectedGranularity}`,
+      });
+    }
   }
   const summed = report.statuses.reduce((total, entry) => total + entry.runs, 0);
   if (summed !== report.totalRuns) {

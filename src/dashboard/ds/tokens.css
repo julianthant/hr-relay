@@ -2103,6 +2103,99 @@ body[data-demo-theme="light"] {
   color: var(--ds-fg-faint);
 }
 
+/* Activity uses a report-only blue range; other date controls keep the shared neutral mapping. */
+:root {
+  --ds-activity-period-width: 9.5rem;
+  --ds-activity-calendar-endpoint-bg: #2563eb;
+  --ds-activity-calendar-endpoint-fg: #ffffff;
+  --ds-activity-calendar-endpoint-hover: #1d4ed8;
+  --ds-activity-calendar-range-bg: #dbeafe;
+  --ds-activity-calendar-range-hover: #bfdbfe;
+  --ds-activity-calendar-focus: #2563eb;
+}
+
+[data-demo-theme="dark"],
+:root[data-demo-theme="dark"],
+body[data-demo-theme="dark"] {
+  --ds-activity-calendar-endpoint-bg: #93c5fd;
+  --ds-activity-calendar-endpoint-fg: #172033;
+  --ds-activity-calendar-endpoint-hover: #bfdbfe;
+  --ds-activity-calendar-range-bg: color-mix(in srgb, #3b82f6 24%, var(--ds-surface-1));
+  --ds-activity-calendar-range-hover: color-mix(in srgb, #3b82f6 36%, var(--ds-surface-1));
+  --ds-activity-calendar-focus: #60a5fa;
+}
+
+[data-demo-theme="light"],
+:root[data-demo-theme="light"],
+body[data-demo-theme="light"] {
+  --ds-activity-calendar-endpoint-bg: #2563eb;
+  --ds-activity-calendar-endpoint-fg: #ffffff;
+  --ds-activity-calendar-endpoint-hover: #1d4ed8;
+  --ds-activity-calendar-range-bg: #dbeafe;
+  --ds-activity-calendar-range-hover: #bfdbfe;
+  --ds-activity-calendar-focus: #2563eb;
+}
+
+.activity-report-period [data-slot="native-select-wrapper"] {
+  width: var(--ds-activity-period-width);
+  flex: none;
+}
+
+.ds-body-scope.activity-report-body {
+  max-width: none;
+}
+
+.activity-report-period [data-slot="native-select-wrapper"] select {
+  width: 100%;
+}
+
+.activity-range-calendar {
+  --accent: var(--ds-activity-calendar-endpoint-bg);
+  --accent-foreground: var(--ds-activity-calendar-endpoint-fg);
+  --accent-hover: var(--ds-activity-calendar-endpoint-hover);
+  --accent-soft: var(--ds-activity-calendar-range-bg);
+  --accent-soft-foreground: var(--ds-fg);
+  --accent-soft-hover: var(--ds-activity-calendar-range-hover);
+  --focus: var(--ds-activity-calendar-focus);
+  --ds-focus-ring: var(--ds-activity-calendar-focus);
+}
+
+.activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]) {
+  background-color: var(--ds-activity-calendar-range-bg);
+  color: var(--ds-fg);
+}
+
+.activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]):hover {
+  background-color: var(--ds-activity-calendar-range-hover);
+}
+
+.activity-range-calendar .range-calendar__cell[data-today="true"] .range-calendar__cell-button,
+.activity-range-calendar .activity-range-calendar-report-today .range-calendar__cell-button {
+  outline: 1px solid var(--ds-activity-calendar-endpoint-bg);
+  outline-offset: 2px;
+}
+
+.activity-range-calendar :is(button, [role="button"]):is(:focus-visible, [data-focus-visible="true"]) {
+  outline: var(--ds-focus-ring-w) solid var(--ds-activity-calendar-focus);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
+button.activity-range-apply:not(:disabled) {
+  background: var(--ds-activity-calendar-endpoint-bg);
+  border-color: var(--ds-activity-calendar-endpoint-bg);
+  color: var(--ds-activity-calendar-endpoint-fg);
+}
+
+button.activity-range-apply:not(:disabled):hover {
+  background: var(--ds-activity-calendar-endpoint-hover);
+  border-color: var(--ds-activity-calendar-endpoint-hover);
+}
+
+button.activity-range-apply:focus-visible {
+  outline: var(--ds-focus-ring-w) solid var(--ds-activity-calendar-focus);
+  outline-offset: var(--ds-focus-ring-offset);
+}
+
 /* ==========================================================================
    REDUCED MOTION
    ==========================================================================

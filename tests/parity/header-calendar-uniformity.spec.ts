@@ -29,15 +29,18 @@ for (const theme of PARITY_THEMES) {
 
       for (const [tab, title] of [['Explorer', 'Explorer'], ['Archive', 'Archive'], ['Activity', 'Activity report']] as const) {
         await page.getByRole('button', { name: tab, exact: true }).click();
-        const dimensions = await page.getByText(title, { exact: true }).last().locator('xpath=ancestor::header').evaluate(el => ({
+        const header = tab === 'Activity'
+          ? page.locator('.activity-report-heading')
+          : page.getByText(title, { exact: true }).last().locator('xpath=ancestor::header');
+        const dimensions = await header.evaluate(el => ({
           height: el.getBoundingClientRect().height,
           scrollWidth: el.scrollWidth,
           clientWidth: el.clientWidth,
         }));
-        expect(dimensions.height).toBe(38);
+        if (tab === 'Activity') expect(dimensions.height).toBeLessThanOrEqual(56);
+        else expect(dimensions.height).toBe(38);
         expect(dimensions.scrollWidth).toBeLessThanOrEqual(dimensions.clientWidth);
         if (tab !== 'Activity') {
-          const header = page.getByText(title, { exact: true }).last().locator('xpath=ancestor::header');
           if (tab === 'Archive') {
             await expect(header.getByRole('button', { name: 'Version archives' })).toHaveCount(1);
             await expect(header.getByRole('button', { name: 'Plan a bump' })).toHaveCount(1);
@@ -73,16 +76,19 @@ for (const theme of PARITY_THEMES) {
       expect(fieldWidth).toBe(dashboardWidth);
       await picker.getByRole('button', { name: /Sunday, August 2, 2026/ }).click();
       await picker.getByRole('button', { name: /Monday, August 3, 2026/ }).click();
+      await picker.getByRole('button', { name: 'Apply range' }).click();
       await expect(page).toHaveURL(/activity=2026-08-02\.\.2026-08-03/);
-      await page.getByRole('button', { name: /^Select report dates:/ }).click();
+      await page.getByRole('combobox', { name: 'Report period' }).selectOption('custom');
       await picker.getByRole('button', { name: /Wednesday, August 5, 2026/ }).click();
       await picker.getByRole('button', { name: /Wednesday, August 5, 2026/ }).click();
+      await picker.getByRole('button', { name: 'Apply range' }).click();
       await expect(page).toHaveURL(/activity=2026-08-05\.\.2026-08-05/);
       await page.getByRole('button', { name: /^Select report dates:/ }).click();
       await picker.getByRole('button', { name: /Next month/i }).click();
       await picker.getByRole('button', { name: /Next month/i }).click();
       await picker.getByRole('button', { name: /Wednesday, October 14, 2026/ }).click();
       await picker.getByRole('button', { name: /Wednesday, October 14, 2026/ }).click();
+      await picker.getByRole('button', { name: 'Apply range' }).click();
       await expect(page).toHaveURL(/activity=2026-10-14\.\.2026-10-14/);
       await page.getByRole('button', { name: /^Select report dates:/ }).click();
       await expect(picker).toHaveCSS('opacity', '1');

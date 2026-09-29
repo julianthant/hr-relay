@@ -1,4 +1,6 @@
 import { FingerprintSchema } from "../../../src/domain/ids.js";
+import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
+import { sha256Hex } from "../../../src/domain/sha256.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
@@ -70,19 +72,29 @@ it("keeps JSON, CSV and XLSX transaction totals through archive cleanup/restart 
     };
     f.database.refreshRunSummaries();
     const before = read();
+    const beforeGeneration = f.database.getMeta().authorityGeneration;
     assert.equal(before.totalRuns, 1);
+    assert.equal(before.volume?.coveredRuns, before.totalRuns);
+    assert.equal(before.volume?.buckets.reduce((total, bucket) => total + bucket.runs, 0), before.totalRuns);
     assert.equal(before.ledger.systems[0]?.entries, 1);
     f.terminal();
     assert.equal(f.kernel.execute(f.applyRequest(f.plan())).state, "applied");
     f.reopen();
     const after = read();
+    const afterGeneration = f.database.getMeta().authorityGeneration;
     assert.equal(after.totalRuns, 0);
+    assert.equal(after.volume?.coveredRuns, after.totalRuns);
+    assert.equal(after.volume?.buckets.reduce((total, bucket) => total + bucket.runs, 0), after.totalRuns);
     assert.deepEqual(after.ledger, before.ledger);
-    for (const report of [before, after]) {
+    for (const { report, authorityGeneration } of [
+      { report: before, authorityGeneration: beforeGeneration },
+      { report: after, authorityGeneration: afterGeneration },
+    ]) {
       const csv = activityReportCsv(report);
       const workbook = await composeOperatorXlsxWorkbook({ selection: { kind: "activity", snapshot: {
         from: report.from, to: report.to, generatedAt: report.generatedAt,
         sourceIdentity: f.database.getSourceDatabaseIdentity(), totalRuns: report.totalRuns,
+        authorityGeneration, reportDigest: sha256Hex(canonicalJsonStringify(report)),
       } }, report });
       const sheets = await readXlsxFile(workbook.bytes);
       assert.deepEqual(sheets.find(sheet => sheet.sheet === "Ledger")?.data.slice(1), [["ucpath", 1, 1, 0]]);

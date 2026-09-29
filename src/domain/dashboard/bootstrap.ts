@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { ActivityTimeZoneSchema } from "./activity-volume.js";
 import { CapabilityAvailabilitySchema } from "../absence.js";
 import {
   BrowserSystemIdSchema,
@@ -24,7 +25,7 @@ import {
 export const ActorWireSchema = LocalOperatorActorSchema;
 export const ServerClockWireSchema = z.strictObject({
   now: IsoInstantSchema,
-  zone: z.literal("America/Los_Angeles"),
+  zone: ActivityTimeZoneSchema,
 });
 /**
  * The at-rest storage indicator (ref dashboard-surfaces §2.5).

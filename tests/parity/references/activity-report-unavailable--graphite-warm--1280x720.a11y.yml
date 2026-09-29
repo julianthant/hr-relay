@@ -1,7 +1,7 @@
 # activity-report-unavailable--graphite-warm--1280x720
 # adapter: fixture
 # fixture: activity-report-unavailable
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 477b7c1a2fca94bc306baf72b169989ef9f49200190346831e99ec8e94f526c7
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -24,43 +24,42 @@
   - button "Settings"
 - main:
   - region "Activity report":
-    - text: Activity report
-    - 'button "Select report dates: Jul 2 – Aug 3, 2026"': Jul 2 – Aug 3, 2026
-    - heading "Activity results" [level=2]
-    - text: Thu, Jul 2 – Mon, Aug 3 12 runs · distinct people unavailable
-    - button "How it is counted"
-    - text: Export report
+    - heading "Activity" [level=1]
+    - paragraph: Thu, Jul 2 – Mon, Aug 3
     - group "Export activity report":
       - button "Export CSV"
       - button "Export XLSX"
+    - text: Period
+    - combobox "Report period":
+      - option "Today"
+      - option "This week"
+      - option "Month to date"
+      - option "Custom range" [selected]
+    - 'button "Select report dates: Jul 2 – Aug 3, 2026"': Jul 2 – Aug 3, 2026
+    - text: 12 runs · all workflows · distinct people unavailable
+    - button "How it is counted"
     - button "Refresh report"
-    - text: Runs
-    - button "How runs is counted" [expanded]
-    - text: 12 Distinct people unavailable Finished
-    - button "How finished is counted"
-    - text: 7 5 read back · 1 with warnings · 1 unread Still open
-    - button "How still open is counted"
-    - text: 2 counted in neither the error rate nor the outcome totals Error rate 20% 2 failed of 10 terminal runs Still open — by what it is waiting on
-    - table "Outstanding runs by what they are waiting on":
-      - rowgroup:
-        - row "State Runs Who":
-          - columnheader "State"
-          - columnheader "Runs"
-          - columnheader "Who"
-      - rowgroup:
-        - row "Running 2 Weekly HDH roster check (1) +1 All 2":
-          - cell "Running"
-          - cell "2"
-          - cell "Weekly HDH roster check (1) +1 All 2":
-            - text: Weekly HDH roster check (1) +1
-            - button "All 2"
-    - text: By workflow
+    - group "Range-wide report totals":
+      - text: Completed runs
+      - strong: "7"
+      - text: of 12 runs in this period Outstanding
+      - strong: "2"
+      - text: 2 running Failed
+      - strong: "2"
+      - text: 2 of 10 terminal runs · 20% Median duration
+      - strong: 14m 34s
+      - text: 9 measured · 1 unmeasured
+    - text: Workflow outcomes Show workflow
+    - combobox "Show workflow in breakdown":
+      - option "All workflows" [selected]
+      - option "Person Lookup"
+      - option "retired-workflow"
     - table "Activity by workflow, grouped by category":
       - rowgroup:
-        - row "Workflow Runs Share Read back Warnings Unread Failed Open":
+        - row "Workflow Runs Share of report Read back Warnings Unread Failed Open":
           - columnheader "Workflow"
           - columnheader "Runs"
-          - columnheader "Share"
+          - columnheader "Share of report"
           - columnheader "Read back"
           - columnheader "Warnings"
           - columnheader "Unread"
@@ -71,15 +70,6 @@
           - cell "people 1 workflow"
         - row "pl Person Lookup 9 75% 5 1 0 1 2":
           - cell "pl Person Lookup"
-          - cell "9"
-          - cell "75%"
-          - cell "5"
-          - cell "1"
-          - cell "0"
-          - cell "1"
-          - cell "2"
-        - row "people — subtotal 9 75% 5 1 0 1 2":
-          - cell "people — subtotal"
           - cell "9"
           - cell "75%"
           - cell "5"
@@ -99,84 +89,8 @@
           - cell "1"
           - cell "1"
           - cell "0"
-        - row "unregistered — subtotal 3 25% 0 0 1 1 0":
-          - cell "unregistered — subtotal"
-          - cell "3"
-          - cell "25%"
-          - cell "0"
-          - cell "0"
-          - cell "1"
-          - cell "1"
-          - cell "0"
-    - text: How long they took median 14m 34slongest 27m 12s9 measured 1 finished run has no recorded end instant, so it is excluded from every duration above rather than counted as zero. By day
-    - table "By day":
-      - rowgroup:
-        - row "Name Share Runs %":
-          - columnheader "Name"
-          - columnheader "Share"
-          - columnheader "Runs"
-          - columnheader "%"
-      - rowgroup:
-        - row "2026-07-29 3 25%":
-          - cell "2026-07-29"
-          - cell
-          - cell "3"
-          - cell "25%"
-        - row "2026-07-30 4 33%":
-          - cell "2026-07-30"
-          - cell
-          - cell "4"
-          - cell "33%"
-        - row "2026-08-03 5 42%":
-          - cell "2026-08-03"
-          - cell
-          - cell "5"
-          - cell "42%"
-    - text: By outcome
-    - table "By outcome":
-      - rowgroup:
-        - row "Name Share Runs %":
-          - columnheader "Name"
-          - columnheader "Share"
-          - columnheader "Runs"
-          - columnheader "%"
-      - rowgroup:
-        - row "done 7 70%":
-          - cell "done"
-          - cell
-          - cell "7"
-          - cell "70%"
-        - row "failed 2 20%":
-          - cell "failed"
-          - cell
-          - cell "2"
-          - cell "20%"
-        - row "cancelled 1 10%":
-          - cell "cancelled"
-          - cell
-          - cell "1"
-          - cell "10%"
-    - text: Failures
-    - table "Failures by code":
-      - rowgroup:
-        - row "Code Runs Transient Examples":
-          - columnheader "Code"
-          - columnheader "Runs"
-          - columnheader "Transient"
-          - columnheader "Examples"
-      - rowgroup:
-        - row "SESSION_LOST 1 1 aa11bb22-0001-4000-8000-aa11bb220001":
-          - cell "SESSION_LOST"
-          - cell "1"
-          - cell "1"
-          - cell "aa11bb22-0001-4000-8000-aa11bb220001"
-        - row "SUBJECT_MISMATCH 1 0 aa11bb22-0002-4000-8000-aa11bb220002":
-          - cell "SUBJECT_MISMATCH"
-          - cell "1"
-          - cell "0"
-          - cell "aa11bb22-0002-4000-8000-aa11bb220002"
-    - text: Write ledger — what was actually filed
-    - paragraph: A separate authority from every total above. Confirmed entries survive Archive transfer until explicit owner deletion, so they can outlive the runs that filed them.
+    - text: Confirmed transactions Separate write ledger
+    - paragraph: Confirmed entries survive Archive transfer until explicit owner deletion.
     - table "Write ledger by system":
       - rowgroup:
         - row "System Entries Production Test instance":
@@ -195,16 +109,43 @@
           - cell "3"
           - cell "2"
           - cell "1"
+    - text: Daily volume
+    - strong: Runs by day
+    - text: 12 total 3
+    - time: 07-29
+    - text: "4"
+    - time: 07-30
+    - text: "5"
+    - time: 08-03
+    - text: Days without recorded runs are omitted. Evidence coverage Warnings read back
+    - strong: 6 / 7 completed
+    - text: Warning status unread
+    - strong: "1"
+    - text: Distinct people unavailable
+    - button "Outstanding work 2 runs" [expanded]
+    - text: Still open — by what it is waiting on
+    - table "Outstanding runs by what they are waiting on":
+      - rowgroup:
+        - row "State Runs Who":
+          - columnheader "State"
+          - columnheader "Runs"
+          - columnheader "Who"
+      - rowgroup:
+        - row "Running 2 Weekly HDH roster check (1) +1 All 2":
+          - cell "Running"
+          - cell "2"
+          - cell "Weekly HDH roster check (1) +1 All 2":
+            - text: Weekly HDH roster check (1) +1
+            - button "All 2"
+    - button "Outcome and duration detail 10 terminal runs"
+    - button "Failure codes 2 codes"
+    - button "People and counting evidence" [expanded]
+    - list:
+      - listitem: current run/member rows lack validated canonical identity; distinct people is unavailable
+      - listitem: Unavailable is not zero. The report refuses the whole axis when range coverage is missing or incompatible.
     - text: generated 4:00 AMlocal-operatorapp 0.1.0Thu, Jul 2 – Mon, Aug 312 runs
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"
   - text: app 0.1
   - status: Live
-- dialog "Runs":
-  - banner:
-    - paragraph: Runs
-    - button "Close"
-  - list:
-    - listitem: current run/member rows lack validated canonical identity; distinct people is unavailable
-    - listitem: Unavailable is not zero. The report refuses the whole axis when range coverage is missing or incompatible.

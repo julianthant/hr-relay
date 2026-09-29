@@ -65,10 +65,10 @@ import { observeAsyncResource } from "../state/async-resource.js";
  * and a sampled run those rows do not cover announces itself by id rather than
  * by a name this surface would have to invent.
  */
-import { CalendarDays,ChartNoAxesColumn,ChevronDown,Download,Info,TriangleAlert } from "lucide-react";
+import { CalendarDays,ChartNoAxesColumnIncreasing,ChevronDown,Download,Info,TriangleAlert } from "lucide-react";
 import { RangeCalendar as HeroRangeCalendar } from "@heroui/react";
 import { parseDate,type CalendarDate } from "@internationalized/date";
-import { useCallback,useEffect,useMemo,useState,useRef,type ReactNode } from "react";
+import { useCallback,useEffect,useMemo,useState,useRef,type ReactNode,type Ref } from "react";
 import {
 activityErrorRatePercent,
 activityReportCaveats,
@@ -80,22 +80,19 @@ import {
 BulletList,
 Button,
 Card,
-CardBase,
 CardBody,
+Disclosure,
+DsBodyScope,
 dsIcon,
+dsSurface,
 dsText,
-IconButton,
 MetaLine,
-PageHeader,
-Panel,
-PanelBody,
-PanelFooter,
-PanelHeader,
 Popover,
 PopoverContent,
 PopoverTrigger,
 Refusal,
 SectionLabel,
+Select,
 Skeleton,
 StatusPill,
 Table,
@@ -111,13 +108,18 @@ import { cn } from "../lib/utils.js";
 import { useActivityClient as useDashboardClient } from "../state/activity-client.js";
 import { failed,LOADING,type AsyncResource } from "../state/async-resource.js";
 import {
+ACTIVITY_DATE_PRESETS,
+activityCompactRangeLabel,
+activityPresetOf,
+activityPresetRange,
+activityRangeDraft,
+applyActivityRangeDraft,
 activityPeopleEvidenceItems,
-activityPeopleMeta,
 activityPeopleNote,
-activityRangeLabel,
 activityRangeValue,
 parseActivityRange,
 resolveActivityWho,
+type ActivityRangeDraft,
 type QueueRowIdentity,
 } from "./activity-model.js";
 import { fmtClock,plural } from "./format.js";
@@ -129,52 +131,69 @@ function calendarDate(value: string): CalendarDate | null {
   try { return parseDate(value); } catch { return null; }
 }
 
-function dateControlLabel(from: string, to: string): string {
-  const start = new Date(`${from}T12:00:00Z`);
-  const end = new Date(`${to}T12:00:00Z`);
-  const short = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
-  const full = (date: Date) => date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
-  if (from === to) return full(start);
-  if (from.slice(0, 4) !== to.slice(0, 4)) return `${full(start)} – ${full(end)}`;
-  if (from.slice(0, 7) === to.slice(0, 7)) return `${short(start)} – ${to.slice(8)}, ${to.slice(0, 4)}`;
-  return `${short(start)} – ${full(end)}`;
-}
-
-function ActivityDateControl({ from, to, invalid, onRange }: {
+function ActivityDateControl({ from, to, today, invalid, draft, onDraftChange, onApply, open, triggerRef, onOpenChange }: {
   from: string;
   to: string;
+  today: string;
   invalid: boolean;
-  onRange: (value: string) => void;
+  draft: ActivityRangeDraft | null;
+  onDraftChange: (value: ActivityRangeDraft) => void;
+  onApply: () => void;
+  open: boolean;
+  triggerRef: Ref<HTMLButtonElement>;
+  onOpenChange: (open: boolean) => void;
 }) {
-  const [open, setOpen] = useState(false);
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
-  const start = calendarDate(from);
-  const end = calendarDate(to);
-  const selected = !invalid && start !== null && end !== null;
-  const label = selected ? dateControlLabel(from, to) : "Choose dates";
-  const choose = (first: string, last: string) => {
-    onRange(activityRangeValue({ from: first, to: last }));
-    setOpen(false);
+  const start = draft?.from === null || draft === null ? null : calendarDate(draft.from);
+  const end = draft?.to === null || draft === null ? null : calendarDate(draft.to);
+  const draftResult = draft === null ? null : applyActivityRangeDraft(draft);
+  const selected = draftResult?.state === "ready" && start !== null && end !== null;
+  const appliedLabel = invalid ? "Invalid report span" : activityCompactRangeLabel({ from, to });
+  const pendingAnchor = useRef(false);
+  const changeOpen = (next: boolean) => {
+    pendingAnchor.current = false;
+    setYearPickerOpen(false);
+    onOpenChange(next);
   };
-  return <Popover open={open} onOpenChange={next => { setOpen(next); if (!next) setYearPickerOpen(false); }}>
+  const noteCalendarActivation = (target: EventTarget | null) => {
+    if (!(target instanceof Element) || target.closest(".range-calendar__cell") === null) return;
+    if (!pendingAnchor.current) {
+      pendingAnchor.current = true;
+      onDraftChange({ from: null, to: null });
+    } else {
+      pendingAnchor.current = false;
+    }
+  };
+  return <Popover open={open} onOpenChange={changeOpen}>
     <PopoverTrigger asChild>
-      <Button size="toolbar" variant="secondary" aria-label={`Select report dates: ${label}`} aria-invalid={invalid || undefined} icon={<CalendarDays aria-hidden className={dsIcon.sm} />}>
-        <span className="tabular-nums">{label}</span><ChevronDown aria-hidden className={dsIcon.sm} />
+      <Button ref={triggerRef} size="toolbar" variant="secondary" aria-label={`Select report dates: ${appliedLabel}`} aria-expanded={open} aria-invalid={invalid || undefined} icon={<CalendarDays aria-hidden className={dsIcon.sm} />}>
+        <span className="tabular-nums">{appliedLabel}</span><ChevronDown aria-hidden className={dsIcon.sm} />
       </Button>
     </PopoverTrigger>
-    <PopoverContent title="Select report dates" hideTitle align="end" width="md" className="ds-date-popover">
-      <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar" isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen} value={selected ? { start, end } : null} onChange={dates => { if (dates !== null) choose(dates.start.toString(), dates.end.toString()); }}>
-        <HeroRangeCalendar.Header>
-          <HeroRangeCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
-          <HeroRangeCalendar.YearPickerTrigger className="w-full justify-center">
-            <HeroRangeCalendar.YearPickerTriggerHeading className="text-foreground" />
-            <HeroRangeCalendar.YearPickerTriggerIndicator className="text-foreground" />
-          </HeroRangeCalendar.YearPickerTrigger>
-          <HeroRangeCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
-        </HeroRangeCalendar.Header>
-        <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
-        {yearPickerOpen && <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>}
-      </HeroRangeCalendar>
+    <PopoverContent title="Select report dates" hideTitle align="end" width="md" className="ds-date-popover activity-range-popover">
+      <div onPointerDownCapture={event => { noteCalendarActivation(event.target); }} onKeyDownCapture={event => {
+        if ((event.key === "Enter" || event.key === " ") && !event.repeat) noteCalendarActivation(event.target);
+      }}>
+        <HeroRangeCalendar aria-label="Choose report date range" className="ds-hero-calendar activity-range-calendar" defaultFocusedValue={calendarDate(today)} isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen} value={selected ? { start, end } : null} onChange={dates => {
+          pendingAnchor.current = false;
+          if (dates !== null) onDraftChange({ from: dates.start.toString(), to: dates.end.toString() });
+        }}>
+          <HeroRangeCalendar.Header>
+            <HeroRangeCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
+            <HeroRangeCalendar.YearPickerTrigger className="w-full justify-center">
+              <HeroRangeCalendar.YearPickerTriggerHeading className="text-foreground" />
+              <HeroRangeCalendar.YearPickerTriggerIndicator className="text-foreground" />
+            </HeroRangeCalendar.YearPickerTrigger>
+            <HeroRangeCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
+          </HeroRangeCalendar.Header>
+          <HeroRangeCalendar.Grid><HeroRangeCalendar.GridHeader>{day => <HeroRangeCalendar.HeaderCell>{day}</HeroRangeCalendar.HeaderCell>}</HeroRangeCalendar.GridHeader><HeroRangeCalendar.GridBody>{date => <HeroRangeCalendar.Cell date={date} className={date.toString() === today ? "activity-range-calendar-report-today" : undefined} />}</HeroRangeCalendar.GridBody></HeroRangeCalendar.Grid>
+          {yearPickerOpen && <HeroRangeCalendar.YearPickerGrid><HeroRangeCalendar.YearPickerGridBody>{({ year }) => <HeroRangeCalendar.YearPickerCell year={year} />}</HeroRangeCalendar.YearPickerGridBody></HeroRangeCalendar.YearPickerGrid>}
+        </HeroRangeCalendar>
+      </div>
+      <div className="mt-[var(--ds-space-base)] flex justify-end gap-[var(--ds-space-snug)] border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]">
+        <Button size="sm" variant="secondary" onClick={() => changeOpen(false)}>Cancel</Button>
+        <Button size="sm" variant="primary" className="activity-range-apply" disabled={draftResult?.state !== "ready"} onClick={onApply}>Apply range</Button>
+      </div>
     </PopoverContent>
   </Popover>;
 }
@@ -290,65 +309,6 @@ function ShareTable({
 }
 
 /**
- * One headline number, ported from the demo's `Tile`.
- *
- * The header row is RESERVED at the ⓘ button's own height on every tile so one
- * tile carrying a control cannot drop its big number, and the note under it,
- * below its siblings' on the row the eye reads straight across. `CardBase`
- * pins the notes to one baseline for the same reason.
- *
- * DEVIATION from the demo: there is no `estimate` tone and no `estimate` badge,
- * because the one tile that wore them — Hours saved — is powered by an
- * operator-entered minutes-per-workflow constant this wire does not carry.
- * Rendering the badge with no estimate behind it would be decoration.
- */
-function Tile({
-  label,
-  value,
-  note,
-  tone = "default",
-  info,
-}: {
-  label: string;
-  value: string;
-  note: string;
-  tone?: "default" | "warning";
-  /** the REASONING behind the number — a rule of the report, so it lives here */
-  info?: ReactNode;
-}) {
-  return (
-    <Card tone={tone === "warning" ? "attention" : "default"}>
-      <CardBody grow className="flex flex-col gap-[var(--ds-space-hair)]">
-        <span className="flex min-h-[var(--ds-h-xs)] items-center gap-[var(--ds-space-snug)]">
-          <SectionLabel className="min-w-0 truncate">{label}</SectionLabel>
-          {info && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <IconButton
-                  size="xs"
-                  label={`How ${label.toLowerCase()} is counted`}
-                  icon={<Info aria-hidden className={dsIcon.sm} />}
-                  className="ml-auto text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]"
-                />
-              </PopoverTrigger>
-              <PopoverContent title={label} width="lg" align="end">
-                {info}
-              </PopoverContent>
-            </Popover>
-          )}
-        </span>
-        <span className={cn(dsText.display, dsText.nums, "text-[color:var(--ds-fg)]")}>{value}</span>
-        {/* The notes run one and two lines. Pinned, they end on one baseline
-            across the row instead of each stopping wherever its own copy did. */}
-        <CardBase className="pt-[var(--ds-space-hair)]">
-          <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{note}</span>
-        </CardBase>
-      </CardBody>
-    </Card>
-  );
-}
-
-/**
  * One CATEGORY block of the per-workflow table: a heading row, its workflows,
  * then its own subtotal — so one category reads as a block against another
  * instead of both being scattered through a flat list in run-count order.
@@ -405,6 +365,7 @@ function CategoryBody({
   workflows,
   subtotalRuns,
   total,
+  showSubtotal = true,
 }: {
   label: string;
   /**
@@ -418,6 +379,7 @@ function CategoryBody({
   workflows: readonly { workflowId: string; label: ReactNode; runs: number; cells: WorkflowCells }[];
   subtotalRuns: number;
   total: number;
+  showSubtotal?: boolean;
 }) {
   return (
     <TBody>
@@ -452,13 +414,13 @@ function CategoryBody({
           total={total}
         />
       ))}
-      <WorkflowRow
+      {showSubtotal && <WorkflowRow
         label={`${label} — subtotal`}
         runs={subtotalRuns}
         cells={sumCells(workflows.map((workflow) => workflow.cells))}
         total={total}
         subtotal
-      />
+      />}
     </TBody>
   );
 }
@@ -544,7 +506,7 @@ function WorkflowRow({
  * the last thing to fabricate on the page a supervisor reads. Workflow code is
  * now served from the registry and never derived here.
  */
-function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
+function WorkflowsByCategory({ report, focus, onFocus }: { report: ActivityReportWire; focus: string; onFocus: (value: string) => void }) {
   const blocks = report.categories.map((entry) => {
     const category = entry.category;
     // The two arms are read separately rather than through a boolean, because a
@@ -561,6 +523,7 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
           ? workflow.registration.state === "registered" && workflow.registration.categoryId === category.categoryId
           : workflow.registration.state === "unregistered",
       )
+      .filter((workflow) => focus === "all" || workflow.workflowId === focus)
       .map((workflow) => ({
         workflowId: workflow.workflowId,
         // The SHORT CODE leads the name cell (D242), for the reason the archive
@@ -590,18 +553,29 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
       subtotalRuns: entry.runs,
       ...(category.state === "registered" ? {} : { reason: category.reason }),
     };
-  });
+  }).filter((block) => block.workflows.length > 0);
 
   return (
     <div className="min-w-0">
-      <SectionLabel className="mb-[var(--ds-space-snug)]">By workflow</SectionLabel>
-      <div className="overflow-x-auto">
+      <div className="mb-[var(--ds-space-snug)] flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]">
+        <SectionLabel>Workflow outcomes</SectionLabel>
+        <label className={cn(dsText.meta, "flex items-center gap-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
+          Show workflow
+          <Select variant="toolbar" aria-label="Show workflow in breakdown" value={focus} onChange={(event) => onFocus(event.target.value)}>
+            <option value="all">All workflows</option>
+            {report.workflows.map((workflow) => <option key={workflow.workflowId} value={workflow.workflowId}>
+              {workflow.registration.state === "registered" ? workflow.registration.label : workflow.workflowId}
+            </option>)}
+          </Select>
+        </label>
+      </div>
+      <div className="overflow-x-auto rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]">
         <Table label="Activity by workflow, grouped by category">
           <THead>
             <TR>
               <TH>Workflow</TH>
               <TH align="right">Runs</TH>
-              <TH align="right">Share</TH>
+              <TH align="right">Share of report</TH>
               <TH align="right">Read back</TH>
               <TH align="right">Warnings</TH>
               <TH align="right">Unread</TH>
@@ -614,8 +588,9 @@ function WorkflowsByCategory({ report }: { report: ActivityReportWire }) {
               key={block.key}
               label={block.label}
               workflows={block.workflows}
-              subtotalRuns={block.subtotalRuns}
+              subtotalRuns={focus === "all" ? block.subtotalRuns : block.workflows[0]?.runs ?? 0}
               total={report.totalRuns}
+              showSubtotal={focus === "all" && block.workflows.length > 1}
               {...("reason" in block ? { reason: block.reason } : {})}
             />
           ))}
@@ -807,181 +782,103 @@ export function ActivityBody({
   report: ActivityReportWire;
   rows: readonly QueueRowIdentity[];
 }) {
+  const [workflowFocus, setWorkflowFocus] = useState("all");
+  const selectedWorkflow = report.workflows.some((workflow) => workflow.workflowId === workflowFocus) ? workflowFocus : "all";
   const { readBack, warnings: withWarnings, warningsUnknown } = report.completion;
   const failedRuns = statusRuns(report, "failed");
-  // ONE derivation, shared with the CSV export (D240): an exported rate that
-  // rounded differently than the tile would be the same number twice, wrong.
   const errorRatePct = activityErrorRatePercent(report);
+  const completedRuns = readBack + withWarnings + warningsUnknown;
+  const median = report.durations.medianMs;
+  const outstandingNote = OUTSTANDING_ORDER
+    .map((status) => ({ status, runs: statusRuns(report, status) }))
+    .filter((entry) => entry.runs > 0)
+    .map((entry) => `${String(entry.runs)} ${statusText(dsStatusOf(entry.status)).toLowerCase()}`)
+    .join(" · ");
 
   return (
-    <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-      {/* ---- headline tiles. Counterweights first: OUTSTANDING sits in the
-               row, not under it, so finished work is never read without the
-               work that is not. ---- */}
-      <div className="grid grid-cols-2 gap-[var(--ds-space-base)] min-[1080px]:grid-cols-4">
-        <Tile
-          label="Runs"
-          value={String(report.totalRuns)}
-          note={activityPeopleNote(report.people)}
-          info={
-            <BulletList
-              items={[...activityPeopleEvidenceItems(report.people)]}
-            />
-          }
-        />
-        {/*
-          FINISHED IS THE WORK THAT SUCCEEDED, not everything that stopped.
-          Using `terminalRuns` would put a span whose runs mostly FAILED under a
-          headline reading "34 finished", with a note underneath summing to
-          nine; the failures are one tile to the right instead.
-
-          The tile and the table below it read the SAME served split — the
-          server's `completion`, whose three arms the wire refuses unless they
-          cover the `done` status exactly. This tile used to read the `partial`
-          status for "with warnings", which this projection's outcome map never
-          produces: the number was structurally zero, and the table below would
-          have contradicted it the first time a receipt recorded a warning.
-        */}
-        <Tile
-          label="Finished"
-          value={String(readBack + withWarnings + warningsUnknown)}
-          note={
-            warningsUnknown === 0
-              ? `${String(readBack)} read back · ${String(withWarnings)} with warnings`
-              : `${String(readBack)} read back · ${String(withWarnings)} with warnings · ${String(warningsUnknown)} unread`
-          }
-          {...(warningsUnknown === 0 ? {} : {
-            info: (
-              <BulletList
-                items={[
-                  `${plural(warningsUnknown, "finished run")} ${warningsUnknown === 1 ? "has" : "have"} no derived evidence receipt, so ${warningsUnknown === 1 ? "its" : "their"} warning set is unread.`,
-                  "An unread warning set is counted on its own rather than added to the read-back total, which would report a run nobody checked as one that came back clean.",
-                  "It is the same distinction the queue row's warning chip draws, read through the same derivation.",
-                ]}
-              />
-            ),
-          })}
-        />
-        {/* The amber paragraph the demo replaced is GONE here too. What it was
-            carrying is a NUMBER — how much is still open — and a reason, which
-            is the same on every report and therefore belongs in the ⓘ. */}
-        <Tile
-          label="Still open"
-          value={String(report.inFlightRuns)}
-          note={
-            report.inFlightRuns > 0
-              ? "counted in neither the error rate nor the outcome totals"
-              : "nothing in this span is still open"
-          }
-          tone={report.inFlightRuns > 0 ? "warning" : "default"}
-          info={
-            <BulletList
-              items={[
-                "A run that has not ended has not succeeded or failed, so it is excluded from the error rate rather than counted as either.",
-                "It is reported here, beside finished work, so a busy span cannot read as a finished one.",
-                "The states below say what each open run is waiting on, in the same vocabulary the queue uses.",
-              ]}
-            />
-          }
-        />
-        <Tile
-          label="Error rate"
-          value={`${String(errorRatePct)}%`}
-          note={`${String(failedRuns)} failed of ${String(report.terminalRuns)} terminal runs`}
-          tone={errorRatePct > 15 ? "warning" : "default"}
-        />
+    <div className="flex flex-col gap-[var(--ds-space-section)]">
+      <div role="group" aria-label="Range-wide report totals" className="grid grid-cols-2 overflow-hidden rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] min-[1100px]:grid-cols-4">
+        <ReportMetric label="Completed runs" value={String(completedRuns)} note={`of ${String(report.totalRuns)} runs in this period`} />
+        <ReportMetric label="Outstanding" value={String(report.inFlightRuns)} note={outstandingNote || "No open runs"} tone="warning" />
+        <ReportMetric label="Failed" value={String(failedRuns)} note={`${String(failedRuns)} of ${String(report.terminalRuns)} terminal runs · ${String(errorRatePct)}%`} />
+        <ReportMetric label="Median duration" value={median.state === "present" ? ms(median.value) : "Unavailable"} note={`${String(report.durations.measuredRuns)} measured · ${String(report.durations.unmeasuredRuns)} unmeasured`} />
       </div>
 
-      {/* ---- what is still open, and what it is waiting ON ---- */}
-      <OutstandingTable report={report} rows={rows} />
-
-      {/* ---- per workflow, grouped by the served category axis ---- */}
-      <WorkflowsByCategory report={report} />
-
-      {/* ---- how long they took, WITH the runs nobody measured ---- */}
-      <div className="flex flex-col gap-[var(--ds-space-snug)]">
-        <SectionLabel>How long they took</SectionLabel>
-        <MetaLine
-          items={[
-            report.durations.medianMs.state === "present"
-              ? `median ${ms(report.durations.medianMs.value)}`
-              : report.durations.medianMs.reason,
-            report.durations.longestMs.state === "present"
-              ? `longest ${ms(report.durations.longestMs.value)}`
-              : report.durations.longestMs.reason,
-            `${String(report.durations.measuredRuns)} measured`,
-          ]}
-        />
-        {report.durations.unmeasuredRuns > 0 && (
-          <span className={cn(dsText.meta, "flex items-center gap-[var(--ds-space-hair)] text-[color:var(--ds-status-waiting-fg)]")}>
-            <TriangleAlert aria-hidden className={dsIcon.sm} />
-            {report.durations.unmeasuredRuns} finished {report.durations.unmeasuredRuns === 1 ? "run has" : "runs have"} no
-            recorded end instant, so {report.durations.unmeasuredRuns === 1 ? "it is" : "they are"} excluded from every
-            duration above rather than counted as zero.
-          </span>
-        )}
-      </div>
-
-      <ShareTable
-        label="By day"
-        total={report.totalRuns}
-        rows={report.days.map((day) => ({ key: day.day, label: day.day, runs: day.runs }))}
-      />
-
-      {/*
-        No per-row hue here, on purpose. `ActivityOutcome` has seven arms and
-        the ds status vocabulary has eight with a different partition —
-        `superseded`, `discarded` and `interrupted` have no status of their own,
-        so tinting them would be this surface inventing a second colour map
-        beside `status.tsx`. The neutral accent says "share of terminal runs",
-        which is exactly what the column measures.
-      */}
-      <ShareTable
-        label="By outcome"
-        total={report.terminalRuns}
-        rows={report.outcomes.map((outcome) => ({
-          key: outcome.outcome,
-          label: outcome.outcome,
-          runs: outcome.runs,
-        }))}
-      />
-
-      <div className="min-w-0">
-        <SectionLabel className="mb-[var(--ds-space-snug)]">Failures</SectionLabel>
-        {report.failures.length === 0 ? (
-          <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-            No run in this range settled with a structured failure.
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table label="Failures by code">
-              <THead>
-                <TR>
-                  <TH>Code</TH>
-                  <TH align="right">Runs</TH>
-                  <TH align="right">Transient</TH>
-                  <TH>Examples</TH>
-                </TR>
-              </THead>
-              <TBody>
-                {report.failures.map((failure) => (
-                  <TR key={failure.code}>
-                    <TD numeric>{failure.code}</TD>
-                    <TD numeric align="right">{failure.runs}</TD>
-                    <TD numeric align="right">{failure.transient}</TD>
-                    <TD numeric>{failure.sample.join(" ")}</TD>
-                  </TR>
-                ))}
-              </TBody>
-            </Table>
+      <div className="grid min-w-0 gap-[var(--ds-space-section)] min-[1160px]:grid-cols-[minmax(0,2fr)_minmax(17rem,1fr)]">
+        <div className="flex min-w-0 flex-col gap-[var(--ds-space-section)]">
+          <WorkflowsByCategory report={report} focus={selectedWorkflow} onFocus={setWorkflowFocus} />
+          <WriteLedgerBlock ledger={report.ledger} />
+        </div>
+        <div className="flex min-w-0 flex-col gap-[var(--ds-space-section)]">
+          <DailyVolume report={report} />
+          <div className="flex flex-col gap-[var(--ds-space-snug)]">
+            <SectionLabel>Evidence coverage</SectionLabel>
+            <div className="flex items-center justify-between gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] py-[var(--ds-space-tight)]">
+              <span className={dsText.body}>Warnings read back</span>
+              <strong className={cn(dsText.body, dsText.nums)}>{readBack + withWarnings} / {completedRuns} completed</strong>
+            </div>
+            <div className="flex items-center justify-between gap-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
+              <span className={dsText.body}>Warning status unread</span>
+              <strong className={cn(dsText.body, dsText.nums)}>{warningsUnknown}</strong>
+            </div>
+            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{activityPeopleNote(report.people)}</span>
           </div>
-        )}
+        </div>
       </div>
 
-      {/* ---- what was actually FILED — a different authority, D236 ---- */}
-      <WriteLedgerBlock ledger={report.ledger} />
+      <Disclosure summary="Outstanding work" meta={plural(report.inFlightRuns, "run")} variant="body" defaultOpen={report.inFlightRuns > 0} contentClassName="pt-[var(--ds-space-base)]">
+        <OutstandingTable report={report} rows={rows} />
+      </Disclosure>
+      <Disclosure summary="Outcome and duration detail" meta={`${String(report.terminalRuns)} terminal runs`} variant="body" contentClassName="flex flex-col gap-[var(--ds-space-cozy)] pt-[var(--ds-space-base)]">
+        <MetaLine items={[
+          median.state === "present" ? `median ${ms(median.value)}` : median.reason,
+          report.durations.longestMs.state === "present" ? `longest ${ms(report.durations.longestMs.value)}` : report.durations.longestMs.reason,
+          `${String(report.durations.measuredRuns)} measured`,
+        ]} />
+        {report.durations.unmeasuredRuns > 0 && <span className={cn(dsText.meta, "flex items-center gap-[var(--ds-space-hair)] text-[color:var(--ds-status-waiting-fg)]")}>
+          <TriangleAlert aria-hidden className={dsIcon.sm} />
+          {report.durations.unmeasuredRuns} finished {report.durations.unmeasuredRuns === 1 ? "run has" : "runs have"} no recorded end instant, so {report.durations.unmeasuredRuns === 1 ? "it is" : "they are"} excluded from every duration above rather than counted as zero.
+        </span>}
+        <ShareTable label="By outcome" total={report.terminalRuns} rows={report.outcomes.map((outcome) => ({key:outcome.outcome,label:outcome.outcome,runs:outcome.runs}))} />
+      </Disclosure>
+      <Disclosure summary="Failure codes" meta={plural(report.failures.length, "code")} variant="body" contentClassName="pt-[var(--ds-space-base)]">
+        {report.failures.length === 0 ? <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>No run in this range settled with a structured failure.</p> :
+          <div className="overflow-x-auto"><Table label="Failures by code"><THead><TR><TH>Code</TH><TH align="right">Runs</TH><TH align="right">Transient</TH><TH>Examples</TH></TR></THead><TBody>
+            {report.failures.map((failure) => <TR key={failure.code}><TD numeric>{failure.code}</TD><TD numeric align="right">{failure.runs}</TD><TD numeric align="right">{failure.transient}</TD><TD numeric>{failure.sample.join(" ")}</TD></TR>)}
+          </TBody></Table></div>}
+      </Disclosure>
+      <Disclosure summary="People and counting evidence" variant="body" contentClassName="pt-[var(--ds-space-base)]">
+        <BulletList items={[...activityPeopleEvidenceItems(report.people)]} />
+      </Disclosure>
     </div>
   );
+}
+
+function ReportMetric({ label, value, note, tone }: { label: string; value: string; note: string; tone?: "warning" }) {
+  return <div className="flex min-w-0 flex-col gap-[var(--ds-space-tight)] border-r border-b border-[color:var(--ds-border)] p-[var(--ds-space-base)] last:border-r-0">
+    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")}>{label}</span>
+    <strong className={cn(dsText.display, dsText.nums, tone === "warning" && "text-[color:var(--ds-status-waiting-fg)]")}>{value}</strong>
+    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{note}</span>
+  </div>;
+}
+
+function DailyVolume({ report }: { report: ActivityReportWire }) {
+  const largest = report.days.reduce((max, day) => Math.max(max, day.runs), 1);
+  return <div className="min-w-0">
+    <SectionLabel className="mb-[var(--ds-space-snug)]">Daily volume</SectionLabel>
+    <Card><CardBody className="flex flex-col gap-[var(--ds-space-base)]">
+      <div className="flex justify-between gap-[var(--ds-space-base)]"><strong className={dsText.title}>Runs by day</strong><span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>{report.totalRuns} total</span></div>
+      {report.days.length === 0 ? <p className={dsText.meta}>No run started in this period.</p> :
+        <div className="flex min-h-[var(--ds-h-xxl)] items-end gap-[var(--ds-space-tight)] overflow-x-auto border-b border-[color:var(--ds-border)] pb-[var(--ds-space-tight)]">
+          {report.days.map((day) => <div key={day.day} className="flex min-w-[var(--ds-h-md)] flex-1 flex-col items-center gap-[var(--ds-space-tight)]">
+            <span className={cn(dsText.micro, dsText.nums)}>{day.runs}</span>
+            <span aria-hidden className="w-full rounded-t-[var(--ds-radius-sm)] bg-[color:var(--ds-fg-muted)]" style={{height:`${String(Math.max(4, Math.round(day.runs / largest * 72)))}px`}} />
+            <time dateTime={day.day} aria-label={day.day} className={cn(dsText.micro, dsText.nums, "whitespace-nowrap text-[color:var(--ds-fg-muted)]")}>{day.day.slice(5)}</time>
+          </div>)}
+        </div>}
+      <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Days without recorded runs are omitted.</span>
+    </CardBody></Card>
+  </div>;
 }
 
 /**
@@ -1001,10 +898,12 @@ export function ActivityBody({
 function WriteLedgerBlock({ ledger }: { ledger: ActivityReportWire["ledger"] }): ReactNode {
   return (
     <div className="min-w-0">
-      <SectionLabel className="mb-[var(--ds-space-snug)]">Write ledger — what was actually filed</SectionLabel>
+      <div className="mb-[var(--ds-space-snug)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-snug)]">
+        <SectionLabel>Confirmed transactions</SectionLabel>
+        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Separate write ledger</span>
+      </div>
       <p className={cn(dsText.meta, "mb-[var(--ds-space-snug)] text-[color:var(--ds-fg-muted)]")}>
-        A separate authority from every total above. Confirmed entries survive Archive transfer until explicit owner deletion, so they
-        can outlive the runs that filed them.
+        Confirmed entries survive Archive transfer until explicit owner deletion.
       </p>
       {ledger.systems.length === 0 ? (
         <Well>
@@ -1013,7 +912,7 @@ function WriteLedgerBlock({ ledger }: { ledger: ActivityReportWire["ledger"] }):
           </span>
         </Well>
       ) : (
-        <div className="overflow-x-auto">
+        <div className="overflow-x-auto rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]">
           <Table label="Write ledger by system">
             <THead>
               <TR>
@@ -1089,8 +988,14 @@ export function ActivityReport({
     return ()=>{controller.abort();stop();};
   }, [client, requestRange, resolved.from, resolved.to, resolved.refusal,refresh]);
 
-  const spanLabel = resolved.refusal === undefined ? activityRangeLabel(resolved.from, resolved.to) : "Invalid report span";
+  const appliedRangeLabel = resolved.refusal === undefined ? activityCompactRangeLabel(resolved) : "Invalid report span";
   const report = resource.state === "loaded" ? resource.value : undefined;
+  const period = resolved.refusal === undefined ? activityPresetOf(resolved, today) : "custom";
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [dateDraft, setDateDraft] = useState<ActivityRangeDraft | null>(null);
+  const [exportMenuOpen, setExportMenuOpen] = useState(false);
+  const dateTriggerRef = useRef<HTMLButtonElement>(null);
+  const periodSelectRef = useRef<HTMLSelectElement>(null);
 
   const exportRequest=useRef<AbortController|null>(null);
   const [exportState,setExportState]=useState<"idle"|"pending"|"started"|"cancelled"|"failed">("idle");
@@ -1106,113 +1011,115 @@ export function ActivityReport({
     } catch {if(!controller.signal.aborted&&exportRequest.current===controller){setExportState("failed");}} finally {if(exportRequest.current===controller)exportRequest.current=null;}
   }, [client,report]);
 
-  return (
-    /* UF-AC-2. `TakeoverFrame`'s JSDoc owns the why — geometry, arrival and
-       focus, decided once for all four takeovers. This surface's demo
-       container: `// ported from legacy 1ec1d870
-       src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:668-669` →
-       `DemoActivityReportPage`, a bare `flex min-h-0 flex-1 flex-col` div at
-       `DemoActivityReport.tsx:79`. */
-    <TakeoverFrame label="Activity report">
-      <PageHeader
-        title="Activity report"
-        icon={<ChartNoAxesColumn aria-hidden className={dsIcon.md} />}
-        actions={<ActivityDateControl from={resolved.from} to={resolved.to} invalid={resolved.refusal !== undefined} onRange={onRange} />}
-      />
+  const changeDatePickerOpen = (next: boolean, focusAfterClose?: "period" | "date") => {
+    if (next) {
+      setDateDraft(resolved.refusal === undefined
+        ? activityRangeDraft({ from: resolved.from, to: resolved.to })
+        : { from: null, to: null });
+    } else {
+      setDateDraft(null);
+      const target = focusAfterClose ?? (period === "custom" ? "date" : "period");
+      window.requestAnimationFrame(() => {
+        (target === "date" ? dateTriggerRef.current : periodSelectRef.current)?.focus();
+      });
+    }
+    setDatePickerOpen(next);
+  };
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-[var(--ds-space-cozy)]">
-        <Panel>
-          <PanelHeader
-            title="Activity results"
-            headingLevel={2}
-            subtitle={spanLabel}
-            meta={report === undefined
-              ? undefined
-              : `${plural(report.totalRuns, "run")} · ${activityPeopleMeta(report.people)}`}
-            actions={
-              report === undefined ? undefined : (
-                <span className="flex flex-wrap items-end gap-[var(--ds-space-snug)]">
-                  <Popover>
-                    <PopoverTrigger asChild>
-                      <Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>
-                        How it is counted
-                      </Button>
-                    </PopoverTrigger>
-                    <PopoverContent title="How this report is counted" width="lg" align="end">
-                      <BulletList items={[...activityReportCaveats(report)]} />
-                    </PopoverContent>
-                  </Popover>
-                  <span className="flex flex-col gap-[var(--ds-space-tight)]">
-                    <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>Export report</span>
-                    <span role="group" aria-label="Export activity report" className="flex items-center gap-[var(--ds-space-tight)]">
-                      <Button
-                        size="sm"
-                        variant="secondary"
-                        icon={<Download aria-hidden className={dsIcon.md} />}
-                        disabled={exportState === "pending"}
-                        onClick={() => { void exportReport("csv"); }}
-                      >
-                        Export CSV
-                      </Button>
-                      <Button size="sm" variant="secondary" disabled={exportState === "pending"} onClick={() => { void exportReport("xlsx"); }}>Export XLSX</Button>
-                      {exportState === "pending" && <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setExportState("cancelled"); }}>Cancel download</Button>}
-                    </span>
-                  </span>
-                  <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setResponse({ range: requestRange, resource: LOADING }); setRefresh(value => value + 1); }}>Refresh report</Button>
-                </span>
-              )
-            }
-          />
-          <PanelBody className="flex flex-col gap-[var(--ds-space-cozy)] p-[var(--ds-space-cozy)]">
-            {exportState==="failed"&&<Refusal code="selection-export-refused" title="Export refused" outcome="No file was downloaded. Refresh the report and retry the reviewed selection.">The selection expired, changed, or failed verification.</Refusal>}
-            {exportState==="cancelled"&&<p role="status">Download cancelled locally. A registered XLSX export may still finish on the server.</p>}
-            {exportState==="started"&&<p role="status">Verified file handed to the browser.</p>}
-            {resource.state === "loading" || resource.state === "idle" ? (
-              <Skeleton className="h-64 w-full" />
-            ) : resource.state === "failed" ? (
-              <Refusal
-                title="The activity report could not be built"
-                code="activity-read-failed"
-                outcome="Nothing was changed; this surface only reads."
-              >
-                <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{resource.error.message}</p>
-              </Refusal>
-            ) : resource.value.totalRuns === 0 ? (
-              /* D236: a range with no RUNS can still hold ledger entries —
-                 they are never archived and outlive the runs that filed them —
-                 so the write-ledger block renders here too. Hiding it would
-                 report "nothing happened" over a window in which something was
-                 filed into a real HR system. */
-              <>
-                <Well>
-                  <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
-                    No run started between {resource.value.from} and {resource.value.to}. Archived runs are deliberately
-                    not counted here — they left the live surfaces when their version bumped, and the Archive is where
-                    they are read.
-                  </p>
-                </Well>
-                <WriteLedgerBlock ledger={resource.value.ledger} />
-              </>
-            ) : (
-              <ActivityBody report={resource.value} rows={queueRows} />
-            )}
-          </PanelBody>
-          {/* PROVENANCE, not a defence of the design. The caveats are one press
-              away in the header's ⓘ — this is the artifact that leaves the
-              operator's screen, so they have to be reachable from it — and the
-              footer states who made it, when, and out of what. */}
-          <PanelFooter>
-            <MetaLine
-              items={[
-                report === undefined ? `${spanLabel} — not yet generated` : `generated ${fmtClock(report.generatedAt)}`,
-                actorId,
-                `app ${appVersion}`,
-                spanLabel,
-                report === undefined ? undefined : plural(report.totalRuns, "run"),
-              ].filter((item): item is string => item !== undefined)}
-            />
-          </PanelFooter>
-        </Panel>
+  const applyDateDraft = () => {
+    if (dateDraft === null) return;
+    const result = applyActivityRangeDraft(dateDraft);
+    if (result.state !== "ready") return;
+    onRange(activityRangeValue(result.model.selection));
+    changeDatePickerOpen(false, activityPresetOf(result.model.selection, today) === "custom" ? "date" : "period");
+  };
+
+  const choosePreset = (value: string) => {
+    const preset = ACTIVITY_DATE_PRESETS.find(entry => entry.value === value);
+    if (preset === undefined) return;
+    if (preset.value === "custom") {
+      changeDatePickerOpen(true);
+      return;
+    }
+    changeDatePickerOpen(false, "period");
+    onRange(activityRangeValue(activityPresetRange(preset.value, today)));
+  };
+
+  return (
+    <TakeoverFrame label="Activity report">
+      <div className={cn("min-h-0 flex-1 overflow-y-auto px-[var(--ds-space-cozy)] py-[var(--ds-space-cozy)]", dsSurface.bodyPage)}>
+        <DsBodyScope className="activity-report-body flex w-full flex-col gap-[var(--ds-space-section)]">
+          <header className="activity-report-heading flex min-h-[var(--ds-h-toolbar)] flex-wrap items-center justify-between gap-[var(--ds-space-base)] rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]">
+            <div className="flex min-w-0 items-center gap-[var(--ds-space-base)]">
+              <ChartNoAxesColumnIncreasing aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
+              <h1 className={cn(dsText.title, dsText.flush, "shrink-0 font-semibold text-[color:var(--ds-fg)]")}>Activity</h1>
+              <span aria-hidden className="h-[var(--ds-h-sm)] w-px shrink-0 bg-[color:var(--ds-border)]" />
+              {period === "custom" || datePickerOpen ? <ActivityDateControl
+                from={resolved.from}
+                to={resolved.to}
+                today={today}
+                invalid={resolved.refusal !== undefined}
+                draft={dateDraft}
+                onDraftChange={setDateDraft}
+                onApply={applyDateDraft}
+                open={datePickerOpen}
+                triggerRef={dateTriggerRef}
+                onOpenChange={changeDatePickerOpen}
+              /> : <span className={cn(dsText.meta, dsText.nums, "whitespace-nowrap text-[color:var(--ds-fg-secondary)]")} aria-label={`Report date range: ${appliedRangeLabel}`}>{appliedRangeLabel}</span>}
+            </div>
+
+            <div className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">
+              <div className="activity-report-period">
+                <Select ref={periodSelectRef} variant="toolbar" aria-label="Report period" value={datePickerOpen ? "custom" : period} onChange={event => { choosePreset(event.target.value); }}>
+                  {ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}
+                </Select>
+              </div>
+              <Popover open={exportMenuOpen} onOpenChange={setExportMenuOpen}>
+                <PopoverTrigger asChild>
+                  <Button size="toolbar" variant="outline" aria-label="Export report" disabled={report === undefined} icon={<Download aria-hidden className={dsIcon.sm} />}>
+                    Export report <ChevronDown aria-hidden className={dsIcon.sm} />
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent title="Export report" width="sm" align="end">
+                  <div className="flex flex-col gap-[var(--ds-space-tight)]">
+                    <Button variant="ghost" className="w-full justify-start" disabled={exportState === "pending"} onClick={() => { setExportMenuOpen(false); void exportReport("csv"); }}>Export CSV</Button>
+                    <Button variant="ghost" className="w-full justify-start" disabled={exportState === "pending"} onClick={() => { setExportMenuOpen(false); void exportReport("xlsx"); }}>Export XLSX</Button>
+                    {exportState === "pending" && <Button variant="ghost" className="w-full justify-start" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setExportState("cancelled"); setExportMenuOpen(false); }}>Cancel download</Button>}
+                  </div>
+                </PopoverContent>
+              </Popover>
+            </div>
+          </header>
+
+          {report !== undefined && <div className="flex flex-wrap items-center justify-end gap-[var(--ds-space-snug)]">
+            <Popover>
+              <PopoverTrigger asChild><Button size="sm" variant="ghost" icon={<Info aria-hidden className={dsIcon.md} />}>How it is counted</Button></PopoverTrigger>
+              <PopoverContent title="How this report is counted" width="lg" align="end"><BulletList items={[...activityReportCaveats(report)]} /></PopoverContent>
+            </Popover>
+            <Button size="sm" variant="ghost" onClick={() => { exportRequest.current?.abort(); exportRequest.current = null; setResponse({ range: requestRange, resource: LOADING }); setRefresh(value => value + 1); }}>Refresh report</Button>
+          </div>}
+
+          {exportState === "failed" && <Refusal code="selection-export-refused" title="Export refused" outcome="No file was downloaded. Refresh the report and retry the reviewed selection.">The selection expired, changed, or failed verification.</Refusal>}
+          {exportState === "cancelled" && <p role="status">Download cancelled locally. A registered XLSX export may still finish on the server.</p>}
+          {exportState === "started" && <p role="status">Verified file handed to the browser.</p>}
+          {resource.state === "loading" || resource.state === "idle" ? <Skeleton className="h-64 w-full" /> :
+            resource.state === "failed" ? <Refusal title="The activity report could not be built" code="activity-read-failed" outcome="Nothing was changed; this surface only reads.">
+              <p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>{resource.error.message}</p>
+            </Refusal> : resource.value.totalRuns === 0 ? <>
+              <Well><p className={cn(dsText.body, "text-[color:var(--ds-fg-secondary)]")}>
+                No run started between {resource.value.from} and {resource.value.to}. Archived runs are deliberately not counted here — they left the live surfaces when their version bumped, and the Archive is where they are read.
+              </p></Well>
+              <WriteLedgerBlock ledger={resource.value.ledger} />
+            </> : <ActivityBody report={resource.value} rows={queueRows} />}
+
+          <footer className="border-t border-[color:var(--ds-border)] pt-[var(--ds-space-base)]">
+            <MetaLine items={[
+              report === undefined ? "Report not yet generated" : `generated ${fmtClock(report.generatedAt)}`,
+              actorId,
+              `app ${appVersion}`,
+            ]} />
+          </footer>
+        </DsBodyScope>
       </div>
     </TakeoverFrame>
   );

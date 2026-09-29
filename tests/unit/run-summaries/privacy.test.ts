@@ -46,7 +46,12 @@ it("deduplicates people across days and computes the lower selected median, matc
     const report=queryActivitySummaries(f.db,{from:"2026-09-08",to:"2026-09-09",generatedAt:expected.generatedAt},{descriptors:{resolve:()=>undefined},ledger:{foldActivityRange:()=>expected.ledger}});
     assert.deepEqual(report.people,{state:"present",distinct:1,evidenceRows:6});
     assert.deepEqual(report.durations.medianMs,{state:"present",value:20});
-    assert.equal(report.completion.warningsUnknown,4);assert.deepEqual(report,expected);
+    assert.equal(report.completion.warningsUnknown,4);
+    const {volume,...reportWithoutVolume}=report;
+    assert.deepEqual(reportWithoutVolume,expected);
+    assert.ok(volume);
+    assert.equal(volume.state,"complete");assert.equal(volume.coveredRuns,report.totalRuns);
+    assert.equal(volume.buckets.reduce((total,bucket)=>total+bucket.runs,0),report.totalRuns);
     assert.ok(!JSON.stringify(report).includes(CURRENT_SEPARATIONS_RESULT.approved.emplId));
   }finally{world.dispose();f.dispose();}
 });

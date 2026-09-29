@@ -15,7 +15,7 @@ import { composeStorage } from "./compose/storage.js";
 import { composeIntake } from "./compose/intake.js";
 import type { ServedSummaryQueries } from "./projectors/run-queue-projection.js";
 import { composeFailureResolution } from "./compose/failure-resolution.js";
-import { localDatePart } from "../../domain/clock.js";
+import { localDatePart, runtimeTimeZone } from "../../domain/clock.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../domain/archive/retention.js";
 import { createOperatorProjection } from "./compose/queue.js";
 import { createOperatorRunDetail } from "./compose/run-detail.js";
@@ -499,6 +499,7 @@ async function composeDashboardRuntimeStartup(
   startupCleanups: StartupCleanup[],
 ): Promise<DashboardRuntime> {
   const clock = input.clock ?? systemClock;
+  const timeZone = runtimeTimeZone();
   const ids = input.ids ?? systemIdFactory;
   const repoRoot = input.repoRoot ?? process.cwd();
   const admission = requireRuntimeAdmission(input.admission);
@@ -715,7 +716,7 @@ async function composeDashboardRuntimeStartup(
    */
   const ledger = createTransactionHistory(database.authority);
 
-  const activity = composeActivity({ database, clock, descriptors, ledger });
+  const activity = composeActivity({ database, clock, descriptors, ledger, timeZone });
   const summaries: ServedSummaryQueries = { ...composeQueueSummaries(database), activity: (from, to) => activity.read(from, to) };
   const servedReader = { read: lifecycle.read.bind(lifecycle), list: lifecycle.list.bind(lifecycle), summaries };
   let ownsWorker: (lease: import("../../domain/run/worker.js").WorkerLeaseRecord) => boolean = () => false;
@@ -936,7 +937,7 @@ async function composeDashboardRuntimeStartup(
       },
     };
 
-  const shell = composeShell({ database, projection, activity, clock, ids, artifacts, descriptors,
+  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
     advisoryAvailability: () => (advisory === undefined

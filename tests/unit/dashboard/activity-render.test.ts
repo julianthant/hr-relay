@@ -96,7 +96,7 @@ describe("the rendered Activity axes (DCR1)", () => {
     assert.ok(table instanceof HTMLTableElement);
     assert.deepEqual(
       [...table.querySelectorAll("thead th")].map((cell) => cell.textContent?.trim()),
-      ["Workflow", "Runs", "Share", "Read back", "Warnings", "Unread", "Failed", "Open"],
+      ["Workflow", "Runs", "Share of report", "Read back", "Warnings", "Unread", "Failed", "Open"],
     );
     const workflowRow = [...table.querySelectorAll("tbody tr")]
       .find((row) => row.textContent?.includes("Person lookup"));
