@@ -10,6 +10,7 @@ import type { JsonValue } from "../../domain/canonical-json.js";
 import { IsoInstantSchema } from "../../domain/ids.js";
 import type { BrowserPresentationMode, InstanceSelection, RunParent, RunPriority, RunShape } from "../../domain/run/envelope.js";
 import type { StepOmissions } from "../../domain/workflow/step-omission.js";
+import { freezeWorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
 import { RunEnvelopeSchema } from "../../domain/run/envelope.js";
 import { RunRecordSchema } from "../../domain/run/record.js";
 import type { RunRecord } from "../../domain/run/record.js";
@@ -59,6 +60,11 @@ export interface QueuedRunSpec {
 
 export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
   const enqueuedAt = IsoInstantSchema.parse(spec.now);
+  const operationDisplaySnapshot = freezeWorkflowOperationDisplaySnapshot({
+    workflowId: spec.descriptor.id,
+    definitionFingerprint: spec.descriptor.contractFingerprint,
+    display: spec.descriptor.operationDisplay,
+  });
   const envelope = RunEnvelopeSchema.parse({
     runId: spec.runId,
     workflow: spec.descriptor.id,
@@ -66,6 +72,8 @@ export function buildQueuedRun(spec: QueuedRunSpec): RunRecord {
     traceId: spec.traceId,
     descriptorVersion: spec.descriptor.version,
     contractFingerprint: spec.descriptor.contractFingerprint,
+    operationDisplayCapability: operationDisplaySnapshot === undefined ? "legacy" : "complete",
+    ...(operationDisplaySnapshot === undefined ? {} : { operationDisplaySnapshot }),
     ...(spec.requestedInstance === undefined ? {} : { requestedInstance: spec.requestedInstance }),
     resolvedInstance: spec.resolvedInstance,
     configFingerprint: spec.configFingerprint,

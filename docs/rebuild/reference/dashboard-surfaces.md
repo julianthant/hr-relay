@@ -163,6 +163,53 @@ they do not replace a retained original on the operator surface. A value
 already discarded from an older record cannot be reconstructed by its read
 projection. Provider prompts and OS notifications have separate egress rules.
 
+### D356 — Frozen complete operation display per run · 2026-09-27
+
+A complete v1 operation display is historical run evidence, not a live descriptor
+lookup. At the one enqueue transaction, the descriptor compiler projects its complete
+declaration into a strict, canonical, redacted serializable snapshot and stamps its
+domain-separated digest into the immutable `RunEnvelope`. The snapshot binds the
+envelope's `contractFingerprint` and retains the static operation/action identities,
+occurrence paths, logical page/session references, typed reference kinds and paths,
+templates, conditions, outcomes, and graph-derived execution edges. Equality and
+inequality clauses retain their bounded public declaration literal with its digest, so
+historical readers can render the exact branch. Generic workflow constants remain
+digest-only. It deliberately does not retain Zod objects, pure implementation
+functions, examples, configuration values, run input values, credentials, or other
+secret-bearing data; a comparison literal outside the public declaration grammar
+refuses snapshot minting.
+
+The existing `workflow_runs.record_json` authority is the storage owner: the snapshot
+and its reference are inserted atomically with the run; same-run requeues and lifecycle
+transfers retain it unchanged, and a fingerprint-matched retry retains its source snapshot
+unchanged. This is an envelope-format addition, not an ordinary-startup SQLite schema
+mutation. A reader parses and hash-verifies the retained bytes before using them. A current complete-format run
+without a valid matching snapshot fails by name; it is never rebuilt from the current
+registry. Historical envelopes without the field remain explicit legacy format and
+are not backfilled.
+
+Action evidence remains one completed driver gesture, appended only after the task or
+transaction settles. Its identity joins the existing run/span sequence to the frozen
+definition fingerprint, node/task, task retry, claim generation, operation invocation
+and occurrence, logical action id, child edge where present, and physical session
+incarnation. An absent completed gesture is no evidence of start, failure, or
+not-run. Value provenance records the exact consumed value's immediate declared
+producer while prior reads remain traversable evidence; protected inputs are redacted
+before a note is durable or projected.
+
+### D357 — Shared Explorer/Logs operation structure · 2026-09-27
+
+Explorer's complete-format projection is the same canonical, redacted definition that a
+new enqueue freezes. Logs reads only the immutable envelope definition and completed action
+occurrences retained in the selected log page. Each observation must name one exact run,
+definition fingerprint, invocation, action, occurrence and target; an unknown or mismatched
+identity refuses rather than matching current descriptor text or a similarly named action.
+The existing Logs cursor remains authoritative: a page carries only its own observations, while
+older envelope records without a Plan 1 capability stamp remain explicit legacy. New enqueues
+stamp `complete` or `legacy`, so a missing complete snapshot cannot silently downgrade. The
+normal note row continues to omit raw browser action payloads; any field value is read from the
+already-redacted provenance arm.
+
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
 These decisions ratify the 49 A recommendations in the six 2026-08-25 sheets. They are **not
@@ -2906,6 +2953,11 @@ labels and kinds), `surfaces`, `capabilities`, `details` (as a DECLARATION — D
 `enqueue`, `presets`, `identity`, `presentation`, `coordinator`, `completionConsumes`,
 `artifactProjections`, `scenarios`, and the version/fingerprint pair. There is no second
 `archetype` declaration.
+
+D355 adds an optional compiler-produced `operationDisplay` only for complete v1 definitions;
+legacy descriptors omit it. It is not a dashboard wire field in P1.1: P1.3 owns the bounded BFF
+projection and the frozen-run join, so this layer neither mirrors the declaration nor invents a
+second action tree.
 
 Three more the factory DERIVES and this layer reads, none of which was in this list before
 2026-08-20:

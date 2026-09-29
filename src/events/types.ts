@@ -28,8 +28,8 @@
  *
  * Deliberately absent from this 1g slice (each is a later owning slice, not a
  * forgotten arm): `subject.observed` (emitted by the write-sequencer /
- * driver lane), note `action` attribution and screenshot/data-point
- * attachments (driver instrumentation), and `resultRef` on `gate.resolved`
+ * driver lane), screenshot/data-point attachments (driver instrumentation),
+ * and `resultRef` on `gate.resolved`
  * (gate results are keyed by `(runId, gateId)` in authority; a separate ref id
  * would duplicate that identity today).
  */
@@ -414,6 +414,49 @@ export const NoteFieldWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type NoteFieldWire = z.infer<typeof NoteFieldWireSchema>;
 
+const ActionValueProducerWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run-input"), path: SpanFieldPathSchema }),
+  z.strictObject({ kind: z.literal("configuration"), key: z.string().regex(/^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+$/u), schemaHash: Hex64Schema }),
+  z.strictObject({ kind: z.literal("constant"), valueDigest: Hex64Schema }),
+  z.strictObject({ kind: z.literal("task-output"), entryId: SlugSchema, path: SpanFieldPathSchema }),
+  z.strictObject({ kind: z.literal("transformation"), transformId: SlugSchema, path: SpanFieldPathSchema }),
+  z.strictObject({ kind: z.literal("child-output"), entryId: SlugSchema, path: SpanFieldPathSchema }),
+]);
+
+const ProtectedActionBindingWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), valueId: UuidSchema }),
+  z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
+    name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: UuidSchema }),
+  z.strictObject({ kind: z.literal("legacy-protected-input"), inputPath: z.enum(["timekeeperName", "documentNumber", "emplId"]),
+    name: z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) }),
+]);
+
+const DeclaredActionOccurrenceWireSchema = z.strictObject({
+  runId: UuidSchema,
+  definitionFingerprint: Hex64Schema,
+  nodeId: SlugSchema,
+  taskId: SpanTaskIdSchema,
+  childInvocation: z.strictObject({ parentRunId: UuidSchema, edgeId: SlugSchema }).optional(),
+  attempt: PositiveIntSchema,
+  claimGeneration: PositiveIntSchema,
+  taskAttempt: PositiveIntSchema,
+  invocationId: SlugSchema,
+  occurrencePath: z.array(SlugSchema).min(1),
+  logicalActionId: SlugSchema,
+  occurrence: PositiveIntSchema,
+  logicalSessionId: SlugSchema,
+  physicalSessionId: UuidSchema,
+  value: z.strictObject({
+    slot: SlugSchema,
+    fieldPath: SpanFieldPathSchema,
+    producer: ActionValueProducerWireSchema,
+    consumed: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("observed"), value: JsonValueWireSchema }),
+      z.strictObject({ state: z.literal("redacted"), binding: ProtectedActionBindingWireSchema }),
+    ]),
+  }).optional(),
+});
+
 const NoteBodyFields = {
   ...BaseFields,
   diagnosticSafetyVersion: DiagnosticSafetyVersionSchema.optional(),
@@ -424,6 +467,7 @@ const NoteBodyFields = {
     kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
     targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
     value: z.union([z.string(), z.boolean()]).optional(),
+    operation: DeclaredActionOccurrenceWireSchema.optional(),
   }).optional(),
 } as const;
 

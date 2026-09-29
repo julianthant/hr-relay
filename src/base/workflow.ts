@@ -1,4 +1,8 @@
 import type { RerunValueMappingSpec } from "../domain/workflow/rerun-values.js";
+import {
+  assertCompiledWorkflowOperationDisplay,
+  type WorkflowOperationDisplay,
+} from "../domain/workflow/operation-display.js";
 import { validateRerunValueMappings } from "../validation/rerun-values.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
 import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../domain/protected-input.js";
@@ -318,6 +322,8 @@ export interface WorkflowDescriptor<
   readonly completionConsumes?: readonly CompletionConsumptionSpec[];
   readonly scenarios: readonly [ScenarioId, ...ScenarioId[]];
   readonly artifactProjections?: readonly DurableArtifactProjectionSpec<S>[];
+  /** Present only for complete format v1; absence is the explicit legacy capability. */
+  readonly operationDisplay?: WorkflowOperationDisplay;
 }
 
 /**
@@ -391,6 +397,7 @@ export interface AnyWorkflowDescriptor {
     sink: ArtifactSinkId;
     blocking: true;
   }>[];
+  readonly operationDisplay?: WorkflowOperationDisplay;
 }
 
 export interface WorkflowDescriptorSpec<
@@ -1103,6 +1110,7 @@ export function defineWorkflowDescriptor<
   if (spec.coordinator !== undefined) CoordinatorPolicySchema.parse(spec.coordinator);
   if (typeof spec.inputSubject === "string") InputSubjectSchema.parse(spec.inputSubject);
   assertAuditedCanonicalInput(spec.canonicalInput);
+  if (spec.operationDisplay !== undefined) assertCompiledWorkflowOperationDisplay(spec.operationDisplay);
 
   const nodes = runtimeNodes(spec.flow.nodes);
   assertContractPlacement(id, nodes);

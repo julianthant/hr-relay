@@ -13,6 +13,7 @@ import { ObservedDataPointSchema } from "../../../src/core/span-emitter.js";
 import { localDatePart, manualClock, type Clock } from "../../../src/domain/clock.js";
 import { RedactedFieldSchema } from "../../../src/domain/redaction.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import { DeclaredActionOccurrenceSchema } from "../../../src/domain/task-provenance.js";
 import { NoteWireSchema, SpanEventWireSchema, projectNoteForOperator } from "../../../src/events/types.js";
 import {
   appendEventStreamLine,
@@ -435,6 +436,64 @@ describe("note JSONL writer and classified fields", () => {
     const bytes = readFileSync(readEventStreamLines(root, "notes")[0].file.path, "utf8");
     assert.equal(bytes.includes("951-57-1700"), true);
     assert.equal(bytes.includes("ucpath.person-org.eid-input"), true);
+  });
+
+  it("drops a protected declared action value again at the durable note boundary", () => {
+    const root = stateRoot();
+    const run = RunRecordSchema.parse(personLookupQueuedRun());
+    const clock = manualClock(new Date(run.updatedAt));
+    const writer = createNoteJsonlWriter({ stateRoot: root, clock, pid: 7 });
+    const rawProtectedValue = "RAW_PROTECTED_BROWSER_VALUE";
+    const note = writer.emitRunAction({
+      workflow: run.envelope.workflow,
+      address: {
+        runId: run.envelope.runId,
+        attempt: run.envelope.attempt,
+        traceId: run.envelope.traceId,
+        spanPath: run.envelope.traceId,
+      },
+      action: {
+        kind: "typed",
+        targetId: "ucpath.person-org.eid-input",
+        value: rawProtectedValue,
+        at: clock.now().toISOString(),
+        physicalSessionId: "00000000-0000-4000-8000-000000000001",
+        operation: DeclaredActionOccurrenceSchema.parse({
+          runId: run.envelope.runId,
+          definitionFingerprint: "a".repeat(64),
+          nodeId: "search",
+          taskId: "ucpath/search-person-org",
+          attempt: 1,
+          claimGeneration: 1,
+          taskAttempt: 1,
+          invocationId: "search-operation",
+          occurrencePath: ["search"],
+          logicalActionId: "fill-eid",
+          occurrence: 1,
+          logicalSessionId: "ucpath-worker",
+          physicalSessionId: "00000000-0000-4000-8000-000000000001",
+          value: {
+            slot: "empl-id",
+            fieldPath: "emplId",
+            producer: { kind: "run-input", path: "emplId" },
+            consumed: {
+              state: "redacted",
+              binding: {
+                kind: "legacy-protected-input",
+                inputPath: "emplId",
+                name: "personLookupCanaryEid",
+              },
+            },
+          },
+        }),
+      },
+    }, run);
+    assert.equal(note.action?.value, undefined);
+    assert.doesNotMatch(note.message, /RAW_PROTECTED_BROWSER_VALUE/u);
+    const line = readEventStreamLines(root, "notes")[0];
+    assert.ok(line);
+    const bytes = readFileSync(line.file.path, "utf8");
+    assert.equal(bytes.includes(rawProtectedValue), false);
   });
 
   it("refuses arbitrary run-task note text at the writer boundary", () => {

@@ -35,7 +35,7 @@ generic surfaces, exactly three more files (§3). Everything else a workflow nee
 
 | You author (the only inputs) | The compiler / runtime generates (never hand-maintain) |
 |---|---|
-| `src/workflows/<id>/workflow.ts`: one `defineWorkflow({...})` — identity, presentation, typed input/result, `role`, `scenarios`, and the ordered `[timeline group, entries[]]` tuples with their typed binds | the `WorkflowDescriptor` (`compileWorkflow(definition).descriptor`), its `flow`, `timeline`, node graph and `contractFingerprint` |
+| `src/workflows/<id>/workflow.ts`: one `defineWorkflow({...})` — identity, presentation, typed input/result, `role`, `scenarios`, ordered `[timeline group, entries[]]` tuples with typed binds, and (only when the workflow opts into D355 complete format) occurrence bindings/outcomes in `operationDisplay` | the `WorkflowDescriptor` (`compileWorkflow(definition).descriptor`), its `flow`, `timeline`, node graph, `contractFingerprint` and D355 execution projection |
 | `tests/scenario/workflows/<id>/structural.scenario.test.ts` (T1a) | the `WorkflowModule` (`composeWorkflowModule`): which task stores and browser sessions the workflow needs, resolved from the contracts the entries name |
 | `tests/scenario/workflows/<id>/dry-run.scenario.ts` (T1b manifest) | every generic dashboard/Explorer projection: rail entry, picker, start box and run modal, timeline/detail, Steps (omission) screen, Explorer graph and source links |
 | `docs/rebuild/migrations/<id>.md` (the dated record) | `src/domain/workflow/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
@@ -63,6 +63,7 @@ need with doc 03.2's current task ownership and `ref workflow-model` §1.6.1 (th
 | Need | Author action | Additional proof |
 |---|---|---|
 | Existing operation, same contract | import the exact task contract into `workflow.ts` | none beyond this workflow's T1 pair |
+| Existing operation with D355 display structure | reuse the task-owned operation; bind its occurrence values and composition-specific outcomes only | compiler fixture/refusal proof; do not copy action children or selectors into `workflow.ts` |
 | Existing operation with an already-declared option | pass the typed option from the workflow definition | option behavior is already task-owned |
 | Same browser operation, legitimate new variant, same output meaning | extend the shared task with a typed option; update that task's tests once | task contract/implementation proof plus affected workflow T1 |
 | Pure workflow-specific calculation | add or reuse a pure task in the workflow mini-store (§9) | pure task tests plus workflow T1 |

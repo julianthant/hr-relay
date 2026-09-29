@@ -11,8 +11,11 @@ import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixt
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
 import { defineBrowserStore, defineTaskStoreRegistry } from "../../src/base/store.js";
 import { defineTask } from "../../src/base/task.js";
+import { compileWorkflow, defineWorkflow } from "../../src/base/workflow-definition.js";
+import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { TaskError } from "../../src/base/errors.js";
 import {
   executeClaimedRun,
@@ -22,12 +25,24 @@ import { taskSpanPath, ExecutorSpanEventSchema } from "../../src/core/span-emitt
 import type { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/domain/workflow/scenario-execution.js";
-import { NodeIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
+import { EidSchema, NodeIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
+import { RunParentSchema, type RunParent } from "../../src/domain/run/envelope.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { SearchPersonOrg, SearchPersonOrgOutputSchema } from "../../src/domain/contracts/ucpath/search-person-org.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import {
+  OPERATION_DISPLAY_FORMAT_VERSION,
+  type WorkflowOperationDisplayDeclaration,
+} from "../../src/domain/workflow/operation-display.js";
+import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
 import { buildRunLogsSection } from "../../src/server/dashboard/queries/run-logs.js";
 import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail-types.js";
+import { ObservedOperationStructureWireSchema } from "../../src/domain/dashboard/operation-structure.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
 import { recordBrowserAction } from "../../src/infra/browser/action-notes.js";
@@ -41,7 +56,7 @@ import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboard
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import { PersonLookupResultSchema } from "../../src/workflows/person-lookup/workflow.js";
 import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
-import { UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
+import { HASH_B, UUID_4, UUID_5, UUID_6 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   happySessionHarness,
   healthyCrmDriver,
@@ -57,6 +72,7 @@ import {
   type SessionFactoryHarness,
 } from "../helpers/phase1f-executor-harness.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
+import { fixtureBuildManifest } from "./fixtures/workflow-definition-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(async () => {
@@ -77,6 +93,7 @@ function executorHarness(options: Readonly<{
   autoFireAtOrBelowMs?: number;
   taskDeadlineMs?: number;
   stores?: RunExecutorDependencies["stores"];
+  descriptor?: AnyWorkflowDescriptor;
 }> = {}): ExecutorHarness {
   const authority = openAuthorityHarness();
   disposers.push(authority.dispose);
@@ -93,7 +110,7 @@ function executorHarness(options: Readonly<{
   };
   const deps: RunExecutorDependencies = {
     lifecycle: testRunLifecycle(authority.database, authority.clock),
-    descriptor: personLookupDescriptor,
+    descriptor: options.descriptor ?? personLookupDescriptor,
     stores: options.stores ?? taskStoreRegistry,
     authority: authority.database,
     sessions: manager,
@@ -111,9 +128,10 @@ function enqueueAndClaim(
   database: AuthorityDatabase,
   run: Record<string, unknown>,
   now: string,
+  workflow = WORKFLOW_ID,
 ): { run: RunRecord; claim: { workerId: string; claimGeneration: number } } {
   database.authority.runs.enqueue(run);
-  const claimed = database.authority.runs.claimNext({ workflow: WORKFLOW_ID, workerId: WORKER_ID, now });
+  const claimed = database.authority.runs.claimNext({ workflow, workerId: WORKER_ID, now });
   if (claimed.state !== "claimed") throw new Error(`claim outcome was ${claimed.state}`);
   return {
     run: claimed.run,
@@ -122,6 +140,517 @@ function enqueueAndClaim(
 }
 
 const SIGNAL = new AbortController().signal;
+
+const ACTION_BINDING_WORKFLOW_ID = "fixture-operation-action-binding";
+const ActionBindingInput = z.strictObject({ emplId: EidSchema });
+const ActionBindingCanonicalInput = defineCanonicalInput(
+  ActionBindingInput,
+  z.strictObject({ emplId: EidSchema }),
+  [{ emplId: "10873698" }],
+);
+const actionBindingWorkflow = defineWorkflow({
+  id: ACTION_BINDING_WORKFLOW_ID,
+  version: 1,
+  code: "fab",
+  label: "Operation action binding fixture",
+  icon: "Search",
+  category: "operations",
+  input: ActionBindingInput,
+  canonicalInput: ActionBindingCanonicalInput,
+  inputSubject: "eid",
+  surface: { shape: "single" },
+  enqueue: "reject-active",
+  actions: STANDARD_WORKFLOW_ACTIONS,
+  surfaces: {},
+  details: [],
+  identity: { matchKey: (input) => `fixture:${input.emplId}` },
+  presentation: { title: (input) => `EID ${input.emplId}` },
+  scenarios: ["fixture-operation-action-binding/happy"],
+  role: defineWorkflowRole({ kind: "standalone" }),
+  operationDisplay: {
+    capability: "complete",
+    version: OPERATION_DISPLAY_FORMAT_VERSION,
+    invocations: [{
+      id: "search-operation",
+      entryId: "search",
+      contractRole: "task",
+      occurrencePath: ["search"],
+      bindings: [
+        { slot: "search-kind", value: { kind: "constant", value: "by-eid" } },
+        { slot: "empl-id", value: { kind: "run-input", path: "emplId" } },
+        { slot: "name", value: { kind: "constant", value: "unused" } },
+      ],
+    }],
+    presentation: [{ id: "search-operation-node", kind: "operation", invocationId: "search-operation" }],
+  } satisfies WorkflowOperationDisplayDeclaration,
+  steps: ({ task, result }) => {
+    const search = task({
+      id: "search",
+      contract: SearchPersonOrg,
+      label: "Search",
+      replay: "checkpoint",
+    }, [], ({ input }) => ({ kind: "by-eid" as const, emplId: input.emplId }));
+    return {
+      steps: [[{ key: "search", label: "Search" }, [search]]],
+      result: result(SearchPersonOrgOutputSchema, [search], ({ outputs }) => outputs.search),
+    };
+  },
+});
+const actionBindingCompiled = compileWorkflow(actionBindingWorkflow, {
+  manifest: fixtureBuildManifest([ACTION_BINDING_WORKFLOW_ID]),
+});
+
+function actionBindingQueuedRun(
+  now: string,
+  options: Readonly<{ protectedValue?: boolean; parent?: RunParent }> = {},
+): RunRecord {
+  return buildQueuedRun({
+    descriptor: actionBindingCompiled.descriptor,
+    appVersion: "0.1.0",
+    runId: UUID_5,
+    itemId: UUID_6,
+    traceId: "fa-170000-5555",
+    rawInput: { emplId: "10873698" },
+    canonicalInput: {
+      schemaHash: deriveSchemaHash(ActionBindingCanonicalInput, "output"),
+      value: { emplId: "10873698" },
+      ...(options.protectedValue !== false ? {
+        protectedBindings: [{
+          kind: "legacy-protected-input" as const,
+          inputPath: "emplId" as const,
+          name: "personLookupCanaryEid" as const,
+        }],
+      } : {}),
+    },
+    ingressSchemaHash: deriveSchemaHash(ActionBindingInput, "input"),
+    configFingerprint: HASH_B,
+    configSnapshotId: UUID_4,
+    resolvedInstance: { ucpath: "prod" },
+    ...(options.parent === undefined ? {} : { parent: options.parent }),
+    shape: options.parent === undefined ? "single" : "operation-member",
+    priority: "bulk",
+    dryRun: false,
+    attempt: 1,
+    runNumber: 1,
+    now,
+  });
+}
+
+function actionBindingSessions(options: Readonly<{
+  typedTarget?: string;
+  typedValue?: string;
+  clicks?: number;
+  openedTarget?: string;
+  failBeforeGesture?: boolean;
+}> = {}): SessionFactoryHarness {
+  return sessionFactoryHarness({
+    ucpath: () => {
+      const driver = healthyUcpathDriver();
+      return Object.freeze({
+        ...driver,
+        async searchPersonOrg(...args: Parameters<typeof driver.searchPersonOrg>) {
+          const [input] = args;
+          if (input.kind !== "by-eid") throw new Error("action binding fixture requires an EID search");
+          if (options.failBeforeGesture === true) {
+            throw new TaskError(SearchPersonOrg.id, "search-unavailable", "synthetic pre-gesture failure");
+          }
+          if (options.openedTarget !== undefined) recordBrowserAction("opened", options.openedTarget);
+          recordBrowserAction("typed", options.typedTarget ?? "ucpath.person-org.eid-input", options.typedValue ?? input.emplId);
+          for (let count = 0; count < (options.clicks ?? 1); count += 1) {
+            recordBrowserAction("clicked", "ucpath.person-org.search-button");
+          }
+          return await driver.searchPersonOrg(...args);
+        },
+      });
+    },
+    crm: () => healthyCrmDriver(),
+  });
+}
+
+function actionBindingRetrySessions(): SessionFactoryHarness {
+  return sessionFactoryHarness({
+    ucpath: (openIndex) => {
+      const driver = healthyUcpathDriver();
+      return Object.freeze({
+        ...driver,
+        async searchPersonOrg(...args: Parameters<typeof driver.searchPersonOrg>) {
+          const [input] = args;
+          if (input.kind !== "by-eid") throw new Error("action binding retry fixture requires an EID search");
+          recordBrowserAction("typed", "ucpath.person-org.eid-input", input.emplId);
+          recordBrowserAction("clicked", "ucpath.person-org.search-button");
+          if (openIndex === 1) {
+            throw new TaskError(SearchPersonOrg.id, "search-unavailable", "synthetic retry", { transient: true });
+          }
+          return await driver.searchPersonOrg(...args);
+        },
+      });
+    },
+    crm: () => healthyCrmDriver(),
+  });
+}
+
+describe("complete operation display action binding", () => {
+  it("binds completed synthetic driver gestures in append order and redacts protected input before JSONL durability", async () => {
+    const sessions = actionBindingSessions({ clicks: 2 });
+    const harness = executorHarness({ sessions, descriptor: actionBindingCompiled.descriptor });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(
+      database,
+      actionBindingQueuedRun(clock.now().toISOString()),
+      clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+
+    const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: UUID_5 });
+
+    const noteLines = readEventStreamLines(stateRoot, "notes");
+    const notes = noteLines.map(({ text }) => NoteWireSchema.parse(JSON.parse(text)));
+    const actions = notes.filter((note) => note.action !== undefined);
+    assert.deepEqual(noteLines.map(({ lineNumber }) => lineNumber), [1, 2, 3]);
+    assert.equal(actions.length, 3);
+    assert.deepEqual(actions.map((note) => note.action?.operation?.logicalActionId), ["fill-eid", "run-search", "run-search"]);
+    assert.deepEqual(actions.map((note) => note.action?.operation?.occurrence), [1, 1, 2]);
+    assert.equal(actions[0]?.action?.value, undefined, "protected raw browser value is removed before persistence");
+    assert.deepEqual(actions[0]?.action?.operation?.value, {
+      slot: "empl-id",
+      fieldPath: "emplId",
+      producer: { kind: "run-input", path: "emplId" },
+      consumed: {
+        state: "redacted",
+        binding: {
+          kind: "legacy-protected-input",
+          inputPath: "emplId",
+          name: "personLookupCanaryEid",
+        },
+      },
+    });
+    assert.equal(actions[0]?.action?.operation?.runId, UUID_5);
+    assert.equal(actions[0]?.action?.operation?.definitionFingerprint, actionBindingCompiled.descriptor.contractFingerprint);
+    assert.equal(actions[0]?.action?.operation?.nodeId, "search");
+    assert.equal(actions[0]?.action?.operation?.taskId, SearchPersonOrg.id);
+    assert.equal(actions[0]?.action?.operation?.attempt, 1);
+    assert.equal(actions[0]?.action?.operation?.claimGeneration, 1);
+    assert.equal(actions[0]?.action?.operation?.taskAttempt, 1);
+    assert.equal(actions[0]?.action?.operation?.invocationId, "search-operation");
+    assert.deepEqual(actions[0]?.action?.operation?.occurrencePath, ["search"]);
+    assert.equal(actions[0]?.action?.operation?.logicalSessionId, "ucpath-worker");
+    assert.equal(actions[0]?.action?.operation?.physicalSessionId, "00000000-0000-4000-8000-000000000001");
+    assert.equal(noteLines.some(({ text }) => text.includes("10873698")), false);
+
+    const terminal = database.authority.runs.get(UUID_5);
+    assert.ok(terminal);
+    const page = buildRunLogsSection({
+      stateRoot,
+      projection: { runLogSnapshot: () => ({ entries: [] }) },
+      // Historical Logs must use the envelope snapshot, not a current
+      // registry lookup for this now-unregistered synthetic workflow.
+      descriptors: { resolve: () => undefined },
+    } as unknown as RunDetailQueryDeps, UUID_5, undefined, terminal);
+    if (page.section !== "logs") throw new Error("expected action log page");
+    assert.deepEqual(page.payload.rows?.map((row) => row.sequence), [0, 1, 2]);
+    assert.deepEqual(page.payload.notes?.map((note) => note.message), [
+      "Typed into ucpath person org eid input",
+      "Clicked ucpath person org search button",
+      "Clicked ucpath person org search button",
+    ]);
+    if (page.payload.operationStructure?.state !== "observed") {
+      throw new Error("complete action run did not retain an observed operation structure");
+    }
+    assert.equal(
+      page.payload.operationStructure.definition.contentDigest,
+      terminal.envelope.operationDisplaySnapshot?.contentDigest,
+    );
+    assert.deepEqual(
+      page.payload.operationStructure.observations.map(({ occurrence }) => [
+        occurrence.invocationId,
+        occurrence.logicalActionId,
+        occurrence.occurrence,
+      ]),
+      [
+        ["search-operation", "fill-eid", 1],
+        ["search-operation", "run-search", 1],
+        ["search-operation", "run-search", 2],
+      ],
+    );
+    assert.equal(
+      page.payload.operationStructure.observations[0]?.occurrence.value?.state,
+      "redacted",
+    );
+    const firstObservation = page.payload.operationStructure.observations[0];
+    assert.ok(firstObservation);
+    assert.equal(ObservedOperationStructureWireSchema.safeParse({
+      ...page.payload.operationStructure,
+      observations: [{
+        ...firstObservation,
+        occurrence: { ...firstObservation.occurrence, logicalActionId: "missing-action" },
+      }],
+    }).success, false, "a new-format unknown action must not be assigned a nearby frozen action");
+    assert.equal(ObservedOperationStructureWireSchema.safeParse({
+      ...page.payload.operationStructure,
+      observations: [{
+        ...firstObservation,
+        occurrence: { ...firstObservation.occurrence, definitionFingerprint: "0".repeat(64) },
+      }],
+    }).success, false, "a mismatched snapshot fingerprint must refuse");
+  });
+
+  it("keeps retry attempts distinct while retaining completed-gesture append order", async () => {
+    const harness = executorHarness({
+      sessions: actionBindingRetrySessions(),
+      descriptor: actionBindingCompiled.descriptor,
+      autoFireAtOrBelowMs: 2_500,
+    });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(
+      database,
+      actionBindingQueuedRun(clock.now().toISOString()),
+      clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+
+    const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
+    assert.deepEqual(outcome, { state: "done", runId: UUID_5 });
+    const lines = readEventStreamLines(stateRoot, "notes");
+    const actions = lines.map(({ text }) => NoteWireSchema.parse(JSON.parse(text))).filter((note) => note.action !== undefined);
+    assert.deepEqual(lines.map(({ lineNumber }) => lineNumber), [1, 2, 3, 4]);
+    assert.deepEqual(actions.map((note) => note.action?.operation?.logicalActionId), [
+      "fill-eid", "run-search", "fill-eid", "run-search",
+    ]);
+    assert.deepEqual(actions.map((note) => note.action?.operation?.taskAttempt), [1, 1, 2, 2]);
+    assert.deepEqual(actions.map((note) => note.action?.operation?.physicalSessionId), [
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000001",
+      "00000000-0000-4000-8000-000000000002",
+      "00000000-0000-4000-8000-000000000002",
+    ]);
+  });
+
+  it("binds child invocation identity from the immutable child envelope", async () => {
+    const harness = executorHarness({ sessions: actionBindingSessions(), descriptor: actionBindingCompiled.descriptor });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(
+      database,
+      actionBindingQueuedRun(clock.now().toISOString(), {
+        parent: RunParentSchema.parse({
+          runId: "22222222-2222-4222-8222-222222222222",
+          tracePrefix: "pl-170000-2222",
+          edgeId: "child-search",
+        }),
+      }),
+      clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+
+    assert.deepEqual(
+      await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL }),
+      { state: "done", runId: UUID_5 },
+    );
+    const firstAction = readEventStreamLines(stateRoot, "notes")
+      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)))
+      .find((note) => note.action !== undefined);
+    assert.deepEqual(firstAction?.action?.operation?.childInvocation, {
+      parentRunId: "22222222-2222-4222-8222-222222222222",
+      edgeId: "child-search",
+    });
+  });
+
+  it("binds a declared operation-level page open to its completed driver gesture", async () => {
+    const harness = executorHarness({
+      sessions: actionBindingSessions({ openedTarget: "ucpath.person-org.search" }),
+      descriptor: actionBindingCompiled.descriptor,
+    });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(
+      database,
+      actionBindingQueuedRun(clock.now().toISOString()),
+      clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+
+    assert.deepEqual(
+      await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL }),
+      { state: "done", runId: UUID_5 },
+    );
+    const firstAction = readEventStreamLines(stateRoot, "notes")
+      .map(({ text }) => NoteWireSchema.parse(JSON.parse(text)))
+      .find((note) => note.action !== undefined);
+    assert.equal(firstAction?.action?.operation?.logicalActionId, "open-search");
+  });
+
+  it("does not manufacture an action occurrence when a task fails before a completed driver gesture", async () => {
+    const harness = executorHarness({
+      sessions: actionBindingSessions({ failBeforeGesture: true }),
+      descriptor: actionBindingCompiled.descriptor,
+    });
+    const { database, clock, stateRoot } = harness.authority;
+    const writer = createNoteJsonlWriter({ stateRoot, clock, pid: 4242 });
+    const claimed = enqueueAndClaim(
+      database,
+      actionBindingQueuedRun(clock.now().toISOString()),
+      clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+
+    const outcome = await executeClaimedRun({ ...harness.deps, taskNotes: writer }, { ...claimed, signal: SIGNAL });
+    assert.equal(outcome.state, "failed");
+    assert.deepEqual(readEventStreamLines(stateRoot, "notes"), []);
+  });
+
+  for (const refusal of [
+    {
+      name: "unmapped target",
+      sessions: actionBindingSessions({ typedTarget: "ucpath.person-org.unmapped-eid-input" }),
+      expected: /is not declared/u,
+    },
+    {
+      name: "mismatched field value",
+      sessions: actionBindingSessions({ typedValue: "10870000" }),
+      expected: /does not match declared field path emplId/u,
+    },
+    {
+      name: "unmapped page open",
+      sessions: actionBindingSessions({ openedTarget: "ucpath.person-org.unmapped-screen" }),
+      expected: /browser action opened ucpath\.person-org\.unmapped-screen is not declared/u,
+    },
+  ]) {
+    it(`refuses ${refusal.name} even when no note sink is configured`, async () => {
+      const harness = executorHarness({ sessions: refusal.sessions, descriptor: actionBindingCompiled.descriptor });
+      const { database, clock } = harness.authority;
+      const claimed = enqueueAndClaim(
+        database,
+        actionBindingQueuedRun(clock.now().toISOString(), { protectedValue: false }),
+        clock.now().toISOString(),
+        ACTION_BINDING_WORKFLOW_ID,
+      );
+
+      const outcome = await executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL });
+      assert.equal(outcome.state, "failed");
+      const failure = database.authority.failures.listByRun(UUID_5)[0];
+      assert.ok(failure);
+      assert.match(failure.summary, refusal.expected);
+      assert.equal(database.authority.runCheckpoints.latest(ACTION_BINDING_WORKFLOW_ID, UUID_6, "search"), undefined);
+    });
+  }
+
+  it("rejects a complete snapshot paired with a legacy descriptor before opening a driver", async () => {
+    const { operationDisplay: _operationDisplay, ...legacyDescriptor } = actionBindingCompiled.descriptor;
+    const harness = executorHarness({ descriptor: legacyDescriptor });
+    const { database, clock } = harness.authority;
+    const claimed = enqueueAndClaim(
+      database,
+      actionBindingQueuedRun(clock.now().toISOString()),
+      clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+
+    await assert.rejects(
+      () => executeClaimedRun(harness.deps, { ...claimed, signal: SIGNAL }),
+      /legacy run fixture-operation-action-binding cannot carry a complete operation display snapshot/u,
+    );
+    assert.equal(harness.sessions.opens(), 0);
+  });
+
+  it("retains and reopens the exact frozen complete snapshot from authority storage", () => {
+    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+    const { database, clock, path } = harness.authority;
+    const queued = actionBindingQueuedRun(clock.now().toISOString());
+    const snapshot = queued.envelope.operationDisplaySnapshot;
+    assert.ok(snapshot);
+    database.authority.runs.enqueue(queued);
+    const authorityGeneration = database.getMeta().authorityGeneration;
+    database.close();
+
+    const reopened = SyntheticAuthorityDatabase.open(
+      { path, busyTimeoutMs: 250, migrationOwner: "operation-display-snapshot-reopen-test" },
+      clock,
+    );
+    try {
+      const stored = reopened.authority.runs.get(UUID_5);
+      assert.ok(stored);
+      assert.deepEqual(stored.envelope.operationDisplaySnapshot, snapshot);
+      assert.equal(reopened.getMeta().authorityGeneration, authorityGeneration);
+    } finally {
+      reopened.close();
+    }
+  });
+
+  it("refuses missing complete snapshots at record admission and corrupt snapshots before a driver opens", async () => {
+    const missingHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+    const missingQueued = actionBindingQueuedRun(missingHarness.authority.clock.now().toISOString());
+    const { operationDisplaySnapshot: _snapshot, ...missingEnvelope } = missingQueued.envelope;
+    assert.throws(
+      () => RunRecordSchema.parse({ ...missingQueued, envelope: missingEnvelope }),
+      /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
+    );
+    assert.equal(missingHarness.sessions.opens(), 0);
+
+    assert.throws(
+      () => buildRunLogsSection({
+        stateRoot: missingHarness.authority.stateRoot,
+        projection: { runLogSnapshot: () => ({ entries: [] }) },
+        descriptors: { resolve: () => undefined },
+      } as unknown as RunDetailQueryDeps, UUID_5, undefined, {
+        ...missingQueued,
+        envelope: missingEnvelope,
+      }),
+      /complete run fixture-operation-action-binding is missing its frozen operation display snapshot/u,
+    );
+
+    const corruptHarness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+    const corruptClaim = enqueueAndClaim(
+      corruptHarness.authority.database,
+      actionBindingQueuedRun(corruptHarness.authority.clock.now().toISOString()),
+      corruptHarness.authority.clock.now().toISOString(),
+      ACTION_BINDING_WORKFLOW_ID,
+    );
+    const snapshot = corruptClaim.run.envelope.operationDisplaySnapshot;
+    assert.ok(snapshot);
+    const corrupt = {
+      ...corruptClaim.run,
+      envelope: {
+        ...corruptClaim.run.envelope,
+        operationDisplaySnapshot: { ...snapshot, contentDigest: "0".repeat(64) },
+      },
+    } as RunRecord;
+    await assert.rejects(
+      () => executeClaimedRun(corruptHarness.deps, { ...corruptClaim, run: corrupt, signal: SIGNAL }),
+      /corrupt frozen operation display snapshot digest/u,
+    );
+    assert.equal(corruptHarness.sessions.opens(), 0);
+  });
+
+  it("refuses a corrupt stored complete snapshot after close and reopen", () => {
+    const harness = executorHarness({ descriptor: actionBindingCompiled.descriptor });
+    const { database, clock, path } = harness.authority;
+    database.authority.runs.enqueue(actionBindingQueuedRun(clock.now().toISOString()));
+    database.close();
+
+    const raw = new DatabaseSync(path);
+    try {
+      const stored = z.object({ record_json: z.string() }).parse(
+        raw.prepare("SELECT record_json FROM workflow_runs WHERE record_key = ?").get(UUID_5),
+      );
+      const record = JSON.parse(stored.record_json) as { envelope: { operationDisplaySnapshot: { contentDigest: string } } };
+      record.envelope.operationDisplaySnapshot.contentDigest = "0".repeat(64);
+      raw.prepare("UPDATE workflow_runs SET record_json = ? WHERE record_key = ?").run(JSON.stringify(record), UUID_5);
+    } finally {
+      raw.close();
+    }
+
+    assert.throws(
+      () => SyntheticAuthorityDatabase.open(
+        { path, busyTimeoutMs: 250, migrationOwner: "operation-display-snapshot-corrupt-test" },
+        clock,
+      ),
+      /corrupt frozen operation display snapshot digest/u,
+    );
+  });
+});
 
 describe("person-lookup full walk", () => {
   it("records every completed browser gesture on the task span", async () => {

@@ -183,6 +183,7 @@ interface TaskContractBase<Id, Input, Output, Codes> {
   readonly subject: SubjectBindingSpec;   // explicit; never omitted
   readonly scenarios: readonly ScenarioId[];             // non-empty except for a workflow: read
   readonly example: z.input<Output>;      // mandatory canonical output value
+  readonly operation?: TaskOperationDeclaration; // D355 reusable bundle-safe display structure
 }
 
 // the three effect arms
@@ -191,6 +192,14 @@ ReadTaskContract    += { effect: "read"; freshness: FreshnessPolicy; provenance:
 PrepareTaskContract += { effect: "prepare"; checkpoint: "in-memory-only" }
 CommitTaskContract  += { effect: "commit"; writeSafety: WriteSafety<Input, Output, Proof> }  // ref write-safety
 ```
+
+**D355 display structure stays task-owned.** `operation` is an optional, versioned declaration in
+`src/domain/workflow/operation-display.ts`, sealed with this exact contract. It names stable
+semantic actions, logical session/page/form identity, schema-resolved input/output slots, templates
+and pure transforms; it has no driver implementation, selector, execution authority, or scenario
+id. A complete workflow display instantiates that reusable operation at an occurrence and binds
+values, rather than copying the action tree into `workflow.ts`. The factory refuses a declaration
+whose system, semantic ids, schema paths, continuations, templates, or transforms are invalid.
 
 **`effect` is the whole safety story in one field.** `read` observes; `prepare` mutates only
 ephemeral browser state and is legal only as the first arm of a transaction node (ref
@@ -316,7 +325,8 @@ A task is **two files**:
 
 - **contract** — plain data, bundle-safe, at `src/domain/contracts/<store>/<verb-object>.ts`: id,
   zod input/output, `title`, `effect`, `errorCodes`, `subject`, `scenarios`, a mandatory `example`,
-  plus `freshness`/`provenance` (reads) or `writeSafety` (commits). Descriptors (ref
+  optional D355 reusable `operation` display structure, plus `freshness`/`provenance` (reads) or
+  `writeSafety` (commits). Descriptors (ref
   workflow-model) and the dashboard import contracts ONLY.
 - **impl** — `run` + session needs + read retry, at `src/stores/<store>/tasks/<verb-object>.ts`. It
   imports the store's driver declaration and its typed driver API. Only `src/stores/*/driver/**`

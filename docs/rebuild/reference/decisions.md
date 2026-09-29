@@ -1,4 +1,35 @@
-# `reference/decisions.md` — the decision ledger (D1–D354, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D357, 2026-07-17 → 2026-09-27)
+
+**D357 — Shared Explorer/Logs operation structure (approved Plan 1 P1.3, 2026-09-27):**
+Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs
+serve the run's retained snapshot plus only the current page's completed action occurrences,
+joined by exact run, fingerprint, invocation, action, occurrence, and target identities. A
+current registry descriptor never fills a historical gap. New Plan 1 envelopes stamp complete or
+legacy capability, so a removed complete snapshot fails by name; pre-Plan-1 envelopes remain
+explicit legacy. Browser action raw values remain out of the Logs row; protected provenance stays
+redacted.
+Owner: [dashboard-surfaces D357](dashboard-surfaces.md#d357--shared-explorerlogs-operation-structure--2026-09-27).
+
+**D356 — Frozen complete operation display per run (approved Plan 1 P1.2, 2026-09-27):**
+Every new complete-format run atomically carries a strict canonical serializable operation-display
+snapshot and domain-separated digest in its immutable envelope. It binds the retained definition
+fingerprint but excludes live Zod/functions, examples, configuration and run values, and secrets.
+Its equality and inequality clauses retain only bounded public declaration literals plus their
+digests; generic workflow constants remain digest-only. Readers parse and hash-verify it; missing
+or corrupt complete snapshots refuse rather than looking up current code. Historical missing
+snapshots remain explicit legacy and are never backfilled.
+Completed driver gestures bind to this snapshot with the existing ordered evidence stream and
+physical-session/claim/task occurrence identities; absence does not manufacture an action outcome.
+Owner: [dashboard-surfaces D356](dashboard-surfaces.md#d356--frozen-complete-operation-display-per-run--2026-09-27).
+
+**D355 — Versioned operation display declaration (approved Plan 1 P1.1, 2026-09-27):**
+One bundle-safe, versioned operation/action declaration is task-owned and compiled through the
+existing workflow definition seam. Complete v1 definitions bind reusable task occurrences and
+compose presentation-only outcomes; the existing graph remains the sole source of execution,
+parallel, transaction, and child authority. Absent declarations are explicit legacy capability and
+do not add a descriptor field. Scenario ids remain executable test corpus identifiers, not display
+outcomes. P1.1 does not migrate active workflows or bind runtime events; those are P1.2/P1.3 work.
+Owner: [workflow-model §1.6.4](workflow-model.md#164-versioned-operation-display-declarations-d355-2026-09-27).
 
 **D354 — Proven abandoned admission mutex recovery at startup (operator-directed, 2026-09-27):**
 An ordinary runtime entrypoint may retry admission once after the existing stopped-system proof

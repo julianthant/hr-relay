@@ -1106,7 +1106,7 @@ The tuple contract is exact:
 
 - `WorkflowDefinitionSpec` — what `defineWorkflow` takes: every descriptor presentation field MINUS
   the compiler's products (`flow`, `timeline`, `contractFingerprint`), plus `input`, `role` (D219),
-  an optional `intake` projection, and the `steps` author callback.
+  optional `intake` and D355 `operationDisplay` declarations, and the `steps` author callback.
 - `WorkflowAuthor` — the typed factory that callback receives (`task`, `parallel`, `delegate`,
   `gate`, `transaction`, `group`, `result`), bound to THIS workflow's input schema.
 - The entry identities `TaskEntryIdentity`, `GateEntryIdentity`, `TransactionEntryIdentity`,
@@ -1120,9 +1120,9 @@ The tuple contract is exact:
 - `WorkflowDefinition` — the frozen value `defineWorkflow` returns: `kind: "workflow-definition"`,
   the presentation fields, `input`, `role`, `intake?`, the resolved `steps` tuples and `result`.
 - `CompiledWorkflow` — `{ kind: "compiled-workflow", definition, descriptor, contracts,
-  storeNamespaces }`.
-- `WorkflowModule` — `{ descriptor, stores, role, intake?, definition }`, the server composition
-  value the registry derives.
+  operationDisplay, storeNamespaces }`.
+- `WorkflowModule` — `{ descriptor, stores, role, intake?, definition, operationDisplay }`, the
+  server composition value the registry derives.
 
 **Compiler products.** `compileWorkflow(definition)` derives, and an author never hand-maintains:
 
@@ -1285,6 +1285,40 @@ does not receive a free-standing migration task merely because an old inventory 
 approved workflow whose verified packet needs that capability owns its implementation and proof.
 Cross-workflow infrastructure may be separated into its own supervisor task inside that workflow's
 decimal Phase 4 subphase, but its admission, dependencies, and exit evidence remain explicit there.
+
+#### 1.6.4 Versioned operation display declarations (D355, 2026-09-27)
+
+`src/domain/workflow/operation-display.ts` owns the one bundle-safe display declaration vocabulary.
+A sealed task contract may carry one reusable v1 operation: stable operation and action ids, its
+logical session, page/form identity, typed contract input/output value slots, typed templates,
+pure schema-bound transforms, and ordered action children. Browser task declarations name the
+existing semantic UI ids; they do not import a driver implementation, selector, or Node module.
+
+A workflow's optional `operationDisplay` is the composition layer. Its complete v1 declaration
+instantiates every task/prepare/commit contract occurrence by stable occurrence path, binds only
+declared value slots, and supplies composition-specific transforms and outcome cases. Its value
+references resolve real run-input, configuration, constant, task-output, transformation, or child-
+output schema paths. Outcome case ids and continuations are display predicates, not executable
+scenario ids; `contract.scenarios` remains the test corpus only. Templates retain literal,
+variable, and ordered optional segments with closed pure conditions and declared join/trim rules.
+
+The task-owned operation tree admits open/resume page, click, keypress, read/fill/select/check
+field, compute, verify, branch, join, operator-gate, delegation, and session-lifecycle actions.
+Workflow composition references those operations and may add only composition nodes (branch, join,
+operator gate, delegation, session lifecycle, computation, verification); it cannot recreate a
+task browser action or page tree. Nested order is presentation only. `compileWorkflow` projects
+existing entry references into `operationDisplay.execution`; it neither reads a display child as a
+dependency nor creates a second scheduler, transaction, or parallel authority.
+
+Absence is the explicit `{ capability: "legacy", version: 0 }` compiler result and leaves the
+descriptor field absent. A `capability: "complete", version: 1` definition must cover every
+contract occurrence and is refused for duplicate ids, continuation cycles, unresolved schema fields,
+cross-system identities, invalid branch targets, unavailable child references, invalid page
+continuations, or missing template variables. Existing workflows remain legacy in P1.1; P1.2 owns
+runtime action binding and frozen-run identity, and P1.3 owns dashboard/server projection. D356
+freezes a serializable projection of a complete display in each new run envelope; runtime keeps the
+existing driver and graph execution paths and binds only completed driver gestures to that frozen
+projection. No current descriptor is a substitute for missing historical structure.
 
 ---
 

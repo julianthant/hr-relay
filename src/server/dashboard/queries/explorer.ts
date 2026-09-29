@@ -63,10 +63,12 @@ import {
   type SourceLinkWire,
   type WorkflowExplorerWire,
 } from "../../../domain/dashboard/explorer.js";
+import type { ExplorerOperationStructureWire } from "../../../domain/dashboard/operation-structure.js";
 import type { Fingerprint } from "../../../domain/ids.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import type { UiCatalog } from "../../../domain/ui/contracts.js";
 import { GENERATED_BUILD_MANIFEST } from "../../../domain/workflow/generated-build-manifest.js";
+import { freezeWorkflowOperationDisplaySnapshot } from "../../../domain/workflow/operation-display-snapshot.js";
 import type { RuntimeFlowNode } from "../../../domain/workflow/graph.js";
 import type { WorkflowModuleRole } from "../../../domain/workflow/module-role.js";
 import {
@@ -739,6 +741,24 @@ function resolveExplorerPresentation(
   });
 }
 
+/**
+ * Explorer serves the same canonical, redacted definition a new run would
+ * freeze.  It does not turn a legacy descriptor into a plausible new tree.
+ */
+function operationStructureWire(descriptor: AnyWorkflowDescriptor): ExplorerOperationStructureWire {
+  const definition = freezeWorkflowOperationDisplaySnapshot({
+    workflowId: descriptor.id,
+    definitionFingerprint: descriptor.contractFingerprint,
+    display: descriptor.operationDisplay,
+  });
+  return definition === undefined
+    ? {
+      state: "legacy",
+      reason: "this workflow has no complete versioned operation declaration",
+    }
+    : { state: "declared", definition };
+}
+
 function workflowWire(
   module: ExplorerModuleView,
   deps: ExplorerQueryDeps,
@@ -794,6 +814,7 @@ function workflowWire(
     role: module.role,
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
+    operationStructure: operationStructureWire(descriptor),
     edit: {
       overrideRevision: effectivePresentation.overrideRevision,
       presentation: {

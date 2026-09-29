@@ -12,6 +12,7 @@ import { localDatePart } from "../../domain/clock.js";
 import { ClassifiedDiagnosticValueSchema } from "../../domain/redaction.js";
 import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../events/types.js";
 import type { BrowserAction } from "../browser/action-notes.js";
+import { DeclaredActionOccurrenceSchema } from "../../domain/task-provenance.js";
 import { assertNoteWithinRunScope } from "../../domain/run/note-scope.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../domain/run/task-note.js";
@@ -110,7 +111,8 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       level: ingress.level,
       message: ingress.message,
       ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
-        ...(action.value === undefined ? {} : { value: action.value }) } }),
+        ...(action.value === undefined ? {} : { value: action.value }),
+        ...(action.operation === undefined ? {} : { operation: action.operation }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
     appendEventStreamLine(deps.stateRoot, "notes", note.workflow, localDatePart(at), JSON.stringify(note));
@@ -141,16 +143,24 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
       at: z.iso.datetime({ offset: true }),
       value: z.union([z.string(), z.boolean()]).optional(),
+      physicalSessionId: z.uuid().optional(),
+      operation: DeclaredActionOccurrenceSchema.optional(),
     }).parse(input.action);
     if (Date.parse(action.at) > deps.clock.now().getTime()) {
       throw new Error("browser action occurred after note append time");
     }
+    const durableAction = action.operation?.value?.consumed.state === "redacted"
+      ? (() => {
+        const { value: _rawValue, ...withoutRawValue } = action;
+        return withoutRawValue;
+      })()
+      : action;
     return write({
       workflow: input.workflow,
       address: input.address,
       level: "step",
-      message: browserActionMessage(action),
-    }, authority, action.at, action);
+      message: browserActionMessage(durableAction),
+    }, authority, action.at, durableAction);
   };
   return Object.freeze({
     emitNote: (input: unknown): NoteWire => write(input),

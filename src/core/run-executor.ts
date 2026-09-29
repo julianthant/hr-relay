@@ -61,7 +61,12 @@ import type { AnyReadTaskContract } from "../domain/contracts/base.js";
 import type { GateResultRecord } from "../domain/gates.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import type { NoteJsonlWriter } from "../infra/events/note-jsonl-writer.js";
-import { withBrowserActionNotes, type BrowserAction } from "../infra/browser/action-notes.js";
+import {
+  withBrowserActionBinding,
+  withBrowserActionNotes,
+  type BrowserAction,
+  type BrowserActionBinder,
+} from "../infra/browser/action-notes.js";
 import {
   GateIdSchema,
   IsoInstantSchema,
@@ -109,6 +114,7 @@ import type { RuntimeFlowNode, RuntimeScope } from "../domain/workflow/graph.js"
 import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { planStepOmissions } from "../domain/workflow/step-omission.js";
+import { requireWorkflowOperationDisplaySnapshot } from "../domain/workflow/operation-display-snapshot.js";
 import { jsonLeafPaths } from "./task-provenance.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../infra/sqlite/run-store-contracts.js";
@@ -136,6 +142,7 @@ import {
 } from "./span-emitter.js";
 import { redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
+import { createDeclaredActionBinder } from "./operation-action-binding.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
 import type { WorkerSessionManager } from "./worker-sessions.js";
@@ -173,6 +180,11 @@ export interface WriteSequencerContext {
   readonly scope: RuntimeScope;
   readonly dryRun: boolean;
   readonly signal: AbortSignal;
+  /** Pure completed-gesture binders; persistence remains outside the write fence. */
+  readonly operationActionBinders?: Readonly<{
+    prepare?: BrowserActionBinder;
+    commit?: BrowserActionBinder;
+  }>;
 }
 
 export interface WriteSequencer {
@@ -469,6 +481,18 @@ export async function executeClaimedRun(
       + `v${String(descriptor.version)} / ${descriptor.contractFingerprint}; the worker is miswired`,
     );
   }
+  const operationDisplaySnapshot = envelope.operationDisplaySnapshot === undefined
+    ? undefined
+    : requireWorkflowOperationDisplaySnapshot(envelope.operationDisplaySnapshot, {
+      workflowId: envelope.workflow,
+      definitionFingerprint: envelope.contractFingerprint,
+    });
+  if (descriptor.operationDisplay?.capability === "complete" && operationDisplaySnapshot === undefined) {
+    throw new Error(`complete run ${envelope.workflow} is missing its frozen operation display snapshot`);
+  }
+  if (descriptor.operationDisplay?.capability !== "complete" && operationDisplaySnapshot !== undefined) {
+    throw new Error(`legacy run ${envelope.workflow} cannot carry a complete operation display snapshot`);
+  }
   if (initial.lifecycle.state !== "claimed") {
     throw new Error(`run ${runId} is ${initial.lifecycle.state}; the executor starts from a fresh claim`);
   }
@@ -532,9 +556,9 @@ export async function executeClaimedRun(
 
   const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[]): void => {
     const sink = deps.taskNotes;
-    if (sink === undefined) return;
     const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
     for (const action of actions) {
+      if (sink === undefined) continue;
       try {
         sink.emitRunAction({
           workflow: descriptor.id,
@@ -1068,10 +1092,28 @@ export async function executeClaimedRun(
       need: SessionNeed | undefined,
       capabilityWiring: TaskCapabilityWiring,
       spanPath: string,
+      taskAttempt: number,
     ): Promise<RunCheckpointRecord> => {
       const contract: AnyReadTaskContract = node.uses;
       const bound: unknown = node.bind(scope);
       const parsedInput: unknown = contract.input.parse(bound);
+      const declaredActionBinder = operationDisplaySnapshot === undefined
+        ? undefined
+        : createDeclaredActionBinder({
+          snapshot: operationDisplaySnapshot,
+          runId,
+          attempt: envelope.attempt,
+          claimGeneration: claim.claimGeneration,
+          taskAttempt,
+          nodeId: String(node.id),
+          taskId: contract.id,
+          contractRole: "task",
+          parsedInput: JsonValueSchema.parse(parsedInput),
+          protectedBindings: retainedRunProtectedBindings(initial),
+          ...(envelope.parent === undefined
+            ? {}
+            : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+        });
       const collector = createTaskProvenanceCollector({
         descriptor,
         canonicalInput,
@@ -1256,12 +1298,22 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          raw = await withBrowserActionNotes(clock, () => raceAbortable(
-            deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) =>
-              run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } })),
-            controller.signal,
-            contract.id,
-          ), (actions) => drainBrowserActions(spanPath, actions));
+          raw = await withBrowserActionNotes(
+            clock,
+            () => raceAbortable(
+              deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) => raceAbortable(
+                Promise.resolve().then(() => withBrowserActionBinding(
+                  declaredActionBinder,
+                  () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras, driver } }),
+                )),
+                controller.signal,
+                contract.id,
+              )),
+              controller.signal,
+              contract.id,
+            ),
+            (actions) => drainBrowserActions(spanPath, actions),
+          );
         }
       } finally {
         deadline.cancel();
@@ -1398,7 +1450,7 @@ export async function executeClaimedRun(
           ...(need === undefined ? {} : { system: need.system }),
         });
         try {
-          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath);
+          const record = await invokeTask(node, task, scope, need, capabilityWiring, spanPath, taskAttempt);
           if (declaredProjections.length === 0) {
             deps.authority.authority.runCheckpoints.insert(record);
           } else {
@@ -1761,6 +1813,41 @@ export async function executeClaimedRun(
               + "refusing to skip a write node",
             ));
           }
+          const transactionScope = scopeFor(node.dependsOn);
+          const operationActionBinders = operationDisplaySnapshot === undefined
+            ? undefined
+            : {
+              prepare: createDeclaredActionBinder({
+                snapshot: operationDisplaySnapshot,
+                runId,
+                attempt: envelope.attempt,
+                claimGeneration: claim.claimGeneration,
+                taskAttempt: 1,
+                nodeId: String(node.id),
+                taskId: node.prepare.uses.id,
+                contractRole: "prepare",
+                parsedInput: JsonValueSchema.parse(node.prepare.bind(transactionScope)),
+                protectedBindings: retainedRunProtectedBindings(initial),
+                ...(envelope.parent === undefined
+                  ? {}
+                  : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+              }),
+              commit: createDeclaredActionBinder({
+                snapshot: operationDisplaySnapshot,
+                runId,
+                attempt: envelope.attempt,
+                claimGeneration: claim.claimGeneration,
+                taskAttempt: 1,
+                nodeId: String(node.id),
+                taskId: node.commit.uses.id,
+                contractRole: "commit",
+                parsedInput: JsonValueSchema.parse(node.commit.bind(transactionScope)),
+                protectedBindings: retainedRunProtectedBindings(initial),
+                ...(envelope.parent === undefined
+                  ? {}
+                  : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+              }),
+            };
           /**
            * D210 — the preview arm (ref task-contract §6.2). A dry run reaches the
            * transaction node, runs the sequencer's REAL prepare-only arm (zero
@@ -1776,9 +1863,10 @@ export async function executeClaimedRun(
             try {
               preview = TransactionDryRunPreviewSchema.parse(await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeDryRun({
                 descriptor, node, run: getRun(), claim,
-                scope: scopeFor(node.dependsOn),
+                scope: transactionScope,
                 dryRun: true,
                 signal: input.signal,
+                ...(operationActionBinders === undefined ? {} : { operationActionBinders }),
               }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions)));
             } catch (error) {
               if (error instanceof RunAbandonedError) throw error;
@@ -1800,9 +1888,10 @@ export async function executeClaimedRun(
           try {
             const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
               descriptor, node, run: getRun(), claim,
-              scope: scopeFor(node.dependsOn),
+              scope: transactionScope,
               dryRun: envelope.dryRun,
               signal: input.signal,
+              ...(operationActionBinders === undefined ? {} : { operationActionBinders }),
             }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions));
             const OutcomeSchema = z.strictObject({
               disposition: z.enum(["committed", "already-present"]),

@@ -257,6 +257,8 @@ export const CanonicalCreateRunRequestSchema = z.strictObject({
   workflow: WorkflowIdSchema,
   descriptorVersion: RunEnvelopeSchema.shape.descriptorVersion,
   contractFingerprint: RunEnvelopeSchema.shape.contractFingerprint,
+  operationDisplayCapability: RunEnvelopeSchema.shape.operationDisplayCapability,
+  operationDisplaySnapshot: RunEnvelopeSchema.shape.operationDisplaySnapshot,
   configFingerprint: RunEnvelopeSchema.shape.configFingerprint,
   configSnapshotId: RunEnvelopeSchema.shape.configSnapshotId,
   resolvedInstance: RunEnvelopeSchema.shape.resolvedInstance,

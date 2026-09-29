@@ -12,7 +12,12 @@ import {
   RunDetailSectionResponseSchema,
   type RunDetailSectionResponse,
 } from "../../../domain/dashboard/run-detail.js";
+import {
+  RunOperationStructureWireSchema,
+  type RunOperationStructureWire,
+} from "../../../domain/dashboard/operation-structure.js";
 import type { RunRecord } from "../../../domain/run/record.js";
+import { requireWorkflowOperationDisplaySnapshot } from "../../../domain/workflow/operation-display-snapshot.js";
 import {
   readScopedEventStreamLines,
   type EventStreamLine,
@@ -39,6 +44,7 @@ type RunAtRestNote = Readonly<{
   level: "error" | "warn" | "waiting" | "step" | "success" | "debug";
   message: string;
   fields?: z.infer<typeof NoteAtRestSchema>["fields"];
+  action?: z.infer<typeof NoteAtRestSchema>["action"];
 }>;
 
 type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
@@ -288,6 +294,7 @@ function logLinesForRun(
             level: projected.level,
             message: projected.message,
             fields: projected.fields,
+            action: projected.action,
           },
         });
       }
@@ -389,6 +396,72 @@ function logRowOf(
   };
 }
 
+function projectActionOccurrence(
+  occurrence: NonNullable<RunAtRestNote["action"]>["operation"] extends infer Value
+    ? Exclude<Value, undefined>
+    : never,
+) {
+  const { value, ...identity } = occurrence;
+  return {
+    ...identity,
+    ...(value === undefined ? {} : {
+      value: {
+        slot: value.slot,
+        fieldPath: value.fieldPath,
+        producer: value.producer,
+        ...(value.consumed.state === "redacted"
+          ? { state: "redacted" as const, binding: value.consumed.binding }
+          : {
+            state: "withheld" as const,
+            reason: "raw action value has no approved Logs presentation classification",
+          }),
+      },
+    }),
+  };
+}
+
+/**
+ * The only historical definition authority is the run envelope.  A note with
+ * declared-action provenance must resolve to that exact frozen tree; a current
+ * descriptor is neither consulted nor substituted for an unknown reference.
+ */
+function operationStructureForRun(
+  authority: RunRecord,
+  runId: string,
+  entries: readonly RunLogScanEntry[],
+): RunOperationStructureWire {
+  const stored = authority.envelope.operationDisplaySnapshot;
+  if (stored === undefined) {
+    if (authority.envelope.operationDisplayCapability === "complete") {
+      throw new Error(`complete run ${authority.envelope.workflow} is missing its frozen operation display snapshot`);
+    }
+    return RunOperationStructureWireSchema.parse({
+      state: "legacy",
+      reason: "this historical run has no frozen complete operation structure",
+    });
+  }
+  const definition = requireWorkflowOperationDisplaySnapshot(stored, {
+    workflowId: authority.envelope.workflow,
+    definitionFingerprint: authority.envelope.contractFingerprint,
+  });
+  const observations = entries.flatMap((entry) => {
+    if (entry.kind !== "note" || entry.note.action?.operation === undefined) return [];
+    return [{
+      logId: logIdOf(entry),
+      at: entry.note.ts,
+      action: entry.note.action.kind,
+      targetId: entry.note.action.targetId,
+      occurrence: projectActionOccurrence(entry.note.action.operation),
+    }];
+  });
+  return RunOperationStructureWireSchema.parse({
+    state: "observed",
+    runId,
+    definition,
+    observations,
+  });
+}
+
 export function buildRunLogsSection(
   deps: RunDetailQueryDeps,
   runId: string,
@@ -421,6 +494,7 @@ export function buildRunLogsSection(
     section,
     payload: {
       runId,
+      operationStructure: operationStructureForRun(authority, runId, page),
       rows,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
       nextCursor: offset + LOGS_PAGE_SIZE < all.length
