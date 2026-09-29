@@ -2080,6 +2080,7 @@ body[data-demo-theme="light"] {
   --ds-activity-calendar-range-bg: #dbeafe;
   --ds-activity-calendar-range-hover: #bfdbfe;
   --ds-activity-calendar-focus: #2563eb;
+  --ds-activity-chart-bar: #849db7;
 }
 
 [data-demo-theme="dark"],
@@ -2128,6 +2129,35 @@ body[data-demo-theme="light"] {
   --ds-focus-ring: var(--ds-activity-calendar-focus);
 }
 
+.activity-range-popover {
+  background: var(--ds-surface-1);
+  border-color: var(--ds-border);
+}
+
+.activity-range-calendar .range-calendar__header {
+  min-block-size: var(--ds-h-lg);
+}
+
+.activity-range-calendar .range-calendar__nav-button,
+.activity-range-calendar .range-calendar__cell-button {
+  inline-size: var(--ds-h-lg);
+  block-size: var(--ds-h-lg);
+  min-inline-size: var(--ds-h-lg);
+  min-block-size: var(--ds-h-lg);
+}
+
+.activity-range-calendar .range-calendar__heading {
+  font-size: var(--ds-text-ui);
+  line-height: var(--ds-lh-ui);
+  color: var(--ds-fg);
+}
+
+.activity-range-calendar .range-calendar__cell [role="button"][data-selection-start="true"],
+.activity-range-calendar .range-calendar__cell [role="button"][data-selection-end="true"] {
+  background-color: var(--ds-activity-calendar-endpoint-bg);
+  color: var(--ds-activity-calendar-endpoint-fg);
+}
+
 .activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]) {
   background-color: var(--ds-activity-calendar-range-bg);
   color: var(--ds-fg);
@@ -2162,6 +2192,19 @@ button.activity-range-apply:not(:disabled):hover {
 button.activity-range-apply:focus-visible {
   outline: var(--ds-focus-ring-w) solid var(--ds-activity-calendar-focus);
   outline-offset: var(--ds-focus-ring-offset);
+}
+
+.activity-workflow-table th {
+  font-family: var(--ds-font-body);
+  font-size: var(--ds-text-meta);
+  line-height: var(--ds-lh-meta);
+  font-weight: 500;
+  letter-spacing: normal;
+  text-transform: none;
+}
+
+.activity-workflow-table td {
+  font-variant-numeric: tabular-nums;
 }
 
 /* ==========================================================================

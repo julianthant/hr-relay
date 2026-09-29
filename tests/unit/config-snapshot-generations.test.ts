@@ -187,9 +187,16 @@ describe("pre-D125 config snapshots are read forward", () => {
       assert.equal(read.config.operator.timekeeperName, "synthetic historical value");
     }
     assert.equal(configSnapshotGeneration(read.config), 4);
+    assert.equal("operator" in executionConfigFromStored(read.config), false);
     const write = ConfigSnapshotWriteSchema.safeParse(historicalRecord);
     assert.equal(write.success, false);
     if (!write.success) assert.match(write.error.message, /cannot mint retired operator\.timekeeperName/u);
+  });
+
+  it("refuses an unregistered partial legacy generation instead of stripping it into execution config", () => {
+    const malformed = { ...currentConfig(), capture: { ingress: "disabled" } };
+    assert.equal(StoredConfigSchema.safeParse(malformed).success, false);
+    assert.throws(() => executionConfigFromStored(malformed));
   });
 
   it("reads historical test routes but refuses them in new snapshots", () => {

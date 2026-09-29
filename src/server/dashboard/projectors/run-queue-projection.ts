@@ -1461,6 +1461,11 @@ export class RunQueueProjection {
     const memberChildIds = members.map((member) => member.envelope.runId);
     const failedTerminalMembers = members.filter((member) => member.lifecycle.state === "terminal" && member.lifecycle.outcome === "failed");
     const terminalMembers = members.filter((member) => member.lifecycle.state === "terminal");
+    const displayName: QueueSurfaceWire["displayName"] = authority.displayName === undefined
+      ? { state: "absent", reason: "the operator has not renamed this run" }
+      : retainedRunProtectedBindings(authority).length > 0
+        ? { state: "absent", reason: "the operator's display name is withheld because this run carries protected input" }
+        : { state: "present", value: authority.displayName };
     const base = {
       runId: queued.runId,
       itemId: queued.itemId,
@@ -1520,9 +1525,7 @@ export class RunQueueProjection {
        * it was renamed away from.
        */
       title: this.#subjectTitle(queued.workflow, authority) ?? row?.queued.title ?? queued.runId,
-      displayName: authority.displayName === undefined
-        ? { state: "absent", reason: "the operator has not renamed this run" }
-        : { state: "present", value: authority.displayName },
+      displayName,
       subtitle: row?.queued.subtitle === undefined || (authority.input.parsed.protectedBindings === undefined
         && authority.input.parsed.value !== null && typeof authority.input.parsed.value === "object"
         && Object.hasOwn(authority.input.parsed.value, "timekeeperName"))
