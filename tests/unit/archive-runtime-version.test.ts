@@ -52,4 +52,17 @@ describe("operator-managed runtime versions", () => {
       kind: "workflows", workflowIds: ["unknown"],
     }), /runtime-version-invalid-selection/u);
   });
+
+  it("keeps the returned transition on a strict before-and-after schema boundary", () => {
+    const transition = planRuntimeVersionTransition(current, { kind: "dashboard" });
+    assert.equal(RuntimeVersionTransitionSchema.safeParse(transition).success, true);
+    assert.equal(RuntimeVersionTransitionSchema.safeParse({
+      ...transition,
+      after: { ...transition.after, dashboard: current.dashboard },
+    }).success, false);
+    assert.equal(RuntimeVersionTransitionSchema.safeParse({
+      ...transition,
+      affectedWorkflowIds: ["access", "separations", "intake"],
+    }).success, false);
+  });
 });

@@ -382,6 +382,9 @@ export type ArchivedCaptureResourceWire = z.infer<typeof ArchivedCaptureResource
 /** Saved display documents: no live run/detail parser participates in these schemas. */
 export const SavedArchiveReportWireSchema = z.strictObject({
   state: z.literal("available"), runId: RunIdSchema, title: z.string(), workflow: z.string(), descriptorVersion: z.string(),
+  transferId: z.string().uuid().optional(), itemId: z.string().min(1).optional(),
+  attempt: z.number().int().positive().optional(), runNumber: z.number().int().positive().nullable().optional(),
+  publicationState: z.literal("published").optional(), reportIntegrity: z.literal("verified").optional(),
   outcome: z.enum(["done", "failed", "cancelled", "discarded", "interrupted", "superseded"]),
   completedAt: IsoInstantSchema, capturedAt: IsoInstantSchema,
   sections: z.array(ArchiveReportSectionSchema), files: z.array(ArchiveFileReferenceSchema),
@@ -432,7 +435,7 @@ export type SavedArchiveIndexWire = z.infer<typeof SavedArchiveIndexWireSchema>;
 export const SavedArchiveGroupsWireSchema = z.strictObject({ groups: z.array(z.strictObject({
   dashboardVersion: RuntimeVersionSchema.nullable(), workflow: z.string().min(1),
   workflowVersion: RuntimeVersionSchema.nullable(), reportCount: z.number().int().positive(),
-  latestCompletedAt: IsoInstantSchema,
+  latestCompletedAt: IsoInstantSchema, latestCapturedAt: IsoInstantSchema.optional(),
 })) });
 export type SavedArchiveGroupsWire = z.infer<typeof SavedArchiveGroupsWireSchema>;
 

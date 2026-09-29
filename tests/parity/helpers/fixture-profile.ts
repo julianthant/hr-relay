@@ -1,6 +1,7 @@
 import type { CommandResult } from "../../../src/domain/commands.js";
 import type { FrontendBootstrapWire } from "../../../src/domain/dashboard/bootstrap.js";
 import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
+import type { SavedArchiveReportWire, SavedRuntimeVersionIndexWire } from "../../../src/domain/dashboard/archive.js";
 import type { StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
@@ -33,6 +34,7 @@ export type FixtureBffOptions = Readonly<{
     profile?: FixtureDashboardProfile;
     dayWire?: DashboardDayWire;
     archiveScenario?: "evidence";
+    archiveComparison?: Readonly<{ reports: readonly SavedArchiveReportWire[]; versions: SavedRuntimeVersionIndexWire }>;
     savedArchiveFileResponse?: (runId: string, digest: string) => Response | Promise<Response>;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";

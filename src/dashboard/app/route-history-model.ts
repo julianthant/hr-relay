@@ -35,12 +35,12 @@ function cursorOf(state: unknown): number | undefined {
 
 export function useRoute(
   onPopstateRef: { readonly current: PopstateRouteHandler | undefined },
-): [AppRouteState, (next: AppRouteState) => void, NativeRouteHistory] {
+): [AppRouteState, (next: AppRouteState, mode?: "push" | "replace") => void, NativeRouteHistory] {
   const [route, setRouteState] = useState<AppRouteState>(() => parseRoute(window.location.search));
   const acceptedRoute = useRef(route);
   const cursor = useRef(cursorOf(window.history.state) ?? 0);
   const intent = useRef(0);
-  const queuedRoute = useRef<AppRouteState | undefined>(undefined);
+  const queuedRoute = useRef<{ route: AppRouteState; mode: "push" | "replace" } | undefined>(undefined);
   const pendingPop = useRef<
     | { readonly cursor: number; readonly kind: "restore"; readonly afterRestore: () => void }
     | { readonly cursor: number; readonly kind: "accept"; readonly route: AppRouteState }
@@ -53,10 +53,10 @@ export function useRoute(
     }
   }, []);
 
-  const commitRoute = useCallback((next: AppRouteState) => {
+  const commitRoute = useCallback((next: AppRouteState, mode: "push" | "replace" = "push") => {
     if (routeAdvancesHistory(next, window.location.search)) {
-      cursor.current += 1;
-      window.history.pushState({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
+      if (mode === "push") cursor.current += 1;
+      window.history[mode === "replace" ? "replaceState" : "pushState"]({ [ROUTE_CURSOR_KEY]: cursor.current }, "", `${window.location.pathname}${routeToSearch(next)}`);
     }
     acceptedRoute.current = next;
     setRouteState(next);
@@ -73,7 +73,7 @@ export function useRoute(
         cursor.current = nextCursor;
         const queued = queuedRoute.current;
         queuedRoute.current = undefined;
-        if (queued !== undefined) commitRoute(queued);
+        if (queued !== undefined) commitRoute(queued.route, queued.mode);
         else if (pending.kind === "restore") pending.afterRestore();
         else { acceptedRoute.current = next; setRouteState(next); }
         return;
@@ -94,12 +94,12 @@ export function useRoute(
     return () => window.removeEventListener("popstate", onPop);
   }, [onPopstateRef, commitRoute]);
 
-  const setRoute = useCallback((next: AppRouteState) => {
+  const setRoute = useCallback((next: AppRouteState, mode: "push" | "replace" = "push") => {
     intent.current += 1;
     // A push during native restoration would truncate the wrong forward
     // branch. Finish the physical traversal, then commit the latest intent.
-    if (pendingPop.current !== undefined) { queuedRoute.current = next; return; }
-    commitRoute(next);
+    if (pendingPop.current !== undefined) { queuedRoute.current = { route: next, mode }; return; }
+    commitRoute(next, mode);
   }, [commitRoute]);
 
   const nativeHistory = useMemo<NativeRouteHistory>(() => ({

@@ -169,6 +169,10 @@ describe("runtime version change transfer", () => {
       assert.deepEqual(authority.state.workflows.find(row => row.workflowId === "person-lookup")?.version, { major: 1, minor: 0 });
       const storage = createRunLifecycleStorage(f.db);
       assert.deepEqual(queryArchiveReports(storage, { limit: 5, search: report.content.title.slice(0, 5) }).items.length, 1);
+      for (const source of report.content.sources) {
+        assert.deepEqual(queryArchiveReports(storage, { limit: 5, search: source.digest }).items, []);
+      }
+      assert.equal(queryArchiveReports(storage, { limit: 5, search: report.content.transferId }).items.length, 1);
       assert.deepEqual(queryArchiveReports(storage, { limit: 5, dashboardVersion: { major: 1, minor: 0 },
         workflowVersion: { major: 1, minor: 0 }, versionState: "stamped" }).items.map(item => item.state === "available" ? item.runId : "unavailable"), [runId]);
       assert.deepEqual(queryArchiveReports(storage, { limit: 5, workflowVersion: { major: 1, minor: 1 } }).items, []);

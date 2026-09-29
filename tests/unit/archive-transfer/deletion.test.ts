@@ -19,6 +19,18 @@ it("authenticates public references, resumes a failed final audit after reopenin
     let storage = createRunLifecycleStorage(f.database);
     const report = storage.readReport(f.base.run.envelope.runId); assert.ok(report);
     const view = projectArchiveReport(report); assert.ok(view.state === "available");
+    assert.equal(view.publicationState, "published");
+    assert.equal(view.reportIntegrity, "verified");
+    const privateMemberDigest = report.content.versionChange?.review.members[0]?.sourceDigest;
+    assert.ok(privateMemberDigest);
+    const privateDigests = [report.digest, report.content.sourceDigest, privateMemberDigest,
+      ...report.content.sources.map(source => source.digest)];
+    for (const digest of privateDigests) {
+      assert.deepEqual(queryArchiveReports(storage, { limit: 10, search: digest }).items, [], "private source/sealed digests must not be searchable");
+    }
+    for (const publicValue of [report.content.transferId, report.content.itemId]) {
+      assert.deepEqual(queryArchiveReports(storage, { limit: 10, search: publicValue }).items.map(item => item.state === "available" ? item.runId : "missing"), [report.content.runId]);
+    }
     const request = { commandId: id(9903), requestedBy: "local-operator", requestedAt: NOW, family: "version-archive", source: "archive", type: "delete-archived-run",
       target: { archivedRunId: report.content.runId, archiveFingerprint: view.archiveFingerprint } };
     const wrong = f.kernel.execute({ ...request, target: { ...request.target, archiveFingerprint: report.digest } });
@@ -250,5 +262,39 @@ it("pages past an unsettled deletion tombstone to surviving reports", () => {
     assert.deepEqual(page.items, [before.items[1]]);
     assert.equal(page.next, null);
     assert.equal(storage.listReports({ workflow: "person-lookup", limit: 1 }).next, null);
+  } finally { f.dispose(); }
+});
+
+it("aggregates retained capture dates independently of completion with filters and deletion exclusions", () => {
+  const f = archiveFixture();
+  try {
+    f.terminal();
+    const storage = createRunLifecycleStorage(f.database);
+    const captures = ["2026-08-07T10:00:00.000Z", "2026-08-14T10:00:00.000Z"];
+    for (const [index, capturedAt] of captures.entries()) {
+      const run = RunRecordSchema.parse({ ...f.base.run, envelope: { ...f.base.run.envelope,
+        workflow: "retired-date-workflow", runId: id(99000 + index), itemId: id(99000 + index) },
+        lifecycle: { state: "queued" }, version: 1, claimGeneration: 0, displayName: `Date report ${index}` });
+      f.database.authority.runs.enqueue(run);
+      f.database.authority.runs.transition({ runId: run.envelope.runId, expectedVersion: 1, now: NOW,
+        lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW } });
+      const snapshot = storage.capture(run.envelope.runId);
+      const report = captureArchiveReport({ snapshot, transferId: id(99100 + index), capturedAt, files: [], sections: [] });
+      transferArchiveReport(storage, report, snapshot.run.version);
+    }
+    const group = storage.archiveGroups({ workflow: "retired-date-workflow" })[0];
+    assert.ok(group);
+    assert.equal(group.latestCompletedAt, NOW);
+    assert.equal(group.latestCapturedAt, captures[1]);
+    assert.equal(group.dashboardVersion, null);
+    assert.equal(storage.archiveGroups({ workflow: "retired-date-workflow", search: "Date report 0" })[0]?.latestCapturedAt, captures[0]);
+    assert.equal(storage.archiveGroups({ workflow: "retired-date-workflow", capturedTo: captures[0] })[0]?.reportCount, 1);
+    assert.deepEqual(storage.archiveGroups({ workflow: "retired-date-workflow", search: "no-match" }), []);
+    const latest = storage.readReport(id(99001)); assert.ok(latest);
+    assert.equal(storage.deleteArchive({ commandId: id(99200), runId: latest.content.runId, archiveFingerprint: latest.digest }).state, "deleted");
+    const retained = storage.archiveGroups({ workflow: "retired-date-workflow" });
+    assert.equal(retained[0]?.reportCount, 1);
+    assert.equal(retained[0]?.latestCapturedAt, captures[0]);
+    assert.deepEqual(storage.archiveGroups({ workflow: "retired-date-workflow", capturedFrom: captures[1] }), []);
   } finally { f.dispose(); }
 });

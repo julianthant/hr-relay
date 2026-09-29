@@ -2,22 +2,20 @@ import { z } from "zod";
 import { NoteWireSchema, projectNoteForOperator } from "../../events/types.js";
 import { hasProtectedTransactionInput, retainedRunProtectedBindings, valueFreeProtectedData } from "../../domain/protected-input.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/storage-records.js";
-import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport } from "../../domain/archive/report.js";
+import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport, type ArchiveReportCell } from "../../domain/archive/report.js";
 import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../domain/archive/lifecycle-source.js";
 import { RunRuntimeVersionStampSchema } from "../../domain/archive/runtime-version.js";
 
 type Section = ArchiveReport["content"]["sections"][number];
-type Cell = string | number | boolean | null;
-
 /** Flatten structure into labelled, typed cells. No live schema is needed to view it. */
 export function genericArchiveSection(title: string, value: JsonValue): Section {
-  const rows: { label: string; value: Cell }[] = [];
+  const rows: { label: string; value: ArchiveReportCell }[] = [];
   const visit = (entry: JsonValue, path: string): void => {
     if (entry === null || typeof entry !== "object") { rows.push({ label: path || "Value", value: entry }); return; }
     const entries = Object.entries(entry);
-    if (entries.length === 0) { rows.push({ label: path || "Value", value: Array.isArray(entry) ? "Empty list" : "Empty record" }); return; }
+    if (entries.length === 0) { rows.push({ label: path || "Value", value: entry }); return; }
     for (const [key, child] of entries) visit(child, path ? `${path}.${key}` : key);
   };
   visit(value, "");
@@ -97,7 +95,61 @@ export function captureArchiveReport(input: Readonly<{
   };
   const safe = z.object({ run: JsonValueSchema, records: z.array(JsonValueSchema), sections: z.array(ArchiveReportSectionSchema) })
     .parse(scrub(valueFreeProtectedData(original, bindings)));
-  const sections: Section[] = [genericArchiveSection("Run and frozen inputs", safe.run)];
+  const member = (value: JsonValue | undefined, key: string): JsonValue | undefined =>
+    value !== undefined && value !== null && typeof value === "object" && !Array.isArray(value)
+      ? (value as Readonly<Record<string, JsonValue>>)[key] : undefined;
+  const envelope = member(safe.run, "envelope");
+  const frozenInput = member(safe.run, "input");
+  const settingsIndex = snapshot.records.findIndex(group => group.table === "settings_snapshots");
+  const retainedSettings = settingsIndex < 0 ? undefined : member(safe.records[settingsIndex], "rows");
+  const settingsRows: readonly JsonValue[] = Array.isArray(retainedSettings) ? retainedSettings as JsonValue[] : [];
+  const settings = settingsRows.length === 1 ? member(settingsRows[0], "value") : undefined;
+  const runMode = member(envelope, "dryRun");
+  const submittedInput = member(frozenInput, "raw");
+  const parsedInput = member(member(frozenInput, "parsed"), "value");
+  const inputSection: Section = { kind: "values", title: "Inputs & settings", values: [
+    { label: "Run mode", value: runMode === true ? "Dry run" : runMode === false ? "Live run" : "Unavailable" },
+    { label: "Submitted input", value: submittedInput === undefined ? { state: "unavailable", reason: "Submitted input was not retained" } : submittedInput },
+    { label: "Parsed input", value: parsedInput === undefined ? { state: "unavailable", reason: "Parsed input was not retained" } : parsedInput },
+    { label: "Captured settings", value: member(settings, "config") ?? { state: "unavailable", reason: "No settings snapshot was retained for this run" } },
+  ] };
+  const receiptsIndex = snapshot.records.findIndex(group => group.table === "run_receipts");
+  const receiptRows = receiptsIndex < 0 ? undefined : member(safe.records[receiptsIndex], "rows");
+  const receipts = Array.isArray(receiptRows) ? receiptRows as JsonValue[] : [];
+  const candidateReceipt = receipts.length === 1 ? member(receipts[0], "value") : undefined;
+  const receipt = member(candidateReceipt, "runId") === run.envelope.runId ? candidateReceipt : undefined;
+  const receiptResult = member(receipt, "result");
+  const verification = receipts.length === 0 ? "Not recorded" : receipts.length > 1 ? "Unavailable: multiple receipts retained"
+    : typeof receiptResult === "string" && ["verified-done", "done-with-warnings", "failed", "cancelled", "partial"].includes(receiptResult)
+      ? ({ "verified-done": "Verified", "done-with-warnings": "Completed with warnings", failed: "Failed", cancelled: "Cancelled", partial: "Partial" } as Record<string, string>)[receiptResult]
+      : "Unavailable: retained receipt result or identity is invalid";
+  const enqueuedAt = member(envelope, "enqueuedAt");
+  const lifecycle = member(safe.run, "lifecycle");
+  const endedAt = member(lifecycle, "endedAt");
+  const elapsed = typeof enqueuedAt === "string" && typeof endedAt === "string"
+    && Number.isFinite(Date.parse(enqueuedAt)) && Number.isFinite(Date.parse(endedAt)) && Date.parse(endedAt) >= Date.parse(enqueuedAt)
+    ? Date.parse(endedAt) - Date.parse(enqueuedAt) : null;
+  const summarySection: Section = { kind: "values", title: "Run summary", values: [
+    { label: "Outcome", value: run.lifecycle.outcome },
+    { label: "Verification result", value: verification },
+    { label: "Queued", value: typeof enqueuedAt === "string" ? enqueuedAt : "Not recorded" },
+    { label: "Completed", value: typeof endedAt === "string" ? endedAt : "Not recorded" },
+    { label: "Total elapsed", value: elapsed ?? "Not recorded" },
+    { label: "Run mode", value: runMode === true ? "Dry run" : runMode === false ? "Live run" : "Not recorded" },
+    { label: "Attempt", value: run.envelope.attempt },
+  ] };
+  const actions = member(receipt, "actions");
+  const relationships: Section = { kind: "values", title: "Retained file relationships", values: [] };
+  if (Array.isArray(actions)) for (const rawAction of actions) {
+    const action = JsonValueSchema.parse(rawAction);
+    const artifactId = member(action, "artifactId");
+    const taskId = member(action, "taskId");
+    const actionId = member(action, "id");
+    if (typeof artifactId !== "string" || typeof taskId !== "string" || typeof actionId !== "string") continue;
+    for (const file of files) if (file.artifactIds.includes(artifactId) && !relationships.values.some(row => row.label === file.digest && JSON.stringify(row.value) === JSON.stringify({ taskId, actionId }))) relationships.values.push({ label: file.digest, value: { taskId, actionId } });
+  }
+  const sections: Section[] = [genericArchiveSection("Run and frozen inputs", safe.run), summarySection, inputSection];
+  if (relationships.values.length > 0) sections.push(relationships);
   for (const [index, group] of snapshot.records.entries()) {
     sections.push(group.rows.length === 0
       ? { kind: "unavailable", title: group.table, reason: "No source record was retained at capture" }

@@ -1,7 +1,7 @@
 # archive-run--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: archive-run
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 000316b7c1a49bb21755d3123185f18fcf1653069e9269d8dd40f5b054546522
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -23,98 +23,51 @@
   - button "Switch to Paper Ink"
   - button "Settings"
 - main:
-  - text: Archive
+  - text: Archive Current · 1.0
   - button "Version archives" [pressed]
+  - button "Export run"
   - button "Plan a bump"
-  - region "Version archives":
-    - group "Filter version archives":
-      - text: Search reports and retained files
-      - textbox "Search reports and retained files"
-      - text: Dashboard
-      - combobox "Dashboard":
-        - option "All" [selected]
-        - option "Not recorded"
-      - text: Workflow
-      - combobox "Workflow":
-        - option "All" [selected]
-        - option "Person lookup"
-        - option "retired-synthetic-workflow"
-      - text: Workflow version
-      - combobox "Workflow version":
-        - option "All" [selected]
-      - text: Outcome
-      - combobox "Outcome":
-        - option "All" [selected]
-        - option "Done"
-        - option "Failed"
-        - option "Cancelled"
-        - option "Discarded"
-        - option "Interrupted"
-        - option "Superseded"
-      - button "Date Any":
-        - text: Date
-        - strong: Any
-      - text: 1 saved report
-    - strong: Dashboard 1.0 is current
-    - paragraph: 1 current workflows · new runs use their current versions
-    - button "Plan a bump"
-    - heading "Archived dashboard versions" [level=2]
-    - button "— Version not recorded Older saved reports · runtime version not recorded 1 report Hide" [expanded]:
-      - text: —
-      - strong: Version not recorded
-      - text: Older saved reports · runtime version not recorded 1 report Hide
-    - button "RS retired-synthetic-workflow Version not recorded 1 report Hide" [expanded]:
-      - text: RS
-      - strong: retired-synthetic-workflow
-      - text: Version not recorded 1 report Hide
-    - button "Synthetic saved lookup Done Aug 3, 2026 Open report"
-    - region "Selected saved report":
-      - button "Close report"
-      - article "Saved archive report":
-        - heading "Synthetic saved lookup" [level=2]
-        - paragraph: retired-synthetic-workflow · Runtime version not recorded · descriptor 1
-        - text: Outcome Done
-        - term: Completed
-        - definition: 2026-08-03T09:21:00.000Z
-        - term: Captured
-        - definition: 2026-08-03T09:25:00.000Z
-        - paragraph: Saved record · read-only
-        - button "Report identity"
-        - link "Export report":
-          - /url: data:application/json;charset=utf-8,%7B%22state%22%3A%22available%22%2C%22runId%22%3A%22aa11bb22-0001-4000-8000-aa11bb220001%22%2C%22title%22%3A%22Synthetic%20saved%20lookup%22%2C%22workflow%22%3A%22retired-synthetic-workflow%22%2C%22descriptorVersion%22%3A%221%22%2C%22outcome%22%3A%22done%22%2C%22completedAt%22%3A%222026-08-03T09%3A21%3A00.000Z%22%2C%22capturedAt%22%3A%222026-08-03T09%3A25%3A00.000Z%22%2C%22sections%22%3A%5B%7B%22kind%22%3A%22values%22%2C%22title%22%3A%22Saved%20facts%22%2C%22values%22%3A%5B%7B%22label%22%3A%22Subject%22%2C%22value%22%3A%22Synthetic%20person%22%7D%2C%7B%22label%22%3A%22Result%22%2C%22value%22%3A%22Verified%22%7D%2C%7B%22label%22%3A%22Unrecorded%20fact%22%2C%22value%22%3Anull%7D%5D%7D%2C%7B%22kind%22%3A%22table%22%2C%22title%22%3A%22Saved%20work%22%2C%22columns%22%3A%5B%22Step%22%2C%22Outcome%22%5D%2C%22rows%22%3A%5B%5B%22Lookup%22%2C%22Completed%22%5D%2C%5B%22Cross-check%22%2C%22Completed%22%5D%5D%7D%2C%7B%22kind%22%3A%22text%22%2C%22title%22%3A%22Historical%20note%22%2C%22text%22%3A%22Saved%20before%20this%20workflow%20was%20retired.%20Readable%20without%20current%20workflow%20registration.%22%7D%2C%7B%22kind%22%3A%22unavailable%22%2C%22title%22%3A%22Unretained%20evidence%22%2C%22reason%22%3A%22No%20additional%20evidence%20was%20retained.%22%7D%5D%2C%22files%22%3A%5B%7B%22digest%22%3A%22bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb%22%2C%22byteLength%22%3A28%2C%22mediaType%22%3A%22text%2Fyaml%22%2C%22name%22%3A%22Synthetic%20attachment%22%2C%22artifactIds%22%3A%5B%22aa11bb22-000a-4000-8000-aa11bb22000a%22%5D%7D%5D%2C%22archiveFingerprint%22%3A%22eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee%22%7D
-        - region "Saved facts":
-          - heading "Saved facts" [level=3]
-          - term: Subject
-          - definition: Synthetic person
-          - term: Result
-          - definition: Verified
-          - term: Unrecorded fact
-          - definition: Not recorded
-        - region "Saved work":
-          - heading "Saved work" [level=3]
-          - table "Saved work":
-            - rowgroup:
-              - row "Step Outcome":
-                - columnheader "Step"
-                - columnheader "Outcome"
-            - rowgroup:
-              - row "Lookup Completed":
-                - cell "Lookup"
-                - cell "Completed"
-              - row "Cross-check Completed":
-                - cell "Cross-check"
-                - cell "Completed"
-        - region "Historical note":
-          - heading "Historical note" [level=3]
-          - text: Saved before this workflow was retired. Readable without current workflow registration.
-        - region "Unretained evidence":
-          - heading "Unretained evidence" [level=3]
-          - status: No additional evidence was retained.
-        - region "Retained attachments":
-          - heading "Retained attachments" [level=3]
-          - status: "Synthetic attachment: The retained synthetic attachment is missing. Saved report remains readable."
-      - region "Delete saved report":
-        - button "Delete saved report"
+  - navigation "Archive path":
+    - button "Archive"
+    - button "Dashboard Version not recorded"
+    - button "retired-synthetic-workflow"
+    - strong: Saved run
+  - heading "Synthetic saved lookup" [level=1]
+  - paragraph: retired-synthetic-workflow
+  - article "Saved archive report":
+    - term: Dashboard version
+    - definition: Not recorded
+    - term: Workflow version
+    - definition: Not recorded
+    - term: Archived
+    - definition:
+      - time: Aug 3, 2026, 9:25 AM UTC
+    - term: Outcome
+    - definition: Done
+    - term: Retained files
+    - definition: "1"
+    - navigation "Run sections":
+      - button "Workflow details"
+      - button "Logs"
+      - button "Retained files"
+    - heading "Workflow details" [level=2]
+    - heading "Run summary" [level=3]
+    - region "Run summary":
+      - term: Verification result
+      - definition: Not recorded
+      - term: Queued
+      - definition: Not recorded
+      - term: Completed
+      - definition:
+        - time: Aug 3, 2026, 9:21 AM UTC
+      - term: Total elapsed
+      - definition: Not recorded
+      - term: Run mode
+      - definition: Not recorded
+      - term: Attempt
+      - definition: Not recorded
+    - region "Delete saved report":
+      - button "Delete saved report"
 - region "Session Panel":
   - button "Sessions 1 running 1 starting 2 idle 1 failed 1 workers need attention"
   - button "Add workers"

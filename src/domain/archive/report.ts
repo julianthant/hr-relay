@@ -1,5 +1,6 @@
 import { ArchiveVersionChangeSchema } from "./change-record.js";
 import { z } from "zod";
+import { JsonValueSchema } from "../canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../ids.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { sha256Hex } from "../sha256.js";
@@ -9,10 +10,12 @@ export const ArchiveRuntimeVersionAttributionSchema = RunRuntimeVersionStampSche
   state: z.enum(["stamped", "adopted"]),
 });
 
-const CellSchema = z.union([z.string(), z.number().finite(), z.boolean(), z.null()]);
+/** A report cell is admitted public JSON, never a current descriptor value. */
+export const ArchiveReportCellSchema = JsonValueSchema;
+export type ArchiveReportCell = z.infer<typeof ArchiveReportCellSchema>;
 export const ArchiveReportSectionSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("values"), title: z.string().min(1), values: z.array(z.strictObject({ label: z.string().min(1), value: CellSchema })) }),
-  z.strictObject({ kind: z.literal("table"), title: z.string().min(1), columns: z.array(z.string().min(1)).min(1), rows: z.array(z.array(CellSchema)) })
+  z.strictObject({ kind: z.literal("values"), title: z.string().min(1), values: z.array(z.strictObject({ label: z.string().min(1), value: ArchiveReportCellSchema })) }),
+  z.strictObject({ kind: z.literal("table"), title: z.string().min(1), columns: z.array(z.string().min(1)).min(1), rows: z.array(z.array(ArchiveReportCellSchema)) })
     .refine((section) => section.rows.every((row) => row.length === section.columns.length), "archive-table-width-mismatch"),
   z.strictObject({ kind: z.literal("text"), title: z.string().min(1), text: z.string() }),
   z.strictObject({ kind: z.literal("unavailable"), title: z.string().min(1), reason: z.string().min(1) }),

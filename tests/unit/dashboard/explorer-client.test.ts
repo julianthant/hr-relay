@@ -463,6 +463,27 @@ describe("the explorer and catalog route keys", () => {
     assert.deepEqual(parseRoute("?archiveView=versions"), { start: false });
   });
 
+  it("round-trips a complete Archive folder context and drops a half-folder", () => {
+    const route = parseRoute("?archive=&archiveView=runs&archiveDashboard=2.0&archiveWorkflow=person-lookup");
+
+    assert.deepEqual(route, {
+      start: false,
+      archive: "",
+      archiveView: "runs",
+      archiveDashboard: "2.0",
+      archiveWorkflow: "person-lookup",
+    });
+    assert.equal(
+      routeToSearch(route),
+      "?archive=&archiveView=runs&archiveDashboard=2.0&archiveWorkflow=person-lookup",
+    );
+    assert.deepEqual(parseRoute("?archive=&archiveDashboard=2.0"), { start: false, archive: "" });
+    assert.equal(
+      routeToSearch({ start: false, archive: "", archiveDashboard: "2.0" }),
+      "?archive=",
+    );
+  });
+
   it("drops an empty explore value, because a workflow id is never blank", () => {
     assert.equal(parseRoute("?explore=").explore, undefined);
     assert.equal(activeTakeover(parseRoute("?explore=")), "none");
@@ -475,4 +496,41 @@ describe("the explorer and catalog route keys", () => {
     assert.equal(activeTakeover(parseRoute("?settings=ui-catalog&catalog=y")), "settings");
     assert.equal(activeTakeover(parseRoute("?day=2026-08-09")), "none");
   });
+});
+
+it("round-trips bounded public Archive browsing state and refuses malformed/private extras", () => {
+  const browse = { filters: { search: "Snow 雪", capturedFrom: "2026-08-01T00:00:00.000Z", outcome: "failed" },
+    after: { completedAt: "2026-08-02T00:00:00.000Z", runId: "00000000-0000-4000-8000-000000000081" },
+    columns: ["kept-column", "duplicate-label-context"], section: 3 };
+  const route = parseRoute(`?archive=&archiveDashboard=2.0&archiveWorkflow=person-lookup&archiveBrowse=${encodeURIComponent(JSON.stringify(browse))}`);
+  assert.deepEqual(route.archiveBrowse, browse);
+  assert.deepEqual(parseRoute(routeToSearch(route)), route);
+  for (const invalid of ["{", JSON.stringify({ ...browse, filters: { from: "2026-08-02T00:00:00.000Z", to: "2026-08-01T00:00:00.000Z" } }), JSON.stringify({ ...browse, filters: { outcome: "invented" } }), JSON.stringify({ ...browse, privatePayload: "secret" }),
+    JSON.stringify({ ...browse, filters: { search: "x".repeat(121) } }),
+    JSON.stringify({ ...browse, columns: ["same", "same"] }), JSON.stringify({ ...browse, section: -1 }),
+    JSON.stringify({ ...browse, after: { completedAt: "bad-date", runId: "bad-id" } }), "x".repeat(24001)]) {
+    const rejected = parseRoute(`?archive=&archiveBrowse=${encodeURIComponent(invalid)}`);
+    assert.equal(rejected.archiveBrowse, undefined);
+    assert.equal(rejected.archiveBrowseInvalid, true);
+  }
+  assert.deepEqual(parseRoute(`?archiveBrowse=${encodeURIComponent(JSON.stringify(browse))}`), { start: false });
+});
+
+it("rejects oversized or malformed paired Archive folder route identities with a reset notice", () => {
+  for (const dashboard of ["not-version", "1".repeat(41)]) {
+    const parsed = parseRoute(`?archive=&archiveDashboard=${dashboard}&archiveWorkflow=person-lookup`);
+    assert.equal(parsed.archiveDashboard, undefined);
+    assert.equal(parsed.archiveBrowseInvalid, true);
+  }
+  const parsed = parseRoute(`?archive=&archiveDashboard=1.0&archiveWorkflow=${"x".repeat(161)}`);
+  assert.equal(parsed.archiveWorkflow, undefined);
+  assert.equal(parsed.archiveBrowseInvalid, true);
+});
+
+it("omits cleared optional Archive filters and cursor instead of serializing undefined", async () => {
+  const { client, calls } = clientOver(url => ({ status: 200, body: url.includes("/groups") ? { groups: [] } : { items: [], next: null } }));
+  await client.savedArchiveGroups({ search: undefined, workflow: undefined, dashboardVersion: undefined, from: undefined });
+  await client.savedArchiveIndex({ limit: 50, search: undefined, workflow: undefined, after: undefined, workflowVersion: undefined });
+  assert.equal(calls[0]?.url, "http://bff.test/api/v1/archive/groups");
+  assert.equal(calls[1]?.url, "http://bff.test/api/v1/archive/reports?limit=50");
 });

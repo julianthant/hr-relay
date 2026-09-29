@@ -1,3 +1,4 @@
+import { parseArchiveFolderRoute, parseArchiveBrowse, type ArchiveBrowseState } from "./archive-route-model.js";
 /**
  * The app's visible state lives in the query string.
  *
@@ -83,6 +84,15 @@ export interface AppRouteState {
    */
   readonly archiveView?: ArchiveView;
   /**
+   * The open Archive folder. Both identities travel together so a reload,
+   * history traversal, or route-addressable bump can retain the exact saved
+   * dashboard/workflow context without inventing a current workflow.
+   */
+  readonly archiveDashboard?: string;
+  readonly archiveWorkflow?: string;
+  readonly archiveBrowse?: ArchiveBrowseState;
+  readonly archiveBrowseInvalid?: boolean;
+  /**
    * The Activity report (2i-G, D180) as `from..to`. The RANGE is in the URL
    * because a report is a thing people cite: "the numbers I was looking at"
    * has to survive being pasted into a message. An empty value means the
@@ -115,6 +125,8 @@ export function parseRoute(search: string): AppRouteState {
   const catalogView = params.get("catalogView");
   const archive = params.get("archive");
   const archiveView = params.get("archiveView");
+  const archiveDashboard = params.get("archiveDashboard");
+  const archiveWorkflow = params.get("archiveWorkflow");
   const activity = params.get("activity");
   const settings = params.get("settings");
   const route: {
@@ -128,6 +140,10 @@ export function parseRoute(search: string): AppRouteState {
     catalogView?: CatalogView;
     archive?: string;
     archiveView?: ArchiveView;
+    archiveDashboard?: string;
+    archiveWorkflow?: string;
+    archiveBrowse?: ArchiveBrowseState;
+    archiveBrowseInvalid?: boolean;
     activity?: string;
     settings?: string;
   } = { start: params.get("start") === "1" };
@@ -152,7 +168,20 @@ export function parseRoute(search: string): AppRouteState {
   // range), so presence is what opens the surface.
   if (archive !== null) {
     route.archive = archive;
+    const browse = params.get("archiveBrowse");
+    if (browse !== null) {
+      const parsed = parseArchiveBrowse(browse);
+      if (parsed === null) route.archiveBrowseInvalid = true;
+      else route.archiveBrowse = parsed;
+    }
     if (archiveView === "runs" || archiveView === "versions") route.archiveView = archiveView;
+    // A half-folder cannot describe a screen. Drop it rather than falling back
+    // to a different registered workflow.
+    if (archiveDashboard !== null && archiveDashboard.length > 0 && archiveWorkflow !== null && archiveWorkflow.length > 0) {
+      const folder = parseArchiveFolderRoute(archiveDashboard, archiveWorkflow);
+      if (folder === null) route.archiveBrowseInvalid = true;
+      else { route.archiveDashboard = folder.dashboardKey; route.archiveWorkflow = folder.workflow; }
+    }
   }
   if (activity !== null) route.activity = activity;
   // Follows `archive` and `activity`: an EMPTY value is meaningful (the page's
@@ -180,6 +209,16 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.archive !== undefined) {
     params.set("archive", route.archive);
     if (route.archiveView !== undefined) params.set("archiveView", route.archiveView);
+    if (route.archiveBrowse !== undefined) {
+      const encoded = JSON.stringify(route.archiveBrowse);
+      if (parseArchiveBrowse(encoded) === null) throw new Error("Archive browsing state exceeds its route bounds.");
+      params.set("archiveBrowse", encoded);
+    }
+    if (route.archiveDashboard !== undefined && route.archiveWorkflow !== undefined) {
+      if (parseArchiveFolderRoute(route.archiveDashboard, route.archiveWorkflow) === null) throw new Error("Archive folder route exceeds its bounds.");
+      params.set("archiveDashboard", route.archiveDashboard);
+      params.set("archiveWorkflow", route.archiveWorkflow);
+    }
   }
   if (route.activity !== undefined) params.set("activity", route.activity);
   if (route.settings !== undefined) params.set("settings", route.settings);
@@ -209,6 +248,8 @@ export function routeForCrossDateSearchResult(
     catalogView: undefined,
     archive: undefined,
     archiveView: undefined,
+    archiveDashboard: undefined,
+    archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
     activity: undefined,
     settings: undefined,
   };
@@ -297,5 +338,6 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
 /** A close leaves one queue surface, including links containing competing keys. */
 export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
   return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
+    archiveDashboard: undefined, archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
     activity: undefined, settings: undefined, catalog: undefined, catalogView: undefined };
 }

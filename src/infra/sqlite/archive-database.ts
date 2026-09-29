@@ -7,6 +7,7 @@ import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, Ar
   type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
 import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../domain/run/deleted-run.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { attestPublishedArchiveReport } from "./archive-records.js";
 import { z } from "zod";
 
 export const ARCHIVE_APPLICATION_ID = 1213350482;
@@ -170,7 +171,17 @@ export class ArchiveDatabase {
     const clauses = ["state='published'"], values: (string | number)[] = [];
     if (q.workflow !== undefined) { clauses.push("workflow=?"); values.push(q.workflow); }
     if(q.title!==undefined){clauses.push("title=?");values.push(q.title);}
-    if(q.search!==undefined){clauses.push("(instr(lower(title),lower(?))>0 OR EXISTS (SELECT 1 FROM json_each(report_json,'$.content.files') AS file WHERE instr(lower(json_extract(file.value,'$.name')),lower(?))>0))");values.push(q.search,q.search);}
+    if(q.search!==undefined){
+      const publicPaths=["$.content.runId","$.content.transferId","$.content.workflow","$.content.itemId","$.content.attempt",
+        "$.content.runNumber","$.content.title","$.content.descriptorVersion","$.content.outcome","$.content.completedAt",
+        "$.content.capturedAt","$.content.sections","$.content.files","$.content.runtimeVersion",
+        "$.content.versionChange.review.changeId","$.content.versionChange.review.change",
+        "$.content.versionChange.review.scope","$.content.versionChange.review.targetVersion",
+        "$.content.versionChange.review.reviewedAt","$.content.versionChange.application.actorId",
+        "$.content.versionChange.application.startedAt"];
+      clauses.push(`(${publicPaths.map(path=>`instr(lower(coalesce(cast(json_extract(report_json,'${path}') as text),'')),lower(?))>0`).join(" OR ")})`);
+      values.push(...publicPaths.map(()=>q.search!));
+    }
     if(q.capturedFrom!==undefined){clauses.push("captured_at>=?");values.push(q.capturedFrom);}
     if(q.capturedTo!==undefined){clauses.push("captured_at<=?");values.push(q.capturedTo);}
     if(q.from!==undefined){clauses.push("completed_at>=?");values.push(q.from);}
@@ -209,7 +220,7 @@ export class ArchiveDatabase {
         json_extract(report_json,'$.content.runtimeVersion.dashboard.minor') AS dashboard_minor,
         json_extract(report_json,'$.content.runtimeVersion.workflow.major') AS workflow_major,
         json_extract(report_json,'$.content.runtimeVersion.workflow.minor') AS workflow_minor,
-        count(*) AS report_count, max(completed_at) AS latest_completed_at
+        count(*) AS report_count, max(completed_at) AS latest_completed_at, max(captured_at) AS latest_captured_at
         FROM archive_records WHERE ${clauses.join(" AND ")}
         GROUP BY workflow,dashboard_major,dashboard_minor,workflow_major,workflow_minor
         ORDER BY dashboard_major DESC,dashboard_minor DESC,workflow,workflow_major DESC,workflow_minor DESC`).all(...values);
@@ -217,13 +228,13 @@ export class ArchiveDatabase {
         const row = z.strictObject({ workflow: z.string().min(1), dashboard_major: z.number().int().nullable(),
           dashboard_minor: z.number().int().nullable(), workflow_major: z.number().int().nullable(),
           workflow_minor: z.number().int().nullable(), report_count: z.number().int().positive(),
-          latest_completed_at: z.string().datetime() }).parse(raw);
+          latest_completed_at: z.string().datetime(), latest_captured_at: z.string().datetime() }).parse(raw);
         if ((row.dashboard_major === null) !== (row.dashboard_minor === null)
           || (row.workflow_major === null) !== (row.workflow_minor === null)
           || (row.dashboard_major === null) !== (row.workflow_major === null)) throw new Error("archive-group-version-invalid");
         return { dashboardVersion: row.dashboard_major === null ? null : { major: row.dashboard_major, minor: row.dashboard_minor! },
           workflow: row.workflow, workflowVersion: row.workflow_major === null ? null : { major: row.workflow_major, minor: row.workflow_minor! },
-          reportCount: row.report_count, latestCompletedAt: row.latest_completed_at };
+          reportCount: row.report_count, latestCompletedAt: row.latest_completed_at, latestCapturedAt: row.latest_captured_at };
       });
       this.#database.exec("COMMIT");
       return groups;
@@ -278,7 +289,7 @@ export class ArchiveDatabase {
     return this.verified(runId,digest);
   }
   publish(runId:string,digest:string):void{this.verified(runId,digest);if(this.state(runId)!=="published")this.advance(runId,digest,"verified","published");}
-  readPublishedReport(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return this.verifiedReport(runId,report.digest);}
+  readPublishedReport(runId:string):ArchiveReport|undefined{if(this.state(runId)!=="published")return undefined;const report=this.read(runId);if(report===undefined)throw new Error("archive-report-missing");return attestPublishedArchiveReport(this.verifiedReport(runId,report.digest));}
   readPublished(runId:string):ArchiveReport|undefined{const report=this.readPublishedReport(runId);return report===undefined?undefined:this.verified(runId,report.digest);}
   /** Metadata-only membership for independently located backup file bundles. */
   fileReferences(includeCaptured = true): ArchiveReport["content"]["files"] {

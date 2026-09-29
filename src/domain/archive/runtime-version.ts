@@ -43,11 +43,50 @@ export const RuntimeVersionScopeSchema = z.discriminatedUnion("kind", [
 ]);
 export type RuntimeVersionScope = z.infer<typeof RuntimeVersionScopeSchema>;
 
+function sameRuntimeVersion(left: RuntimeVersion, right: RuntimeVersion): boolean {
+  return left.major === right.major && left.minor === right.minor;
+}
+
+/** A fully validated transition, including the exact before/after relation it claims. */
 export const RuntimeVersionTransitionSchema = z.strictObject({
   kind: z.enum(["minor", "major"]),
   before: RuntimeVersionStateSchema,
   after: RuntimeVersionStateSchema,
-  affectedWorkflowIds: z.array(WorkflowIdSchema).readonly(),
+  affectedWorkflowIds: z.array(WorkflowIdSchema).min(1).readonly(),
+}).superRefine((transition, context) => {
+  const registered = transition.before.workflows.map(row => row.workflowId);
+  const affected = transition.affectedWorkflowIds;
+  if (new Set(affected).size !== affected.length || affected.some(id => !registered.includes(id))) {
+    context.addIssue({ code: "custom", path: ["affectedWorkflowIds"], message: "runtime-version-transition-affected-workflows-invalid" });
+    return;
+  }
+  if (!affected.every((id, index) => id === [...affected].sort()[index])) {
+    context.addIssue({ code: "custom", path: ["affectedWorkflowIds"], message: "runtime-version-transition-affected-workflows-unsorted" });
+  }
+  const all = affected.length === registered.length;
+  if ((transition.kind === "major") !== all) {
+    context.addIssue({ code: "custom", path: ["kind"], message: "runtime-version-transition-scope-kind-mismatch" });
+  }
+  const nextMajor = transition.before.dashboard.major + (all ? 1 : 0);
+  const expectedDashboard = all ? { major: nextMajor, minor: 0 } : transition.before.dashboard;
+  if (!sameRuntimeVersion(transition.after.dashboard, expectedDashboard)) {
+    context.addIssue({ code: "custom", path: ["after", "dashboard"], message: "runtime-version-transition-dashboard-mismatch" });
+  }
+  const afterByWorkflow = new Map(transition.after.workflows.map(row => [row.workflowId, row.version]));
+  for (const beforeWorkflow of transition.before.workflows) {
+    const after = afterByWorkflow.get(beforeWorkflow.workflowId);
+    if (after === undefined) {
+      context.addIssue({ code: "custom", path: ["after", "workflows"], message: "runtime-version-transition-workflow-missing" });
+      continue;
+    }
+    const selected = affected.includes(beforeWorkflow.workflowId);
+    const expected = all ? expectedDashboard : selected
+      ? { major: beforeWorkflow.version.major, minor: beforeWorkflow.version.minor + 1 }
+      : beforeWorkflow.version;
+    if (!sameRuntimeVersion(after, expected)) {
+      context.addIssue({ code: "custom", path: ["after", "workflows"], message: "runtime-version-transition-workflow-mismatch" });
+    }
+  }
 }).readonly();
 export type RuntimeVersionTransition = z.infer<typeof RuntimeVersionTransitionSchema>;
 

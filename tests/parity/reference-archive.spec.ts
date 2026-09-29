@@ -10,13 +10,13 @@ type ParityTheme
 } from "./helpers/capture.js";
 import { FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./helpers/fixture-identity.js";
 import { ANCHORS,SCENES } from "./helpers/reference-archive-scenes.js";
-import { REFERENCES,dismissWorkflowWindow,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
+import { REFERENCES,failOnPageErrors,registerReferenceServers } from "./helpers/reference-harness.js";
 import { registerReferenceScenes } from "./helpers/reference-scenes.js";
 const servers = registerReferenceServers(["server"]);
 registerReferenceScenes(SCENES, () => servers.server, ANCHORS);
 
 
-/** Both version choices and an active run blocker remain visible before apply. */
+/** Both version choices remain visible before a fresh review; a stored blocked review cannot apply. */
 test.describe("version bump", () => {
   for (const theme of PARITY_THEMES) {
     test(`archive-version-bump @ ${theme.name}`, async ({ page }) => {
@@ -41,16 +41,17 @@ test.describe("version bump", () => {
         archive: "",
         archiveView: "versions",
       });
-      await dismissWorkflowWindow(page);
       await assertThemeApplied(page, theme satisfies ParityTheme);
 
       const bump=page.getByRole("region",{name:"Plan a version bump"});
       await expect(bump).toBeVisible();
-      await expect(bump.getByRole("heading",{name:"What is changing?"})).toBeVisible();
-      await expect(bump.getByRole("button",{name:/Workflow version Advance one or several workflows/u})).toHaveAttribute("aria-pressed","true");
-      await expect(bump.getByRole("button",{name:/Dashboard version Advance every workflow/u})).toBeVisible();
-      await expect(page.getByRole("button",{name:"Apply reviewed change"})).toBeDisabled();
-      await expect(bump).toContainText(`Blocked: person-lookup · ${blocker} · running`);
+      await expect(bump.getByRole("radio",{name:"Selected workflow"})).toBeChecked();
+      await expect(bump.getByRole("radio",{name:"All workflows"})).toBeVisible();
+      await expect(page.getByRole("button",{name:"Apply reviewed change"})).toHaveCount(0);
+      await expect(page.getByRole("button",{name:"Review change"})).toBeEnabled();
+      await expect(bump).toContainText("Review the version change before applying.");
+      expect(blocked.changes[0]?.members).toContainEqual(expect.objectContaining({ runId: blocker, state: "running" }));
+      await expect(bump.locator("summary")).toHaveCount(0);
       expect(errors,"page errors while opening the served version review").toEqual([]);
 
       await captureParityPair(page, REFERENCES, {

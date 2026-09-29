@@ -15,7 +15,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ArchiveSweepWireSchema, VersionBumpPlanWireSchema } from "../../src/domain/dashboard/archive.js";
+import { ArchiveSweepWireSchema, SavedArchiveReportWireSchema, VersionBumpPlanWireSchema } from "../../src/domain/dashboard/archive.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);
@@ -171,5 +171,72 @@ describe("D274 mirrored onto the wire (unit F9c, found by F10)", () => {
       changeRecord: { state: "absent", reason: "this sweep predates change records" },
     });
     assert.equal(result.success, true);
+  });
+});
+
+const SAVED_REPORT = {
+  state: "available" as const,
+  runId: RUN_ID,
+  title: "Saved report",
+  workflow: WORKFLOW_ID,
+  descriptorVersion: "2",
+  outcome: "done" as const,
+  completedAt: NOW,
+  capturedAt: NOW,
+  sections: [],
+  files: [],
+  archiveFingerprint: HASH_A,
+};
+
+describe("saved archive report wire metadata", () => {
+  it("accepts historical producers without optional record metadata", () => {
+    const result = SavedArchiveReportWireSchema.parse(SAVED_REPORT);
+    for (const field of ["transferId", "itemId", "attempt", "runNumber", "publicationState", "reportIntegrity"] as const) {
+      assert.equal(field in result, false, `${field} stays absent for a historical producer`);
+    }
+  });
+
+  it("preserves null, false, zero, empty text and empty collections", () => {
+    const report = SavedArchiveReportWireSchema.parse({
+      ...SAVED_REPORT,
+      transferId: PLAN_ID,
+      itemId: "item-1",
+      attempt: 1,
+      runNumber: null,
+      sections: [{ kind: "values", title: "Typed fields", values: [
+        { label: "null", value: null },
+        { label: "false", value: false },
+        { label: "zero", value: 0 },
+        { label: "empty text", value: "" },
+      ] }],
+      publicationState: "published",
+      reportIntegrity: "verified",
+    });
+    assert.equal(report.transferId, PLAN_ID);
+    assert.equal(report.itemId, "item-1");
+    assert.equal(report.attempt, 1);
+    assert.equal(report.runNumber, null);
+    if (report.sections[0]?.kind !== "values") throw new Error("expected typed values");
+    assert.deepEqual(report.sections[0].values.map(field => field.value), [null, false, 0, ""]);
+    assert.deepEqual(report.files, []);
+    assert.equal(report.publicationState, "published");
+    assert.equal(report.reportIntegrity, "verified");
+  });
+
+  it("strictly validates optional metadata and rejects private report digests/snapshots", () => {
+    for (const metadata of [
+      { transferId: "invalid" },
+      { itemId: "" },
+      { attempt: 0 },
+      { runNumber: -1 },
+      { publicationState: "captured" },
+      { reportIntegrity: "unverified" },
+    ]) assert.equal(SavedArchiveReportWireSchema.safeParse({ ...SAVED_REPORT, ...metadata }).success, false);
+
+    for (const privateField of [
+      { sourceDigest: HASH_B },
+      { sources: [{ kind: "authority-snapshot", json: "{}", digest: HASH_B }] },
+      { digest: HASH_C },
+    ]) assert.equal(SavedArchiveReportWireSchema.safeParse({ ...SAVED_REPORT, ...privateField }).success, false);
   });
 });

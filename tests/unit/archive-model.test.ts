@@ -656,10 +656,14 @@ describe("the D80 archive model", () => {
       workflowCode: { state: "present", value: "pl" },
       row: {
         ...base.row,
+        title: raw,
+        subtitle: { state: "present", value: raw },
+        facts: { state: "present", value: [{ label: "Unsafe", value: raw }] },
         session: { state: "absent", reason: "archived before session grouping" },
         liveMessage: { state: "present", value: raw },
         warnings: { state: "present", count: 1, first: raw },
       },
+      detail: { ...base.detail, header: { ...base.detail.header, title: raw } },
       receipt: generation < 6 ? { state: "present", value: receipt } : { state: "absent", reason: "historical receipt withheld" },
       failure: {
         state: "present",
@@ -726,6 +730,7 @@ describe("the D80 archive model", () => {
     const projected = buildArchivedRunDetail(emptyRegistryDeps(world), historical.runId);
     assert.ok(indexEntry !== undefined, "the seeded historical run must appear in the Archive index");
     assert.deepEqual(indexEntry.warnings, { state: "absent", reason: expectedWarningReason });
+    assert.equal(JSON.stringify(indexEntry).includes(raw), false);
     assert.deepEqual(projected.row.warnings, { state: "absent", reason: expectedWarningReason });
     assert.equal(JSON.stringify(projected).includes(raw), false);
     assert.equal(projected.receipt.state, "absent");
@@ -1044,7 +1049,10 @@ describe("the D80 archive model", () => {
     assert.equal(apply(world, plan(world)).state, "applied");
     assert.equal(displayValue(world, archived, "row.dryRun"), false);
     assert.equal(displayValue(world, archived, "row.warnings.state"), "absent");
-    assert.match(String(displayValue(world, archived, "row.warnings.reason")), /no warning/u);
+    const warningReason = displayValue(world, archived, "row.warnings.reason");
+    assert.equal(typeof warningReason, "string");
+    if (typeof warningReason !== "string") throw new Error("expected saved warning reason");
+    assert.match(warningReason, /no warning/u);
   });
 
   it("serves an EMPTY instance list for a run that resolved no system", () => {
@@ -1052,7 +1060,7 @@ describe("the D80 archive model", () => {
     const archived = startRun(world, "10873698", true);
     world.registry = V2;
     assert.equal(apply(world, plan(world)).state, "applied");
-    assert.equal(displayValue(world, archived, "row.resolvedInstances"), "Empty list");
+    assert.deepEqual(displayValue(world, archived, "row.resolvedInstances"), []);
   });
 
   it("leaves the ledger byte-identical across the bump", () => {

@@ -127,7 +127,8 @@ export async function startArchiveAuthorityServer(options: { seed?: "saved" | "l
     app.use("*", async (c, next) => {
       c.set("requestActorId", identity.identify(c.req.raw));
       await next();
-      const delayed = delays.findIndex(delay => delay.path === c.req.path + new URL(c.req.url).search);
+      const requestPath = c.req.path + new URL(c.req.url).search;
+      const delayed = delays.findIndex(delay => delay.path.endsWith("?") ? requestPath.startsWith(delay.path) : delay.path === requestPath);
       if (delayed >= 0) {
         const [delay] = delays.splice(delayed, 1);
         delay.received();

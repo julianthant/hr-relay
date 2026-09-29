@@ -7,6 +7,24 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme } from "./helpers/capture.js";
 import { startArchiveAuthorityServer } from "./helpers/fixture-archive-authority.js";
 
+const reviewedChanges = new WeakMap<Page, string>();
+async function reviewChange(page: Page): Promise<void> {
+  const pending = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/api/v1/commands") && (request.postDataJSON() as { type?: unknown })?.type === "plan-runtime-version");
+  await page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review change" }).click();
+  const request = (await pending).postDataJSON() as { commandId: string };
+  reviewedChanges.set(page, request.commandId);
+}
+
+async function expectReviewedCounts(page: Page, runs: number, blockers: number, archived: number, applying = false): Promise<void> {
+  const review = page.getByRole("region", { name: applying ? "Version change applying" : "Reviewed version change", exact: true });
+  await expect(review).toBeVisible();
+  await expect.poll(async () => {
+    const wire = SavedRuntimeVersionIndexWireSchema.parse(await (await page.request.get(`${new URL(page.url()).origin}/api/v1/archive/runtime-versions`)).json());
+    const change = wire.changes.find(row => row.changeId === (applying ? wire.applyingChangeId : reviewedChanges.get(page)));
+    return change === undefined ? null : [change.members.length, change.members.filter(member => member.state !== "terminal").length, change.completedRunIds.length];
+  }).toEqual([runs, blockers, archived]);
+}
+
 async function bytes(download: Download): Promise<Buffer> {
   const stream = await download.createReadStream();
   if (stream === null) throw new Error("browser exposed no downloaded bytes");
@@ -16,6 +34,20 @@ async function bytes(download: Download): Promise<Buffer> {
     chunks.push(chunk);
   }
   return Buffer.concat(chunks);
+}
+
+function workflowName(workflowId: string): RegExp {
+  return new RegExp(workflowId.split(/[-_\s]+/u).join("[\\s_-]+"), "iu");
+}
+
+async function openWorkflowFolder(page: Page, workflowId: string): Promise<void> {
+  await page.getByRole("button", { name: workflowName(workflowId) }).click();
+  await expect(page.getByRole("table").first()).toBeVisible();
+}
+
+async function selectSavedRun(page: Page, title: string): Promise<void> {
+  await page.getByRole("table").first().getByRole("button", { name: title, exact: true }).click();
+  await expect(page.getByRole("heading", { name: title, exact: true, level: 1 })).toBeVisible();
 }
 
 async function capture(page: Page, info: TestInfo, name: string): Promise<void> {
@@ -62,23 +94,35 @@ for (const view of [
 
       await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
       await assertThemeApplied(page, view.theme);
-      const titleFilter = page.getByRole("textbox", { name: "Search reports and retained files" });
+      const workflow = page.getByRole("button", { name: workflowName(report.workflow) });
+      await workflow.click();
+      const titleFilter = page.getByRole("textbox", { name: "Search all public archive fields" });
       await titleFilter.fill("does-not-match");
-      await expect(page.getByText("No saved reports match these filters.", { exact: true })).toBeVisible();
+      await expect(page.getByRole("cell", { name: /No saved reports match this scope/ })).toBeVisible();
       await titleFilter.fill(report.title);
-      await page.getByRole("button", { name: new RegExp(`${report.title}.*Open report`,"u") }).focus();
-      await page.keyboard.press("Enter");
+      await expect(titleFilter).toHaveValue(report.title);
+      await expect(page.getByRole("table").first()).toBeVisible();
+      await selectSavedRun(page, report.title);
       await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
       const article = page.getByRole("article", { name: "Saved archive report" });
       await expect(article).toBeVisible();
+      const runSummary = article.getByRole("region", { name: "Run summary", exact: true });
+      await expect(runSummary).toContainText("Verification result");
+      await expect(runSummary).toContainText("Total elapsed");
+      await expect(runSummary).toContainText("Run mode");
+      const publicSummary = detail.sections.find(section => section.title === "Run summary");
+      expect(publicSummary?.kind).toBe("values");
 
       const exportPending = page.waitForEvent("download");
-      await article.getByRole("link", { name: "Export report", exact: true }).click();
+      await page.getByRole("button", { name: "Export run", exact: true }).click();
+      await page.getByRole("button", { name: "JSON", exact: true }).click();
       const exported = await exportPending;
       expect(exported.suggestedFilename()).toBe(`archive-${server.runId}.json`);
       expect(JSON.parse((await bytes(exported)).toString("utf8"))).toEqual(detail);
 
-      const imageLink = article.getByRole("link", { name: server.file.name, exact: true });
+      await article.getByRole("button", { name: "Retained files", exact: true }).click();
+      await expect(article.getByRole("region", { name: "Retained attachments" })).not.toContainText("Total size");
+      const imageLink = article.getByRole("link", { name: `Download ${server.file.name}`, exact: true });
       const nativePending = page.waitForEvent("download");
       await imageLink.click();
       expect(await bytes(await nativePending)).toEqual(server.bytes);
@@ -93,14 +137,22 @@ for (const view of [
       await expect(inspect).toBeFocused();
 
       await page.goBack();
-      await expect(page).toHaveURL(/archive=$/u);
+      await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
+      await expect(article).toBeVisible();
+      await page.goBack();
+      await expect.poll(() => { const params = new URL(page.url()).searchParams; return [params.get("archive"), params.get("archiveDashboard"), params.get("archiveWorkflow")]; }).toEqual(["", "unrecorded", "person-lookup"]);
       await page.goForward();
       await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
       await expect(article).toBeVisible();
+      await page.goForward();
+      await expect(article.getByRole("button", { name: "Retained files", exact: true })).toHaveAttribute("aria-current", "page");
       await page.getByRole("button", { name: "Plan a bump", exact: true }).first().click();
-      const versions = page.getByRole("region", { name: "Plan a version bump" });
-      await expect(versions).toContainText("Workflow version");
-      await expect(versions).toContainText("Dashboard version");
+      const versions = page.getByRole("dialog", { name: "Plan a version bump" });
+      await expect(versions).toContainText("Archived workflow person-lookup is no longer registered");
+      await versions.getByRole("button", { name: "Choose a registered workflow" }).click();
+      await expect(versions).toContainText("Selected workflow");
+      await expect(versions).toContainText("No eligible workflows are registered for a version change.");
+      await expect(versions).toContainText("Dashboard");
       await page.evaluate(() => { document.documentElement.style.zoom = "1.25"; });
       await expect(versions).toBeVisible();
       await capture(page, info, `${view.theme.name}-versions-zoom125`);
@@ -121,7 +173,12 @@ test("interrupted deletion survives reload and resumes the exact retained reques
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
   try {
-    await gotoAppState(page, server.baseUrl, { day: server.day, archive: server.runId });
+    const index = SavedArchiveIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/reports?limit=50`)).json());
+    const report = index.items.find(item => item.runId === server.runId);
+    if (report === undefined) throw new Error("saved report is absent from the served list");
+    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
+    await openWorkflowFolder(page, report.workflow);
+    await selectSavedRun(page, report.title);
     server.interruptNextAudit();
     await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
     await page.getByRole("button", { name: "Delete this report", exact: true }).click();
@@ -156,22 +213,23 @@ test("real major review renews changed membership and resumes a partial transfer
   evidence(["archive-major-resumed"]), async ({ page }, info) => {
   const server = await startArchiveAuthorityServer({ seed: "live" });
   const errors: string[] = [];
-    page.on("pageerror", error => errors.push(error.message));
+  page.on("pageerror", error => errors.push(error.message));
   try {
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
-    const bump = page.getByRole("region", { name: "Plan a version bump" });
-    await bump.getByRole("button", { name: /Dashboard version Advance every workflow/u }).click();
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("1 affected runs · 0 blockers · 0 archived");
+    const bump = page.getByRole("dialog", { name: "Plan a version bump" });
+    await bump.getByRole("radio", { name: "All workflows" }).check();
+    await reviewChange(page);
+    await expectReviewedCounts(page, 1, 0, 0);
+    await page.screenshot({ path: info.outputPath("reviewed-current.png"), animations: "disabled" });
     const added = server.addRun(91001);
     await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
-    await expect(bump.getByRole("status").filter({ hasText: /stale|changed|review/i })).toBeVisible();
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("2 affected runs · 0 blockers · 0 archived");
+    await expect(bump.getByText("Review is stale. Review again.", { exact: true })).toBeVisible();
+    await reviewChange(page);
+    await expectReviewedCounts(page, 2, 0, 0);
     expect(server.database.savedReportOwner(server.runId).state).toBe("live");
     expect(server.database.savedReportOwner(added).state).toBe("live");
     server.interruptTransfer("verified", 2);
-    await bump.getByText("2 affected runs · 0 blockers · 0 archived").locator("..").getByRole("button", { name: "Apply reviewed change" }).click();
+    await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
     await expect(bump.getByRole("status").filter({ hasText: /injected|failed|500/i })).toBeVisible();
     const before = server.database.readRuntimeVersionIndex().changes.find(row => row.state === "applying");
     if (before === undefined) throw new Error("partial apply claim missing");
@@ -181,7 +239,7 @@ test("real major review renews changed membership and resumes a partial transfer
     await page.goto("about:blank");
     await server.restart();
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
-    await expect(bump).toContainText("2 affected runs · 0 blockers · 1 archived");
+    await expectReviewedCounts(page, 2, 0, 1, true);
     const wire = SavedRuntimeVersionIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/runtime-versions`)).json());
     const applying = wire.changes.find(change => change.state === "applying");
     if (applying?.resumeRequest === undefined) throw new Error("authenticated original request missing");
@@ -201,7 +259,7 @@ test("real major review renews changed membership and resumes a partial transfer
     const resumedRequest = page.waitForRequest(request => request.url().endsWith("/api/v1/commands") && request.method() === "POST");
     await bump.getByRole("button", { name: "Resume version change" }).click();
     expect((await resumedRequest).postDataJSON()).toEqual(applying.resumeRequest);
-    await expect(bump.getByRole("status").filter({ hasText: "Version review updated." })).toBeVisible();
+    await expect(bump.getByRole("status").filter({ hasText: "Version change applied." })).toBeVisible();
     expect(server.database.authority.commands.get(applying.resumeRequest.commandId)?.requestedAt).toBe(applying.resumeRequest.requestedAt);
     expect(server.database.lifecycleArchive(true).readPublished(before.completedRunIds[0])).toEqual(published);
     expect(server.database.readRuntimeVersionAuthority().state.dashboard).toEqual({ major: 2, minor: 0 });
@@ -218,16 +276,17 @@ test("real workflow minor review waits for active runs and archives that workflo
   try {
     const active = server.addRun(91002, false);
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
-    const bump = page.getByRole("region", { name: "Plan a version bump" });
-    await expect(bump.getByRole("checkbox", { name: /Person Lookup/i })).toBeChecked();
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("2 affected runs · 1 blockers · 0 archived");
-    await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toBeDisabled();
+    const bump = page.getByRole("dialog", { name: "Plan a version bump" });
+    await expect(bump.getByRole("button", { name: "Workflow to bump" })).toContainText(/Person lookup/iu);
+    await reviewChange(page);
+    await expectReviewedCounts(page, 2, 1, 0);
+    await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toHaveCount(0);
+    await expect(bump.getByRole("button", { name: "Review change" })).toBeEnabled();
     server.finishRun(active);
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
-    await expect(bump).toContainText("2 affected runs · 0 blockers · 0 archived");
-    await bump.getByText("2 affected runs · 0 blockers · 0 archived").locator("..").getByRole("button", { name: "Apply reviewed change" }).click();
-    await expect(bump.getByRole("status").filter({ hasText: "Version review updated." })).toBeVisible();
+    await reviewChange(page);
+    await expectReviewedCounts(page, 2, 0, 0);
+    await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
+    await expect(bump.getByRole("status").filter({ hasText: "Version change applied." })).toBeVisible();
     expect(server.database.savedReportOwner(server.runId).state).toBe("archived");
     expect(server.database.savedReportOwner(active).state).toBe("archived");
     const state = server.database.readRuntimeVersionAuthority().state;
@@ -240,7 +299,7 @@ test("real workflow minor review waits for active runs and archives that workflo
   } finally { await server.close(); }
 });
 
-test("real bounded pages retain exact history selection outside the filtered page and ignore late list/detail replies", async ({ page }) => {
+test("real bounded pages retain history selection outside the current page and ignore late list/detail replies", async ({ page }) => {
   const server = await startArchiveAuthorityServer({ reportCount: 52 });
   const errors: string[] = [];
   page.on("pageerror", error => errors.push(error.message));
@@ -255,36 +314,46 @@ test("real bounded pages retain exact history selection outside the filtered pag
     expect(new Set([...first.items, ...next.items].map(report => report.runId)).size).toBe(52);
     const chosen = first.items[0];
     const other = first.items[1];
+    const secondPageRun = next.items[0];
+    if (chosen === undefined || other === undefined || secondPageRun === undefined) throw new Error("bounded Archive fixture page is incomplete");
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
+    await openWorkflowFolder(page, chosen.workflow);
     const old = server.delayNextResponse(`/api/v1/archive/reports/${chosen.runId}`); releases.push(old.release);
-    await page.getByRole("button", { name: new RegExp(`${chosen.title}.*Open report`,"u") }).click();
+    await page.getByRole("table").first().getByRole("button", { name: chosen.title, exact: true }).click();
     await old.ready;
-    await page.getByRole("button", { name: new RegExp(`${other.title}.*Open report`,"u") }).click();
-    await expect(page.getByRole("article")).toContainText(other.title);
+    await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(chosen.workflow) }).click();
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await selectSavedRun(page, other.title);
+    await expect(page.getByRole("heading", { name: other.title, exact: true, level: 1 })).toBeVisible();
     const oldResponse = page.waitForResponse(response => response.url().endsWith(`/reports/${chosen.runId}`));
     old.release(); await oldResponse;
-    await expect(page.getByRole("article")).toContainText(other.title);
-    await page.getByRole("button", { name: /View all 52 reports and attachments/u }).click();
+    await expect(page.getByRole("heading", { name: other.title, exact: true, level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(other.workflow) }).click();
+    await expect(page.getByRole("table").first()).toBeVisible();
     await page.getByRole("button", { name: "Next reports", exact: true }).click();
-    await expect(page.getByRole("article")).toContainText(other.title);
+    const table = page.getByRole("table").first();
+    await expect(table.getByRole("button", { name: secondPageRun.title, exact: true })).toBeVisible();
+    await expect(table.getByRole("button", { name: other.title, exact: true })).toHaveCount(0);
     await expect(page.getByRole("button", { name: "First reports", exact: true })).toBeVisible();
-    // Paging changes the list while the route-owned selected report stays visible.
-    await expect(page.getByRole("button", { name: new RegExp(`${other.title}.*Open report`,"u") })).toHaveCount(0);
-    await page.getByRole("button", { name: "First reports", exact: true }).click();
-    await expect(page.getByRole("article")).toContainText(other.title);
-    const delayedList = server.delayNextResponse("/api/v1/archive/groups?search=old-query"); releases.push(delayedList.release);
-    const search = page.getByRole("textbox", { name: "Search reports and retained files" });
+    // Page navigation is route-owned; revisit the retained report through its exact route.
+    await page.goBack();
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: other.title, exact: true, level: 1 })).toBeVisible();
+    await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: "Archive", exact: true }).click();
+    await page.getByRole("button", { name: workflowName(other.workflow) }).click();
+    const delayedList = server.delayNextResponse("/api/v1/archive/reports?"); releases.push(delayedList.release);
+    const search = page.getByRole("textbox", { name: "Search all public archive fields" });
     await search.fill("old-query");
     await delayedList.ready;
     await search.fill(other.title);
-    await expect(page.getByRole("button", { name: new RegExp(`${other.title}.*Open report`,"u") })).toBeVisible();
-    const listResponse = page.waitForResponse(response => response.url().endsWith("search=old-query"));
+    await expect(page.getByRole("table").first()).toBeVisible();
+    const listResponse = page.waitForResponse(response => response.url().includes("search=old-query"));
     delayedList.release(); await listResponse;
-    await expect(page.getByRole("button", { name: new RegExp(`${other.title}.*Open report`,"u") })).toBeVisible();
-    await expect(page.getByText("No saved reports match these filters.", { exact: true })).toHaveCount(0);
-    await page.getByRole("button", { name: "Dashboard", exact: true }).click();
-    await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
-    await expect(page.getByRole("textbox", { name: "Search reports and retained files" })).toHaveValue("");
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await expect(page.getByRole("cell", { name: /No saved reports match this scope/ })).toHaveCount(0);
+    await page.getByRole("button", { name: /Clear filters/ }).first().click();
+    await expect(search).toHaveValue("");
     expect(errors).toEqual([]);
   } finally { for (const release of releases) release(); await server.close(); }
 });
@@ -299,22 +368,29 @@ test("late real deletion of A leaves B selected and history reads A's current di
     const index = SavedArchiveIndexWireSchema.parse(await (await page.request.get(`${server.baseUrl}/api/v1/archive/reports?limit=50`)).json());
     const reportA = index.items.find(report => report.runId === server.runId);
     if (reportA === undefined) throw new Error("saved report A is absent from the served list");
-    await page.getByRole("button", { name: new RegExp(`${reportA.title}.*Open report`,"u") }).click();
-    await expect(page.getByRole("article")).toContainText(reportA.title);
-    await page.getByRole("button", { name: /Synthetic report 91001.*Open report/u }).click();
-    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
-    await page.getByRole("button", { name: new RegExp(`${reportA.title}.*Open report`,"u") }).click();
-    await expect(page.getByRole("article")).toContainText(reportA.title);
+    const reportB = index.items.find(report => report.runId !== server.runId);
+    if (reportB === undefined) throw new Error("saved report B is absent from the served list");
+    await openWorkflowFolder(page, reportA.workflow);
+    await selectSavedRun(page, reportA.title);
+    await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(reportA.workflow) }).click();
+    await selectSavedRun(page, reportB.title);
+    await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(reportA.workflow) }).click();
+    await selectSavedRun(page, reportA.title);
+    await expect(page.getByRole("heading", { name: reportA.title, exact: true, level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
-    await expect(page.getByText(/permanent idempotency keys/)).toBeVisible();
+    await expect(page.getByText(/A later run may submit the same work again/)).toBeVisible();
     await page.getByRole("button", { name: "Delete this report", exact: true }).click();
     await delayed.ready;
     await page.goBack();
-    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Synthetic report 91001", exact: true, level: 1 })).toBeVisible();
     const reply = page.waitForResponse(response => response.url().endsWith("/api/v1/commands"));
     delayed.release(); await reply;
-    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
-    await page.goBack();
+    await expect(page.getByRole("heading", { name: "Synthetic report 91001", exact: true, level: 1 })).toBeVisible();
+    await page.goForward();
+    await expect(page.getByRole("table").first()).toBeVisible();
+    await page.goForward();
     await expect(page.getByRole("region", { name: "Saved report deletion status" })).toContainText("Command settlement: complete");
     expect(errors).toEqual([]);
   } finally { delayed.release(); await server.close(); }
