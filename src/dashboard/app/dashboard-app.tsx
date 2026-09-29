@@ -1,7 +1,7 @@
 import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./url-state.js";
 import { PreflightActionsProvider } from "../state/preflight-actions.js";
-import { resolveDateSelection, routeForDay } from "./date-state-model.js";
+import { resolveDateSelection, routeForDay, routeForStartedRun } from "./date-state-model.js";
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
 import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
@@ -1625,6 +1625,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         workflows={startWorkflows}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
+        onApplied={(workflowId) => {
+          leaveSettings(() => {
+            setActiveWorkflowId(workflowId);
+            setRoute(routeForStartedRun(routeRef.current));
+          });
+        }}
         /* D296 — the modal's spreadsheet method hands off to the intake
            workspace. It carries the workflow the PICKER selected, and the
            panel follows it: `IntakeWorkspace` reads `activeWorkflowId` for the

@@ -841,6 +841,7 @@ export function RunStartDialog({
   workflows,
   panelWorkflowId,
   actorId,
+  onApplied,
   onOpenIntake,
   onCloseAutoFocus,
   rerunSource,
@@ -853,6 +854,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
+  onApplied?: (workflowId: string) => void;
   /**
    * D296's handoff: close this dialog and open the intake workspace ON THIS
    * WORKFLOW. The dialog names the workflow rather than assuming the panel's,
@@ -1156,6 +1158,7 @@ export function RunStartDialog({
       // Durable recovery remains available even if this launch closed or changed.
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setResult(next);
+      if (settleCommandResult(next).kind === "applied") onApplied?.(command.target.workflowId);
     } catch (caught) {
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1163,7 +1166,7 @@ export function RunStartDialog({
       sending.current = false;
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [launchService]);
+  }, [launchService, onApplied]);
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null || sending.current || recoveryError !== null) return;
     if (finalRequest.current === null || finalRequest.current.target.startPlanId !== plan.startPlanId) {
@@ -1778,6 +1781,7 @@ export function RunStartSurfaces({
   workflows,
   panelWorkflowId,
   actorId,
+  onApplied,
   onOpenIntake,
   onCloseAutoFocus,
   rerunSource,
@@ -1787,6 +1791,7 @@ export function RunStartSurfaces({
   workflows: readonly RunStartWorkflow[];
   panelWorkflowId: string;
   actorId: string;
+  onApplied?: (workflowId: string) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
@@ -1798,6 +1803,7 @@ export function RunStartSurfaces({
       workflows={workflows}
       panelWorkflowId={panelWorkflowId}
       actorId={actorId}
+      onApplied={onApplied}
       onOpenIntake={onOpenIntake}
       onCloseAutoFocus={onCloseAutoFocus}
       rerunSource={rerunSource}

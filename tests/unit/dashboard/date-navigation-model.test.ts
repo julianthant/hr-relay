@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DayCountWireSchema } from "../../../src/domain/dashboard/projection.js";
 import { buildCalendarMonth, calendarTabStop, moveCalendarFocus, serverLocalDay, shiftMonth } from "../../../src/dashboard/surfaces/date-navigation-model.js";
-import { resolveDateSelection, routeForDay } from "../../../src/dashboard/app/date-state-model.js";
+import { resolveDateSelection, routeForDay, routeForStartedRun } from "../../../src/dashboard/app/date-state-model.js";
 import { parseRoute, routeAdvancesHistory, routeToSearch } from "../../../src/dashboard/app/url-state.js";
 import { deriveServedNow } from "../../../src/dashboard/state/served-clock.js";
 
@@ -22,6 +22,16 @@ it("preserves raw invalid identities, refuses future links and accepts leap/empt
   const route = parseRoute("?day=2024-02-29&run=a");
   assert.equal(routeForDay(route, "2024-02-29"), route);
   assert.equal(routeAdvancesHistory(route, routeToSearch(route)), false);
+});
+
+it("opens today's queue after a start, clearing an older run and takeover", () => {
+  const route = parseRoute("?day=2026-09-28&run=older-run&section=logs&archive=older-run&start=1");
+  const next = routeForStartedRun(route);
+  assert.equal(next.day, undefined);
+  assert.equal(next.run, undefined);
+  assert.equal(next.section, undefined);
+  assert.equal(next.archive, undefined);
+  assert.equal(next.start, true);
 });
 
 it("follows served Pacific midnight across both DST changes and year boundaries while pinned dates stay pinned", () => {

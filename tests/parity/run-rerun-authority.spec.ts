@@ -68,6 +68,7 @@ test("ordinary batch dry run enqueues one reviewed vector and no work before fin
     const submit = dialog.getByRole("button", { name: "Start dry run", exact: true }); await expect(submit).toBeVisible();
     expect(server.h.queueRoots).toHaveLength(1); await submit.click();
     await expect(page.getByText("Start applied", { exact: true })).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.has("day")).toBe(false);
     expect(server.h.queueRoots).toHaveLength(3); expect(server.commands).toHaveLength(1);
     for (const entry of server.h.queueRoots.slice(1)) {
       const run = server.h.database.authority.runs.get(entry.runId); if (run === undefined) throw new Error("missing batch child");

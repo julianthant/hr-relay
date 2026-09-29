@@ -1,5 +1,5 @@
 import { z } from "zod";
-import type { AppRouteState } from "./url-state.js";
+import { routeWithoutTakeovers, type AppRouteState } from "./url-state.js";
 
 export type DateSelection =
   | { readonly state: "valid"; readonly day: string; readonly followToday: boolean }
@@ -15,4 +15,8 @@ export function resolveDateSelection(requested: string | undefined, today: strin
 export function routeForDay(route: AppRouteState, day: string | undefined): AppRouteState {
   if (route.day === day) return route;
   return { ...route, day, run: undefined, section: undefined };
+}
+
+export function routeForStartedRun(route: AppRouteState): AppRouteState {
+  return { ...routeWithoutTakeovers(routeForDay(route, undefined)), run: undefined, section: undefined };
 }

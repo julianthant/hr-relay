@@ -311,6 +311,7 @@ async function openDialog(
     workflows: WORKFLOWS,
     panelWorkflowId: WORKFLOW_ID,
   },
+  onApplied: (workflowId: string) => void = () => undefined,
 ): Promise<OpenDialog> {
   intakeHandoffs.length = 0;
   await render(createElement(DashboardClientProvider, {
@@ -321,6 +322,7 @@ async function openDialog(
       workflows: catalogue.workflows,
       panelWorkflowId: catalogue.panelWorkflowId,
       actorId: ACTOR_ID,
+      onApplied,
       onOpenIntake: (workflowId: string, intakeSessionId: string) => {
         intakeHandoffs.push({ workflowId, intakeSessionId });
       },
@@ -497,6 +499,34 @@ async function reachResult(): Promise<OpenDialog> {
 }
 
 // ---------------------------------------------------------------------------
+
+it("reveals the launched workflow after an applied start", async () => {
+  const revealed: string[] = [];
+  const client = stubClient({
+    submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
+    executeCommand: async () => APPLIED,
+  });
+  const dialog = await openDialog(client, undefined, (workflowId) => revealed.push(workflowId));
+  await dialog.type(TYPED);
+  await dialog.press("Next");
+  await dialog.press("Next");
+  assert.deepEqual(revealed, []);
+  await dialog.press("Start run");
+  assert.deepEqual(revealed, [WORKFLOW_ID]);
+});
+
+it("keeps the current view after a refused start", async () => {
+  const revealed: string[] = [];
+  const dialog = await openDialog(stubClient({
+    submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
+    executeCommand: async () => CONFLICT,
+  }), undefined, (workflowId) => revealed.push(workflowId));
+  await dialog.type(TYPED);
+  await dialog.press("Next");
+  await dialog.press("Next");
+  await dialog.press("Start run");
+  assert.deepEqual(revealed, []);
+});
 
 describe("a settlement that arrives after the request moved is DROPPED", () => {
   it("does not land a plan for text the operator has already edited away", async () => {
