@@ -26,9 +26,8 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
       // Warm the seams a synchronous authority transaction cannot await. Today
       // that is exactly the intake parse (D170); every other family is a no-op.
       await deps.intake.prepare(accepted);
-      // W3: `submit` routes the worker-browser family through the kernel's
-      // async pool seam (the process effect settles before the reply) and every
-      // other family through the same synchronous path as before.
+      // Pool controls and start-triggered worker capacity await durable process
+      // evidence; every authority transition still uses the same kernel.
       return deps.commands.submit(accepted);
     });
     const status = result.state === "conflict" ? 409 : result.state === "rejected" ? 422 : 200;

@@ -1295,6 +1295,36 @@ controls only durably proven children; every other live member is reported as **
 and is not controlled. B's PID adoption and C's false stopped state were rejected. D269's
 authority/pool distinction and D181/D200 recovery/identity rules remain unchanged.
 
+### Dashboard launch capacity amendment — 2026-09-28
+
+Final dashboard `start-run` submission that queues runs ensures at least one workflow worker
+directed to `run` in `starting`, `idle`, or `busy`. Busy workers supply queue capacity and do not
+trigger scaling. External run-directed workers also supply capacity without adoption or control.
+Preview remains free of worker effects. A zero-run confirmation creates no capacity.
+
+When capacity is absent, the launch selects one missing or stopped declared member and issues the
+existing journaled Spawn command. A cold pool with no declaration or live members is declared at one
+through Plan; an occupied declaration may grow by one within D271's cap of three. Undeclared paused
+members require a minimum roster covering their live indices and one free member, without scale-down
+or altered directives. If a needed Plan would cover a stopping or stop-directed live member, startup
+refuses before Plan/Spawn effects; its pending stop cannot be acknowledged as desired plan coverage.
+Direct Spawn into an already declared free slot may proceed beside a stopping peer. Plan ownership
+refusals remain explicit. Larger declarations are preserved,
+and only one needed member is started. Paused and stopping members retain their directives and
+lifetimes. Ownership, uncertain-effect, settings and strict pool-version CAS refusals remain binding;
+the launch neither adopts external workers nor rebases a refused command automatically.
+
+Enqueue and startup are serialized per workflow in the dashboard command service. Derived per-member
+Plan/Spawn identities retain the exact actor, timestamp, member and CAS basis before process effects.
+Exact replay consults those retained requests and outcomes. A settled startup is never repeated after
+a later worker crash. A fresh explicit launch may replace a stopped or crashed member; there is no
+background restart. Pending or uncertain effects are reported and never repeated.
+
+Enqueue can commit before startup admission. Replay with neither retained startup evidence nor a
+usable worker reports the committed run/start identities and unknown startup status, requiring
+reconciliation. Startup refusal or uncertainty names the committed runs and child command; it does
+not misrepresent the already queued runs as rejected or claim an unproved worker birth.
+
 <a id="session-controls-amendment-2026-09-18"></a>
 
 ### Session controls amendment — 2026-09-18

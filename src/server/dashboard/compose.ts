@@ -147,6 +147,7 @@ import { createServerVerifiedArtifactReader } from "../../infra/artifacts/server
 import { createIntakeParser } from "../intake/intake-parser.js";
 import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../settings-runtime.js";
 import { createDashboardCommandService } from "./commands/command-service.js";
+import { createRunWorkerCapacity } from "./commands/run-worker-capacity.js";
 import { runQueuedSpanEvent } from "./commands/run-queued-span.js";
 import { createStartPlanService } from "./commands/start-plan-service.js";
 import { createDashboardApp } from "./routes/api.js";
@@ -861,6 +862,7 @@ async function composeDashboardRuntimeStartup(
   const commands = createDashboardCommandService({
     kernel,
     projection,
+    startWorkerCapacity: createRunWorkerCapacity({ kernel, authority: database.authority }),
     versionChanges: lifecycle.lifecycleStorage(),
     archiveDeletionCommands: database.authority.lifecycleJournal,
   });

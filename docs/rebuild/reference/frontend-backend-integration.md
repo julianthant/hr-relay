@@ -1296,7 +1296,10 @@ fan-out remain unchanged. No confirmation table or move into `workflow_runs` is 
    preflight, identity/item id/enqueue policy, and returns the exact proposed run(s), warnings,
    refusals, and a short-lived plan token bound to all fingerprints.
 4. The operator confirms. The `start` command consumes that token idempotently.
-5. The command atomically creates authority records, then returns applied/conflict/rejected.
+5. The command atomically creates authority records. Final dashboard submission then awaits any
+   needed worker through the existing journaled Plan/Spawn controls before returning success.
+   Pre-enqueue conflict/rejection preserves its existing meaning; a post-enqueue startup failure
+   explicitly reports that the runs were queued and names the failed or uncertain child command.
 6. The queue changes only from the authoritative projection replacement/patch.
 
 **Implemented:** steps 1 and 3–6, whole. `surfaces/run-start.tsx` + `run-start-kit.tsx` and their
@@ -1305,6 +1308,14 @@ models draw the modal; the catalogue is composed in `app/dashboard-app.tsx`; the
 `start` family through the one command route, and `command-service.ts` emits a `run.queued` span per
 planned run and ticks the projection cursor so the row appears without waiting for the poll. The
 enqueue banner never collapses a `conflict` or `rejected` into "Done".
+
+**2026-09-28 launch-capacity amendment:** the backend ensures one usable workflow worker on final
+submission, reusing starting/idle/busy run-directed workers and preserving paused/stopping controls.
+Preview creates no workers. Derived immutable Plan/Spawn evidence governs replay; replay never
+recreates a worker after settled startup and later crash. The enqueue-to-startup admission gap is
+reported as unknown when neither retained startup evidence nor usable capacity exists. The exact
+capacity, cap, ownership and recovery policy is owned by
+[ref execution-and-sessions §11](execution-and-sessions.md#dashboard-launch-capacity-amendment--2026-09-28).
 
 **Generic:** all of it — the modal knows no workflow. **Per-workflow:** `surfaces.inputRun` (the
 parser spec, placeholder, constants and examples), `input`, `summary`, `enqueue`, and the descriptor's

@@ -3574,6 +3574,11 @@ priority and dry run. Destination is not a decision this form owns.
 plan token idempotently, to enqueue. Nothing else. The modal never writes a run row itself and never
 collapses a `conflict` or a `rejected` into "Done".
 
+Final dashboard enqueue also awaits one needed worker through the backend's retained Plan/Spawn
+commands; startup failure reports already queued runs. The
+[2026-09-28 launch-capacity contract](execution-and-sessions.md#dashboard-launch-capacity-amendment--2026-09-28)
+owns capacity selection, the three-worker cap, replay and post-enqueue uncertainty.
+
 **What it refuses to show.** Three absences are drawn as absences rather than filled in:
 
 - **No method tabs.** The demo renders them at `methods.length > 1`; this tree has one method kind,

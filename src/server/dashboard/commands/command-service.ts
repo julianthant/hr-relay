@@ -42,12 +42,14 @@ import type { CommandKernel } from "../../../core/command-kernel.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import { errorText } from "../support.js";
 import { lifecycleCommandId } from "../../../domain/identifiers.js";
+import type { RunWorkerCapacity } from "./run-worker-capacity.js";
 
 export interface DashboardCommandServiceDeps {
   readonly kernel: CommandKernel;
   readonly projection: Pick<RunQueueProjection, "ingestFromTimeline" | "refreshRun">;
   readonly versionChanges?: { readVersionChange(changeId: string): VersionChange | undefined };
   readonly archiveDeletionCommands?: { getCommand(commandId: string): z.infer<typeof AuthorityCommandRecordSchema> | undefined };
+  readonly startWorkerCapacity?: RunWorkerCapacity;
 }
 
 export interface DashboardCommandService {
@@ -56,9 +58,9 @@ export interface DashboardCommandService {
    * The transport door (W3): the ONE entry the command route calls. It routes
    * the worker-browser family through the kernel's async pool seam — the pool
    * supervisor's process effects (spawn birth proof, durable stop directive)
-   * settle before the reply — and every other family through the synchronous
-   * `execute` path unchanged. Still one command path: both roads end in the
-   * same kernel, and this adds no emission or refusal vocabulary of its own.
+   * settle before the reply. Dashboard starts enqueue through `execute`, then
+   * await one needed worker through that same pool seam. Other families retain
+   * synchronous execution. Every authority change still passes the kernel.
    */
   submit(input: unknown): Promise<CommandResult>;
   /**
@@ -146,11 +148,28 @@ export function createDashboardCommandService(deps: DashboardCommandServiceDeps)
    */
   const WorkerBrowserSniffSchema = z.strictObject({ family: z.literal("worker-browser") }).loose();
 
+  const startTails = new Map<string, Promise<void>>();
   async function submit(input: unknown): Promise<CommandResult> {
     if (WorkerBrowserSniffSchema.safeParse(input).success) {
       return deps.kernel.executeWorkerPool(input);
     }
-    return executeOne(input);
+    const parsed = CommandRequestSchema.safeParse(input);
+    if (!parsed.success || parsed.data.family !== "start" || deps.startWorkerCapacity === undefined) return executeOne(input);
+    const request = parsed.data;
+    const key = request.target.workflowId;
+    const previous = startTails.get(key);
+    let release: () => void = () => undefined;
+    const current = new Promise<void>(resolve => { release = resolve; });
+    startTails.set(key, current);
+    if (previous !== undefined) await previous;
+    try {
+      const result = executeOne(request);
+      await deps.startWorkerCapacity.ensure(request, result);
+      return result;
+    } finally {
+      if (startTails.get(key) === current) startTails.delete(key);
+      release();
+    }
   }
 
   return Object.freeze({
