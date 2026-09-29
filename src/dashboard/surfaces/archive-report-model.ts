@@ -65,7 +65,7 @@ export function savedOutcomeLabel(outcome: SavedArchiveReportWire["outcome"]): s
 export type VisibleArchiveSection = {
   key: number;
   label: string;
-  kind: "facts" | "input" | "settings" | "logs" | "files";
+  kind: "facts" | "summary" | "input" | "settings" | "logs" | "files";
   values?: readonly { label: string; value: ArchiveReportCell }[];
   value?: ArchiveReportCell;
   sections?: SavedArchiveReportWire["sections"];
@@ -86,6 +86,7 @@ const lookupFacts: Readonly<Record<string, string>> = {
 /** Synthetic view keys follow sealed sections; historical section keys never change. */
 export function archiveWorkflowGroups(report: SavedArchiveReportWire): VisibleArchiveSection[] {
   const base = report.sections.length + 10;
+  const items: VisibleArchiveSection[] = [{ key: base + 9, label: "Run summary", kind: "summary", values: archiveRunSummaryValues(report) }];
   const names = report.workflow === "separations" ? ["Employee", "Separation dates", "Date reconciliation", "Details"]
     : report.workflow === "person-lookup" ? ["Employee", "Lookup details", "Details"] : ["Details"];
   const mapping = report.workflow === "separations" ? separationFacts : report.workflow === "person-lookup" ? lookupFacts : {};
@@ -96,22 +97,18 @@ export function archiveWorkflowGroups(report: SavedArchiveReportWire): VisibleAr
     if (section.kind === "values") for (const cell of section.values) buckets.get(mapping[cell.label] ?? "Details")?.values.push(cell);
     else buckets.get("Details")?.sections.push(section);
   }
-  const items: VisibleArchiveSection[] = names.flatMap((name, index) => {
+  items.push(...names.flatMap((name, index) => {
     const bucket = buckets.get(name);
     return bucket === undefined || bucket.values.length + bucket.sections.length === 0 ? [] : [{ key: base + index, label: name, kind: "facts" as const, values: bucket.values, sections: bucket.sections }];
-  });
+  }));
   const input = report.sections.find(section => section.title === "Inputs & settings" && section.kind === "values");
   if (input?.kind === "values") {
     const submitted = input.values.find(cell => cell.label === "Submitted input");
     const parsed = input.values.find(cell => cell.label === "Parsed input");
     const settings = input.values.find(cell => cell.label === "Captured settings");
-    const mode = input.values.find(cell => cell.label === "Run mode");
     if (submitted !== undefined) items.push({ key: base + 5, label: "Submitted input", kind: "input", value: submitted.value });
     if (parsed !== undefined) items.push({ key: base + 6, label: "Parsed input", kind: "input", value: parsed.value });
-    if (settings !== undefined || mode !== undefined) items.push({ key: base + 7, label: "Settings", kind: "settings", values: [
-      ...(mode === undefined ? [] : [{ label: "Run mode", value: mode.value }]),
-      ...(settings === undefined ? [] : [{ label: "Captured settings", value: visibleCapturedSettings(settings.value) }]),
-    ] });
+    if (settings !== undefined) items.push({ key: base + 7, label: "Settings", kind: "settings", values: [{ label: "Captured settings", value: visibleCapturedSettings(settings.value) }] });
   } else {
     const legacy = report.sections.find(section => section.title === "Run and frozen inputs" && section.kind === "values");
     if (legacy?.kind === "values") {
@@ -120,13 +117,44 @@ export function archiveWorkflowGroups(report: SavedArchiveReportWire): VisibleAr
           .map(cell => ({ label: readableArchiveLabel(cell.label.slice(prefix.length).replace(/^\./u, "") || "Value"), value: cell.value }));
         if (values.length > 0) items.push({ key: base + key, label, kind: "facts", values });
       }
-      const mode = legacy.values.find(cell => cell.label === "envelope.dryRun");
-      if (mode !== undefined) items.push({ key: base + 7, label: "Settings", kind: "settings", values: [{ label: "Run mode", value: mode.value === true ? "Dry run" : mode.value === false ? "Live run" : mode.value }] });
     }
   }
   items.push({ key: base + 8, label: "Logs", kind: "logs" });
   items.push({ key: report.sections.length + 1, label: "Retained files", kind: "files" });
   return items;
+}
+
+export function archiveRunSummaryValues(report: SavedArchiveReportWire): readonly { label: string; value: ArchiveReportCell }[] {
+  const summary = report.sections.find(section => section.title === "Run summary" && section.kind === "values");
+  if (summary?.kind === "values") return summary.values.filter(row => row.label !== "Outcome");
+  const legacy = report.sections.find(section => section.title === "Run and frozen inputs" && section.kind === "values");
+  const field = (path: string): ArchiveReportCell | undefined => legacy?.kind === "values" ? legacy.values.find(row => row.label === path)?.value : undefined;
+  const enqueued = field("envelope.enqueuedAt");
+  const ended = report.completedAt;
+  const elapsed = typeof enqueued === "string" && Number.isFinite(Date.parse(enqueued)) && Number.isFinite(Date.parse(ended)) && Date.parse(ended) >= Date.parse(enqueued)
+    ? Date.parse(ended) - Date.parse(enqueued) : "Not recorded";
+  const input = report.sections.find(section => section.title === "Inputs & settings" && section.kind === "values");
+  const storedMode = input?.kind === "values" ? input.values.find(row => row.label === "Run mode")?.value : undefined;
+  const mode = field("envelope.dryRun") ?? storedMode;
+  return [
+    { label: "Verification result", value: "Not recorded" },
+    { label: "Queued", value: typeof enqueued === "string" ? enqueued : "Not recorded" },
+    { label: "Completed", value: ended },
+    { label: "Total elapsed", value: elapsed },
+    { label: "Run mode", value: mode === true ? "Dry run" : mode === false ? "Live run" : mode === "Dry run" || mode === "Live run" ? mode : "Not recorded" },
+    { label: "Attempt", value: field("envelope.attempt") ?? report.attempt ?? "Not recorded" },
+  ];
+}
+
+export function archiveFileRelationships(report: SavedArchiveReportWire, digest: string): readonly { taskId: string; actionId: string }[] {
+  const section = report.sections.find(item => item.title === "Retained file relationships" && item.kind === "values");
+  if (section?.kind !== "values") return [];
+  return section.values.filter(row => row.label === digest).flatMap(row => {
+    const value = row.value;
+    if (value === null || typeof value !== "object" || Array.isArray(value)) return [];
+    const { taskId, actionId } = value as Record<string, ArchiveReportCell>;
+    return typeof taskId === "string" && typeof actionId === "string" ? [{ taskId, actionId }] : [];
+  });
 }
 
 export function visibleArchiveSections(report: SavedArchiveReportWire): VisibleArchiveSection[] {

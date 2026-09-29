@@ -74,6 +74,25 @@ it("renders retained document with no provider, descriptors, live records, or fi
   expect(html.match(/<a /gu)).toBeNull();
 });
 
+it("shows historical run summary facts only from retained fields and formats elapsed time", () => {
+  const legacy = SavedArchiveReportWireSchema.parse({ ...report, sections: [
+    { kind: "values", title: "Run and frozen inputs", values: [
+      { label: "envelope.enqueuedAt", value: "2026-09-10T10:00:00.000Z" },
+      { label: "envelope.attempt", value: 2 },
+      { label: "envelope.dryRun", value: true },
+    ] }, ...report.sections,
+  ], completedAt: "2026-09-10T11:02:03.000Z" });
+  const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: legacy }));
+  expect(html).toContain("Run summary");
+  expect(html).toContain("Not recorded");
+  expect(html).toContain("1h 2m 3s");
+  expect(html).toContain("Includes queued and waiting time");
+  expect(html).toContain("Dry run");
+  const missing = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...report, sections: [] } }));
+  expect(missing).toContain("Run summary");
+  expect(missing).toContain("Not recorded");
+});
+
 it("shows workflow facts while retaining hidden technical sections and exact value distinctions", async () => {
   const { calls } = await mount();
   expect(document.body.textContent).toContain(longName);
@@ -98,10 +117,28 @@ it("shows workflow facts while retaining hidden technical sections and exact val
   expect(fileDetails).not.toBeNull();
   await act(async () => fileDetails!.click());
   expect(document.body.textContent).toContain("Artifact IDs");
+  expect(document.body.textContent).not.toContain("Total size");
   expect(document.body.textContent).toContain(report.files[0].artifactIds![0]);
   expect(document.querySelector("nav[aria-label='Run sections']")?.textContent).not.toContain("Record details");
   expect(document.querySelector("nav[aria-label='Run sections']")?.textContent).not.toContain("All fields");
   expect(calls.savedArchiveFile).toHaveBeenCalledWith(report.runId, report.files[0].digest);
+});
+
+it("shows only exact sealed file task/action links", async () => {
+  const file = report.files[0];
+  const linked = SavedArchiveReportWireSchema.parse({ ...report, sections: [...report.sections,
+    { kind: "values", title: "Retained file relationships", values: [
+      { label: file.digest, value: { taskId: "ucpath/search-person-org", actionId: "00000000-0000-4000-8000-000000000087" } },
+      { label: "f".repeat(64), value: { taskId: "unrelated/task", actionId: "00000000-0000-4000-8000-000000000088" } },
+    ] },
+  ] });
+  await mount(linked);
+  await clickSection("Retained files");
+  const details = document.querySelector<HTMLButtonElement>('section[aria-label="Retained attachments"] button[aria-expanded]');
+  await act(async () => details!.click());
+  expect(document.body.textContent).toContain("Retained task ID");
+  expect(document.body.textContent).toContain("ucpath/search-person-org");
+  expect(document.body.textContent).not.toContain("unrelated/task");
 });
 
 it("discloses structured values with exact JSON and keeps public identifiers selectable", async () => {

@@ -6,8 +6,9 @@ import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-stora
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
-import { ArchiveReportSchema } from "../../../src/domain/archive/report.js";
+import { ArchiveFileReferenceSchema, ArchiveReportSchema } from "../../../src/domain/archive/report.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
+import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 
 it("freezes stamped and adopted runtime versions while old reports keep no recorded version", () => {
   const f = foundationFixture();
@@ -90,6 +91,54 @@ it("captures every source group as generic typed values or explicit absence, wit
     assert.equal("sources" in projectArchiveReport(report), false);
     assert.equal("sourceDigest" in publicReport, false);
     assert.equal("digest" in publicReport, false);
+  } finally { f.dispose(); }
+});
+
+it("seals a public run summary and only exact retained artifact relationships", () => {
+  const f = foundationFixture();
+  try {
+    f.db.authority.runs.transition({ runId: f.run.envelope.runId, expectedVersion: f.run.version,
+      lifecycle: { state: "terminal", outcome: "cancelled", endedAt: NOW }, now: NOW });
+    const snapshot = createRunLifecycleStorage(f.db).capture(f.run.envelope.runId);
+    const artifactId = id(9381);
+    const receipt = RunEvidenceReceiptSchema.parse({
+      composition: 4, receiptId: id(9382), runId: f.run.envelope.runId, traceId: f.run.envelope.traceId,
+      workflowId: f.run.envelope.workflow, attempt: f.run.envelope.attempt, generatedAt: NOW,
+      descriptorFingerprint: f.run.envelope.contractFingerprint, configFingerprint: f.run.envelope.configFingerprint,
+      retryOf: { state: "absent" }, failure: { state: "absent" }, input: [], observations: [], decisions: [],
+      actions: [{ id: id(9383), taskId: "ucpath/search-person-org", kind: "local-projection", writeState: "not-attempted", artifactId, occurredAt: NOW }],
+      verification: [], output: [], reuse: [], warnings: [], confidence: "unknown", result: "cancelled",
+    });
+    const records = snapshot.records.map(group => group.table === "run_receipts"
+      ? { ...group, rows: [{ key: receipt.receiptId, json: JSON.stringify(receipt) }] } : group);
+    const file = ArchiveFileReferenceSchema.parse({ name: "Synthetic note.txt", digest: "a".repeat(64), byteLength: 12, mediaType: "text/plain", artifactIds: [artifactId] });
+    const report = captureArchiveReport({ snapshot: { ...snapshot, records }, transferId: id(9384), capturedAt: NOW, files: [file], sections: [] });
+    const summary = report.content.sections.find(section => section.title === "Run summary");
+    assert.equal(summary?.kind, "values");
+    if (summary?.kind !== "values") throw new Error("run summary absent");
+    assert.equal(summary.values.find(row => row.label === "Verification result")?.value, "Cancelled");
+    assert.equal(summary.values.find(row => row.label === "Queued")?.value, snapshot.run.envelope.enqueuedAt);
+    assert.equal(summary.values.find(row => row.label === "Completed")?.value, NOW);
+    assert.equal(summary.values.find(row => row.label === "Total elapsed")?.value, Date.parse(NOW) - Date.parse(snapshot.run.envelope.enqueuedAt));
+    assert.equal(summary.values.find(row => row.label === "Attempt")?.value, f.run.envelope.attempt);
+    const links = report.content.sections.find(section => section.title === "Retained file relationships");
+    assert.equal(links?.kind, "values");
+    if (links?.kind !== "values") throw new Error("file relationships absent");
+    assert.deepEqual(links.values, [{ label: file.digest, value: { taskId: "ucpath/search-person-org", actionId: id(9383) } }]);
+    const duplicateRows = records.map(group => group.table === "run_receipts"
+      ? { ...group, rows: [...group.rows, { key: id(9387), json: JSON.stringify({ ...receipt, receiptId: id(9387) }) }] } : group);
+    const duplicateReport = captureArchiveReport({ snapshot: { ...snapshot, records: duplicateRows }, transferId: id(9388), capturedAt: NOW, files: [file], sections: [] });
+    const duplicateSummary = duplicateReport.content.sections.find(section => section.title === "Run summary");
+    assert.equal(duplicateSummary?.kind === "values" ? duplicateSummary.values.find(row => row.label === "Verification result")?.value : undefined,
+      "Unavailable: multiple receipts retained");
+    assert.equal(duplicateReport.content.sections.some(section => section.title === "Retained file relationships"), false);
+    const publicReport = projectArchiveReport(report);
+    assert.equal(publicReport.state, "available");
+    if (publicReport.state !== "available") throw new Error("public report absent");
+    assert.deepEqual(publicReport.sections.find(section => section.title === "Run summary"), summary);
+    const unmatched = captureArchiveReport({ snapshot: { ...snapshot, records }, transferId: id(9385), capturedAt: NOW,
+      files: [{ ...file, artifactIds: [id(9386)] }], sections: [] });
+    assert.equal(unmatched.content.sections.some(section => section.title === "Retained file relationships"), false);
   } finally { f.dispose(); }
 });
 

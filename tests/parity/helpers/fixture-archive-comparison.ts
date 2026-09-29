@@ -39,6 +39,11 @@ function report(number: number, dashboard: { major: number; minor: number } | nu
     capturedAt: `2026-09-${String(day).padStart(2, "0")}T11:30:00.000Z`, archiveFingerprint: "e".repeat(64),
     ...(dashboard === null ? {} : { runtimeVersion: { state: "stamped", dashboard, workflow: workflowVersion } }),
     sections: [
+      ...(number === 7 ? [{ kind: "values" as const, title: "Run summary", values: [
+        { label: "Outcome", value: "done" }, { label: "Verification result", value: "Not recorded" },
+        { label: "Queued", value: "2026-09-26T10:20:00.000Z" }, { label: "Completed", value: "2026-09-26T11:00:00.000Z" },
+        { label: "Total elapsed", value: 40 * 60 * 1000 }, { label: "Run mode", value: "Dry run" }, { label: "Attempt", value: 1 },
+      ] }] : []),
       { kind: "values", title: isSeparation ? "Identity and separation" : "Identity and lookup", values: isSeparation ? fields(number) : lookupFields(number) },
       { kind: "values", title: "Inputs & settings", values: [
         { label: "Run mode", value: "Dry run" },

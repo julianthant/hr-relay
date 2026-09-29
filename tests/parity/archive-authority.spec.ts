@@ -106,6 +106,12 @@ for (const view of [
       await expect(page).toHaveURL(new RegExp(`archive=${server.runId}`, "u"));
       const article = page.getByRole("article", { name: "Saved archive report" });
       await expect(article).toBeVisible();
+      const runSummary = article.getByRole("region", { name: "Run summary", exact: true });
+      await expect(runSummary).toContainText("Verification result");
+      await expect(runSummary).toContainText("Total elapsed");
+      await expect(runSummary).toContainText("Run mode");
+      const publicSummary = detail.sections.find(section => section.title === "Run summary");
+      expect(publicSummary?.kind).toBe("values");
 
       const exportPending = page.waitForEvent("download");
       await page.getByRole("button", { name: "Export run", exact: true }).click();
@@ -115,6 +121,7 @@ for (const view of [
       expect(JSON.parse((await bytes(exported)).toString("utf8"))).toEqual(detail);
 
       await article.getByRole("button", { name: "Retained files", exact: true }).click();
+      await expect(article.getByRole("region", { name: "Retained attachments" })).not.toContainText("Total size");
       const imageLink = article.getByRole("link", { name: `Download ${server.file.name}`, exact: true });
       const nativePending = page.waitForEvent("download");
       await imageLink.click();

@@ -7,7 +7,7 @@ import { settleCommandResult } from "../app/command-result.js";
 import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
-import { archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
+import { archiveFileRelationships,archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
 import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveStructuredValue, ArchiveTable } from "./archive-visual.js";
 
 export function SavedArchiveReport({ report, deletion, section, onSection }: { report: SavedArchiveReportWire; deletion?: ReactNode; section?: number; onSection?: (section: number) => void }) {
@@ -45,6 +45,9 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       <div className="min-w-0 space-y-[22px]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{selectedItem?.label}</h2>
 
     {selectedItem?.kind === "facts" && <div className="flex flex-col gap-[24px]">{archiveWorkflowGroups(report).filter(group => group.kind !== "files" && group.kind !== "logs").map(group => <section key={group.key} className="flex flex-col gap-[12px]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>{group.label}</h3>
+    {group?.kind === "summary" && <ArchiveFieldGroup title="Run summary" showHeading={false}><ArchiveFieldRows columns="one" rows={group.values?.map(cell => ({ label: cell.label,
+      value: cell.label === "Queued" || cell.label === "Completed" ? (typeof cell.value === "string" && Number.isFinite(Date.parse(cell.value)) ? <SavedArchiveTime value={cell.value} /> : <ArchiveStructuredValue value={cell.value} />)
+        : cell.label === "Total elapsed" && typeof cell.value === "number" ? <span title="Includes queued and waiting time">{formatArchiveElapsed(cell.value)}</span> : <ArchiveStructuredValue value={cell.value} /> })) ?? []} /></ArchiveFieldGroup>}
     {group?.kind === "facts" && <ArchiveFieldGroup title={group.label} showHeading={false}>
       {(group.values?.length ?? 0) > 0 && <ArchiveFieldRows columns="one" rows={group.values!.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />}
       {group.sections?.map((section, index) => section.kind === "unavailable" ? <p key={index} className="m-[var(--ds-space-cozy)]">{section.reason}</p>
@@ -56,7 +59,7 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       ? archiveDisplayRows(cell.value) : [{ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }]) ?? []} /></ArchiveFieldGroup>}
     </section>)}</div>}
     {selectedItem?.kind === "files" && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments" showHeading={false}>
-      {report.files.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No attachment was retained with this report.</p> : report.files.map(file => <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} file={file} />)}
+      {report.files.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No attachment was retained with this report.</p> : <>{report.files.map(file => <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} file={file} relationships={archiveFileRelationships(report, file.digest)} />)}</>}
     </ArchiveFieldGroup>}
       </div>
     </div>
@@ -68,12 +71,18 @@ function archiveDisplayRows(value: ArchiveReportCell): { label: string; value: R
     ? Object.entries(value).map(([label, entry]) => ({ label: readableArchiveLabel(label), value: <ArchiveStructuredValue value={ArchiveReportCellSchema.parse(entry)} /> }))
     : [{ label: "Value", value: <ArchiveStructuredValue value={value} /> }];
 }
+function formatArchiveElapsed(milliseconds: number): string {
+  const seconds = Math.floor(milliseconds / 1000);
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  return [hours > 0 ? `${hours}h` : "", minutes > 0 ? `${minutes}m` : "", `${seconds % 60}s`].filter(Boolean).join(" ");
+}
 function SavedArchiveTime({ value }: { value: string }) {
   const instant = new Date(value);
   const label = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(instant);
   return <time dateTime={value} title={value}>{label} UTC</time>;
 }
-function SavedAttachment({ runId, file: retained }: { runId: string; file: SavedArchiveReportWire["files"][number] }) {
+function SavedAttachment({ runId, file: retained, relationships }: { runId: string; file: SavedArchiveReportWire["files"][number]; relationships: readonly { taskId: string; actionId: string }[] }) {
   const client = useDashboardClient();
   const [open, setOpen] = useState(false);
   const [detailsOpen, setDetailsOpen] = useState(false);
@@ -98,7 +107,7 @@ function SavedAttachment({ runId, file: retained }: { runId: string; file: Saved
         <Button className="h-[32px]" variant="secondary" aria-expanded={detailsOpen} onClick={() => setDetailsOpen(value => !value)}>Details</Button>
       </div>
     </div>
-    {detailsOpen && <dl className={cn(dsText.meta, "mt-[16px] grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[16px]")}><dt>Digest</dt><dd className="m-0 select-text break-all">{retained.digest}</dd><dt>Artifact IDs</dt><dd className="m-0 select-text break-all">{retained.artifactIds === undefined || retained.artifactIds.length === 0 ? "Not recorded" : retained.artifactIds.join(", ")}</dd></dl>}
+    {detailsOpen && <dl className={cn(dsText.meta, "mt-[16px] grid min-w-0 grid-cols-[auto_minmax(0,1fr)] gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] border-t border-[color:var(--ds-border)] pt-[16px]")}><dt>Digest</dt><dd className="m-0 select-text break-all">{retained.digest}</dd><dt>Artifact IDs</dt><dd className="m-0 select-text break-all">{retained.artifactIds === undefined || retained.artifactIds.length === 0 ? "Not recorded" : retained.artifactIds.join(", ")}</dd>{relationships.map(relationship => <div key={`${relationship.taskId}:${relationship.actionId}`} className="contents"><dt>Retained task ID</dt><dd className="m-0 select-text break-all">{relationship.taskId}</dd><dt>Retained action ID</dt><dd className="m-0 select-text break-all">{relationship.actionId}</dd></div>)}</dl>}
     {available !== null && image && <Dialog open={open} onOpenChange={changeOpen}>
       <DialogContent size="lg" title={retained.name} description="Verified retained image">
         <DialogBody className="flex min-h-0 items-center justify-center">
