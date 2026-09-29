@@ -60,9 +60,9 @@ it("captures every source group as generic typed values or explicit absence, wit
     const capturedSettings = inputSection.values.find(row => row.label === "Captured settings")?.value;
     if (settingsSource === undefined) assert.deepEqual(capturedSettings, { state: "unavailable", reason: "No settings snapshot was retained for this run" });
     else {
-      const stored = JSON.parse(settingsSource.json) as { configSnapshotId: string; fingerprint: string };
-      assert.equal((capturedSettings as { configSnapshotId: string }).configSnapshotId, stored.configSnapshotId);
-      assert.equal((capturedSettings as { fingerprint: string }).fingerprint, "[protected digest]");
+      const stored = JSON.parse(settingsSource.json) as { config: unknown };
+      assert.deepEqual(capturedSettings, stored.config);
+      assert.equal(JSON.stringify(capturedSettings).includes("configSnapshotId"), false);
     }
     assert.equal(snapshot.records.length, 24);
     assert.equal(snapshot.records.some(group => group.table === "archive_relaunches"), false);

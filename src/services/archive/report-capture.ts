@@ -111,7 +111,7 @@ export function captureArchiveReport(input: Readonly<{
     { label: "Run mode", value: runMode === true ? "Dry run" : runMode === false ? "Live run" : "Unavailable" },
     { label: "Submitted input", value: submittedInput === undefined ? { state: "unavailable", reason: "Submitted input was not retained" } : submittedInput },
     { label: "Parsed input", value: parsedInput === undefined ? { state: "unavailable", reason: "Parsed input was not retained" } : parsedInput },
-    { label: "Captured settings", value: settings ?? { state: "unavailable", reason: "No settings snapshot was retained for this run" } },
+    { label: "Captured settings", value: member(settings, "config") ?? { state: "unavailable", reason: "No settings snapshot was retained for this run" } },
   ] };
   const sections: Section[] = [genericArchiveSection("Run and frozen inputs", safe.run), inputSection];
   for (const [index, group] of snapshot.records.entries()) {

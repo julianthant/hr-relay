@@ -47,12 +47,15 @@ async function openEvidence(page:Page) {
   await expect(report).toBeVisible();
   await expect(report.getByRole("tab")).toHaveCount(0);
   await expect(report.getByRole("img")).toHaveCount(0);
+  const wire=SavedArchiveReportWireSchema.parse(await page.evaluate(async path => (await fetch(path)).json() as Promise<unknown>, `/api/v1/archive/reports/${RUN_ID}`));
+  expect(wire.sections).toEqual(REPORT.sections);
   return report;
 }
 async function frozenFacts(report:Locator) {
-  const facts=report.getByRole("region",{name:"Frozen capture facts"});
-  for(const value of [CAPTURE.digest,CAPTURE.artifactId,CAPTURE.bundleId,CAPTURE.mediaType,String(CAPTURE.byteLength),"1440 × 900","Declared retention","2026-09-02T09:11:00.000Z"])await expect(facts).toContainText(value);
-  await expect(facts).not.toContainText(/purged/iu);
+  await expect(report.getByRole("button",{name:"Frozen capture facts",exact:true})).toHaveCount(0);
+  const facts=report.locator("dl").first();
+  await expect(facts).toContainText("Retained files");
+  await expect(facts).toContainText("1");
   return facts;
 }
 async function openFiles(report:Locator) {
@@ -91,13 +94,13 @@ for(const view of [
       await openFiles(report);
       await expect(report.getByText(`Checking ${FILE_NAME}…`)).toBeVisible();expect(byteRequests).toBe(0);
       resource.release();const link=report.getByRole("link",{name:FILE_NAME});await expect(link).toBeVisible();
-      await report.getByRole("button",{name:"Frozen capture facts",exact:true}).click();
+      await report.getByRole("button",{name:"Logs",exact:true}).click();
       expect(await facts.innerText()).toBe(before);expect(byteRequests).toBe(0);
       await openFiles(report);await expect(link).toBeVisible();
       const pending=page.waitForEvent("download");await link.click({noWaitAfter:true});
       await expect.poll(()=>byteRequests).toBe(1);
       bytes.release();await downloadedBytes(await pending);
-      await report.getByRole("button",{name:"Frozen capture facts",exact:true}).click();
+      await report.getByRole("button",{name:"Logs",exact:true}).click();
       expect(await facts.innerText()).toBe(before);
     }finally{resource.release();bytes.release();}
   });
@@ -142,8 +145,10 @@ test("native byte failure leaves the exact frozen report available",async({page}
   const report=await openEvidence(page),facts=await frozenFacts(report),before=await facts.innerText();await openFiles(report);
   const pending=page.waitForEvent("download");await report.getByRole("link",{name:FILE_NAME}).click();
   const result=await pending;expect(await result.failure()).not.toBeNull();
-  await report.getByRole("button",{name:"Frozen capture facts",exact:true}).click();
+  await report.getByRole("button",{name:"Logs",exact:true}).click();
   expect(await facts.innerText()).toBe(before);await expect(report).toBeVisible();
+  const wire=SavedArchiveReportWireSchema.parse(await page.evaluate(async path => (await fetch(path)).json() as Promise<unknown>, `/api/v1/archive/reports/${RUN_ID}`));
+  expect(wire.sections).toEqual(REPORT.sections);
 });
 test("retained image inspection reports decode failure without losing the native download",async({page})=>{
   await routes(page);respondBytes=()=>new Response(Buffer.from("not an image"),{headers:{"Content-Type":"image/png"}});

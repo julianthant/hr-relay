@@ -7,12 +7,22 @@ import { gotoAppState } from "./helpers/app-driver.js";
 import { assertThemeApplied, installTheme } from "./helpers/capture.js";
 import { startArchiveAuthorityServer } from "./helpers/fixture-archive-authority.js";
 
+const reviewedChanges = new WeakMap<Page, string>();
+async function reviewChange(page: Page): Promise<void> {
+  const pending = page.waitForRequest(request => request.method() === "POST" && request.url().endsWith("/api/v1/commands") && (request.postDataJSON() as { type?: unknown })?.type === "plan-runtime-version");
+  await page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review change" }).click();
+  const request = (await pending).postDataJSON() as { commandId: string };
+  reviewedChanges.set(page, request.commandId);
+}
+
 async function expectReviewedCounts(page: Page, runs: number, blockers: number, archived: number, applying = false): Promise<void> {
   const review = page.getByRole("region", { name: applying ? "Version change applying" : "Reviewed version change", exact: true });
-  const values = review.locator("dl").getByRole("definition");
-  await expect(values.nth(2)).toHaveText(String(runs));
-  await expect(values.nth(3)).toHaveText(String(blockers));
-  await expect(values.nth(4)).toHaveText(String(archived));
+  await expect(review).toBeVisible();
+  await expect.poll(async () => {
+    const wire = SavedRuntimeVersionIndexWireSchema.parse(await (await page.request.get(`${new URL(page.url()).origin}/api/v1/archive/runtime-versions`)).json());
+    const change = wire.changes.find(row => row.changeId === (applying ? wire.applyingChangeId : reviewedChanges.get(page)));
+    return change === undefined ? null : [change.members.length, change.members.filter(member => member.state !== "terminal").length, change.completedRunIds.length];
+  }).toEqual([runs, blockers, archived]);
 }
 
 async function bytes(download: Download): Promise<Buffer> {
@@ -162,7 +172,6 @@ test("interrupted deletion survives reload and resumes the exact retained reques
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "" });
     await openWorkflowFolder(page, report.workflow);
     await selectSavedRun(page, report.title);
-    await page.getByRole("button", { name: "Record details", exact: true }).click();
     server.interruptNextAudit();
     await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
     await page.getByRole("button", { name: "Delete this report", exact: true }).click();
@@ -202,12 +211,13 @@ test("real major review renews changed membership and resumes a partial transfer
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
     const bump = page.getByRole("dialog", { name: "Plan a version bump" });
     await bump.getByRole("radio", { name: "All workflows" }).check();
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
+    await reviewChange(page);
     await expectReviewedCounts(page, 1, 0, 0);
+    await page.screenshot({ path: info.outputPath("reviewed-current.png"), animations: "disabled" });
     const added = server.addRun(91001);
     await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
-    await expect(bump.getByText("Review is stale. Review affected runs again.", { exact: true })).toBeVisible();
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
+    await expect(bump.getByText("Review is stale. Review again.", { exact: true })).toBeVisible();
+    await reviewChange(page);
     await expectReviewedCounts(page, 2, 0, 0);
     expect(server.database.savedReportOwner(server.runId).state).toBe("live");
     expect(server.database.savedReportOwner(added).state).toBe("live");
@@ -261,12 +271,12 @@ test("real workflow minor review waits for active runs and archives that workflo
     await gotoAppState(page, server.baseUrl, { day: server.day, archive: "", archiveView: "versions" });
     const bump = page.getByRole("dialog", { name: "Plan a version bump" });
     await expect(bump.getByRole("button", { name: "Workflow to bump" })).toContainText(/Person lookup/iu);
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
+    await reviewChange(page);
     await expectReviewedCounts(page, 2, 1, 0);
     await expect(bump.getByRole("button", { name: "Apply reviewed change" })).toHaveCount(0);
-    await expect(bump.getByRole("button", { name: "Review affected runs" })).toBeEnabled();
+    await expect(bump.getByRole("button", { name: "Review change" })).toBeEnabled();
     server.finishRun(active);
-    await bump.getByRole("button", { name: "Review affected runs" }).click();
+    await reviewChange(page);
     await expectReviewedCounts(page, 2, 0, 0);
     await bump.getByRole("button", { name: "Apply reviewed change", exact: true }).click();
     await expect(bump.getByRole("status").filter({ hasText: "Version change applied." })).toBeVisible();
@@ -307,10 +317,10 @@ test("real bounded pages retain history selection outside the current page and i
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(chosen.workflow) }).click();
     await expect(page.getByRole("table").first()).toBeVisible();
     await selectSavedRun(page, other.title);
-    await expect(page.getByRole("article")).toContainText(other.title);
+    await expect(page.getByRole("heading", { name: other.title, exact: true, level: 1 })).toBeVisible();
     const oldResponse = page.waitForResponse(response => response.url().endsWith(`/reports/${chosen.runId}`));
     old.release(); await oldResponse;
-    await expect(page.getByRole("article")).toContainText(other.title);
+    await expect(page.getByRole("heading", { name: other.title, exact: true, level: 1 })).toBeVisible();
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(other.workflow) }).click();
     await expect(page.getByRole("table").first()).toBeVisible();
     await page.getByRole("button", { name: "Next reports", exact: true }).click();
@@ -322,7 +332,7 @@ test("real bounded pages retain history selection outside the current page and i
     await page.goBack();
     await expect(page.getByRole("table").first()).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole("article")).toContainText(other.title);
+    await expect(page.getByRole("heading", { name: other.title, exact: true, level: 1 })).toBeVisible();
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: "Archive", exact: true }).click();
     await page.getByRole("button", { name: workflowName(other.workflow) }).click();
     const delayedList = server.delayNextResponse("/api/v1/archive/reports?"); releases.push(delayedList.release);
@@ -359,21 +369,18 @@ test("late real deletion of A leaves B selected and history reads A's current di
     await selectSavedRun(page, reportB.title);
     await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: workflowName(reportA.workflow) }).click();
     await selectSavedRun(page, reportA.title);
-    await page.getByRole("button", { name: "Record details", exact: true }).click();
-    await expect(page.getByRole("article")).toContainText(reportA.title);
+    await expect(page.getByRole("heading", { name: reportA.title, exact: true, level: 1 })).toBeVisible();
     await page.getByRole("button", { name: "Delete saved report", exact: true }).click();
-    await expect(page.getByText(/permanent idempotency keys/)).toBeVisible();
+    await expect(page.getByText(/A later run may submit the same work again/)).toBeVisible();
     await page.getByRole("button", { name: "Delete this report", exact: true }).click();
     await delayed.ready;
     await page.goBack();
-    await expect(page.getByRole("article")).toContainText(reportA.title);
-    await page.goBack();
     await expect(page.getByRole("table").first()).toBeVisible();
     await page.goBack();
-    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
+    await expect(page.getByRole("heading", { name: "Synthetic report 91001", exact: true, level: 1 })).toBeVisible();
     const reply = page.waitForResponse(response => response.url().endsWith("/api/v1/commands"));
     delayed.release(); await reply;
-    await expect(page.getByRole("article")).toContainText("Synthetic report 91001");
+    await expect(page.getByRole("heading", { name: "Synthetic report 91001", exact: true, level: 1 })).toBeVisible();
     await page.goForward();
     await expect(page.getByRole("table").first()).toBeVisible();
     await page.goForward();

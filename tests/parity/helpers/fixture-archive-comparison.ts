@@ -46,7 +46,7 @@ function report(number: number, dashboard: { major: number; minor: number } | nu
         { label: "Parsed input", value: isSeparation ? { employeeId: `DEMO-${String(number).padStart(2, "0")}`, lastDayWorked: "2026-09-14", separationDate: "2026-09-15" } : { employeeId: `DEMO-${String(number).padStart(2, "0")}` } },
         { label: "Captured settings", value: { state: "unavailable", reason: "No settings snapshot was retained for this example" } },
       ] },
-      { kind: "table", title: "Steps & results", columns: ["Step", "Result"], rows: [["Prepare", "Done"], ["Verify", "Done"]] },
+      { kind: "table", title: "Steps & results", columns: ["Step", "Result"], rows: [] },
       { kind: "text", title: "Record notes", text: "Synthetic saved record with complete public field density for design comparison." },
     ],
     files: Array.from({ length: number === 2 ? 3 : 2 }, (_, index) => ({

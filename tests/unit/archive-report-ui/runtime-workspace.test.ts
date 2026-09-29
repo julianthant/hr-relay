@@ -109,8 +109,8 @@ it("shows version groups with report detail and keeps the two views in the top h
   expect(document.querySelector('table[aria-label="removed-workflow saved runs"]')).not.toBeNull();
   expect(document.body.textContent).toContain(H_REPORT.title);
   await click(H_REPORT.title);
-  await click("Retained work");
-  expect(document.querySelector("article")?.textContent).toContain("Captured approval");
+  expect(document.querySelector("article nav")?.textContent).not.toContain("Outputs");
+  expect(document.querySelector("article")?.textContent).toContain("Synthetic subject");
   expect(calls.savedArchiveIndex).toHaveBeenCalledWith(expect.objectContaining({workflow:H_REPORT.workflow,versionState:"unrecorded",limit:50}));
 });
 
@@ -234,7 +234,7 @@ it("resets report pagination when search changes while keeping the selected work
 it("reviews one workflow without changing the dashboard scope, then offers the all-workflow action", async () => {
   const calls = await mount();
   await click("Plan a bump");
-  await click("Review affected runs");
+  await click("Review change");
   expect(calls.executeCommand).toHaveBeenCalledWith(expect.objectContaining({type:"plan-runtime-version",
     target:{scope:{kind:"workflows",workflowIds:["first-workflow"]}}}));
   await act(async () => {
@@ -242,7 +242,7 @@ it("reviews one workflow without changing the dashboard scope, then offers the a
     expect(all).toBeDefined();
     all?.click();
   });
-  await click("Review affected runs");
+  await click("Review change");
   expect(calls.executeCommand).toHaveBeenLastCalledWith(expect.objectContaining({type:"plan-runtime-version",
     target:{scope:{kind:"dashboard"}}}));
 });

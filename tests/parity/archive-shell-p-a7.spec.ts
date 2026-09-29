@@ -44,9 +44,19 @@ for (const width of [1440, 1024]) for (const theme of ["dark", "light"] as const
         const from = element.querySelector<HTMLInputElement>('input[type="date"]');
         const to = element.querySelectorAll<HTMLInputElement>('input[type="date"]')[1];
         if (search === null || from === null || to === undefined) throw new Error("Visible Archive filters are incomplete");
-        return { searchWidth: search.getBoundingClientRect().width, searchY: search.getBoundingClientRect().y, fromY: from.getBoundingClientRect().y, toY: to.getBoundingClientRect().y };
+        const table = element.parentElement?.nextElementSibling?.querySelector("table");
+        const group = element.getBoundingClientRect();
+        const tableBox = table?.parentElement?.parentElement?.getBoundingClientRect();
+        if (tableBox === undefined) throw new Error("Archive run table is missing");
+        return { searchWidth: search.getBoundingClientRect().width, searchY: search.getBoundingClientRect().y, fromY: from.getBoundingClientRect().y, toY: to.getBoundingClientRect().y,
+          groupLeft: group.left, groupRight: group.right, searchLeft: search.getBoundingClientRect().left, dateRight: to.getBoundingClientRect().right,
+          tableLeft: tableBox.left, tableRight: tableBox.right };
       });
-      expect(filterGeometry.searchWidth).toBeLessThanOrEqual(320);
+      expect(filterGeometry.searchWidth).toBeGreaterThan(width === 1024 ? 80 : 300);
+      expect(Math.abs(filterGeometry.searchLeft - filterGeometry.tableLeft)).toBeLessThanOrEqual(1);
+      expect(Math.abs(filterGeometry.dateRight - filterGeometry.tableRight)).toBeLessThanOrEqual(1);
+      expect(Math.abs(filterGeometry.groupLeft - filterGeometry.tableLeft)).toBeLessThanOrEqual(1);
+      expect(Math.abs(filterGeometry.groupRight - filterGeometry.tableRight)).toBeLessThanOrEqual(1);
       expect(filterGeometry.fromY).toBe(filterGeometry.toY);
       expect(filterGeometry.fromY).toBe(filterGeometry.searchY);
       await search.fill("Run");

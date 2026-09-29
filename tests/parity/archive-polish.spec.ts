@@ -19,8 +19,7 @@ test("workflow picker collapses to the selected scope and normalizes all selecte
     await choices.getByRole("checkbox", { name: /Separations/iu }).check();
     await page.keyboard.press("Escape");
     await expect(picker).toContainText("2 workflows");
-    await expect(dialog).toContainText("Every registered workflow selected: dashboard major bump");
-    await expect(dialog.getByRole("button", { name: "Review affected runs" })).toBeEnabled();
+    await expect(dialog.getByRole("button", { name: "Review change" })).toBeEnabled();
   } finally { await server.close(); }
 });
 test("run-list filters retain the table without a visible column control or count", async ({ page }) => {
@@ -36,38 +35,16 @@ test("run-list filters retain the table without a visible column control or coun
   } finally { await server.close(); }
 });
 
-test("long retained section navigation scrolls independently of selected content", async ({ page }) => {
+test("hidden technical section deep links keep the saved data sealed and show a visible section", async ({ page }) => {
   ensureParityBundle();
-  const report = { ...ARCHIVE_COMPARISON_REPORTS[0], sections: Array.from({ length: 26 }, (_, index) => ({
-    kind: "text" as const, title: `Retained source ${index + 1}`, text: `Frozen content ${index + 1}`,
-  })) };
-  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" },
-    archiveComparison: { reports: [report], versions: ARCHIVE_COMPARISON_VERSIONS } });
+  const report = ARCHIVE_COMPARISON_REPORTS[0];
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, archiveComparison: { reports: [report], versions: ARCHIVE_COMPARISON_VERSIONS } });
   try {
-    for (const width of [1024, 1440]) {
-      await page.setViewportSize({ width, height: width === 1024 ? 720 : 900 });
-      await page.goto(`${server.baseUrl}/?archive=${report.runId}`);
-      const nav = page.getByRole("navigation", { name: "Run sections" });
-      await nav.getByRole("button", { name: "Retained source 26", exact: true }).focus();
-      await page.keyboard.press("Enter");
-      const content = page.getByRole("region", { name: "Retained source 26", exact: true });
-      await expect(content).toContainText("Frozen content 26");
-      const contentBox = await content.boundingBox();
-      expect(contentBox?.y).toBeGreaterThanOrEqual(0);
-      expect(contentBox?.y).toBeLessThan(width === 1024 ? 650 : 830);
-      expect(await nav.evaluate(node => node.scrollTop)).toBeGreaterThan(0);
-      await nav.getByRole("button", { name: "All fields", exact: true }).focus();
-      await expect(nav.getByRole("button", { name: "All fields", exact: true })).toBeFocused();
-      expect(await nav.evaluate(node => node.scrollHeight > node.clientHeight)).toBe(true);
-      await page.goto(`${server.baseUrl}/?archive=${report.runId}&archiveBrowse=${encodeURIComponent(JSON.stringify({ filters: {}, section: 25 }))}`);
-      const selected = nav.getByRole("button", { name: "Retained source 26", exact: true });
-      await expect(selected).toHaveAttribute("aria-current", "page");
-      await expect.poll(async () => {
-        const item = await selected.boundingBox();
-        const rail = await nav.boundingBox();
-        return item !== null && rail !== null && item.y >= rail.y - 1 && item.y + item.height <= rail.y + rail.height + 1;
-      }).toBe(true);
-      expect((await content.boundingBox())?.y).toBeLessThan(width === 1024 ? 650 : 830);
-    }
+    await page.goto(`${server.baseUrl}/?archive=${report.runId}&archiveBrowse=${encodeURIComponent(JSON.stringify({ filters: {}, section: 3 }))}`);
+    await expect(page.getByRole("alert")).toContainText("This view is no longer shown");
+    const nav = page.getByRole("navigation", { name: "Run sections" });
+    await expect(nav.getByRole("button", { name: "Record notes" })).toHaveCount(0);
+    await expect(nav.getByRole("button", { name: "All fields" })).toHaveCount(0);
+    await expect(nav.getByRole("button", { name: "Workflow details" })).toHaveAttribute("aria-current", "page");
   } finally { await server.close(); }
 });

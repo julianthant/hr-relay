@@ -80,8 +80,9 @@ for (const viewport of [{ width: 1024, height: 720 }, { width: 1440, height: 900
     await assertThemeApplied(page, theme);
     await page.getByRole("button", { name: "Retained files" }).click();
     await expect(page.getByRole("link", { name: "Download Synthetic receipt.txt" })).toHaveAttribute("href", download);
-    await page.getByRole("button", { name: "Retained work" }).click();
-    await expect(page.getByRole("article")).toContainText("Captured approval");
+    await expect(page.getByRole("navigation", { name: "Run sections" }).getByRole("button", { name: "Outputs" })).toHaveCount(0);
+    await page.getByRole("button", { name: "Workflow details" }).click();
+    await expect(page.getByRole("article")).toContainText("Synthetic subject");
     await expect(page.getByRole("button", { name: /Relaunch|Restart|Retry/ })).toHaveCount(0);
     await captureParityPair(page, join(import.meta.dirname, "references"), { stateId: "archive-report-saved", viewport: `${viewport.width}x${viewport.height}`, theme: theme.name, adapter: "fixture", fixtureId: "H retained document without live workflow", descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: "2026-09-10T00:00:00.000Z", variant: "default" });
     await expect(page.getByRole("heading", { name: H_REPORT.title, level: 1 })).toBeVisible();
@@ -96,7 +97,6 @@ for (const viewport of [{ width: 1024, height: 720 }, { width: 1440, height: 900
     await page.getByRole("button", { name: /Clear filters/ }).first().click();
     await expect(page.getByRole("textbox", { name: "Search all public archive fields" })).toHaveValue("");
     await page.getByRole("button", { name: new RegExp(H_REPORT.title,"u") }).click();
-    await page.getByRole("button", { name: "Record details" }).click();
     await page.evaluate(() => { document.documentElement.style.zoom = "1.25"; });
     await expect(page.getByRole("button", { name: "Delete saved report", exact: true })).toBeVisible();
     await captureParityPair(page, join(import.meta.dirname, "references"), { stateId: "archive-report-zoom", viewport: `${viewport.width}x${viewport.height}`, theme: theme.name, adapter: "fixture", fixtureId: "H retained document without live workflow", descriptorHash: FIXTURE_DESCRIPTOR_HASH, appVersion: FIXTURE_APP_VERSION, capturedAt: "2026-09-10T00:00:00.000Z", variant: "125-percent" });
@@ -181,9 +181,9 @@ test("selected saved run downloads the exact composed report as JSON and typed C
   expect(typedRows.some(([, fieldPath]) => fieldPath === "publicationState")).toBe(false);
   expect(csv).not.toContain("sourceDigest");
 
-  await page.getByRole("button", { name: "Retained results", exact: true }).click();
-  const tableRegion = page.getByRole("region", { name: "Retained results" });
-  await expect(tableRegion.getByRole("table", { name: "Retained results" })).toContainText(longEmployeeDocumentName);
+  await expect(page.getByRole("navigation", { name: "Run sections" }).getByRole("button", { name: "Retained results", exact: true })).toHaveCount(0);
+  const retained = SavedArchiveReportWireSchema.parse(await page.evaluate(async path => (await fetch(path)).json() as Promise<unknown>, `/api/v1/archive/reports/${exportReport.runId}`));
+  expect(retained.sections).toEqual(exportReport.sections);
   const widths = await page.evaluate(() => ({ viewport: window.innerWidth, document: document.documentElement.scrollWidth }));
   expect(widths.document).toBeLessThanOrEqual(widths.viewport + 1);
 });

@@ -67,14 +67,14 @@ async function clickSection(label: string) {
 
 it("renders retained document with no provider, descriptors, live records, or files", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...H_REPORT, files: [] } }));
-  expect(html).toContain("Captured facts"); expect(html).toContain("Synthetic subject");
+  expect(html).toContain("Workflow details"); expect(html).toContain("Synthetic subject");
   expect(html).toContain("Yes"); expect(html).toContain("No"); expect(html).toContain("Null");
   expect(html).toContain("Dashboard version"); expect(html).toContain("Workflow version");
   expect(html).toContain('aria-current="page"'); expect(html).not.toContain("Export report");
   expect(html.match(/<a /gu)).toBeNull();
 });
 
-it("renders each immutable saved section and keeps absent, null, false, zero, empty, and long values distinct", async () => {
+it("shows workflow facts while retaining hidden technical sections and exact value distinctions", async () => {
   const { calls } = await mount();
   expect(document.body.textContent).toContain(longName);
   expect(document.body.textContent).toContain('""');
@@ -84,19 +84,14 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   expect(document.body.textContent).toContain("Empty list");
   expect(document.body.textContent).toContain("Empty record");
   expect(document.body.textContent).toContain('"München"');
-  expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.textContent).toBe("Captured facts");
+  expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.textContent).toBe("Workflow details");
 
-  await clickSection("Retained work");
-  expect(document.body.textContent).toContain("Failed");
-  expect(document.body.textContent).toContain(longName);
-  await clickSection("Saved logs");
-  expect(document.body.textContent).toContain(`Failure recorded for ${longName}.`);
-  await clickSection("Old evidence");
-  expect(document.body.textContent).toContain("These bytes were not retained.");
-  await clickSection("Recorded version change");
-  expect(document.body.textContent).toContain("Archived old workflow");
-  expect(document.body.textContent).toContain("Synthetic operator");
-  expect(document.body.textContent).toContain("Commit not captured");
+  expect(document.querySelector("nav[aria-label='Run sections']")?.textContent).not.toContain("Outputs");
+  expect(report.sections.find(section => section.title === "Retained work")).toBeDefined();
+  await clickSection("Logs");
+  expect(document.body.textContent).not.toContain(`Failure recorded for ${longName}.`);
+  expect(document.body.textContent).not.toContain("Prepare");
+  expect(document.querySelector("nav[aria-label='Run sections']")?.textContent).not.toContain("Old evidence");
   await clickSection("Retained files");
   expect(document.body.textContent).toContain("Bytes unavailable in this synthetic report.");
   const fileDetails = document.querySelector<HTMLButtonElement>('section[aria-label="Retained attachments"] button[aria-expanded]');
@@ -104,38 +99,9 @@ it("renders each immutable saved section and keeps absent, null, false, zero, em
   await act(async () => fileDetails!.click());
   expect(document.body.textContent).toContain("Artifact IDs");
   expect(document.body.textContent).toContain(report.files[0].artifactIds![0]);
-  await clickSection("Record details");
-  for (const value of [report.runId, report.transferId!, report.itemId!, "2", "Null", "failed", "verified", "4.1", "6.2", "adopted", "Absent", report.archiveFingerprint]) {
-    expect(document.body.textContent).toContain(value);
-  }
-  await clickSection("All fields");
-  expect(document.body.textContent).toContain("sections[0].values[1].value");
-  expect(document.body.textContent).toContain("sections[0].values[2].value");
-  expect(document.body.textContent).toContain("sections[0].values[3].value");
-  expect(document.body.textContent).toContain("sections[0].values[4].value");
-  expect(document.body.textContent).toContain("sections[0].values[5].value");
-  expect(document.body.textContent).toContain("sections[0].values[6].value");
-  expect(document.body.textContent).toContain("sections[0].values[7].value");
-  const rawFields = document.querySelector('section[aria-label="All public retained fields"]')?.textContent ?? document.body.textContent;
-  for (const raw of ["false", "null", "[]", "{}", "0"]) expect(rawFields).toContain(raw);
+  expect(document.querySelector("nav[aria-label='Run sections']")?.textContent).not.toContain("Record details");
+  expect(document.querySelector("nav[aria-label='Run sections']")?.textContent).not.toContain("All fields");
   expect(calls.savedArchiveFile).toHaveBeenCalledWith(report.runId, report.files[0].digest);
-});
-
-it("keeps All fields search explicit and restores focus after clearing no matches", async () => {
-  await mount();
-  await clickSection("All fields");
-  const table = document.querySelector<HTMLTableElement>('table[aria-label="All public retained fields"]');
-  expect([...table!.querySelectorAll("th")].map(cell => cell.textContent)).toEqual(["Field", "Saved value", "Type"]);
-  const input = document.querySelector<HTMLInputElement>('input[placeholder="Search all report fields"]');
-  expect(input).not.toBeNull();
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set?.call(input, "no-such-retained-field"); input!.dispatchEvent(new Event("input", { bubbles: true })); });
-  expect(table?.textContent).toContain("No fields match your search");
-  const clear = [...table!.querySelectorAll("button")].find(button => button.textContent?.trim() === "Clear search");
-  expect(clear).toBeDefined();
-  await act(async () => clear!.click());
-  expect(input?.value).toBe("");
-  expect(document.activeElement).toBe(input);
-  expect(table?.querySelectorAll("tbody tr").length).toBeGreaterThan(1);
 });
 
 it("discloses structured values with exact JSON and keeps public identifiers selectable", async () => {
@@ -144,30 +110,52 @@ it("discloses structured values with exact JSON and keeps public identifiers sel
   expect(summary).toBeDefined();
   await act(async () => summary!.click());
   expect(summary?.parentElement?.textContent).toContain('"city":"München"');
-  await clickSection("Record details");
-  const run = [...document.querySelectorAll("dt")].find(node => node.textContent === "Run ID")?.parentElement;
-  expect(run?.textContent).toContain(report.runId);
-  const copy = run?.querySelector<HTMLButtonElement>('button[aria-label="Copy Run ID"]');
-  expect(copy).not.toBeNull();
-  await act(async () => copy!.click());
-  expect(run?.textContent).toContain("could not be copied");
+
 });
 
-it("resets a selected pane and field search when the saved run changes", async () => {
+it("resets a selected pane when the saved run changes", async () => {
   const { rerender } = await mount();
-  await clickSection("All fields");
+  await clickSection("Logs");
   const { versionChange: _versionChange, ...withoutVersionChange } = report;
   const nextReport = SavedArchiveReportWireSchema.parse({ ...withoutVersionChange,
     runId: "00000000-0000-4000-8000-000000000086", sections: [], files: [] });
   await rerender(nextReport);
-  expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.getAttribute("aria-label")).toBe("Retained files");
+  expect(document.querySelector("nav[aria-label='Run sections'] [aria-current='page']")?.getAttribute("aria-label")).toBe("Workflow details");
+  await clickSection("Retained files");
   expect(document.body.textContent).toContain("No attachment was retained with this report.");
-  expect(document.body.textContent).not.toContain("All public retained fields");
+  expect(document.body.textContent).not.toContain(longName);
 });
 
 it("announces a stale routed report section instead of silently selecting its default", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report, section: 999 }));
-  expect(html).toContain("Saved report section is unavailable. Select a retained section.");
+  expect(html).toContain("This view is no longer shown. Choose a section below.");
   expect(html).toContain('role="alert"');
-  expect(html).toContain("Captured facts");
+  expect(html).toContain("Workflow details");
+});
+
+it("shows the known missing settings reason without an expandable metadata record", async () => {
+  await mount(SavedArchiveReportWireSchema.parse({ ...report, sections: [{ kind: "values", title: "Inputs & settings", values: [
+    { label: "Captured settings", value: { state: "unavailable", reason: "No settings snapshot was retained for this run" } },
+  ] }] }));
+  expect(document.body.textContent).toContain("No settings snapshot was retained for this run");
+  const settings = document.querySelector("section[aria-label='Settings']");
+  expect(settings).not.toBeNull();
+  expect(settings?.querySelector("summary")).toBeNull();
+});
+
+it("renders submitted input fields directly in one selected table", async () => {
+  await mount(SavedArchiveReportWireSchema.parse({ ...report, sections: [{ kind: "values", title: "Inputs & settings", values: [
+    { label: "Run mode", value: "Dry run" },
+    { label: "Submitted input", value: { employeeId: "DEMO-01", lastDayWorked: "2026-09-14", verified: false, count: 0 } },
+    { label: "Parsed input", value: { employeeId: "DEMO-01" } },
+    { label: "Captured settings", value: { state: "unavailable", reason: "No settings snapshot was retained for this run" } },
+  ] }] }));
+  const submitted = document.querySelector("section[aria-label='Submitted input']");
+  expect(submitted).not.toBeNull();
+  expect(submitted?.textContent).toContain("Employee ID");
+  expect(submitted?.textContent).toContain("Last day worked");
+  expect(submitted?.textContent).toContain("No");
+  expect(submitted?.textContent).toContain("0");
+  expect(submitted?.querySelector("summary")).toBeNull();
+  expect([...document.querySelectorAll("article h3")].map(node => node.textContent)).toContain("Submitted input");
 });

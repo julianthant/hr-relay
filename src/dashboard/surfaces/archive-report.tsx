@@ -1,29 +1,21 @@
-import { Archive,Download,FileText,RefreshCw,Search,ZoomIn } from "lucide-react";
+import { Archive,Download,FileText,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState, type ReactNode } from "react";
 import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
+import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../domain/archive/report.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
-import { savedCell,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource } from "./archive-report-model.js";
-import { archiveFieldRows } from "../../domain/dashboard/archive-export.js";
-import { ArchiveReportCellSchema } from "../../domain/archive/report.js";
+import { archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
 import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveStructuredValue, ArchiveTable } from "./archive-visual.js";
 
 export function SavedArchiveReport({ report, deletion, section, onSection }: { report: SavedArchiveReportWire; deletion?: ReactNode; section?: number; onSection?: (section: number) => void }) {
-  const defaultSection = report.sections.length === 0 && report.versionChange === undefined ? 1 : 0;
+  const sectionItems = visibleArchiveSections(report);
+  const defaultSection = sectionItems[0]?.key ?? report.sections.length + 1;
   const [active, setActive] = useState(() => ({ runId: report.runId, section: defaultSection }));
-  const [search, setSearch] = useState(() => ({ runId: report.runId, value: "" }));
-  const fieldSearchRef = useRef<HTMLInputElement>(null);
   const sectionNavRef = useRef<HTMLElement>(null);
   const requestedSection = section ?? (active.runId === report.runId ? active.section : defaultSection);
-  const fieldSearch = search.runId === report.runId ? search.value : "";
-  const sectionItems = [...report.sections.map((section, index) => ({ label: index === 0 && section.title.startsWith("Identity and ") ? "Workflow details" : section.title, key: index })),
-    ...(report.versionChange === undefined ? [] : [{ label: "Recorded version change", key: report.sections.length }]),
-    { label: "Retained files", key: report.sections.length + 1 },
-    { label: "Record details", key: report.sections.length + 2 },
-    { label: "All fields", key: report.sections.length + 3 }];
   const activeSection = sectionItems.some(item => item.key === requestedSection) ? requestedSection : defaultSection;
   useEffect(() => {
     const nav = sectionNavRef.current;
@@ -35,11 +27,11 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
     if (item.top < bounds.top) nav.scrollTop += item.top - bounds.top;
     else if (item.bottom > bounds.bottom) nav.scrollTop += item.bottom - bounds.bottom;
   }, [activeSection, report.runId]);
-  const fields = archiveFieldRows([report]).filter(([, path, type, value]) => `${path} ${type} ${value}`.toLowerCase().includes(fieldSearch.toLowerCase()));
+  const selectedItem = sectionItems.find(item => item.key === activeSection);
   const dashboardVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.dashboard);
   const workflowVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.workflow);
   return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[26px]`}>
-    {requestedSection !== activeSection && <p role="alert">Saved report section is unavailable. Select a retained section.</p>}
+    {requestedSection !== activeSection && <p role="alert">This view is no longer shown. Choose a section below.</p>}
     <dl className={cn(dsText.meta, "flex flex-wrap gap-x-[32px] gap-y-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pt-[18px] pb-[21px] [&>div]:grid [&>div]:gap-[7px] [&_dt]:text-[10.5px] [&_dt]:leading-[15.225px] [&_dd]:text-[12px] [&_dd]:leading-[17.4px]")}>
       <div><dt>Dashboard version</dt><dd className="m-0 text-[color:var(--ds-fg)]">{dashboardVersion}</dd></div>
       <div><dt>Workflow version</dt><dd className="m-0 text-[color:var(--ds-fg)]">{workflowVersion}</dd></div>
@@ -49,68 +41,37 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       <div><dt>Retained files</dt><dd className="m-0 text-[color:var(--ds-fg)]">{report.files.length}</dd></div>
     </dl>
     <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] gap-[22px] min-[1200px]:grid-cols-[185px_minmax(0,1fr)] min-[1200px]:gap-[30px]">
-      <nav ref={sectionNavRef} aria-label="Run sections" className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]", sectionItems.length > 10 && "max-h-[max(160px,min(480px,calc(100vh-420px)))] overflow-y-auto [&>button]:shrink-0")}><span className={cn(dsText.caps, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Archived report</span>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left outline outline-1 [overflow-wrap:anywhere]", activeSection === item.key ? "border-[color:var(--ds-control-border)] outline-[color:var(--ds-control-border)]" : "border-transparent outline-transparent")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}<p className={cn(dsText.meta, "px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>The saved record, as it was when archived.</p></nav>
-      <div className="min-w-0 space-y-[22px]"><div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{sectionItems.find(item => item.key === activeSection)?.label}</h2><span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{activeSection === report.sections.length + 3 ? `${fields.length} matching ${fields.length === 1 ? "field" : "fields"}` : "Saved at archive time"}</span></div>
-    {report.sections.map((section, index) => activeSection !== index ? null : <ArchiveFieldGroup key={`${String(index)}:${section.title}`} title={section.title} showHeading={section.title !== sectionItems[index]?.label}>
-      {section.kind === "unavailable" ? <p role="status" className="m-[var(--ds-space-cozy)] break-words [overflow-wrap:anywhere]">{section.reason}</p> : section.kind === "text" ? <p className="m-[var(--ds-space-cozy)] whitespace-pre-wrap break-words [overflow-wrap:anywhere]">{section.text}</p>
-        : section.kind === "values" ? section.values.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No saved values were captured.</p> : <ArchiveFieldRows rows={section.values.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />
-          : <div className="overflow-x-auto"><ArchiveTable label={section.title}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.length === 0 ? <TR><TD colSpan={section.columns.length}>No saved rows were captured.</TD></TR> : section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}><ArchiveStructuredValue value={cell} /></TD>)}</TR>)}</TBody></ArchiveTable></div>}
-    </ArchiveFieldGroup>)}
-    {report.versionChange !== undefined && activeSection === report.sections.length && <ArchiveFieldGroup title="Recorded version change" showHeading={false}>
-      <div className="border-b border-[color:var(--ds-border)] px-[20px] py-[var(--ds-space-cozy)]"><h4 className={cn(dsText.ui, "m-0 break-words font-semibold [overflow-wrap:anywhere]")}>{report.versionChange.change.what}</h4><p className="mb-0 break-words [overflow-wrap:anywhere]">{report.versionChange.change.why}</p></div>
-      <ArchiveFieldRows columns="one" rows={[
-        { label: "Change ID", value: report.versionChange.changeId, copyValue: report.versionChange.changeId },
-        { label: "Change kind", value: report.versionChange.change.kind },
-        { label: "Reviewed", value: <SavedArchiveTime value={report.versionChange.reviewedAt} /> },
-        { label: "Started", value: <SavedArchiveTime value={report.versionChange.startedAt} /> },
-        { label: "Scope", value: report.versionChange.scope.kind === "application" ? `Application ${report.versionChange.scope.applicationVersion}` : report.versionChange.scope.workflowIds.join(", ") },
-        { label: "Target version", value: report.versionChange.targetVersion },
-        { label: "Applied by", value: report.versionChange.appliedBy },
-        { label: "Commit", value: `${report.versionChange.change.commit.state} · ${report.versionChange.change.commit.state === "present" ? report.versionChange.change.commit.value : report.versionChange.change.commit.reason}` },
-      ]} />
+      <nav ref={sectionNavRef} aria-label="Run sections" className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]", sectionItems.length > 10 && "max-h-[max(160px,min(480px,calc(100vh-420px)))] overflow-y-auto [&>button]:shrink-0")}>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border-0 px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}</nav>
+      <div className="min-w-0 space-y-[22px]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{selectedItem?.label}</h2>
+
+    {selectedItem?.kind === "facts" && <div className="flex flex-col gap-[24px]">{archiveWorkflowGroups(report).filter(group => group.kind !== "files" && group.kind !== "logs").map(group => <section key={group.key} className="flex flex-col gap-[12px]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>{group.label}</h3>
+    {group?.kind === "facts" && <ArchiveFieldGroup title={group.label} showHeading={false}>
+      {(group.values?.length ?? 0) > 0 && <ArchiveFieldRows columns="one" rows={group.values!.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />}
+      {group.sections?.map((section, index) => section.kind === "unavailable" ? <p key={index} className="m-[var(--ds-space-cozy)]">{section.reason}</p>
+        : section.kind === "text" ? <p key={index} className="m-[var(--ds-space-cozy)] whitespace-pre-wrap">{section.text}</p>
+          : section.kind === "table" ? <div key={index} className="overflow-x-auto"><ArchiveTable label={group.label}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}><ArchiveStructuredValue value={cell} /></TD>)}</TR>)}</TBody></ArchiveTable></div> : null)}
     </ArchiveFieldGroup>}
-    {activeSection === report.sections.length + 1 && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments" showHeading={false}>
+    {group?.kind === "input" && group.value !== undefined && <ArchiveFieldGroup title={group.label} showHeading={false}><ArchiveFieldRows columns="one" rows={archiveDisplayRows(group.value)} /></ArchiveFieldGroup>}
+    {group?.kind === "settings" && <ArchiveFieldGroup title="Settings" showHeading={false}><ArchiveFieldRows columns="one" rows={group.values?.flatMap(cell => cell.label === "Captured settings" && cell.value !== null && typeof cell.value === "object" && !Array.isArray(cell.value) && Object.keys(cell.value).length > 0
+      ? archiveDisplayRows(cell.value) : [{ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }]) ?? []} /></ArchiveFieldGroup>}
+    </section>)}</div>}
+    {selectedItem?.kind === "files" && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments" showHeading={false}>
       {report.files.length === 0 ? <p className="m-[var(--ds-space-cozy)]">No attachment was retained with this report.</p> : report.files.map(file => <SavedAttachment key={`${report.runId}:${file.digest}`} runId={report.runId} file={file} />)}
     </ArchiveFieldGroup>}
-    {activeSection === report.sections.length + 2 && <ArchiveFieldGroup title="Record details" showHeading={false}>
-      <ArchiveFieldRows columns="one" rows={([
-        ["Report state", report.state], ["Title", report.title], ["Run ID", report.runId], ["Transfer ID", report.transferId],
-        ["Workflow", report.workflow], ["Item ID", report.itemId], ["Attempt", report.attempt], ["Run number", report.runNumber],
-        ["Descriptor version", report.descriptorVersion], ["Outcome", report.outcome], ["Publication", report.publicationState],
-        ["Completed", report.completedAt], ["Captured", report.capturedAt], ["Report integrity", report.reportIntegrity],
-        ["Dashboard runtime version", report.runtimeVersion === undefined ? undefined : formatRuntimeVersion(report.runtimeVersion.dashboard)],
-        ["Workflow runtime version", report.runtimeVersion === undefined ? undefined : formatRuntimeVersion(report.runtimeVersion.workflow)],
-        ["Runtime attribution", report.runtimeVersion?.state], ["Version change ID", report.versionChange?.changeId],
-        ["Public fingerprint", report.archiveFingerprint],
-      ] as const).map(([label, value]) => ({ label, value: savedRecordDetailValue(label, value), copyValue: typeof value === "string" && ["Run ID", "Transfer ID", "Item ID", "Public fingerprint", "Version change ID"].includes(label) ? value : undefined }))} />
-      {deletion}
-    </ArchiveFieldGroup>}
-    {activeSection === report.sections.length + 3 && <section aria-label="All fields" className="min-w-0 space-y-[24px]">
-      <label className="relative block"><span className="sr-only">Search all report fields</span><Search aria-hidden className={cn(dsIcon.sm, "pointer-events-none absolute left-[var(--ds-space-cozy)] top-1/2 -translate-y-1/2 text-[color:var(--ds-fg-muted)]")} /><Input ref={fieldSearchRef} className="h-[36px] pl-[var(--ds-space-page)]" value={fieldSearch} onChange={event => setSearch({ runId: report.runId, value: event.target.value })} placeholder="Search all report fields" /></label>
-      <div className="overflow-x-auto rounded-[var(--ds-radius-md)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]"><ArchiveTable label="All public retained fields"><THead><TR><TH>Field</TH><TH>Saved value</TH><TH>Type</TH></TR></THead><TBody>{fields.length === 0 ? <TR><TD colSpan={3}><div className="flex min-h-[120px] flex-col items-center justify-center gap-[8px] px-[20px] py-[20px] text-center"><strong>No fields match your search</strong><span className="text-[color:var(--ds-fg-muted)]">Try a different field name or value.</span><Button variant="secondary" size="toolbar" onClick={() => { setSearch({ runId: report.runId, value: "" }); fieldSearchRef.current?.focus(); }}>Clear search</Button></div></TD></TR> : fields.map(([, path, type, value]) => <TR key={path}><TD className="max-w-[420px] break-all font-medium text-[color:var(--ds-fg)]">{path}</TD><TD className="max-w-[560px] break-words [overflow-wrap:anywhere]">{archiveFieldValue(type, value)}</TD><TD>{type}</TD></TR>)}</TBody></ArchiveTable></div>
-    </section>}
       </div>
     </div>
+    {deletion}
   </article>;
 }
-function savedMetadataValue(value: string | number | boolean | null | undefined): string {
-  return value === undefined ? "Absent" : savedCell(value);
-}
-function savedRecordDetailValue(label: string, value: string | number | boolean | null | undefined): ReactNode {
-  return (label === "Completed" || label === "Captured") && typeof value === "string"
-    ? <SavedArchiveTime value={value} />
-    : savedMetadataValue(value);
+function archiveDisplayRows(value: ArchiveReportCell): { label: string; value: ReactNode }[] {
+  return value !== null && typeof value === "object" && !Array.isArray(value) && Object.keys(value).length > 0
+    ? Object.entries(value).map(([label, entry]) => ({ label: readableArchiveLabel(label), value: <ArchiveStructuredValue value={ArchiveReportCellSchema.parse(entry)} /> }))
+    : [{ label: "Value", value: <ArchiveStructuredValue value={value} /> }];
 }
 function SavedArchiveTime({ value }: { value: string }) {
   const instant = new Date(value);
   const label = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "UTC" }).format(instant);
   return <time dateTime={value} title={value}>{label} UTC</time>;
-}
-function archiveFieldValue(type: string, value: string): ReactNode {
-  if (type === "null") return "null";
-  if (value === "[]" || value === "{}") return value;
-  if (type === "object" || type === "array") return <ArchiveStructuredValue value={ArchiveReportCellSchema.parse(JSON.parse(value))} />;
-  return type === "string" && value === "" ? '""' : value;
 }
 function SavedAttachment({ runId, file: retained }: { runId: string; file: SavedArchiveReportWire["files"][number] }) {
   const client = useDashboardClient();
@@ -322,13 +283,13 @@ export function SavedArchiveDeletion({ report, actorId, onChanged }: { report: S
       }
     }).finally(() => { pending.current = false; if (active.current) setBusy(false); });
   };
-  return <section aria-label="Delete saved report" className="border-t border-[color:var(--ds-border)] px-[20px] py-[var(--ds-space-loose)]">
+  return <section aria-label="Delete saved report" className="border-t border-[color:var(--ds-border)] pt-[var(--ds-space-loose)]">
     <Dialog open={confirming} onOpenChange={open => { if (!busy) { setConfirming(open); if (open) setProblem(""); } }}>
       <DialogTrigger asChild><Button variant="danger">Delete saved report</Button></DialogTrigger>
-      <DialogContent size="md" title={`Delete ${report.title}?`} description="Deleting this report is permanent and cannot be undone.">
+      <DialogContent size="md" title="Delete saved report?" description={report.title}>
         <DialogBody className="flex flex-col gap-[var(--ds-space-base)]">
-          <p>This deletes the saved report “{report.title}” for {report.workflow} (descriptor {report.descriptorVersion}, completed {report.completedAt}) and its exclusively owned retained files, including transaction evidence.</p>
-          <p>If no other run owns this report&apos;s permanent idempotency keys, deleting it releases them. A later run could submit the same write again.</p>
+          <p>This permanently deletes this report and files used only by it.</p>
+          <p>This cannot be undone. A later run may submit the same work again.</p>
           {problem !== "" && <p role="alert" className="m-0">{problem}</p>}
         </DialogBody>
         <DialogFooter>

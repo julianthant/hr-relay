@@ -47,7 +47,7 @@ for (const warning of [
         rows:Array.from({length:warning.count},(_,index)=>[`${FIRST_WARNING} — ${String(index+1)}`])}] });
     await page.route(`**/api/v1/archive/reports/${report.runId}`, route=>route.fulfill({json:report}));
     await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,archive:report.runId});
-    const warnings=page.getByRole("region",{name:warning.accessibleName,exact:true});
+    const warnings=page.getByRole("region",{name:"Details",exact:true});
     await expect(warnings).toBeVisible();
     await expect(warnings).toContainText(FIRST_WARNING);
     await expect(warnings.getByRole("row")).toHaveCount(warning.count+1);
@@ -82,7 +82,7 @@ test("archive search filters public groups and the saved report retains failed w
   await expect(page.getByRole("heading",{name:failed.title,exact:true,level:1})).toBeVisible();
   const article=page.getByRole("article",{name:"Saved archive report"});
   await expect(article).toContainText("Failed");
-  const warnings=page.getByRole("region",{name:"Warning facts",exact:true});
+  const warnings=page.getByRole("region",{name:"Details",exact:true});
   await expect(warnings).toContainText(FIRST_WARNING);
   await expect(warnings.getByRole("row")).toHaveCount(2);
 });
@@ -91,8 +91,8 @@ test("one-workflow dashboard normalizes that workflow's selection to a major bum
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, archive: "", archiveView: "versions" });
   const bump = page.getByRole("region", { name: "Plan a version bump" });
   await expect(bump.getByRole("button", { name: "Workflow to bump" })).toContainText("Person lookup");
-  await expect(bump).toContainText("Every registered workflow selected: dashboard major bump");
-  await expect(page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review affected runs" })).toBeEnabled();
+  await expect(bump.getByRole("radio", { name: "Selected workflow" })).toBeChecked();
+  await expect(page.getByRole("dialog", { name: "Plan a version bump" }).getByRole("button", { name: "Review change" })).toBeEnabled();
   await expect(bump.getByText("For every workflow, choose Dashboard version.")).toHaveCount(0);
 });
 
