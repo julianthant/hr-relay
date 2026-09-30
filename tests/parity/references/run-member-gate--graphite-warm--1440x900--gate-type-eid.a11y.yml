@@ -1,7 +1,7 @@
 # run-member-gate--graphite-warm--1440x900--gate-type-eid
 # adapter: fixture
 # fixture: run-member-gate
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: gate-type-eid
 # capturedAt: 2026-08-03
@@ -11,21 +11,43 @@
     - heading "Approve this identity" [level=2]
     - paragraph: "2 field(s) DISAGREE: name, eid. Approving files the rest of this separation against this person anyway."
     - button "Close"
-  - text: document 4502 document name Okonkwo, Adaeze UCPath name Blirea, Glaundi name tier different EID read 10688204 observed 9:23 AM packet feff812dd278…ceremony type-the-eidparked 9:24 AM What disagrees
-  - term: name
-  - definition: Okonkwo, Adaeze → Blirea, Glaundi · the names do not match; a common-name re-search resolving a different career employee is exactly how T002173685 terminated the wrong person (S17)
-  - term: eid
-  - definition: the separation document carried no EID → 10688204 · the separation document did not supply this EID; it was resolved by name (S18), so the document itself confirms nothing about who this is
-  - text: What agrees
-  - term: employment
-  - definition: a separation is being prepared for this person · exactly one active employment, which is the ordinary separation shape
-  - term: name-search
-  - definition: a UCPath search on "Okonkwo, Adaeze" · searching the document's name resolves the same person the document's EID does
-  - text: Approvable candidates Blirea, Glaundi EID 10688204 from checked the EID this run checked (name-resolved) What this approval authorizes this workflow reads an identity and files nothing, so it composes no separation write plan Type the employee ID this separation is about (required)
+  - text: "4502"
+  - time: 9:23 AM
+  - table "Identity evidence":
+    - caption: Identity evidence
+    - rowgroup:
+      - row "Field Request UCPath":
+        - columnheader "Field"
+        - columnheader "Request"
+        - columnheader "UCPath"
+    - rowgroup:
+      - row "Name Okonkwo, Adaeze Blirea, Glaundi":
+        - rowheader "Name"
+        - cell "Okonkwo, Adaeze"
+        - cell "Blirea, Glaundi"
+      - row "Employee ID the separation document carried no EID 10688204":
+        - rowheader "Employee ID"
+        - cell "the separation document carried no EID"
+        - cell "10688204"
+      - row "Employment Separation request One active job · 1 record(s)":
+        - rowheader "Employment"
+        - cell "Separation request"
+        - cell "One active job · 1 record(s)"
+      - row "Name search Okonkwo, Adaeze Blirea, Glaundi · 10688204":
+        - rowheader "Name search"
+        - cell "Okonkwo, Adaeze"
+        - cell "Blirea, Glaundi · 10688204"
+  - region "Approvable candidates":
+    - text: Approvable candidates
+    - strong: Blirea, Glaundi
+    - text: the EID this run checked (name-resolved) 10688204
+  - text: What this approval authorizes this workflow reads an identity and files nothing, so it composes no separation write plan
+  - group: Evidence details
+  - text: Type the employee ID this separation is about (required)
   - textbox "Type the employee ID this separation is about (required)":
     - /placeholder: "10001799"
-  - paragraph: The server called this decision ambiguous, so the EID is stated rather than selected. It must still be one this packet showed.
+  - paragraph: Enter an 8-digit ID shown in this evidence.
   - contentinfo:
-    - text: 00000000-0044-4000-8000-000000000044 · gate identity-approval · rev 44
+    - text: No approval recorded until confirmed
     - button "Not yet"
     - button "Approve" [disabled]

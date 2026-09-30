@@ -1,7 +1,7 @@
 # run-parked-write--graphite-warm--1440x900--resolve-absent
 # adapter: fixture
 # fixture: run-parked-write
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: resolve-absent
 # capturedAt: 2026-08-03
@@ -9,9 +9,10 @@
 - dialog "Confirm the transaction is absent":
   - banner:
     - heading "Confirm the transaction is absent" [level=2]
-    - paragraph: This authorizes a fresh attempt against ucpath. If the transaction does exist, the retry submits it a SECOND time.
+    - paragraph: Recording absence can permit another submission.
     - button "Close"
-  - text: system ucpath fenced 9:44 AM generation 1 key 777777777777… eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM What did you check, and what did you see? (required)
+  - group: Write binding and subject
+  - text: What did you check, and what did you see? (required)
   - textbox "What did you check, and what did you see? (required)" [invalid]:
     - /placeholder: Job Data and Person Org Summary for this EID — no termination row of any effective date; last action is the 2024 hire.
   - alert: Write what you checked — an empty note is not evidence.

@@ -1,7 +1,7 @@
 # run-group--paper-ink--narrow-1024x768
 # adapter: fixture
 # fixture: run-group
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -257,38 +257,21 @@
     - text: 9:10 AM 3m 34s working
   - region "Run detail":
     - text: Separation audit — August
+    - button "Rerun"
     - button "What kind of panel this is — Group Panel"
     - text: pl-091010-0070
     - img "Done with warnings"
     - text: members are still executing
     - tablist "Run detail sections":
       - tab "Logs" [selected]
-      - tab "Receipt"
+    - group: Attempts
     - list "Run log lines":
       - 'listitem "9:10 AM: info note: Fan-out planned 13 member lookups"': 9:10 AM Fan-out planned 13 member lookups
       - 'listitem "9:13 AM: warning note: 2 members failed cross-verification"': 9:13 AM 2 members failed cross-verification
     - searchbox "Search logs"
-    - text: a5c0a146
+    - text: 3f01d7b6
     - button "Run provenance"
     - text: idle
-  - complementary "Run data":
-    - text: Run data
-    - button "Hide run data"
-    - region "Extracted fields":
-      - text: Extracted fields
-      - button "About run data"
-      - button "Widen the data surface"
-      - text: Selection
-      - paragraph: 13 members
-      - text: Attempt 1 · crm-dates / startsOn.value Active status
-      - paragraph: mixed
-      - text: Attempt 1 · crm-dates / invitedOn.value
-      - button "Rerun"
-    - separator
-    - region "Attempts":
-      - text: Attempts
-      - link "Attempt 1":
-        - /url: "?day=2026-08-03&run=00000000-0070-4000-8000-000000000070"
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

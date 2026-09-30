@@ -1,7 +1,7 @@
 # run-open-gate--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-open-gate
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -257,35 +257,50 @@
     - text: identity-review 16m 0s
     - tablist "Run detail sections":
       - tab "Logs" [selected]
-      - tab "Receipt"
+    - group: Attempts
     - list "Run log lines":
       - 'listitem "9:47 AM: info note: Searching UCPath directory for Blirea, Glaundi"': 9:47 AM Searching UCPath directory for Blirea, Glaundi
       - 'listitem "9:48 AM: warning note: Two candidates share the name Blirea, Glaundi"': 9:48 AM Two candidates share the name Blirea, Glaundi
-      - text: identity-review open 16m 0s · since 9:49 AM The run is held here. It cannot go past this step until you pick.
-      - button "Approve the chosen EID"
-      - button "Reject — this is not the right person"
+      - group "Decision — identity-review":
+        - text: identity-review open 16m 0s · since 9:49 AM Identity confirmation required. The run is held here. 4502
+        - time: 9:48 AM
+        - table "Identity evidence":
+          - caption: Identity evidence
+          - rowgroup:
+            - row "Field Request UCPath":
+              - columnheader "Field"
+              - columnheader "Request"
+              - columnheader "UCPath"
+          - rowgroup:
+            - row "Employee ID the separation document carried no EID 10688204":
+              - rowheader "Employee ID"
+              - cell "the separation document carried no EID"
+              - cell "10688204"
+            - row "Name Blirea, Glaundi Blirea, Glaundi":
+              - rowheader "Name"
+              - cell "Blirea, Glaundi"
+              - cell "Blirea, Glaundi"
+            - row "Employment Separation request One active job · 1 record(s)":
+              - rowheader "Employment"
+              - cell "Separation request"
+              - cell "One active job · 1 record(s)"
+            - row "Name search Blirea, Glaundi Blirea, Glaundi · 10688204":
+              - rowheader "Name search"
+              - cell "Blirea, Glaundi"
+              - cell "Blirea, Glaundi · 10688204"
+        - region "Approvable candidates":
+          - text: Approvable candidates
+          - strong: Blirea, Glaundi
+          - text: the EID this run checked (name-resolved) 10688204
+        - group: Planned write values and evidence details
+        - text: Awaiting explicit confirmation
+        - button "Approve the chosen EID"
+        - button "Reject — this is not the right person"
       - 'listitem "9:49 AM: info note: identity-review gate opened for candidate selection"': 9:49 AM identity-review gate opened for candidate selection
     - searchbox "Search logs"
-    - text: a5c0a146
+    - text: 3f01d7b6
     - button "Run provenance"
     - text: idle
-  - complementary "Run data":
-    - text: Run data
-    - button "Hide run data"
-    - region "Extracted fields":
-      - text: Extracted fields
-      - button "About run data"
-      - button "Widen the data surface"
-      - text: Selection
-      - paragraph: ambiguous (2 candidates)
-      - text: Attempt 1 · crm-dates / startsOn.value Active status
-      - paragraph: pending
-      - text: Attempt 1 · crm-dates / invitedOn.value
-    - separator
-    - region "Attempts":
-      - text: Attempts
-      - link "Attempt 1":
-        - /url: "?day=2026-08-03&run=00000000-0005-4000-8000-000000000005"
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

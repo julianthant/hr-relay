@@ -1,7 +1,7 @@
 # run-failed--graphite-warm--narrow-1024x768
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: narrow-1024x768  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -251,56 +251,43 @@
     - text: 9:35 AM 9:33 AM
   - region "Run detail":
     - text: EID 10555001
+    - button "Rerun"
     - button "What kind of panel this is — Run Panel"
     - text: pl-090404-0004
     - img "Failed"
     - text: failed · 9:36 AM
     - tablist "Run detail sections":
       - tab "Logs" [selected]
-      - tab "Receipt"
+    - group: Attempts
     - list "Run log lines":
       - 'listitem "9:33 AM: info note: Searching UCPath directory for EID 10555001"': 9:33 AM Searching UCPath directory for EID 10555001
       - 'listitem "9:34 AM: warning note: CRM record name disagrees with the UCPath name"': 9:34 AM CRM record name disagrees with the UCPath name
       - 'listitem "9:35 AM: error note: cross-verify failed: subject mismatch between CRM and UCPath"': "9:35 AM cross-verify failed: subject mismatch between CRM and UCPath"
-      - 'group "Failure record — cross-verify failed: subject mismatch between CRM and UCPath"':
-        - text: "cross-verify failed: subject mismatch between CRM and UCPath code SUBJECT_MISMATCH permanent — the same input will fail againrecord 00000000-0904-4000-8000-000000000904 failed 9:36 AM"
+      - group "Failure record — Employee identity mismatch":
+        - text: Employee identity mismatch
+        - time: 09:35:00
         - region "What this run left behind":
-          - text: What this run left behind
-          - paragraph: This run wrote nothing — no write was attempted.
-        - region "What is safe to retry": What is safe to retry remediation Operator Confirm which EID is correct at the source before re-running; nothing was written.
-        - region "Problem follow-up":
-          - text: Problem follow-up
-          - status: Unresolved
-          - text: Resolution note (optional) 0/1000
-          - textbox "Resolution note (optional)"
-          - button "Mark resolved"
-        - button "Show the diagnostic record"
-        - text: AI advisory
-        - button "Explain this failure" [disabled]
-        - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written"
+          - text: Write outcome
+          - paragraph: No write attempted
+          - term: Observed
+          - definition: The observed identity differs from the expected subject.
+          - term: Action
+          - definition: read
+          - term: Page
+          - definition: Onboarding record
+          - term: Expected identity
+          - definition: ••••5001
+          - term: Observed identity
+          - definition: ••••4136
+        - region "What is safe to retry":
+          - text: Next step
+          - paragraph: Review the source or transaction evidence. Check Details for the required correction.
+        - group: Details
       - 'listitem "9:36 AM: error note: Run failed at cross-verify; nothing was written"': 9:36 AM Run failed at cross-verify; nothing was written
     - searchbox "Search logs"
-    - text: a5c0a146
+    - text: 3f01d7b6
     - button "Run provenance"
     - text: idle
-  - complementary "Run data":
-    - text: Run data
-    - button "Hide run data"
-    - region "Extracted fields":
-      - text: Extracted fields
-      - button "About run data"
-      - button "Widen the data surface"
-      - text: Selection
-      - paragraph: exact-match
-      - text: Attempt 1 · crm-dates / startsOn.value Active status
-      - paragraph: not-reached
-      - text: Attempt 1 · crm-dates / invitedOn.value
-      - button "Rerun"
-    - separator
-    - region "Attempts":
-      - text: Attempts
-      - link "Attempt 1":
-        - /url: "?day=2026-08-03&run=00000000-0004-4000-8000-000000000004"
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

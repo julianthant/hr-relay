@@ -1304,6 +1304,10 @@ variable, and ordered optional segments with closed pure conditions and declared
 A fill-field action may reference its exact task-owned template through `templateId`. Compiler and
 frozen snapshot validation refuse missing templates or references on other action kinds. The
 optional reference participates in the frozen digest; historical absent references remain absent.
+A compute action may bind an optional exact contract-output `valueSlot`; the compiler refuses
+input or missing slots. The existing occurrence binder classifies and retains its supplied result
+under the same output privacy rules as a read. Absent slots retain their historical meaning; a
+transform declaration alone does not supply an observed result.
 Task authors use the same `renderOperationTemplate` helper to produce runtime text and preview
 text. A display reference alone neither executes a fill nor proves its observed value.
 

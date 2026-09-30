@@ -1,7 +1,7 @@
 # run-parked-write--graphite-warm--1440x900
 # adapter: fixture
 # fixture: run-parked-write
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -257,35 +257,33 @@
     - text: a write to UCPath is fenced and unresolved; the run is stopped
     - tablist "Run detail sections":
       - tab "Logs" [selected]
+    - group: Attempts
     - list "Run log lines":
       - 'listitem "9:44 AM: info note: Searching UCPath directory for EID 10777012"': 9:44 AM Searching UCPath directory for EID 10777012
       - 'listitem "9:44 AM: info note: Subject bound: the termination page names the expected EID"': "9:44 AM Subject bound: the termination page names the expected EID"
-      - text: Write parked ucpath · ucpath/terminate-person Write intent 00000000-0906-4000-8000-000000000906 is parked (unknown) for key digest 777777777777…. Verify the target system, then use one typed resolution. fenced 9:44 AMparked 9:45 AMcode unknowngeneration 1attempt 1 Bound to eid 7012 binding 333333333333… proof 00000000-0907-4000-8000-000000000907 observed 9:44 AM
-      - button "I confirmed it IS there Record the transaction you found, with its proof. The run settles as committed and never clicks again."
-      - button "I confirmed it is NOT there Release the fence so the run may attempt the write again under a new generation."
+      - group "Parked write":
+        - text: Submission unconfirmed UCPath
+        - region "Write outcome":
+          - text: Write outcome
+          - paragraph: Write outcome unresolved
+          - term: Observed
+          - definition: The transaction outcome could not be confirmed.
+          - term: Subject
+          - definition: eid · 7012
+          - term: Parked
+          - definition: 9:45 AM
+        - region "Next step":
+          - text: Next step
+          - paragraph: Check UCPath and record independently verified evidence.
+          - paragraph: Do not retry this submission.
+          - button "Verify in UCPath"
+        - group: Details
       - 'listitem "9:45 AM: warning note: Save submitted; the confirmation page did not render"': 9:45 AM Save submitted; the confirmation page did not render
       - 'listitem "9:45 AM: warning note: Write fenced at generation 1; the run is parked pending proof"': 9:45 AM Write fenced at generation 1; the run is parked pending proof
     - searchbox "Search logs"
-    - text: a5c0a146
+    - text: 3f01d7b6
     - button "Run provenance"
     - text: idle
-  - complementary "Run data":
-    - text: Run data
-    - button "Hide run data"
-    - region "Extracted fields":
-      - text: Extracted fields
-      - button "About run data"
-      - button "Widen the data surface"
-      - text: Selection 9:44 AM
-      - paragraph: exact-match
-      - text: Attempt 1 · crm-dates / startsOn.value Termination reason derived 9:44 AM
-      - paragraph: Resign - No Reason Given
-      - text: Attempt 1 · crm-dates / invitedOn.value
-    - separator
-    - region "Attempts":
-      - text: Attempts
-      - link "Attempt 1":
-        - /url: "?day=2026-08-03&run=00000000-0006-4000-8000-000000000006"
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

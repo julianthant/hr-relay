@@ -1,7 +1,7 @@
 # run-member--paper-ink--1280x720
 # adapter: fixture
 # fixture: run-member
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -260,29 +260,15 @@
     - img "Done"
     - text: verified-done · 9:32 AM
     - tablist "Run detail sections":
-      - tab "Logs"
-      - tab "Receipt" [selected]
-    - text: Done completed 9:32 AM No receipt this fixture adapter holds no authority rows to derive a receipt from
-    - region "Run captures":
-      - text: Captures
-      - alert: Captures could not be read Live capture availability is missing for run 00000000-0031-4000-8000-000000000031.
-  - complementary "Run data":
-    - text: Run data
-    - button "Hide run data"
-    - region "Extracted fields":
-      - text: Extracted fields
-      - button "About run data"
-      - button "Widen the data surface"
-      - text: Selection
-      - paragraph: exact-match
-      - text: Attempt 1 · crm-dates / startsOn.value Active status
-      - paragraph: active
-      - text: Attempt 1 · crm-dates / invitedOn.value
-    - separator
-    - region "Attempts":
-      - text: Attempts
-      - link "Attempt 1":
-        - /url: "?day=2026-08-03&run=00000000-0031-4000-8000-000000000031"
+      - tab "Logs" [selected]
+    - group: Attempts
+    - list "Run log lines":
+      - 'listitem "9:29 AM: info note: Searching UCPath directory for Alvarez, Maria"': 9:29 AM Searching UCPath directory for Alvarez, Maria
+      - 'listitem "9:31 AM: info note: Active status resolved: active"': "9:31 AM Active status resolved: active"
+    - searchbox "Search logs"
+    - text: 3f01d7b6
+    - button "Run provenance"
+    - text: idle
   - dialog "Workflow Panel":
     - text: Workflow Panel
     - button "Dock the Workflow Panel as a sidebar"

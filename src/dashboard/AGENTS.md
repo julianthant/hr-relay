@@ -21,7 +21,8 @@ surface/decision and read matching entries. Requested lessons go there.
   The DS barrel is the deliberate exception. See the Fast Refresh architecture guard and
   `docs/rebuild/reference/frontend-backend-integration.md` §8 item 14.
 - D294 retired mobile/phone document Capture Mode. Do not restore its entry, UI, transport, or
-  routes. Diagnostic screenshots, Capture tiles, receipts, Archive, and spreadsheet intake remain.
+  routes. Diagnostic screenshots, Capture tiles, Archive, and spreadsheet intake remain. Run data rail and
+  Receipt tab are retired; internal transaction proof and required run controls remain.
 - Use served authority and the shared command/refusal models; do not invent availability, identity,
   status, or write success in the browser. Preserve route-owned Archive views and exact run joins.
 

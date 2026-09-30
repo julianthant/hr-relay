@@ -1,4 +1,11 @@
-# `reference/decisions.md` — the decision ledger (D1–D359, 2026-07-17 → 2026-09-29)
+# `reference/decisions.md` — the decision ledger (D1–D360, 2026-07-17 → 2026-09-30)
+
+**D360 — Concise resolve and failure presentation (approved 2026-09-30):**
+R1 shows identity evidence comparisons; F2 leads with write outcome and next steps. Concise code-based
+classification is separate from the retained full error. Diagnostics, follow-up and advisory move to
+Details. Identity and recovery controls retain served commands and bound ceremonies; verification
+starts with an unselected evidence choice. Unknown submissions cannot gain retry permission from
+presentation or transience. Owner: [operator-trust §2.1](operator-trust.md#21-durable-failurerecord).
 
 **D359 — Explicit expected-effect confirmation (approved Plan 1 Assignment B, 2026-09-29):**
 Completed callbacks remain gesture evidence. A frozen action may name a same-page verification;
@@ -22,7 +29,10 @@ identity. Historical optional evidence is read forward, never reconstructed. Own
 Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs
 serve the run's retained snapshot plus only the current page's completed action occurrences,
 joined by exact run, fingerprint, invocation, action, occurrence, and target identities. A
-current registry descriptor never fills a historical gap. New Plan 1 envelopes stamp complete or
+current registry descriptor never fills a historical gap. Optional capture anchors are admitted
+against exact durably retained Notes through the existing runtime root, bounded without draining
+buffered evidence; their digest and full served identity own the inline image join. Unbound captures
+retain their original digest and verified gallery. Owner detail: [operator-trust §2.2](operator-trust.md). New Plan 1 envelopes stamp complete or
 legacy capability, so a removed complete snapshot fails by name; pre-Plan-1 envelopes remain
 explicit legacy. Browser action raw values remain out of the Logs row; protected provenance stays
 redacted.
@@ -50,6 +60,9 @@ outcomes. P1.1 does not migrate active workflows or bind runtime events; those a
 Fill-field template associations are explicit task-owned `templateId` references, validated and
 frozen with the declaration; previews reuse the runtime template helper rather than label inference.
 Owner: [workflow-model §1.6.4](workflow-model.md#164-versioned-operation-display-declarations-d355-2026-09-27).
+
+Computed actions may optionally bind an exact contract-output value slot, with the existing
+occurrence binding and output privacy policy; a declaration alone never invents a result.
 
 **D354 — Proven abandoned admission mutex recovery at startup (operator-directed, 2026-09-27):**
 An ordinary runtime entrypoint may retry admission once after the existing stopped-system proof
@@ -1831,7 +1844,7 @@ _D270 is minted by this round and lands with its normative text in its owning do
 
 | # | Decision | Owning doc |
 |---|---|---|
-| **D270** | **EVERY RECORDED DATA POINT IS EMITTED ON THE SPAN AT RECORD TIME, REDACTED BY THE DECLARED CLASSIFICATION — AN UNDECLARED LEAF FAILS LOUD.** The D115 collector's points validated a task's output and were then DISCARDED, so the log beside them carried prose about a step rather than the step's evidence. A twelfth span arm, `data.observed`, lands in BOTH halves of the parity pair (`src/core/span-emitter.ts` and the wire leaf `src/events/types.ts`) carrying `{nodeId, taskId, observedAt, points}` on the producing task's own span path — one event per `ctx.recordData` CALL, because a batch is one observation of the page, so the collector reads the clock ONCE per call and `observedAt` is that single instant. RECORD time and not finalization is load-bearing: a task that throws after reading the page has still read the page. Each point's value is split by the provenance collector's own leaf rule and pushed through `redactEvidenceLeaf` — the SAME declared table the D82 receipt uses, never a second implementation — so an UNDECLARED leaf fails the recording task by name, fixtures included (the executor's fixture contracts borrow a manifest-known id because `resolveTaskImplFingerprint` refuses any other, and their paths are declared rather than exempted; a bypass would mean the refusal is never exercised by a composed run). The point carries `direction` NATIVELY and NO `system` (D252/D106 — the store declares it and `dataOrigins` serves it). The channel is the SPAN stream and not notes: the notes stream has no production emitter and `NoteFieldWire`'s closed kinds cannot carry a direction, so `assertNoteWithinRunScope` is not on this path. The queue projection ignores the arm BY NAME, so a stream carrying it cannot degrade `ingestFromDisk` (D218). D184's orphan-classification rule re-baselines on the BUILD MANIFEST's task set rather than the descriptor-reachable one, because the emission fires for whatever a composed descriptor names. Thirteen `recordData` sites stay unclassified BY NAME (four write-sequencer probe roles, four verify roles, four descriptor-less data-service tasks, and one descriptor-less OCR task) — listed in ref operator-trust §2.3.9, never guessed. Commits `ef090ea4` `68954117` `4d074886` `aabd46f4`. | ref dashboard-surfaces §1.1 (the arm) · ref operator-trust §2.3.9 (the declaration) · doc 03a §Observed logs — the log carries what the page said |
+| **D270** | **EVERY RECORDED DATA POINT IS EMITTED ON THE SPAN AT RECORD TIME, REDACTED BY THE DECLARED CLASSIFICATION — AN UNDECLARED LEAF FAILS LOUD.** The D115 collector's points validated a task's output and were then DISCARDED, so the log beside them carried prose about a step rather than the step's evidence. A twelfth span arm, `data.observed`, lands in BOTH halves of the parity pair (`src/core/span-emitter.ts` and the wire leaf `src/events/types.ts`) carrying `{nodeId, taskId, observedAt, points}` on the producing task's own span path — one event per `ctx.recordData` CALL, because a batch is one observation of the page, so the collector reads the clock ONCE per call and `observedAt` is that single instant. RECORD time and not finalization is load-bearing: a task that throws after reading the page has still read the page. Each point's value is split by the provenance collector's own leaf rule and pushed through `redactEvidenceLeaf` — the SAME declared table the D82 receipt uses, never a second implementation — so an UNDECLARED leaf fails the recording task by name, fixtures included (the executor's fixture contracts borrow a manifest-known id because `resolveTaskImplFingerprint` refuses any other, and their paths are declared rather than exempted; Plan 1 form fixtures use the explicitly classified `fictional` namespace, absent from active schemas, with identifiers masked and free-text comments dropped; a bypass would mean the refusal is never exercised by a composed run). The point carries `direction` NATIVELY and NO `system` (D252/D106 — the store declares it and `dataOrigins` serves it). The channel is the SPAN stream and not notes: the notes stream has no production emitter and `NoteFieldWire`'s closed kinds cannot carry a direction, so `assertNoteWithinRunScope` is not on this path. The queue projection ignores the arm BY NAME, so a stream carrying it cannot degrade `ingestFromDisk` (D218). D184's orphan-classification rule re-baselines on the BUILD MANIFEST's task set rather than the descriptor-reachable one, because the emission fires for whatever a composed descriptor names. Thirteen `recordData` sites stay unclassified BY NAME (four write-sequencer probe roles, four verify roles, four descriptor-less data-service tasks, and one descriptor-less OCR task) — listed in ref operator-trust §2.3.9, never guessed. Commits `ef090ea4` `68954117` `4d074886` `aabd46f4`. | ref dashboard-surfaces §1.1 (the arm) · ref operator-trust §2.3.9 (the declaration) · doc 03a §Observed logs — the log carries what the page said |
 
 ## Reconciliation round 95 (2026-08-26) — Phase 3a's 49 fidelity recommendations are ratified
 

@@ -4,7 +4,7 @@
   "theme": "graphite-warm",
   "adapter": "fixture",
   "fixtureId": "run-open-gate",
-  "descriptorHash": "a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2",
+  "descriptorHash": "3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405",
   "appVersion": "0.1.0",
   "capturedAt": "2026-08-03",
   "variant": "gate-refused"

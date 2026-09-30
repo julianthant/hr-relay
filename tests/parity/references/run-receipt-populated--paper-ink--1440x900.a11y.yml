@@ -1,7 +1,7 @@
 # run-receipt-populated--paper-ink--1440x900
 # adapter: seeded
 # fixture: seeded-done-run
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 3f01d7b694c62026589ece077fbced67f7ca4e0852858a6324a2b5009be0e405
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -122,44 +122,20 @@
     - text: 10:00 AM 0s working
   - region "Run detail":
     - text: Battistessa, Johnnie
+    - button "Rerun"
     - button "What kind of panel this is — Run Panel"
     - text: pl-090303-0003
     - img "Done"
     - text: verified-done · 10:00 AM
     - tablist "Run detail sections":
-      - tab "Logs"
-      - tab "Receipt" [selected]
-    - text: Done confidence unknown — nothing was read back receipt 26d4aa68-ab6e-5cc3-affa-338722744ebegenerated 10:00 AMattempt 1run 00000000-0003-4000-8000-000000000003completed 10:00 AM
-    - region "Input":
-      - text: Input emplId 10873698 includeCrmDates false keepNonHdh false input hash 2e2bc2cd
-      - button "Show full input hash 2e2bc2cd"
-    - region "Observations": Observations hdh unresolved — node "active-status" stored no provenance row for output field "hdh", so the instant this value was observed is not recoverable from authority reason unresolved — node "active-status" stored no provenance row for output field "reason", so the instant this value was observed is not recoverable from authority state activederived · from 2 entries
-    - region "Decisions": "Decisions branch — not-taken node \"crm-dates\" did not run: its declared `when` condition was false for this run's input"
-    - region "Actions": Actions workflow:person-lookup/read-active-status local-projection This run wrote nothing — no write was attempted.10:00 AM
-    - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
-    - region "Output": Output hdh truederived · from 2 entries reason UCPath reports an active HDH appointment and CRM onboarding is completederived · from 2 entries state activederived · from 2 entries state not-requestedderived · from 2 entries
-    - text: result partial trace pl-090303-0003 descriptor e3e92a1d config bbbbbbbb
+      - tab "Logs" [selected]
+    - group: Attempts
+    - text: No log lines yet Lines appear here as the run works. Nothing has been recorded for this run.
     - region "Run captures": Captures No captures this composition wires no diagnostic capture authority
-  - complementary "Run data":
-    - text: Run data
-    - button "Hide run data"
-    - region "Extracted fields":
-      - text: Extracted fields
-      - button "About run data"
-      - button "Widen the data surface"
-      - text: Invited on
-      - paragraph: Not recorded for this run
-      - text: No exact-run checkpoint · crm-dates / invitedOn.value Starts on
-      - paragraph: Not recorded for this run
-      - text: No exact-run checkpoint · crm-dates / startsOn.value Completed on
-      - paragraph: Not recorded for this run
-      - text: No exact-run checkpoint · crm-dates / completedOn.value
-      - button "Rerun"
-    - separator
-    - region "Attempts":
-      - text: Attempts
-      - link "Attempt 1":
-        - /url: "?day=2026-08-03&run=00000000-0003-4000-8000-000000000003"
+    - searchbox "Search logs"
+    - text: e8b45651
+    - button "Run provenance"
+    - text: idle
 - region "Session Panel":
   - button "Sessions 0 running 0 starting 0 idle"
   - button "Add workers"

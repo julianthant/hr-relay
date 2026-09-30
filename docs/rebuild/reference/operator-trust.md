@@ -497,6 +497,36 @@ projections — all three land below in D140–D143, which is where the `evidenc
 
 ### 2.1 Durable `FailureRecord`
 
+**D360 — Concise operator presentation (approved R1/F2 and expanded cases, 2026-09-30).**
+Logs use R1 evidence comparisons for identity/resolve and F2 write-outcome-first failure/recovery.
+The primary failure block exposes the six distinct write states, expected/observed display-safe
+identity, and next steps from the served remediation family. An uncertain or in-flight submission
+always says not to retry; committed and verified writes say not to submit again. Transience is not
+retry permission. Controls still come from current server descriptors.
+
+`FailureDetailWire.display` is an additive concise classification projected by the BFF from an
+exact error code. It does not parse raw messages or change the durable record. Unclassified codes
+use a neutral problem heading and direct the operator to the recorded error. Old wires use the same pure classification. The complete safe
+summary, code, cause chain, trace IDs, remediation messages, follow-up controls and advisory
+availability remain in Details; Archive keeps its existing detailed view. Inline failure captures
+join the exact validated diagnostic bundle, never a nearby timestamp. They appear once in the failure
+block; unrelated and non-image artifacts keep their existing capture gallery.
+
+Identity comparisons preserve disagreement order, exact names and employee IDs. Employment and
+name-search rows use their typed packet facts for concise display; original comparisons and notes
+remain accessible. All candidates remain visible, and the confirmation dialog exposes the complete
+bound write plan. Typed EID membership, deliberate candidate choice, required rejection reason,
+authority-change refusal and transport uncertainty keep their existing semantics. Employment
+observations do not introduce a job-selection command or new approval.
+
+Write recovery starts with one verification entry and an unselected choice among the served
+present/absent commands. The choice opens the existing bound proof ceremony and sends no command.
+All required proof fields and schema/generation/subject bindings remain intact. Forms group fields,
+use full-width comment textareas, and keep fixed values and constraints accessible. Date-specific
+confirmation remains unavailable until its owning workflow serves a supported packet; visual approval
+does not create a new transaction capability.
+
+
 <!-- roadmap: p1-kernel -->
 
 <!-- roadmap-status: p1-kernel -->
@@ -620,6 +650,17 @@ snapshot, the kernel captures one bounded bundle:
 - descriptor/task/config/build fingerprints, resolved prod/test instance;
 - worker, lease, claim generation, clock health, disk/DB health;
 - checkpoint ids/freshness/provenance summaries and prior retry lineage.
+
+Plan 1 may optionally attach an exact frozen action identity to a diagnostic bundle. The existing
+capture service admits it before writing artifacts; the repository independently rereads the
+run-scoped retained Notes through RuntimeAdmission's state root. Admission compares the complete
+identity, including attempt, claim, occurrence path, physical session and confirmation. It consumes
+at most 128 bounded slices of 200 lines and 256 KiB each; missing evidence or an exceeded bound
+refuses by name. It never drains buffered Notes, changes a write window, guesses an occurrence or
+downgrades an invalid anchor to an unbound capture. The optional identity participates in the bundle
+content digest; absent identities retain the existing digest grammar. The five trigger policies and
+unbound capture API remain unchanged. Logs may inline an image only at its exact served occurrence;
+unbound and unloaded captures retain the existing verified gallery.
 
 Bundles are content-addressed and indexed by `DiagnosticBundleId`. Retention is explicit: an
 ordinary bundle's `purgeAfter` is its own capture instant plus **30 days**
@@ -1196,6 +1237,11 @@ their six test-local paths are DECLARED rather than exempted. A fixture bypass w
 refusal is never exercised by a composed run, and the executor's fixtures are the only composed runs
 the unit lane has. The two person identifiers there carry the same `last4` as everywhere else, so a
 fixture cannot become the surface that proves a raw identifier reaches a stream.
+
+Plan 1 form fixtures borrow existing manifest ids and wrap their additional task output in
+`fictional`, a namespace absent from active output schemas. Those leaves have explicit declarations;
+the employee uses `last4`, and both free-text comments use `drop`. Action values remain governed by
+the separate sealed operation-slot policy. The fixture namespace adds no active workflow capability.
 
 The write-sequencer corpus injects its fixed implementation fingerprint instead. Its five sealed
 task contracts export their exact ids as `WRITE_FIXTURE_TASK_IDS`; the orphan-classification guard

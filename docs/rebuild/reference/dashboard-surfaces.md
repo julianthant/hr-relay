@@ -1,5 +1,23 @@
 # Dashboard surfaces — the span model, the ONE projection, the command protocol, and the operator surfaces
 
+## Plan 1 operator amendment — 2026-09-29
+
+The approved shared Explorer/Logs rendering replaces the Run data rail and Receipt tab in the
+Dashboard run panel. Saved receipt selections fall back to Logs. Served data-placement controls
+remain available in the run header; internal recorded values, canonical receipt proof and transaction
+verification authority remain unchanged. This retirement overrides the older rail/tab layout below.
+Logs tables use distinct opaque surfaces and always-open forms. Computation groups contain rows
+only. Successful action rows require D359 expected-effect evidence; old gesture notes remain neutral.
+Gate and failure blocks use the same neutral form frame, with matching opaque header/body colors.
+The approved R1/F2 layouts and concise evidence rules are owned by operator-trust §2.1 (D360). Identity evidence is available inline,
+while approval still uses the served ceremony. Failure effect and safe-action evidence remain first;
+served expected/observed subject comparisons remain visible before optional diagnostic detail.
+Explorer session chips show task-implementation session needs as declarations, never login success.
+Verification details stay in a secondary disclosure; exact source jumps open it when needed.
+An operator gate without a supported resolution packet remains held and names that unavailable
+ceremony. The shared renderer does not invent a generic approve command or decision payload.
+
+
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that
 feeds it: the span/notes event model (§1), the storage and transport split between authority and
 projection (§2), the descriptor fields this layer consumes (§3), the completion contract (§4), the
