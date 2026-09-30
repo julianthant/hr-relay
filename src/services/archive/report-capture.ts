@@ -24,6 +24,7 @@ export function genericArchiveSection(title: string, value: JsonValue): Section 
 
 /** Source bytes and their digest stay private; display data is projected before sealing. */
 export function captureArchiveReport(input: Readonly<{
+  manualArchive?: ArchiveReport["content"]["manualArchive"];
   versionChange?: ArchiveReport["content"]["versionChange"];
   adoptedRuntimeVersion?: z.input<typeof RunRuntimeVersionStampSchema>;
   snapshot: LifecycleSourceSnapshot; transferId: string; capturedAt: string;
@@ -161,7 +162,7 @@ export function captureArchiveReport(input: Readonly<{
     title: z.string().parse(scrub(run.displayName ?? run.envelope.workflow)), descriptorVersion: String(run.envelope.descriptorVersion),
     outcome: run.lifecycle.outcome, completedAt: run.lifecycle.endedAt, capturedAt: input.capturedAt,
     sourceDigest: lifecycleSourceDigest(snapshot), sources: [{ kind: "authority-snapshot", json, digest: sha256Hex(json) }],
-    sections, files, ...(input.versionChange === undefined ? {} : { versionChange: input.versionChange }),
+    sections, files, ...(input.manualArchive === undefined ? {} : { manualArchive: input.manualArchive }), ...(input.versionChange === undefined ? {} : { versionChange: input.versionChange }),
     ...(runtimeVersion === undefined ? {} : { runtimeVersion: { state: run.runtimeVersion === undefined ? "adopted" : "stamped", ...RunRuntimeVersionStampSchema.parse(runtimeVersion) } }),
   });
 }

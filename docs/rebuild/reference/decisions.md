@@ -2745,3 +2745,10 @@ and [bounded ownership amendment](../plans/phase-3/3.1-finish-the-dashboard/task
 admit the necessary contracts, SQLite indexes/additive migrations, publication/rebuild and storage
 compatibility, wiring and proof in this assignment. A20/A21 and the Phase 3.1 focused-gate cadence
 remain unchanged. Requirements are approved; product implementation remains unstarted.
+
+### 2026-09-29 — Manual terminal Archive and compact run menu
+
+Operator-directed amendment: terminal Queue roots and complete terminal delegated groups can be
+archived manually through the C0 saved-report transfer; permanent deletion remains a separately
+confirmed menu command. Root revision, tree membership, interrupted adoption/publication and retained
+write-protection requirements belong to [dashboard-surfaces](dashboard-surfaces.md#manual-terminal-archive-amendment-2026-09-29).

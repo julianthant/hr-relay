@@ -15,6 +15,7 @@ import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../src/
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createRunLifecycleStorage } from "../../../src/infra/sqlite/lifecycle-storage.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
@@ -202,12 +203,12 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     activity:composeActivity({database,clock,descriptors,ledger:createTransactionHistory(database.authority)}),
     ...selectionServices,
     runDetail: runDetailDeps,
-    archive: archiveQueryDeps({
+    archive: { ...archiveQueryDeps({
       database,
       clock,
       appVersion: SEEDED_APP_VERSION,
       descriptors: [personLookupDescriptor],
-    }),
+    }), storage: createRunLifecycleStorage(database) },
     commands,
     startPlans,
     hub,

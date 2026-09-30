@@ -3418,6 +3418,43 @@ export class AuthorityDatabase implements Disposable {
     } finally { closeSync(fd); }
   }
 
+  recoverManualArchivePublications(): void {
+    if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) return;
+    const reports = this.withAuthorityReadSnapshot(() => {
+      const pending = this.lifecycleArchive(true).pendingManualReports();
+      return pending.filter(report => {
+        if (this.authority.runs.get(report.content.runId) !== undefined) return false;
+        if (this.authority.deletedRuns.get(report.content.runId) !== undefined) return false;
+        const claim = report.content.manualArchive;
+        if (claim === undefined || this.transferredRun(report.content.runId)?.reportDigest !== report.digest) throw new Error("manual-archive-recovery-transfer-missing");
+        const audits = this.#database.prepare("SELECT record_json FROM command_audits WHERE json_extract(record_json,'$.request.type')='archive' AND json_extract(record_json,'$.request.target.runId')=?").all(claim.rootRunId)
+          .map(raw => CommandAuditRecordSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json)));
+        const admitted = audits.some(audit => {
+          const request = audit.request;
+          return request.type === "archive" && audit.result.state === "applied"
+            && request.requestedBy === claim.actorId
+            && request.target.expectedVersion === claim.members.find(member => member.runId === claim.rootRunId)?.version
+            && canonicalJsonStringify(audit.result.affectedTargets.filter(target => target.family === "run").map(target => target.runId).sort()) === canonicalJsonStringify(claim.members.map(member => member.runId).sort())
+            && claim.members.every(member => {
+              const transfer = this.transferredRun(member.runId);
+              return transfer !== undefined && transfer.run.version === member.version
+                && this.lifecycleArchive(true).verifiedReport(member.runId, transfer.reportDigest).content.manualArchive?.commandId === claim.commandId;
+            });
+        });
+        if (!admitted) throw new Error("manual-archive-recovery-audit-missing");
+        return true;
+      });
+    });
+    for (const report of reports) this.publishTransferredReport(report.content.runId, report.digest);
+  }
+
+  readManualArchiveReport(runId: string) {
+    if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) return undefined;
+    const report = this.lifecycleArchive(true).read(runId);
+    if (report?.content.manualArchive === undefined) return undefined;
+    return this.readPendingArchiveReport(runId, report.content.transferId)?.report;
+  }
+
   readPendingArchiveReport(runId:string,transferId:string) {
     if(this.authority.deletedRuns.get(runId)!==undefined)throw new Error("archive-report-deleted");
     if (!existsSync(join(dirname(this.#path), "archive.sqlite"))) {
@@ -3433,6 +3470,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   archiveWorkflows() {
+    this.recoverManualArchivePublications();
     return this.withAuthorityReadSnapshot(()=>{
       if(!existsSync(join(dirname(this.#path),"archive.sqlite"))){
         if(this.#database.prepare("SELECT record_key FROM archive_transfers LIMIT 1").get()!==undefined)throw new Error("archive-database-missing");
@@ -4768,6 +4806,24 @@ export class AuthorityDatabase implements Disposable {
         // Frozen captures supply the baseline; admitted older claims may already
         // have a verified saved report. Uncaptured historical claims retain the
         // exact-source proof requirement when resumed.
+        if (existsSync(join(dirname(this.#path), "archive.sqlite"))) {
+          for (const report of this.lifecycleArchive(true).pendingManualReports()) {
+            const claim = report.content.manualArchive;
+            if (claim === undefined) throw new Error("manual-archive-claim-missing");
+            const live = this.authority.runs.get(report.content.runId);
+            if (live === undefined) {
+              if (this.transferredRun(report.content.runId)?.reportDigest !== report.digest) throw new Error("manual-archive-source-applying");
+              continue;
+            }
+            const source = report.content.sources.find(source => source.kind === "authority-snapshot");
+            if (source === undefined) throw new Error("archive-source-snapshot-missing");
+            const frozen = LifecycleSourceSnapshotSchema.parse(JSON.parse(source.json));
+            if (lifecycleOwnedSourceDigest(this.captureLifecycleSource(report.content.runId)) !== lifecycleOwnedSourceDigest(frozen)
+              || this.authority.runs.listChildren(report.content.runId).some(child => !claim.members.some(member => member.runId === child.envelope.runId))) {
+              throw new Error("manual-archive-source-applying");
+            }
+          }
+        }
         const applying = this.#database.prepare("SELECT record_json FROM version_changes WHERE json_extract(record_json,'$.state')='applying'").all();
         for (const raw of applying) {
           const change = VersionChangeSchema.parse(JSON.parse(JsonRowSchema.parse(raw).record_json));
