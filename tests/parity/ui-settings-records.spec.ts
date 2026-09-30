@@ -284,7 +284,7 @@ for (const theme of PARITY_THEMES) {
       resource: { state: "available", downloadUrl },
     } }));
     await page.route("**/api/v1/archive/versions", route => route.fulfill({ json: RECORDS_SAVED_VERSIONS }));
-    await page.route("**/api/v1/archive/groups?*", route => {
+    await page.route(/\/api\/v1\/archive\/groups(?:\?.*)?$/u, route => {
       const from = new URL(route.request().url()).searchParams.get("from");
       const groups = from !== null && H_REPORT.completedAt < from ? [] : [{ dashboardVersion: null,
         workflow: H_REPORT.workflow, workflowVersion: null, reportCount: 2, latestCompletedAt: H_REPORT.completedAt }];
@@ -298,13 +298,17 @@ for (const theme of PARITY_THEMES) {
       await page.setViewportSize({ width: viewport.width, height: viewport.height });
       await gotoAppState(page, servers.server.baseUrl, { day: FIXTURE_DAY, archive: H_REPORT.runId });
       await assertThemeApplied(page, theme);
-      await expect(page.getByRole("main").getByText("Archive", { exact: true })).toBeVisible();
-      const selectedButton = page.getByRole("button", { name: new RegExp(H_REPORT.title, "u") });
+      await expect(page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: "Archive", exact: true })).toBeVisible();
+      const selectedButton = page.getByRole("heading", { name: H_REPORT.title, exact: true, level: 1 });
       await expect(selectedButton).toBeVisible();
       const report = page.getByRole("article", { name: "Saved archive report" });
-      await expect(report).toContainText(H_REPORT.workflow);
-      await expect(report.getByText("Saved record · read-only", { exact: true })).toBeVisible();
-      await expect(page.getByRole("link", { name: H_REPORT.files[0]?.name ?? "Retained attachment" })).toBeVisible();
+      await expect(page.getByRole("main")).toContainText(H_REPORT.workflow);
+      for (const metadata of ["Dashboard version", "Workflow version", "Archived", "Outcome", "Retained files"]) await expect(report).toContainText(metadata);
+      await expect(report.getByRole("table", { name: "Retained work" })).toContainText("Captured approval");
+      await expect(report).toContainText("These bytes were not retained.");
+      await report.getByRole("button", { name: "Retained files", exact: true }).click();
+      await expect(page.getByRole("link", { name: `Download ${H_REPORT.files[0]?.name ?? "Retained attachment"}`, exact: true })).toBeVisible();
+      await report.getByRole("button", { name: "Workflow details", exact: true }).click();
       let stem = `ui-settings-records-records-matrix/${viewport.name}/archive-${theme.name}`;
       let screenshot = info.outputPath(`${stem}.png`);
       mkdirSync(dirname(screenshot), { recursive: true });
@@ -314,17 +318,13 @@ for (const theme of PARITY_THEMES) {
       writeFileSync(info.outputPath(`${stem}.a11y.yml`), finalTree);
 
       if (viewport.name === "1440x900") {
-        await page.getByRole("button", { name: /Date Any/u }).click();
-        const dateFilters = page.getByRole("dialog", { name: "Completed date filters" });
-        const completedFrom = dateFilters.getByRole("group", { name: "Completed from (UTC)" });
-        await completedFrom.locator('[data-type="month"]').fill("08");
-        await completedFrom.locator('[data-type="day"]').fill("01");
-        await completedFrom.locator('[data-type="year"]').fill("2026");
-        await expect(page.getByRole("button", { name: /Date Set/u })).toBeVisible();
-        await page.keyboard.press("Escape");
-        await expect(dateFilters).toHaveCount(0);
-        await page.getByRole("button", { name: "Clear filters", exact: true }).click();
-        await page.getByRole("button", { name: new RegExp(H_REPORT.title, "u") }).click();
+        await page.getByRole("navigation", { name: "Archive path" }).getByRole("button", { name: H_REPORT.workflow, exact: true }).click();
+        const from = page.getByLabel("Completed from", { exact: true });
+        await from.fill("2026-08-01");
+        await expect(from).toHaveValue("2026-08-01");
+        await page.getByRole("button", { name: /Clear filters/u }).click();
+        await expect(from).toHaveValue("");
+        await page.getByRole("button", { name: H_REPORT.title, exact: true }).click();
         await expect(page.getByRole("article", { name: "Saved archive report" })).toBeVisible();
       }
 
@@ -332,13 +332,13 @@ for (const theme of PARITY_THEMES) {
         const trigger = page.getByRole("button", { name: "Delete saved report", exact: true });
         await trigger.focus();
         await trigger.click();
-        const dialog = page.getByRole("dialog", { name: `Delete ${H_REPORT.title}?` });
+        const dialog = page.getByRole("dialog", { name: "Delete saved report?" });
         await expect(dialog).toBeVisible();
         await expect(dialog).toHaveCSS("opacity", "1");
         await expect(dialog).toContainText(H_REPORT.title);
-        await expect(dialog).toContainText("transaction evidence");
-        await expect(dialog).toContainText("permanent idempotency keys");
-        await expect(dialog).toContainText("submit the same write again");
+        await expect(dialog).toContainText("permanently deletes this report and files used only by it");
+        await expect(dialog).toContainText("This cannot be undone.");
+        await expect(dialog).toContainText("A later run may submit the same work again.");
         const dialogStem = `ui-settings-records-records-matrix/${viewport.name}/archive-delete-${theme.name}`;
         const dialogScreenshot = info.outputPath(`${dialogStem}.png`);
         mkdirSync(dirname(dialogScreenshot), { recursive: true });
@@ -357,11 +357,13 @@ for (const theme of PARITY_THEMES) {
 
       if (viewport.name === "1440x900") {
         await page.getByRole("button", { name: "Plan a bump", exact: true }).first().click();
-        const versions = page.getByRole("region", { name: "Plan a version bump" });
+        const versions = page.getByRole("dialog", { name: "Plan a version bump" });
         await expect(versions).toBeVisible();
-        await expect(versions.getByRole("heading", { name: "What is changing?", exact: true })).toBeVisible();
-        await versions.getByRole("button", { name: /Dashboard version Advance every workflow/u }).click();
-        await expect(versions).toContainText("Dashboard and every workflow advance to 2.0.");
+        await expect(versions).toContainText(`Archived workflow ${H_REPORT.workflow} is no longer registered.`);
+        await versions.getByRole("button", { name: "Choose a registered workflow", exact: true }).click();
+        await versions.getByRole("radio", { name: "All workflows", exact: true }).check();
+        await expect(versions).toContainText("Dashboard 1.0 → 2.0");
+        await expect(versions).toContainText("All workflow versions advance together");
         const versionStem = `ui-settings-records-records-matrix/${viewport.name}/archive-versions-${theme.name}`;
         const versionScreenshot = info.outputPath(`${versionStem}.png`);
         mkdirSync(dirname(versionScreenshot), { recursive: true });
@@ -369,14 +371,14 @@ for (const theme of PARITY_THEMES) {
         await info.attach(`records-archive-versions-${viewport.name}-${theme.name}`, { path: versionScreenshot, contentType: "image/png" });
         const versionTree = await page.locator("body").ariaSnapshot();
         writeFileSync(info.outputPath(`${versionStem}.a11y.yml`), versionTree);
-        await versions.getByRole("button", { name: "Review affected runs" }).scrollIntoViewIfNeeded();
+        await versions.getByRole("button", { name: "Review change" }).scrollIntoViewIfNeeded();
         const activeVersionStem = `ui-settings-records-records-matrix/${viewport.name}/archive-versions-active-${theme.name}`;
         const activeVersionScreenshot = info.outputPath(`${activeVersionStem}.png`);
         mkdirSync(dirname(activeVersionScreenshot), { recursive: true });
         await page.screenshot({ path: activeVersionScreenshot });
         await info.attach(`records-archive-versions-active-${viewport.name}-${theme.name}`, { path: activeVersionScreenshot, contentType: "image/png" });
-        await page.getByRole("button", { name: "Version archives", exact: true }).first().click();
-        await expect(page.getByRole("region", { name: "Plan a version bump" })).toHaveCount(0);
+        await versions.getByRole("button", { name: "Cancel", exact: true }).click();
+        await expect(versions).toHaveCount(0);
         await expect(page.getByRole("article", { name: "Saved archive report" })).toBeVisible();
       }
 
@@ -387,11 +389,13 @@ for (const theme of PARITY_THEMES) {
       await assertThemeApplied(page, theme);
       const activity = page.getByRole("region", { name: "Activity report" });
       await expect(activity).toBeVisible();
-      await expect(activity.getByRole("heading", { name: "Activity results", exact: true })).toBeVisible();
+      await expect(activity.getByRole("heading", { name: "Activity", exact: true, level: 1 })).toBeVisible();
+      await expect(activity.getByRole("table", { name: "Activity by workflow, grouped by category" })).toBeVisible();
       await expect(activity.getByRole("button", { name: /^Select report dates:/u })).toHaveCount(1);
-      await expect(activity.getByRole("group", { name: "Export activity report" })).toBeVisible();
+      await activity.getByRole("button", { name: "Export report", exact: true }).click();
       await expect(page.getByRole("button", { name: /Export CSV/u })).toBeVisible();
-      await expect(page.getByRole("button", { name: /XLSX/u })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Export XLSX", exact: true })).toBeVisible();
+      await page.keyboard.press("Escape");
       stem = `ui-settings-records-records-matrix/${viewport.name}/activity-${theme.name}`;
       screenshot = info.outputPath(`${stem}.png`);
       mkdirSync(dirname(screenshot), { recursive: true });

@@ -185,26 +185,21 @@ describe("Saved Archive records presentation", () => {
     }), "Completed from 2026-08-01, Captured through 2026-08-31");
   });
 
-  it("shows the selected report facts and keeps its raw identity in a closed disclosure", async () => {
+  it("shows the selected report metadata and frozen facts through the current section navigation", async () => {
     const archive = await mountArchive();
     const article = document.querySelector('article[aria-label="Saved archive report"]');
     assert.ok(article instanceof HTMLElement);
-    assert.match(article.textContent ?? "", /Synthetic retained report/u);
-    assert.match(article.textContent ?? "", /removed-workflow/u);
-    assert.match(article.textContent ?? "", /Outcome/u);
-    assert.match(article.textContent ?? "", /Superseded/u);
-    assert.match(article.textContent ?? "", /Saved record · read-only/u);
+    assert.match(archive.text(), /Synthetic retained report/u);
+    assert.match(archive.text(), /removed-workflow/u);
+    for (const label of ["Dashboard version", "Workflow version", "Archived", "Outcome", "Superseded", "Retained files"]) assert.ok(article.textContent?.includes(label), label);
     assert.ok(article.querySelector("dl"), "structured report values remain a definition list");
     assert.ok(article.querySelector('table[aria-label="Retained work"]'));
-    const identity = article.querySelector('[data-slot="collapsible"]');
-    assert.ok(identity instanceof HTMLElement);
-    assert.equal(identity.getAttribute("data-state"), "closed");
-    assert.equal(identity.querySelector("button")?.getAttribute("aria-expanded"), "false");
-    await archive.click("Report identity");
-    assert.equal(identity.getAttribute("data-state"), "open");
-    assert.equal(identity.querySelectorAll("p").length, 1, "the raw run id stays the only value inside its disclosure");
-    assert.equal(document.querySelector(`tr[aria-selected="true"] button[aria-pressed="true"]`)?.textContent?.trim(), REPORT.title);
-    assert.ok(article.querySelector('a[download="archive-00000000-0000-4000-8000-000000000081.json"]'));
+    assert.match(article.textContent ?? "", /Captured approval/u);
+    assert.match(article.textContent ?? "", /These bytes were not retained/u);
+    const sections = article.querySelector('nav[aria-label="Run sections"]');
+    assert.ok(sections instanceof HTMLElement);
+    assert.equal(sections.querySelector('[aria-current="page"]')?.getAttribute("aria-label"), "Workflow details");
+    assert.equal(document.querySelector('tr[aria-selected="true"] button[aria-pressed="true"]')?.textContent?.trim(), REPORT.title);
     await archive.unmount();
   });
 
@@ -216,11 +211,11 @@ describe("Saved Archive records presentation", () => {
     await archive.click("Delete saved report");
     const dialog = document.querySelector('[role="dialog"]');
     assert.ok(dialog instanceof HTMLElement);
-    assert.match(dialog.textContent ?? "", /Delete Synthetic retained report\?/u);
-    assert.match(dialog.textContent ?? "", /removed-workflow/u);
-    assert.match(dialog.textContent ?? "", /transaction evidence/u);
-    assert.match(dialog.textContent ?? "", /permanent idempotency keys/u);
-    assert.match(dialog.textContent ?? "", /submit the same write again/u);
+    assert.match(dialog.textContent ?? "", /Delete saved report\?/u);
+    assert.match(dialog.textContent ?? "", /Synthetic retained report/u);
+    assert.match(dialog.textContent ?? "", /permanently deletes this report and files used only by it/u);
+    assert.match(dialog.textContent ?? "", /This cannot be undone/u);
+    assert.match(dialog.textContent ?? "", /A later run may submit the same work again/u);
     assert.equal(archive.commands.length, 0, "opening confirmation must not issue the command");
     await archive.click("Cancel");
     await settleFocusReturn();
@@ -278,18 +273,21 @@ describe("Saved Archive records presentation", () => {
 
   it("distinguishes missing, failed, and identity-mismatched retained attachments", async () => {
     const missing = await mountArchive();
+    await missing.click("Retained files1");
     assert.match(document.querySelector('[aria-label="Saved archive report"]')?.textContent ?? "", /No attachment bytes were retained/u);
     await missing.unmount();
 
     const failed = await mountArchive({
       file: (runId, digest) => ({ runId, digest, resource: { state: "error", message: "Retained bytes failed verification." } }),
     });
+    await failed.click("Retained files1");
     assert.match(document.querySelector('[aria-label="Saved archive report"]')?.textContent ?? "", /Retained bytes failed verification/u);
     await failed.unmount();
 
     const mismatched = await mountArchive({
       file: (_runId, digest) => ({ runId: "00000000-0000-4000-8000-000000009999", digest, resource: { state: "missing", reason: "Wrong run" } }),
     });
+    await mismatched.click("Retained files1");
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /identity mismatch/u);
     await mismatched.unmount();
   });

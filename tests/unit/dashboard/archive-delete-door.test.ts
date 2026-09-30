@@ -279,7 +279,7 @@ describe("D308 — the archived run's delete door", () => {
     await archive.press("Delete saved report");
 
     assert.deepEqual(archive.commands, []);
-    assert.equal(archive.text().includes(`Delete ${FIXTURE_ARCHIVED_RUN.title}?`), true, "the confirm did not open");
+    assert.equal(archive.text().includes("Delete saved report?") && archive.text().includes(FIXTURE_ARCHIVED_RUN.title), true, "the confirm did not open");
     assert.equal(
       archive.text().includes("cannot be undone"),
       true,
@@ -294,7 +294,7 @@ describe("D308 — the archived run's delete door", () => {
     await archive.press("Cancel");
 
     assert.deepEqual(archive.commands, []);
-    assert.equal(archive.text().includes(`Delete ${FIXTURE_ARCHIVED_RUN.title}?`), false, "the confirm stayed open");
+    assert.equal(archive.text().includes("Delete saved report?"), false, "the confirm stayed open");
     assert.equal(archive.text().includes(FIXTURE_ARCHIVED_RUN.title), true);
   });
 
@@ -359,13 +359,13 @@ describe("D308 — the archived run's delete door", () => {
     assert.equal(text.includes(FIXTURE_ARCHIVED_RUN.title), true);
   });
 
-  it("warns, before the press, that a run which filed keeps its key only until now", async () => {
+  it("warns, before the press, that deletion is final and later work may submit again", async () => {
     const archive = await mountArchive({ detail: RUN_THAT_FILED });
 
     await archive.press("Delete saved report");
 
     const text = archive.text();
-    assert.equal(text.includes("permanent idempotency keys"), true, text);
-    assert.equal(text.includes("could submit the same write again"), true, text);
+    assert.equal(text.includes("This cannot be undone."), true, text);
+    assert.equal(text.includes("A later run may submit the same work again."), true, text);
   });
 });

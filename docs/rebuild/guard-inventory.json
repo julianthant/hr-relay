@@ -787,6 +787,14 @@
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D332.9 / 2.6.9 deletes four obsolete settings adapters, preserving supported stopped database/archive recovery. AST module/reference/API canaries and actual fresh/supported/current legacy-input non-adoption controls detect restoration or relocation. Named below-floor upgrade/offline/historical restore refusal precedes replacement and credentials; successful supported 46\u201349 recovery is the positive control. Deciding evidence: F02 retained original recovery proofs and the final-validation.md assertion map; authority-upgrade-adapters-retired, storage-upgrade family and supported restore drill. Permanent strict historical backup readers and immutable journal/settings schemas remain.",
       "replacementRequired": true
+    },
+    {
+      "name": "synthetic-database-admission-boundary",
+      "file": "tests/unit/architecture/synthetic-database-admission-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "Synthetic database fixtures use the real AuthorityDatabase, ArchiveDatabase and RuntimeAdmission through a narrow value-import closure. Neither the helper nor dashboard harness may reach test-data readers/registry or test-data/storage CLI composition. AST closure positive controls prove real database/admission reach; the broad helper and an injected value reexport prove forbidden transitive reach is detected. Deciding evidence: dashboard-launch-2026-09-29/archive-repair-narrow-import-experiment.log (12 unchanged Context rail tests), archive-repair-focused-green.log (52 tests), and archive-repair-helper-boundary.log (positive and negative controls). Proxy behavior and broad helper exports remain unchanged.",
+      "replacementRequired": true
     }
   ],
   "rebuildRatchetActivation": {
