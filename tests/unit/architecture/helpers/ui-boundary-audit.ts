@@ -70,7 +70,69 @@ function resolveLocalImport(root: string, fromPath: string, specifier: string): 
   return undefined;
 }
 
-function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly string[] {
+function declaredSymbol(checker: ts.TypeChecker, node: ts.Node, name: string, owner: string): boolean {
+  let symbol = checker.getSymbolAtLocation(node);
+  if (symbol !== undefined && (symbol.flags & ts.SymbolFlags.Alias) !== 0) symbol = checker.getAliasedSymbol(symbol);
+  return symbol?.name === name && symbol.declarations?.some(declaration =>
+    declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith(`/${owner}`)) === true;
+}
+
+function installationLocator(checker: ts.TypeChecker, node: ts.PropertyAccessExpression | ts.ElementAccessExpression | ts.BindingElement, seen = new Set<ts.Symbol>()): boolean {
+  const type = checker.getTypeAtLocation(ts.isBindingElement(node) ? node.name : node);
+  if ((type.flags & (ts.TypeFlags.Any | ts.TypeFlags.Unknown)) !== 0 || type.getCallSignatures().length > 0) return false;
+  const symbol = ts.isPropertyAccessExpression(node) ? checker.getSymbolAtLocation(node.name)
+    : ts.isBindingElement(node) ? checker.getTypeAtLocation(node.parent).getProperty("locator")
+      : checker.getTypeAtLocation(node.expression).getProperty("locator");
+  if (symbol === undefined || seen.has(symbol)) return false;
+  seen.add(symbol);
+  return symbol.declarations?.some(declaration => {
+    if (ts.isShorthandPropertyAssignment(declaration)) {
+      const value = checker.getShorthandAssignmentValueSymbol(declaration);
+      return value?.declarations?.some(binding => ts.isVariableDeclaration(binding) && binding.initializer !== undefined
+        && (ts.isPropertyAccessExpression(binding.initializer) || ts.isElementAccessExpression(binding.initializer))
+        && installationLocator(checker, binding.initializer, seen)) === true;
+    }
+    if ((!ts.isPropertySignature(declaration) && !ts.isGetAccessorDeclaration(declaration)) || declaration.type === undefined) return false;
+    return ts.isTypeReferenceNode(declaration.type) && declaredSymbol(checker, declaration.type.typeName,
+      "RuntimeLocator", "src/infra/runtime-control/installation.ts");
+  }) === true;
+}
+
+function durableArchiveCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
+  if (!ts.isPropertyAssignment(node) || !ts.isArrowFunction(node.initializer)
+    || !ts.isCallExpression(node.initializer.body)) return false;
+  const call = node.initializer.body;
+  if (!declaredSymbol(checker, call.expression, "publishManualArchive", "src/core/archive-terminal-runs.ts")) return false;
+  const object = node.parent;
+  if (!ts.isObjectLiteralExpression(object)) return false;
+  const contextual = checker.getContextualType(object);
+  if (contextual === undefined || contextual.getSymbol()?.name !== "CommandApplication"
+    || contextual.getSymbol()?.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith("/src/core/command-application.ts")) !== true) return false;
+  let enclosing: ts.Node = object;
+  while (!ts.isFunctionLike(enclosing) && enclosing.parent !== undefined) enclosing = enclosing.parent;
+  if (!ts.isFunctionDeclaration(enclosing) || enclosing.type === undefined || !ts.isTypeReferenceNode(enclosing.type)
+    || !declaredSymbol(checker, enclosing.type.typeName, "CommandApplication", "src/core/command-application.ts")) return false;
+  const inspectedTypes = new Set<ts.Type>();
+  function browserDescendant(type: ts.Type, location: ts.Node): boolean {
+    if (inspectedTypes.has(type)) return false;
+    inspectedTypes.add(type);
+    if ((type.flags & ts.TypeFlags.Any) !== 0) return true;
+    if (type.isUnionOrIntersection()) return type.types.some(member => browserDescendant(member, location));
+    if ((type.flags & ts.TypeFlags.Object) === 0 || type.getCallSignatures().length > 0) return false;
+    return type.getProperties().some(property => RAW_BROWSER_MEMBERS.has(property.name) || property.name === "click"
+      || browserDescendant(checker.getTypeOfSymbolAtLocation(property, location), location));
+  }
+  let unsafe = false;
+  function inspect(child: ts.Node): void {
+    if (ts.isExpression(child) && browserDescendant(checker.getTypeAtLocation(child), child)) unsafe = true;
+    if (ts.isPropertyAccessExpression(child) && (RAW_BROWSER_MEMBERS.has(child.name.text) || child.name.text === "click")) unsafe = true;
+    ts.forEachChild(child, inspect);
+  }
+  for (const argument of call.arguments) inspect(argument);
+  return !unsafe;
+}
+
+function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.TypeChecker): readonly string[] {
   const issues: string[] = [];
   const rawOwner = isRawBrowserOwner(path);
   function visit(node: ts.Node): void {
@@ -87,13 +149,23 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly stri
     if (!rawOwner && ts.isIdentifier(node) && RAW_BROWSER_TYPES.has(node.text)) {
       issues.push(`${path}: raw browser type ${node.text} crosses the driver/session boundary`);
     }
-    if (!rawOwner && ts.isPropertyAccessExpression(node) && RAW_BROWSER_MEMBERS.has(node.name.text)) {
+    if (!rawOwner && ts.isPropertyAccessExpression(node) && RAW_BROWSER_MEMBERS.has(node.name.text)
+      && !(node.name.text === "locator" && installationLocator(checker, node))) {
       issues.push(`${path}: raw browser member .${node.name.text} crosses the driver/session boundary`);
     }
     if (!rawOwner && ts.isElementAccessExpression(node)) {
       const member = stringLiteralValue(node.argumentExpression);
-      if (member !== undefined && RAW_BROWSER_MEMBERS.has(member)) {
+      if (member !== undefined && RAW_BROWSER_MEMBERS.has(member)
+        && !(member === "locator" && installationLocator(checker, node))) {
         issues.push(`${path}: computed raw browser member ${member} crosses the driver/session boundary`);
+      }
+    }
+    if (!rawOwner && ts.isBindingElement(node) && ts.isObjectBindingPattern(node.parent)) {
+      const name = node.propertyName ?? node.name;
+      const member = ts.isIdentifier(name) ? name.text : stringLiteralValue(name);
+      if (member !== undefined && RAW_BROWSER_MEMBERS.has(member)
+        && !(member === "locator" && installationLocator(checker, node))) {
+        issues.push(`${path}: extracted raw browser member ${member} crosses the driver/session boundary`);
       }
     }
     // Ref write-safety beat ⑤ / D111: `src/base/mutation-capability.ts` owns the ONE
@@ -113,16 +185,14 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile): readonly stri
       && ts.isIdentifier(node) && node.text === "mintMutationCapability") {
       issues.push(`${path}: mintMutationCapability has exactly one permitted caller`);
     }
-    // Phase 2: a commit implementation is legal ONLY inside a store's driver
-    // owner, and only in a file that runs the runtime token validator. Before
-    // the validator landed this was a blanket ban; the ban now names the
-    // condition it always stood for.
+    // Browser commits require a capability-validating driver owner; durable
+    // Archive callbacks require their exact command and publisher declarations.
     const commitImplementation = (ts.isMethodDeclaration(node) && node.name.getText(source) === "commit"
       && node.body !== undefined)
       || (ts.isPropertyAssignment(node) && node.name.getText(source) === "commit"
         && (ts.isArrowFunction(node.initializer) || ts.isFunctionExpression(node.initializer)))
       || (ts.isFunctionDeclaration(node) && node.name?.getText(source) === "commit" && node.body !== undefined);
-    if (commitImplementation
+    if (commitImplementation && !durableArchiveCommit(checker, node)
       && !(DRIVER_OWNER_PATTERN.test(path) && source.getFullText().includes("assertMintedMutationCapability"))) {
       issues.push(
         `${path}: a commit implementation must live in a store driver owner and validate its `
@@ -142,10 +212,37 @@ const DRIVER_OWNER_PATTERN = /^src\/stores\/[a-z0-9-]+\/driver\//u;
 export function auditTaskDriverBoundary(root: string): readonly string[] {
   const issues: string[] = [];
   const absoluteFiles = walkFiles(resolve(root, "src"), { missing: "planned-empty" });
-  const sources = new Map(absoluteFiles.map((absolute) => {
+  const parsed = new Map(absoluteFiles.map(absolute => {
     const path = relative(root, absolute).replaceAll("\\", "/");
-    const content = readFileSync(absolute, "utf8");
-    return [path, ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS)] as const;
+    return [absolute, ts.createSourceFile(absolute, readFileSync(absolute, "utf8"), ts.ScriptTarget.Latest, true,
+      path.endsWith(".tsx") ? ts.ScriptKind.TSX : ts.ScriptKind.TS)] as const;
+  }));
+  const semanticFiles = absoluteFiles.filter(absolute => {
+    const source = parsed.get(absolute);
+    let needed = false;
+    function inspect(node: ts.Node): void {
+      if (ts.isPropertyAccessExpression(node) && node.name.text === "locator"
+        || ts.isElementAccessExpression(node) && stringLiteralValue(node.argumentExpression) === "locator"
+        || ts.isPropertyAssignment(node) && node.name.getText(source) === "commit"
+        || ts.isBindingElement(node) && (node.propertyName ?? node.name).getText(source) === "locator") needed = true;
+      ts.forEachChild(node, inspect);
+    }
+    if (source !== undefined) inspect(source);
+    return needed;
+  });
+  const configPath = resolve(root, "tsconfig.json");
+  const options = existsSync(configPath)
+    ? ts.parseJsonConfigFileContent(ts.readConfigFile(configPath, path => ts.sys.readFile(path)).config, ts.sys, root).options
+    : { module: ts.ModuleKind.NodeNext, moduleResolution: ts.ModuleResolutionKind.NodeNext, jsx: ts.JsxEmit.Preserve };
+  const program = ts.createProgram(semanticFiles, options);
+  const checker = program.getTypeChecker();
+  const sources = new Map(absoluteFiles.map(absolute => {
+    const path = relative(root, absolute).replaceAll("\\", "/");
+    const source = program.getSourceFile(absolute) ?? parsed.get(absolute);
+    if (source === undefined || semanticFiles.includes(absolute) && program.getSourceFile(absolute) === undefined) {
+      throw new Error(`task-driver-boundary: source unavailable ${path}`);
+    }
+    return [path, source] as const;
   }));
   const imports = new Map([...sources].map(([path, source]) => [
     path,
@@ -155,7 +252,7 @@ export function auditTaskDriverBoundary(root: string): readonly string[] {
     }),
   ]));
 
-  for (const [path, source] of sources) issues.push(...rawBrowserAstIssues(path, source));
+  for (const [path, source] of sources) issues.push(...rawBrowserAstIssues(path, source, checker));
   for (const taskPath of [...sources.keys()].filter(isTaskOrWorkflow)) {
     const visited = new Set<string>();
     const stack = [...(imports.get(taskPath) ?? [])];

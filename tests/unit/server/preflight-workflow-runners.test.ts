@@ -179,3 +179,26 @@ describe("executable provider readiness", () => {
     assert.equal(PreflightReportWireSchema.safeParse(invalid).success, false);
   });
 });
+
+it("uses the explicit admitted executable path without bundled discovery or launch", async () => {
+  const f = fixture(["executor.run"]);
+  const path = join(f.root, "explicit-chromium"); writeFileSync(path, "synthetic executable", { mode: 0o700 });
+  f.config.features.duoWebAuthn = false;
+  const discovery = vi.spyOn(chromium, "executablePath").mockImplementation(() => { throw new Error("unexpected discovery"); });
+  const launch = vi.spyOn(chromium, "launchPersistentContext").mockImplementation(async () => { throw new Error("unexpected launch"); });
+  const runner = createWorkflowPreflightRunners({ ...f.input, browserExecutablePath: () => path }).find(value => value.check === "browser.assets");
+  assert.ok(runner);
+  const result = await executePreflightRunner(runner, new AbortController().signal, f.clock, createTimeoutDeadlineScheduler(f.clock));
+  assert.equal(result.state, "healthy"); assert.equal(discovery.mock.calls.length, 0); assert.equal(launch.mock.calls.length, 0);
+});
+
+
+it("discovers the bundled executable by default without launching Chromium", async () => {
+  const f = fixture(["executor.run"]);
+  f.config.features.duoWebAuthn = false;
+  const path = join(f.root, "bundled-chromium"); writeFileSync(path, "synthetic executable", { mode: 0o700 });
+  const discovery = vi.spyOn(chromium, "executablePath").mockReturnValue(path);
+  const launch = vi.spyOn(chromium, "launchPersistentContext").mockImplementation(async () => { throw new Error("unexpected launch"); });
+  const result = await f.observe("browser.assets");
+  assert.equal(result.state, "healthy"); assert.equal(discovery.mock.calls.length, 1); assert.equal(launch.mock.calls.length, 0);
+});
