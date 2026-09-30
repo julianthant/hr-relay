@@ -1300,13 +1300,18 @@ export class RunQueueProjection {
       });
       const measurements = category.nodes.map(({ id }) => stepMeasurement(String(id)));
       const measured = measurements.filter((entry) => entry.durationMs !== undefined);
-      const executions = Math.max(0, ...measurements.map((entry) => entry.executions ?? 0));
+      const executionCounts = measurements.flatMap((entry) => entry.executions === undefined ? [] : [entry.executions]);
+      const executions = executionCounts.length === 0 ? undefined : Math.max(...executionCounts);
+      const durationMs = measured.reduce((sum, entry) => {
+        if (entry.durationMs === undefined) throw new Error("run-pipeline: measured duration is unavailable");
+        return sum + entry.durationMs;
+      }, 0);
       return {
         id: String(category.key),
         label: category.label,
         state: foldCategoryState(states, runTerminal),
-        ...(measured.length > 0 ? { durationSec: Math.round(measured.reduce((sum, entry) => sum + (entry.durationMs ?? 0), 0) / 1000) } : {}),
-        ...(executions >= 2 ? { executions } : {}),
+        ...(measured.length > 0 ? { durationSec: Math.round(durationMs / 1000) } : {}),
+        ...(executions === undefined ? {} : { executions }),
       };
     });
   }

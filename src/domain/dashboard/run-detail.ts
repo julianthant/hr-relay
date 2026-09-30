@@ -669,7 +669,7 @@ export const ContextDataSectionSchema = z.strictObject({
   if ((payload.state === "deleted" || payload.state === "unavailable") && payload.entries.length > 0) {
     context.addIssue({ code: "custom", path: ["entries"], message: "deleted or unavailable context data cannot claim checkpoint values" });
   }
-  if (payload.state === "deleted" && (payload.observations?.length ?? 0) > 0) {
+  if (payload.state === "deleted" && payload.observations !== undefined && payload.observations.length > 0) {
     context.addIssue({ code: "custom", path: ["observations"], message: "deleted context data cannot claim retained observations" });
   }
   if (payload.state === "unavailable" && payload.reason === undefined) {
