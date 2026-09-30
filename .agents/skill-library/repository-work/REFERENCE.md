@@ -343,22 +343,16 @@ in-flight work outside Phase 3 keeps its ownership/gates/integration permissions
 includes unrelated work; an additional lane requires explicit capacity approval.
 
 For roadmap work read [roadmap §Plan, implement, review](../../../docs/roadmap/roadmap.md#plan-implement-review-operator-amendment-2026-09-04).
-`/astra-orchestrator` owns execution and replaces `/supervise`. `/plan` and `/phase-plan` remain usable
-alone or within the same root session. Planning, roadmap recording and execution are separate intent:
+Planning, roadmap recording and execution are separate intent:
 plan-only stops; explicitly requested execution continues after required approval, persisted plan and
 verified prerequisites. No fresh root is required between those stages. Existing phase admission,
 review/gate cadence, integration permission and in-flight ownership remain binding.
 
-The orchestrator uses GPT-6 Astra medium. Luna max handles short tasks with a fresh, single-use
-agent for each task; never reuse it after its result. Sol medium handles longer tasks and may work
-back and forth with the orchestrator. Workers own implementation, checks and fixes; the
-root retains consequential decisions, acceptance and authorized integration. Before dispatch, read
-`~/.agents/skill-library/parallel-agent-work/REFERENCE.md` and only the selected worker adapter;
-validate roles when that adapter requires it. User-named providers or models limit eligible routes to
-those choices and any named fallbacks. Read quota routing only after confirmed exhaustion or verified
-route unavailability with an allowed fallback. Standard variants only; no paid overages. The user
-handles root exhaustion.
-Existing admitted sessions keep their assignments; Claude Code's native roles remain unchanged.
+Use the current global workflow instructions for route, worker and model selection. Workers own
+assigned implementation, checks and fixes; the root retains consequential decisions, acceptance
+and authorized integration. Honor user-named providers, models and fallbacks. Existing admitted
+sessions keep their assignments. Use standard variants only; no paid overages. The user handles
+root exhaustion.
 
 When required, independent review runs against a stable candidate without implementation conversation.
 Fix findings, obtain required renewed review and complete assigned checks, authorized integration and

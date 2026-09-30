@@ -24,4 +24,4 @@ domain driver contract.
 Before changing login, selectors, or history interpretation, search [LESSONS.md](LESSONS.md) and
 read the matching entries; its Provenance section preserves the port sources. Use `driver/` for
 current recipes and `docs/rebuild/reference/stores.md` for the current task catalog.
-Requested lessons go in that ledger. Keep this file and `CLAUDE.md` identical; root rules apply.
+Requested lessons go in that ledger. Root rules apply.

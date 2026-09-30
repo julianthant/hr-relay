@@ -44,4 +44,4 @@ Task names, effects, and schemas are in the source and the generated store catal
 - Before repeating a known failure: search [LESSONS.md](LESSONS.md) for the seam and read the matching
   entries. Requested new lessons go there. Do not copy current task inventories or old canary state here.
 
-Keep this file and `CLAUDE.md` byte-identical. Root safety, authorization, and validation rules apply.
+Root safety, authorization, and validation rules apply.
