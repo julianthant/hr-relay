@@ -121,6 +121,7 @@ function freezeProjectionSections(
 function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
   const notes: FrozenNotePage["notes"][number][] = [];
   const rows: NonNullable<FrozenNotePage["rows"]> = [];
+  let structure: FrozenNotePage["operationStructure"];
   let cursor: string | undefined;
   /**
    * D5/L3 (audit P3): ONE immutable combined-log snapshot for the whole page walk.
@@ -140,6 +141,15 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
     if (section.section !== "logs") {
       throw new Error(`the logs section of run ${runId} came back as ${section.section}`);
     }
+    const nextStructure = section.payload.operationStructure;
+    if (nextStructure !== undefined) {
+      if (structure === undefined) structure = nextStructure;
+      else if (structure.state === "observed" && nextStructure.state === "observed"
+        && structure.definition.contentDigest === nextStructure.definition.contentDigest) {
+        structure = { ...structure, observations: [...structure.observations, ...nextStructure.observations] };
+      } else if (structure.state !== nextStructure.state
+        || (structure.state === "observed" && nextStructure.state === "observed")) throw new Error("archive-operation-structure-changed-during-freeze");
+    }
     notes.push(...section.payload.notes);
     if (section.payload.rows === undefined) {
       throw new Error(`live logs for run ${runId} omitted combined rows; this build refuses to archive a pre-L3 shape`);
@@ -148,6 +158,7 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
     if (section.payload.nextCursor.state === "absent") {
       return NotePageSchema.parse({
         runId,
+        ...(structure === undefined ? {} : { operationStructure: structure }),
         rows,
         notes,
         nextCursor: { state: "absent", reason: "end-of-page" },

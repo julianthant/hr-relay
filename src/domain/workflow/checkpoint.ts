@@ -1,3 +1,4 @@
+import { DeclaredActionIdentitySchema } from "./operation-action-identity.js";
 /**
  * The checkpoint record, its loader, and the freshness walk (ref workflow-model §5.5–§5.7).
  *
@@ -92,6 +93,7 @@ export const RunCheckpointRecordSchema = z.strictObject({
   implFingerprint: FingerprintSchema,
   provenance: z.array(FactProvenanceSchema),
   writtenAt: IsoInstantSchema,
+  operationSources: z.array(z.strictObject({ path: ContractFieldPathSchema, identity: DeclaredActionIdentitySchema })).optional(),
   /**
    * D307 — present iff this row is an OPERATOR ASSERTION, not an observation:
    * the node never ran; its step was omitted at start and the step's producer
@@ -103,6 +105,20 @@ export const RunCheckpointRecordSchema = z.strictObject({
     step: z.string().min(1),
     assertedAt: IsoInstantSchema,
   }).optional(),
+}).superRefine((record, context) => {
+  const paths = new Set<string>();
+  for (const [index, source] of (record.operationSources ?? []).entries()) {
+    const identity = source.identity;
+    if (paths.has(source.path) || identity.runId !== record.runId || identity.nodeId !== record.nodeId
+      || identity.attempt !== record.attempt || identity.claimGeneration !== record.claimGeneration
+      || identity.definitionFingerprint !== record.contractFingerprint || (identity.state !== undefined && identity.state !== "completed")) {
+      context.addIssue({ code: "custom", path: ["operationSources", index], message: "checkpoint operation source identity mismatch or duplicate path" });
+    }
+    paths.add(source.path);
+    let value: unknown = record.output.value;
+    for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
+    if (value === undefined) context.addIssue({ code: "custom", path: ["operationSources", index, "path"], message: "checkpoint operation source field unavailable" });
+  }
 });
 export type RunCheckpointRecord = z.infer<typeof RunCheckpointRecordSchema>;
 

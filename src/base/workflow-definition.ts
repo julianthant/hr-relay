@@ -1,3 +1,4 @@
+import type { JsonValue } from "../domain/canonical-json.js";
 import type { ProtectedInputBinding } from "../domain/protected-input.js";
 /**
  * D311/D315/D317 — the ONE workflow-authoring seam.
@@ -23,6 +24,7 @@ import type { ProtectedInputBinding } from "../domain/protected-input.js";
  * type, file, API or second domain concept here.
  */
 import { z } from "zod";
+import { assertFactorySealedTaskContract } from "../domain/contracts/base.js";
 import type {
   AnyCommitTaskContract,
   AnyPrepareTaskContract,
@@ -38,6 +40,7 @@ import {
   type WorkflowOperationDisplay,
   type WorkflowOperationDisplayDeclaration,
   type WorkflowOperationEntryProjection,
+  type WorkflowResultSourceBinding,
 } from "../domain/workflow/operation-display.js";
 import { BUILD_MANIFEST, resolveWorkflowFingerprint } from "../domain/workflow/build-manifest.js";
 import type { BuildManifest } from "../domain/workflow/build-manifest.js";
@@ -118,6 +121,7 @@ export interface WorkflowEntryScope<
   readonly input: z.output<InputSchema>;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: EntryOutputs<References>;
+  readonly configuration?: Readonly<Record<string, JsonValue>>;
 }
 
 /* ── entry identities — what an author (or a shared step identity value) writes ── */
@@ -288,6 +292,7 @@ export interface WorkflowResultDeclaration<
   ResultSchema extends z.ZodType = z.ZodType,
 > {
   readonly schema: ResultSchema;
+  readonly sources?: readonly WorkflowResultSourceBinding[];
   readonly references: readonly AnyWorkflowEntry[];
   readonly derive: (scope: unknown) => z.input<ResultSchema>;
   /** Type witness binding the derive scope to this definition's input. */
@@ -369,6 +374,7 @@ export interface WorkflowAuthor<InputSchema extends z.ZodType> {
     schema: ResultSchema,
     references: References,
     derive: (scope: WorkflowEntryScope<InputSchema, References>) => z.input<ResultSchema>,
+    sources?: readonly WorkflowResultSourceBinding[],
   ): WorkflowResultDeclaration<InputSchema, ResultSchema>;
 }
 
@@ -565,9 +571,11 @@ function workflowAuthor<InputSchema extends z.ZodType>(): WorkflowAuthor<InputSc
       schema: z.ZodType,
       references: readonly AnyWorkflowEntry[],
       derive: (scope: never) => unknown,
+      sources?: readonly WorkflowResultSourceBinding[],
     ) {
       return Object.freeze({
         schema,
+        ...(sources === undefined ? {} : { sources: Object.freeze([...sources]) }),
         references,
         derive: (scope: unknown) => derive(scope as never),
       });
@@ -1072,12 +1080,33 @@ function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly Wo
       });
     }
     if (entry.kind === "transaction") {
+      const reads = definition.operationDisplay?.transactionReads?.filter((read) => read.entryId === entry.id) ?? [];
+      const completion = entry.commitContract.writeSafety.completion;
+      const required = [
+        { role: "probe" as const, taskId: entry.commitContract.writeSafety.idempotency.probe.taskId },
+        ...(completion.kind === "receipt" ? [] : [{ role: "verify" as const, taskId: completion.verify.taskId }]),
+      ];
+      if (definition.operationDisplay !== undefined) {
+        for (const reference of required) {
+          const matching = reads.filter((read) => read.role === reference.role);
+          if (matching.length !== 1) throw new Error(`complete operation display requires one ${reference.role} contract for transaction ${entry.id}`);
+          const read = matching[0];
+          assertFactorySealedTaskContract(read.contract);
+          if (read.contract.effect !== "read" || read.contract.id !== reference.taskId) {
+            throw new Error(`operation display ${reference.role} contract does not match transaction ${entry.id} writeSafety`);
+          }
+        }
+        if (reads.some((read) => !required.some((reference) => read.role === reference.role))) {
+          throw new Error(`operation display declares an unavailable read role for transaction ${entry.id}`);
+        }
+      }
       return Object.freeze({
         ...base,
         kind: "transaction" as const,
         contracts: Object.freeze([
           { role: "prepare" as const, contract: entry.prepareContract },
           { role: "commit" as const, contract: entry.commitContract },
+          ...reads.map((read) => ({ role: read.role, contract: read.contract })),
         ]),
         output: entry.commitContract.output,
       });
@@ -1150,10 +1179,16 @@ export function compileWorkflow<
   void intake;
   void operationDisplayDeclaration;
   void result;
+  for (const read of definition.operationDisplay?.transactionReads ?? []) {
+    if (!flattenEntries(definition.steps).some((entry) => entry.kind === "transaction" && entry.id === read.entryId)) {
+      throw new Error(`operation display read references unavailable transaction ${read.entryId}`);
+    }
+  }
   const operationDisplay = compileWorkflowOperationDisplay({
     workflowId: String(definition.id),
     input: definition.input,
     entries: operationDisplayEntries(definition),
+    result: { schema: definition.result.schema, dependsOn: definition.result.references.map((entry) => entry.id), ...(definition.result.sources === undefined ? {} : { sources: definition.result.sources }) },
     ...(definition.operationDisplay === undefined ? {} : { declaration: definition.operationDisplay }),
   });
   const timeline = steps.map(([group, entries]) => ({

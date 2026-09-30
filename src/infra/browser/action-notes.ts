@@ -1,10 +1,15 @@
 import { AsyncLocalStorage } from "node:async_hooks";
+import type { JsonValue } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
 import type { DeclaredActionOccurrence } from "../../domain/task-provenance.js";
 
-export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "checked" | "set" | "cleared" | "pressed";
+export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "checked" | "set" | "cleared" | "pressed" | "read" | "computed" | "verified" | "branched" | "joined" | "gated" | "delegated" | "session";
 export interface BrowserAction {
   readonly kind: BrowserActionKind;
+  readonly declaredActionId?: string;
+  readonly state?: "started" | "completed" | "failed" | "not-run";
+  readonly reason?: "condition-false" | "dry-run" | "cancelled" | "callback-failed";
+  readonly declaredValue?: JsonValue;
   readonly targetId: string;
   readonly at: string;
   readonly value?: string | boolean;
@@ -25,6 +30,7 @@ interface Capture {
   readonly state: CaptureState;
   readonly physicalSessionId?: string;
   readonly bind?: BrowserActionBinder;
+  readonly executingAction?: Readonly<{ kind: BrowserActionKind; targetId: string }>;
 }
 
 const scope = new AsyncLocalStorage<Capture>();
@@ -33,6 +39,7 @@ const scope = new AsyncLocalStorage<Capture>();
 export function recordBrowserAction(kind: BrowserActionKind, targetId: string, value?: string | boolean): void {
   const capture = scope.getStore();
   if (capture?.state.active !== true) return;
+  if (capture.executingAction?.kind === kind && capture.executingAction.targetId === targetId) return;
   const action: BrowserAction = {
     kind,
     targetId,
@@ -82,4 +89,47 @@ export async function withBrowserActionNotes<T>(
       drain(capture.actions);
     }
   });
+}
+
+/** Executes the existing callback; all evidence stays buffered until settlement. */
+export async function runDeclaredAction<T>(
+  action: Readonly<{ id: string; kind: BrowserActionKind; targetId: string }>,
+  operation: () => Promise<T>,
+  consumed?: (result: T) => JsonValue,
+): Promise<T> {
+  const capture = scope.getStore();
+  if (capture?.state.active !== true || capture.bind === undefined) return await operation();
+  const record = (state: BrowserAction["state"], value?: JsonValue): void => {
+    capture.actions.push(capture.bind!({
+      kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
+      at: capture.clock.now().toISOString(), state,
+      ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
+      ...(state === "failed" ? { reason: "callback-failed" as const } : {}),
+      ...(value === undefined ? {} : { declaredValue: value }),
+    }));
+  };
+  record("started");
+  let result: T;
+  try { result = await scope.run({ ...capture, executingAction: action }, operation); }
+  catch (error) {
+    try { record("failed"); }
+    catch (recordError) { throw new AggregateError([error, recordError], "declared action and failure attribution both failed", { cause: recordError }); }
+    throw error;
+  }
+  record("completed", consumed?.(result));
+  return result;
+}
+
+/** Only an explicit control decision can establish that an action did not run. */
+export function recordDeclaredActionNotRun(
+  action: Readonly<{ id: string; kind: BrowserActionKind; targetId: string }>,
+  reason: "condition-false" | "dry-run" | "cancelled",
+): void {
+  const capture = scope.getStore();
+  if (capture?.state.active !== true || capture.bind === undefined) return;
+  capture.actions.push(capture.bind({
+    kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
+    at: capture.clock.now().toISOString(), state: "not-run", reason,
+    ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
+  }));
 }

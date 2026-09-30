@@ -1320,6 +1320,36 @@ freezes a serializable projection of a complete display in each new run envelope
 existing driver and graph execution paths and binds only completed driver gestures to that frozen
 projection. No current descriptor is a substitute for missing historical structure.
 
+
+#### 1.6.5 Exact child and derived-result sources (D358, 2026-09-29)
+
+An awaited `one/terminal/one` child may be a terminal result dependency. The existing terminal
+evidence owner admits a distinct `child-resolved` arm, supplied from the actual retained canonical
+child run and result. It retains parent run and declared edge, child run/item/workflow/attempt,
+descriptor version/fingerprint, result schema and result/dependency digests. The sealed descriptor
+factory validates the target workflow/result schema and the retained child envelope/result identity
+before the same terminal derive consumes the successful child outcome. Failed, cancelled, blocked
+or unknown children cannot supply this arm. Other cardinalities and unawaited children cannot use
+a single-child terminal-result dependency; they refuse rather than fabricate one. A child result
+is not a parent task checkpoint. Child output bindings retain the existing declared success path.
+
+The existing `result(schema, references, derive, sources?)` seam may declare direct output sources
+or a `derived` source with a nonempty, uniquely named input list. Every source names an actual
+terminal dependency and schema field. The same derive produces and validates the result once;
+derived lineage does not infer causality by comparing equal outputs. Each declared input retains
+its exact finalized action identity or the named `exact-input-occurrence-not-retained` evidence.
+Result sources and lineage have independent content digests and must belong to the exact retained
+dependency source binding already covered by the terminal dependency digest. Rehashing a foreign
+occurrence cannot make it an admitted input. Optional source fields are read forward; historical
+records are not backfilled or reconstructed.
+
+An action bound to a workflow transformation executes that declaration's existing pure derive
+against its actual declared inputs and validates the consumed output field. Its provenance names
+every declared input, retaining all exact source identities for action-produced inputs, definition
+references for non-action inputs, or named unavailable evidence for missing/ambiguous captures.
+A same-valued observation from another task is not a replacement source. Configuration inputs
+require the actual retained configuration value at execution; examples are not runtime authority.
+
 ---
 
 ## 2. Workflow-constant input + the RunEnvelope
@@ -2333,6 +2363,25 @@ Fix: re-run "ucpath-job-summary" (start there, or mark it always-rerun for this 
    input/assertions through a new start plan; no source checkpoint is inherited and the source run
    remains unchanged. A changed match key derives a new logical item. An unchanged item may retain
    retry lineage, but either path gets its own service-minted run identity only on Confirm.
+
+Retained ordinary configuration fields are resolved from the run's exact validated ConfigSnapshot
+identity and fingerprint. Configuration examples do not substitute for retained values, and protected
+settings are not admitted into this map or the frozen definition. The same pure transform can bind
+runtime text and its display attribution through this scope.
+
+The existing task provenance collector admits actual child-result dependencies and walks exact
+retained checkpoint/result references with 16-result and 256-checkpoint bounds. It preserves the
+original observed time and applies the existing derived freshness rules. SQLite terminal admission
+independently rereads each canonical child result and its dependencies before accepting the seal.
+Action lineage retains immediate child result identities and every exact input; unavailable inputs
+remain unavailable through nested transformations. Protected-derived outputs are conservatively
+redacted; missing upstream protection proof is withheld, even for a local-operator value slot.
+
+Exact source lookup authorizes canonical child membership or an exact source identity retained by
+the current owner's canonical result/dependencies, within one authority read snapshot. The latter
+supports replayed origins without admitting unrelated runs; retained references are bounded to 4096.
+The source's frozen definition, retained attempt/claim and precise observation still own admission.
+Historical archives missing operation evidence report unavailable rather than reconstructing it.
 
 #### 5.6.1 Former two operator recovery choices (D314, 2026-09-02; superseded by D334)
 

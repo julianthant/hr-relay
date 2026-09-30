@@ -111,6 +111,7 @@ const SnapshotPageSchema = z.strictObject({
 
 const SnapshotTaskValueSlotSchema = z.strictObject({
   id: OperationValueIdSchema,
+  presentation: z.enum(["local-operator", "withhold"]).optional(),
   source: z.discriminatedUnion("kind", [
     z.strictObject({ kind: z.literal("contract-input"), path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
     z.strictObject({ kind: z.literal("contract-output"), path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
@@ -178,7 +179,7 @@ const SnapshotTaskOperationSchema = z.strictObject({
 });
 type SnapshotTaskOperation = z.infer<typeof SnapshotTaskOperationSchema>;
 
-const SnapshotWorkflowValueReferenceSchema = z.discriminatedUnion("kind", [
+export const SnapshotWorkflowValueReferenceSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("run-input"), path: FieldPathSchema, availability: AvailabilitySchema.optional() }),
   z.strictObject({ kind: z.literal("configuration"), key: ConfigurationReferenceKeySchema, schemaHash: FingerprintSchema }),
   /** A static constant is bound by digest rather than copied into a durable display payload. */
@@ -239,7 +240,7 @@ const SnapshotInvocationSchema = z.strictObject({
   id: OperationIdSchema,
   entryId: NodeIdSchema,
   taskId: TaskIdSchema,
-  contractRole: z.enum(["task", "prepare", "commit"]),
+  contractRole: z.enum(["task", "probe", "prepare", "commit", "verify"]),
   occurrencePath: z.array(OperationOccurrenceSegmentSchema).min(1),
   bindings: z.array(z.strictObject({ slot: OperationValueIdSchema, value: SnapshotWorkflowValueReferenceSchema })),
   outcomes: z.array(SnapshotWorkflowOutcomeCaseSchema),
@@ -280,6 +281,7 @@ export const WorkflowOperationDisplaySnapshotSchema = z.strictObject({
   workflowId: WorkflowIdSchema,
   definitionFingerprint: FingerprintSchema,
   transforms: z.array(SnapshotWorkflowTransformSchema),
+  resultSources: z.array(z.strictObject({ path: FieldPathSchema, source: z.union([z.strictObject({ kind: z.enum(["task-output", "child-output"]), entryId: NodeIdSchema, path: FieldPathSchema }), z.strictObject({ kind: z.literal("derived"), inputs: z.array(z.strictObject({ id: OperationValueIdSchema, source: z.strictObject({ kind: z.enum(["task-output", "child-output"]), entryId: NodeIdSchema, path: FieldPathSchema }) })).min(1) })]) })).optional(),
   invocations: z.array(SnapshotInvocationSchema),
   presentation: z.array(SnapshotPresentationNodeSchema),
   execution: z.array(z.strictObject({ entryId: NodeIdSchema, dependsOn: z.array(NodeIdSchema) })),
@@ -363,7 +365,7 @@ function snapshotTaskOperation(operation: TaskOperationDeclaration): SnapshotTas
     system: operation.system,
     session: operation.session,
     ...(operation.page === undefined ? {} : { page: snapshotPage(operation.page) }),
-    values: (operation.values ?? []).map((slot) => ({ id: slot.id, source: slot.source })),
+    values: (operation.values ?? []).map((slot) => ({ id: slot.id, source: slot.source, ...(slot.presentation === undefined ? {} : { presentation: slot.presentation }) })),
     templates: (operation.templates ?? []).map(snapshotTemplate),
     transforms: (operation.transforms ?? []).map((transform) => ({
       id: transform.id,
@@ -452,6 +454,7 @@ export function freezeWorkflowOperationDisplaySnapshot(input: Readonly<{
     snapshotVersion: OPERATION_DISPLAY_SNAPSHOT_VERSION,
     workflowId,
     definitionFingerprint,
+    ...(display.resultSources === undefined ? {} : { resultSources: display.resultSources }),
     transforms: display.transforms.map((transform) => SnapshotWorkflowTransformSchema.parse({
       id: transform.id,
       inputSchemaHash: deriveSchemaHash(transform.input, "input"),

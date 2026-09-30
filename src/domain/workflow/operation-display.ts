@@ -8,6 +8,7 @@
  * graph's dependencies unchanged, so presentation order cannot become a
  * scheduler.
  */
+import type { AnyReadTaskContract } from "../contracts/base.js";
 import { z } from "zod";
 import { canonicalJsonStringify, JsonValueSchema } from "../canonical-json.js";
 import {
@@ -97,6 +98,7 @@ export interface LogicalPageReference {
 
 export interface TaskOperationValueSlot {
   readonly id: string;
+  readonly presentation?: "local-operator" | "withhold";
   readonly source: Readonly<{
     kind: "contract-input" | "contract-output";
     path: string;
@@ -340,6 +342,7 @@ export function assertTaskOperationDeclaration(
   const slots = new Map<string, TaskOperationValueSlot>();
   for (const slot of operation.values ?? []) {
     OperationValueIdSchema.parse(slot.id);
+    if (slot.presentation !== undefined && !["local-operator", "withhold"].includes(slot.presentation)) throw operationError(contract, operation, `value slot "${slot.id}" has an invalid presentation classification`);
     if (slots.has(slot.id)) throw operationError(contract, operation, `repeats value slot "${slot.id}"`);
     if (slot.source.kind !== "contract-input" && slot.source.kind !== "contract-output") {
       throw operationError(contract, operation, `value slot "${slot.id}" has an unknown source`);
@@ -376,7 +379,8 @@ export function assertTaskOperationDeclaration(
     if (actions.has(action.id)) throw operationError(contract, operation, `repeats action id "${action.id}"`);
     const page = action.page ?? inheritedPage;
     if (action.page !== undefined) validatePage(contract, operation, action.page);
-    const needsTarget = ["click", "keypress", "read-field", "fill-field", "select-field", "check-field"].includes(action.kind);
+    const needsTarget = operation.system !== "local" && ["click", "keypress", "read-field", "fill-field", "select-field", "check-field"].includes(action.kind);
+    if (operation.system === "local" && ["click", "keypress", "fill-field", "select-field", "check-field", "open-page", "resume-page"].includes(action.kind)) throw operationError(contract, operation, `local action "${action.id}" cannot declare a browser gesture`);
     const needsValue = ["keypress", "read-field", "fill-field", "select-field", "check-field"].includes(action.kind);
     if (needsTarget) {
       if (action.target === undefined) throw operationError(contract, operation, `action "${action.id}" requires a semantic target`);
@@ -524,7 +528,7 @@ export interface WorkflowOutcomeCase {
 export interface OperationInvocationDeclaration {
   readonly id: string;
   readonly entryId: string;
-  readonly contractRole: "task" | "prepare" | "commit";
+  readonly contractRole: "task" | "probe" | "prepare" | "commit" | "verify";
   readonly occurrencePath: readonly string[];
   readonly bindings?: readonly Readonly<{ slot: string; value: WorkflowValueReference }>[];
   readonly outcomes?: readonly WorkflowOutcomeCase[];
@@ -543,16 +547,23 @@ export interface WorkflowOperationPresentationNode {
   readonly children?: readonly WorkflowOperationPresentationNode[];
 }
 
+export interface WorkflowResultSourceBinding {
+  readonly path: string;
+  readonly source: Readonly<{ kind: "task-output" | "child-output"; entryId: string; path: string }>
+    | Readonly<{ kind: "derived"; inputs: readonly Readonly<{ id: string; source: Readonly<{ kind: "task-output" | "child-output"; entryId: string; path: string }> }>[] }>;
+}
+
 export interface WorkflowOperationDisplayDeclaration {
   readonly capability: "complete";
   readonly version: typeof OPERATION_DISPLAY_FORMAT_VERSION;
   readonly transforms?: readonly WorkflowDisplayTransformDeclaration[];
+  readonly transactionReads?: readonly Readonly<{ entryId: string; role: "probe" | "verify"; contract: AnyReadTaskContract }>[];
   readonly invocations: readonly OperationInvocationDeclaration[];
   readonly presentation: readonly WorkflowOperationPresentationNode[];
 }
 
 export interface WorkflowOperationContractProjection {
-  readonly role: "task" | "prepare" | "commit";
+  readonly role: "task" | "probe" | "prepare" | "commit" | "verify";
   readonly contract: TaskContractDisplayView & Readonly<{ operation?: TaskOperationDeclaration }>;
 }
 
@@ -570,6 +581,7 @@ export interface WorkflowOperationDisplayCompileInput {
   readonly input: z.ZodType;
   readonly entries: readonly WorkflowOperationEntryProjection[];
   readonly declaration?: WorkflowOperationDisplayDeclaration;
+  readonly result?: Readonly<{ schema: z.ZodType; dependsOn: readonly string[]; sources?: readonly WorkflowResultSourceBinding[] }>;
 }
 
 export interface LegacyWorkflowOperationDisplay {
@@ -578,6 +590,7 @@ export interface LegacyWorkflowOperationDisplay {
 }
 
 export interface CompleteWorkflowOperationDisplay {
+  readonly resultSources?: readonly WorkflowResultSourceBinding[];
   readonly capability: "complete";
   readonly version: typeof OPERATION_DISPLAY_FORMAT_VERSION;
   readonly transforms: readonly WorkflowDisplayTransformDeclaration[];
@@ -738,6 +751,20 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
     }
   }
 
+  const activeTransforms = new Set<string>();
+  const visitedTransforms = new Set<string>();
+  const visitTransform = (id: string): void => {
+    if (activeTransforms.has(id)) throw new Error(`workflow operation display transformation cycle at "${id}"`);
+    if (visitedTransforms.has(id)) return;
+    activeTransforms.add(id);
+    for (const source of transforms.get(id)?.inputs ?? []) {
+      if (source.value.kind === "transformation") visitTransform(source.value.transformId);
+    }
+    activeTransforms.delete(id);
+    visitedTransforms.add(id);
+  };
+  for (const id of transforms.keys()) visitTransform(id);
+
   const expected = new Map<string, WorkflowOperationContractProjection>();
   for (const entry of input.entries) {
     for (const contract of entry.contracts) {
@@ -876,6 +903,13 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
     }
     continuationEdges.set(id, Object.freeze(targets));
   }
+  for (const invocation of compiledInvocations) {
+    for (const outcome of invocation.outcomes ?? []) {
+      if (outcome.continuation !== undefined && !nodes.has(outcome.continuation)) {
+        throw new Error(`workflow ${input.workflowId} invocation "${invocation.id}" has an invalid branch target "${outcome.continuation}"`);
+      }
+    }
+  }
   const visited = new Set<string>();
   const active = new Set<string>();
   const visitContinuation = (id: string, path: readonly string[]): void => {
@@ -888,9 +922,22 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
   };
   for (const id of nodes.keys()) visitContinuation(id, []);
 
+  const resultPaths = new Set<string>();
+  for (const binding of input.result?.sources ?? []) {
+    if (resultPaths.has(binding.path)) throw new Error(`workflow operation display repeats result source "${binding.path}"`);
+    resultPaths.add(binding.path);
+    fieldPath(input.result!.schema, binding.path, undefined, "workflow result source");
+    const sources = binding.source.kind === "derived" ? binding.source.inputs.map((item) => item.source) : [binding.source];
+    if (binding.source.kind === "derived" && (sources.length === 0 || new Set(binding.source.inputs.map((item) => item.id)).size !== sources.length)) throw new Error("workflow result lineage inputs must be nonempty and unique");
+    for (const source of sources) {
+      if (!input.result!.dependsOn.includes(source.entryId)) throw new Error("workflow result source is not a declared result dependency");
+      validateWorkflowReference(source, "workflow result source", input.input, entries, transforms);
+    }
+  }
   const compiled: CompleteWorkflowOperationDisplay = Object.freeze({
     capability: "complete",
     version: OPERATION_DISPLAY_FORMAT_VERSION,
+    ...(input.result?.sources === undefined ? {} : { resultSources: Object.freeze([...input.result.sources]) }),
     transforms: Object.freeze([...(declaration.transforms ?? [])]),
     invocations: Object.freeze(compiledInvocations),
     presentation: freezePresentation(declaration.presentation),

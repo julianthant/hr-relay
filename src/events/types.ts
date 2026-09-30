@@ -1,3 +1,6 @@
+import { OperationChildResultReferenceSchema } from "../domain/workflow/operation-action-identity.js";
+import { SnapshotWorkflowValueReferenceSchema } from "../domain/workflow/operation-display-snapshot.js";
+import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from "../domain/workflow/operation-action-identity.js";
 /**
  * The span/notes wire and at-rest contract (ref dashboard-surfaces §1.1) — a leaf module.
  *
@@ -414,24 +417,7 @@ export const NoteFieldWireSchema = z.discriminatedUnion("kind", [
 ]);
 export type NoteFieldWire = z.infer<typeof NoteFieldWireSchema>;
 
-const ActionValueProducerWireSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("run-input"), path: SpanFieldPathSchema }),
-  z.strictObject({ kind: z.literal("configuration"), key: z.string().regex(/^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+$/u), schemaHash: Hex64Schema }),
-  z.strictObject({ kind: z.literal("constant"), valueDigest: Hex64Schema }),
-  z.strictObject({ kind: z.literal("task-output"), entryId: SlugSchema, path: SpanFieldPathSchema }),
-  z.strictObject({ kind: z.literal("transformation"), transformId: SlugSchema, path: SpanFieldPathSchema }),
-  z.strictObject({ kind: z.literal("child-output"), entryId: SlugSchema, path: SpanFieldPathSchema }),
-]);
-
-const ProtectedActionBindingWireSchema = z.discriminatedUnion("kind", [
-  z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), valueId: UuidSchema }),
-  z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
-    name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: UuidSchema }),
-  z.strictObject({ kind: z.literal("legacy-protected-input"), inputPath: z.enum(["timekeeperName", "documentNumber", "emplId"]),
-    name: z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) }),
-]);
-
-const DeclaredActionOccurrenceWireSchema = z.strictObject({
+const DeclaredActionIdentityWireSchema = z.strictObject({
   runId: UuidSchema,
   definitionFingerprint: Hex64Schema,
   nodeId: SlugSchema,
@@ -445,12 +431,40 @@ const DeclaredActionOccurrenceWireSchema = z.strictObject({
   logicalActionId: SlugSchema,
   occurrence: PositiveIntSchema,
   logicalSessionId: SlugSchema,
-  physicalSessionId: UuidSchema,
+  physicalSessionId: UuidSchema.optional(),
+  state: z.enum(["started", "completed", "failed", "not-run"]).optional(),
+  reason: z.enum(["condition-false", "dry-run", "cancelled", "callback-failed"]).optional(),
+});
+
+const ActionValueProducerWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("run-input"), path: SpanFieldPathSchema }),
+  z.strictObject({ kind: z.literal("configuration"), key: z.string().regex(/^[a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+$/u), schemaHash: Hex64Schema }),
+  z.strictObject({ kind: z.literal("constant"), valueDigest: Hex64Schema }),
+  z.strictObject({ kind: z.literal("task-output"), entryId: SlugSchema, path: SpanFieldPathSchema, source: DeclaredActionIdentityWireSchema.optional() }),
+  z.strictObject({ kind: z.literal("transformation"), transformId: SlugSchema, path: SpanFieldPathSchema,
+    inputs: z.array(z.strictObject({ inputId: SlugSchema, source: SnapshotWorkflowValueReferenceSchema, childResults: z.array(OperationChildResultReferenceSchema).max(256).optional(), identities: z.array(DeclaredActionIdentityWireSchema),
+      state: z.enum(["retained", "definition-source", "unavailable"]), reason: z.literal("exact-input-occurrence-not-retained").optional() }).superRefine((input, context) => {
+      if (input.state === "unavailable" ? input.identities.length !== 0 || input.reason === undefined
+        : input.reason !== undefined || (input.state === "retained" ? input.identities.length === 0 : input.identities.length !== 0)) context.addIssue({ code: "custom", message: "transformation input lineage contradicts its state" });
+    })).optional() }),
+  z.strictObject({ kind: z.literal("child-output"), entryId: SlugSchema, path: SpanFieldPathSchema, source: DeclaredActionIdentityWireSchema.optional(), result: OperationChildResultIdentitySchema.optional(), inputs: z.array(OperationInputLineageSchema).optional() }),
+]);
+
+const ProtectedActionBindingWireSchema = z.discriminatedUnion("kind", [
+  z.strictObject({ kind: z.literal("protected-store"), inputPath: z.literal("timekeeperName"), name: z.literal("timekeeperName"), valueId: UuidSchema }),
+  z.strictObject({ kind: z.literal("test-data-local"), inputPath: z.enum(["documentNumber", "emplId"]),
+    name: z.enum(["separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]), sourceId: UuidSchema }),
+  z.strictObject({ kind: z.literal("legacy-protected-input"), inputPath: z.enum(["timekeeperName", "documentNumber", "emplId"]),
+    name: z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) }),
+]);
+
+const DeclaredActionOccurrenceWireSchema = DeclaredActionIdentityWireSchema.extend({
   value: z.strictObject({
     slot: SlugSchema,
     fieldPath: SpanFieldPathSchema,
     producer: ActionValueProducerWireSchema,
     consumed: z.discriminatedUnion("state", [
+      z.strictObject({ state: z.literal("withheld"), reason: z.literal("protection-unresolved") }),
       z.strictObject({ state: z.literal("observed"), value: JsonValueWireSchema }),
       z.strictObject({ state: z.literal("redacted"), binding: ProtectedActionBindingWireSchema }),
     ]),
@@ -464,7 +478,7 @@ const NoteBodyFields = {
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
   action: z.strictObject({
-    kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
+    kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session"]),
     targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
     value: z.union([z.string(), z.boolean()]).optional(),
     operation: DeclaredActionOccurrenceWireSchema.optional(),
@@ -483,12 +497,15 @@ export function projectNoteForOperator(noteInput: unknown, _protectedInput?: boo
   return NoteWireSchema.parse(noteInput);
 }
 
-export function browserActionMessage(action: { readonly kind: string; readonly targetId: string; readonly value?: string | boolean }): string {
+export function browserActionMessage(action: { readonly kind: string; readonly targetId: string; readonly value?: string | boolean; readonly operation?: { readonly state?: string; readonly reason?: string } }): string {
   const target = action.targetId.replaceAll(/[._/-]+/gu, " ").replaceAll(/\s+/gu, " ").trim();
+  if (action.operation?.state === "started") return `Started ${action.kind} ${target}`;
+  if (action.operation?.state === "failed") return `Callback failed during ${action.kind} ${target}`;
+  if (action.operation?.state === "not-run") return `Did not run ${action.kind} ${target}: ${action.operation.reason}`;
   const verb = action.kind === "typed" ? "Typed" : action.kind === "selected" ? "Selected"
     : action.kind === "checked" ? "Checked" : action.kind === "set" ? "Set" : action.kind === "cleared" ? "Cleared"
       : action.kind === "pressed" ? "Pressed key in"
-      : action.kind === "opened" ? "Opened" : "Clicked";
+      : action.kind === "opened" ? "Opened" : action.kind === "read" ? "Read" : action.kind === "computed" ? "Computed" : action.kind === "verified" ? "Verified" : action.kind === "branched" ? "Selected branch" : action.kind === "joined" ? "Joined" : action.kind === "gated" ? "Resolved gate" : action.kind === "delegated" ? "Delegated" : action.kind === "session" ? "Session lifecycle" : "Clicked";
   if (action.value === undefined) {
     if (action.kind === "typed") return `Typed into ${target}`;
     if (action.kind === "selected") return `Selected in ${target}`;

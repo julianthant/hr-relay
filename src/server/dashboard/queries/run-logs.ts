@@ -367,7 +367,7 @@ function logRowOf(
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
         message: entry.note.message,
-        fields: entry.note.fields,
+        ...(entry.note.fields === undefined ? {} : { fields: entry.note.fields }),
       },
     };
   }
@@ -397,11 +397,14 @@ function logRowOf(
 }
 
 function projectActionOccurrence(
+  definition: NonNullable<RunRecord["envelope"]["operationDisplaySnapshot"]>,
   occurrence: NonNullable<RunAtRestNote["action"]>["operation"] extends infer Value
     ? Exclude<Value, undefined>
     : never,
 ) {
   const { value, ...identity } = occurrence;
+  const invocation = definition.invocations.find((candidate) => candidate.id === occurrence.invocationId);
+  const slot = invocation?.operation.values.find((candidate) => candidate.id === value?.slot);
   return {
     ...identity,
     ...(value === undefined ? {} : {
@@ -409,9 +412,13 @@ function projectActionOccurrence(
         slot: value.slot,
         fieldPath: value.fieldPath,
         producer: value.producer,
-        ...(value.consumed.state === "redacted"
+        ...(value.consumed.state === "withheld"
+          ? { state: "withheld" as const, reason: value.consumed.reason }
+          : value.consumed.state === "redacted"
           ? { state: "redacted" as const, binding: value.consumed.binding }
-          : {
+          : slot?.presentation === "local-operator"
+            ? { state: "observed" as const, classification: "local-operator" as const, value: value.consumed.value }
+            : {
             state: "withheld" as const,
             reason: "raw action value has no approved Logs presentation classification",
           }),
@@ -425,7 +432,7 @@ function projectActionOccurrence(
  * declared-action provenance must resolve to that exact frozen tree; a current
  * descriptor is neither consulted nor substituted for an unknown reference.
  */
-function operationStructureForRun(
+export function operationStructureForRun(
   authority: RunRecord,
   runId: string,
   entries: readonly RunLogScanEntry[],
@@ -451,7 +458,7 @@ function operationStructureForRun(
       at: entry.note.ts,
       action: entry.note.action.kind,
       targetId: entry.note.action.targetId,
-      occurrence: projectActionOccurrence(entry.note.action.operation),
+      occurrence: projectActionOccurrence(definition, entry.note.action.operation),
     }];
   });
   return RunOperationStructureWireSchema.parse({

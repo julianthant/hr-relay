@@ -1,8 +1,10 @@
+import { canonicalJsonStringify } from "../canonical-json.js";
 /**
  * One browser-safe structure vocabulary for the static Explorer and the
  * retained, observed Logs view.  The definition is the immutable operation
  * snapshot, never today's registry reconstructed for a historical run.
  */
+import { JsonValueSchema } from "../canonical-json.js";
 import { z } from "zod";
 import { IsoInstantSchema, NoteIdSchema, RunIdSchema } from "../ids.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
@@ -20,6 +22,7 @@ const BrowserActionKindSchema = z.enum([
   "set",
   "cleared",
   "pressed",
+  "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session",
 ]);
 
 /**
@@ -31,10 +34,18 @@ const OperationActionValueWireSchema = z.strictObject({
   slot: OperationValueIdSchema,
   fieldPath: ContractFieldPathSchema,
   producer: ActionValueProducerSchema,
-  state: z.enum(["redacted", "withheld"]),
+  state: z.enum(["redacted", "withheld", "observed"]),
+  value: JsonValueSchema.optional(),
+  classification: z.literal("local-operator").optional(),
   binding: ProtectedInputBindingSchema.optional(),
   reason: z.string().min(1).optional(),
 }).superRefine((value, context) => {
+  if (value.state === "observed" && (value.value === undefined || value.classification !== "local-operator" || value.binding !== undefined || value.reason !== undefined)) {
+    context.addIssue({ code: "custom", message: "observed action value requires explicit local-operator classification" });
+  }
+  if (value.state !== "observed" && (value.value !== undefined || value.classification !== undefined)) {
+    context.addIssue({ code: "custom", message: "withheld/redacted action value cannot expose a value" });
+  }
   if (value.state === "redacted" && value.binding === undefined) {
     context.addIssue({ code: "custom", path: ["binding"], message: "redacted action value requires its protected binding" });
   }
@@ -76,6 +87,22 @@ export const OperationActionObservationWireSchema = z.strictObject({
 });
 export type OperationActionObservationWire = z.infer<typeof OperationActionObservationWireSchema>;
 
+export function requireOperationSourceDeclaration(
+  definition: z.infer<typeof WorkflowOperationDisplaySnapshotSchema>,
+  identity: z.infer<typeof OperationActionOccurrenceWireSchema>,
+): void {
+  const invocation = definition.invocations.find((candidate) => candidate.id === identity.invocationId
+    && candidate.entryId === identity.nodeId && candidate.taskId === identity.taskId
+    && canonicalJsonStringify(candidate.occurrencePath) === canonicalJsonStringify(identity.occurrencePath));
+  if (invocation === undefined) throw new Error("operation-source-unknown-frozen-invocation");
+  if (!actionsWithChildren(invocation.operation.actions).some((action) => action.id === identity.logicalActionId)) throw new Error("operation-source-unknown-frozen-action");
+  if (identity.logicalSessionId !== invocation.operation.session.id
+    || (invocation.operation.session.kind === "browser" && identity.state !== "not-run" && identity.physicalSessionId === undefined)) throw new Error("operation-source-frozen-session-mismatch");
+  if ((identity.state === "failed" && identity.reason !== "callback-failed")
+    || (identity.state === "not-run" && (identity.reason === undefined || identity.reason === "callback-failed"))
+    || ((identity.state === undefined || identity.state === "started" || identity.state === "completed") && identity.reason !== undefined)) throw new Error("operation-source-lifecycle-reason-mismatch");
+}
+
 function actionsWithChildren(
   actions: readonly z.infer<typeof WorkflowOperationDisplaySnapshotSchema>["invocations"][number]["operation"]["actions"][number][],
 ): readonly z.infer<typeof WorkflowOperationDisplaySnapshotSchema>["invocations"][number]["operation"]["actions"][number][] {
@@ -94,6 +121,14 @@ function declaredKindsFor(observed: z.infer<typeof BrowserActionKindSchema>): re
     // A clear is a supporting driver gesture. It never receives a declared
     // occurrence, so an at-rest note that claims one is corrupt.
     case "cleared": return [];
+    case "read": return ["read-field"];
+    case "computed": return ["compute"];
+    case "verified": return ["verify"];
+    case "branched": return ["branch"];
+    case "joined": return ["join"];
+    case "gated": return ["operator-gate"];
+    case "delegated": return ["delegate"];
+    case "session": return ["session-lifecycle"];
   }
 }
 
@@ -121,8 +156,10 @@ export const ObservedOperationStructureWireSchema = z.strictObject({
       occurrence.invocationId,
       occurrence.logicalActionId,
       String(occurrence.attempt),
+      String(occurrence.claimGeneration),
       String(occurrence.taskAttempt),
       String(occurrence.occurrence),
+      occurrence.state ?? "completed",
     ].join("\\0");
     if (occurrenceIds.has(occurrenceId)) {
       context.addIssue({
@@ -160,6 +197,10 @@ export const ObservedOperationStructureWireSchema = z.strictObject({
       });
       continue;
     }
+    if (occurrence.logicalSessionId !== invocation.operation.session.id
+      || (invocation.operation.session.kind === "browser" && occurrence.state !== "not-run" && occurrence.physicalSessionId === undefined)) {
+      context.addIssue({ code: "custom", path: ["observations", index, "occurrence", "logicalSessionId"], message: "operation observation session does not match its frozen invocation" });
+    }
     const action = actionsWithChildren(invocation.operation.actions)
       .find((candidate) => candidate.id === occurrence.logicalActionId);
     if (action === undefined) {
@@ -179,7 +220,7 @@ export const ObservedOperationStructureWireSchema = z.strictObject({
     }
     const expectedTarget = action.kind === "open-page" || action.kind === "resume-page"
       ? action.page?.screen ?? invocation.operation.page?.screen
-      : action.target;
+      : action.target ?? action.id;
     if (expectedTarget !== observation.targetId) {
       context.addIssue({
         code: "custom",
@@ -187,7 +228,33 @@ export const ObservedOperationStructureWireSchema = z.strictObject({
         message: "operation observation target does not match its frozen action",
       });
     }
-    if (occurrence.value?.slot !== action.valueSlot) {
+    const producer = occurrence.value?.producer;
+    if (producer?.kind === "transformation") {
+      const transform = structure.definition.transforms.find((candidate) => candidate.id === producer.transformId);
+      if (transform === undefined || (producer.inputs !== undefined && (producer.inputs.length !== transform.inputs.length
+        || new Set(producer.inputs.map((input) => input.inputId)).size !== producer.inputs.length
+        || producer.inputs.some((input) => {
+          const declared = transform.inputs.find((candidate) => candidate.id === input.inputId);
+          if (declared === undefined || (input.source !== undefined && canonicalJsonStringify(input.source) !== canonicalJsonStringify(declared.value))) return true;
+          const sources = (reference: typeof declared.value): readonly typeof declared.value[] => reference.kind === "transformation"
+            ? structure.definition.transforms.find((transform) => transform.id === reference.transformId)?.inputs.flatMap((nested) => sources(nested.value)) ?? [] : [reference];
+          const leaves = sources(declared.value);
+          if (input.childResults?.some((child) => !leaves.some((source) => canonicalJsonStringify(source) === canonicalJsonStringify(child.source)))) return true;
+          if (declared.value.kind !== "task-output") return false;
+          const source = declared.value;
+          return input.identities.some((identity) => {
+            if (identity.nodeId !== source.entryId || identity.definitionFingerprint !== structure.definition.definitionFingerprint || (identity.state !== undefined && identity.state !== "completed")) return true;
+            const invocation = structure.definition.invocations.find((invocation) => invocation.id === identity.invocationId && invocation.entryId === source.entryId && invocation.taskId === identity.taskId);
+            const action = invocation === undefined ? undefined : actionsWithChildren(invocation.operation.actions).find((action) => action.id === identity.logicalActionId);
+            const slot = invocation?.operation.values?.find((slot) => slot.id === action?.valueSlot);
+            return slot?.source.kind !== "contract-output" || slot.source.path !== source.path;
+          });
+        })))) {
+        context.addIssue({ code: "custom", path: ["observations", index, "occurrence", "value", "producer"], message: "transformation lineage does not match frozen declared inputs" });
+      }
+    }
+    if (producer?.kind === "child-output" && producer.inputs !== undefined && producer.result === undefined) context.addIssue({ code: "custom", message: "child lineage requires its immediate retained result identity" });
+    if ((occurrence.state === undefined || occurrence.state === "completed") && occurrence.value?.slot !== action.valueSlot) {
       context.addIssue({
         code: "custom",
         path: ["observations", index, "occurrence", "value", "slot"],
@@ -207,3 +274,16 @@ export const RunOperationStructureWireSchema = z.discriminatedUnion("state", [
   }),
 ]);
 export type RunOperationStructureWire = z.infer<typeof RunOperationStructureWireSchema>;
+
+export const OperationSourceRequestSchema = z.strictObject({
+  identity: DeclaredActionOccurrenceSchema.omit({ value: true }),
+  cursor: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
+});
+export type OperationSourceRequest = z.infer<typeof OperationSourceRequestSchema>;
+
+export const OperationSourceResponseSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("found"), structure: ObservedOperationStructureWireSchema }),
+  z.strictObject({ state: z.literal("continue"), cursor: OperationSourceRequestSchema.shape.cursor.unwrap() }),
+  z.strictObject({ state: z.literal("unavailable"), reason: z.literal("exact-occurrence-not-retained") }),
+]);
+export type OperationSourceResponse = z.infer<typeof OperationSourceResponseSchema>;

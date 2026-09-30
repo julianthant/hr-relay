@@ -1,3 +1,9 @@
+import { OperationChildResultReferenceSchema } from "./workflow/operation-action-identity.js";
+import { RunResultRecordSchema } from "./run/result.js";
+import { SnapshotWorkflowValueReferenceSchema } from "./workflow/operation-display-snapshot.js";
+import { OperationInputLineageSchema, OperationChildResultIdentitySchema, DeclaredActionIdentitySchema } from "./workflow/operation-action-identity.js";
+export { DeclaredActionIdentitySchema } from "./workflow/operation-action-identity.js";
+export type { DeclaredActionIdentity } from "./workflow/operation-action-identity.js";
 /**
  * Task-execution provenance collection (refs task-contract/workflow-model, D115).
  *
@@ -14,15 +20,10 @@ import { ContractFieldPathSchema } from "./contracts/base.js";
 import { ProtectedInputBindingSchema } from "./protected-input.js";
 import {
   ConfigurationReferenceKeySchema,
-  OperationActionIdSchema,
-  OperationIdSchema,
-  OperationOccurrenceSegmentSchema,
-  OperationSessionIdSchema,
   OperationTransformIdSchema,
   OperationValueIdSchema,
 } from "./workflow/operation-display.js";
 import {
-  BrowserSessionIdSchema,
   DelegationEdgeIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
@@ -66,14 +67,20 @@ export const ActionValueProducerSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("run-input"), path: ContractFieldPathSchema }),
   z.strictObject({ kind: z.literal("configuration"), key: ConfigurationReferenceKeySchema, schemaHash: FingerprintSchema }),
   z.strictObject({ kind: z.literal("constant"), valueDigest: FingerprintSchema }),
-  z.strictObject({ kind: z.literal("task-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema }),
-  z.strictObject({ kind: z.literal("transformation"), transformId: OperationTransformIdSchema, path: ContractFieldPathSchema }),
-  z.strictObject({ kind: z.literal("child-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema }),
+  z.strictObject({ kind: z.literal("task-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema, source: DeclaredActionIdentitySchema.optional() }),
+  z.strictObject({ kind: z.literal("transformation"), transformId: OperationTransformIdSchema, path: ContractFieldPathSchema,
+    inputs: z.array(z.strictObject({ inputId: OperationValueIdSchema, source: SnapshotWorkflowValueReferenceSchema, childResults: z.array(OperationChildResultReferenceSchema).max(256).optional(), identities: z.array(DeclaredActionIdentitySchema),
+      state: z.enum(["retained", "definition-source", "unavailable"]), reason: z.literal("exact-input-occurrence-not-retained").optional() }).superRefine((input, context) => {
+      if (input.state === "unavailable" ? input.identities.length !== 0 || input.reason === undefined
+        : input.reason !== undefined || (input.state === "retained" ? input.identities.length === 0 : input.identities.length !== 0)) context.addIssue({ code: "custom", message: "transformation input lineage contradicts its state" });
+    })).optional() }),
+  z.strictObject({ kind: z.literal("child-output"), entryId: NodeIdSchema, path: ContractFieldPathSchema, source: DeclaredActionIdentitySchema.optional(), result: OperationChildResultIdentitySchema.optional(), inputs: z.array(OperationInputLineageSchema).optional() }),
 ]);
 export type ActionValueProducer = z.infer<typeof ActionValueProducerSchema>;
 
 /** Exact local value when safe, otherwise the retained protected-source identity. */
 export const ActionConsumedValueSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("withheld"), reason: z.literal("protection-unresolved") }),
   z.strictObject({ state: z.literal("observed"), value: JsonValueSchema }),
   z.strictObject({ state: z.literal("redacted"), binding: ProtectedInputBindingSchema }),
 ]);
@@ -91,21 +98,7 @@ export type ActionValueProvenance = z.infer<typeof ActionValueProvenanceSchema>;
  * Identity for one completed declared driver gesture.  It is self-contained so
  * a retained note can be joined to its frozen structure without current code.
  */
-export const DeclaredActionOccurrenceSchema = z.strictObject({
-  runId: RunIdSchema,
-  definitionFingerprint: FingerprintSchema,
-  nodeId: NodeIdSchema,
-  taskId: TaskIdSchema,
-  childInvocation: z.strictObject({ parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema }).optional(),
-  attempt: PositiveIntSchema,
-  claimGeneration: PositiveIntSchema,
-  taskAttempt: PositiveIntSchema,
-  invocationId: OperationIdSchema,
-  occurrencePath: z.array(OperationOccurrenceSegmentSchema).min(1),
-  logicalActionId: OperationActionIdSchema,
-  occurrence: PositiveIntSchema,
-  logicalSessionId: OperationSessionIdSchema,
-  physicalSessionId: BrowserSessionIdSchema,
+export const DeclaredActionOccurrenceSchema = DeclaredActionIdentitySchema.extend({
   value: ActionValueProvenanceSchema.optional(),
 });
 export type DeclaredActionOccurrence = z.infer<typeof DeclaredActionOccurrenceSchema>;
@@ -130,6 +123,8 @@ export type TaskProvenanceResult = z.infer<typeof TaskProvenanceResultSchema>;
  */
 export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
   checkpoints: z.array(RunCheckpointRecordSchema),
+  children: z.array(z.strictObject({ nodeId: NodeIdSchema, parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema,
+    result: RunResultRecordSchema, results: z.array(RunResultRecordSchema).max(16), checkpoints: z.array(RunCheckpointRecordSchema).max(256) })).max(16).optional(),
   /** A false descriptor condition, re-evaluated by the collector; no operator fact. */
   skippedGates: z.array(GateIdSchema).default([]),
   /**
@@ -169,9 +164,14 @@ export const TaskUpstreamCheckpointEvidenceSchema = z.strictObject({
       context.addIssue({ code: "custom", path: ["skippedGates", index], message: `duplicate upstream evidence for node ${gateId}` });
     }
   }
+  const childNodes = new Set<string>();
+  for (const child of evidence.children ?? []) {
+    if (childNodes.has(child.nodeId) || checkpointNodes.has(child.nodeId) || evidence.skippedGates.includes(child.nodeId)) context.addIssue({ code: "custom", message: "duplicate child upstream evidence" });
+    childNodes.add(child.nodeId);
+  }
   const gateNodes = new Set<string>();
   for (const [index, gate] of evidence.gateResults.entries()) {
-    if (gateNodes.has(gate.gateId) || checkpointNodes.has(gate.gateId)) {
+    if (gateNodes.has(gate.gateId) || checkpointNodes.has(gate.gateId) || childNodes.has(gate.gateId)) {
       context.addIssue({
         code: "custom",
         path: ["gateResults", index, "gateId"],

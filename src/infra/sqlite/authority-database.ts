@@ -4380,8 +4380,27 @@ export class AuthorityDatabase implements Disposable {
     }
   }
 
-  #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord): void {
+  #assertStoredTerminalDependencies(result: RunResultRecord, current: RunRecord, depth = 0, visited = new Set<string>()): void {
+    if (depth > 16 || visited.has(result.runId)) throw new Error("terminal-child-dependency-cycle-or-depth");
+    visited.add(result.runId);
     for (const dependency of result.dependencies) {
+      if (dependency.state === "child-resolved") {
+        const child = this.#readRunRow(dependency.child.runId);
+        const childResult = this.#readRecord("run_results", dependency.child.runId, RunResultRecordSchema);
+        if ((child?.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "done") || childResult === undefined
+          || dependency.parentRunId !== current.envelope.runId || child.envelope.parent?.runId !== current.envelope.runId
+          || child.envelope.parent.edgeId !== dependency.edgeId || child.envelope.itemId !== dependency.child.itemId
+          || child.envelope.workflow !== dependency.child.workflowId || child.envelope.attempt !== dependency.child.attempt
+          || child.envelope.descriptorVersion !== dependency.child.descriptorVersion || child.envelope.contractFingerprint !== dependency.child.contractFingerprint
+          || childResult.resultSchemaHash !== dependency.child.resultSchemaHash || childResult.resultDigest !== dependency.child.resultDigest
+          || childResult.dependencyDigest !== dependency.child.dependencyDigest
+          || canonicalJsonStringify(childResult.operationSources ?? null) !== canonicalJsonStringify(dependency.operationSources ?? null)
+          || canonicalJsonStringify(childResult.operationLineage ?? null) !== canonicalJsonStringify(dependency.operationLineage ?? null)) throw new Error("terminal-child-dependency-canonical-mismatch");
+        this.#assertResultMatchesRun(childResult, child);
+        this.#assertStoredTerminalDependencies(childResult, child, depth + 1, visited);
+        continue;
+      }
+
       if (dependency.state === "asserted") {
         // D307 — an assertion is durable as a MARKED checkpoint row: the exact
         // row must exist at the terminal attempt, carry the assertion marker
@@ -4441,7 +4460,8 @@ export class AuthorityDatabase implements Disposable {
         || stored.contractFingerprint !== dependency.contractFingerprint
         || stored.implFingerprint !== dependency.implFingerprint
         || deriveCheckpointOutputDigest(stored.output) !== dependency.outputDigest
-        || deriveCheckpointProvenanceDigest(stored.provenance) !== dependency.provenanceDigest) {
+        || deriveCheckpointProvenanceDigest(stored.provenance) !== dependency.provenanceDigest
+        || canonicalJsonStringify(stored.operationSources ?? null) !== canonicalJsonStringify(dependency.operationSources ?? null)) {
         throw new Error(`terminal dependency ${dependency.nodeId} does not match its exact stored checkpoint`);
       }
     }

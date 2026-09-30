@@ -1,3 +1,5 @@
+import { deriveCheckpointOutputDigest, deriveCheckpointProvenanceDigest } from "../domain/run/result.js";
+import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../base/workflow.js";
@@ -157,11 +159,15 @@ function validateCheckpointSet(
     ...evidence.checkpoints.map(({ nodeId }) => nodeId),
     ...evidence.gateResults.map(({ gateId }) => gateId),
     ...evidence.skippedGates,
+    ...(evidence.children ?? []).map((child) => child.nodeId),
   ]);
   for (const checkpoint of evidence.checkpoints) {
     if (!expected.has(checkpoint.nodeId)) {
       throw new Error(`task ${taskId} received undeclared upstream checkpoint ${checkpoint.nodeId}`);
     }
+  }
+  for (const child of evidence.children ?? []) {
+    if (!expected.has(child.nodeId)) throw new Error(`task ${taskId} received undeclared upstream child ${child.nodeId}`);
   }
   for (const gate of evidence.gateResults) {
     if (!expected.has(gate.gateId)) {
@@ -214,7 +220,44 @@ export function createTaskProvenanceCollector(input: TaskProvenanceCollectorInpu
       throw new Error(`task ${execution.taskId} cannot skip required gate ${gateId}`);
     }
   }
+  const childFacts = (evidence.children ?? []).flatMap((child) => {
+    const declared = nodes.find((candidate) => candidate.id === child.nodeId);
+    if (declared?.kind !== "child-run" || declared.await !== "terminal" || declared.cardinality !== "one"
+      || child.parentRunId !== execution.runId || child.edgeId !== declared.edgeId || child.result.workflowId !== declared.target.id
+      || child.result.resultSchemaHash !== deriveSchemaHash(declared.target.result, "output")) throw new Error("task-child-upstream-identity-mismatch");
+    const records = new Map(child.results.map((result) => [result.runId, result]));
+    if (records.size !== child.results.length || !records.has(child.result.runId) || canonicalJsonStringify(records.get(child.result.runId)) !== canonicalJsonStringify(child.result)) throw new Error("task-child-upstream-result-mismatch");
+    const expectedCheckpoints = new Set<string>();
+    const facts: FactProvenance[] = [];
+    const visited = new Set<string>();
+    const visit = (runId: string): void => {
+      if (visited.has(runId)) throw new Error("task-child-upstream-cycle");
+      visited.add(runId);
+      const result = records.get(runId);
+      if (result === undefined) throw new Error("task-child-upstream-result-unavailable");
+      for (const dependency of result.dependencies) {
+        if (dependency.state === "resolved") {
+          const checkpoint = child.checkpoints.find((checkpoint) => checkpoint.runId === dependency.checkpoint.runId && checkpoint.nodeId === dependency.nodeId
+            && checkpoint.attempt === dependency.checkpoint.attempt && checkpoint.claimGeneration === dependency.checkpoint.claimGeneration);
+          if (checkpoint === undefined || checkpoint.contractFingerprint !== dependency.contractFingerprint
+            || deriveCheckpointOutputDigest(checkpoint.output) !== dependency.outputDigest || deriveCheckpointProvenanceDigest(checkpoint.provenance) !== dependency.provenanceDigest) throw new Error("task-child-upstream-checkpoint-mismatch");
+          expectedCheckpoints.add(canonicalJsonStringify(checkpoint));
+          facts.push(...validateCheckpointFacts(checkpoint.workflowId, checkpoint));
+        } else if (dependency.state === "child-resolved") {
+          const nested = records.get(dependency.child.runId);
+          if (nested === undefined || nested.resultDigest !== dependency.child.resultDigest || nested.dependencyDigest !== dependency.child.dependencyDigest
+            || nested.contractFingerprint !== dependency.child.contractFingerprint || nested.resultSchemaHash !== dependency.child.resultSchemaHash) throw new Error("task-child-upstream-descendant-mismatch");
+          visit(nested.runId);
+        } else if (dependency.state === "asserted") facts.push(FactProvenanceSchema.parse({ path: "assertion", source: "operator", observedAt: dependency.assertedAt, originalObservedAt: dependency.assertedAt }));
+      }
+    };
+    visit(child.result.runId);
+    if (visited.size !== records.size || child.checkpoints.some((checkpoint) => !expectedCheckpoints.has(canonicalJsonStringify(checkpoint)))) throw new Error("task-child-upstream-extra-evidence");
+    if (facts.length === 0) throw new Error("task-child-upstream-observation-unavailable");
+    return facts;
+  });
   const upstream = Object.freeze([
+    ...childFacts,
     ...evidence.checkpoints.flatMap((checkpoint) =>
       validateCheckpointFacts(execution.workflowId, checkpoint)),
     /*

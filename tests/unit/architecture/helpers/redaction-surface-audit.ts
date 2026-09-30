@@ -1,3 +1,4 @@
+import { OperationSourceResponseSchema } from "../../../../src/domain/dashboard/operation-structure.js";
 import { CalendarWireSchema } from "../../../../src/domain/dashboard/calendar.js";
 import { ExplorerOverrideImportReceiptSchema } from "../../../../src/domain/dashboard/explorer-override.js";
 /**
@@ -874,6 +875,7 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
   { id: "wire/rerun-values", egress: "operator-loopback", module: "src/domain/dashboard/rerun-values.ts", schema: RerunValuesResponseSchema },
   { id: "wire/rerun-warning", egress: "operator-loopback", module: "src/domain/dashboard/rerun-warning.ts", schema: RerunWarningWireSchema },
   { id: "wire/run-detail", egress: "operator-loopback", module: "src/domain/dashboard/run-detail.ts", schema: RunDetailWireSchema },
+  { id: "wire/operation-source", egress: "operator-loopback", module: "src/domain/dashboard/operation-structure.ts", schema: OperationSourceResponseSchema },
   { id: "wire/run-detail-section", egress: "operator-loopback", module: "src/domain/dashboard/run-detail.ts", schema: RunDetailSectionResponseSchema },
   { id: "wire/queue-surface", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: QueueSurfaceWireSchema },
   { id: "wire/dashboard-day", egress: "operator-loopback", module: "src/domain/dashboard/projection.ts", schema: DashboardDayWireSchema },
@@ -938,6 +940,17 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
  */
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+  { surface: "wire/run-detail-section", path: "payload.operationStructure.observations[].occurrence.value.value", origin: "captured-hr-value" },
+  { surface: "wire/stream-envelope", path: "payload.operationStructure.observations[].occurrence.value.value", origin: "captured-hr-value" },
+  { surface: "wire/archived-run-detail", path: "sections.value.logs.value.operationStructure.observations[].occurrence.value.value", origin: "captured-hr-value" },
+  { surface: "wire/operation-source", path: "structure.definition.invocations[].operation.actions[]", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.definition.invocations[].operation.templates[].join.separator", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.definition.invocations[].operation.templates[].segments[]", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.definition.invocations[].outcomes[].label", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.definition.presentation[]", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.observations[].targetId", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.observations[].occurrence.value.reason", origin: "repository-authored" },
+  { surface: "wire/operation-source", path: "structure.observations[].occurrence.value.value", origin: "captured-hr-value" },
   { surface: "wire/run-detail-section", path: "payload.value.resolution.capture.resolution.note", origin: "operator-authored" },
   { surface: "wire/archived-run-detail", path: "failure.value.resolution.capture.resolution.note", origin: "operator-authored" },
   { surface: "wire/run-detail", path: "gate.label", origin: "repository-authored" },

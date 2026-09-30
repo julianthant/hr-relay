@@ -116,6 +116,7 @@ import type { SpanEmitter } from "./span-emitter.js";
 import { ExecutorSpanEventSchema } from "./span-emitter.js";
 import { redactObservedDataPoints } from "./observed-data.js";
 import { withBrowserActionBinding } from "../infra/browser/action-notes.js";
+import type { BrowserActionBinder } from "../infra/browser/action-notes.js";
 import { WriteParkedError } from "./run-executor.js";
 import type { WriteSequencer, WriteSequencerContext } from "./run-executor.js";
 
@@ -576,6 +577,7 @@ export async function executeIdempotencyProbe(
     instance: string;
     signal: AbortSignal;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
+    actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
   }>,
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
@@ -603,10 +605,10 @@ export async function executeIdempotencyProbe(
   const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver) => {
     const { raw: output } = await invokeBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
-      return run({
+      return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({
         input: probeInput,
         ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver },
-      });
+      }));
     }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
     return output;
   });
@@ -1161,6 +1163,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         instance,
         signal: context.signal,
         onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
+        actionBinderForInput: context.operationReadBinder === undefined ? undefined : (taskId, parsedInput) => context.operationReadBinder!("probe", taskId, parsedInput),
       });
       emitTaskSpan(context, "probe", "span.ended", "done");
       return verdict;
@@ -1517,10 +1520,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         input.context.signal,
         (innerSignal, recordData) => {
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
-          return run({
+          return withBrowserActionBinding(input.context.operationReadBinder?.("verify", completion.verify.taskId, verifyInput), () => run({
             input: verifyInput,
             ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData), driver: input.driver },
-          });
+          }));
         },
       );
       verdict = probeVerdictSchema(completion.proofSchema).parse(verifyTask.contract.output.parse(raw));

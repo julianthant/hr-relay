@@ -92,9 +92,9 @@ export const SearchPersonOrg = defineTaskContract({
     page: { screen: UCPATH_PERSON_ORG_SEARCH_SCREEN, form: "person-org-search" },
     values: [
       { id: "search-kind", source: { kind: "contract-input", path: "kind" } },
-      { id: "empl-id", source: { kind: "contract-input", path: "emplId", availability: "offered" } },
+      { id: "empl-id", presentation: "local-operator", source: { kind: "contract-input", path: "emplId", availability: "offered" } },
       { id: "name", source: { kind: "contract-input", path: "name", availability: "offered" } },
-      { id: "selection-status", source: { kind: "contract-output", path: "selection.status" } },
+      { id: "selection-status", presentation: "local-operator", source: { kind: "contract-output", path: "selection.status" } },
     ],
     templates: [{
       id: "search-summary",

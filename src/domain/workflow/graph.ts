@@ -55,6 +55,7 @@ export interface RuntimeScope {
   readonly input: JsonValue;
   readonly protectedInputBindings?: readonly ProtectedInputBinding[];
   readonly outputs: JsonObject;
+  readonly configuration?: Readonly<Record<string, JsonValue>>;
 }
 
 export interface WorkflowGateSource<

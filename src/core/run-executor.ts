@@ -1,3 +1,6 @@
+import { ConfigSnapshotRecordSchema } from "../domain/config/snapshot.js";
+import { SETTINGS_CATALOG } from "../domain/config/catalog.js";
+import { sha256Hex } from "../domain/sha256.js";
 import type { ProviderAccountingStorage } from "../base/provider-accounting.js";
 import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "./generated-artifact-projection.js";
 import { timelineCheckpointReference } from "../events/timeline.js";
@@ -142,6 +145,7 @@ import {
 } from "./span-emitter.js";
 import { redactObservedDataPoints } from "./observed-data.js";
 import { createTaskProvenanceCollector } from "./task-provenance.js";
+import { RunResultRecordSchema } from "../domain/run/result.js";
 import { createDeclaredActionBinder } from "./operation-action-binding.js";
 import { buildTerminalAuthorization } from "./terminal-authorization.js";
 import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
@@ -151,8 +155,9 @@ import type { WorkerSessionManager } from "./worker-sessions.js";
 
 /** The authority surface a run execution needs; `AuthorityDatabase` satisfies it. */
 export interface RunExecutionAuthority {
-  readonly authority: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "artifactOutbox" | "timelineEvents">
-    & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> };
+  readonly authority: Pick<AuthorityRepositories, "runCheckpoints" | "gateResults" | "artifactOutbox" | "timelineEvents" | "runResults">
+    & { readonly runs: Pick<AuthorityRepositories["runs"], "get"> }
+    & Partial<Pick<AuthorityRepositories, "configSnapshots">>;
   afterAuthorityCommit(publish: () => void): void;
   /**
    * Required only when a `RunDiagnosticCapture` port is injected: the bundle
@@ -180,10 +185,13 @@ export interface WriteSequencerContext {
   readonly scope: RuntimeScope;
   readonly dryRun: boolean;
   readonly signal: AbortSignal;
+  readonly operationReadBinder?: (role: "probe" | "verify", taskId: string, parsedInput: unknown) => BrowserActionBinder;
   /** Pure completed-gesture binders; persistence remains outside the write fence. */
   readonly operationActionBinders?: Readonly<{
+    probe?: BrowserActionBinder;
     prepare?: BrowserActionBinder;
     commit?: BrowserActionBinder;
+    verify?: BrowserActionBinder;
   }>;
 }
 
@@ -500,6 +508,24 @@ export async function executeClaimedRun(
   z.number().int().positive().parse(deps.taskDeadlineMs);
 
   const nodes = descriptorRuntimeNodes(descriptor);
+  const configurationValues: Record<string, JsonValue> = {};
+  const configurationKeys = descriptor.operationDisplay?.capability === "complete"
+    ? descriptor.operationDisplay.transforms.flatMap((transform) => transform.inputs.flatMap((source) => source.value.kind === "configuration" ? [source.value.key] : [])) : [];
+  if (configurationKeys.length > 0) {
+    const stored = deps.authority.authority.configSnapshots?.get(envelope.configSnapshotId);
+    if (stored === undefined) throw new Error("declared-action-transform-config-snapshot-unavailable");
+    const snapshot = ConfigSnapshotRecordSchema.parse(stored);
+    if (snapshot.configSnapshotId !== envelope.configSnapshotId || snapshot.fingerprint !== envelope.configFingerprint
+      || sha256Hex(canonicalJsonStringify(snapshot.config)) !== snapshot.fingerprint) throw new Error("declared-action-transform-config-snapshot-mismatch");
+    for (const key of configurationKeys) {
+      if (!SETTINGS_CATALOG.some((row) => row.key === key && row.sensitivity === "ordinary")) throw new Error("declared-action-transform-config-source-not-ordinary");
+      let value: unknown = snapshot.config;
+      for (const segment of key.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
+      if (value === undefined) throw new Error("declared-action-transform-configuration-unavailable");
+      configurationValues[key] = JsonValueSchema.parse(value);
+    }
+  }
+
   // D307 — classify every node for this run's omitted steps BEFORE anything
   // executes. The start planner refused the same refusals before a run
   // existed; a run that reaches here with one is miswired and fails loud.
@@ -679,6 +705,20 @@ export async function executeClaimedRun(
     const plan = new Map<string, PlanEntry>();
     const outputs: Record<string, JsonValue> = {};
     const checkpointRecords = new Map<string, RunCheckpointRecord>();
+    const childResultEvidence = new Map<string, Extract<TerminalDependencyEvidence, { state: "child-resolved" }>>();
+    const childSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["childSources"]> = new Map();
+    const actionSources: NonNullable<Parameters<typeof createDeclaredActionBinder>[0]["sources"]> = new Map();
+    const hydrateActionSources = (record: RunCheckpointRecord): void => {
+      for (const source of record.operationSources ?? []) {
+        if (source.identity.runId !== record.runId || source.identity.nodeId !== record.nodeId
+          || source.identity.attempt !== record.attempt || source.identity.claimGeneration !== record.claimGeneration
+          || source.identity.definitionFingerprint !== record.contractFingerprint) throw new Error("checkpoint-operation-source-identity-mismatch");
+        let value: unknown = record.output.value;
+        for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
+        if (value === undefined) throw new Error("checkpoint-operation-source-field-unavailable");
+        actionSources.set(`${record.nodeId}/${source.path}`, { identity: source.identity, value: JsonValueSchema.parse(value) });
+      }
+    };
     const replayedForFreshness: ReplayedCheckpoint[] = [];
     const skippedReasons = new Map<string, "condition-false" | "branch-not-selected" | "step-omitted">();
     /** D307 — asserted outputs, keyed by node, as the terminal evidence will cite them. */
@@ -691,10 +731,40 @@ export async function executeClaimedRun(
      * node with neither is a hard error, because "we have no record" and "the
      * node did not run" are the two things that must never be conflated.
      */
+    const childUpstreamEvidenceFor = (nodeId: NodeId) => {
+      const child = childResultEvidence.get(String(nodeId));
+      if (child === undefined) return undefined;
+      const result = RunResultRecordSchema.parse(child.result);
+      const results: RunResultRecord[] = [];
+      const checkpoints: RunCheckpointRecord[] = [];
+      const visited = new Set<string>();
+      const visit = (record: RunResultRecord): void => {
+        if (visited.has(record.runId) || visited.size >= 16) throw new Error("child-upstream-cycle-or-depth");
+        visited.add(record.runId); results.push(record);
+        for (const dependency of record.dependencies) {
+          if (dependency.state === "resolved") {
+            const address = dependency.checkpoint;
+            const checkpoint = deps.authority.authority.runCheckpoints.get(address.workflowId, address.itemId, dependency.nodeId, address.attempt, address.claimGeneration);
+            if (checkpoint === undefined || checkpoints.length >= 256) throw new Error("child-upstream-checkpoint-unavailable-or-limit");
+            checkpoints.push(checkpoint);
+          } else if (dependency.state === "child-resolved") {
+            const nested = deps.authority.authority.runResults.get(dependency.child.runId);
+            const nestedRun = deps.authority.authority.runs.get(dependency.child.runId);
+            if (nested === undefined || (nestedRun?.lifecycle.state !== "terminal" || nestedRun.lifecycle.outcome !== "done") || nestedRun.envelope.parent?.runId !== record.runId || nestedRun.envelope.parent.edgeId !== dependency.edgeId) throw new Error("child-upstream-canonical-descendant-mismatch");
+            visit(RunResultRecordSchema.parse(nested));
+          }
+        }
+      };
+      visit(result);
+      return { nodeId, parentRunId: child.parentRunId, edgeId: child.edgeId, result, results, checkpoints };
+    };
+
     const dependencyEvidenceFor = (
       nodeIds: readonly NodeId[],
       purpose: string,
     ): readonly TerminalDependencyEvidence[] => nodeIds.map((dependency) => {
+      const child = childResultEvidence.get(String(dependency));
+      if (child !== undefined) return child;
       const asserted = assertedRecords.get(String(dependency));
       if (asserted !== undefined) {
         return { state: "asserted" as const, nodeId: dependency, step: asserted.step, assertedAt: asserted.assertedAt, output: asserted.output };
@@ -766,7 +836,7 @@ export async function executeClaimedRun(
         const value = outputs[String(dependency)];
         if (value !== undefined) picked[String(dependency)] = value;
       }
-      return { input: canonicalInput, outputs: Object.freeze(picked),
+      return { input: canonicalInput, outputs: Object.freeze(picked), configuration: Object.freeze(configurationValues),
         protectedInputBindings: retainedRunProtectedBindings(getRun()) };
     };
 
@@ -919,6 +989,7 @@ export async function executeClaimedRun(
           plan.set(String(node.id), { mode: "replay", record: effective });
           outputs[String(node.id)] = JsonValueSchema.parse(effective.output.value);
           checkpointRecords.set(String(node.id), effective);
+          hydrateActionSources(effective);
           replayedForFreshness.push({
             nodeId: node.id,
             taskId: node.uses.id,
@@ -1097,6 +1168,14 @@ export async function executeClaimedRun(
       const contract: AnyReadTaskContract = node.uses;
       const bound: unknown = node.bind(scope);
       const parsedInput: unknown = contract.input.parse(bound);
+      for (const [key, source] of actionSources) {
+        const sourceNode = key.slice(0, key.indexOf("/"));
+        const path = key.slice(key.indexOf("/") + 1);
+        const checkpoint = checkpointRecords.get(sourceNode);
+        if (source.identity.runId !== runId && nodes.some((candidate) => candidate.id === sourceNode && candidate.kind === "child-run")) continue;
+        if (checkpoint === undefined || checkpoint.runId !== source.identity.runId || checkpoint.claimGeneration !== source.identity.claimGeneration
+          || checkpoint.provenance.some((fact) => (fact.path === path || path.startsWith(`${fact.path}.`)) && fact.source !== "live")) actionSources.delete(key);
+      }
       const declaredActionBinder = operationDisplaySnapshot === undefined
         ? undefined
         : createDeclaredActionBinder({
@@ -1110,6 +1189,9 @@ export async function executeClaimedRun(
           contractRole: "task",
           parsedInput: JsonValueSchema.parse(parsedInput),
           protectedBindings: retainedRunProtectedBindings(initial),
+          sources: actionSources, childSources,
+          ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
+          runInput: canonicalInput, outputs, configurationValues,
           ...(envelope.parent === undefined
             ? {}
             : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
@@ -1135,7 +1217,9 @@ export async function executeClaimedRun(
          * live chunk-3 run found.
          */
         upstreamEvidence: {
+          children: node.dependsOn.flatMap((dependency) => { const child = childUpstreamEvidenceFor(dependency); return child === undefined ? [] : [child]; }),
           checkpoints: node.dependsOn.flatMap((dependency) => {
+            if (childResultEvidence.has(String(dependency))) return [];
             const record = checkpointRecords.get(String(dependency));
             if (record !== undefined) return [record];
             if (skippedReasons.get(String(dependency)) === "condition-false"
@@ -1286,11 +1370,11 @@ export async function executeClaimedRun(
       let raw: unknown;
       try {
         if (need === undefined) {
-          raw = await raceAbortable(
-            Promise.resolve().then(() => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } })),
-            controller.signal,
-            contract.id,
-          );
+          raw = await withBrowserActionNotes(clock, () => raceAbortable(
+            Promise.resolve().then(() => withBrowserActionBinding(declaredActionBinder,
+              () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } }))),
+            controller.signal, contract.id,
+          ), (actions) => drainBrowserActions(spanPath, actions));
         } else {
           const instanceSelection = envelope.resolvedInstance[need.system];
           if (instanceSelection === undefined) {
@@ -1324,6 +1408,13 @@ export async function executeClaimedRun(
       // checkpointed or used — missing/contradictory provenance fails here.
       const provenance = collector.finalizeRead(raw);
       const parsedOutput: unknown = contract.output.parse(raw);
+      for (const [key, source] of actionSources) {
+        if (!key.startsWith(`${node.id}/`)) continue;
+        const path = key.slice(String(node.id).length + 1);
+        let current: unknown = parsedOutput;
+        for (const segment of path.split(".")) current = current !== null && typeof current === "object" ? Reflect.get(current, segment) : undefined;
+        if (current === undefined || canonicalJsonStringify(current) !== canonicalJsonStringify(source.value)) actionSources.delete(key);
+      }
       return RunCheckpointRecordSchema.parse({
         workflowId: descriptor.id,
         itemId: envelope.itemId,
@@ -1344,6 +1435,9 @@ export async function executeClaimedRun(
         contractFingerprint: descriptor.contractFingerprint,
         implFingerprint: resolveTaskImplFingerprint(BUILD_MANIFEST, contract.id),
         provenance: provenance.provenance,
+        ...(operationDisplaySnapshot === undefined ? {} : { operationSources: [...actionSources].flatMap(([key, source]) =>
+          key.startsWith(`${node.id}/`) && source.ambiguous !== true
+            ? [{ path: key.slice(String(node.id).length + 1), identity: source.identity }] : []) }),
         writtenAt: instant(),
       });
     };
@@ -1608,6 +1702,7 @@ export async function executeClaimedRun(
           if (replayed.assertion === undefined) throw new Error(`node "${node.id}" planned an assertion replay over an unmarked row`);
           outputs[String(node.id)] = replayed.output.value;
           checkpointRecords.set(String(node.id), replayed);
+          hydrateActionSources(replayed);
           assertedRecords.set(String(node.id), Object.freeze({
             step: replayed.assertion.step,
             assertedAt: replayed.assertion.assertedAt,
@@ -1814,6 +1909,17 @@ export async function executeClaimedRun(
             ));
           }
           const transactionScope = scopeFor(node.dependsOn);
+          const operationReadBinder = operationDisplaySnapshot === undefined ? undefined
+            : (role: "probe" | "verify", taskId: string, parsedInput: unknown): BrowserActionBinder => createDeclaredActionBinder({
+              snapshot: operationDisplaySnapshot, runId, attempt: envelope.attempt,
+              claimGeneration: claim.claimGeneration, taskAttempt: 1,
+              nodeId: String(node.id), taskId, contractRole: role,
+              parsedInput: JsonValueSchema.parse(parsedInput),
+              protectedBindings: retainedRunProtectedBindings(initial), sources: actionSources, childSources,
+              ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
+              runInput: canonicalInput, outputs, configurationValues,
+              ...(envelope.parent === undefined ? {} : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+            });
           const operationActionBinders = operationDisplaySnapshot === undefined
             ? undefined
             : {
@@ -1828,6 +1934,9 @@ export async function executeClaimedRun(
                 contractRole: "prepare",
                 parsedInput: JsonValueSchema.parse(node.prepare.bind(transactionScope)),
                 protectedBindings: retainedRunProtectedBindings(initial),
+                sources: actionSources, childSources,
+                ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
+                runInput: canonicalInput, outputs, configurationValues,
                 ...(envelope.parent === undefined
                   ? {}
                   : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
@@ -1843,6 +1952,9 @@ export async function executeClaimedRun(
                 contractRole: "commit",
                 parsedInput: JsonValueSchema.parse(node.commit.bind(transactionScope)),
                 protectedBindings: retainedRunProtectedBindings(initial),
+                sources: actionSources, childSources,
+                ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
+                runInput: canonicalInput, outputs, configurationValues,
                 ...(envelope.parent === undefined
                   ? {}
                   : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
@@ -1867,6 +1979,7 @@ export async function executeClaimedRun(
                 dryRun: true,
                 signal: input.signal,
                 ...(operationActionBinders === undefined ? {} : { operationActionBinders }),
+                ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
               }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions)));
             } catch (error) {
               if (error instanceof RunAbandonedError) throw error;
@@ -1892,6 +2005,7 @@ export async function executeClaimedRun(
               dryRun: envelope.dryRun,
               signal: input.signal,
               ...(operationActionBinders === undefined ? {} : { operationActionBinders }),
+                ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
             }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions));
             const OutcomeSchema = z.strictObject({
               disposition: z.enum(["committed", "already-present"]),
@@ -1985,6 +2099,36 @@ export async function executeClaimedRun(
                 ? childRunOutcomeSchema(node.target.result)
                 : z.array(childRunOutcomeSchema(node.target.result));
             outputs[String(node.id)] = JsonValueSchema.parse(schema.parse(raw));
+            if (node.await === "terminal" && node.cardinality === "one") {
+              const outcome = childRunOutcomeSchema(node.target.result).parse(raw);
+              if (outcome.state === "done" && (descriptor.operationDisplay?.capability === "complete" || deps.authority.authority.runs.get(outcome.runId) !== undefined)) {
+                const child = deps.authority.authority.runs.get(outcome.runId);
+                if ((child?.lifecycle.state !== "terminal" || child.lifecycle.outcome !== "done") || child.envelope.parent?.runId !== runId || child.envelope.parent.edgeId !== node.edgeId || child.envelope.itemId !== outcome.itemId || child.envelope.workflow !== node.target.id) throw new Error("child-output-source-parent-mismatch");
+                const result = deps.authority.authority.runResults.get(outcome.runId);
+                if (result === undefined) throw new Error("child-output-source-result-unavailable");
+                if (result !== undefined) {
+                  const retainedResult = RunResultRecordSchema.parse(result);
+                  if (retainedResult.runId !== outcome.runId || retainedResult.contractFingerprint !== child.envelope.contractFingerprint
+                    || retainedResult.workflowId !== child.envelope.workflow || retainedResult.attempt !== child.envelope.attempt
+                    || retainedResult.descriptorVersion !== child.envelope.descriptorVersion
+                    || retainedResult.resultSchemaHash !== deriveSchemaHash(node.target.result, "output")
+                    || canonicalJsonStringify(retainedResult.result.value) !== canonicalJsonStringify(outcome.output)) throw new Error("child-output-source-result-mismatch");
+                  childResultEvidence.set(String(node.id), { state: "child-resolved", nodeId: node.id, parentRunId: getRun().envelope.runId, edgeId: node.edgeId,
+                    childRun: { runId: child.envelope.runId, itemId: child.envelope.itemId, workflowId: child.envelope.workflow, attempt: child.envelope.attempt,
+                      descriptorVersion: child.envelope.descriptorVersion, contractFingerprint: child.envelope.contractFingerprint, lifecycle: "done" }, result: retainedResult });
+                  for (const lineage of retainedResult.operationLineage ?? []) {
+                    childSources.set(`${node.id}/${lineage.path}`, { result: { runId: retainedResult.runId, definitionFingerprint: retainedResult.contractFingerprint,
+                      resultSchemaHash: retainedResult.resultSchemaHash, resultDigest: retainedResult.resultDigest, dependencyDigest: retainedResult.dependencyDigest }, inputs: lineage.inputs });
+                  }
+                  for (const source of retainedResult.operationSources ?? []) {
+                    let value: unknown = outcome.output;
+                    for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
+                    if (value === undefined) throw new Error("child-output-source-field-unavailable");
+                    actionSources.set(`${node.id}/${source.path}`, { identity: source.identity, value: JsonValueSchema.parse(value) });
+                  }
+                }
+              }
+            }
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
             return await failNode(node, undefined, error);

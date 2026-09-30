@@ -1,3 +1,8 @@
+import { defineTaskContract } from "../../src/domain/contracts/base.js";
+import { WriteFixturePrepare, WriteFixtureCommit, WriteFixtureProbe, WriteFixtureVerify } from "./fixtures/write-sequencer-fixtures.js";
+import { ObservedOperationStructureWireSchema } from "../../src/domain/dashboard/operation-structure.js";
+import { createDeclaredActionBinder } from "../../src/core/operation-action-binding.js";
+import { DeclaredActionIdentitySchema } from "../../src/domain/workflow/operation-action-identity.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import {
@@ -6,6 +11,7 @@ import {
   defineWorkflow,
 } from "../../src/base/workflow-definition.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import { sha256Hex } from "../../src/domain/sha256.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { EidSchema, FingerprintSchema, ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
@@ -861,4 +867,99 @@ describe("operation display compiler refusals", () => {
       execution: [],
     })).toThrow(/compiler-produced complete projection/u);
   });
+});
+
+
+describe("exact pure transformation inputs", () => {
+  it("executes the declared derive and retains both equal-valued producer identities", () => {
+    const base = minimalDisplay();
+    const invocation = base.invocations[0];
+    const transform = { id: "selection-eid", input: z.strictObject({ left: z.string(), right: z.string() }), output: z.strictObject({ eid: EidSchema }),
+      inputs: [ { id: "left", inputPath: "left", value: { kind: "task-output" as const, entryId: "left", path: "selection.status" } },
+        { id: "right", inputPath: "right", value: { kind: "task-output" as const, entryId: "right", path: "selection.status" } } ],
+      example: { left: "resolved", right: "resolved" }, derive: (value: unknown) => {
+        const parsed = z.strictObject({ left: z.string(), right: z.string() }).parse(value);
+        return { eid: parsed.left === "resolved" && parsed.right === "resolved" ? "10800000" : "10800001" };
+      } };
+    const display = compileWorkflowOperationDisplay({ workflowId: DISPLAY_FORWARD_ID, input: DisplayInput,
+      entries: [{ ...SearchEntry, id: "left" }, { ...SearchEntry, id: "right" }, { ...SearchEntry, dependsOn: ["left", "right"] }],
+      declaration: { ...base, transforms: [transform], invocations: [
+        searchInvocation("left-operation", "left", "firstEid"), searchInvocation("right-operation", "right", "secondEid"),
+        { ...invocation, bindings: invocation.bindings?.map((binding) => binding.slot === "empl-id" ? { ...binding, value: { kind: "transformation" as const, transformId: transform.id, path: "eid" } } : binding) },
+      ], presentation: [ { id: "left-node", kind: "operation", invocationId: "left-operation" }, { id: "right-node", kind: "operation", invocationId: "right-operation" }, ...base.presentation ] } });
+    if (display.capability !== "complete") throw new Error("fixture display incomplete");
+    const snapshot = freezeWorkflowOperationDisplaySnapshot({ workflowId: DISPLAY_FORWARD_ID, definitionFingerprint: FingerprintSchema.parse("a".repeat(64)), display });
+    const identity = (nodeId: string) => DeclaredActionIdentitySchema.parse({ runId: "aaaaaaaa-0001-4000-8000-000100000000", definitionFingerprint: "a".repeat(64),
+      nodeId, taskId: SearchPersonOrg.id, attempt: 1, claimGeneration: 1, taskAttempt: 1, invocationId: `${nodeId}-operation`, occurrencePath: [nodeId], logicalActionId: "read-selection",
+      occurrence: 1, logicalSessionId: operation.session.id, physicalSessionId: "aaaaaaaa-0002-4000-8000-000200000000", state: "completed" });
+    const sources = new Map([ ["left/selection.status", { identity: identity("left"), value: "resolved" }], ["right/selection.status", { identity: identity("right"), value: "resolved" }] ]);
+    const create = () => createDeclaredActionBinder({ snapshot, runId: identity("left").runId, attempt: 1, claimGeneration: 1, taskAttempt: 1,
+      nodeId: "search", taskId: SearchPersonOrg.id, contractRole: "task", parsedInput: { kind: "by-eid", emplId: "10800000" }, protectedBindings: [], sources,
+      transforms: display.transforms, runInput: { firstEid: "10800000", secondEid: "10800001" }, outputs: { left: { selection: { status: "resolved" } }, right: { selection: { status: "resolved" } } } });
+    const action = { kind: "typed" as const, targetId: "ucpath.person-org.eid-input", value: "10800000", physicalSessionId: identity("left").physicalSessionId };
+    const observed = create()(action).operation?.value?.producer;
+    expect(observed?.kind).toBe("transformation");
+    if (observed?.kind !== "transformation") throw new Error("fixture producer missing");
+    expect(observed.inputs?.map((input) => input.identities[0]?.nodeId)).toEqual(["left", "right"]);
+    const capturedOccurrence = create()(action).operation;
+    if (capturedOccurrence?.value === undefined) throw new Error("fixture value missing");
+    const wire = { state: "observed", runId: capturedOccurrence.runId, definition: snapshot, observations: [{ logId: "aaaaaaaa-0009-4000-8000-000900000000", at: "2026-08-03T09:00:00.000Z", action: "typed", targetId: action.targetId, occurrence: { ...capturedOccurrence, value: { slot: capturedOccurrence.value.slot, fieldPath: capturedOccurrence.value.fieldPath, producer: observed, state: "observed", classification: "local-operator", value: "10800000" } } }] };
+    expect(ObservedOperationStructureWireSchema.safeParse(wire).success).toBe(true);
+    const swapped = { ...observed, inputs: observed.inputs?.map((input) => input.inputId !== "left" ? input : { ...input, identities: input.identities.map((identity) => ({ ...identity, logicalActionId: "read-rows" })) }) };
+    expect(ObservedOperationStructureWireSchema.safeParse({ ...wire, observations: wire.observations.map((observation) => ({ ...observation, occurrence: { ...observation.occurrence, value: { ...observation.occurrence.value, producer: swapped } } })) }).success).toBe(false);
+
+    expect(() => create()({ ...action, value: "10800001" })).toThrow(/does not match declared field path/u);
+    sources.set("right/selection.status", { identity: identity("left"), value: "resolved" });
+    const ambiguous = create()(action).operation?.value?.producer;
+    if (ambiguous?.kind !== "transformation") throw new Error("fixture producer missing");
+    expect(ambiguous.inputs?.[1]).toMatchObject({ state: "unavailable", identities: [] });
+    expect(create()(action).operation?.value?.consumed.state).toBe("withheld");
+  });
+});
+
+
+it("refuses undeclared read roles, transform cycles and invocation continuation targets", () => {
+  const declaration = minimalDisplay();
+  expect(() => compileMinimal({ ...declaration, invocations: declaration.invocations.map((invocation) => ({ ...invocation, contractRole: "probe" })) })).toThrow(/unavailable contract occurrence search\/probe/u);
+  const schema = z.strictObject({ text: z.string() });
+  const transform = (id: string, target: string) => ({ id, input: schema, output: schema, inputs: [{ id: "text", inputPath: "text", value: { kind: "transformation" as const, transformId: target, path: "text" } }], example: { text: "sample" }, derive: (value: unknown) => schema.parse(value) });
+  expect(() => compileMinimal({ ...declaration, transforms: [transform("first", "second"), transform("second", "first")] })).toThrow(/transformation cycle/u);
+  expect(() => compileMinimal({ ...declaration, invocations: declaration.invocations.map((invocation) => ({ ...invocation, outcomes: [{ id: "done", label: "Done", when: { kind: "is-present" as const, value: { kind: "run-input" as const, path: "firstEid" } }, continuation: "missing" }] })) })).toThrow(/invalid branch target/u);
+});
+
+it("retains historical v2 snapshot digest when optional classification and result sources are absent", () => {
+  const display = compileMinimal(minimalDisplay());
+  const frozen = freezeWorkflowOperationDisplaySnapshot({ workflowId: DISPLAY_FORWARD_ID, definitionFingerprint: FingerprintSchema.parse("a".repeat(64)), display });
+  if (frozen === undefined) throw new Error("fixture snapshot missing");
+  const { contentDigest: _digest, resultSources: _sources, ...payload } = frozen;
+  const historical = { ...payload, invocations: payload.invocations.map((invocation) => ({ ...invocation, operation: { ...invocation.operation, values: invocation.operation.values?.map(({ presentation: _presentation, ...slot }) => slot) } })) };
+  const digest = sha256Hex(`hrauto:operation-display-snapshot:v2\0${canonicalJsonStringify(historical)}`);
+  expect(requireWorkflowOperationDisplaySnapshot({ ...historical, contentDigest: digest }, { workflowId: DISPLAY_FORWARD_ID, definitionFingerprint: "a".repeat(64) }).contentDigest).toBe(digest);
+  expect(WorkflowOperationDisplaySnapshotSchema.parse({ ...historical, contentDigest: digest })).toEqual({ ...historical, contentDigest: digest });
+});
+
+
+it("compiles a sealed transaction probe role and refuses missing, mismatched, duplicate or unavailable read contracts", () => {
+  const declaration = (id: string) => ({ version: 1 as const, id, system: "ucpath" as const, session: { kind: "browser" as const, id: "role-browser", system: "ucpath" as const }, actions: [{ id: "verify", kind: "verify" as const }] });
+  const { __sealed: _prepareSeal, ...prepareSpec } = WriteFixturePrepare;
+  const { __sealed: _commitSeal, ...commitSpec } = WriteFixtureCommit;
+  const { __sealed: _probeSeal, ...probeSpec } = WriteFixtureProbe;
+  const { __sealed: _wrongSeal, ...wrongSpec } = WriteFixtureVerify;
+  const prepare = defineTaskContract({ ...prepareSpec, operation: declaration("prepare-operation") });
+  const commit = defineTaskContract({ ...commitSpec, operation: declaration("commit-operation") });
+  const probe = defineTaskContract({ ...probeSpec, operation: declaration("probe-operation") });
+  const wrong = defineTaskContract({ ...wrongSpec, operation: declaration("wrong-operation") });
+  const reads = [{ entryId: "write", role: "probe" as const, contract: probe }];
+  const build = (transactionReads: typeof reads) => compileWorkflow(defineWorkflow({ ...outerWorkflow(DISPLAY_FORWARD_ID, undefined), operationDisplay: { capability: "complete", version: 1, transactionReads,
+    invocations: (["probe", "prepare", "commit"] as const).map((contractRole) => ({ id: `${contractRole}-invocation`, entryId: "write", contractRole, occurrencePath: ["write", contractRole] })),
+    presentation: (["probe", "prepare", "commit"] as const).map((role) => ({ id: `${role}-node`, kind: "operation" as const, invocationId: `${role}-invocation` })) },
+    steps: ({ transaction, result }) => {
+      const write = transaction({ id: "write", prepare, commit, dryRun: "stop-after-prepare", probePolicy: "always", probeToFenceMaxMs: 1000 }, [], { prepareBind: ({ input }) => ({ eid: input.firstEid }), commitBind: ({ input }) => ({ eid: input.firstEid }) });
+      return { steps: [[{ key: "write", label: "Write" }, [write]]], result: result(z.strictObject({ done: z.boolean() }), [], () => ({ done: true })) };
+    } }), { manifest: fixtureBuildManifest([DISPLAY_FORWARD_ID]) });
+  expect(build(reads).descriptor.operationDisplay?.capability).toBe("complete");
+  expect(() => build([])).toThrow(/requires one probe contract/u);
+  expect(() => build([...reads, ...reads])).toThrow(/requires one probe contract/u);
+  expect(() => build([{ ...reads[0], contract: wrong }])).toThrow(/does not match.*writeSafety/u);
+  expect(() => build([{ ...reads[0], entryId: "missing" }])).toThrow(/unavailable transaction/u);
 });

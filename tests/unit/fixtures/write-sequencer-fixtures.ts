@@ -42,7 +42,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presenta
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { WorkerSessionManager } from "../../../src/core/worker-sessions.js";
 import { assertSequencerMintedMutationCapability } from "../../../src/core/write-sequencer.js";
-import { recordBrowserAction } from "../../../src/infra/browser/action-notes.js";
+import { recordBrowserAction, runDeclaredAction } from "../../../src/infra/browser/action-notes.js";
 import { HASH_C, UUID_2, UUID_3, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
@@ -357,7 +357,8 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
         throw new Error("write fixture probe was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      const verdict = ProbeOutputSchema.parse(next);
+      const verdict = await runDeclaredAction({ id: "probe-state", kind: "read", targetId: "ucpath.write-fixture.probe-state" },
+        async () => ProbeOutputSchema.parse(next), (value) => value.state);
       ctx.recordData([
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },
@@ -427,7 +428,8 @@ export function buildWriteFixtureRegistry(world: WriteFixtureWorld): TaskStoreRe
         throw new Error("write fixture verify was invoked with no queued result; the test under-provisioned it");
       }
       if (next instanceof Error) throw next;
-      const verdict = ProbeOutputSchema.parse(next);
+      const verdict = await runDeclaredAction({ id: "verify-state", kind: "read", targetId: "ucpath.write-fixture.verify-state" },
+        async () => ProbeOutputSchema.parse(next), (value) => value.state);
       ctx.recordData([
         { direction: "read", field: "state", value: verdict.state },
         { direction: "read", field: "eid", value: input.eid },

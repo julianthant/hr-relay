@@ -344,6 +344,28 @@ describe("completed transaction gesture binding", () => {
     assert.deepEqual(drained, ["ucpath.write-fixture.eid-input", "ucpath.write-fixture.save-submit"]);
   });
 
+  it("binds probe and verifier from their parsed task inputs and drains only after settlement", async () => {
+    const h = harness();
+    const { run, claim } = claimRunning(h.database, h.clock);
+    h.world.probeResults.push(absentProbeEvidence(WRITE_FIXTURE_NOW));
+    h.world.verifyResults.push({ state: "present", proof: { transactionId: "T123456" } });
+    const roles: string[] = [];
+    const states: string[] = [];
+    let drained = false;
+    await withBrowserActionNotes(h.clock, () => h.execute({ ...contextFor(run, claim, writeFixtureSaveDescriptor),
+      operationReadBinder: (role, taskId, parsedInput) => {
+        assert.deepEqual(parsedInput, { eid: WRITE_FIXTURE_EID });
+        assert.equal(taskId, `ucpath/read-write-fixture-${role}`);
+        roles.push(role);
+        return (action) => { assert.equal(drained, false); states.push(`${role}:${action.state}`); return action; };
+      },
+    }), () => { drained = true; });
+    assert.deepEqual(roles, ["probe", "verify"]);
+    assert.deepEqual(states, ["probe:started", "probe:completed", "verify:started", "verify:completed"]);
+    assert.equal(drained, true);
+    assert.equal(intentByKey(h.database)?.status, "committed");
+  });
+
   it("parks a fenced write when the completed commit gesture cannot bind", async () => {
     const h = harness();
     const { run, claim } = claimRunning(h.database, h.clock);

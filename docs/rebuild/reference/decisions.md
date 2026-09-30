@@ -1,4 +1,15 @@
-# `reference/decisions.md` — the decision ledger (D1–D357, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D358, 2026-07-17 → 2026-09-29)
+
+**D358 — Exact child and derived-result sources (approved Plan 1 Assignment A, 2026-09-29):**
+Awaited single-child terminal results use the existing sealed dependency authority with exact
+canonical child/result identity and digests, never a parent task checkpoint. Result declarations
+retain every explicit derived input's exact finalized source or named unavailable evidence;
+transformation action attribution uses the same pure declaration and validates consumed output.
+Canonical terminal admission rereads child dependencies; bounded child provenance preserves original
+observation times. Exact retained config feeds the same pure derive. Protected-derived values redact
+or withhold when protection cannot be proved; replay sources require exact canonical retained
+identity. Historical optional evidence is read forward, never reconstructed. Owner:
+[workflow-model §1.6.5](workflow-model.md#165-exact-child-and-derived-result-sources-d358-2026-09-29).
 
 **D357 — Shared Explorer/Logs operation structure (approved Plan 1 P1.3, 2026-09-27):**
 Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs

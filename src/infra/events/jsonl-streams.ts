@@ -283,3 +283,43 @@ export function pruneEventStreams(input: Readonly<{
   }
   return Object.freeze({ cutoffDate, removed: Object.freeze(removed) });
 }
+
+/** One bounded partition slice for exact provenance lookup; never reads a whole history. */
+export function readEventStreamSlice(
+  file: EventStreamFile,
+  cursor: EventStreamFileCursor,
+  limit = 200,
+): EventStreamTailResult {
+  if (!Number.isSafeInteger(cursor.bytesConsumed) || cursor.bytesConsumed < 0
+    || !Number.isSafeInteger(cursor.linesConsumed) || cursor.linesConsumed < 0
+    || !Number.isSafeInteger(limit) || limit < 1 || limit > 200) throw new Error("operation-source-invalid-cursor");
+  const handle = openSync(file.path, "r");
+  try {
+    const size = statSync(file.path).size;
+    if (cursor.bytesConsumed > size) throw new Error("operation-source-history-truncated");
+    if (cursor.bytesConsumed > 0) {
+      const boundary = Buffer.alloc(1);
+      readSync(handle, boundary, 0, 1, cursor.bytesConsumed - 1);
+      if (boundary[0] !== 10) throw new Error("operation-source-cursor-not-line-boundary");
+    }
+    const chunk = Buffer.alloc(Math.min(size - cursor.bytesConsumed, 256 * 1024));
+    const filled = readSync(handle, chunk, 0, chunk.length, cursor.bytesConsumed);
+    const lines: EventStreamLine[] = [];
+    let offset = 0;
+    let count = 0;
+    while (count < limit) {
+      const end = chunk.indexOf(10, offset);
+      if (end < 0 || end >= filled) break;
+      const text = chunk.subarray(offset, end).toString("utf8");
+      count += 1;
+      if (text !== "") lines.push({ file, lineNumber: cursor.linesConsumed + count, text });
+      offset = end + 1;
+    }
+    if (count < limit && offset < filled && cursor.bytesConsumed + filled === size) throw new Error("operation-source-incomplete-tail");
+    if (offset === 0 && filled === chunk.length && chunk.length === 256 * 1024) throw new Error("operation-source-line-exceeds-bound");
+    return {
+      lines,
+      cursors: new Map([[file.path, { bytesConsumed: cursor.bytesConsumed + offset, linesConsumed: cursor.linesConsumed + count }]]),
+    };
+  } finally { closeSync(handle); }
+}

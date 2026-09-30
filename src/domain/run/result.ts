@@ -1,3 +1,5 @@
+import { ContractFieldPathSchema } from "../contracts/base.js";
+import { DeclaredActionIdentitySchema, OperationInputLineageSchema } from "../workflow/operation-action-identity.js";
 import { valueFreeProtectedData } from "../protected-input.js";
 /**
  * Durable terminal workflow results and the exact checkpoint identities from
@@ -7,6 +9,7 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import {
   ConfigSnapshotIdSchema,
+  DelegationEdgeIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
@@ -57,6 +60,7 @@ export const ResolvedTerminalDependencySchema = z.strictObject({
   implFingerprint: FingerprintSchema,
   outputDigest: FingerprintSchema,
   provenanceDigest: FingerprintSchema,
+  operationSources: z.array(z.strictObject({ path: ContractFieldPathSchema, identity: DeclaredActionIdentitySchema })).optional(),
 });
 
 export const NotRunTerminalDependencySchema = z.strictObject({
@@ -80,14 +84,38 @@ export const AssertedTerminalDependencySchema = z.strictObject({
   outputDigest: FingerprintSchema,
 });
 
+export const ChildTerminalDependencySchema = z.strictObject({
+  state: z.literal("child-resolved"),
+  nodeId: NodeIdSchema,
+  parentRunId: RunIdSchema,
+  edgeId: DelegationEdgeIdSchema,
+  child: z.strictObject({
+    runId: RunIdSchema, itemId: ItemIdSchema, workflowId: WorkflowIdSchema,
+    attempt: PositiveIntSchema, descriptorVersion: PositiveIntSchema,
+    contractFingerprint: FingerprintSchema, resultSchemaHash: FingerprintSchema,
+    resultDigest: FingerprintSchema, dependencyDigest: FingerprintSchema,
+  }),
+  operationSources: z.array(z.strictObject({ path: ContractFieldPathSchema, identity: DeclaredActionIdentitySchema })).optional(),
+  operationLineage: z.array(z.strictObject({ path: ContractFieldPathSchema, inputs: z.array(OperationInputLineageSchema).min(1) })).optional(),
+});
+
 export const TerminalDependencyRecordSchema = z.discriminatedUnion("state", [
   ResolvedTerminalDependencySchema,
   NotRunTerminalDependencySchema,
   AssertedTerminalDependencySchema,
+  ChildTerminalDependencySchema,
 ]);
 
 /** Exact executor evidence consumed by the factory-owned terminal derive. */
 export const TerminalDependencyEvidenceSchema = z.discriminatedUnion("state", [
+  z.strictObject({
+    state: z.literal("child-resolved"), nodeId: NodeIdSchema,
+    parentRunId: RunIdSchema, edgeId: DelegationEdgeIdSchema,
+    childRun: z.strictObject({ runId: RunIdSchema, itemId: ItemIdSchema, workflowId: WorkflowIdSchema, attempt: PositiveIntSchema,
+      descriptorVersion: PositiveIntSchema, contractFingerprint: FingerprintSchema,
+      lifecycle: z.literal("done") }),
+    result: z.lazy(() => RunResultRecordSchema),
+  }),
   z.strictObject({
     state: z.literal("resolved"),
     nodeId: NodeIdSchema,
@@ -169,10 +197,54 @@ export const RunResultRecordSchema = z.strictObject({
   resultSchemaHash: FingerprintSchema,
   result: SchemaBoundCanonicalValueSchema,
   resultDigest: FingerprintSchema,
+  operationSources: z.array(z.strictObject({ path: ContractFieldPathSchema, identity: DeclaredActionIdentitySchema })).optional(),
+  operationSourceDigest: FingerprintSchema.optional(),
+  operationLineage: z.array(z.strictObject({ path: ContractFieldPathSchema, inputs: z.array(OperationInputLineageSchema).min(1) })).optional(),
+  operationLineageDigest: FingerprintSchema.optional(),
   dependencies: z.array(TerminalDependencyRecordSchema),
   dependencyDigest: FingerprintSchema,
   createdAt: IsoInstantSchema,
 }).superRefine((record, context) => {
+  if ((record.operationSources === undefined) !== (record.operationSourceDigest === undefined)
+    || (record.operationSources !== undefined && record.operationSourceDigest !== sha256Hex(`hrauto:result-operation-sources:v1\0${canonicalJsonStringify(record.operationSources)}`))) {
+    context.addIssue({ code: "custom", path: ["operationSourceDigest"], message: "result operation source digest mismatch" });
+  }
+  if ((record.operationLineage === undefined) !== (record.operationLineageDigest === undefined)
+    || (record.operationLineage !== undefined && record.operationLineageDigest !== sha256Hex(`hrauto:result-operation-lineage:v1\0${canonicalJsonStringify(record.operationLineage)}`))) context.addIssue({ code: "custom", path: ["operationLineageDigest"], message: "result operation lineage digest mismatch" });
+  const lineagePaths = new Set<string>();
+  for (const lineage of record.operationLineage ?? []) {
+    if (lineagePaths.has(lineage.path) || new Set(lineage.inputs.map((input) => input.inputId)).size !== lineage.inputs.length) context.addIssue({ code: "custom", message: "result operation lineage paths and inputs must be unique" });
+    lineagePaths.add(lineage.path);
+    let output: unknown = record.result.value;
+    for (const segment of lineage.path.split(".")) output = output !== null && typeof output === "object" ? Reflect.get(output, segment) : undefined;
+    if (output === undefined) context.addIssue({ code: "custom", message: "result operation lineage output field unavailable" });
+    for (const input of lineage.inputs) {
+      const dependency = record.dependencies.find((entry) => entry.nodeId === input.source.entryId);
+      if (dependency === undefined || (dependency.state !== "resolved" && dependency.state !== "child-resolved")
+        || ((input.source.kind === "task-output") !== (dependency.state === "resolved"))
+        || (input.result !== undefined && (dependency.state !== "child-resolved" || input.result.runId !== dependency.child.runId || input.result.resultDigest !== dependency.child.resultDigest || input.result.dependencyDigest !== dependency.child.dependencyDigest || input.result.definitionFingerprint !== dependency.child.contractFingerprint || input.result.resultSchemaHash !== dependency.child.resultSchemaHash))
+        || (input.identities !== undefined && (dependency.state !== "child-resolved" || input.result === undefined
+          || canonicalJsonStringify(input.identities) !== canonicalJsonStringify(dependency.operationLineage?.find((lineage) => lineage.path === input.source.path)?.inputs.flatMap((retained) => retained.identity === undefined ? retained.identities ?? [] : [retained.identity]) ?? [])))
+        || (input.identity !== undefined && !dependency.operationSources?.some((source) => source.path === input.source.path && canonicalJsonStringify(source.identity) === canonicalJsonStringify(input.identity)))) context.addIssue({ code: "custom", message: "result lineage input is not retained by its exact dependency" });
+    }
+  }
+  const sourcePaths = new Set<string>();
+  for (const [index, source] of (record.operationSources ?? []).entries()) {
+    const identity = source.identity;
+    const dependency = record.dependencies.find((entry) => (entry.state === "child-resolved"
+      ? entry.operationSources?.some((retained) => (retained.identity !== undefined && canonicalJsonStringify(retained.identity) === canonicalJsonStringify(identity)))
+      : entry.state === "resolved" && entry.nodeId === identity.nodeId
+      && entry.checkpoint.runId === identity.runId && entry.checkpoint.attempt === identity.attempt
+      && entry.checkpoint.claimGeneration === identity.claimGeneration && entry.contractFingerprint === identity.definitionFingerprint
+      && entry.operationSources?.some((retained) => (retained.identity !== undefined && canonicalJsonStringify(retained.identity) === canonicalJsonStringify(identity)))));
+    if (sourcePaths.has(source.path) || dependency === undefined || (identity.state !== undefined && identity.state !== "completed")) {
+      context.addIssue({ code: "custom", path: ["operationSources", index], message: "result operation source does not belong to an exact resolved dependency or repeats a path" });
+    }
+    sourcePaths.add(source.path);
+    let value: unknown = record.result.value;
+    for (const segment of source.path.split(".")) value = value !== null && typeof value === "object" ? Reflect.get(value, segment) : undefined;
+    if (value === undefined) context.addIssue({ code: "custom", path: ["operationSources", index, "path"], message: "result operation source field unavailable" });
+  }
   if (record.result.schemaHash !== record.resultSchemaHash) {
     context.addIssue({
       code: "custom",
@@ -202,6 +274,11 @@ export const RunResultRecordSchema = z.strictObject({
       path: ["dependencies"],
       message: "terminal dependencies must contain each node identity exactly once",
     });
+  }
+  for (const [index, dependency] of record.dependencies.entries()) {
+    if (dependency.state === "child-resolved" && dependency.parentRunId !== record.runId) {
+      context.addIssue({ code: "custom", path: ["dependencies", index], message: "child terminal dependency belongs to a different parent run" });
+    }
   }
   const resolved = record.dependencies.filter((dependency) => dependency.state === "resolved");
   const itemIds = new Set(resolved.map(({ checkpoint }) => checkpoint.itemId));

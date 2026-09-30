@@ -139,7 +139,7 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
   }, authority, undefined, undefined, input.fields);
   const emitRunAction: NoteJsonlWriter["emitRunAction"] = (input, authority) => {
     const action = z.strictObject({
-      kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed"]),
+      kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session"]),
       targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
       at: z.iso.datetime({ offset: true }),
       value: z.union([z.string(), z.boolean()]).optional(),
