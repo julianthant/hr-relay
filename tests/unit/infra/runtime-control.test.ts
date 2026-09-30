@@ -896,7 +896,7 @@ it("keeps low-level installation admission from reaping a crashed child's mutex"
   try {
     await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
   } finally { await stopChild(child); }
-  expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex busy or abandoned; offline recovery required/u);
+  expect(() => acquireInstallation(workspace, "shared")).toThrow(/admission mutex remained busy after 5000ms/u);
 });
 
 it.each(["temporary", "published"])('startup recovers a proven abandoned %s mutex owner', (kind) => {

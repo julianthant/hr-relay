@@ -1,5 +1,13 @@
 # `reference/decisions.md` — the decision ledger (D1–D358, 2026-07-17 → 2026-09-29)
 
+**D359 — Bounded normal admission mutex contention (operator-approved, 2026-09-29):**
+Admission and release wait up to five monotonic seconds only for mkdir EEXIST contention, checking
+private directory shape and sleeping between attempts. Other filesystem failures propagate;
+exclusive lease conflicts remain immediate. Timeout is typed busy. D354 recovery requires strict
+proof of an exact dead or reused owner identity; live, unknown, empty, or malformed custody is never
+stolen or deleted.
+Owner: [clock-config-secrets §D359](clock-config-secrets.md#d359--bounded-normal-admission-mutex-contention--2026-09-29).
+
 **D358 — Complete operator evidence without value masking (2026-09-29).** All classifications
 retain complete supplied values at authorized capture and presentation boundaries. Existing access,
 admission, integrity and identity rules remain; historical source values are never reconstructed.

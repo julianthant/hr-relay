@@ -1768,6 +1768,19 @@ open-ordering closes the old-build path. Neither alone would do.
    never regenerates an entry — the operator enters it through §D331.5's protected arm, and until then
    the first credential-needing action refuses by key name.
 
+### D359 — Bounded normal admission mutex contention · 2026-09-29
+
+Ordinary installation admission and release wait up to five monotonic seconds for an occupied
+admission critical section, sleeping between attempts. Only mkdir EEXIST enters this wait; other
+filesystem failures propagate. Recheck private directory shape during contention, including normal
+holder removal races. Waiting does not steal, delete, or reinterpret a mutex owner. Exclusive
+installation lease conflicts still refuse immediately after entering the critical section.
+
+A typed mutex timeout may enter D354 recovery only after a strict published or interrupted owner
+record proves its exact process birth identity gone or reused. Live, unknown, and empty-owner states
+remain busy without recovery. Malformed custody remains a distinct refusal. The existing fixed
+restore admission and complete stopped-system proof still recheck every recovery prerequisite.
+
 ### D354 — Proven abandoned admission mutex recovery at startup · 2026-09-27
 
 An ordinary runtime entrypoint that encounters an occupied installation admission mutex may run

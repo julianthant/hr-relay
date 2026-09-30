@@ -4,7 +4,7 @@ import { ArchiveDatabase } from "../sqlite/archive-database.js";
 import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { acquireExclusiveRuntimeAdmission, acquireInitialRuntimeAdmission, acquireSharedRuntimeAdmission,
   type RuntimeAdmission } from "./admission.js";
-import { recoverAbandonedAdmissionMutexAtStartup, type ExistingAuthorityEvidence, type RuntimePair } from "./installation.js";
+import { AdmissionMutexBusyError, admissionMutexOwnerProvenDead, recoverAbandonedAdmissionMutexAtStartup, type ExistingAuthorityEvidence, type RuntimePair } from "./installation.js";
 import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 
 function verifyKnownDefaultAuthority(pair: RuntimePair, inspection: RuntimeAdmission): ExistingAuthorityEvidence {
@@ -37,7 +37,7 @@ export function acquireEntrypointAdmission(workspace: string, mode: "shared" | "
     ? acquireExclusiveRuntimeAdmission(workspace) : acquireSharedRuntimeAdmission(workspace);
   try { return acquire(); }
   catch (error) {
-    if (!(error instanceof Error) || error.message !== "runtime-control: admission mutex busy or abandoned; offline recovery required") throw error;
+    if (!(error instanceof AdmissionMutexBusyError) || !admissionMutexOwnerProvenDead(workspace)) throw error;
     recoverAbandonedAdmissionMutexAtStartup(workspace);
     return acquire();
   }
