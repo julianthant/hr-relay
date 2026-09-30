@@ -52,7 +52,7 @@ import {
   writeFixtureDescriptorWithDependencyAfterUnrelatedEdit,
   writeFixtureQueuedRun,
   writeFixtureSaveDescriptorAfterUnrelatedEdit,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 
 const COMMIT_TASK_ID = "ucpath/submit-write-fixture";
 

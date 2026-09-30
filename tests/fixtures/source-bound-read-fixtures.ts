@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { flow } from "../../../src/base/flow.js";
-import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
-import { defineServiceStore, defineTaskStoreRegistry } from "../../../src/base/store.js";
-import { defineTask } from "../../../src/base/task.js";
-import { defineTaskContract } from "../../../src/domain/contracts/base.js";
-import { EidSchema, ScenarioIdSchema, taskId } from "../../../src/domain/ids.js";
-import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
+import { flow } from "../../src/base/flow.js";
+import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
+import { defineServiceStore, defineTaskStoreRegistry } from "../../src/base/store.js";
+import { defineTask } from "../../src/base/task.js";
+import { defineTaskContract } from "../../src/domain/contracts/base.js";
+import { EidSchema, ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { WriteFixtureWorld } from "./write-sequencer-fixtures.js";
 
 const Input = z.strictObject({ eid: EidSchema, memo: z.string().optional() });

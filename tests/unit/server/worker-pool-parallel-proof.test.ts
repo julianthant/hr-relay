@@ -9,7 +9,7 @@ import { RunRecordService } from "../../../src/core/run-record-service.js";
  *
  * Two lanes, split by what each claim is ABOUT:
  *
- * - Claims about PROCESSES run REAL OS children: `tests/fixtures/worker-stub-cli.ts`
+ * - Claims about PROCESSES run REAL OS children: `tests/process-fixtures/worker-stub-cli.ts`
  *   is spawned through the composed control's real process boundary, proves its
  *   own birth by writing the durable worker lease under its own pid into the
  *   same authority database, takes the real per-worker process lock, observes
@@ -93,7 +93,7 @@ const PL_2 = plMember(2);
 const PL_3 = plMember(3);
 const SEP_1 = sepMember(1);
 
-const STUB_CLI_PATH = join(process.cwd(), "tests", "fixtures", "worker-stub-cli.ts");
+const STUB_CLI_PATH = join(process.cwd(), "tests", "process-fixtures", "worker-stub-cli.ts");
 const REPO_ROOT = process.cwd();
 
 function required<T>(value: T | undefined, what: string): T {

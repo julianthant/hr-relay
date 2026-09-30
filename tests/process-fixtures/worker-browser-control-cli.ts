@@ -1,5 +1,5 @@
 import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/bootstrap-admission.js";
-import { healthyRuntimePreflightRunners } from "./preflight-seams.js";
+import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";

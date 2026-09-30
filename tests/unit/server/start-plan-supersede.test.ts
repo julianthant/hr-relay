@@ -8,7 +8,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER 
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { launchHarness, launchDescriptor } from "../fixtures/run-launch-fixtures.js";
+import { launchHarness, launchDescriptor } from "../../fixtures/run-launch-fixtures.js";
 import { derivePlannedInputFingerprint, StartPlanRecordSchema } from "../../../src/domain/run/start-plan.js";
 
 const cleanup: (() => void)[] = [];

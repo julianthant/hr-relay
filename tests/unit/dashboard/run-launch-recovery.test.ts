@@ -2,7 +2,7 @@ import { StartCommandRequestSchema } from "../../../src/domain/commands.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery } from "../../../src/dashboard/app/run-launch-recovery.js";
-import { launchHarness } from "../fixtures/run-launch-fixtures.js";
+import { launchHarness } from "../../fixtures/run-launch-fixtures.js";
 
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });

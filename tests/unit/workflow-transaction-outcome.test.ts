@@ -8,7 +8,7 @@ import {
 import {
   WriteFixtureCommit,
   WriteFixtureProofSchema,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 
 const OUTPUT_SCHEMA_HASH = deriveSchemaHash(WriteFixtureCommit.output, "output");
 const PROOF_SCHEMA_HASH = deriveSchemaHash(WriteFixtureProofSchema, "output");

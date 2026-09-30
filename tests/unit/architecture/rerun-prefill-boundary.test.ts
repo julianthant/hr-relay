@@ -1,5 +1,5 @@
-import { sourceBoundHarness } from "../fixtures/source-bound-fixtures.js";
-import { absentProbeEvidence, WRITE_FIXTURE_EID } from "../fixtures/write-sequencer-fixtures.js";
+import { sourceBoundHarness } from "../../fixtures/source-bound-fixtures.js";
+import { absentProbeEvidence, WRITE_FIXTURE_EID } from "../../fixtures/write-sequencer-fixtures.js";
 import { buildRerunPlan } from "../../../src/services/start/rerun.js";
 import { RerunSourceSchema } from "../../../src/domain/run/rerun.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";

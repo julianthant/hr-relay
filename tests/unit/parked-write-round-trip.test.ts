@@ -58,7 +58,7 @@ import {
   writeFixtureQueuedRun,
   writeFixtureSessions,
   type WriteFixtureWorld,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 

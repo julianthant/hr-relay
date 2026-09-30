@@ -7,22 +7,22 @@ import { sourceBoundReadContract } from "./source-bound-read-fixtures.js";
  * AuthorityDatabase + WorkerSessionManager. Only the process edges (browser,
  * clock, ids, timers, span sink) are fakes.
  */
-import { fixtureDuoCeremonyGates } from "../../helpers/duo-ceremony-fixtures.js";
+import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { z } from "zod";
-import { flow } from "../../../src/base/flow.js";
-import { defineWorkerSessionProvider } from "../../../src/base/session.js";
+import { flow } from "../../src/base/flow.js";
+import { defineWorkerSessionProvider } from "../../src/base/session.js";
 import {
   defineBrowserStore,
   defineTaskStoreRegistry,
   declareDriverFor,
   type TaskStoreRegistry,
-} from "../../../src/base/store.js";
-import { defineTask } from "../../../src/base/task.js";
-import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
-import type { TestClock } from "../../../src/domain/clock.js";
-import { defineTaskContract } from "../../../src/domain/contracts/base.js";
-import { ContractFieldPathSchema } from "../../../src/domain/contracts/base.js";
+} from "../../src/base/store.js";
+import { defineTask } from "../../src/base/task.js";
+import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../src/base/workflow.js";
+import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
+import type { TestClock } from "../../src/domain/clock.js";
+import { defineTaskContract } from "../../src/domain/contracts/base.js";
+import { ContractFieldPathSchema } from "../../src/domain/contracts/base.js";
 import {
   EidSchema,
   taskId,
@@ -33,17 +33,17 @@ import {
   TaskIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../../src/domain/ids.js";
-import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import type { MutationCapability } from "../../../src/domain/ui/driver.js";
-import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
-import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
-import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
-import { WorkerSessionManager } from "../../../src/core/worker-sessions.js";
-import { assertSequencerMintedMutationCapability } from "../../../src/core/write-sequencer.js";
-import { recordBrowserAction } from "../../../src/infra/browser/action-notes.js";
-import { HASH_C, UUID_2, UUID_3, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
+} from "../../src/domain/ids.js";
+import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
+import type { MutationCapability } from "../../src/domain/ui/driver.js";
+import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
+import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
+import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import { assertSequencerMintedMutationCapability } from "../../src/core/write-sequencer.js";
+import { recordBrowserAction } from "../../src/infra/browser/action-notes.js";
+import { HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,
   ManualScheduler,
@@ -51,7 +51,7 @@ import {
   recordingLogger,
   sessionFactoryHarness,
   type SessionFactoryHarness,
-} from "../../helpers/phase1f-executor-harness.js";
+} from "../helpers/phase1f-executor-harness.js";
 
 export const WRITE_FIXTURE_EID = "10812345";
 export const WRITE_FIXTURE_KEY = `${WRITE_FIXTURE_EID}|fixture-termination`;

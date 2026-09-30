@@ -37,7 +37,7 @@ import {
   defineAuthoredDryRunDescriptor,
   WRITE_FIXTURE_NODE_ID,
   writeFixtureDescriptorWithoutDryRunArm,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 import { separationsDescriptor, personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(NOW));

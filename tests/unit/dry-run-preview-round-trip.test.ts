@@ -62,7 +62,7 @@ import {
   writeFixtureQueuedRun,
   writeFixtureSessions,
   type WriteFixtureWorld,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 
 const roots: string[] = [];
 const openDatabases: AuthorityDatabase[] = [];

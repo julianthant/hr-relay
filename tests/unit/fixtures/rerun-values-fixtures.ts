@@ -1,4 +1,4 @@
-import { WriteFixturePrepare, WriteFixtureCommit, writeFixtureMemoDescriptor, WRITE_FIXTURE_NODE_ID } from "./write-sequencer-fixtures.js";
+import { WriteFixturePrepare, WriteFixtureCommit, writeFixtureMemoDescriptor, WRITE_FIXTURE_NODE_ID } from "../../fixtures/write-sequencer-fixtures.js";
 import { z } from "zod";
 import { EidSchema } from "../../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
@@ -8,8 +8,8 @@ import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
 import type { RerunValueMappingSpec } from "../../../src/domain/workflow/rerun-values.js";
 import type { RerunValuesDependencies } from "../../../src/services/start/rerun-values.js";
-import { sourceBoundHarness } from "./source-bound-fixtures.js";
-import { sourceBoundReadContract as contract, sourceBoundReadDescriptor as original, sourceBoundReadStores } from "./source-bound-read-fixtures.js";
+import { sourceBoundHarness } from "../../fixtures/source-bound-fixtures.js";
+import { sourceBoundReadContract as contract, sourceBoundReadDescriptor as original, sourceBoundReadStores } from "../../fixtures/source-bound-read-fixtures.js";
 
 export const eidMapping = { nodeId: "read", fieldPath: "eid", label: "Employee ID", targetFieldPath: "eid" };
 export function mappedReadDescriptor(mappings: readonly RerunValueMappingSpec[] = [eidMapping]) {

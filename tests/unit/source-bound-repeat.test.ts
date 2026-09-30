@@ -1,18 +1,18 @@
 import { defineTaskStoreRegistry } from "../../src/base/store.js";
-import { buildWriteFixtureRegistry } from "./fixtures/write-sequencer-fixtures.js";
+import { buildWriteFixtureRegistry } from "../fixtures/write-sequencer-fixtures.js";
 import { PlannedRunSchema, StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../src/domain/run/start-plan.js";
-import { sourceBoundReadDescriptor, sourceBoundReadStores } from "./fixtures/source-bound-read-fixtures.js";
+import { sourceBoundReadDescriptor, sourceBoundReadStores } from "../fixtures/source-bound-read-fixtures.js";
 import { CreateRunRequestSchema } from "../../src/core/run-record-service.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { WriteFixtureProofSchema, writeFixtureOmittableDescriptor, writeFixtureDescriptor, writeFixtureParallelDescriptor, writeFixtureMemoDescriptor, writeFixtureDocumentDescriptor } from "./fixtures/write-sequencer-fixtures.js";
+import { WriteFixtureProofSchema, writeFixtureOmittableDescriptor, writeFixtureDescriptor, writeFixtureParallelDescriptor, writeFixtureMemoDescriptor, writeFixtureDocumentDescriptor } from "../fixtures/write-sequencer-fixtures.js";
 import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { repeatOccurrenceKey } from "../../src/domain/run/rerun.js";
 import { PositiveIntSchema } from "../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
-import { sourceBoundHarness } from "./fixtures/source-bound-fixtures.js";
-import { absentProbeEvidence } from "./fixtures/write-sequencer-fixtures.js";
+import { sourceBoundHarness } from "../fixtures/source-bound-fixtures.js";
+import { absentProbeEvidence } from "../fixtures/write-sequencer-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });

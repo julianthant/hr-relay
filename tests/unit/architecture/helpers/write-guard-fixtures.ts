@@ -20,7 +20,7 @@ import {
   WRITE_FIXTURE_WORKER_ID,
   WRITE_FIXTURE_WORKFLOW_ID,
   writeFixtureQueuedRun,
-} from "../../fixtures/write-sequencer-fixtures.js";
+} from "../../../fixtures/write-sequencer-fixtures.js";
 
 export function writeGuardBindingProof(runId: string, proofId = UUID_7, leaseId = UUID_6) {
   return {

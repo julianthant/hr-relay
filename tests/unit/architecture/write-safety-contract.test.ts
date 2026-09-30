@@ -48,7 +48,7 @@ import {
   writeFixtureSaveDescriptor,
   writeFixtureSessionManager,
   writeFixtureSessions,
-} from "../fixtures/write-sequencer-fixtures.js";
+} from "../../fixtures/write-sequencer-fixtures.js";
 
 /**
  * The registered corpus is deliberately thin in Phase 1f, so the sweep also

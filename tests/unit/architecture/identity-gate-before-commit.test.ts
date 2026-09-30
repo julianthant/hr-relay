@@ -27,7 +27,7 @@ import type { RuntimeFlowNode } from "../../../src/domain/workflow/graph.js";
 import {
   writeFixtureDescriptor,
   writeFixtureSaveDescriptor,
-} from "../fixtures/write-sequencer-fixtures.js";
+} from "../../fixtures/write-sequencer-fixtures.js";
 
 const SEPARATION_CLASS_PATTERN = /separation|termination|offboard/iu;
 const IDENTITY_AUTHORITY_TASK_ID = String(SeparationsVerifyIdentityApproval.id);

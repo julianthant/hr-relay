@@ -64,7 +64,7 @@ export async function sessionRuntime() {
     writeFileSync(join(root, "release-drivers"), "released\n");
     runtime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, frontend: "built-bundle", backendPortOverride: 0, frontendPortOverride: 0, env: {},
       workerProcess: { launch: { environment: {}, command: process.execPath,
-        prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/fixtures/worker-browser-control-cli.ts"), root], cwd: process.cwd() },
+        prefixArgs: ["--import", "tsx", join(process.cwd(), "tests/process-fixtures/worker-browser-control-cli.ts"), root], cwd: process.cwd() },
       spawn: (request) => {
         const child = spawn(request.command, [...request.args], { cwd: request.cwd, detached: true, stdio: ["ignore", "pipe", "pipe"] }); children.push(child);
         child.stdout?.on("data", (chunk) => logs.push(String(chunk))); child.stderr?.on("data", (chunk) => logs.push(String(chunk)));

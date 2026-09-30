@@ -79,7 +79,7 @@ import {
   writeFixtureSessions,
   writeFixtureTransactionNode,
   type WriteFixtureWorld,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 
 describe("bounded transaction task recording", () => {
   it("publishes a whole recordData call before a later throw and reads the wall clock once", async () => {

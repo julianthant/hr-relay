@@ -11,8 +11,8 @@ import { useRunLaunch } from "../../../src/dashboard/app/run-launch-model.js";
 import { deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
-import { absentProbeEvidence } from "../fixtures/write-sequencer-fixtures.js";
-import { launchHarness } from "../fixtures/run-launch-fixtures.js";
+import { absentProbeEvidence } from "../../fixtures/write-sequencer-fixtures.js";
+import { launchHarness } from "../../fixtures/run-launch-fixtures.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import { StartPlanRequestSchema } from "../../../src/domain/dashboard/start-plan.js";
 

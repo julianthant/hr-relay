@@ -12,8 +12,8 @@ import { type RunCheckpointRecord, RunCheckpointRecordSchema } from "../../src/d
 import { readRerunValues } from "../../src/services/start/rerun-values.js";
 import { RerunRefusedError } from "../../src/services/start/rerun.js";
 import { rerunValuesHarness, rerunValuesDeps, valueShapeHarness, mappedTransactionHarness } from "./fixtures/rerun-values-fixtures.js";
-import { sourceBoundHarness } from "./fixtures/source-bound-fixtures.js";
-import { absentProbeEvidence } from "./fixtures/write-sequencer-fixtures.js";
+import { sourceBoundHarness } from "../fixtures/source-bound-fixtures.js";
+import { absentProbeEvidence } from "../fixtures/write-sequencer-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });

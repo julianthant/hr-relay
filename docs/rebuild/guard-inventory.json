@@ -207,7 +207,7 @@
       "file": "tests/unit/architecture/test-data-ownership.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D341: unit-only fixtures/helpers are imported by tests/unit alone; shared fixtures under tests/fixtures and tests/helpers import no private-input, credential, .env, database or browser seam; config/test-data.json, its example and every declared shared file are git-visible inside the repository while config/test-data.local.json is ignored; tests/fixtures/README.md names every shared module.",
+      "invariant": "D341: unit-only fixtures/helpers are imported by tests/unit alone; shared fixtures/helpers have no private-input or runtime effects at import. Exact recorded credential factory symbols remain deferred function-body references to deferred producer functions; preflight chromium references only install launch refusal spies in its executor. Eager call/new/alias/namespace/unlisted-symbol/IIFE/callback negative controls reject capabilities at import. The exact tests/process-fixtures child-entrypoint set has recorded pathname consumers and cannot be module-imported (injected-import control). config/test-data.json, its example and every declared shared file are git-visible inside the repository while config/test-data.local.json is ignored; tests/fixtures/README.md names every shared module.",
       "replacementRequired": true
     },
     {

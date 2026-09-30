@@ -69,7 +69,7 @@ import {
   WRITE_FIXTURE_TASK_IDS,
   WriteFixtureCommit,
   WriteFixtureSaveCommit,
-} from "../fixtures/write-sequencer-fixtures.js";
+} from "../../fixtures/write-sequencer-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const RECEIPT_DESCRIPTORS = [...WORKFLOW_DESCRIPTORS, ...HISTORICAL_STEP_PROOF_DESCRIPTORS];

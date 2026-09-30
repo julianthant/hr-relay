@@ -65,7 +65,7 @@ import {
   writeFixtureSessionManager,
   writeFixtureSessions,
   type WriteFixtureWorld,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => {

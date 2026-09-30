@@ -63,7 +63,7 @@ import { planStart } from "../../src/services/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
-import { WriteFixtureCommit, WriteFixturePrepare } from "./fixtures/write-sequencer-fixtures.js";
+import { WriteFixtureCommit, WriteFixturePrepare } from "../fixtures/write-sequencer-fixtures.js";
 import {
   ARCHIVED_RUN,
   ARCHIVED_RUN_WITH_SECTIONS,

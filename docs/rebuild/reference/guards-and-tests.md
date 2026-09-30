@@ -2448,7 +2448,13 @@ answer from the same shared input under test. Preserve synthetic-subject ranges,
 clocks, dataset shapes/counts, case membership, isolation, timeouts and coverage floors.
 
 **Files and privacy.** Offline imports must succeed without private configuration, credentials,
-provider access, database startup or browsers. Tracked safe file paths resolve relative to their
+provider access, database startup or browsers. Exact credential factory capabilities may be imported
+by the recorded admission helpers only with deferred function-body references and deferred producer
+functions. The preflight corpus may reference Chromium only to install launch-refusal spies inside
+its explicit executor. Eager call/new/alias/namespace/unlisted-symbol/IIFE/callback controls enforce
+this boundary. Executable synthetic process fixtures live in `tests/process-fixtures`; their exact
+child-entrypoint consumers are recorded and module imports into that tier are forbidden. Tracked safe
+file paths resolve relative to their
 config and stay inside the checkout. Private paths resolve only when explicitly requested and never
 fall back to another worktree. Include a minimal synthetic PDF and a consumer proving actual readable
 bytes; no tracked real HR documents or fabricated private corpus. Missing/invalid selected files,

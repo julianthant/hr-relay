@@ -10,7 +10,7 @@ import { registerQueueRoutes } from "../../../src/server/dashboard/routes/queue.
 import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
 import { composeDataQueries } from "../../../src/server/dashboard/compose/data.js";
 import { mappedTransactionHarness, rerunValuesHarness, rerunValuesDeps } from "../fixtures/rerun-values-fixtures.js";
-import { absentProbeEvidence } from "../fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence } from "../../fixtures/write-sequencer-fixtures.js";
 import { makeWorld } from "../server/helpers/dashboard-harness.js";
 
 const disposers: (() => void)[] = [];
