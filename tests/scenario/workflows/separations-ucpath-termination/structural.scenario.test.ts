@@ -22,7 +22,6 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { Page } from "playwright";
 import { EidSchema, IsoInstantSchema } from "../../../../src/domain/ids.js";
-import { directIdentifierDisplay } from "../../../../src/domain/redaction.js";
 import {
   UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
   UCPATH_SMART_HR_TERMINATION_STAGED,
@@ -588,8 +587,8 @@ describe("separations-ucpath-termination scenarios (chunk 4)", () => {
       (error: unknown) => {
         const message = error instanceof Error ? error.message : String(error);
         assert.match(message, /^emplid-not-recognized: /u, message);
-        assert.match(message, new RegExp(directIdentifierDisplay(EID), "u"), message);
-        assert.doesNotMatch(message, new RegExp(EID, "u"), message);
+        assert.match(message, new RegExp(`Empl ID ${EID}`, "u"), message);
+        assert.match(message, /No person name was rendered, so there is no subject to bind/u, message);
         assert.doesNotMatch(message, /does not implement/u, message);
         return true;
       },
