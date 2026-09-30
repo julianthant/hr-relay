@@ -443,7 +443,7 @@ function filesystemCode(error: unknown): unknown {
 function mutex<T>(control: string, callback: () => T): T {
   privateDirectory(control);
   const path = join(control, "admission-mutex");
-  const deadline = performance.now() + 5_000;
+  const deadline = systemClock.monotonicMs() + 5_000;
   for (;;) {
     try { mkdirSync(path, { mode: 0o700 }); break; }
     catch (error) {
@@ -452,7 +452,7 @@ function mutex<T>(control: string, callback: () => T): T {
       catch (inspectionError) {
         if (filesystemCode(inspectionError) !== "ENOENT") throw inspectionError;
       }
-      const remaining = deadline - performance.now();
+      const remaining = deadline - systemClock.monotonicMs();
       if (remaining <= 0) throw new AdmissionMutexBusyError();
       Atomics.wait(mutexWait, 0, 0, Math.min(10, remaining));
     }

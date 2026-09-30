@@ -14,6 +14,7 @@ import {
 } from "node:fs";
 import { join, relative, resolve, sep } from "node:path";
 import { z } from "zod";
+import { systemClock } from "../../domain/clock.js";
 
 export const DASHBOARD_BUILD_IDENTITY_FILE = "dashboard-build-identity.json";
 export const DASHBOARD_BUILD_COMMAND = "npm run web:build";
@@ -124,7 +125,7 @@ export function writeDashboardBuildIdentity(input: Readonly<{ repoRoot: string; 
     inputDigest: computeDashboardBuildInputDigest(input.repoRoot),
     outputDigest: computeDashboardBuildOutputDigest(input.distDir),
     buildScript: DASHBOARD_BUILD_COMMAND,
-    builtAt: new Date().toISOString(),
+    builtAt: systemClock.now().toISOString(),
   });
   const path = dashboardBuildIdentityPath(input.distDir);
   const temporary = `${path}.${randomUUID()}.tmp`;
