@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { ProviderKeySlotSchema } from "../../../src/domain/config/provider-keys.js";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
@@ -176,6 +177,20 @@ function auditOccurrences(occurrences: readonly EnvironmentAccessOccurrence[]): 
 }
 
 describe("runtime environment inventory coverage", () => {
+  it("limits activeProviderKeySlots to exactly the supported provider pool slots", () => {
+    const reader = COMPUTED_ENVIRONMENT_READERS.find(candidate =>
+      candidate.path === "src/domain/secrets.ts" && candidate.enclosingSymbol === "activeProviderKeySlots");
+    assert.ok(reader);
+    assert.equal(reader.occurrenceCount, 1);
+    assert.equal(reader.targets.kind, "closed-targets");
+    assert.ok(reader.targets.kind === "closed-targets");
+    assert.deepEqual(reader.targets.exact, []);
+    const slots = RUNTIME_ENVIRONMENT_FAMILIES.filter(family => reader.targets.kind === "closed-targets"
+      && reader.targets.families.includes(family.prefix)).flatMap(family =>
+      Array.from({ length: family.maximum }, (_, index) => index === 0 ? family.prefix : `${family.prefix}${index + 1}`));
+    assert.deepEqual([...slots].sort(), [...ProviderKeySlotSchema.options].sort());
+  });
+
   it("strictly validates the closed registry and every repository occurrence", () => {
     assert.deepEqual(auditRuntimeEnvironmentInventory(RUNTIME_ENVIRONMENT_REGISTRY), []);
     assert.deepEqual(auditOccurrences(repositoryOccurrences()), []);

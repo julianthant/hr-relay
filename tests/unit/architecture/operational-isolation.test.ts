@@ -200,6 +200,30 @@ describe("operational isolation", () => {
     });
   });
 
+  it("admits only the exact live RuntimeAdmission parameter alongside the zero-parameter fixture", () => {
+    withFixture(root => {
+      assert.deepEqual(fixtureViolations(root), []);
+      const source = readFileSync(join(root, "src/cli.ts"), "utf8")
+        .replace('export function runCli(): void {', 'export function runCli(admission: RuntimeAdmission): void { admission.assertLive();');
+      const admitted = 'import type { RuntimeAdmission } from "./infra/runtime-control/admission.js";\n' + source;
+      write(root, "src/infra/runtime-control/admission.ts", "export interface RuntimeAdmission { assertLive(): void; }\n");
+      write(root, "src/cli.ts", admitted);
+      assert.deepEqual(fixtureViolations(root), []);
+      for (const invalid of [
+        admitted.replace('admission: RuntimeAdmission', 'arbitrary: RuntimeAdmission'),
+        admitted.replace('admission: RuntimeAdmission', 'admission: unknown'),
+        admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, extra: unknown'),
+        admitted.replace('./infra/runtime-control/admission.js', './wrong-admission.js'),
+        admitted.replace('admission.assertLive();', ''),
+        admitted.replace('admission.assertLive();', 'admission.assertLive("unchecked");'),
+        admitted.replace('import type { RuntimeAdmission }', 'import type { Other as RuntimeAdmission }'),
+      ]) {
+        write(root, "src/cli.ts", invalid);
+        assert.match(fixtureViolations(root).join("\n"), /must export runCli with one direct factory call/);
+      }
+    });
+  });
+
   it("rejects a drifted or missing launch command on either side", () => {
     withFixture((root) => {
       const scripts = scriptsOf(root);
