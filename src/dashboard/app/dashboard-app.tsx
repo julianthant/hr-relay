@@ -788,12 +788,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             });
             if (feedEntry === undefined) throw new Error("refused command settlement produced no feed entry");
             setCommandResults((previous) => [feedEntry, ...previous].slice(0, 4));
-            toast({ tone: "danger", title: "Nothing was recorded", description: settlement.message });
+            toast({ tone: "danger", title: actionToSettle.command === "archive" ? "Could not archive run" : "Nothing was recorded", description: settlement.message });
             return;
           }
           toastAppliedCommandResult(toast, {
             settlement,
             actionLabel: actionToSettle.label,
+            command: actionToSettle.command,
             subject: surface === undefined ? `run ${targetToSettle.runId}` : queueRowTitle(surface),
             clock: fmtClock(nowIso),
             actorId: boot.actor.id,
@@ -842,7 +843,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         // NOT "Nothing was recorded": the envelope is already on the wire by
         // the time anything can land here, so whether the kernel wrote the row
         // is a fact this tab does not hold (`commandFailureToast`).
-        toast(commandFailureToast({ stage: "after-dispatch", caught }));
+        toast(commandFailureToast({ stage: "after-dispatch", caught, command: actionToSettle.command }));
       });
     },
     [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
