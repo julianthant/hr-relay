@@ -31,7 +31,7 @@ const DASHBOARD_APP = new URL("../../../src/dashboard/app/dashboard-app.tsx", im
  */
 function dispatchCommandChain(): string {
   const source = readFileSync(DASHBOARD_APP, "utf8");
-  const opens = source.indexOf("client.executeCommand(composed.request)");
+  const opens = source.indexOf("client.executeCommand(requestToExecute)");
   const closes = source.indexOf("[boot.actor.id, client, sections, toast, dayWire", opens);
   if (opens === -1 || closes === -1) {
     throw new Error(

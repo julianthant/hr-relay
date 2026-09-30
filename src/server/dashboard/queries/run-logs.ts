@@ -367,7 +367,7 @@ function logRowOf(
         at: entry.note.ts,
         level: LEVEL_MAP[entry.note.level],
         message: entry.note.message,
-        fields: entry.note.fields,
+        ...(entry.note.fields === undefined ? {} : { fields: entry.note.fields }),
       },
     };
   }

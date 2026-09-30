@@ -167,6 +167,7 @@ export function toastAppliedCommandResult(
   input: {
     readonly settlement: CommandSettlement;
     readonly actionLabel: string;
+    readonly command?: Extract<ActionDescriptorWire, { kind: "command" }>["command"];
     readonly subject: string;
     readonly clock: string;
     readonly actorId: string;
@@ -180,7 +181,7 @@ export function toastAppliedCommandResult(
   }
   toast({
     tone: "success",
-    title: input.actionLabel,
+    title: input.command === "archive" ? "Run archived" : input.actionLabel,
     description: `${input.subject} · ${input.clock} · ${input.actorId}`,
   });
 }

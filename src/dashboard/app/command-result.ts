@@ -125,7 +125,7 @@ export type CommandDispatchFailure =
   /** The client refused to compose the envelope: nothing left this tab. */
   | { readonly stage: "before-dispatch"; readonly reason: string }
   /** The promise rejected, or a guard threw while settling the answer. */
-  | { readonly stage: "after-dispatch"; readonly caught: unknown };
+  | { readonly stage: "after-dispatch"; readonly caught: unknown; readonly command?: string };
 
 export interface CommandFailureToast {
   readonly tone: "danger";
@@ -139,8 +139,10 @@ export function commandFailureToast(failure: CommandDispatchFailure): CommandFai
   }
   return {
     tone: "danger",
-    title: "Result unknown — check the run",
+    title: failure.command === "archive" ? "Archive result unknown" : "Result unknown — check the run",
     description: `${failure.caught instanceof Error ? failure.caught.message : String(failure.caught)} `
-      + "The command may already have been recorded: open the run and read its receipt before sending it again.",
+      + (failure.command === "archive"
+        ? "Review Archive in the recovery banner to recover the original request before sending another."
+        : "The command may already have been recorded: open the run and read its receipt before sending it again."),
   };
 }
