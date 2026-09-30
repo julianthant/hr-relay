@@ -747,7 +747,8 @@ in the catalog's type — that is how §D331.8's precedence rule is enforced rat
 | `runtime-isolation` | every leaf FIXED BY CODE, where a change is a code change and a new process: the five isolation paths `paths.stateRoot`, `paths.artifactRoot`, `paths.browserProfileRoot`, `paths.duoCredential`, `paths.duoExtensionDir` (D121/D216/D321); the nine `urls.<system>.prod` route sets ("production is the code default", §4); `actor.id` (the fixed local-operator id); and the Duo WebAuthn credential FILE (machine-written under the profile root; `credential-file`, read by `requireSecretFile` only) | `config/runtime-isolation.json` + `runtime-paths.ts` + `schema.ts` defaults (a code change), the ceremony | the resolver (paths, prod routes, actor id — provenance `default`, never overridable by any document) / `requireSecretFile` |
 
 **The environment layer of the resolver is RETIRED for catalogued leaves.** After 1.6,
-`CONFIG_ENV_BINDINGS` is empty and `resolve.ts` takes no environment override input at all; its
+The config environment binding registry and its schema/type are removed. `resolve.ts` takes no
+environment override input at all; its
 inputs are (the ordinary document, the host facts, the contract/runtime-path defaults). What remains
 environment-sourced is exactly: provider API keys (through the secrets accessor, never the
 resolver), the `config-default` host display publication (a DEFAULT, not an override), the
@@ -1102,9 +1103,10 @@ NOT AN INPUT to it.
 
 - The catalog's type admits one `sourceClass` per row (§D331.1), so a second source is
   unrepresentable, not merely unadvised.
-- `CONFIG_ENV_BINDINGS` is empty and its registry type is retained only so the guard can assert
-  emptiness; `runtime-environment.ts`'s `config` channel has zero members; `TIMEKEEPER_NAME`'s
-  `config-and-secret` dual channel is deleted with its leaf.
+- No config environment binding registry or binding schema/type remains. The runtime environment
+  audit directly refuses active `config`, `config-and-secret`, `secret` and `provider-model` exact
+  channels; config modules admit no `process.env` access. Host facts remain an explicit resolver input.
+  `TIMEKEEPER_NAME`'s `config-and-secret` dual channel is deleted with its leaf.
 - Every migrated environment key (the 32 config bindings, `UCPATH_USER_ID`, `UCPATH_PASSWORD`,
   `TIMEKEEPER_NAME`, `ONBOARDING_ROSTER_URL`, the two pseudonym keys, the two canary keys, the five
   `OCR_*_MODELS` chain keys, and the five legacy singular `OCR_*_MODEL` spellings once
@@ -1335,7 +1337,7 @@ deleted or renamed proof is a red guard, not silent drift.
 |---|---|---|---|
 | P1 | The catalog is bidirectionally complete: one row per populated `ConfigSchema` leaf, per `SECRET_SPECS` entry (D341 retired `TEST_TARGET_SECRET_SPECS`; 86 rows), per `SECRET_FAMILY_SPECS` family and per `config-default`/process-ownership channel — and no row without a leaf | enumerate every source at test time (never a hand-kept list) and diff both directions; adding a leaf without a row, or a row naming nothing, is red | NEW guard `tests/unit/architecture/settings-catalog.test.ts` + `docs/rebuild/guard-inventory.json` |
 | P2 | One `sourceClass` per row, the `sensitivity` → `sourceClass` pairing is refused when wrong, and every listed consumer exists while every reader of the key is listed | feed the registry's `superRefine` a `protected-secret` row with `sourceClass: ordinary-settings` (and each other illegal pairing) and assert the parse refuses by key; drop a real reader from `consumers` and the guard is red | `settings-catalog.test.ts`; `src/domain/config/catalog.ts` |
-| P3 | `CONFIG_ENV_BINDINGS` is empty and `runtime-environment.ts`'s `config` channel has zero members (the `config-and-secret` dual channel is gone with its leaf) | assert emptiness and zero cardinality directly; any restored binding is red | `settings-catalog.test.ts`, `tests/unit/architecture/runtime-environment-coverage.test.ts` |
+| P3 | No config environment binding machinery remains; runtime environment exact channels have no active config, dual config/secret, secret or provider-model authority. Every migrated key is explicitly refused. | Direct inventory assertions and restored-channel/missing-refusal negative controls; config source scans reject direct, aliased and computed environment access. | `tests/unit/architecture/runtime-environment-coverage.test.ts`, `secrets-single-source.test.ts`, `composition-reads-no-environment-leaf.test.ts` |
 | P4 | The resolver takes no environment input — `resolveConfig(document, hostFacts, clock?)` — and `ConfigProvenanceSchema` is exactly `"settings" \| "default"` | type-level plus runtime: resolve with a hostile `process.env` populated for every retired key and assert byte-identical output and no `"env"` provenance value anywhere | `src/domain/config/resolve.ts`, `provenance.ts`, `tests/unit/config.test.ts` |
 | P5 | L1 — no catalogued protected name is a `ConfigSchema` leaf; `operator.timekeeperName` is deleted, not emptied | walk the parsed `ConfigSchema` leaf paths against the catalog's protected rows and assert an empty intersection | `settings-catalog.test.ts`, `src/domain/config/schema.ts` |
 | P6 | L2 — no protected value is in the `configFingerprint` preimage | derived from P5: assert the fingerprint preimage is `canonicalJsonStringify(config)` and that `config` contains no protected key | `settings-catalog.test.ts`, `tests/unit/config.test.ts` |

@@ -196,6 +196,25 @@ describe("runtime environment inventory coverage", () => {
     assert.deepEqual(auditOccurrences(repositoryOccurrences()), []);
   });
 
+  it("P3 refuses restored config channels and requires every migrated key's refusal", () => {
+    const forbidden = ["config", "config-and-secret", "secret", "provider-model"];
+    assert.deepEqual(RUNTIME_ENVIRONMENT_EXACT.filter(spec => spec.disposition === "active"
+      && forbidden.includes(spec.channel)), []);
+    for (const channel of forbidden) {
+      const restored = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: [
+        ...RUNTIME_ENVIRONMENT_REGISTRY.exact,
+        { key: "HRAUTO_RESTORED_SETTING", classification: "non-secret-config", disposition: "active",
+          channel, owner: "src/domain/config/resolve.ts", documented: false },
+      ] };
+      assert.match(auditRuntimeEnvironmentInventory(restored).join("\n"), new RegExp(`forbidden active ${channel} environment ownership`, "u"));
+    }
+    for (const spec of RUNTIME_ENVIRONMENT_EXACT.filter(candidate => candidate.disposition === "migrated-refused")) {
+      const restored = { ...RUNTIME_ENVIRONMENT_REGISTRY,
+        exact: RUNTIME_ENVIRONMENT_REGISTRY.exact.filter(candidate => candidate.key !== spec.key) };
+      assert.match(auditRuntimeEnvironmentInventory(restored).join("\n"), /is not explicitly refused/u, spec.key);
+    }
+  });
+
   it("parses .env.example grammar without ever retaining values and pins documented exactness", () => {
     const actual = parseExampleEnvironment(readFileSync(resolve(REPO_ROOT, ".env.example"), "utf8"));
     assert.deepEqual(actual.violations, []);

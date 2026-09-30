@@ -42,8 +42,6 @@ import {
   WorkerBrowserCommandRequestSchema,
 } from "../../../src/domain/commands.js";
 import {
-  CONFIG_ENV_BINDINGS,
-  ConfigEnvBindingRegistrySchema,
   ResolvedConfigSchema,
   resolveConfigWithProvenance,
 } from "../../../src/domain/config/resolve.js";
@@ -1359,7 +1357,6 @@ const BOUNDARY_SCHEMA_CATALOG: readonly BoundaryCatalogEntry[] = [
   { name: "SettingsOverride", schema: SettingsOverrideSchema, fixtures: [{}] },
   { name: "EditableSettingsOverride", schema: EditableSettingsOverrideSchema, fixtures: [{}] },
   { name: "ResolvedConfig", schema: ResolvedConfigSchema, fixtures: [resolveConfigWithProvenance({}, hostConfigFacts({}), CLOCK)] },
-  { name: "ConfigEnvBindings", schema: ConfigEnvBindingRegistrySchema, fixtures: [CONFIG_ENV_BINDINGS] },
   { name: "ClassifiedDiagnosticValue", schema: ClassifiedDiagnosticValueSchema, fixtures: [{ key: "state", classification: "safe-diagnostic", transform: "allow", value: "healthy" }] },
   { name: "RedactionResult", schema: RedactionResultSchema, fixtures: [{ fields: [], warnings: [] }] },
   { name: "PreflightObservation", schema: PreflightObservationSchema, fixtures: [preflightObservations[0]] },

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "./config/host-display.js";
 import { deepFreeze } from "./immutability.js";
@@ -481,9 +480,6 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
     if (family.disposition === "active" && (family.owners.length !== 1 || family.owners[0] !== "src/domain/secrets.ts")) {
       violations.push(`active secret family ${family.prefix} must be owned solely by src/domain/secrets.ts`);
     }
-  }
-  if (CONFIG_ENV_BINDINGS.length !== 0) {
-    violations.push("CONFIG_ENV_BINDINGS must be empty after settings authority migration");
   }
   const migratedKeys = new Set(MIGRATED_SETTINGS_ENVIRONMENT_KEYS);
   for (const key of migratedKeys) {

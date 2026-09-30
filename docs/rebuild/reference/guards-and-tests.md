@@ -1896,8 +1896,10 @@ arm. *Red-capable oracle, two halves.* Compile-time: the `env` parameter is FIRS
 `resolveConfig` (`src/domain/config/resolve.ts:415`) and `resolveConfigWithProvenance` (`:419`), so
 removing it is red at every one of the nine composition call sites — no silent widening is possible.
 Runtime: P4 resolves with a hostile `process.env` populated for every retired key and asserts
-byte-identical output and no `"env"` value anywhere; P3 asserts `CONFIG_ENV_BINDINGS` (`resolve.ts:241`)
-is empty and `runtime-environment.ts`'s `config` channel has zero members. Note for 1.6: `resolveConfig`
+byte-identical output and no `"env"` value anywhere. P3 directly asserts zero forbidden active exact
+environment channels and explicit refusal for every migrated key; restored-channel and removed-refusal
+negative controls exercise the runtime audit. Config modules are scanned for direct, aliased and
+computed environment access. No config binding schema/type or empty registry remains. Note for 1.6: `resolveConfig`
 has zero `src/` callers today but THIRTEEN files import it (ten under `tests/unit/**`, two under `tests/parity/helpers/**`, and `scripts/live-browser-login-smoke.ts:57`, inside the `typecheck` program — corrected 2026-09-04 by R04 from "five test files"), so its deletion is a test AND scripts edit too —
 §D331.11 P39's "changed deliberately in the same commit" rule covers exactly this.
 

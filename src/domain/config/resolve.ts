@@ -4,7 +4,6 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import type { Clock } from "../clock.js";
 import { systemClock } from "../clock.js";
-import { deepFreeze } from "../immutability.js";
 import { FingerprintSchema } from "../ids.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
 import { HostConfigFactsSchema, type HostConfigFacts } from "./host-display.js";
@@ -50,18 +49,6 @@ const RuntimeStoragePairSchema = z.strictObject({
   }
 }).readonly();
 export type AdmittedRuntimeStoragePair = z.infer<typeof RuntimeStoragePairSchema>;
-
-type ConfigEnvApply = (config: Config, raw: string, fiscalYear: string) => Config;
-export const ConfigEnvBindingSchema = z.strictObject({
-  env: z.string().regex(/^[A-Z][A-Z0-9_]*$/),
-  path: ConfigLeafPathSchema,
-  apply: z.custom<ConfigEnvApply>((value) => typeof value === "function"),
-});
-export type ConfigEnvBinding = z.infer<typeof ConfigEnvBindingSchema>;
-
-/** A4 is retired. The retained type/empty registry are a deletion-test boundary only. */
-export const ConfigEnvBindingRegistrySchema = ConfigEnvBindingSchema.array().length(0);
-export const CONFIG_ENV_BINDINGS = deepFreeze(ConfigEnvBindingRegistrySchema.parse([]));
 
 function parsed(config: unknown): Config {
   return ConfigSchema.parse(config);

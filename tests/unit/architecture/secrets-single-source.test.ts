@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
-import { CONFIG_ENV_BINDINGS } from "../../../src/domain/config/resolve.js";
 import { SETTINGS_CATALOG } from "../../../src/domain/config/catalog.js";
 import { SECRET_FAMILY_SPECS } from "../../../src/domain/secrets.js";
 import {
@@ -37,8 +36,8 @@ import {
  *
  * - `src/domain/secrets.ts` is the sole *credential* reader. Every other
  *   consumer receives an already-resolved value.
- * - D331 removes environment leaves from config resolution. CONFIG_ENV_BINDINGS is
- *   empty; the composition guard independently scans config modules and tests retired
+ * - D331 removes environment leaves from config resolution; config modules admit no
+ *   process.env access. The composition guard independently scans them and tests retired
  *   key refusals before effects. Explicit host facts remain a separate source.
  * - Protected catalog keys are forbidden even in the secret owner: reads, writes and
  *   deletes must never revive the retired environment bridge.
@@ -61,7 +60,6 @@ const CREDENTIAL_KEYS: ReadonlySet<string> = new Set(
 );
 const CREDENTIAL_FAMILIES: readonly { readonly prefix: string; readonly maximum: number }[] =
   SECRET_FAMILY_SPECS.map(({ envPrefix, maximum }) => ({ prefix: envPrefix, maximum }));
-const CONFIG_KEYS: ReadonlySet<string> = new Set(CONFIG_ENV_BINDINGS.map(({ env }) => env));
 
 function isCredentialKey(key: string): boolean {
   if (CREDENTIAL_KEYS.has(key)) return true;
@@ -110,9 +108,7 @@ export function auditSecretsSingleSource(
       violations.push(`${where}: ${occurrence.key} is a credential key and belongs to ${SECRET_OWNER}, not the config resolver`);
       continue;
     }
-    if (!CONFIG_KEYS.has(occurrence.key)) {
-      violations.push(`${where}: ${occurrence.key} has no CONFIG_ENV_BINDINGS entry`);
-    }
+    violations.push(`${where}: ${occurrence.key} is forbidden; config modules admit no environment leaf`);
   }
   return violations;
 }
@@ -563,14 +559,14 @@ describe("secrets single source", () => {
       auditSecretsSingleSource(inventoryEnvironmentAccesses(
         "src/domain/config/resolve.ts",
         "export const retries = process.env.HRAUTO_NAVIGATION_RETRIES;\n",
-      )).some((violation) => violation.includes("no CONFIG_ENV_BINDINGS entry")),
+      )).some((violation) => violation.includes("config modules admit no environment leaf")),
       true,
     );
     assert.equal(
       auditSecretsSingleSource(inventoryEnvironmentAccesses(
         "src/domain/config/resolve.ts",
         "export const unknownKey = process.env.HRAUTO_NOT_A_BINDING;\n",
-      )).some((violation) => violation.includes("no CONFIG_ENV_BINDINGS entry")),
+      )).some((violation) => violation.includes("config modules admit no environment leaf")),
       true,
     );
     assert.equal(
