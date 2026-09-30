@@ -3,7 +3,7 @@ import {
   NewKronosReadSeparationTimecard,
   ReadSeparationTimecardOutputSchema,
 } from "../../../domain/contracts/new-kronos/read-separation-timecard.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { newKronosDriver } from "../declaration.js";
 
 /**
@@ -38,8 +38,8 @@ export const readSeparationTimecardTask = defineTask(
       if (!read.subject.matches || read.subject.observedEmployeeId !== input.emplId) {
         return ctx.fail(
           "subject-mismatch",
-          `the open New Kronos timecard displays employee ${directIdentifierDigestReference(read.subject.observedEmployeeId)} `
-          + `(name ${directIdentifierDigestReference(read.subject.observedDisplayName)}) while the run expected EID ${directIdentifierDigestReference(input.emplId)} — `
+          `the open New Kronos timecard displays employee ${directIdentifierDisplay(read.subject.observedEmployeeId)} `
+          + `(name ${directIdentifierDisplay(read.subject.observedDisplayName)}) while the run expected EID ${directIdentifierDisplay(input.emplId)} — `
           + "refusing to attribute this timecard's punches to a different separation.",
           { subject: input.emplId },
         );
@@ -47,8 +47,8 @@ export const readSeparationTimecardTask = defineTask(
       if (read.subject.expectedEid !== input.emplId) {
         return ctx.fail(
           "unexpected-page-state",
-          `the New Kronos driver bound expected EID ${directIdentifierDigestReference(read.subject.expectedEid)} while the task ran for `
-          + `${directIdentifierDigestReference(input.emplId)}`,
+          `the New Kronos driver bound expected EID ${directIdentifierDisplay(read.subject.expectedEid)} while the task ran for `
+          + `${directIdentifierDisplay(input.emplId)}`,
           { subject: input.emplId },
         );
       }

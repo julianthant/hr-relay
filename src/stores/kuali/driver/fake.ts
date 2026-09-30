@@ -22,7 +22,7 @@
 import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { ElementId, ObservationId } from "../../../domain/ids.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_MATCHED_NUMBER,
@@ -329,7 +329,7 @@ export function createDeterministicKualiDriver(
     const parsed = EidSchema.safeParse(raw.trim());
     if (!parsed.success) {
       throw new Error(
-        `Kuali document displays ${directIdentifierDigestReference(raw)} in the EID field, which is not a UCPath EID; `
+        `Kuali document displays ${directIdentifierDisplay(raw)} in the EID field, which is not a UCPath EID; `
         + "refusing to bind a subject to an unreadable identifier",
       );
     }

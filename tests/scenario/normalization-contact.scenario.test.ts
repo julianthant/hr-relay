@@ -13,9 +13,9 @@
  * - `ambiguous` — a field the rules cannot decide reaches the operator.
  * - `ai-advice` — D178: an ambiguous SAFE-DIAGNOSTIC field is asked about and
  *   the model's answer becomes an `ai`-sourced change with its own confidence.
- * - `ai-withheld-field` — the same run with `relationship` ambiguous: its
- *   `sensitive-hr` classification forbids the `allow` transform, so it is
- *   never on the wire and stays `ambiguous` for the operator.
+ * - `ai-complete-classified-field` — D358 sends the supplied sensitive-HR field
+ *   complete; a field the model does not answer stays ambiguous.
+
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
@@ -215,18 +215,18 @@ describe("normalization/read-contact-advice scenarios", () => {
     assert.deepEqual(output.disposition, { kind: "complete" });
   });
 
-  it("normalization/contact/ai-withheld-field — a sensitive-hr field never reaches the wire", async () => {
+  it("normalization/contact/ai-complete-classified-field — a sensitive-hr field reaches the wire complete while unanswered advice stays ambiguous", async () => {
     const { output, aiSent } = await runAdvice({
       relationship: "acquaintance from work",
       state: "Calif.",
     }, false, { ai: [aiProduced({ fields: [{ field: "state", value: "CA", confidence: 0.9 }] })] });
 
     const prompt = AdvisoryPromptSchema.parse((aiSent[0] as { value: unknown }).value);
-    // `relationship` is `sensitive-hr`: it is not askable, so it is not asked.
-    assert.deepEqual(prompt.facts.map((fact) => fact.key), ["state"]);
+    // Classification does not withhold the supplied field; the provider answered only state.
+    assert.deepEqual(prompt.facts.map((fact) => fact.key), ["state", "relationship"]);
+    assert.ok(prompt.facts.every(fact => fact.state === "allowed" && fact.transform === "allow"));
     const wire = canonicalJsonStringify(aiSent[0]);
-    assert.equal(wire.includes("acquaintance"), false, "the withheld value must not appear anywhere in the request");
-    assert.equal(wire.includes("work"), false);
+    assert.ok(wire.includes("acquaintance from work"));
 
     // And it stays with the operator rather than being guessed at.
     assert.equal(output.disposition.kind, "ambiguous");

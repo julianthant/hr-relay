@@ -89,7 +89,7 @@ import { valueFreeProtectedInput } from "../domain/protected-input.js";
 import { z } from "zod";
 import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import {
-  directIdentifierDigestReference,
+  redactionDigest,
   idempotencyKeyDigestReference,
 } from "../domain/redaction.js";
 import {
@@ -345,6 +345,10 @@ function pickCheckpoint(
  */
 export type ReceiptComposition = 1 | 2 | 3 | 4 | 5;
 export const LATEST_RECEIPT_COMPOSITION = 5 satisfies ReceiptComposition;
+
+function historicalDirectIdentifierReference(value: string): string {
+  return `identifier#${redactionDigest(value).slice(0, 12)}`;
+}
 
 function receiptEvidenceLeaf(scope: EvidenceValueScope, leaf: EvidenceLeaf, composition: ReceiptComposition) {
   return composition < 5 ? historicalReceiptEvidenceLeaf(scope, leaf) : redactEvidenceLeaf(scope, leaf);
@@ -1433,7 +1437,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
     ? bound
     : FingerprintSchema.safeParse(bound).success
       ? `evidence digest ${bound}`
-      : directIdentifierDigestReference(bound);
+      : historicalDirectIdentifierReference(bound);
   const decisionId = entryId("decision", `gate.${nodeId}`);
   input.decisions.push({
     id: decisionId,

@@ -29,6 +29,8 @@ uses `state: allowed`, `transform: allow`, its original classification, and its 
 Capture and display do not drop, shorten, count, hash, or substitute basenames for these values.
 This amendment supersedes classification-based presentation/capture masking rules in this reference
 and its importing contracts. It does not authorize discovering or reading additional credentials.
+The obsolete `no-secret-values-in-logs` interpolation guard is retired with its exact deciding
+boundary proofs in the guard inventory; the closed credential-reader and environment guards remain active.
 
 Existing Host/Origin admission, loopback access, session ownership, credential access, storage
 permissions, transaction safety, and artifact identity remain required. Identity keys, checksums,

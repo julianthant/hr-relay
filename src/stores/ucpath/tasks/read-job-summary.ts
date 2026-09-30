@@ -3,7 +3,7 @@ import {
   ReadJobSummaryOutputSchema,
   UcpathReadJobSummary,
 } from "../../../domain/contracts/ucpath/read-job-summary.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /**
@@ -41,7 +41,7 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
       // input record, which this task does not have.
       return ctx.fail(
         "employee-not-found",
-        `UCPath Person Org has no record for EID ${directIdentifierDigestReference(read.emplId)} `
+        `UCPath Person Org has no record for EID ${directIdentifierDisplay(read.emplId)} `
         + `(the page rendered ${JSON.stringify(read.observedMarker)}). This is UCPath's own answer, not `
         + "a timeout: a search that times out throws instead.",
       );
@@ -49,8 +49,8 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
     if (read.state === "subject-mismatch") {
       return ctx.fail(
         "subject-mismatch",
-        `UCPath opened the Person Org detail for EID ${directIdentifierDigestReference(read.observedEid)} while the run asked for `
-        + `${directIdentifierDigestReference(read.expectedEid)}; refusing to read one person's employment grid as another's.`,
+        `UCPath opened the Person Org detail for EID ${directIdentifierDisplay(read.observedEid)} while the run asked for `
+        + `${directIdentifierDisplay(read.expectedEid)}; refusing to read one person's employment grid as another's.`,
       );
     }
 
@@ -58,8 +58,8 @@ export const readJobSummaryTask = defineTask(ucpathDriver, UcpathReadJobSummary,
     if (output.emplId !== input.emplId) {
       return ctx.fail(
         "unexpected-page-state",
-        `the UCPath driver returned a job summary for ${directIdentifierDigestReference(output.emplId)} while the task ran for `
-        + `${directIdentifierDigestReference(input.emplId)}`,
+        `the UCPath driver returned a job summary for ${directIdentifierDisplay(output.emplId)} while the task ran for `
+        + `${directIdentifierDisplay(input.emplId)}`,
       );
     }
     ctx.recordData([

@@ -25,7 +25,7 @@ import type {
 } from "../../../domain/contracts/ucpath/search-person-org.js";
 import { EidSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import {
   UCPATH_JOB_SUMMARY_PAGE_STATE,
   UcpathJobRowSchema,
@@ -475,7 +475,7 @@ async function candidatesFromGrid(
     const detail = await pagePort.drill(row.rowIndex);
     if (detail.observedEid !== row.emplId) {
       throw new Error(
-        `Person Org drill row ${String(row.rowIndex)} expected EID ${directIdentifierDigestReference(row.emplId)} but displayed ${directIdentifierDigestReference(detail.observedEid)}`,
+        `Person Org drill row ${String(row.rowIndex)} expected EID ${directIdentifierDisplay(row.emplId)} but displayed ${directIdentifierDisplay(detail.observedEid)}`,
       );
     }
     candidates.push(candidateFromDetail(detail, row.lastName));
@@ -504,7 +504,7 @@ export async function searchPersonOrgWithPagePort(
     let candidates: readonly UcpathCandidate[];
     if (outcome.kind === "grid") {
       if (outcome.rows.length === 0 || outcome.rows.some(({ emplId }) => emplId !== input.emplId)) {
-        throw new Error(`Person Org EID ${directIdentifierDigestReference(input.emplId)} returned an unexpected results grid`);
+        throw new Error(`Person Org EID ${directIdentifierDisplay(input.emplId)} returned an unexpected results grid`);
       }
       candidates = await candidatesFromGrid(pagePort, outcome.rows);
     } else {
@@ -515,7 +515,7 @@ export async function searchPersonOrgWithPagePort(
     }
     for (const candidate of candidates) {
       if (candidate.emplId !== input.emplId) {
-        throw new Error(`Person Org EID search expected ${directIdentifierDigestReference(input.emplId)} but observed ${directIdentifierDigestReference(candidate.emplId)}`);
+        throw new Error(`Person Org EID search expected ${directIdentifierDisplay(input.emplId)} but observed ${directIdentifierDisplay(candidate.emplId)}`);
       }
     }
     return outputFor(input, candidates);
@@ -689,12 +689,12 @@ export async function readJobSummaryWithPagePort(
     const foreign = outcome.rows.filter(({ emplId: rowEid }) => rowEid !== emplId);
     if (foreign.length > 0) {
       throw new Error(
-        `Person Org EID ${directIdentifierDigestReference(emplId)} returned a results grid carrying ${String(foreign.length)} row(s) for `
-        + `other people (${[...new Set(foreign.map(({ emplId: rowEid }) => directIdentifierDigestReference(rowEid)))].join(", ")})`,
+        `Person Org EID ${directIdentifierDisplay(emplId)} returned a results grid carrying ${String(foreign.length)} row(s) for `
+        + `other people (${[...new Set(foreign.map(({ emplId: rowEid }) => directIdentifierDisplay(rowEid)))].join(", ")})`,
       );
     }
     const first = outcome.rows[0];
-    if (first === undefined) throw new Error(`Person Org EID ${directIdentifierDigestReference(emplId)} returned an empty results grid`);
+    if (first === undefined) throw new Error(`Person Org EID ${directIdentifierDisplay(emplId)} returned an empty results grid`);
     detail = await pagePort.drill(first.rowIndex);
     entry = "drilled-from-grid";
     searchResultRows = outcome.rows.length;
@@ -745,7 +745,7 @@ async function extractDetail(page: Page): Promise<PersonOrgDetail> {
   ));
   const displayedName = await readRequiredText(
     resolveUcpathElement(page, UCPATH_PERSON_ORG_NAME_DISPLAY),
-    `displayed name for EID ${directIdentifierDigestReference(eid)}`,
+    `displayed name for EID ${directIdentifierDisplay(eid)}`,
   );
   const employmentInstances = await ensureEmploymentInstancesExpanded(page);
   const rows = await resolveUcpathElement(page, UCPATH_PERSON_ORG_ASSIGNMENTS_GRID)

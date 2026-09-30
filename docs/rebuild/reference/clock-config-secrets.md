@@ -129,7 +129,7 @@ means something beside the thing it replaced. Nothing here describes this reposi
 - [x] `clock-single-source` is an AST walk with an EMPTY allowlist, so new `src` code has zero tolerance and an alias, a destructure, a `globalThis.` hop or a `node:perf_hooks` import cannot slip past a grep (`tests/unit/architecture/clock-single-source.test.ts`)
 - [x] `manual-clock-test-only` bans the IDENTIFIER `manualClock` anywhere in `src/**` but `clock.ts` — import, call, re-export and dynamic property access all fail
 - [x] one resolver implements `env > settings.json > default` exactly once, with per-leaf provenance and a canonical fingerprint (§3; `src/domain/config/resolve.ts`)
-- [x] one secrets accessor covers environment secrets, registered key FAMILIES, and the Duo credential file; `secrets-single-source` and `no-secret-values-in-logs` both carry EMPTY allowlists (§6)
+- [x] one secrets accessor covers environment secrets, registered key FAMILIES, and the Duo credential file; `secrets-single-source` carries an EMPTY allowlist (§6); D358 owns complete supplied diagnostic values
 - [x] closed per-system route schemas, explicit prod/test instance refusal, current-fiscal-year validation, the runtime environment/dependency registries and the strict preflight report schemas are all implemented and bidirectionally audited (§3 · §4 · §5 · §6.2)
 - [x] `.tracker/settings.json` (the state root; `config/settings.json` until D321) is one strict revisioned file authority; both composition roots read it before the one resolver runs, and `settings/apply-settings` is its sole producer (§3, D282)
 - [x] `mergeSettings` is compiler-exhaustive over all 16 `ConfigSchema` groups, including `browser`; the focused resolver test pins both browser leaves and their `settings` provenance (§3)
@@ -1350,7 +1350,7 @@ deleted or renamed proof is a red guard, not silent drift.
 | P15 | L11 — `cli storage backup` copies `settings.json` and `authority.json`, NEVER `protected.json`, and records the protected store's revision plus `{ name, valueId, updatedAt }` per entry | back up a root with a populated store, assert the manifest's file list excludes `protected.json`, grep the whole backup for the canary value, and assert the presence metadata is present and value-free; assert `authority.json`'s `rootFingerprint` is identical across two stores holding different protected values, and that no protected-target prepare/rollback record is ever in the manifest | `tests/unit/storage-backup.test.ts`, `src/infra/sqlite/backup-service.ts`, `recovery-contracts.ts` |
 | P16 | L12 — storage doctor and preflight report a protected leaf by NAME and presence only, inside the existing closed reason-code policy | run the doctor and preflight over a populated root and assert no value and no path beyond the configured root's basename | `tests/unit/storage-doctor.test.ts`, `tests/unit/preflight.test.ts` |
 | P17 | L13 — a diagnostic bundle carries `configFingerprint` and no settings/catalog dump | build a bundle with the store populated and assert the canary value and every catalog value are absent from bundle bytes | `tests/unit/server/diagnostic-bundle.test.ts` |
-| P18 | L14 — spans, logs, receipts, failure records and every settings/secrets refusal name key, document or leaf id and never a value | drive each refusal arm with a canary value and assert the sinks; the existing family guard covers the mechanical half | `tests/unit/architecture/no-secret-values-in-logs.test.ts`, `tests/unit/architecture/secrets-single-source.test.ts` |
+| P18 | D358 — authorized evidence and refusals retain complete supplied values; credential reader ownership stays closed | synthetic full-value boundary proofs and unchanged reader negative controls | `tests/unit/unmasked-evidence.test.ts`, `tests/unit/secrets-redaction.test.ts`, `tests/unit/architecture/secrets-single-source.test.ts` |
 | P19 | L15 — XLSX exports remain free of any config/settings/protected reference | assert the composed workbook cells and metadata against a populated store; a new settings column is red | `tests/unit/server/activity-export.test.ts` |
 | P20 | L16 — no protected value is published into `process.env` for a child; each process reads the store itself, and the parent's spawn environment is value-free | assert `secrets-single-source`'s new WRITE arm refuses a `process.env` write of a catalogued protected name, and inspect the worker supervisor's spawn environment for the canary | `secrets-single-source.test.ts`, `tests/unit/worker-composition.test.ts`, `src/server/dashboard/worker-supervisor.ts` |
 | P21 | The protected envelope is canonicalized with every `set` value replaced by `"<set>"`, and boot re-authentication compares MARKED bytes to MARKED bytes | re-authenticate a stored command after restart with the value re-supplied and with a different value: both authenticate, because the journal never saw either | `tests/unit/server/settings-runtime-reader.test.ts`, `src/server/settings-runtime.ts` |
@@ -2614,45 +2614,14 @@ drift is reviewed. Strings, comments and type-only imports are deliberately iner
 Today the tree is stricter than the contract requires: `resolve.ts` takes `env: NodeJS.ProcessEnv`
 as a parameter and reads nothing, so the config owner's permission is currently unexercised.
 
-**`no-secret-values-in-logs.test.ts`** — the companion. `secrets-single-source` decides WHO may read
-a credential; this one decides WHAT may be said about it, because the moment a value is spliced into
-a string it has left the classification behind and every downstream writer copies it verbatim. It
-scans **every template-literal interpolation in `src/**`** (a thrown `Error` message is as durable as
-a log line) and **every argument to a `log.*` / `console.*` call** (so a bare `log.info(password)` is
-caught without a template). A name is sensitive when its normalized form contains one of fourteen
-roots — `password`, `passwd`, `passphrase`, `secret`, `credential`, `privatekey`, `apikey`,
-`accesskey`, `authtoken`, `bearertoken`, `sessiontoken`, `refreshtoken`, `cookie`, `storagestate`,
-`ssn`. Descriptor suffixes exempt the companions that DESCRIBE a credential (`secretName`,
-`credentialPath`, `tokenCount`, `…Spec`, `…Env`, `…Classification`), and `key`/`keys`/`state` are
-deliberately NOT on that list, because `apiKey`, `secretKey`, `privateKey` and `storageState` all
-carry the value. Its allowlist is empty too.
-
-The closed direct-identifier family also covers employee/timekeeper names and the EID spellings
-used by the codebase, including `eid`, `emplId`, `documentEid`, `employeeId`, and the reviewed
-observed/expected/query variants. Presentation templates are exempt only when they are the direct
-return expression that renders typed UI; a nested callback or local template is still a violation.
-Runtime diagnostics project a bounded digest reference instead of a raw identifier, while typed UI
-keeps a full EID as structured React content rather than first collapsing it into an opaque string.
-The direct-identifier allowlist remains empty.
-
-The scanner follows scoped aliases through declarations, assignments, single-return functions,
-destructuring, direct object-literal payloads (property, shorthand, static-computed and spread
-forms), object/array packing and property reads, including locally resolvable computed-key aliases
-at both construction and read, as well as concatenation, conditionals, arrays, `join`, `String` and
-`JSON.stringify`. A computed read whose key remains dynamic fails closed when the container's
-provenance carries a sensitive value. It resolves aliased `Error`, `new Error`, logger/console calls
-and `ctx.fail` as diagnostic sinks; console/logger method identity survives object/array packing,
-property selection, destructuring, aliasing and `call`/`apply`/`bind`, with unresolved selection
-from a sink-bearing container treated as a sink.
-Structural EID/EMPLID suffixes cover target/person/current variants while
-reviewed schema/field/path names and equality predicates remain descriptors. Alias provenance is
-resolved before a descriptor-looking local name can claim an exemption. Natural idempotency-key
-bindings join the closed sensitive family even
-though their stable business identity is still retained in authority. A sanitizer exemption exists
-only when the call resolves to the canonical imported helper in `src/domain/redaction.ts`; a local or
-shadowed look-alike remains a violation. Likewise, the two descriptor-only exceptions are tied to the
-real imported `defineWorkflowDescriptor` call: direct `presentation.title`/`subtitle` returns and the
-durable `identity.matchKey` callback. Look-alike objects and shadowed factories receive no exemption.
+**D358 — complete supplied values.** The operator-trust owner supersedes the former
+`no-secret-values-in-logs` interpolation prohibition. Authorized capture, diagnostic and
+presentation boundaries retain complete supplied values, including credentials and identifiers.
+This does not authorize another credential reader or secret lookup. `secrets-single-source`
+continues to enforce the closed reader/owner registry and environment access, with its exact
+allowlist and negative controls. Historical receipt compositions 1–4 retain their original bytes;
+new composition 5 and current messages use complete supplied values. The retired guard's deciding
+replacement evidence is recorded in `docs/rebuild/guard-inventory.json` under D358.
 
 ### The planned successor: the OS keychain, behind this accessor
 

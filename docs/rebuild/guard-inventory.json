@@ -116,10 +116,11 @@
     {
       "name": "no-secret-values-in-logs",
       "file": "tests/unit/architecture/no-secret-values-in-logs.test.ts",
-      "status": "active",
-      "owner": "docs/rebuild/reference/clock-config-secrets.md",
-      "invariant": "No rebuild template interpolation or diagnostic-sink argument carries a credential-named binding; only structurally named descriptors (name/id/path/file/family/env) and loop variables drawn from descriptor collections are permitted.",
-      "replacementRequired": true
+      "status": "retired",
+      "owner": "docs/rebuild/reference/operator-trust.md#d358--complete-operator-evidence-without-value-masking--2026-09-29",
+      "invariant": "Retired by D358 (2026-09-29): supplied values may appear complete at authorized diagnostic and presentation boundaries, so credential-named interpolation is no longer forbidden. Deciding evidence: tests/unit/unmasked-evidence.test.ts preserves exact receipt compositions 1\u20134 and proves composition 5 full-value persistence/reopen/archive; tests/unit/dashboard/receipt-action-proof-render.test.ts proves complete new and retained historical rendering; tests/unit/secrets-redaction.test.ts proves complete supplied diagnostic and identifier values; tests/unit/ucpath-smart-hr-operation.test.ts preserves exact transaction-mismatch refusal while displaying supplied identities. Credential access and reader ownership remain enforced by active secrets-single-source and runtime-environment guards. The retired scanner has no external consumers.",
+      "replacementRequired": true,
+      "retiredBy": "D358"
     },
     {
       "name": "operational-isolation",

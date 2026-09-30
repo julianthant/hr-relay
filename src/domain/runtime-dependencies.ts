@@ -29,7 +29,7 @@ import {
   RuntimeCapabilitySchema,
 } from "./preflight-contract.js";
 import { auditPreflightSemanticRegistry } from "./preflight-semantics.js";
-import { directIdentifierDigestReference } from "./redaction.js";
+import { directIdentifierDisplay } from "./redaction.js";
 
 export {
   PreflightCheckIdSchema,
@@ -439,8 +439,8 @@ export function auditRuntimeDependencyCoverage(input: unknown): readonly string[
     const credentialId = spec.credential;
     if (credentialId !== SYSTEM_CREDENTIAL_BY_ID[system]) {
       violations.push(
-        `system ${system} uses credential ${directIdentifierDigestReference(credentialId)}, expected `
-        + directIdentifierDigestReference(SYSTEM_CREDENTIAL_BY_ID[system]),
+        `system ${system} uses credential ${directIdentifierDisplay(credentialId)}, expected `
+        + directIdentifierDisplay(SYSTEM_CREDENTIAL_BY_ID[system]),
       );
     }
     const configRoutes: readonly string[] = CONFIG_ROUTE_KEYS[expectedConfigKey];

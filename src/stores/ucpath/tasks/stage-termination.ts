@@ -1,6 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathStageTermination } from "../../../domain/contracts/ucpath/stage-termination.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { UcpathEmplIdNotRecognizedError } from "../../../domain/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
@@ -37,7 +37,7 @@ export const stageTerminationTask = defineTask(ucpathDriver, UcpathStageTerminat
     if (staging.emplId !== input.emplId) {
       return ctx.fail(
         "subject-mismatch",
-        `UCPath staged a termination for EID ${directIdentifierDigestReference(staging.emplId)} while the run named ${directIdentifierDigestReference(input.emplId)}`,
+        `UCPath staged a termination for EID ${directIdentifierDisplay(staging.emplId)} while the run named ${directIdentifierDisplay(input.emplId)}`,
         { subject: input.emplId },
       );
     }

@@ -154,7 +154,7 @@ export const EXECUTABLE_SCENARIO_MANIFEST = deepFreeze(ExecutableScenarioSpecSch
     file: "tests/scenario/normalization-contact.scenario.test.ts",
   },
   {
-    scenarioId: "normalization/contact/ai-withheld-field",
+    scenarioId: "normalization/contact/ai-complete-classified-field",
     file: "tests/scenario/normalization-contact.scenario.test.ts",
   },
   { scenarioId: "roster/match/exact-eid", file: "tests/scenario/roster-match.scenario.test.ts" },

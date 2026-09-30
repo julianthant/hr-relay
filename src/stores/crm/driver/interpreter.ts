@@ -10,7 +10,7 @@ import {
   ReadOnboardingRecordOutputSchema,
 } from "../../../domain/contracts/crm/read-onboarding-record.js";
 import { DateOnlySchema, EidSchema } from "../../../domain/ids.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import {
   CRM_ONBOARDING_DISPLAYED_EID,
   CrmOnboardingDatesReadSchema,
@@ -292,7 +292,7 @@ export function chooseExactCrmRecord(
   const records = recordsInput.map((record) => ExactRecordSchema.parse(record));
   const exact = records.filter(({ observedEid }) => observedEid === expectedEid);
   if (exact.length > 1) {
-    throw new Error(`CRM lookup for EID ${directIdentifierDigestReference(expectedEid)} resolved ${String(exact.length)} exact displayed-EID records`);
+    throw new Error(`CRM lookup for EID ${directIdentifierDisplay(expectedEid)} resolved ${String(exact.length)} exact displayed-EID records`);
   }
   return ExactRecordResolutionSchema.parse(
     exact[0] === undefined ? { state: "absent" } : { state: "found", record: exact[0] },
@@ -508,7 +508,7 @@ async function readOnboardingRecord(
       output: ReadOnboardingRecordOutputSchema.parse({
         state: "absent",
         queriedEid: input.eid,
-        reason: `CRM has no onboarding record with exact displayed EID ${directIdentifierDigestReference(input.eid)}`,
+        reason: `CRM has no onboarding record with exact displayed EID ${directIdentifierDisplay(input.eid)}`,
       }),
     });
   }
@@ -533,7 +533,7 @@ async function readOnboardingDates(
 ): Promise<CrmOnboardingDatesRead> {
   const resolution = await resolveExactCrmOnboardingRecord(page, input);
   if (resolution.state === "absent") {
-    const reason = `CRM has no onboarding record with exact displayed EID ${directIdentifierDigestReference(input.eid)}`;
+    const reason = `CRM has no onboarding record with exact displayed EID ${directIdentifierDisplay(input.eid)}`;
     return CrmOnboardingDatesReadSchema.parse({
       binding: bindingForAbsent(input.eid),
       output: ReadOnboardingDatesOutputSchema.parse({

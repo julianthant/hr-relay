@@ -33,7 +33,7 @@ import {
 import { TestTargetRegistryDefectError } from "../../src/control/test-target-registry.js";
 import {
   ClassifiedDiagnosticValueSchema,
-  directIdentifierDigestReference,
+  directIdentifierDisplay,
   redactDiagnosticFields,
   redactionDigest,
   RedactionResultSchema,
@@ -669,14 +669,10 @@ describe("schema-owned redaction", () => {
     assert.notEqual(redactionDigest("canary"), redactionDigest({ value: "canary" }));
   });
 
-  it("projects direct identifiers to bounded stable references without retaining the source", () => {
-    const source = "CANARY_PRIVATE_DIRECT_IDENTIFIER";
-    const reference = directIdentifierDigestReference(source);
-
-    assert.match(reference, /^identifier#[0-9a-f]{12}$/);
-    assert.equal(reference, directIdentifierDigestReference(source));
-    assert.equal(reference.includes(source), false);
-    assert.notEqual(reference, directIdentifierDigestReference(`${source}-other`));
+  it("displays the complete identifier supplied by its caller", () => {
+    const source = "SYNTHETIC_COMPLETE_DIRECT_IDENTIFIER";
+    assert.equal(directIdentifierDisplay(source), source);
+    assert.equal(directIdentifierDisplay(`${source}-other`), `${source}-other`);
   });
 
   it("retains original diagnostic values across the classification corpus", () => {

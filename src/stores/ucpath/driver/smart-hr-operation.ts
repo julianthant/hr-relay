@@ -55,7 +55,7 @@ import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
 import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";
 import type { MutationCapability, UiActionProof } from "../../../domain/ui/driver.js";
@@ -212,8 +212,6 @@ const SETTLEMENT_CAPTURE_FAILED = Object.freeze({
   state: "capture-failed" as const,
   cause: "page-evaluation-failed" as const,
 });
-const PERSON_IDENTIFIER_REMOVED = "[person identifier removed]";
-const TRANSACTION_IDENTIFIER_REMOVED = "[transaction identifier removed]";
 
 type SsSmartHrSettlementObservation = Readonly<{
   resultRowCount: number;
@@ -276,17 +274,7 @@ async function observeSsSmartHrSettlement(
   };
 }
 
-function redactScanFailureDetail(error: unknown, emplId: Eid): string {
-  const fullEid = String(emplId);
-  const eidSuffix = fullEid.slice(-4);
-  return (error instanceof Error ? error.message : String(error))
-    .replaceAll(fullEid, PERSON_IDENTIFIER_REMOVED)
-    .replace(
-      new RegExp("(?<!\\d)" + eidSuffix + "(?!\\d)", "gu"),
-      PERSON_IDENTIFIER_REMOVED,
-    )
-    .replaceAll(/\bT\d{6,}\b/gu, TRANSACTION_IDENTIFIER_REMOVED);
-}
+
 
 const captureSsSmartHrSettlementDiagnostic = (selectors: Readonly<{
   criteriaBanner: string;
@@ -492,7 +480,7 @@ export async function scanTerminationTransactionsOnPage(
     });
   const failureReason = (error: unknown): string =>
     "the SS Smart HR transaction scan failed: "
-    + redactScanFailureDetail(error, input.emplId);
+    + (error instanceof Error ? error.message : String(error));
   try {
     await page.goto(SEARCH_URL, { waitUntil: "domcontentloaded", timeout: SCAN_BOUND_MS });
     recordBrowserAction("opened", "ucpath.smart-hr.search");
@@ -873,13 +861,13 @@ export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Prom
     const name = row.locator('a[id^="NAME$"]');
     if (await name.count() !== 1) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(emplId)} has no unique Name control`,
+        `a Transactions in Progress row for ${directIdentifierDisplay(emplId)} has no unique Name control`,
       );
     }
     const text = (await name.innerText()).trim();
     if (text.length === 0) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(emplId)} rendered an empty Name`,
+        `a Transactions in Progress row for ${directIdentifierDisplay(emplId)} rendered an empty Name`,
       );
     }
     names.push(text);
@@ -888,7 +876,7 @@ export async function readInProgressSubjectOnPage(page: Page, emplId: Eid): Prom
     .filter((token) => token.length > 0).sort().join(" ")));
   if (names.length === 0 || normalized.size !== 1) {
     throw new Error(
-      `the Transactions in Progress grid renders ${String(names.length)} rows and ${String(normalized.size)} distinct names for Empl ID ${directIdentifierDigestReference(emplId)}; exactly one subject is required to bind a sweep`,
+      `the Transactions in Progress grid renders ${String(names.length)} rows and ${String(normalized.size)} distinct names for Empl ID ${directIdentifierDisplay(emplId)}; exactly one subject is required to bind a sweep`,
     );
   }
   return names[0];
@@ -914,7 +902,7 @@ export function joinPendingSweepGridRows(
 ): readonly PendingSweepGridJoin[] {
   if (candidates.length !== input.observedSet.eligible.length) {
     throw new Error(
-      `Transactions in Progress exposed ${String(candidates.length)} eligible rows for ${directIdentifierDigestReference(input.emplId)}, but the stable-id set authorizes `
+      `Transactions in Progress exposed ${String(candidates.length)} eligible rows for ${directIdentifierDisplay(input.emplId)}, but the stable-id set authorizes `
       + `${String(input.observedSet.eligible.length)}; refusing before selection`,
     );
   }
@@ -967,7 +955,7 @@ export async function stagePendingTerminationSweepOnPage(
   const verdict = ucpathPendingSweepVerdict(input, current);
   if (verdict.state !== "absent") {
     throw new Error(
-      `the pre-selection UCPath transaction set for ${directIdentifierDigestReference(input.emplId)} answered ${verdict.state}; `
+      `the pre-selection UCPath transaction set for ${directIdentifierDisplay(input.emplId)} answered ${verdict.state}; `
       + "the exact machine-observed pending set changed or is already gone, so no checkbox may be selected",
     );
   }
@@ -998,7 +986,7 @@ export async function stagePendingTerminationSweepOnPage(
     const checkbox = row.locator('input[type="checkbox"][id^="SELECT$"]');
     if (await checkbox.count() !== 1) {
       throw new Error(
-        `a Transactions in Progress row for ${directIdentifierDigestReference(input.emplId)} has no unique Select checkbox; refusing before selection`,
+        `a Transactions in Progress row for ${directIdentifierDisplay(input.emplId)} has no unique Select checkbox; refusing before selection`,
       );
     }
     candidates.push({

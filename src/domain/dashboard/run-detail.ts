@@ -28,7 +28,7 @@ import {
   WriteIntentIdSchema,
 } from "../ids.js";
 import { UnscopedCommitReasonIdSchema } from "../unscoped-commit.js";
-import { directIdentifierDigestReference } from "../redaction.js";
+import { directIdentifierDisplay } from "../redaction.js";
 import { IdentityEvidencePacketSchema } from "../separations/identity-evidence.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { TimelineCategoryKeySchema } from "../workflow/presentation.js";
@@ -1152,7 +1152,7 @@ export const IdentityGateDetailWireSchema = z.strictObject({
       context.addIssue({
         code: "custom",
         path: ["options", index, "eid"],
-        message: `option ${directIdentifierDigestReference(option.eid)} is not one the packet showed`,
+        message: `option ${directIdentifierDisplay(option.eid)} is not one the packet showed`,
       });
     }
   }

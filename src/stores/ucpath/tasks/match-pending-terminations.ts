@@ -1,6 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathMatchPendingTerminations } from "../../../domain/contracts/ucpath/match-pending-terminations.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
@@ -28,8 +28,8 @@ export const matchPendingTerminationsTask = defineTask(
       if (disagreeing !== undefined) {
         return ctx.fail(
           "subject-mismatch",
-          `UCPath returned a transaction for ${directIdentifierDigestReference(disagreeing)} while the run named `
-          + `${directIdentifierDigestReference(input.expectedName)}; a sweep is a DELETE keyed only by a person, so a `
+          `UCPath returned a transaction for ${directIdentifierDisplay(disagreeing)} while the run named `
+          + `${directIdentifierDisplay(input.expectedName)}; a sweep is a DELETE keyed only by a person, so a `
           + "grid read off the wrong person has no downstream control at all",
           { subject: input.emplId },
         );

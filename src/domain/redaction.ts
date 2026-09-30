@@ -100,9 +100,9 @@ export function redactionDigest(value: z.infer<typeof JsonValueSchema>) {
   return FingerprintSchema.parse(sha256Hex(`hrauto:redaction-digest:v1\0${canonical}`));
 }
 
-/** A stable operator-safe reference for one direct identifier, never the identifier itself. */
-export function directIdentifierDigestReference(value: string): string {
-  return `identifier#${redactionDigest(value).slice(0, 12)}`;
+/** Display only the identifier already supplied by the authorized caller. */
+export function directIdentifierDisplay(value: string): string {
+  return value;
 }
 
 /** Operator-visible permanent-write identity, derived only from the authority digest. */

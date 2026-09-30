@@ -3,7 +3,7 @@ import {
   ActiveStatusOutcomeSchema,
   ReadActiveStatus,
 } from "../../../domain/contracts/person-lookup/read-active-status.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 
 export const readActiveStatusTask = defineTask(ReadActiveStatus, {
   sessions: [],
@@ -30,7 +30,7 @@ export const readActiveStatusTask = defineTask(ReadActiveStatus, {
     if (crmEid !== selected.emplId) {
       return ctx.fail(
         "inconsistent-inputs",
-        `person-lookup active-status received UCPath EID ${directIdentifierDigestReference(selected.emplId)} but CRM EID ${directIdentifierDigestReference(crmEid)}`,
+        `person-lookup active-status received UCPath EID ${directIdentifierDisplay(selected.emplId)} but CRM EID ${directIdentifierDisplay(crmEid)}`,
         { subject: selected.emplId },
       );
     }

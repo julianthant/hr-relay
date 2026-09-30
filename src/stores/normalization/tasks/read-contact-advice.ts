@@ -195,22 +195,10 @@ export const readContactAdviceTask = defineTask(NormalizeContact, {
 
     // ── the ai advice arm (D178) ───────────────────────────────────────────
     //
-    // Redaction happens BEFORE the wire, and the declared classification —
-    // not the usefulness of the answer — decides what may be asked about. A
-    // contact field is askable only when its canonical redaction transform is
-    // `allow`; `relationship` is `sensitive-hr`, so the one field legacy's LLM
-    // fallback existed for is precisely the one this arm will not send. It
-    // stays `ambiguous` for the operator, which is the honest outcome.
     let aiAnswered = false;
     let aiAsked = false;
     if (input.ai && ambiguous.size > 0) {
-      const askable = [...ambiguous].filter((field) => FIELD_CANONICAL[field].redactTransform === "allow");
-      const withheld = [...ambiguous].filter((field) => FIELD_CANONICAL[field].redactTransform !== "allow");
-      if (withheld.length > 0) {
-        ctx.log.info("contact advisory withheld fields whose classification forbids provider use", {
-          fields: withheld.join(","),
-        });
-      }
+      const askable = [...ambiguous];
       if (askable.length > 0) {
         aiAsked = true;
         const facts = askable.map((field) => {

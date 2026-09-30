@@ -1,5 +1,5 @@
 import { EidSchema } from "../../../domain/ids.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { SearchPersonOrgOutputSchema } from "../../../domain/contracts/ucpath/search-person-org.js";
 import type { SearchPersonOrgOutput } from "../../../domain/contracts/ucpath/search-person-org.js";
 import { PageStateProofSchema, UiActionProofSchema } from "../../../domain/ui/driver.js";
@@ -37,7 +37,7 @@ export function createDeterministicUcpathPersonOrgDriver(
       const parsed = UcpathJobSummaryReadSchema.parse(jobSummary);
       if (parsed.state === "read" && parsed.summary.emplId !== input.emplId) {
         throw new Error(
-          `deterministic UCPath job summary is for ${directIdentifierDigestReference(parsed.summary.emplId)}, not ${directIdentifierDigestReference(input.emplId)}`,
+          `deterministic UCPath job summary is for ${directIdentifierDisplay(parsed.summary.emplId)}, not ${directIdentifierDisplay(input.emplId)}`,
         );
       }
       return parsed;

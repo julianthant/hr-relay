@@ -183,7 +183,7 @@ export const NormalizeContact = defineTaskContract({
     "normalization/contact/advisory-unavailable",
     "normalization/contact/ambiguous",
     "normalization/contact/ai-advice",
-    "normalization/contact/ai-withheld-field",
+    "normalization/contact/ai-complete-classified-field",
   ],
   example: {
     normalized: { cellPhone: "8585551212", state: "CA", postalCode: "92093" },

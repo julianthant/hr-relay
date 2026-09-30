@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema } from "../../src/domain/ids.js";
 import type { Eid } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
+import { directIdentifierDisplay } from "../../src/domain/redaction.js";
 import {
   assignmentDetailsToCells,
   buildLastFirstSearchNames,
@@ -287,7 +287,7 @@ describe("strict UCPath Person Org operation", () => {
     const harness = pageHarness({ outcomes: [{ kind: "detail", detail: detail(EID_B, "Wrong Person") }] });
     await assert.rejects(
       searchPersonOrgWithPagePort(harness.port, { kind: "by-eid", emplId: EID_A }),
-      new RegExp(`expected ${directIdentifierDigestReference(EID_A)} but observed ${directIdentifierDigestReference(EID_B)}`),
+      new RegExp(`expected ${directIdentifierDisplay(EID_A)} but observed ${directIdentifierDisplay(EID_B)}`),
     );
   });
 
@@ -377,7 +377,7 @@ describe("strict UCPath Person Org operation", () => {
         name: "Smith, John",
         keepNonHdh: true,
       }),
-      new RegExp(`expected EID ${directIdentifierDigestReference(EID_A)} but displayed ${directIdentifierDigestReference(EID_B)}`),
+      new RegExp(`expected EID ${directIdentifierDisplay(EID_A)} but displayed ${directIdentifierDisplay(EID_B)}`),
     );
   });
 

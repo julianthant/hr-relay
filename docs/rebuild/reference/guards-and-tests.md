@@ -1706,7 +1706,8 @@ the real tree and against its own violating fixture.
   `ai-advisory-no-authority`, `redaction-surface-scan` (§3.15), `scenario-coverage` (§3.10, and the
   guard §10 extends), `workflow-layout`, `step-omission-invariants`.
 - **Clock, config and secrets (ref clock-config-secrets):** `clock-single-source`,
-  `manual-clock-test-only`, `secrets-single-source`, `no-secret-values-in-logs`.
+  `manual-clock-test-only`, `secrets-single-source`. D358 retires the former diagnostic-value
+  interpolation prohibition (`no-secret-values-in-logs`); credential access ownership remains enforced.
 - **Legacy-facing inventories (audited as DATA, never linked at runtime):**
   `legacy-selector-port-provenance` (406 keys pinned to one legacy commit's blobs),
   `legacy-capability-disposition` (§3.11), `legacy-test-disposition`,

@@ -1,6 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathVerifyTerminationFilingPresent } from "../../../domain/contracts/ucpath/verify-termination-filing-present.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { ucpathTerminationFilingPresence } from "../termination-verdict.js";
 
@@ -20,7 +20,7 @@ export const verifyTerminationFilingPresentTask = defineTask(
       if (verdict.state !== "present") {
         return ctx.fail(
           verdict.state === "unknown" ? "unexpected-page-state" : "filing-not-current",
-          `UCPath could not prove the current filing for ${directIdentifierDigestReference(input.emplId)}: ${verdict.reason}`,
+          `UCPath could not prove the current filing for ${directIdentifierDisplay(input.emplId)}: ${verdict.reason}`,
           { subject: input.emplId },
         );
       }

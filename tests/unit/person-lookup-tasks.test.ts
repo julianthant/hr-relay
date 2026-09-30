@@ -20,7 +20,7 @@ import {
   UcpathCandidateSchema,
 } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { EidSchema } from "../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
+import { directIdentifierDisplay } from "../../src/domain/redaction.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { DataPointSchema } from "../../src/domain/task-provenance.js";
 import type { DataPoint } from "../../src/domain/task-provenance.js";
@@ -294,14 +294,14 @@ describe("Phase 1f Person Lookup task implementations", () => {
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
-      new RegExp(`expected EID ${directIdentifierDigestReference("10873698")} but bound ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10001573")}`),
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: candidate.emplId },
         ctx: { ...commonCtx, driver: observedWrong },
       }),
-      new RegExp(`expected EID ${directIdentifierDigestReference("10873698")} but bound ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`expected EID ${directIdentifierDisplay("10873698")} but bound ${directIdentifierDisplay("10001573")}`),
     );
 
     const mismatchedOutputs = createDeterministicCrmOnboardingDriver({
@@ -317,14 +317,14 @@ describe("Phase 1f Person Lookup task implementations", () => {
         input: { eid: candidate.emplId, name: candidate.name },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
-      new RegExp(`returned output for ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`returned output for ${directIdentifierDisplay("10001573")}`),
     );
     await assert.rejects(
       readOnboardingDatesTask.impl.run({
         input: { eid: candidate.emplId },
         ctx: { ...commonCtx, driver: mismatchedOutputs },
       }),
-      new RegExp(`returned output for ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`returned output for ${directIdentifierDisplay("10001573")}`),
     );
   });
 
@@ -393,7 +393,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         },
         ctx: commonCtx,
       }),
-      new RegExp(`UCPath EID ${directIdentifierDigestReference("10873698")} but CRM EID ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10001573")}`),
     );
   });
 
@@ -457,7 +457,7 @@ describe("Phase 1f Person Lookup task implementations", () => {
         },
         ctx: commonCtx,
       }),
-      new RegExp(`UCPath EID ${directIdentifierDigestReference("10873698")} but CRM EID ${directIdentifierDigestReference("10001573")}`),
+      new RegExp(`UCPath EID ${directIdentifierDisplay("10873698")} but CRM EID ${directIdentifierDisplay("10001573")}`),
     );
   });
 });
