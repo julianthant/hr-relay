@@ -36,7 +36,7 @@ export function exportSearchMetadata(deps: Parameters<typeof collectSearchDocume
       row.registration.state === "registered" ? row.registration.categoryId : "",
       row.registration.state === "unregistered" ? row.registration.reason : "",
       row.partitionDay,row.state,row.shape,row.dryRun,row.priority,row.metadata.version,
-      row.enqueuedAt,row.endedAt.state === "present" ? row.endedAt.value : "",row.systems.join(", "),row.metadata.failureCode ?? "",
+      row.enqueuedAt,row.endedAt.state === "present" ? row.endedAt.value : "",row.systems.join(", "),row.metadata.failureCode === null ? "" : row.metadata.failureCode,
       row.runNumber.state,row.runNumber.state === "absent" ? row.runNumber.reason : "",
       row.endedAt.state,row.endedAt.state === "absent" ? row.endedAt.reason : "",
       row.retryOf.state,row.retryOf.state === "absent" ? row.retryOf.reason : "",
