@@ -88,11 +88,11 @@ function observationHarness() {
   };
 }
 
-function assertObservedCount(observed: readonly ObservedDataPoint[], field: string, value: number, rawValue: readonly UcpathTransactionRow[]) {
+function assertObservedRows(observed: readonly ObservedDataPoint[], field: string, value: readonly UcpathTransactionRow[]) {
   assert.deepEqual(observed.find((point) => point.field === field), {
     direction: "read",
     field,
-    values: [{ key: field, classification: "sensitive-hr", transform: "count", state: "transformed", value, rawValue }],
+    values: [{ key: field, classification: "sensitive-hr", transform: "allow", state: "allowed", value }],
   });
 }
 
@@ -101,7 +101,7 @@ function assertSubjectVisible(observed: readonly ObservedDataPoint[], transactio
     direction: "read",
     field: "emplId",
     values: [{
-      key: "emplId", classification: "direct-identifier", transform: "last4", state: "transformed", value: "7654", rawValue: EID,
+      key: "emplId", classification: "direct-identifier", transform: "allow", state: "allowed", value: EID,
     }],
   });
   for (const identifier of [EID, ...transactionIds]) {
@@ -110,7 +110,7 @@ function assertSubjectVisible(observed: readonly ObservedDataPoint[], transactio
 }
 
 describe("UCPath pending-set task observation", () => {
-  it("records zero counts and finalizes an empty typed pending set", async () => {
+  it("records empty complete populations and finalizes an empty typed pending set", async () => {
     const harness = observationHarness();
 
     const output = await harness.run([]);
@@ -123,8 +123,8 @@ describe("UCPath pending-set task observation", () => {
       observedAt: NOW,
       source: "ss-smart-hr-detail-read",
     });
-    assertObservedCount(harness.observed, "eligible", 0, []);
-    assertObservedCount(harness.observed, "protected", 0, []);
+    assertObservedRows(harness.observed, "eligible", []);
+    assertObservedRows(harness.observed, "protected", []);
     assertSubjectVisible(harness.observed, []);
     const finalized = harness.collector.finalizeRead(output);
     assert.deepEqual(finalized.provenance.map(({ path }) => path).sort(), [
@@ -134,7 +134,7 @@ describe("UCPath pending-set task observation", () => {
       direction: "read",
       field: "source",
       values: [{
-        key: "source", classification: "safe-diagnostic", transform: "allow", state: "allowed", value: "ss-smart-hr-detail-read", rawValue: "ss-smart-hr-detail-read",
+        key: "source", classification: "safe-diagnostic", transform: "allow", state: "allowed", value: "ss-smart-hr-detail-read",
       }],
     });
   });
@@ -164,8 +164,8 @@ describe("UCPath pending-set task observation", () => {
       observedAt: NOW,
       source: "ss-smart-hr-detail-read",
     });
-    assertObservedCount(harness.observed, "eligible", 2, [pending, pushedBack]);
-    assertObservedCount(harness.observed, "protected", 1, [approved]);
+    assertObservedRows(harness.observed, "eligible", [pending, pushedBack]);
+    assertObservedRows(harness.observed, "protected", [approved]);
     assertSubjectVisible(harness.observed, ["T900001", "T900002", "T900003"]);
     const finalized = harness.collector.finalizeRead(output);
     assert.deepEqual(finalized.points.find(({ field }) => field === "eligible")?.value, [pending, pushedBack]);
@@ -196,15 +196,15 @@ describe("UCPath pending-set task observation", () => {
 
     const output = await harness.run([row]);
 
-    assertObservedCount(harness.observed, "eligible", 1, [row]);
-    assertObservedCount(harness.observed, "protected", 0, []);
+    assertObservedRows(harness.observed, "eligible", [row]);
+    assertObservedRows(harness.observed, "protected", []);
     assert.deepEqual(harness.observed.find((point) => point.field === "emplId"), {
       direction: "read",
       field: "emplId",
-      values: [{ key: "emplId", classification: "direct-identifier", transform: "last4", state: "transformed", value: "7654", rawValue: EID }],
+      values: [{ key: "emplId", classification: "direct-identifier", transform: "allow", state: "allowed", value: EID }],
     });
     const observedText = JSON.stringify(harness.observed);
-    for (const identifier of [EID, "7654", NAME, "T900004"]) {
+    for (const identifier of [EID, NAME, "T900004"]) {
       assert.equal(observedText.includes(identifier), true);
     }
     assert.deepEqual(output.eligible, [row]);

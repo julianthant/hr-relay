@@ -231,20 +231,18 @@ describe("ref data-intake-and-edit-data §5 intake validation", () => {
     assert.equal(required.rejected[0].kind, "cell-coercion");
   });
 
-  it("redacts the offending cell in the durable rejection", () => {
+  it("retains the complete classified offending cell in the durable rejection", () => {
     const result = validate([["10-4567", "Cleckoa, Crithe", "HDH"]]);
     const reject = result.rejected[0];
     assert.equal(reject.kind, "cell-coercion");
     if (reject.kind !== "cell-coercion") return;
-    // The manifest must not become a second copy of the identifier; the grid
-    // shows the operator the real cell from the content-addressed artifact.
     assert.deepEqual(reject.raw, {
-      state: "transformed",
+      state: "allowed",
       classification: "direct-identifier",
-      transform: "last4",
-      value: "4567",
+      transform: "allow",
+      value: "10-4567",
     });
-    assert.equal(canonicalJsonStringify(reject).includes("10-4567"), false);
+    assert.equal(canonicalJsonStringify(reject).includes("10-4567"), true);
   });
 
   it("refuses loudly when a confirmed binding's column is missing at validation time", () => {

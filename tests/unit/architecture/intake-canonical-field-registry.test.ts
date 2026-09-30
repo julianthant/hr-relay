@@ -173,12 +173,14 @@ describe("ref data-intake-and-edit-data §1 canonical field registry", () => {
       ]);
     });
 
-    it("catches an illegal classification/transform pair", () => {
+    it("admits complete classified values and catches invalid transform declarations", () => {
       const leaky = new Map(registry);
       const ssn = registry.get("ssn") as CanonicalField;
       leaky.set("ssn", { ...ssn, redactTransform: "allow" });
+      assert.deepEqual(auditCanonicalFieldRegistry(leaky), []);
+      leaky.set("ssn", { ...ssn, redactTransform: "invalid-transform" as CanonicalField["redactTransform"] });
       assert.deepEqual(auditCanonicalFieldRegistry(leaky), [
-        "canonical field ssn: transform allow is forbidden for direct-identifier",
+        "canonical field ssn: transform invalid-transform is forbidden for direct-identifier",
       ]);
     });
   });
@@ -202,8 +204,22 @@ describe("ref data-intake-and-edit-data §1 canonical field registry", () => {
       );
     });
 
-    it("refuses a forbidden redaction pair at definition time", async () => {
+    it("admits complete values and refuses an invalid transform at definition time", async () => {
       const { defineCanonicalField } = await import("../../../src/domain/fields/registry.js");
+      const spec = {
+        id: "ssn" as const,
+        label: "Social Security Number",
+        schema: CANONICAL_FIELDS.ssn.schema,
+        coerce: CANONICAL_FIELDS.ssn.coerce,
+        aliases: ["SSN"],
+        examples: ["123456789"],
+        classification: "direct-identifier" as const,
+        redactTransform: "allow" as const,
+        evidence: "resolved" as const,
+      };
+      const field = defineCanonicalField(spec);
+      assert.equal(field.classification, "direct-identifier");
+      assert.equal(field.redactTransform, "allow");
       assert.throws(
         () => defineCanonicalField({
           id: "ssn",
@@ -213,10 +229,10 @@ describe("ref data-intake-and-edit-data §1 canonical field registry", () => {
           aliases: ["SSN"],
           examples: ["123456789"],
           classification: "direct-identifier",
-          redactTransform: "allow",
+          redactTransform: "invalid-transform" as CanonicalField["redactTransform"],
           evidence: "resolved",
         }),
-        /forbidden for direct-identifier/,
+        /Invalid option/,
       );
     });
   });

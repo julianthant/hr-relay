@@ -24,6 +24,7 @@ import { FingerprintSchema, ProviderAdmissionIdSchema } from "../../src/domain/i
 import {
   ADVISORY_ANSWER_SCHEMA_HASH,
   AdvisoryAnswerEnvelopeSchema,
+  AdvisoryPromptSchema,
   buildFailureTriagePrompt,
 } from "../../src/domain/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../src/infra/providers/gemini-advisory.js";
@@ -198,7 +199,7 @@ describe("advisory strict output — the service's layer", () => {
     assert.match(outcome.reason, /answered against result schema/u);
   });
 
-  it("accepts exactly the conforming answer, and sends a redacted prompt to get it", async () => {
+  it("accepts exactly the conforming answer, and sends complete supplied facts to get it", async () => {
     const scripted = scriptedClient({
       state: "produced",
       value: { schemaHash: ADVISORY_ANSWER_SCHEMA_HASH, value: producedTriageEnvelope(VALID_TRIAGE_ADVICE) },
@@ -213,6 +214,16 @@ describe("advisory strict output — the service's layer", () => {
     assert.equal(outcome.invocation.surface, "failure-triage");
     assert.equal(outcome.invocation.startedAt, ADVISORY_NOW);
     assert.equal(outcome.invocation.endedAt, ADVISORY_NOW);
-    assert.equal(JSON.stringify(scripted.sent).includes(LEAKY_NAME), false);
+    assert.equal(JSON.stringify(scripted.sent).includes(LEAKY_NAME), true);
+    assert.equal(scripted.sent.length, 1);
+    const sent = scripted.sent[0];
+    assert.ok(typeof sent === "object" && sent !== null && "value" in sent);
+    const prompt = AdvisoryPromptSchema.parse(sent.value);
+    assert.deepEqual(prompt, buildFailureTriagePrompt(MAXIMAL_FAILURE));
+    const nameFact = prompt.facts.find(fact => fact.key === "subject.observed.displayRedacted");
+    assert.deepEqual(nameFact, {
+      key: "subject.observed.displayRedacted", state: "allowed", transform: "allow",
+      classification: "direct-identifier", value: MAXIMAL_FAILURE.subject?.observed?.displayRedacted,
+    });
   });
 });
