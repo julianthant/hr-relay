@@ -93,11 +93,12 @@ describe("the commit row's write-proof block", () => {
     assert.ok(markup.includes(`title="${KEY_DIGEST}"`), "the whole digest rides the title (the D31 treatment)");
   });
 
-  it("draws every redacted proof value beside the write — the document verbatim, the person last-4", () => {
+  it("draws complete proof values and names historical source absence", () => {
     assert.ok(markup.includes("documentNumber"));
     assert.ok(markup.includes("3407919"));
     assert.ok(markup.includes("observedEid"));
-    assert.ok(markup.includes("4489"));
+    assert.ok(markup.includes("Complete value unavailable in this historical record"));
+    assert.ok(!markup.includes("4489"));
   });
 
   it("draws the D20 confirmation verdict and the D21 read-back verdict as full sentences", () => {
@@ -126,5 +127,36 @@ describe("the explicit-absent arms — named, never blank", () => {
     const markup = render(receiptWith({}));
     assert.ok(markup.includes(writeProofAbsence(undefined)));
     assert.ok(!markup.includes(writeProofAbsence(2)));
+  });
+});
+
+describe("D358 complete evidence rendering", () => {
+  it("renders complete classified values supplied to new receipts", () => {
+    const receipt = receiptWith({ composition: 2, proved: PROVED });
+    const current = RunEvidenceReceiptSchema.parse({ ...receipt, composition: 5,
+      actions: receipt.actions.map(action => action.proved === undefined ? action : { ...action,
+        proved: { ...action.proved, values: [
+          { key: "credential", state: "allowed", classification: "secret", transform: "allow", value: "synthetic-credential-full" },
+          { key: "person", state: "allowed", classification: "direct-identifier", transform: "allow", value: "synthetic-person-full" },
+        ] },
+      }),
+    });
+    const markup = render(current);
+    assert.ok(markup.includes("synthetic-credential-full"));
+    assert.ok(markup.includes("synthetic-person-full"));
+  });
+
+  it("renders retained historical source without presenting its suffix as complete", () => {
+    const receipt = receiptWith({ composition: 2, proved: PROVED });
+    const retained = RunEvidenceReceiptSchema.parse({ ...receipt,
+      actions: receipt.actions.map(action => action.proved === undefined ? action : { ...action,
+        proved: { ...action.proved, values: [
+          { key: "person", state: "transformed", classification: "direct-identifier", transform: "last4", value: "4489", rawValue: "synthetic-person-full" },
+        ] },
+      }),
+    });
+    const markup = render(retained);
+    assert.ok(markup.includes("synthetic-person-full"));
+    assert.ok(!markup.includes("4489"));
   });
 });

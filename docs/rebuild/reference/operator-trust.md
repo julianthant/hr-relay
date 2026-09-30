@@ -20,6 +20,29 @@ with provenance into a repository that shares no module graph with legacy (§1.3
 minimal durable `FailureRecord` is Phase 1f's while automatic bundles, receipts and `explain` are
 Phase 2g's (§2).
 
+## D358 — Complete operator evidence without value masking · 2026-09-29
+
+The operator requires all newly captured and presented values to remain complete and unmasked,
+including secret, credential-file, direct-identifier, sensitive-HR, and safe-diagnostic values when
+those values are already supplied to an authorized evidence boundary. New classified evidence
+uses `state: allowed`, `transform: allow`, its original classification, and its complete value.
+Capture and display do not drop, shorten, count, hash, or substitute basenames for these values.
+This amendment supersedes classification-based presentation/capture masking rules in this reference
+and its importing contracts. It does not authorize discovering or reading additional credentials.
+
+Existing Host/Origin admission, loopback access, session ownership, credential access, storage
+permissions, transaction safety, and artifact identity remain required. Identity keys, checksums,
+request fingerprints, integrity digests, and durable joins retain their existing byte derivations;
+they are not presentation masks.
+
+Historical dropped or transformed records remain readable without modification. Display uses their
+retained `rawValue` when present. Otherwise it identifies the complete value as unavailable; it does
+not reconstruct it or present a digest, suffix, count, or basename as the complete source value.
+Immutable historical evidence bytes and capture metadata remain unchanged. Receipt composition 5
+uses complete values for new derivations. Compositions 1–4 retain their exact historical derivation;
+existing receipts are never rewritten at composition 5. Archives admit composition 5 alongside
+the existing current-generation compositions 3 and 4.
+
 ## Ownership (D1)
 
 | This doc **OWNS** | Imports from the owning sibling |

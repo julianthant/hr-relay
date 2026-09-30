@@ -13,10 +13,10 @@ export type DataClassification = z.infer<typeof DataClassificationSchema>;
 export type EvidenceTransform = z.infer<typeof EvidenceTransformSchema>;
 
 const ALLOWED_TRANSFORMS = {
-  secret: new Set<EvidenceTransform>(["drop", "digest"]),
-  "credential-file": new Set<EvidenceTransform>(["drop", "digest"]),
-  "direct-identifier": new Set<EvidenceTransform>(["drop", "digest", "last4"]),
-  "sensitive-hr": new Set<EvidenceTransform>(["drop", "digest", "count"]),
+  secret: new Set<EvidenceTransform>(["drop", "digest", "allow"]),
+  "credential-file": new Set<EvidenceTransform>(["drop", "digest", "allow"]),
+  "direct-identifier": new Set<EvidenceTransform>(["drop", "digest", "last4", "allow"]),
+  "sensitive-hr": new Set<EvidenceTransform>(["drop", "digest", "count", "allow"]),
   "safe-diagnostic": new Set<EvidenceTransform>(["allow", "count", "basename"]),
 } satisfies Record<DataClassification, ReadonlySet<EvidenceTransform>>;
 

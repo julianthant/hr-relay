@@ -1,7 +1,7 @@
 # run-failed--graphite-warm--1280x720
 # adapter: fixture
 # fixture: run-failed
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 0906e593f9bddfcd73eb1cf8f7a33de5eb2cb5b39c83d2d800e42e3180549652
 # appVersion: 0.1.0
 # viewport: 1280x720  theme: graphite-warm  variant: default
 # capturedAt: 2026-08-03
@@ -128,14 +128,14 @@
       - button "What is this row? — Run Panel"
       - text: "Failed 9:33 AM #1 pl-090404-0004 6m 0s"
       - button "Rerun"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on EID 10555001
     - button "EID 10333015 — done with warnings":
       - text: EID 10333015
       - button "What is this row? — Run Panel"
       - text: "3 Done 9:24 AM #1 pl-090808-0008 5m 0s"
       - button "Rerun"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on EID 10333015
     - button "Separation audit — August — done with warnings":
       - text: Separation audit — August
@@ -183,14 +183,14 @@
       - button "Expand"
       - text: "9:10 AM #1 pl-091010-0070 2m 0s"
       - button "Rerun"
-      - button "Delete group"
+      - button "Archive"
       - text: Right-click or press m for every command on Separation audit — August
     - button "EID 10001573 — done":
       - text: EID 10001573
       - button "What is this row? — Run Panel"
       - text: "Done 9:35 AM #1 pl-090303-0003 5m 0s"
       - button "Rerun"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on EID 10001573
     - button "Onboarding cohort — July stragglers — done":
       - text: Onboarding cohort — July stragglers
@@ -235,13 +235,13 @@
       - button "Expand"
       - text: "9:05 AM #1 pl-095050-0050 2m 0s"
       - button "Rerun"
-      - button "Delete group"
+      - button "Archive"
       - text: Right-click or press m for every command on Onboarding cohort — July stragglers
     - button "EID 10222009 — cancelled":
       - text: EID 10222009
       - button "What is this row? — Run Panel"
       - text: "Cancelled 9:26 AM #1 pl-090707-0007 4m 0s"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on EID 10222009
   - region "Run shape":
     - text: searching
@@ -280,7 +280,7 @@
         - text: "no GEMINI_API_KEY is set, so no ai.advisory provider is composed in this process What the run said 9:35 AM cross-verify failed: subject mismatch between CRM and UCPath 9:36 AM Run failed at cross-verify; nothing was written"
       - 'listitem "9:36 AM: error note: Run failed at cross-verify; nothing was written"': 9:36 AM Run failed at cross-verify; nothing was written
     - searchbox "Search logs"
-    - text: a5c0a146
+    - text: "0906e593"
     - button "Run provenance"
     - text: idle
   - complementary "Run data":

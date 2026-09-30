@@ -1,4 +1,10 @@
-# `reference/decisions.md` — the decision ledger (D1–D357, 2026-07-17 → 2026-09-27)
+# `reference/decisions.md` — the decision ledger (D1–D358, 2026-07-17 → 2026-09-29)
+
+**D358 — Complete operator evidence without value masking (2026-09-29).** All classifications
+retain complete supplied values at authorized capture and presentation boundaries. Existing access,
+admission, integrity and identity rules remain; historical source values are never reconstructed.
+Owner: [operator-trust §D358](operator-trust.md#d358--complete-operator-evidence-without-value-masking--2026-09-29).
+
 
 **D357 — Shared Explorer/Logs operation structure (approved Plan 1 P1.3, 2026-09-27):**
 Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs

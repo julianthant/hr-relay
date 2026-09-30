@@ -1,7 +1,7 @@
 # run-receipt-populated--paper-ink--1440x900
 # adapter: seeded
 # fixture: seeded-done-run
-# descriptorHash: a5c0a1468cbf7269c171cf526c0b38ab557e0b7ff6e450bb9464f306b2a8a2c2
+# descriptorHash: 0906e593f9bddfcd73eb1cf8f7a33de5eb2cb5b39c83d2d800e42e3180549652
 # appVersion: 0.1.0
 # viewport: 1440x900  theme: paper-ink  variant: default
 # capturedAt: 2026-08-03
@@ -95,20 +95,20 @@
       - button "What is this row? — Run Panel"
       - text: "Failed CRM onboarding dates were unavailable 10:00 AM #1 pl-090404-0004 0s"
       - button "Rerun"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on EID 10873698
     - button "Battistessa, Johnnie — done" [pressed]:
       - text: Battistessa, Johnnie
       - button "What is this row? — Run Panel"
       - text: "Done hdh true reason UCPath reports an active HDH appointment and CRM onboarding is complete state active state not-requested 10:00 AM #1 pl-090303-0003 0s"
       - button "Rerun"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on Battistessa, Johnnie
     - button "EID 10222333 — cancelled":
       - text: EID 10222333
       - button "What is this row? — Run Panel"
       - text: "Cancelled 10:00 AM #1 pl-090707-0007 0s"
-      - button "Delete run"
+      - button "Archive"
       - text: Right-click or press m for every command on EID 10222333
   - region "Run shape":
     - text: Searching
@@ -138,7 +138,7 @@
     - region "Actions": Actions workflow:person-lookup/read-active-status local-projection This run wrote nothing — no write was attempted.10:00 AM
     - region "Verification": Verification node.searching unknown node.cross-verify unknown node.active-status verifiedrequired node.crm-dates absent completion.terminal-result verifiedrequired identity.eid-agrees-across-sources unknownrequired identity.ucpath-selection-is-unambiguous absentrequired
     - region "Output": Output hdh truederived · from 2 entries reason UCPath reports an active HDH appointment and CRM onboarding is completederived · from 2 entries state activederived · from 2 entries state not-requestedderived · from 2 entries
-    - text: result partial trace pl-090303-0003 descriptor e3e92a1d config bbbbbbbb
+    - text: result partial trace pl-090303-0003 descriptor e1bfbfbb config bbbbbbbb
     - region "Run captures": Captures No captures this composition wires no diagnostic capture authority
   - complementary "Run data":
     - text: Run data

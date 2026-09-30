@@ -208,7 +208,7 @@ describe("composition 4 — the commit action carries what proved the write", ()
     result: evidence.result,
     checkpoints: evidence.checkpoints,
     writes: evidence.writes,
-  });
+  }, 4);
 
   it("stamps the composition it derived under", () => {
     assert.equal(receipt.composition, 4);
@@ -237,18 +237,23 @@ describe("composition 4 — the commit action carries what proved the write", ()
     assert.equal(proved.recordedAt, KUALI_CONFIRMED_AT);
   });
 
-  it("withholds protected proof fields and preserves independently observed person last-4", () => {
+  it("preserves composition-4 declared document, person suffix, and retained source fields", () => {
     const proved = commitActionOfReceipt(receipt).proved;
     assert.ok(proved);
     const byKey = new Map(proved.values.map((value) => [value.key, value]));
     const documentNumber = byKey.get("documentNumber");
-    assert.ok(documentNumber !== undefined && documentNumber.state === "redacted");
+    assert.ok(documentNumber !== undefined && documentNumber.state === "allowed");
+    assert.equal(documentNumber.classification, "safe-diagnostic");
+    assert.deepEqual(documentNumber.value, documentNumber.rawValue);
     const observedEid = byKey.get("observedEid");
     assert.ok(observedEid !== undefined, "the proof's person leaf is carried");
     assert.equal(observedEid.state, "transformed");
     assert.ok("transform" in observedEid && observedEid.transform === "last4");
     const timekeeper = byKey.get("fields.timekeeperName");
-    assert.ok(timekeeper !== undefined && timekeeper.state === "redacted");
+    assert.ok(timekeeper !== undefined && timekeeper.state === "transformed");
+    assert.equal(timekeeper.transform, "last4");
+    assert.ok(typeof timekeeper.rawValue === "string");
+    assert.equal(timekeeper.value, timekeeper.rawValue.slice(-4));
   });
 
   it("puts no proof on the prepare action — a prepare fences nothing", () => {
@@ -508,7 +513,7 @@ describe("ensureRunEvidenceReceipt — a stored composition-1 receipt is never s
       KUALI_RUN_ID,
     );
     assert.equal(outcome.state, "derived");
-    assert.equal(outcome.receipt.composition, 4);
+    assert.equal(outcome.receipt.composition, 5);
     const commit = outcome.receipt.actions.find((action) => action.kind === "commit");
     assert.ok(commit?.proved, "a fresh derivation carries the write proof");
   });

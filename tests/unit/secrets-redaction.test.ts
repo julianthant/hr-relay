@@ -651,12 +651,15 @@ describe("closed secret access", () => {
 });
 
 describe("schema-owned redaction", () => {
-  it("rejects unsafe classification/transform combinations", () => {
+  it("accepts complete secret evidence and rejects undeclared classification/transform combinations", () => {
     assert.equal(ClassifiedDiagnosticValueSchema.safeParse({
       key: "password",
       classification: "secret",
       transform: "allow",
       value: "canary",
+    }).success, true);
+    assert.equal(ClassifiedDiagnosticValueSchema.safeParse({
+      key: "password", classification: "secret", transform: "last4", value: "canary",
     }).success, false);
   });
 

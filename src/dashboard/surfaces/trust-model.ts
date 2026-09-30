@@ -475,7 +475,7 @@ export function writeProofReadBack(
  * a commit action with no `proved` block means two different things on the
  * two compositions, and only the receipt's own stamp can say which.
  */
-export function writeProofAbsence(composition: 2 | 3 | 4 | undefined): string {
+export function writeProofAbsence(composition: 2 | 3 | 4 | 5 | undefined): string {
   return composition === undefined
     ? "derived before receipts carried write proof (composition 1) — what proved this write was not recorded on it"
     : "no completion proof is in authority for this write — no settled write intent reached it";
@@ -571,4 +571,15 @@ export function useFailureResolution(
     }
   };
   return { current, readError, commandError, pending, note, setNote, submit };
+}
+
+/** Historical transforms are not a complete value unless their source was retained. */
+export function completeEvidenceText(value: Readonly<{
+  state: string;
+  value?: unknown;
+  rawValue?: unknown;
+}>): string {
+  const complete = value.rawValue !== undefined ? value.rawValue : value.state === "allowed" ? value.value : undefined;
+  return complete === undefined ? "Complete value unavailable in this historical record"
+    : typeof complete === "string" ? complete : JSON.stringify(complete);
 }

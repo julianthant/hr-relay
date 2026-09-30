@@ -124,20 +124,6 @@ export function redactedEvidenceId(namespace: string, parts: readonly string[]):
   ].join("-");
 }
 
-/**
- * The last path segment, over BOTH separators, with trailing separators
- * dropped — `node:path`'s `basename` in a form the dashboard bundle can
- * reach.
- *
- * This module is value-reachable from the browser entry (ref operator-trust §2.3's
- * receipt rides the run-detail wire), and Vite replaces an externalized
- * built-in with a proxy that throws on the first property read, so the
- * `node:path` import alone would kill the app at module evaluation. Splitting
- * on `\` as well as `/` is deliberately WIDER than POSIX `basename`: a
- * classified `credential-file` value may be a Windows path, and leaking a
- * whole directory tree because the platform separator differed is the exact
- * failure this transform exists to prevent.
- */
 function pathBasename(value: string): string {
   const trimmed = value.replace(/[\\/]+$/, "");
   const cut = Math.max(trimmed.lastIndexOf("/"), trimmed.lastIndexOf("\\"));
@@ -155,15 +141,8 @@ function count(value: z.infer<typeof JsonValueSchema>): number {
   return 1;
 }
 
-/**
- * Apply one declared (classification, transform) pair to one value.
- *
- * The pair is REFUSED here as well as at declaration time: a caller that
- * assembled it dynamically would otherwise be able to widen a classification's
- * permitted transform by passing the wider one, and this function is the last
- * place before the value becomes durable.
- */
-export function redactValue(
+/** Reproduce immutable receipt compositions 1–4; new captures use redactValue. */
+export function redactHistoricalValue(
   classification: z.infer<typeof DataClassificationSchema>,
   transform: z.infer<typeof EvidenceTransformSchema>,
   value: z.infer<typeof JsonValueSchema>,
@@ -186,8 +165,21 @@ export function redactValue(
   }
 }
 
+
+/** New evidence retains the complete supplied value; historical schema arms remain readable. */
+export function redactValue(
+  classification: z.infer<typeof DataClassificationSchema>,
+  transform: z.infer<typeof EvidenceTransformSchema>,
+  value: z.infer<typeof JsonValueSchema>,
+): z.infer<typeof RedactedValueSchema> {
+  if (!evidenceTransformAllowed(classification, transform)) {
+    throw new Error(`redaction transform ${transform} is forbidden for ${classification}`);
+  }
+  return { state: "allowed", classification, transform: "allow", value };
+}
+
 function redact(field: z.infer<typeof ClassifiedDiagnosticValueSchema>): z.infer<typeof RedactedFieldSchema> {
-  return { key: field.key, ...redactValue(field.classification, field.transform, field.value), rawValue: field.value };
+  return { key: field.key, ...redactValue(field.classification, field.transform, field.value) };
 }
 
 export function redactDiagnosticFields(input: unknown): z.infer<typeof RedactionResultSchema> {
