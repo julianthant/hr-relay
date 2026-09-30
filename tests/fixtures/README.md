@@ -23,3 +23,7 @@ The architecture guard `tests/unit/architecture/test-data-ownership.test.ts` enf
 - Preserve synthetic ranges, clocks and dataset sizes when moving a fixture; a move is not a rewrite.
 - A new cross-tier fixture lands here with a row in this table; a unit-only one stays under `tests/unit/`.
 - Synthetic values never resemble real identifiers. Sample ranges come from `config/test-data.json`.
+
+`../helpers/admission-fixture.ts` owns disposable installation admissions for runtime composition tests. It uses the current entrypoint initializer and read-only verifier, renews admission after a composed runtime releases it, and binds database and credential fixtures to the exact installation roots. Release fixture admission before removing its root. Direct storage fixtures retain explicit temp-root synthetic admissions.
+
+`../helpers/synthetic-database-admission.ts` contains the temp-path AuthorityDatabase and ArchiveDatabase proxies without importing server command compositions. Dashboard harnesses use this narrow helper; `synthetic-storage-admission.ts` reexports the same proxies alongside its broader command adapters.

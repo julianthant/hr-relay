@@ -1,3 +1,4 @@
+import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/bootstrap-admission.js";
 import { healthyRuntimePreflightRunners } from "./preflight-seams.js";
 /** Real worker loop and Chromium; every network request is fulfilled with synthetic HTML. */
 import { appendFileSync, writeFileSync, existsSync } from "node:fs";
@@ -70,11 +71,13 @@ const factory = new PlaywrightWorkerSessionFactory({ config, isolation: rebuildR
     return context;
   } },
 });
+const admission = acquireEntrypointAdmission(root, "shared");
 try {
-  const report = await composeWorkerRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
+  const report = await composeWorkerRuntime({ admission, preflightRunnerFactory: healthyRuntimePreflightRunners, repoRoot: root, isolation: rebuildRuntimeIsolation, args, env: {},
     sessionFactory: factory, duoCeremony: fixtureDuoCeremonyGates(systemClock), heartbeatIntervalMs: 100, sweepIntervalMs: 60_000 });
   writeFileSync(join(root,`report-${String(process.pid)}.json`),JSON.stringify(report));
 } finally {
   const results = await Promise.allSettled([...contexts].map(async context => { await context.close(); }));
+  admission.release();
   writeFileSync(join(root,`cleanup-${String(process.pid)}.json`), JSON.stringify({ openContexts: contexts.size, failures: results.filter(value => value.status === "rejected").length }));
 }

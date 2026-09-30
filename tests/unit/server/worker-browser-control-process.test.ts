@@ -1,3 +1,4 @@
+import { installationAdmission, releaseAdmissionFixtures } from "../../helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import assert from "node:assert/strict";
 import { spawn, execFileSync, type ChildProcess } from "node:child_process";
@@ -16,7 +17,7 @@ import { systemClock } from "../../../src/domain/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
 import type { WorkerProcessSpawner } from "../../../src/server/dashboard/worker-supervisor.js";
@@ -45,7 +46,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     return { pid:child.pid, kill:signal => child.kill(signal), onExit:listener => {child.on("exit",listener);}, onError:listener => {child.on("error",listener);} };
   };
   const diagnostics = () => output.join("") + JSON.stringify({ leases: database?.authority.workerLeases.listLive(), runs: [1,2].flatMap(index => database?.authority.runs.listByWorker(worker(index)) ?? []) });
-  const boot = () => composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
+  const boot = () => composeDashboardRuntime({ admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners,isolation:rebuildRuntimeIsolation,backendPortOverride:0,frontendPortOverride:0,env:{},repoRoot:root,
     workerProcess:{launch:{environment:{},command:process.execPath,prefixArgs:["--import","tsx",join(process.cwd(),"tests/fixtures/worker-browser-control-cli.ts"),root],cwd:process.cwd()},spawn:spawnWorker,birth:{pollMs:25,timeoutMs:20_000},faultSink:line=>faults.push(line)}});
   const failures: unknown[]=[];
   try {
@@ -63,6 +64,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
         assert.ok(runtime); const origin = `http://127.0.0.1:${String(runtime.port)}`;
         const response=await fetch(`${origin}/api/v1/commands`,{method:"POST",headers:{"content-type":"application/json",origin},body:JSON.stringify(body)});
         const raw: unknown = await response.json();
+        if (response.status >= 500) throw new Error(`fixture command ${type} failed: ${JSON.stringify(raw)}; ${diagnostics()}`);
         const result = CommandResultSchema.parse(raw);
         assert.equal(response.status,result.state === "rejected" ? 422 : result.state === "conflict" ? 409 : 200,JSON.stringify(raw)); return result;
       };
@@ -128,35 +130,29 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     }finally{raw.close();}
     process.stdout.write(`[sessions-process-proof] ${JSON.stringify({ claims: claims.map(value => ({ runId:value?.envelope.runId, dryRun:value?.envelope.dryRun, lifecycle:value?.lifecycle })), controls:[refresh,reopen].map(value=>db.authority.workerControls.get(value.request.commandId)), original, replacement })}\n`);
     const oldGeneration = target(1);
-    // Restarted BFF can replay retained success but cannot adopt live children.
     await runtime.stop(); runtime=undefined;
-    // Freeze only these owned fixture processes while the read-only boot doctor
-    // verifies a stable authority generation. Resume before any control request.
-    // Own the write lock while stopping children so none can be frozen inside a write transaction.
-    try {
-      db.withAuthorityTransaction(() => {
-        for (const child of children) child.kill("SIGSTOP");
-        const deadline = systemClock.monotonicMs() + 5_000;
-        for (const child of children) {
-          assert.ok(child.pid);
-          while (!execFileSync("ps", ["-o", "stat=", "-p", String(child.pid)], { encoding: "utf8" }).includes("T")) {
-            if (systemClock.monotonicMs() >= deadline) throw new Error("fixture worker did not stop before restart");
-          }
-        }
-      });
-      runtime=await boot();
-    } finally { for (const child of children) child.kill("SIGCONT"); }
+    await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
+      "dashboard shutdown did not drain owned children", diagnostics);
+    for (const child of children) {
+      assert.ok(child.pid);
+      assert.deepEqual(JSON.parse(readFileSync(join(root, `cleanup-${String(child.pid)}.json`), "utf8")),
+        { openContexts: 0, failures: 0 });
+      assert.equal(groupPids(child.pid).length, 0);
+    }
+    runtime=await boot();
     assert.equal((await reopen.send()).state,"already-applied");
     assert.equal((await post("pause-worker",target(1))).result.state,"rejected");
-    const firstChild=children[0]; assert.ok(firstChild); firstChild.kill("SIGTERM");
-    await waitFor(()=>firstChild.exitCode!==null,"first lifetime did not close",diagnostics);
     assert.equal((await post("spawn-worker",{workflowId:"person-lookup",expectedVersion:1},{workerId:worker(1)})).result.state,"applied");
     assert.equal(target(1).controlBasis.leaseGeneration,2);
     assert.equal((await post("pause-worker",oldGeneration)).result.state,"conflict");
     assert.equal((await post("stop-worker",target(1))).result.state,"applied");
-    assert.equal((await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:1},{desiredWorkers:1})).result.state,"rejected");
-    // Worker 2 belongs to the prior supervisor; the new BFF cannot resize it.
-    // Stop owned fixture children explicitly; prove browser/lock closure in finally.
+    await waitFor(() => db.authority.workerLeases.get(worker(1))?.lifecycle.state === "stopped",
+      "replacement worker did not observe its stop directive", diagnostics);
+    await waitFor(() => children.every(child => child.exitCode !== null || child.signalCode !== null),
+      "stopped replacement process did not finish admission cleanup", diagnostics);
+    const resize = (await post("plan-worker-count",{workflowId:"person-lookup",expectedVersion:1},{desiredWorkers:1})).result;
+    assert.equal(resize.state,"applied");
+    assert.equal(db.authority.workerPools.get("person-lookup")?.desiredWorkers, 1);
   } catch(error) { failures.push(error); } finally {
     writeFileSync(join(root,"release-drivers"),"cleanup release\n");
     for(const child of children) if(child.exitCode===null&&child.signalCode===null) {child.kill("SIGCONT");child.kill("SIGTERM");}
@@ -173,6 +169,7 @@ it("real ingress, two real workers and Chromium: dry-run claims, exact controls,
     try {database?.close();}catch(error){failures.push(error);}
     const lockDirectory=join(root,rebuildRuntimeIsolation.processLockRoot,"workers");
     try {if(existsSync(lockDirectory))for(const name of readdirSync(lockDirectory))if(name.endsWith(".lock.json"))assert.notEqual(WorkerProcessLockFileSchema.parse(JSON.parse(readFileSync(join(lockDirectory,name),"utf8"))).releasedAt,null);}catch(error){failures.push(error);}
+    releaseAdmissionFixtures();
     if(failures.length===0) {process.stdout.write(`[sessions-process-cleanup] ${JSON.stringify({processGroups:children.map(child=>child.pid),survivors:0,openContexts:0,workerLocks:"released"})}\n`);rmSync(root,{recursive:true,force:true});}
   }
   if(failures.length>0)throw new AggregateError(failures,`process proof failed; retained ${root}\n${output.join("")}`);

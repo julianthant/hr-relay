@@ -1,3 +1,4 @@
+import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../helpers/admission-fixture.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
@@ -53,7 +54,7 @@ import {
   ExplorerEditApplyRequestSchema,
   ExplorerWorkflowOverrideSchema,
 } from "../../../src/domain/dashboard/explorer.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
 import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
 import {
   RuntimeProcessLockFileSchema,
@@ -82,9 +83,10 @@ const cleanups: (() => Promise<void> | void)[] = [];
  * identity is pinned elsewhere; reaching it here would make an unrelated live
  * dashboard decide whether these assertions execute.
  */
-function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
+async function composeDashboardRuntime(input: DashboardComposeInput): Promise<DashboardRuntime> {
   return composeProductionDashboardRuntime({
     ...input,
+    admission: input.admission ?? installationAdmission(input.repoRoot ?? process.cwd()),
     backendPortOverride: 0,
     frontendPortOverride: 0,
   });
@@ -214,12 +216,13 @@ afterEach(async () => {
   // runtime stops, and the runtime stops — including its graceful-drain
   // backup write — before the temp root it writes into is removed.
   for (const cleanup of cleanups.splice(0).reverse()) await cleanup();
+  releaseAdmissionFixtures();
 });
 
 function committedExplorer() {
   const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-explorer-"));
   copyRuntimePackageFixture(repoRoot);
-  cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+  cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
   const descriptor = DESCRIPTORS.find(({ id }) => String(id) === "person-lookup");
   assert.ok(descriptor !== undefined);
   const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "explorer-overrides.json");
@@ -290,7 +293,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("unwinds an initial preflight refresh rejection and keeps authority admission recoverable", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-preflight-unwind-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     mkdirSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot), { recursive: true });
     const path = join(repoRoot, rebuildRuntimeIsolation.stateRoot, "state.db");
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
@@ -318,7 +321,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("preserves an HTTP bind rejection while unwinding the constructed dashboard", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-listen-unwind-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
     const primary = new Error("injected HTTP listen failure");
 
@@ -342,7 +345,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("refuses a missing saved settings singleton when active revision proves one existed", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-evidence-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const path = join(stateRoot, "state.db");
@@ -371,7 +374,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("admits an empty pre-created state root as a virgin authority", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-virgin-root-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     mkdirSync(join(repoRoot, rebuildRuntimeIsolation.stateRoot), { recursive: true });
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -386,13 +389,13 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("refuses an established state root with no authority database before taking the server lock", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-missing-authority-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     writeFileSync(join(stateRoot, "retained-evidence"), "evidence");
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
 
-    await assert.rejects(composeDashboardRuntime({
+    await assert.rejects(composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -406,12 +409,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("refuses a settings-family-only root instead of regenerating its missing authority", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-only-root-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(join(stateRoot, "settings"), { recursive: true });
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
 
-    await assert.rejects(composeDashboardRuntime({
+    await assert.rejects(composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
       env: {},
@@ -425,7 +428,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("archives a crashed server by birth identity and retains worker-orphan evidence for recovery", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-orphan-recovery-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const processLockRoot = join(repoRoot, rebuildRuntimeIsolation.processLockRoot);
     const serverLockPath = join(processLockRoot, "server.lock.json");
@@ -517,7 +520,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("M9 refuses the current authority under the pre-floor build before settings opens or config resolution", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-downgrade-v31-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     const artifactRoot = join(repoRoot, rebuildRuntimeIsolation.artifactRoot);
     const lockPath = join(repoRoot, rebuildRuntimeIsolation.processLockRoot, "server.lock.json");
@@ -547,7 +550,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       vi.mocked(openSync).mockClear();
       vi.mocked(mkdirSync).mockClear();
       try {
-        await assert.rejects(composeOlderBuild({
+        await assert.rejects(composeOlderBuild({ admission: (await import("../../../src/infra/runtime-control/admission.js")).RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot),
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
         }), new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)} is newer than supported 29`, "u"));
@@ -581,7 +584,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const version = 29;
     const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(version)}-`));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const path = join(stateRoot, "state.db");
@@ -602,7 +605,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     legacy.close();
 
     await assert.rejects(
-      composeDashboardRuntime({
+      composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         env: {},
@@ -627,11 +630,12 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("releases its acquired server process record when a valid authority is marked ahead of this build", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), `hrauto-compose-open-v${String(CURRENT_AUTHORITY_SCHEMA_VERSION + 1)}-`));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const stateRoot = join(repoRoot, rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot, { recursive: true });
     const path = join(stateRoot, "state.db");
     AuthorityDatabase.open({ path, busyTimeoutMs: 250, migrationOwner: "future-schema-fixture" }).close();
+    installationAdmission(repoRoot);
     const futureVersion = CURRENT_AUTHORITY_SCHEMA_VERSION + 1;
     const raw = new DatabaseSync(path);
     raw.exec(`UPDATE database_state SET schema_version = ${String(futureVersion)} WHERE singleton_id = 1`);
@@ -664,7 +668,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("serves the exact editable settings command schema hash", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-schema-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -712,7 +716,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("publishes a lease-only worker card from the real tail tick, before any span exists (D248 freshness)", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-lease-tick-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -876,7 +880,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("ignores retired malformed file authority and serves the SQLite baseline", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-retired-settings-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const authorityPath = join(repoRoot, ".tracker", "state.db");
     mkdirSync(dirname(authorityPath), { recursive: true });
     AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 250, migrationOwner: "retired-settings-fixture" }).close();
@@ -899,7 +903,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         join(repoRoot, "package.json"),
         JSON.stringify({ name: "probe", version: "0.1.0" }),
       );
-      cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+      cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
       const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
       const fixture = persistCorruptJournaledSettings({
         repoRoot,
@@ -928,7 +932,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("plans new runs with saved settings without a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-stale-runtime-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -960,14 +964,14 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       browserMode: "headless", captureBrowserScreenshots: false,
     });
     assert.equal(plan.fingerprints.configFingerprint,
-      resolveConfigWithProvenance(readPersistedSettings(repoRoot, clock).settings, hostConfigFacts({}), clock).fingerprint);
+      resolveConfigWithProvenance(readPersistedSettings(repoRoot, clock).settings, hostConfigFacts({}), clock, { stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(repoRoot, rebuildRuntimeIsolation.artifactRoot) }).fingerprint);
     assert.equal(readRuntimeSettingsRevision(repoRoot), 2);
   });
 
   it("activates the exact persisted settings generation after a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-restart-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     let runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
@@ -1024,7 +1028,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     assert.equal(plan.workflowId, "person-lookup");
     assert.equal(
       plan.fingerprints.configFingerprint,
-      resolveConfigWithProvenance(persisted.settings, hostConfigFacts({}), clock).fingerprint,
+      resolveConfigWithProvenance(persisted.settings, hostConfigFacts({}), clock, { stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(repoRoot, rebuildRuntimeIsolation.artifactRoot) }).fingerprint,
       "the restarted plan must bind the config resolved from the exact persisted settings generation",
     );
     assert.equal(plan.planned.length, 1);
@@ -1034,7 +1038,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
   it("refuses historical protected write-id reuse after a dashboard restart", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-protected-write-id-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const clock = manualClock(new Date("2026-08-28T12:00:00.000Z"));
     const writeId = "77777777-7777-4777-8777-777777777777";
     let runtime = await composeDashboardRuntime({
@@ -1090,7 +1094,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-private-artifacts-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,
@@ -1108,7 +1112,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-settings-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const commandId = "72727272-7272-4272-8272-727272727272";
     const patch = settingsSetOperations({ display: { screenWidth: 1980, screenHeight: 1080 } });
     const command = {
@@ -1177,7 +1181,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-"));
     copyFileSync(join(process.cwd(), "package.json"), join(repoRoot, "package.json"));
     copyFileSync(join(process.cwd(), "package-lock.json"), join(repoRoot, "package-lock.json"));
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
 
     reportRealPortPhase("startup", "begin");
     const runtime: DashboardRuntime = await composeDashboardRuntime({
@@ -1277,11 +1281,11 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
     cpSync(join(process.cwd(), "src"), join(repoRoot, "src"), { recursive: true });
     copyFileSync(join(process.cwd(), "vite.dashboard.config.ts"), join(repoRoot, "vite.dashboard.config.ts"));
     copyFileSync(join(process.cwd(), "tsconfig.json"), join(repoRoot, "tsconfig.json"));
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
 
     // No bundle: refuse before any authority, lock or socket exists.
     await assert.rejects(
-      composeDashboardRuntime({
+      composeDashboardRuntime({ admission: fixtureAdmission(repoRoot),
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         env: {},
@@ -1334,7 +1338,7 @@ settingsSchemaHash: SETTINGS_SCHEMA_HASH,
   it("vite-dev mode (the default) serves no bundle bytes: an unrouted path stays a JSON 404", async () => {
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-compose-vite-dev-"));
     copyRuntimePackageFixture(repoRoot);
-    cleanups.push(() => rmSync(repoRoot, { recursive: true, force: true }));
+    cleanups.push(() => (releaseAdmissionFixture(repoRoot), rmSync(repoRoot, { recursive: true, force: true })));
     const runtime = await composeDashboardRuntime({
       isolation: rebuildRuntimeIsolation,
       backendPortOverride: 0,

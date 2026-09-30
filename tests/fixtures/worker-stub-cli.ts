@@ -26,13 +26,18 @@
  */
 import { systemClock } from "../../src/domain/clock.js";
 import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
-import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/bootstrap-admission.js";
+import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
+import { dirname, join } from "node:path";
 import { acquireRuntimeProcessLock } from "../../src/infra/sqlite/runtime-process-locks.js";
 
-const [dbPath, lockRoot, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw] = process.argv.slice(2);
+const [dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw] = process.argv.slice(2);
 if (
   dbPath === undefined
   || lockRoot === undefined
+  || !["installed", "synthetic"].includes(fixtureKind ?? "")
   || subcommand !== "worker"
   || workflowRaw === undefined
   || poolIndexFlag !== "--pool-index"
@@ -54,8 +59,17 @@ const lock = acquireRuntimeProcessLock(
   { processLockRoot: lockRoot, name: "workers", workerId, pid: process.pid },
   systemClock,
 );
+const stateRoot = dirname(dbPath);
+const installed = fixtureKind === "installed";
+const admission = installed
+  ? acquireEntrypointAdmission(dirname(stateRoot), "shared")
+  : RuntimeAdmission.syntheticFixture(dbPath, "authority");
+if (installed && (dbPath !== join(admission.stateRoot, "state.db") || lockRoot !== join(dirname(stateRoot), rebuildRuntimeIsolation.processLockRoot))) {
+  admission.release();
+  throw new Error("worker-stub-cli fixture storage pair mismatch");
+}
 const database = AuthorityDatabase.open(
-  { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "worker-stub-cli" },
+  admission, { path: dbPath, busyTimeoutMs: 5_000, migrationOwner: "worker-stub-cli" },
   systemClock,
 );
 
@@ -97,6 +111,7 @@ const shutdown = (reason: "operator" | "shutdown"): void => {
   process.stdout.write(`WORKER-STUB STOPPED ${workerId} ${reason}\n`);
   lock.release();
   database.close();
+  admission.release();
   // No process.exit: with the poll cleared, the signal listener removed and
   // the database closed, the event loop empties and the process exits 0.
 };

@@ -47,7 +47,7 @@ export function selectedSettingsFixture(
     intakeProjections: NO_INTAKE_PROJECTIONS,
     writeResolution: { resolvePresent: unused, resolveAbsent: unused },
     workerRuntime: { planWorkerCount: unused, spawnWorker: unused, refreshBrowser: unused, reopenBrowser: unused },
-    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts(env), clock), credentials),
+    settings: createSettingsApplicationExecutor((settings) => resolveConfigWithProvenance(settings, hostConfigFacts(env), clock, { stateRoot: join(root, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(root, rebuildRuntimeIsolation.artifactRoot) }), credentials),
   });
   return {
     database, file, path,
@@ -67,7 +67,7 @@ export function selectedSettingsFixture(
     },
     activate: () => database.withAuthorityTransaction((repositories) => {
       const record = readSettings(repositories);
-      const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(env), clock);
+      const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts(env), clock, { stateRoot: join(root, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(root, rebuildRuntimeIsolation.artifactRoot) });
       const configSnapshotId = ids.uuid();
       // The existing dashboard activation contract, not an alternate runtime writer.
       const snapshot = repositories.configSnapshots.insert({

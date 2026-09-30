@@ -1,3 +1,4 @@
+import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 /**
@@ -48,7 +49,7 @@ import {
 import { poolWorkerId, type WorkerPoolMember } from "../../../src/core/worker-loop.js";
 import { manualClock, systemClock, type Clock, type TestClock } from "../../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
+import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
 import {
@@ -78,7 +79,7 @@ function servedControlBasis(database: AuthorityDatabase, workerId: string) {
 
 const NOW = "2026-08-26T09:00:00.000Z";
 const PL = WorkflowIdSchema.parse("person-lookup");
-const SEP = WorkflowIdSchema.parse("separations-identity-check");
+const SEP = WorkflowIdSchema.parse("separations");
 const plMember = (index: number): WorkerPoolMember => {
   const poolIndex = PositiveIntSchema.parse(index);
   return { workflowId: PL, poolIndex, workerId: poolWorkerId(PL, poolIndex) };
@@ -130,8 +131,10 @@ afterEach(async () => {
       errors.push(error);
     }
   }
+  releaseAdmissionFixtures();
   for (const root of roots.splice(0)) {
     try {
+      releaseAdmissionFixture(root);
       rmSync(root, { recursive: true, force: true });
     } catch (error) {
       errors.push(error);
@@ -560,7 +563,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
         target: { workflowId: PL, expectedVersion: 2 }, payload: { workerId: PL_3.workerId } };
       const closed = await harness.kernel.executeWorkerPool(closedCommand);
       assert.equal(closed.state, "rejected");
-      if (closed.state === "rejected") assert.match(closed.message, /this worker supervisor is closed; a closed supervisor acknowledges nothing/);
+      if (closed.state === "rejected") assert.match(closed.message, /this worker supervisor is closed; a shutting-down supervisor acknowledges nothing/);
       assert.equal(harness.database.authority.workerControls.get(closedCommand.commandId)?.phase.state, "refused");
       assert.equal(harness.database.authority.commandAudits.findByCommand(closedCommand.commandId)?.result.state, "rejected");
 
@@ -584,6 +587,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
       target: { workflowId: SEP, expectedVersion: 0 },
       payload: { workerId: SEP_1.workerId },
     });
+    const spawnSepRejected = assert.rejects(spawnSep, /process errored before proving its lease birth: spawn ENOENT; the unproved child was killed/);
     await settleMicrotasks();
     const spawnPlId = nextCommandId();
     const spawnPl = harness.kernel.executeWorkerPool({
@@ -595,10 +599,7 @@ describe("W5 soak: overlapping command sequences over the composed pool door (de
     await settleMicrotasks();
     // The OS refuses SEP-1's launch while PL-1's spawn is mid-flight.
     required(harness.children[0], "SEP-1 child").emitError(new Error("spawn ENOENT"));
-    await assert.rejects(
-      () => spawnSep,
-      /process errored before proving its lease birth: spawn ENOENT; the unproved child was killed/,
-    );
+    await spawnSepRejected;
     proveBirth(harness, PL_1);
     assert.equal((await spawnPl).state, "applied");
     assertUnjournaled(harness.database, spawnSepId);
@@ -838,7 +839,7 @@ describe("W5 real processes: two children supervised concurrently through the co
       launch: {
       environment: {},
         command: launchCommandOverride ?? process.execPath,
-        prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot]),
+        prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot, "synthetic"]),
         cwd: REPO_ROOT,
       },
       spawn: realStubSpawner(records),
@@ -912,7 +913,7 @@ describe("W5 real processes: two children supervised concurrently through the co
       for (const [record, index] of [[record1, 1], [record2, 2]] as const) {
         assert.equal(record.command, process.execPath);
         assert.deepEqual([...record.argv], [
-          "--import", "tsx", STUB_CLI_PATH, harness.dbPath, harness.lockRoot,
+          "--import", "tsx", STUB_CLI_PATH, harness.dbPath, harness.lockRoot, "synthetic",
           "worker", "person-lookup", "--pool-index", String(index),
         ]);
       }
@@ -1064,7 +1065,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       const childOutput = (): string => records.map((record) =>
         `${record.member.workerId}: ${record.output.join("")}`).join("\n");
 
-      const runtime: DashboardRuntime = await composeDashboardRuntime({ preflightRunnerFactory: healthyRuntimePreflightRunners,
+      const runtime: DashboardRuntime = await composeDashboardRuntime({ admission: installationAdmission(repoRoot), preflightRunnerFactory: healthyRuntimePreflightRunners,
         isolation: rebuildRuntimeIsolation,
         backendPortOverride: 0,
         frontendPortOverride: 0,
@@ -1074,7 +1075,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
           launch: {
       environment: {},
             command: process.execPath,
-            prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot]),
+            prefixArgs: Object.freeze(["--import", "tsx", STUB_CLI_PATH, dbPath, lockRoot, "installed"]),
             cwd: REPO_ROOT,
           },
           spawn: realStubSpawner(records),
@@ -1120,7 +1121,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       assert.deepEqual([spawnPl, spawnSep], [
         { status: 200, state: "applied" },
         { status: 200, state: "applied" },
-      ]);
+      ], childOutput());
       const plRecord = required(records.find((record) => record.member.workerId === PL_1.workerId), "PL child");
       const sepRecord = required(records.find((record) => record.member.workerId === SEP_1.workerId), "SEP child");
       const plPid = required(plRecord.pid, "PL pid");
@@ -1160,8 +1161,7 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
       reportW5Phase("runtime-shutdown", "graceful-stop", "complete");
 
       // Shutdown while SEP-1 is STILL LIVE: the supervisor's close() evidence
-      // reaches the structured sink, the server process lock records its
-      // release, and the live child is never pretended stopped.
+      // completes child shutdown before releasing the server process record.
       reportW5Phase("runtime-shutdown", "shutdown", "begin");
       assert.equal(
         (JSON.parse(readFileSync(serverLockFile, "utf8")) as { releasedAt: string | null }).releasedAt,
@@ -1172,24 +1172,10 @@ describe("W5 real runtime: dashboard shutdown releases the locks, reports close(
         (JSON.parse(readFileSync(serverLockFile, "utf8")) as { releasedAt: string | null }).releasedAt,
         null,
       );
-      const shutdownLines = faultLines.filter((line) => line.includes("dashboard shutdown leaves a worker child"));
-      assert.equal(shutdownLines.length, 1, faultLines.join("\n"));
-      const unexpectedLines = faultLines.filter((line) => !shutdownLines.includes(line));
-      assert.deepEqual(unexpectedLines, [], `no OTHER supervisor fault may reach the sink: ${faultLines.join("\n")}`);
-      const parsed = JSON.parse(required(shutdownLines[0], "the shutdown fault line")) as {
-        level: string; source: string; message: string;
-      };
-      assert.equal(parsed.level, "error");
-      assert.equal(parsed.source, "worker-supervisor");
-      assert.match(parsed.message, /"state":"running"/);
-      assert.match(parsed.message, new RegExp(`"pid":${String(sepPid)}`));
-      assert.equal(pidAlive(sepPid), true, "the supervisor must never kill a live child at close");
+      assert.deepEqual(faultLines, [], "owned children drain without shutdown faults");
+      assert.equal(pidAlive(sepPid), false, "dashboard shutdown must drain its owned child");
       reportW5Phase("runtime-shutdown", "shutdown", "complete");
-
-      // Reap the survivor and prove NO orphan child outlives the proof.
       reportW5Phase("runtime-shutdown", "teardown", "begin");
-      sepRecord.child.kill("SIGTERM");
-      await waitFor(() => !pidAlive(sepPid), "the reaped child's pid to die", childOutput);
       assert.notEqual(
         required(workerLockRecords(lockRoot).get(SEP_1.workerId), "SEP-1 worker lock").releasedAt,
         null,

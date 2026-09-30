@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 /**
  * D318 — the transaction-free `live-read` T1b arm, proved deterministically
@@ -96,7 +97,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
       crm: () => healthyCrmDriver(),
     });
     let acquiringFailedAttempt = true;
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -236,7 +237,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
       clock,
     );
     database.close();
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -290,7 +291,7 @@ describe("D318 live-read T1b arm — person-lookup", () => {
       clock,
     );
     database.close();
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,

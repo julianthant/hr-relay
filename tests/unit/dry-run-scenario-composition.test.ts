@@ -1,3 +1,4 @@
+import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";
@@ -221,7 +222,7 @@ function admissionFixture(env: NodeJS.ProcessEnv = {}, afterSettingsRead?: () =>
   const settings = selectedSettingsFixture(root, clock, env);
   const scenarioCase = TEST_MANIFEST.cases[0];
   assert.ok(scenarioCase);
-  const runtime = createProductionDryRunScenarioRuntime({
+  const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
     ...(afterSettingsRead === undefined ? {} : { afterSettingsRead }),
     isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock,
@@ -292,7 +293,7 @@ describe("dry-run scenario production composition boundary", () => {
     );
     let runtimeFactories = 0;
 
-    const outcome = await composeDryRunScenarioCommand({
+    const outcome = await composeDryRunScenarioCommand({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       isolation: rebuildRuntimeIsolation,
       args: ["separations-kuali-finalization", "--subject", "finalization-canary"],
       repoRoot: root,
@@ -372,7 +373,7 @@ describe("dry-run scenario production composition boundary", () => {
       timekeeperComments: "Fixture finalization comments.",
       observedExistingComments: "",
     });
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -563,7 +564,7 @@ describe("dry-run scenario production composition boundary", () => {
     fixture.apply({ concurrency: { defaultWorkers: 3 } });
     const { active, snapshot } = fixture.activate();
     const { sessions } = composedSessions(fixture.clock);
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(fixture.root, rebuildRuntimeIsolation.stateRoot), join(fixture.root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation, repoRoot: fixture.root, env, clock: fixture.clock,
       ids: sequentialIdFactory("e"),
@@ -739,7 +740,7 @@ describe("dry-run scenario production composition boundary", () => {
     const clock = manualClock(new Date("2026-08-25T18:00:00.000Z"));
     const { sessions } = composedSessions(clock);
     selectedSettingsFixture(root, clock).activate();
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -813,7 +814,7 @@ describe("dry-run scenario production composition boundary", () => {
     const settings = selectedSettingsFixture(root, clock);
     const { sessions, world, filingWorld } = composedSessions(clock);
     settings.activate();
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -878,7 +879,7 @@ describe("dry-run scenario production composition boundary", () => {
     const { sessions } = composedSessions(clock, malformedObservation);
     selectedSettingsFixture(root, clock).activate();
     const lines: string[] = [];
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -938,8 +939,12 @@ describe("dry-run scenario production composition boundary", () => {
     assert.ok(receipt);
     assert.match(failure.summary, /subject observation.*real write would refuse to fence/iu);
 
+    assert.equal(receipt.composition, 5);
+    assert.ok([...receipt.input, ...receipt.observations, ...receipt.output].some((row) => row.state === "satisfied" && row.value.state === "allowed" && row.value.value === FINALIZATION_EID && row.value.classification === "direct-identifier" && row.value.transform === "allow"));
     const spanText = spanTextFromAuthority(stateRoot, clock);
-    for (const sink of [JSON.stringify(failure), JSON.stringify(receipt), spanText, lines.join("\n")]) {
+    assert.match(spanText, new RegExp(FINALIZATION_EID));
+    assert.doesNotMatch(spanText, new RegExp(malformedObservation));
+    for (const sink of [JSON.stringify(failure), lines.join("\n")]) {
       assert.doesNotMatch(sink, new RegExp(malformedObservation));
       assert.doesNotMatch(sink, new RegExp(FINALIZATION_EID));
       assert.doesNotMatch(sink, new RegExp(FINALIZATION_OTHER_EID));
@@ -968,7 +973,7 @@ describe("dry-run scenario production composition boundary", () => {
     });
     const scenarioCase = unsupported.cases[0];
     if (scenarioCase === undefined) throw new Error("unsupported fixture has no case");
-    const runtime = createProductionDryRunScenarioRuntime({
+    const runtime = createProductionDryRunScenarioRuntime({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       preflightRunnerFactory: healthyRuntimePreflightRunners,
       isolation: rebuildRuntimeIsolation,
       repoRoot: root,
@@ -1007,7 +1012,7 @@ describe("dry-run scenario target dispatch", () => {
       readFileSync(join(process.cwd(), "config", "test-data.json"), "utf8"),
     );
     let runtimeFactories = 0;
-    const outcome = await composeDryRunScenarioCommand({
+    const outcome = await composeDryRunScenarioCommand({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
       isolation: rebuildRuntimeIsolation,
       args: ["separations", "--subject", "finalization-canary"],
       repoRoot: root,
@@ -1044,7 +1049,7 @@ describe("dry-run scenario target dispatch", () => {
     });
 
     await assert.rejects(
-      composeDryRunScenarioCommand({
+      composeDryRunScenarioCommand({ admission: RuntimeAdmission.syntheticRoots(join(root, rebuildRuntimeIsolation.stateRoot), join(root, rebuildRuntimeIsolation.artifactRoot)),
         isolation: rebuildRuntimeIsolation,
         args: ["separations", "--subject", "finalization-canary"],
         repoRoot: root,

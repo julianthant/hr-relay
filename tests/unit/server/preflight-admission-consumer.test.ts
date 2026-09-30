@@ -1,3 +1,5 @@
+import { join } from "node:path";
+import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "../../fixtures/preflight/runtime-fixture.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
@@ -45,7 +47,7 @@ function harness() {
   database.authority.runtimeConfig.activate({ ...identity, settingsRevision: baseline.revision, settingsFingerprint: baseline.settingsFingerprint, activatedAt: clock.now().toISOString() });
   const descriptors = { resolve: (id: string) => id === personLookupDescriptor.id ? personLookupDescriptor : undefined };
   let probes=0;
-  const preflight=composeRuntimePreflight({database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
+  const preflight=composeRuntimePreflight({ admission: RuntimeAdmission.syntheticRoots(join(repoRoot, rebuildRuntimeIsolation.stateRoot), join(repoRoot, rebuildRuntimeIsolation.artifactRoot)),database,clock,repoRoot,isolation:rebuildRuntimeIsolation,descriptors,
     descriptorSetHash:personLookupDescriptor.contractFingerprint,protectedSecrets:f.input.protectedSecrets,environment:{},
     runnerFactory:input=>createRuntimePreflightRunners({...input,browserExecutablePath:()=>f.executable,dashboard:f.input.dashboard}).map(runner=>({...runner,run(context){probes++;return runner.run(context);}}))});
   let publications = 0;
