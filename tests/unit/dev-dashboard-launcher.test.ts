@@ -87,6 +87,16 @@ describe("dashboard launcher", () => {
     assert.equal(signals.listenerCount("SIGINT"), 0);
   });
 
+  it.each(["SIGINT", "SIGSEGV"] as const)("accounts for child termination by %s during shutdown", async signal => {
+    const { children, signals, done } = await launch();
+    children[0].emit("message", { type: "hrauto-dashboard-ready" });
+    signals.emit("SIGINT");
+    children[0].signalCode = signal;
+    children[0].emit("exit", null, signal); children[0].emit("close", null, signal);
+    children[1].close();
+    assert.equal(await done, signal === "SIGINT" ? 0 : 1);
+  });
+
   it("reports a spawn failure and waits for the owned backend", async () => {
     const { children, done, output } = await launch();
     children[0].emit("message", { type: "hrauto-dashboard-ready" });

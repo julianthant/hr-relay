@@ -30,6 +30,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
   const managed: Managed[] = [];
   let stopping = false;
   let result = 0;
+  let forwardedSignal: NodeJS.Signals | undefined;
   let ready = false;
   let finish: (code: number) => void = () => undefined;
   const done = new Promise<number>(resolve => { finish = resolve; });
@@ -45,6 +46,7 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
     if (stopping) return;
     stopping = true;
     result = code;
+    forwardedSignal = signal;
     clearTimeout(startupTimer);
     for (const { child, closed } of managed) {
       if (!closed && child.exitCode === null && child.signalCode === null) child.kill(signal);
@@ -70,7 +72,10 @@ export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise
         const how = signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
         writeError(`\n[dashboard] ${name} stopped (${how}); stopping the rest.\n`);
         stop("SIGTERM", code ?? 1);
-      } else if (code !== null && code !== 0 && result === 0) result = code;
+      } else if (result === 0) {
+        if (code !== null && code !== 0) result = code;
+        else if (signal !== null && signal !== forwardedSignal) result = 1;
+      }
     });
     child.on("close", () => { item.closed = true; completeIfClosed(); });
     return child;
