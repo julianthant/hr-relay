@@ -138,6 +138,7 @@ type SnapshotTaskAction = Readonly<{
   label?: string;
   target?: string;
   valueSlot?: string;
+  templateId?: string;
   transform?: string;
   page?: z.infer<typeof SnapshotPageSchema>;
   continuedFrom?: string;
@@ -152,6 +153,7 @@ const SnapshotTaskActionSchema: z.ZodType<SnapshotTaskAction> = z.lazy(() => z.s
   label: z.string().optional(),
   target: z.string().optional(),
   valueSlot: OperationValueIdSchema.optional(),
+  templateId: OperationIdSchema.optional(),
   transform: OperationTransformIdSchema.optional(),
   page: SnapshotPageSchema.optional(),
   continuedFrom: OperationActionIdSchema.optional(),
@@ -178,6 +180,17 @@ const SnapshotTaskOperationSchema = z.strictObject({
     outputSchemaHash: FingerprintSchema,
   })),
   actions: z.array(SnapshotTaskActionSchema).min(1),
+}).superRefine((operation, context) => {
+  const templates = new Set(operation.templates.map((template) => template.id));
+  const visit = (actions: readonly SnapshotTaskAction[], path: (string | number)[]): void => {
+    for (const [index, action] of actions.entries()) {
+      if (action.templateId !== undefined && (action.kind !== "fill-field" || !templates.has(action.templateId))) {
+        context.addIssue({ code: "custom", path: [...path, index, "templateId"], message: "Fill template must reference an exact declared template on a fill-field action" });
+      }
+      if (action.children !== undefined) visit(action.children, [...path, index, "children"]);
+    }
+  };
+  visit(operation.actions, ["actions"]);
 });
 type SnapshotTaskOperation = z.infer<typeof SnapshotTaskOperationSchema>;
 
@@ -353,6 +366,7 @@ function snapshotTaskAction(action: TaskOperationAction): SnapshotTaskAction {
     ...(action.label === undefined ? {} : { label: action.label }),
     ...(action.target === undefined ? {} : { target: action.target }),
     ...(action.valueSlot === undefined ? {} : { valueSlot: action.valueSlot }),
+    ...(action.templateId === undefined ? {} : { templateId: action.templateId }),
     ...(action.transform === undefined ? {} : { transform: action.transform }),
     ...(action.page === undefined ? {} : { page: snapshotPage(action.page) }),
     ...(action.confirmationActionId === undefined ? {} : { confirmationActionId: action.confirmationActionId }),

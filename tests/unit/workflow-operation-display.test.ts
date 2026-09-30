@@ -466,6 +466,34 @@ function withReference(value: WorkflowValueReference): WorkflowOperationDisplayD
 }
 
 describe("workflow operation display declarations", () => {
+  it("binds a fill field to its exact task-owned template and refuses invented associations", () => {
+    const fill = operation.actions.find((action) => action.id === "fill-eid");
+    if (fill === undefined) throw new Error("SearchPersonOrg fill-eid missing");
+    const bound = { ...operation, actions: operation.actions.map((action) => action === fill ? { ...action, templateId: "search-summary" } : action) };
+    expect(() => assertTaskOperationDeclaration(bound, SearchPersonOrg)).not.toThrow();
+    expect(() => assertTaskOperationDeclaration({ ...bound, actions: [{ ...fill, templateId: "invented" }] }, SearchPersonOrg)).toThrow(/references missing template "invented"/u);
+    expect(() => assertTaskOperationDeclaration({ ...bound, actions: [{ ...fill, kind: "read-field", templateId: "search-summary" }] }, SearchPersonOrg)).toThrow(/cannot declare a fill template/u);
+  });
+
+  it("freezes the template-to-field reference and rejects corrupt or digest-altered historical bindings", () => {
+    const bound = { ...operation, actions: operation.actions.map((action) => action.id === "fill-eid" ? { ...action, templateId: "search-summary" } : action) };
+    const display = compileMinimal(minimalDisplay(), [{ ...SearchEntry, contracts: [{ role: "task", contract: { ...SearchPersonOrg, operation: bound } }] }]);
+    const identity = { workflowId: "fixture-operation-display-negative", definitionFingerprint: "a".repeat(64) };
+    const snapshot = freezeWorkflowOperationDisplaySnapshot({ ...identity, display });
+    if (snapshot === undefined) throw new Error("complete template fixture snapshot missing");
+    expect(snapshot.invocations[0]?.operation.actions.find((action) => action.id === "fill-eid")?.templateId).toBe("search-summary");
+    expect(requireWorkflowOperationDisplaySnapshot(snapshot, identity)).toEqual(snapshot);
+    const changed = (templateId: string | undefined, kind = "fill-field") => ({ ...snapshot, invocations: snapshot.invocations.map((invocation) => ({ ...invocation, operation: { ...invocation.operation, actions: invocation.operation.actions.map((action) => {
+      if (action.id !== "fill-eid") return action;
+      const { templateId: originalTemplateId, ...unbound } = action;
+      expect(originalTemplateId).toBe("search-summary");
+      return { ...unbound, kind, ...(templateId === undefined ? {} : { templateId }) };
+    }) } })) });
+    expect(WorkflowOperationDisplaySnapshotSchema.safeParse(changed("invented")).success).toBe(false);
+    expect(WorkflowOperationDisplaySnapshotSchema.safeParse(changed("search-summary", "read-field")).success).toBe(false);
+    expect(() => requireWorkflowOperationDisplaySnapshot(changed(undefined), identity)).toThrow(/digest/u);
+  });
+
   it("freezes a human invocation label from the sealed entry and protects its digest", () => {
     const display = compileMinimal(minimalDisplay(), [{ ...SearchEntry, label: "Find employee" }]);
     const snapshot = freezeWorkflowOperationDisplaySnapshot({ workflowId: "fixture-operation-display-negative", definitionFingerprint: FingerprintSchema.parse("a".repeat(64)), display });

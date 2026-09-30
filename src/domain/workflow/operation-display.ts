@@ -160,6 +160,8 @@ export interface TaskOperationAction {
   /** Semantic driver element identity, never a selector. */
   readonly target?: string;
   readonly valueSlot?: string;
+  /** Exact task-owned template used to produce this fill field's text. */
+  readonly templateId?: string;
   readonly transform?: string;
   readonly page?: LogicalPageReference;
   /** Only `resume-page` may continue an existing page occurrence. */
@@ -401,6 +403,11 @@ export function assertTaskOperationDeclaration(
       if (!slots.has(action.valueSlot)) throw operationError(contract, operation, `action "${action.id}" references missing value slot "${action.valueSlot}"`);
     } else if (action.valueSlot !== undefined) {
       throw operationError(contract, operation, `action "${action.id}" cannot declare a value slot`);
+    }
+    if (action.templateId !== undefined) {
+      OperationIdSchema.parse(action.templateId);
+      if (action.kind !== "fill-field") throw operationError(contract, operation, `action "${action.id}" cannot declare a fill template`);
+      if (!templates.has(action.templateId)) throw operationError(contract, operation, `action "${action.id}" references missing template "${action.templateId}"`);
     }
     if (action.kind === "compute") {
       if (action.transform === undefined || !transforms.has(action.transform)) {

@@ -47,6 +47,8 @@ compose presentation-only outcomes; the existing graph remains the sole source o
 parallel, transaction, and child authority. Absent declarations are explicit legacy capability and
 do not add a descriptor field. Scenario ids remain executable test corpus identifiers, not display
 outcomes. P1.1 does not migrate active workflows or bind runtime events; those are P1.2/P1.3 work.
+Fill-field template associations are explicit task-owned `templateId` references, validated and
+frozen with the declaration; previews reuse the runtime template helper rather than label inference.
 Owner: [workflow-model §1.6.4](workflow-model.md#164-versioned-operation-display-declarations-d355-2026-09-27).
 
 **D354 — Proven abandoned admission mutex recovery at startup (operator-directed, 2026-09-27):**

@@ -1301,6 +1301,11 @@ references resolve real run-input, configuration, constant, task-output, transfo
 output schema paths. Outcome case ids and continuations are display predicates, not executable
 scenario ids; `contract.scenarios` remains the test corpus only. Templates retain literal,
 variable, and ordered optional segments with closed pure conditions and declared join/trim rules.
+A fill-field action may reference its exact task-owned template through `templateId`. Compiler and
+frozen snapshot validation refuse missing templates or references on other action kinds. The
+optional reference participates in the frozen digest; historical absent references remain absent.
+Task authors use the same `renderOperationTemplate` helper to produce runtime text and preview
+text. A display reference alone neither executes a fill nor proves its observed value.
 
 The task-owned operation tree admits open/resume page, click, keypress, read/fill/select/check
 field, compute, verify, branch, join, operator-gate, delegation, and session-lifecycle actions.
