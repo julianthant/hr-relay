@@ -171,6 +171,7 @@ describe("operator XLSX workbook", () => {
       "Match field",
       "Match strength",
       "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic", "Run id", "Trace id", "Subject", "Actor",
+      "Workflow id", "Registration state", "Registration reason", "Run number state", "Ended at state", "Retry state", "Subject state", "Actor state",
     ]);
     assert.deepEqual(first.bytes, second.bytes);
     assert.equal(first.bytes[0], 0x50);
@@ -185,6 +186,20 @@ describe("operator XLSX workbook", () => {
     const runs = workbook[1];
     assert.ok(runs !== undefined);
     assert.deepEqual(runs.data[0], OPERATOR_XLSX_SEARCH_COLUMNS);
+    const header = runs.data[0];
+    assert.ok(header);
+    for (const [index, result] of SEARCH_DOCUMENT.results.entries()) {
+      const row = runs.data[index + 1];
+      assert.ok(row);
+      assert.equal(row[header.indexOf("Workflow id")], result.workflowId);
+      assert.equal(row[header.indexOf("Workflow")], result.registration.label);
+      assert.equal(row[header.indexOf("Workflow code")], result.registration.code);
+      assert.equal(row[header.indexOf("Category")], result.registration.categoryId);
+      assert.equal(row[header.indexOf("Registration state")], result.registration.state);
+      assert.equal(row[header.indexOf("Run number state")], result.runNumber.state);
+      assert.equal(row[header.indexOf("Ended at state")], result.endedAt.state);
+      assert.equal(row[header.indexOf("Retry state")], result.retryOf.state);
+    }
     assert.deepEqual(runs.data.slice(1).map((row) => row[0]), [7, 8]);
     assert.deepEqual(runs.data.slice(1).map((row) => row[14]), ["run", "run"]);
     assert.deepEqual(runs.data.slice(1).map((row) => row[15]), ["exact", "contains"]);

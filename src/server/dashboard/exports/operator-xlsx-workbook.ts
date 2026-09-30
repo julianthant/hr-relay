@@ -32,6 +32,7 @@ export const OPERATOR_XLSX_SEARCH_COLUMNS = Object.freeze([
   "Match field",
   "Match strength",
   "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic", "Run id", "Trace id", "Subject", "Actor",
+  "Workflow id", "Registration state", "Registration reason", "Run number state", "Ended at state", "Retry state", "Subject state", "Actor state",
 ] as const);
 
 export const OPERATOR_XLSX_ACTIVITY_SHEETS = Object.freeze([
@@ -162,6 +163,7 @@ function searchReadMeSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> 
     ["Selection", cell("Cross-date search")],
     ["Search query", cell(document.selection.query.q)],
     ["Search filters", cell(canonicalJsonStringify(document.selection.query.facets))],
+    ["Complete selection", cell(canonicalJsonStringify(document.selection))],
     ["Snapshot generated at", typedDate(document.selection.snapshot.generatedAt, "yyyy-mm-dd hh:mm:ss")],
     ["Authority generation", cell(document.selection.snapshot.authorityGeneration)],
     ["Authority order", cell(document.selection.snapshot.order)],
@@ -205,6 +207,7 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
       { width: 42 }, { width: 34 }, { width: 14 }, { width: 16 },
       {width:10},{width:25},{width:30},{width:30},{width:12},{width:12},{width:12},
       {width:40},{width:40},{width:40},{width:32},
+      ...Array.from({ length: 8 }, () => ({ width: 32 })),
     ],
     data: [
       headerRow(OPERATOR_XLSX_SEARCH_COLUMNS),
@@ -213,7 +216,7 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
           result.runNumber.state === "present" ? result.runNumber.value : result.runNumber.reason,
           result.runNumber.state === "absent" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
         ),
-        cell(result.registration.state==="registered"?result.registration.label:"Unavailable"),
+        cell(result.registration.state==="registered"?result.registration.label:""),
         cell(result.registration.state==="registered"?result.registration.code:""),
         cell(result.registration.state==="registered"?result.registration.categoryId:""),
         typedDate(`${result.partitionDay}T00:00:00.000Z`, "yyyy-mm-dd"),
@@ -237,6 +240,10 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
         cell(result.runId),cell(result.traceId),
         cell(result.metadata.subject.state === "available" ? result.metadata.subject.value : `Unavailable: ${result.metadata.subject.reason}`),
         cell(result.metadata.actor.state === "available" ? result.metadata.actor.value : `Unavailable: ${result.metadata.actor.reason}`),
+        cell(result.workflowId),cell(result.registration.state),
+        cell(result.registration.state === "unregistered" ? result.registration.reason : ""),
+        cell(result.runNumber.state),cell(result.endedAt.state),cell(result.retryOf.state),
+        cell(result.metadata.subject.state),cell(result.metadata.actor.state),
       ]),
     ],
   };

@@ -28,7 +28,9 @@ those values are already supplied to an authorized evidence boundary. New classi
 uses `state: allowed`, `transform: allow`, its original classification, and its complete value.
 Capture and display do not drop, shorten, count, hash, or substitute basenames for these values.
 Search metadata diagnostic exports use format 2 with the complete already-collected selection and
-values; CSV and XLSX include supplied query text, identifiers, and available subject/actor values.
+values: diagnostic rows preserve the exact collected search result schema. CSV and XLSX retain every
+collected result field, including registration identity and absence reasons, priority, match, version,
+query text, identifiers, and available subject/actor values.
 Activity XLSX includes supplied sampled run identifiers and its longest-run identifier.
 Storage diagnostic wire messages accept complete supplied identifiers while retaining nonempty,
 closed-shape and code validation. Failure advisory prompts retain each declared supplied value and

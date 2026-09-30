@@ -24,7 +24,9 @@ import { registerShellRoutes } from "../../../src/server/dashboard/routes/shell.
 import type { ShellRouteDeps } from "../../../src/server/dashboard/routes/shell-types.js";
 import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
-import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
+import { collectSearchDocument, createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
+import { CrossDateSearchResultSchema } from "../../../src/domain/dashboard/search.js";
+import { composeOperatorXlsxWorkbook } from "../../../src/server/dashboard/exports/operator-xlsx-workbook.js";
 import { exportSearchMetadata } from "../../../src/server/dashboard/exports/search-metadata-export.js";
 import { spreadsheetCsvRow } from "../../../src/server/dashboard/exports/spreadsheet-csv.js";
 import { createActivityQueries } from "../../../src/dashboard/client/activity-queries.js";
@@ -272,7 +274,7 @@ it("exports the complete ordered collected search values with coverage and exact
   const page=f.search.search(query),selection={kind:"search" as const,query,snapshot:{...page.snapshot,generatedAt:page.generatedAt}};
   assert.equal(page.results.length,1);assert.equal(page.totalMatches,3);
   const response=exportSearchMetadata(f,{format:"diagnostic",selection}),text=await response.text();
-  const diagnostic=JSON.parse(text) as {format:number;selection:{kind:string;query:unknown;snapshot:{generatedAt:string;authorityGeneration:number;order:string;totalMatches:number;coverage:unknown;sourceIdentity:string}};totalMatches:number;coverage:unknown;rows:{runId:string;traceId:string;runNumber:number|null}[]};
+  const diagnostic=JSON.parse(text) as {format:number;selection:{kind:string;query:unknown;snapshot:{generatedAt:string;authorityGeneration:number;order:string;totalMatches:number;coverage:unknown;sourceIdentity:string}};totalMatches:number;coverage:unknown;rows:{runId:string;traceId:string;runNumber:{state:string;value?:number;reason?:string}}[]};
   assert.equal(diagnostic.totalMatches,3);assert.deepEqual(diagnostic.coverage,page.coverage);assert.equal(diagnostic.rows.length,3);
   assert.equal(diagnostic.format,2);
   assert.equal(diagnostic.selection.kind,"search");
@@ -287,7 +289,7 @@ it("exports the complete ordered collected search values with coverage and exact
   const csv=await exportSearchMetadata(f,{format:"csv",selection}).text();assert.match(csv,/Matches,3/u);assert.match(csv,/Run id,Trace id,Retry of,Subject,Actor/u);
   const xlsx=await f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),{requestVersion:3,selection});
   const sheets=await readXlsxFile(xlsx.bytes),runs=sheets.find(sheet=>sheet.sheet==="Runs");assert.ok(runs);
-  assert.equal(runs.data.length,4);assert.deepEqual(runs.data.slice(1).map(row=>row[0]),diagnostic.rows.map(row=>row.runNumber));
+  assert.equal(runs.data.length,4);assert.deepEqual(runs.data.slice(1).map(row=>row[0]),diagnostic.rows.map(row=>row.runNumber.value));
   assert.doesNotMatch(JSON.stringify(sheets),/Private Ingress Subject|10000000/u);
   assert.throws(()=>exportSearchMetadata(f,{format:"csv",selection}),/snapshot/u);
 });
@@ -350,4 +352,60 @@ it("propagates a locally cancelled Activity request without accepting a replacem
     && error.kind === "network" && error.retryable);
   assert.equal(observedSignal, controller.signal);
   assert.equal(controller.signal.aborted, true);
+});
+
+
+it("retains complete unregistered open results and distinctive absence reasons in decoded JSON, CSV and XLSX", async () => {
+  const f = fixture();
+  const query = { q: "", scope: "all" as const, facets: { from: "2026-09-20", to: "2026-09-20" }, limit: 50 };
+  const page = f.search.search(query);
+  const results = page.results.map(result => CrossDateSearchResultSchema.parse({
+    ...result,
+    workflowId: "synthetic-unregistered-workflow",
+    registration: { state: "unregistered", reason: "=distinct registration refusal 10800001" },
+    priority: "bulk",
+    runNumber: { state: "absent", reason: "distinct missing ordinal 10800002" },
+    endedAt: { state: "absent", reason: "distinct open-run ending 10800003" },
+    retryOf: { state: "absent", reason: "distinct retry absence 10800004" },
+    metadata: { ...result.metadata, version: 23 },
+  }));
+  const collectedPage = { ...page, results };
+  const deps = { sourceIdentity: f.sourceIdentity, search: { ...f.search, searchSelected: () => collectedPage } };
+  const selection = { kind: "search" as const, query, snapshot: { ...page.snapshot, generatedAt: page.generatedAt } };
+  const diagnostic: unknown = await exportSearchMetadata(deps, { format: "diagnostic", selection }).json();
+  assert.ok(typeof diagnostic === "object" && diagnostic !== null && "rows" in diagnostic);
+  assert.deepEqual(CrossDateSearchResultSchema.array().parse(diagnostic.rows), results);
+  const csv = parseActivityCsv(await exportSearchMetadata(deps, { format: "csv", selection }).text());
+  const headerIndex = csv.findIndex(row => row[0] === "Run number");
+  const headers = csv[headerIndex];
+  assert.ok(headers);
+  const row = csv[headerIndex + 1];
+  assert.ok(row);
+  const csvValue = (column: string) => { const index = headers.indexOf(column); assert.ok(index >= 0, column); return row[index]; };
+  assert.equal(csvValue("Workflow id"), "synthetic-unregistered-workflow");
+  assert.equal(csvValue("Registration reason"), "'=distinct registration refusal 10800001");
+  assert.equal(csvValue("Run number reason"), "distinct missing ordinal 10800002");
+  assert.equal(csvValue("Ended at reason"), "distinct open-run ending 10800003");
+  assert.equal(csvValue("Retry reason"), "distinct retry absence 10800004");
+  assert.equal(csvValue("Priority"), "bulk");
+  assert.equal(csvValue("Match field"), results[0]?.match.field);
+  assert.equal(csvValue("Match strength"), results[0]?.match.strength);
+  assert.equal(csvValue("Version"), "23");
+  const bytes = await composeOperatorXlsxWorkbook(collectSearchDocument(deps, selection));
+  const sheets = await readXlsxFile(bytes.bytes);
+  const runs = sheets.find(sheet => sheet.sheet === "Runs");
+  assert.ok(runs);
+  const xlsxHeaders = runs.data[0];
+  const xlsxRow = runs.data[1];
+  assert.ok(xlsxHeaders && xlsxRow);
+  const xlsxValue = (column: string) => { const index = xlsxHeaders.indexOf(column); assert.ok(index >= 0, column); return xlsxRow[index]; };
+  assert.equal(xlsxValue("Workflow id"), "synthetic-unregistered-workflow");
+  assert.equal(xlsxValue("Registration reason"), "=distinct registration refusal 10800001");
+  assert.equal(xlsxValue("Registration state"), "unregistered");
+  assert.equal(xlsxValue("Run number state"), "absent");
+  assert.equal(xlsxValue("Run number"), "distinct missing ordinal 10800002");
+  assert.equal(xlsxValue("End note"), "distinct open-run ending 10800003");
+  assert.equal(xlsxValue("Retry"), "distinct retry absence 10800004");
+  assert.equal(xlsxValue("Priority"), "bulk");
+  assert.equal(xlsxValue("Version"), 23);
 });
