@@ -267,8 +267,9 @@ primary display (D324): `src/infra/host/primary-display.ts` probes it once per p
 `HRAUTO_HOST_PRIMARY_DISPLAY` for every child process, and 2560×1440 remains only the headless
 fallback — never re-probe in a child, never guess on an unrecognized OS answer;
 `src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
-(`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
-message — `no-secret-values-in-logs.test.ts` enforces that half.
+(`secrets-single-source.test.ts` enforces it). D358 preserves complete unmasked values already
+supplied to an authorized diagnostic or presentation boundary. Credential-reader ownership and
+access remain closed; this does not authorize additional credential reads or discovery.
 
 Dry-run subjects resolve by label through the typed registry; workflow/kind must match the manifest.
 Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a

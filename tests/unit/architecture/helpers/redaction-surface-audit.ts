@@ -847,12 +847,7 @@ export const ALL_CANARY_NAMES: readonly CanaryName[] = Object.freeze(
   Object.keys(REDACTION_CANARIES) as CanaryName[],
 );
 
-/**
- * The canaries that must never appear on ANY surface, in any egress class. A
- * credential is never evidence and a regulated identifier is never a
- * transaction fact, so there is no surface either of them belongs on — unlike a
- * person's name, which the operator's own loopback rail carries by design.
- */
+/** Closed Explorer-label and transaction-field validation controls, independent of D358 evidence capture. */
 export const UNIVERSAL_CANARY_NAMES: readonly CanaryName[] = Object.freeze([
   "password",
   "cookie",
@@ -938,6 +933,15 @@ export const REDACTION_SURFACES: readonly RedactionSurface[] = Object.freeze([
  */
 export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   SurfaceLeafOriginSchema.array().parse([
+  { surface: "wire/bootstrap", path: "serverClock.zone", origin: "external-text" },
+  { surface: "wire/activity-report", path: "volume.timeZone", origin: "external-text" },
+  { surface: "wire/activity-report", path: "volume.interval.start", origin: "repository-authored" },
+  { surface: "wire/activity-report", path: "volume.interval.endExclusive", origin: "repository-authored" },
+  { surface: "wire/activity-report", path: "volume.buckets[].start", origin: "repository-authored" },
+  { surface: "wire/activity-report", path: "volume.buckets[].endExclusive", origin: "repository-authored" },
+  { surface: "wire/saved-archive-index", path: "items[].itemId", origin: "captured-hr-value" },
+  { surface: "wire/saved-archive-detail", path: "itemId", origin: "captured-hr-value" },
+
   { surface: "wire/run-detail-section", path: "payload.value.resolution.capture.resolution.note", origin: "operator-authored" },
   { surface: "wire/archived-run-detail", path: "failure.value.resolution.capture.resolution.note", origin: "operator-authored" },
   { surface: "wire/run-detail", path: "gate.label", origin: "repository-authored" },
@@ -1953,7 +1957,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "durable/failure-record", path: "subject.expected.displayRedacted", origin: "declared-redacted" },
   { surface: "durable/failure-record", path: "subject.observed.displayRedacted", origin: "declared-redacted" },
   { surface: "durable/failure-record", path: "summary", origin: "external-text",
-    exception: "ref operator-trust SS2.1 / D142: `error.message` verbatim is what tells the operator WHY, and the charter requires a thrown message to name the offending value. It is durable and operator-visible on purpose; the advisory drops it (advisory.ts `withheld`) precisely because that surface leaves the machine." },
+    exception: "ref operator-trust SS2.1 / D142: `error.message` verbatim is what tells the operator WHY, and the charter requires a thrown message to name the offending value. It is durable and operator-visible on purpose; D358 also retains the supplied value in its classified advisory fact." },
 
   { surface: "durable/evidence-receipt", path: "decisions[].reason", origin: "repository-authored" },
   { surface: "durable/evidence-receipt", path: "input[].source.eventId", origin: "captured-hr-value" },
@@ -2005,6 +2009,8 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
 export const SURFACE_MODULE_DISPOSITIONS: readonly SurfaceModuleDisposition[] = Object.freeze(
   SurfaceModuleDispositionSchema.array().parse([
     { module: "src/domain/dashboard/actions.ts", state: "audited", reason: "the action descriptor and its confirmation copy ride the queue row" },
+    { module: "src/domain/dashboard/activity-volume.ts", state: "audited", reason: "the Activity report embeds validated host-zone boundaries calculated from selected dates" },
+    { module: "src/domain/dashboard/archive-export.ts", state: "no-surface", reason: "formats already-registered SavedArchiveReportWire values as JSON field rows and formula-safe CSV; declares no additional wire or durable schema" },
     { module: "src/domain/dashboard/activity.ts", state: "audited", reason: "the activity report aggregates runs into counts and durations" },
     { module: "src/domain/dashboard/advisory.ts", state: "audited", reason: "the run advisory renders a third-party model's answer back to the operator" },
     { module: "src/domain/dashboard/archive.ts", state: "audited", reason: "the archive index and detail re-serve retired runs; capture resources report exact-byte availability" },

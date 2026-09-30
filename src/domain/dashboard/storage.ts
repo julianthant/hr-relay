@@ -15,10 +15,7 @@ import { z } from "zod";
 import { CommandIdSchema, IsoInstantSchema, RunIdSchema, TraceIdSchema, WorkflowIdSchema } from "../ids.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
-const StorageDiagnosticMessageSchema = z.string().min(1).refine(
-  (value) => !/(?:^|\D)10\d{6}(?:\D|$)/u.test(value),
-  "storage diagnostic messages must not contain a full UCPath person identifier",
-);
+const StorageDiagnosticMessageSchema = z.string().min(1);
 
 /** `{code, summary}` off `StorageHealthCauseSchema`; the closed code vocabulary lives in infra. */
 export const StorageCauseWireSchema = z.strictObject({

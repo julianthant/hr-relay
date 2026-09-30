@@ -1,50 +1,8 @@
 /**
- * Ref operator-trust §4.4 — optional AI assistance READS the evidence; it never becomes
- * the evidence (D178).
- *
- * Four rules carry that sentence, and every one of them is a schema here
- * rather than a convention somewhere else:
- *
- * 1. **Redaction happens before provider use, and it is DECLARED.** A prompt
- *    is not assembled from a record's prose; it is assembled from that
- *    record's leaves, each pushed through the ONE `redactValue`
- *    implementation under a `(classification, transform)` pair declared in
- *    this file. A leaf with no declaration is a loud refusal naming the exact
- *    path — never a silent drop, which is how a prompt starts carrying a field
- *    nobody reviewed. A dropped leaf still APPEARS in the prompt as its
- *    redacted arm, because "this fact exists and was withheld" is information
- *    the model should have and absence is not.
- *
- * 2. **The answer schema travels with the question.** The instruction carries
- *    the closed advice schema's own JSON-Schema projection and its fingerprint
- *    (D151's "one instruction, generated from the registry" — a hand-written
- *    prompt and a strict parser drift apart the first time the schema grows).
- *    The consumer then parses the model's answer through that exact schema:
- *    non-conforming is `invalid-response`, never a partial accept and never a
- *    default.
- *
- * 3. **Absence is typed.** Pool exhaustion, a missing key, a provider error
- *    and unparseable JSON are `unavailable` / `invalid-response` with the
- *    closed provider code — never an empty "looks fine" advice value.
- *
- * 4. **Nothing here touches authority.** This module imports zod, ids,
- *    redaction and the canonical-JSON helpers, and that is the whole list. An
- *    advisory cannot transition a run, resolve evidence, select identity,
- *    acknowledge a warning, or reach the command/mutation services, and
- *    `ai-advisory-no-authority` enforces that structurally over the module
- *    graph.
- *
- * ## Why the leaf rule here is FINER than the receipt's
- *
- * `evidence-classification.ts` treats an array as ONE leaf because every
- * receipt fact must be dated by a stored `FactProvenance` row, and no row
- * could ever date `causeChain[2].code`. A prompt carries no provenance
- * obligation, so it classifies per element FIELD — `causeChain.code` is
- * declared `safe-diagnostic`/`allow` while `causeChain.summary`, which is a
- * raw thrown-error message and can name a person, is declared `drop`. The
- * finer rule is strictly more precise: under the receipt's rule the whole
- * array would need one verdict, and the useful half would have gone out with
- * the unsafe half.
+ * Optional AI assistance reads complete supplied evidence and cannot change authority.
+ * Every prompt leaf has a declared classification; undeclared leaves fail loudly.
+ * The closed answer schema travels with the question. Provider and parsing failures
+ * remain typed absence, and advisory wiring cannot reach mutation services.
  */
 import { z } from "zod";
 import { JsonValueSchema, canonicalJsonStringify } from "../canonical-json.js";
@@ -81,9 +39,6 @@ export const AdvisoryFieldClassificationSchema = z.strictObject({
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
 }).superRefine((entry, context) => {
-  // Refused at DECLARATION time as well as at transform time: a
-  // `sensitive-hr`/`allow` line would otherwise sit here looking reviewed
-  // until the first failure that happened to carry that field.
   if (!evidenceTransformAllowed(entry.classification, entry.transform)) {
     context.addIssue({
       code: "custom",
@@ -99,22 +54,14 @@ function open(...paths: readonly string[]): unknown[] {
   return paths.map((path) => ({ path, classification: "safe-diagnostic", transform: "allow" }));
 }
 
-/**
- * `sensitive-hr` + `drop` — free-form text this repository does not control
- * the contents of. `FailureRecord.summary` is `error.message` verbatim
- * (`src/core/run-failure.ts`), so a task that threw "no candidate matched EID
- * 10123456" would put an employee id on the wire. The advisory is built from
- * the CLOSED vocabularies beside it instead: code, node, task, write state,
- * page state, remediation kind. Those are enough to explain a failure CLASS,
- * which is the only thing §4.4 asks an advisory to do.
- */
-function withheld(...paths: readonly string[]): unknown[] {
-  return paths.map((path) => ({ path, classification: "sensitive-hr", transform: "drop" }));
+/** Complete supplied failure prose retains its sensitive-HR classification. */
+function sensitive(...paths: readonly string[]): unknown[] {
+  return paths.map((path) => ({ path, classification: "sensitive-hr", transform: "allow" }));
 }
 
-/** `direct-identifier` + `drop` — a URL, title or display value about a person. */
+/** Complete supplied URLs, titles and display values retain their identifier classification. */
 function person(...paths: readonly string[]): unknown[] {
-  return paths.map((path) => ({ path, classification: "direct-identifier", transform: "drop" }));
+  return paths.map((path) => ({ path, classification: "direct-identifier", transform: "allow" }));
 }
 
 /**
@@ -138,7 +85,7 @@ export const FAILURE_TRIAGE_CLASSIFICATIONS = Object.freeze(
       "page.screen", "page.state",
       "action.elementId", "action.operation", "action.sequence",
     ),
-    ...withheld("summary", "causeChain.summary", "remediation.message"),
+    ...sensitive("summary", "causeChain.summary", "remediation.message"),
     ...person(
       "subject.expected.displayRedacted",
       "subject.observed.displayRedacted",
@@ -172,7 +119,7 @@ export const AdvisoryPromptSchema = z.strictObject({
   /** The closed advice schema's own JSON-Schema projection. */
   answerSchema: JsonValueSchema,
   answerSchemaFingerprint: FingerprintSchema,
-  /** Declared-redacted; a `redacted` arm carries no value by construction. */
+  /** Classified complete values; historical redacted arms remain readable. */
   facts: z.array(RedactedFieldSchema).min(1),
 });
 export type AdvisoryPrompt = z.infer<typeof AdvisoryPromptSchema>;
@@ -211,7 +158,7 @@ function advisoryLeaves(
 }
 
 /**
- * Redact one record into the prompt's fact list under a surface's declared
+ * Classify one record into the prompt's complete fact list under a surface's declared
  * classifications. An undeclared path is a REFUSAL naming the path and the
  * file that owns it — the "add the declaration" gap, not a value to guess at.
  */
@@ -223,7 +170,7 @@ export function buildAdvisoryFacts(
   const facts: z.infer<typeof RedactedFieldSchema>[] = [];
   const seen = new Set<string>();
   // Parsed before the walk, not cast during it: a record that is not canonical
-  // JSON cannot be redacted, and finding that out one leaf at a time would
+  // JSON cannot be classified, and finding that out one leaf at a time would
   // leave half a prompt built.
   for (const [path, value] of advisoryLeaves(JsonValueSchema.parse(record), "")) {
     const declared = declarations.get(path);
@@ -299,9 +246,8 @@ interface AdvisoryTemplate {
 
 const FAILURE_TRIAGE_INSTRUCTION = [
   "You are helping a human operator understand ONE failed run of an HR automation.",
-  "You are given only closed-vocabulary facts about the failure; free-text fields were",
-  "withheld by policy and appear as redacted entries. Do not speculate about the values",
-  "of withheld fields, and do not invent identifiers, people, dates or system contents.",
+  "You are given complete supplied facts about the failure, including their declared classifications.",
+  "Use only those facts; do not invent identifiers, people, dates or system contents.",
   "Explain what this failure CLASS most likely means and what a human should look at.",
   "You are advisory only: you cannot retry, resolve, approve or change anything, and your",
   "answer is never treated as evidence. If the facts do not support an explanation, say so",
@@ -311,8 +257,8 @@ const FAILURE_TRIAGE_INSTRUCTION = [
 
 const CONTACT_NORMALIZATION_INSTRUCTION = [
   "You are canonicalizing ONE contact record's fields for a US HR system.",
-  "You are given only the fields whose declared data classification permits them to leave",
-  "the process; anything else was withheld and you must not ask for it or guess it.",
+  "You are given the complete supplied fields and their declared data classifications.",
+  "Use only those fields; do not ask for or guess additional values.",
   "For each field you are asked about, answer with the canonical value you are confident in,",
   "or omit the field entirely — an omitted field stays with the operator, which is correct.",
   "Do not invent an address, a phone number or a person.",
@@ -437,10 +383,7 @@ export type FailureTriageOutcome = z.infer<typeof FailureTriageOutcomeSchema>;
 /**
  * Parse a produced envelope's answer through the surface's closed schema.
  *
- * The reason names the failing PATHS and never the values: the answer body is
- * whatever the model chose to write, up to and including content it was told
- * to withhold, so echoing it into a refusal message would defeat the redaction
- * that produced the prompt.
+ * Refusals name schema issue paths without copying an unvalidated provider answer.
  */
 export function parseAdvisoryAnswer<Advice extends z.ZodType>(
   envelope: AdvisoryAnswerEnvelope,

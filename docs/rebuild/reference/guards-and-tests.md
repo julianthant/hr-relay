@@ -1457,7 +1457,9 @@ format-constrained string — or a **redacted subtree**, or it must carry a decl
 
 The matrix is where the teeth are. `os-notification` admits **only** `repository-authored` — ref dashboard-surfaces
 §2.6's "no raw secrets or captured form contents in notification text" as a schema property rather
-than a promise. `process-egress` admits only what this repository wrote or explicitly redacted.
+than a promise. `process-egress` admits repository-authored instructions and explicitly classified supplied facts.
+D358 requires complete classified values in advisory prompts; the declaration audit still refuses
+undeclared leaves/modules and verifies the origin of each field.
 `durable-file` needs a written **exception** for a captured value and refuses external text outright.
 `durable-authority` needs an exception for external text — which is how `FailureRecord.summary`
 (`error.message` verbatim, D142) and the receipt warning that copies it end up **named** rather than

@@ -30,6 +30,9 @@ Capture and display do not drop, shorten, count, hash, or substitute basenames f
 Search metadata diagnostic exports use format 2 with the complete already-collected selection and
 values; CSV and XLSX include supplied query text, identifiers, and available subject/actor values.
 Activity XLSX includes supplied sampled run identifiers and its longest-run identifier.
+Storage diagnostic wire messages accept complete supplied identifiers while retaining nonempty,
+closed-shape and code validation. Failure advisory prompts retain each declared supplied value and
+its classification; provider instructions describe those complete facts without inventing values.
 Snapshot membership, order, limits, formula-safe CSV encoding, typed XLSX cells and access control remain required.
 This amendment supersedes classification-based presentation/capture masking rules in this reference
 and its importing contracts. It does not authorize discovering or reading additional credentials.
@@ -1627,24 +1630,16 @@ registry entry, or call the command/mutation services.
 prompt from the subject record's LEAVES, each pushed through the ONE `redactValue` implementation
 under a `(classification, transform)` pair declared in that file. An undeclared leaf is a loud
 refusal naming the exact path — never a silent drop, which is how a prompt starts carrying a field
-nobody reviewed. A dropped leaf still APPEARS in the prompt as its redacted arm, because "this fact
-exists and was withheld" is information the model should have while absence is not.
+nobody reviewed. Under D358, each declared supplied leaf retains its complete value and original
+classification. `summary`, `causeChain.summary` and `remediation.message` are `sensitive-hr`/`allow`;
+`page.urlRedacted`, `page.titleRedacted` and `subject.*.displayRedacted` are
+`direct-identifier`/`allow`. Supplied code, node, task, write state, page state, remediation kind and
+cause codes remain `safe-diagnostic`/`allow`. No extra source values are read to complete a prompt.
 
-The declaration produced a finding worth stating plainly: **`FailureRecord.summary` is
-`error.message` verbatim**, so a task that threw *"no candidate matched EID 10456789"* would have
-put an employee id on the wire. `summary`, `causeChain.summary` and `remediation.message` are
-therefore declared `sensitive-hr`/`drop`, and `page.urlRedacted` / `page.titleRedacted` /
-`subject.*.displayRedacted` are `direct-identifier`/`drop`. What the model actually receives is the
-CLOSED vocabularies beside them — code, node, task, write state, page state, remediation kind,
-cause codes — which is enough to explain a failure CLASS, the only thing this section asks an
-advisory to do. **Only `safe-diagnostic` may leave the process as a value**, and the guard enforces
-that rather than the weaker "the pairing is permitted".
-
-The advisory leaf rule is deliberately FINER than the receipt's (`evidence-classification.ts`
-treats an array as one leaf because every receipt fact must be dated by a stored `FactProvenance`
-row). A prompt carries no provenance obligation, so it classifies per element FIELD:
-`causeChain.code` goes and `causeChain.summary` does not. Under the receipt's rule the whole array
-would need one verdict and the useful half would have gone out with the unsafe half.
+The advisory leaf walk classifies per element field. Each distinct supplied cause summary and code
+is retained; duplicate path/value pairs are deduplicated without changing the canonical input-digest
+algorithm. Provider instructions use only the supplied facts and require uncertainty when those
+facts do not support an explanation. Answer parsing and authority boundaries remain unchanged.
 
 **The answer schema travels with the question.** The prompt carries the closed advice schema's own
 JSON-Schema projection and its fingerprint (D151's "one instruction, generated from the registry" —

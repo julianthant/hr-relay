@@ -209,7 +209,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     assert.equal(egressClasses.size, 5, "every remaining egress class must have at least one registered surface");
   });
 
-  it("refuses full person identifiers in span/authority diagnostic messages", () => {
+  it("retains full supplied person identifiers in span/authority diagnostic messages", () => {
     const canonicalEid = "10873698";
     const sensitiveDetail = {
       state: "degraded",
@@ -228,7 +228,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
       ...sensitiveDetail,
       problems: sensitiveDetail.problems.map((problem) => ({ ...problem, summary: "span root has a malformed identity" })),
     }).success, true, "the control must be a valid rich span_stream wire arm");
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(sensitiveDetail).success, false);
+    assert.deepEqual(SpanAuthorityReconciliationWireSchema.parse(sensitiveDetail), sensitiveDetail);
     assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
       state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: "authority lookup failed strict validation" },
@@ -236,7 +236,9 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
       state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: `authority lookup failed for EID ${canonicalEid}` },
-    }).success, false);
+    }).success, true);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({state:"unavailable",cause:{code:"span-authority-unavailable",summary:""}}).success,false);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({...sensitiveDetail,undeclared:"not admitted"}).success,false);
   });
 
   it("registers the complete archived capture resource with exactly its three authored leaves", () => {
@@ -733,22 +735,13 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     }
   });
 
-  it("drops every planted sentinel from the advisory prompt that leaves the process", () => {
+  it("retains the planted supplied values in the advisory prompt", () => {
     const prompt = buildFailureTriagePrompt(CANARY_FAILURE);
-    const serialized = canonicalJsonStringify(prompt);
-    const leaked = canariesIn(serialized);
-    assert.deepEqual(
-      leaked,
-      [],
-      `the advisory prompt is the only payload that leaves this machine and it carried ${leaked.join(", ")}`,
-    );
-
-    // D178's other half: a dropped leaf still APPEARS, as its redacted arm.
-    // Silence would tell the model the fact does not exist, which is a
-    // different — and false — statement from "withheld by policy".
-    const withheld = prompt.facts.filter(({ state }) => state === "redacted").map(({ key }) => key);
+    assert.deepEqual(canariesIn(canonicalJsonStringify(prompt)), canariesIn(canonicalJsonStringify(CANARY_FAILURE)));
     for (const key of ["summary", "causeChain.summary", "remediation.message", "page.urlRedacted", "subject.observed.displayRedacted"]) {
-      assert.ok(withheld.includes(key), `${key} must appear in the prompt as a withheld fact`);
+      const facts = prompt.facts.filter(fact => fact.key === key);
+      assert.ok(facts.length > 0, `${key} must appear in the prompt`);
+      assert.ok(facts.every(fact => fact.state === "allowed" && fact.transform === "allow"));
     }
   });
 
@@ -809,7 +802,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     );
   });
 
-  it("redacts the exit run's person identifiers out of its evidence receipt", () => {
+  it("retains the exit run's supplied person identifiers in its evidence receipt", () => {
     // The REAL 2026-08-04 exit run through the REAL derivation. Its subject's
     // name is the canary: it is genuinely present in the stored checkpoints and
     // is declared `direct-identifier`/`last4`, so a receipt that still spells it
@@ -831,7 +824,7 @@ describe("redaction surface scan — the canary sweep (ref clock-config-secrets 
     const serialized = canonicalJsonStringify(receipt);
     assert.ok(serialized.includes(subjectName), "the receipt omitted the retained subject name");
     assert.ok(serialized.includes("Battistessa"), "the receipt omitted the retained surname");
-    assert.ok(serialized.includes("nnie"), "the declared last4 transform must still answer the question");
+    assert.ok(serialized.includes("nnie"), "the complete subject name must include its final characters");
   });
 
   it("retains classified and unclassified diagnostic values", () => {
