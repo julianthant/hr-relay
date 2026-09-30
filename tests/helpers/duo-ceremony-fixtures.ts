@@ -19,7 +19,7 @@ import { systemClock } from "../../src/domain/clock.js";
 import type { Clock } from "../../src/domain/clock.js";
 import { FingerprintSchema, WorkerIdSchema } from "../../src/domain/ids.js";
 import type { BrowserSystemId, WorkerId } from "../../src/domain/ids.js";
-import { AuthorityDatabase } from "./synthetic-storage-admission.js";
+import { AuthorityDatabase } from "./synthetic-database-admission.js";
 
 export const FIXTURE_DUO_CREDENTIAL_KEY = FingerprintSchema.parse("d0".repeat(32));
 /** The production defaults (D125 / D267). */

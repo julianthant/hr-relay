@@ -72,6 +72,17 @@ describe("synthetic database fixture admission import boundary", () => {
     assert.deepEqual(forbiddenReach(harness), []);
   });
 
+  it("launch fixtures retain real authority admission without unrelated command compositions", () => {
+    const fixture = "tests/fixtures/source-bound-fixtures.ts";
+    const closure = valueClosure("tests/fixtures/run-launch-fixtures.ts");
+    for (const required of [fixture, narrowHelper, "src/infra/sqlite/authority-database.ts", "src/infra/runtime-control/admission.ts"]) assert.ok(closure.has(required), required);
+    assert.deepEqual(forbiddenReach(closure), []);
+    const source = readFileSync(resolve(REPO_ROOT, fixture), "utf8");
+    assert.ok(source.includes("../helpers/synthetic-database-admission.js"));
+    const injected = source.replace("../helpers/synthetic-database-admission.js", "../helpers/synthetic-storage-admission.js");
+    assert.deepEqual(forbiddenReach(valueClosure(fixture, injected)), [...forbiddenModules].sort());
+  });
+
   it("detects the broad fixture's real side-effect closure and a reintroduced value reexport", () => {
     assert.deepEqual(forbiddenReach(valueClosure("tests/helpers/synthetic-storage-admission.ts")), [...forbiddenModules].sort());
     const source = readFileSync(resolve(REPO_ROOT, narrowHelper), "utf8");
