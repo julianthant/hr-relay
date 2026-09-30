@@ -401,6 +401,9 @@ export function assertTaskOperationDeclaration(
     if (needsValue) {
       if (action.valueSlot === undefined) throw operationError(contract, operation, `action "${action.id}" requires a value slot`);
       if (!slots.has(action.valueSlot)) throw operationError(contract, operation, `action "${action.id}" references missing value slot "${action.valueSlot}"`);
+    } else if (action.kind === "compute" && action.valueSlot !== undefined) {
+      const slot = slots.get(action.valueSlot);
+      if (slot === undefined || slot.source.kind !== "contract-output") throw operationError(contract, operation, `compute action "${action.id}" requires a declared contract-output value slot`);
     } else if (action.valueSlot !== undefined) {
       throw operationError(contract, operation, `action "${action.id}" cannot declare a value slot`);
     }

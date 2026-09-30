@@ -1,3 +1,4 @@
+import { identityComparisonRows } from "../../../src/dashboard/surfaces/identity-approve-model.js";
 /**
  * THE THREE IDENTITY-APPROVAL CEREMONIES (ref write-safety §14.6 risk 1, D226).
  *
@@ -382,5 +383,23 @@ describe("composeCommandRequest — the three ceremonies reach the real command 
     );
     assert.equal(composed.state, "refused");
     assert.match(composed.state === "refused" ? composed.reason : "", /biometric-scan/);
+  });
+});
+
+
+describe("R1 concise identity comparisons", () => {
+  it("preserves exact names, employee IDs and disagreement order while shortening typed context", () => {
+    const detail = gateDetail(packetOf({ documentName: "Okonkwo, Adaeze", searchResolvesEid: NAME_SEARCH }));
+    const rows = identityComparisonRows(detail);
+    assert.deepEqual(rows.map(row => row.field), detail.packet.comparisons.map(row => row.field));
+    assert.deepEqual(rows.map(row => row.agrees), detail.packet.comparisons.map(row => row.agrees));
+    for (const field of ["name", "eid"] as const) {
+      const original = detail.packet.comparisons.find(row => row.field === field);
+      const shown = rows.find(row => row.field === field);
+      assert.equal(shown?.documentValue, original?.documentValue);
+      assert.equal(shown?.ucpathValue, original?.ucpathValue);
+    }
+    assert.equal(rows.find(row => row.field === "employment")?.documentValue, "Separation request");
+    assert.ok(rows.every(row => row.note.length > 0));
   });
 });

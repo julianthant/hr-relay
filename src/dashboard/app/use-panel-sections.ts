@@ -1,8 +1,8 @@
 /**
  * Fetching exactly the sections the open panel needs — no more.
  *
- * The context rail always wants its three ledgers; the tab wants its own
- * section; a failed run additionally wants its failure pointer, because the
+ * Attempts and the active tab request their served sections; a failed run
+ * additionally requests its failure pointer, because the
  * Logs stream renders the failure inline rather than behind a tab. Every one of
  * those is requested ONLY if the detail advertised it, so an absence stays an
  * absence instead of becoming a 404 the operator has to interpret.

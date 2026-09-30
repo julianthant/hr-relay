@@ -1,3 +1,4 @@
+import { tabsFor, defaultTabFor } from "../../../src/dashboard/surfaces/log-panel-model.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { LogRowWireSchema, NotePageSchema } from "../../../src/domain/dashboard/run-detail.js";
@@ -300,5 +301,12 @@ describe("observed log presentation fold", () => {
       () => appendLogPage(first, staleCursor, next),
       new RegExp(`cursor ${staleCursor}.*current run ${RUN} owns ${ownedCursor}`),
     );
+  });
+});
+
+describe("retired run inspection surfaces", () => {
+  it("omits receipt and opens terminal runs on Logs, including old advertised receipt", () => {
+    assert.deepEqual(tabsFor({ availableSections: ["logs", "receipt", "context-data", "context-attempts"] }), ["logs"]);
+    assert.equal(defaultTabFor({ availableSections: ["logs", "receipt"], outcome: { state: "terminal", result: "done", completedAt: "2026-09-29T12:00:00.000Z" } }), "logs");
   });
 });

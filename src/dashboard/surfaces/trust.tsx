@@ -181,9 +181,9 @@ function VerificationMarkGlyph({ verdict }: { verdict: VerificationVerdictWire }
   );
 }
 
-function TrustSection({ label, children }: { label: string; children: ReactNode }) {
+function TrustSection({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
   return (
-    <section aria-label={label} className="flex flex-col gap-[var(--ds-space-snug)]">
+    <section aria-label={label} className={cn("flex flex-col gap-[var(--ds-space-snug)]", className)}>
       <SectionLabel>{label}</SectionLabel>
       <div className="flex flex-col gap-[var(--ds-space-tight)]">{children}</div>
     </section>
@@ -269,7 +269,7 @@ const WRITE_STATE_LABEL = "What this run left behind";
 export function FailureRecordHead({ detail }: { detail: FailureDetailWire }) {
   const permanence = failurePermanence(detail.transient);
   return (
-    <div className="flex flex-col gap-[var(--ds-space-tight)]">
+    <div className="operation-failure-heading flex flex-col gap-[var(--ds-space-tight)]">
       <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
         {/*
           The glyph and the sentence are ONE wrapping item, not two. Loose in
@@ -284,7 +284,7 @@ export function FailureRecordHead({ detail }: { detail: FailureDetailWire }) {
             aria-hidden
             className={cn(dsIcon.md, "shrink-0 translate-y-px text-[color:var(--ds-danger)]")}
           />
-          <span className={cn(dsText.ui, "min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
+          <span className={cn(dsText.ui, "operation-failure-summary min-w-0 break-words font-semibold text-[color:var(--ds-danger)]")}>
             {detail.summary}
           </span>
         </span>
@@ -336,7 +336,7 @@ function FailureResolutionControls({ initial, context }: {
   const state = useFailureResolution(client, initial, context);
   const resolution = state.current.capture.resolution;
   const editable = context !== undefined && state.current.capability.state === "available";
-  return <TrustSection label="Problem follow-up">
+  return <TrustSection label="Problem follow-up" className="operation-failure-follow-up">
     <p className={dsText.body} role="status">{resolution.status === "resolved" ? "Resolved" : "Unresolved"}</p>
     {resolution.status === "resolved" && <>
       <MetaLine items={[`by ${resolution.by}`, `at ${fmtClock(resolution.at)}`]} />
@@ -427,6 +427,7 @@ export function FailureDetailBody({ detail, liveContext }: { detail: FailureDeta
       */}
       <section
         aria-label={WRITE_STATE_LABEL}
+        data-operation-failure-fact=""
         className={cn(
           "border p-[var(--ds-space-base)]",
           dsRadius.md,
@@ -459,7 +460,9 @@ export function FailureDetailBody({ detail, liveContext }: { detail: FailureDeta
         only at `no-safe-action` ↔ `blocked`, so deriving one from the other
         would put a safety word on this surface that no producer stands behind.
       */}
-      <TrustSection label="What is safe to retry">
+      <section aria-label="What is safe to retry" data-operation-failure-fact="" className="flex flex-col gap-[var(--ds-space-snug)]">
+        <SectionLabel>What is safe to retry</SectionLabel>
+        <div className="operation-failure-remediation flex flex-col gap-[var(--ds-space-tight)]">
         {detail.remediation.map((action, index) => (
           <span key={index} className="flex items-baseline gap-[var(--ds-space-snug)]">
             {/*
@@ -481,7 +484,27 @@ export function FailureDetailBody({ detail, liveContext }: { detail: FailureDeta
             <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>{action.message}</span>
           </span>
         ))}
-      </TrustSection>
+        </div>
+      </section>
+
+      {subject.state === "present" && (
+        <MetaLine
+          items={[
+            subject.expected !== undefined
+              && `expected ${subject.expected.kind} ${subject.expected.displayRedacted ?? subject.expected.digest}`,
+            // The OBSERVED row in danger tone (E22 — DemoFailure.tsx:322-325).
+            // The pair exists to be compared, and the one that is wrong is the
+            // one the eye has to find; same-weight rows made the reader do the
+            // diff. Redaction is unchanged: the served `displayRedacted` wins
+            // and nothing is re-derived here.
+            subject.observed !== undefined && (
+              <span className="text-[color:var(--ds-danger)]">
+                observed {subject.observed.kind} {subject.observed.displayRedacted ?? subject.observed.digest}
+              </span>
+            ),
+          ]}
+        />
+      )}
 
       {detail.resolution !== undefined && <FailureResolutionControls
         key={`${detail.runId}:${detail.failureId}:${liveContext === undefined ? "read-only" : liveContext.actorId}`}
@@ -547,24 +570,6 @@ export function FailureDetailBody({ detail, liveContext }: { detail: FailureDeta
         ]}
       />
 
-      {subject.state === "present" && (
-        <MetaLine
-          items={[
-            subject.expected !== undefined
-              && `expected ${subject.expected.kind} ${subject.expected.displayRedacted ?? subject.expected.digest}`,
-            // The OBSERVED row in danger tone (E22 — DemoFailure.tsx:322-325).
-            // The pair exists to be compared, and the one that is wrong is the
-            // one the eye has to find; same-weight rows made the reader do the
-            // diff. Redaction is unchanged: the served `displayRedacted` wins
-            // and nothing is re-derived here.
-            subject.observed !== undefined && (
-              <span className="text-[color:var(--ds-danger)]">
-                observed {subject.observed.kind} {subject.observed.displayRedacted ?? subject.observed.digest}
-              </span>
-            ),
-          ]}
-        />
-      )}
       {(detail.page !== undefined || detail.action !== undefined) && (
         <MetaLine
           items={[

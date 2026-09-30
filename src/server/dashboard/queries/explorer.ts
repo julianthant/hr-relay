@@ -504,8 +504,9 @@ function bindingIndex(
           storeNamespace: String(store.namespace),
           storeKind: "browser",
           driverSystem: store.driver.system,
+          sessions: task.impl.sessions.map((session) => ({ ...session })),
         }
-        : { state: "bound", storeNamespace: String(store.namespace), storeKind: "headless" });
+        : { state: "bound", storeNamespace: String(store.namespace), storeKind: "headless", sessions: [] });
     }
   }
   for (const entry of pending.tasks) {

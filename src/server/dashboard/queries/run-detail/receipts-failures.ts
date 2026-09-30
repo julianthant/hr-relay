@@ -1,3 +1,4 @@
+import { projectFailureDisplay } from "../../../../domain/dashboard/failure-display.js";
 import { projectFailureResolution } from "../failure-resolution.js";
 import { retainedRunProtectedBindings } from "../../../../domain/protected-input.js";
 import { z } from "zod";
@@ -133,6 +134,7 @@ function failureDetailWire(
     fingerprint: projected.fingerprint,
     code: projected.code,
     summary: projected.summary,
+    display: projectFailureDisplay(projected),
     transient: projected.transient,
     writeState: projected.writeState,
     subject: projected.subject === undefined

@@ -149,7 +149,7 @@ export function RunProvenanceBar({
       */}
       {surface.dryRun && (
         <span
-          title="A rehearsal: it read every system and wrote to none. The receipt says what it WOULD have written."
+          title="A rehearsal that performs no durable writes."
           className={cn(
             dsText.meta,
             "inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-rehearsal-fg)]",
@@ -429,7 +429,7 @@ function RenameDialogBody({
           <Well>
             <BulletList
               items={[
-                "It rides the queue row and the receipt.",
+                "It appears on the queue row and in the Run Panel.",
                 "The subject, the trace id and the run number are untouched, so everything in history still matches.",
                 "It is yours — nothing downstream reads it.",
               ]}

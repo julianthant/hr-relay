@@ -16,12 +16,30 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { deriveServedNow } from "../../../src/dashboard/state/served-clock.js";
-import { elapsedSecondsBetween, fmtElapsed, runTiming } from "../../../src/dashboard/surfaces/format.js";
+import { elapsedSecondsBetween, fmtActionClock, fmtClock, fmtElapsed, runTiming } from "../../../src/dashboard/surfaces/format.js";
 import { isTerminalQueueStatus } from "../../../src/domain/dashboard/projection.js";
 
 /** The proof's own numbers: the tab loaded at 15:03:32, the run started at 15:12:17. */
 const BOOTSTRAP_INSTANT = "2026-08-20T15:03:32.000Z";
 const RUN_STARTED = "2026-08-20T15:12:17.000Z";
+
+describe("confirmed action timestamps", () => {
+  it("distinguishes successive seconds in the operator's local clock", () => {
+    const at = new Date(2026, 8, 30, 9, 31, 14);
+    assert.equal(fmtActionClock(at.toISOString()), "09:31:14");
+    assert.equal(fmtActionClock(new Date(at.getTime() + 1_000).toISOString()), "09:31:15");
+    assert.equal(fmtClock(at.toISOString()), "9:31 AM");
+  });
+
+  it("keeps midnight and end-of-day readings unambiguous", () => {
+    assert.equal(fmtActionClock(new Date(2026, 8, 30, 0, 0, 0).toISOString()), "00:00:00");
+    assert.equal(fmtActionClock(new Date(2026, 8, 30, 23, 59, 59).toISOString()), "23:59:59");
+  });
+
+  it("refuses an invalid served instant", () => {
+    assert.throws(() => fmtActionClock("after the click"), /fmtActionClock: not an ISO instant/u);
+  });
+});
 
 const parkedRow = {
   status: "awaiting-approval",

@@ -1,48 +1,9 @@
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoParkResolve.tsx
- * (`ParkResolveDialog` and `SettlingPanel`).
- *
- * THE TWO TYPED EXITS FROM `Write parked` (ref write-safety §4.1, row-model D20).
- *
- * `Write parked` means one thing: a write was attempted against a real HR
- * system and nobody can tell whether it landed. There is no Resume and no
- * Retry — the kernel refuses generic retry for this lifecycle BY NAME, because
- * resuming an unknown write is how a person gets terminated twice. There are
- * exactly two answers and both are the operator reporting what they SAW.
- *
- * WHAT THIS SURFACE MAY SAY. Every fact on it is a field the server served on
- * the `parked-write` section, rendered verbatim: this file composes no sentence
- * about the park itself, because `parkedMessage` is the KERNEL's own sentence
- * (ref write-safety §4's `park()` interpolates a driver error or a probe's reason into
- * it) and a second, friendlier paraphrase beside it would be this surface
- * guessing at what happened to a live transaction.
- *
- * TWO THINGS THE DEMO DREW THAT THIS ONE DOES NOT, and why each absence is
- * the honest rendering rather than a porting shortfall:
- *
- *  - **The settle fence** (`fence clears at …`, "twice, at least 10 minutes
- *    apart"). Ref write-safety's `recoveryAbsence` is `operator-only` for every contract
- *    but the one live-measured Kuali write; the wire serves no fence window and
- *    a `minSinceFenceMs` invented here is exactly the banned constant.
- *  - **`SettlingPanel`** — the negative-settlement wait state. D198 is explicit
- *    that `createWriteRecovery` writes NOTHING on `wait`, so no durable row
- *    carries an observation count or a `nextProbeAt`. The panel is therefore
- *    ported in the only form the wire supports: it renders when the section
- *    carries settling data, and the section carries none, so it is ABSENT. It
- *    is not stubbed and it is not faked.
- *
- * THE THIRD ABSENCE IS CLOSED (D245). `resolve-write-present` used to be
- * refused on this surface with `proof-contract-unserved`, because the wire
- * served neither the proof's schema hash nor its shape — and the copy told the
- * operator to resolve the write from a CLI that has never had a run-mutation
- * command. The section now serves the commit contract's proof as an ordered
- * field list, `ProofForm` renders it, and the composed value goes out bound to
- * the SERVED hash. Where a build genuinely cannot describe the proof, the
- * server says why and `ProofUnavailable` prints that reason.
- */
+import { PARKED_WRITE_DISPLAY, proofDisplayLabel } from "./parked-write-display-model.js";
+import { OperationEvidenceFrame } from "./operation-evidence-frame.js";
+import { SYSTEM_HOST_PRESENTATION } from "./settings-hosts-model.js";
+/** Present/absent recovery retains the served proof and exact intent bindings. */
 import { useEffect, useState } from "react";
-import { CheckCircle2, CircleSlash, PauseCircle } from "lucide-react";
+import { CheckCircle2, CircleSlash, CircleStop } from "lucide-react";
 import type { z } from "zod";
 import { systemClock } from "../../domain/clock.js";
 import { cn } from "../lib/utils.js";
@@ -58,13 +19,12 @@ import {
   Input,
   MetaLine,
   Refusal,
+  RadioGroup,
   SectionLabel,
   Select,
-  StatusPill,
   Textarea,
   Well,
   dsIcon,
-  dsRadius,
   dsText,
   useToasts,
 } from "../ds/ui.js";
@@ -81,10 +41,11 @@ import {
   proofFieldProblem,
 } from "../app/proof-form.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { bannerPills, parkResolutions } from "./actions-model.js";
 import { parkResolutionArm } from "./park-resolve-model.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { useDashboardClient } from "../state/client-context.js";
-import { BannerActions, ParkResolutions, type DashboardActionHandler } from "./actions.js";
+import { BannerActions, type DashboardActionHandler } from "./actions.js";
 import { fmtClock } from "./format.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
@@ -110,6 +71,15 @@ type CommandAction = Extract<ActionDescriptorWire, { kind: "command" }>;
  */
 function shortDigest(digest: string): string {
   return `${digest.slice(0, 12)}…`;
+}
+
+function ParkedSubjectLabel({ subject }: { subject: ParkedWritePayload["subject"] }) {
+  if (subject.state === "unscoped") return <>Reviewed unscoped write</>;
+  switch (subject.evidence.kind) {
+    case "person": return <>{subject.evidence.identifierKind} · {subject.evidence.displaySuffix}</>;
+    case "artifact": return <>{subject.evidence.artifactId}</>;
+    case "catalog": return <>{subject.evidence.catalogKey}</>;
+  }
 }
 
 /* ── the parked fact, in the stream where it happened ────────────────────── */
@@ -153,19 +123,6 @@ function SubjectFacts({ subject, inline }: { subject: ParkedWritePayload["subjec
   return inline === true ? chips : <ChipRow>{chips}</ChipRow>;
 }
 
-/**
- * THE PARKED WRITE, rendered where the run stopped.
- *
- * Same geometry as `InlineDecision` and `InlineFailureRecord` — indented to the
- * stream's hanging indent, a rail in its own tone — because DESIGN.md names
- * `Write parked` as one of exactly two decision surfaces, and a decision's full
- * surface renders INLINE in the stream at the line that produced it, never as a
- * band stacked above the stream the panel is opened to read.
- *
- * The tone is the status's own: amber, and the only DASHED hairline in the
- * product. Nothing else dashes, which is what says "a write is in doubt" at a
- * glance without spending a hue nobody else may have.
- */
 export function InlineParkedWrite({
   parked,
   onResolve,
@@ -175,79 +132,66 @@ export function InlineParkedWrite({
   onResolve: DashboardActionHandler;
   anchorRef?: (node: HTMLElement | null) => void;
 }) {
-  return (
-    <div
-      ref={anchorRef}
-      tabIndex={-1}
-      data-panel-parked-write=""
-      aria-label="Parked write"
-      className={cn(
-        "mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)] ml-5 border p-[var(--ds-space-cozy)]",
-        dsRadius.lg,
-        "border-[length:var(--ds-border-w-rail)]",
-        // `ds-dashed` is the status's own edge treatment, taken from the same
-        // token set `StatusPill status="parked"` paints itself with.
-        "ds-dashed border-[color:var(--ds-status-parked-border)] bg-[var(--ds-status-parked-bg)]",
-      )}
-    >
-      <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-        <PauseCircle
-          aria-hidden
-          className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-status-parked-fg)]")}
-        />
-        {/* The status word comes from the ONE renderer that owns it. */}
-        <StatusPill status="parked" size="sm" />
-        <span className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-muted)]")}>
-          {parked.system} · {parked.taskId}
-        </span>
-      </div>
-
-      <div className="mt-[var(--ds-space-base)] flex flex-col gap-[var(--ds-space-base)] pl-5">
-        {/* The kernel's own sentence, verbatim. */}
-        <span className={cn(dsText.body, "min-w-0 break-words text-[color:var(--ds-fg)]")}>
-          {parked.parkedMessage}
-        </span>
-
-        <MetaLine
-          items={[
-            `fenced ${fmtClock(parked.fencedAt)}`,
-            `parked ${fmtClock(parked.parkedAt)}`,
-            `code ${parked.parkedCode}`,
-            `generation ${String(parked.generation)}`,
-            `attempt ${String(parked.runAttempt)}`,
-          ]}
-        />
-
-        <section className="flex flex-col gap-[var(--ds-space-snug)]">
-          <SectionLabel>Bound to</SectionLabel>
-          <SubjectFacts subject={parked.subject} />
-        </section>
-
-        {/*
-          The two resolutions, from the SERVED descriptors and nothing else —
-          the same `banner` placement filter every other surface uses. A third
-          exit does not exist in ref write-safety and cannot be invented here, because
-          there is no descriptor to render it from.
-
-          `ParkResolutions` draws the two write resolutions as the demo's tinted
-          cards, with the server's `detail` sentence on each (R8 finding 1);
-          `BannerActions` draws whatever else the section banner carries and now
-          filters the park pair out, so the same descriptor can never be drawn
-          twice. Both take the same descriptor list and the same target.
-        */}
-        <BannerActions
-          actions={parked.actions}
-          target={{ runId: parked.runId, expectedVersion: parkedExpectedVersion(parked) }}
-          onAction={onResolve}
-        />
-        <ParkResolutions
-          actions={parked.actions}
-          target={{ runId: parked.runId, expectedVersion: parkedExpectedVersion(parked) }}
-          onAction={onResolve}
-        />
-      </div>
+  const display = PARKED_WRITE_DISPLAY[parked.parkedCode];
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [selected, setSelected] = useState("");
+  const options = parkResolutions(parked.actions);
+  const action = options.find(option => option.key === selected);
+  return <><OperationEvidenceFrame ref={anchorRef} tabIndex={-1} data-panel-parked-write="" role="group" aria-label="Parked write"
+    className="mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)] operation-outcome-frame"
+    footer={bannerPills(parked.actions).length > 0 ? <BannerActions actions={parked.actions} target={{ runId: parked.runId, expectedVersion: parkedExpectedVersion(parked) }} onAction={onResolve} /> : undefined}
+    heading={<div className="operation-decision-heading">
+      <CircleStop aria-hidden className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-status-parked-fg)]")} />
+      <span className={cn(dsText.ui, "operation-decision-label font-semibold")}>{display.title}</span>
+      <span className={dsText.meta}>{SYSTEM_HOST_PRESENTATION[parked.system].name}</span>
+    </div>}
+  >
+    <div className="operation-outcome-grid">
+      <section className="operation-outcome-evidence" aria-label="Write outcome">
+        <span className={dsText.meta}>Write outcome</span>
+        <p className="operation-outcome-result" data-outcome-tone="warning">Write outcome unresolved</p>
+        <dl className="operation-outcome-facts">
+          <div><dt>Observed</dt><dd>{display.observation}</dd></div>
+          <div><dt>Subject</dt><dd><ParkedSubjectLabel subject={parked.subject} /></dd></div>
+          <div><dt>Parked</dt><dd>{fmtClock(parked.parkedAt)}</dd></div>
+        </dl>
+      </section>
+      <section className="operation-outcome-recovery" aria-label="Next step">
+        <span className={dsText.meta}>Next step</span>
+        <p>Check {SYSTEM_HOST_PRESENTATION[parked.system].name} and record independently verified evidence.</p>
+        <p className="operation-outcome-caution">Do not retry this submission.</p>
+        {options.length > 0 && <Button variant="primary" className="self-start" onClick={() => { setSelected(""); setReviewOpen(true); }}>Verify in {SYSTEM_HOST_PRESENTATION[parked.system].name}</Button>}
+        {parked.proofContract.state === "unavailable" && <p>Confirmed-present proof is unavailable. Check Details for the reason.</p>}
+      </section>
     </div>
-  );
+    <details className="operation-evidence-disclosure operation-outcome-details"><summary>Details</summary>
+      <div className="operation-secondary-tools">
+        <p className={cn(dsText.body, "break-words")}>{parked.parkedMessage}</p>
+        <MetaLine items={[parked.taskId, `fenced ${fmtClock(parked.fencedAt)}`, `code ${parked.parkedCode}`, `generation ${String(parked.generation)}`, `attempt ${String(parked.runAttempt)}`]} />
+        <SubjectFacts subject={parked.subject} />
+        {parked.proofContract.state === "unavailable" && <p className={dsText.body}>{parked.proofContract.reason}</p>}
+      </div>
+    </details>
+  </OperationEvidenceFrame>
+    <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+      <DialogContent title="Verify write outcome" size="md">
+        <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+          <p className={dsText.body}>Check {SYSTEM_HOST_PRESENTATION[parked.system].name} before recording a result.</p>
+          <p className={dsText.meta}><ParkedSubjectLabel subject={parked.subject} /></p>
+          <RadioGroup label="What did you observe?" name="write-outcome" value={selected} onValueChange={setSelected}
+            options={options.map(option => ({ value: option.key, label: option.label, description: option.detail }))} />
+        </DialogBody>
+        <DialogFooter>
+          <Button variant="secondary" onClick={() => setReviewOpen(false)}>Cancel</Button>
+          <Button variant="primary" disabled={action === undefined} onClick={() => {
+            if (action === undefined) return;
+            setReviewOpen(false);
+            onResolve(action, { runId: parked.runId, expectedVersion: parkedExpectedVersion(parked) });
+          }}>Review evidence</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </>;
 }
 
 /**
@@ -338,36 +282,20 @@ function ProofForm({
   const fixed = contract.fields.filter((field) => field.kind === "fixed");
   return (
     <section className="flex flex-col gap-[var(--ds-space-cozy)]">
-      <div className="flex flex-col gap-[var(--ds-space-snug)]">
-        <SectionLabel>The proof, as {contract.commitTaskId} defines it</SectionLabel>
-        <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>
-          Every box below is part of the transaction proof. Type what the target system shows you —
-          the server parses it through the same schema the run&apos;s own completion would have.
-        </span>
-      </div>
-
-      {fixed.length > 0 && (
-        <Well className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-          {fixed.map((field) => (
-            <Chip key={field.path} label={proofFieldLabel(field)}>
-              {String(field.value)}
-            </Chip>
-          ))}
-        </Well>
-      )}
-
+      <SectionLabel>Completion evidence</SectionLabel>
+      <p className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{contract.completionKind === "save-verify" ? "Reload the document and record the retained values." : "Record values verified in the target system."}</p>
+      <div className="operation-proof-fields">
       {contract.fields.filter(isOperatorSuppliedProofField).map((field) => {
         const draft = drafts[field.path] ?? "";
         const problem = touched.has(field.path) ? proofFieldProblem(field, draft) : undefined;
         return (
           <Field
             key={field.path}
-            label={proofFieldLabel(field)}
-            description={proofFieldHint(field)}
+            label={proofDisplayLabel(field)}
             error={problem ?? null}
             required
           >
-            {field.kind === "choice" || field.kind === "boolean" ? (
+            {field.kind === "text" && /comments$/iu.test(field.path) ? <Textarea rows={3} value={draft} disabled={disabled} onChange={event => onChange(field.path, event.target.value)} /> : field.kind === "choice" || field.kind === "boolean" ? (
               <Select
                 value={draft}
                 disabled={disabled}
@@ -392,6 +320,17 @@ function ProofForm({
           </Field>
         );
       })}
+      </div>
+      <details className="operation-evidence-disclosure"><summary>Proof requirements</summary>
+        <div className="operation-secondary-tools">
+          <MetaLine items={[contract.commitTaskId, contract.schemaHash]} />
+          {fixed.map(field => <p key={field.path} className={dsText.meta}>{proofFieldLabel(field)}: {String(field.value)}</p>)}
+          {contract.fields.filter(isOperatorSuppliedProofField).map(field => {
+            const hint = proofFieldHint(field);
+            return hint === undefined ? null : <p key={field.path} className={dsText.meta}>{proofFieldLabel(field)}: {hint}</p>;
+          })}
+        </div>
+      </details>
     </section>
   );
 }
@@ -603,7 +542,7 @@ export function ParkResolveDialog({
       {/* `lg`, the demo's size (R8 finding 13). This dialog carries the fence
           facts, the subject facts, a multi-line evidence field and a reserved
           answer slot; at `md` the fence row wrapped to three lines. */}
-      <DialogContent size="lg" title={confirm.title} description={confirm.body}>
+      <DialogContent size="lg" title={confirm.title} description={arm === "present" ? "Record only independently verified completion evidence." : "Recording absence can permit another submission."}>
         <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
           {/*
             The fence facts the resolution BINDS to — shown, never assumed.
@@ -614,6 +553,8 @@ export function ParkResolveDialog({
             width, so `system` and a 12-character digest were the same size and
             the row read as a table of equal facts rather than as a sentence.
           */}
+          <details className="operation-evidence-disclosure"><summary>Write binding and subject</summary>
+          <p className={dsText.meta}>{confirm.body}</p>
           <Well className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
             <Chip label="system">{parked.system}</Chip>
             <Chip label="fenced">{fmtClock(parked.fencedAt)}</Chip>
@@ -622,7 +563,7 @@ export function ParkResolveDialog({
               <Chip label="key" title={parked.idempotencyKeyDigest}>{shortDigest(parked.idempotencyKeyDigest)}</Chip>
             )}
             <SubjectFacts subject={parked.subject} inline />
-          </Well>
+          </Well></details>
 
           {arm === "present" && (
             proofContract.state === "served"

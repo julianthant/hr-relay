@@ -62,7 +62,9 @@ async function expectDecoded(image: Locator, width: number, height: number): Pro
 /** Keyboard reachability from the loaded page, never a click or programmatic focus. */
 async function tabToDiagnosticDisclosure(page: Page): Promise<Locator> {
   const disclosure = page.getByRole("button", { name: "Show the diagnostic record", exact: true });
-  await expect(disclosure).toHaveCount(1);
+  await expect(page.locator('[data-panel-failure-toggle]')).toHaveText("Show the diagnostic record");
+  const detailsSummary = page.locator('[data-panel-failure-record] > .operation-evidence-body > details > summary');
+  await expect(detailsSummary).toHaveText("Details");
   const failedFilter = page.getByRole("button", { name: "Failed — 1", exact: true });
   const queue = page.getByRole("region", { name: "Queue", exact: true });
   const failedRow = queue.locator(`[data-demo-row-id='${FIXTURE_IDS.failedRun}']`);
@@ -105,7 +107,12 @@ async function tabToDiagnosticDisclosure(page: Page): Promise<Locator> {
       await expect(runDetail.getByRole("img", { name: "Failed", exact: true })).toBeVisible();
       preconditionEstablished = true;
     }
-    if (await disclosure.evaluate((element) => element === document.activeElement)) {
+    if (await detailsSummary.evaluate(element => element === document.activeElement)) {
+      expect(preconditionEstablished, "the Failed filter must be established before Details").toBe(true);
+      await page.keyboard.press("Enter");
+      await expect(detailsSummary.locator("..")).toHaveAttribute("open", "");
+    }
+    if (await disclosure.count() > 0 && await disclosure.evaluate((element) => element === document.activeElement)) {
       expect(preconditionEstablished, "the Failed filter must be established by keyboard before the diagnostic disclosure").toBe(true);
       return disclosure;
     }
@@ -394,6 +401,9 @@ async function openCaptureGallery(page: Page): Promise<void> {
  * exactly the failure mode the intake spec's own lesson names.
  */
 async function openDiagnosticRecord(page: import("@playwright/test").Page): Promise<void> {
+  const details = page.locator('[data-panel-failure-record] > .operation-evidence-body > details');
+  await expect(details).toHaveCount(1);
+  if (!(await details.evaluate(element => element.hasAttribute("open")))) await details.locator(":scope > summary").click();
   const toggle = page.getByRole("button", { name: "Show the diagnostic record" });
   await expect(
     toggle,

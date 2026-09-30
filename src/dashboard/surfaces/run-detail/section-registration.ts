@@ -2,14 +2,13 @@ import type { RunDetailSectionResponse, RunDetailSectionName, PanelSections } fr
 import type { RunDetailWire } from "../../../domain/dashboard/run-detail.js";
 import type { PanelTab } from "../log-panel-model.js";
 
-const CONTEXT_SECTIONS = ["context-data", "context-evidence", "context-attempts"] as const;
-
 /** The run's advertised sections and current panel state determine lazy reads. */
 export function sectionsWanted(detail: RunDetailWire, tab: PanelTab): string[] {
   const advertised = new Set(detail.availableSections);
   const wanted = new Set<string>();
-  for (const section of CONTEXT_SECTIONS) if (advertised.has(section)) wanted.add(section);
-  if (advertised.has(tab)) wanted.add(tab);
+  if (advertised.has("context-attempts")) wanted.add("context-attempts");
+  const active = tab === "receipt" ? "logs" : tab;
+  if (advertised.has(active)) wanted.add(active);
   if (advertised.has("failure")) wanted.add("failure");
   if (advertised.has("parked-write")) wanted.add("parked-write");
   if (advertised.has("identity-gate")) wanted.add("identity-gate");

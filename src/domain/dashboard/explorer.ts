@@ -42,6 +42,7 @@ import {
   WorkflowIdSchema,
 } from "../ids.js";
 import { SecretNameSchema } from "../secret-names.js";
+import { SessionNeedSchema } from "../session.js";
 import { UiCatalogEntrySchema } from "../ui/contracts.js";
 import { NodeConditionSchema } from "../workflow/node-condition.js";
 import { WorkflowModuleRoleSchema } from "../workflow/module-role.js";
@@ -123,6 +124,7 @@ export const ExplorerTaskBindingWireSchema = z.discriminatedUnion("state", [
     storeKind: z.enum(["browser", "headless"]),
     /** The driver's system — browser stores only; a headless store owns none. */
     driverSystem: BrowserSystemIdSchema.optional(),
+    sessions: z.array(SessionNeedSchema).optional(),
   }),
   z.strictObject({
     state: z.literal("pending"),

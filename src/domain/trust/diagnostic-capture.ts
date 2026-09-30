@@ -147,6 +147,7 @@ export function deriveDiagnosticContentDigest(input: Readonly<{
   descriptorFingerprint: unknown;
   redaction: unknown;
   attachments: unknown;
+  operation?: unknown;
 }>): string {
   return FingerprintSchema.parse(sha256Hex(`hrauto:diagnostic-bundle:v1\0${canonicalJsonStringify({
     runId: RunIdSchema.parse(input.runId),
@@ -156,6 +157,7 @@ export function deriveDiagnosticContentDigest(input: Readonly<{
     descriptorFingerprint: FingerprintSchema.parse(input.descriptorFingerprint),
     redaction: RedactionResultSchema.parse(input.redaction),
     attachments: z.array(DiagnosticAttachmentSchema).parse(input.attachments),
+    ...(input.operation === undefined ? {} : { operation: DiagnosticBundleSchema.shape.operation.unwrap().parse(input.operation) }),
   })}`));
 }
 

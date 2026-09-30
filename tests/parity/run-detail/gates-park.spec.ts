@@ -57,7 +57,11 @@ test.describe("park resolutions", () => {
       // be the first thing the control says — without pinning the sentence
       // beside it, which the reference images already review.
       const control = new RegExp(`^${arm.label.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`);
-      await page.getByRole("button", { name: control }).click();
+      await page.getByRole("button", { name: "Verify in UCPath", exact: true }).click();
+      await expect(page.getByRole("radio", { name: control })).not.toBeChecked();
+      await page.getByText(arm.label, { exact: true }).click();
+      await expect(page.getByRole("radio", { name: control })).toBeChecked();
+      await page.getByRole("button", { name: "Review evidence", exact: true }).click();
       // Radix moves focus into the dialog on open; wait for the surface itself
       // rather than a duration, so the capture is never of a half-mounted box.
       await expect(page.getByRole("dialog")).toBeVisible();

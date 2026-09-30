@@ -1,3 +1,5 @@
+import { requireOperationSourceDeclaration } from "../../domain/dashboard/operation-structure.js";
+import { requireWorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
 import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
 import {
   RuntimeVersionAdoptionSchema,
@@ -20,7 +22,8 @@ import { parsePendingCapture } from "../../domain/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
 import { ArchiveReportSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema, type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../domain/archive/report.js";
-import { readScopedEventStreamLines } from "../events/jsonl-streams.js";
+import { readScopedEventStreamLines, readEventStreamSlice, scopedEventStreamFiles } from "../events/jsonl-streams.js";
+import { DeclaredActionIdentitySchema } from "../../domain/task-provenance.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../domain/run/note-scope.js";
 import { NoteWireSchema } from "../../events/types.js";
 import { deriveCanonicalPerson } from "../../domain/run/summary-derivation.js";
@@ -686,6 +689,7 @@ type FailureRepository = Readonly<{
  * artifact-scoped retention unanswerable.
  */
 type DiagnosticBundleRepository = Readonly<{
+  validateOperation(input: unknown): void;
   insert(input: unknown): ImmutableInsertResult<DiagnosticBundle>;
   get(bundleId: string): DiagnosticBundle | undefined;
   listByRun(runId: string): readonly DiagnosticBundle[];
@@ -4964,9 +4968,43 @@ export class AuthorityDatabase implements Disposable {
         JsonRowSchema.parse(row).record_json,
       )));
     };
+    const validateOperation = (input: unknown): void => {
+      const identity = DeclaredActionIdentitySchema.parse(input);
+      const run = readTimelineRun(this.#database, identity.runId);
+      if (run === undefined || identity.attempt !== run.envelope.attempt || identity.claimGeneration !== run.claimGeneration || identity.definitionFingerprint !== run.envelope.contractFingerprint) throw new Error("diagnostic-operation-owner-execution-mismatch");
+      const definition = requireWorkflowOperationDisplaySnapshot(run.envelope.operationDisplaySnapshot, { workflowId: run.envelope.workflow, definitionFingerprint: run.envelope.contractFingerprint });
+      requireOperationSourceDeclaration(definition, identity);
+      if (run.envelope.parent === undefined ? identity.childInvocation !== undefined : identity.childInvocation?.parentRunId !== run.envelope.parent.runId || identity.childInvocation.edgeId !== run.envelope.parent.edgeId) throw new Error("diagnostic-operation-child-identity-mismatch");
+      const expected = canonicalJsonStringify(identity);
+      const files = scopedEventStreamFiles(this.#admission.stateRoot, "notes", runNotePartitionScope({ runId: identity.runId, workflow: run.envelope.workflow, instants: runRecordNoteScopeInstants(run) }));
+      let slices = 0;
+      for (const file of files) {
+        let position = { bytesConsumed: 0, linesConsumed: 0 };
+        for (;;) {
+          if (++slices > 128) throw new Error("diagnostic-operation-note-scan-bound-exceeded");
+          const slice = readEventStreamSlice(file, position);
+          for (const line of slice.lines) {
+            const note = NoteWireSchema.parse(JSON.parse(line.text));
+            const occurrence = note.action?.operation;
+            if (occurrence === undefined) continue;
+            const { value: _value, ...retained } = occurrence;
+            if (canonicalJsonStringify(retained) !== expected) continue;
+            if (!("runId" in note) || note.runId !== identity.runId || note.workflow !== run.envelope.workflow || note.attempt !== identity.attempt || note.traceId !== run.envelope.traceId) throw new Error("diagnostic-operation-note-owner-mismatch");
+            return;
+          }
+          const next = slice.cursors.get(file.path);
+          if (next === undefined) throw new Error("diagnostic-operation-note-cursor-missing");
+          if (next.bytesConsumed === position.bytesConsumed) break;
+          position = next;
+        }
+      }
+      throw new Error("diagnostic-operation-exact-occurrence-not-retained");
+    };
     return Object.freeze({
+      validateOperation,
       insert: (input: unknown) => {
         const record = DiagnosticBundleSchema.parse(input);
+        if (record.operation !== undefined) validateOperation(record.operation);
         const json = canonicalJsonStringify(record);
         return this.#authorityWrite("diagnostic_snapshots", () => {
           const existing = this.#readRecord("diagnostic_snapshots", record.bundleId, DiagnosticBundleSchema);

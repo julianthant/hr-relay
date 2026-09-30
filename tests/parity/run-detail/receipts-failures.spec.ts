@@ -33,6 +33,7 @@ for (const theme of PARITY_THEMES) {
     await page.mouse.click(500, 500);
     await page.waitForTimeout(120);
     await assertThemeApplied(page, theme satisfies ParityTheme);
+    await page.locator('[data-panel-failure-record] > .operation-evidence-body > details > summary').click();
     await page.getByRole("button", { name: "Show the diagnostic record" }).click();
 
     const body = await page.locator("body").ariaSnapshot();

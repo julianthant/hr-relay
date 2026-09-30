@@ -819,6 +819,14 @@ export const EVIDENCE_FIELD_CLASSIFICATIONS: readonly EvidenceFieldClassificatio
   ...person(OCR_FORM_PAGE, "subject", "eid"),
   ...open(OCR_FORM_PAGE, "disposition", "providerState", "artifactSha", "artifactBytes"),
 
+  // Private Plan 1 form fixtures wrap their output in a namespace absent from active contracts.
+  ...[KUALI_SEPARATION, OCR_FORM_PAGE, SEARCH, KUALI_MATCH_FINALIZATION, KUALI_VERIFY_FINALIZATION].flatMap((scope) => [
+    ...person(scope, "fictional.employee"),
+    ...open(scope, "fictional.documentNumber", "fictional.lastDayWorked", "fictional.separationDate", "fictional.holidayPay", "fictional.department", "fictional.title", "fictional.reason", "fictional.effectiveDate", "fictional.template", "fictional.pending", "fictional.transaction", "fictional.finalPay", "fictional.mode", "fictional.review"),
+    { scope, path: "fictional.comments", classification: "direct-identifier", transform: "drop" },
+    { scope, path: "fictional.managerComments", classification: "direct-identifier", transform: "drop" },
+  ]),
+
   /* The write-sequencer's sealed transaction fixture exercises every role
      through the same declaration refusal as production; it has no bypass. */
   ...person(taskOutput("ucpath/read-write-fixture-probe"), "eid"),

@@ -28,18 +28,22 @@ function detail(availableSections: readonly string[]) {
 }
 
 describe("run-detail client section registration", () => {
-  it("fetches advertised context and inline sections with the active tab in stable order", () => {
+  it("fetches retained controls and inline sections without retired data or receipt surfaces", () => {
     const run = detail([
       "captures", "identity-gate", "logs", "context-attempts", "failure", "receipt",
       "context-evidence", "parked-write", "context-data",
     ]);
 
     assert.deepEqual(sectionsWanted(run, "logs"), [
-      "context-data", "context-evidence", "context-attempts", "logs", "failure", "parked-write", "identity-gate",
+      "context-attempts", "logs", "failure", "parked-write", "identity-gate",
     ]);
     assert.deepEqual(sectionsWanted(run, "receipt"), [
-      "context-data", "context-evidence", "context-attempts", "receipt", "failure", "parked-write", "identity-gate",
+      "context-attempts", "logs", "failure", "parked-write", "identity-gate",
     ]);
+  });
+
+  it("never fetches an unadvertised Logs section for a retired receipt selection", () => {
+    assert.deepEqual(sectionsWanted(detail(["receipt", "context-data", "context-evidence"]), "receipt"), []);
   });
 
   it("places a response only in its named owner section", () => {

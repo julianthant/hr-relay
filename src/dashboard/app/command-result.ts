@@ -141,6 +141,6 @@ export function commandFailureToast(failure: CommandDispatchFailure): CommandFai
     tone: "danger",
     title: "Result unknown — check the run",
     description: `${failure.caught instanceof Error ? failure.caught.message : String(failure.caught)} `
-      + "The command may already have been recorded: open the run and read its receipt before sending it again.",
+      + "The command may already have been recorded: open the run and check its logs before sending it again.",
   };
 }

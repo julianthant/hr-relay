@@ -15,6 +15,7 @@
  * "the queue rendered these particular words".
  */
 import { expect,test } from "@playwright/test";
+import { RunDetailSectionResponseSchema } from "../../src/domain/dashboard/run-detail.js";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { readA11yTree } from "./helpers/capture.js";
@@ -80,6 +81,16 @@ for (const pair of ROLE_PAIRS) {
   test(`both adapters render the same structure: ${pair.id}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
 
+    if (pair.id === "open-gate-run") {
+      const response = await page.request.get(`${seeded.baseUrl}/api/v1/runs/${seeded.runIds.openGateRun}/identity-gate`);
+      expect(response.ok()).toBe(true);
+      const gate = RunDetailSectionResponseSchema.parse(await response.json());
+      if (gate.section !== "identity-gate") throw new Error("The seeded generic gate served a different section");
+      expect(gate.payload.state).toBe("missing");
+      // Compare the same missing-packet capability. Rich R1 ceremonies have their own gate parity lane.
+      await page.route(`${fixture.baseUrl}/api/v1/runs/${pair.fixtureRun}/identity-gate`, route => route.fulfill({ json: gate }));
+    }
+
     // The tab is PINNED. Left to their defaults the two adapters can legitimately
     // open different tabs — a done run opens on Receipt, but the seeded backend
     // advertises no receipt section for its done run, so it opens on Logs. That
@@ -90,6 +101,7 @@ for (const pair of ROLE_PAIRS) {
       ...(pair.fixtureRun === undefined ? {} : { run: pair.fixtureRun, section: "logs" }),
     });
     const fixtureTree = await readA11yTree(page);
+    if (pair.id === "open-gate-run") await expect(page.locator("[data-panel-decision]").getByText("Unavailable", { exact: true })).toBeVisible();
 
     const seededRunId = pair.seededRun === undefined ? undefined : seeded.runIds[pair.seededRun];
     if (pair.seededRun !== undefined && seededRunId === undefined) {
@@ -100,6 +112,7 @@ for (const pair of ROLE_PAIRS) {
       ...(seededRunId === undefined ? {} : { run: seededRunId, section: "logs" }),
     });
     const seededTree = await readA11yTree(page);
+    if (pair.id === "open-gate-run") await expect(page.locator("[data-panel-decision]").getByText("Unavailable", { exact: true })).toBeVisible();
     await test.info().attach("fixture-tree", { body: fixtureTree, contentType: "text/plain" });
     await test.info().attach("seeded-tree", { body: seededTree, contentType: "text/plain" });
 

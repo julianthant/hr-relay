@@ -111,7 +111,7 @@ export async function verifyRunCaptures(
       if (existing !== undefined && canonicalJsonStringify(existing.artifact) !== canonicalJsonStringify(candidate)) {
         captureCorrupt(runId, `artifact ${candidate.artifactId} has conflicting verified metadata`);
       }
-      const origin = { bundleId: bundle.bundleId, originKind: bundle.origin.kind };
+      const origin = { bundleId: bundle.bundleId, originKind: bundle.origin.kind, ...(bundle.operation === undefined ? {} : { operation: bundle.operation, capturedAt: bundle.createdAt }) };
       if (existing === undefined) {
         artifacts.set(candidate.artifactId, { artifact: candidate, origins: [origin] });
       } else {

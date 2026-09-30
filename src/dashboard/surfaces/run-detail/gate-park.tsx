@@ -1,3 +1,4 @@
+import { OperationEvidenceFrame } from "../operation-evidence-frame.js";
 import { useCallback, useEffect, useState, type ReactNode } from "react";
 import { CornerDownRight, UserRoundSearch, X } from "lucide-react";
 import type { z } from "zod";
@@ -7,6 +8,7 @@ import {
   IconButton,
   Chip,
   MetaLine,
+  KeyValueList,
   FloatingSurface,
   dsFocus,
   dsIcon,
@@ -17,14 +19,14 @@ import {
   useDsEnterTransition,
 } from "../../ds/ui.js";
 import { BannerActions, type DashboardActionHandler } from "../actions.js";
-import { IdentityApproveDialog, type IdentityApproveTarget } from "../identity-approve.js";
+import { IdentityApproveDialog, IdentityGateEvidence, type IdentityApproveTarget } from "../identity-approve.js";
 import { identityGateArm } from "../identity-approve-model.js";
 import { ParkResolveDialog, type ParkResolveTarget, type ParkedWritePayload } from "../park-resolve.js";
 import { parkResolutionArm } from "../park-resolve-model.js";
 import type { PanelSections } from "./sections.js";
 import type { ActionDescriptorWire } from "../../../domain/dashboard/actions.js";
 import type { RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
-import { fmtClock } from "../format.js";
+import { fmtClock, fmtActionClock } from "../format.js";
 import { decisionAge } from "./timeline-model.js";
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
@@ -49,6 +51,7 @@ type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
  */
 export function InlineDecision({
   gate,
+  identity,
   actions,
   runId,
   onAction,
@@ -56,6 +59,7 @@ export function InlineDecision({
   nowIso,
 }: {
   gate: Extract<RunDetailWire["gate"], { state: "open" }>;
+  identity?: PanelSections["identity-gate"];
   actions: readonly ActionDescriptorWire[];
   runId: string;
   onAction: DashboardActionHandler;
@@ -64,21 +68,14 @@ export function InlineDecision({
   nowIso: string;
 }) {
   return (
-    <div
+    <OperationEvidenceFrame
       ref={anchorRef}
       tabIndex={-1}
       data-panel-decision=""
+      role="group"
       aria-label={`Decision — ${gate.label}`}
-      className={cn(
-        "mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)] ml-5 border p-[var(--ds-space-cozy)]",
-        dsRadius.lg,
-        dsFocus,
-        "border-[length:var(--ds-border-w-rail)]",
-        "border-[color:var(--ds-status-waiting-border)] bg-[var(--ds-status-waiting-bg)]",
-      )}
-    >
-      {/* icon 14 + gap 6 = 20px, which is exactly the hanging indent below */}
-      <div className="flex items-center gap-[var(--ds-space-snug)]">
+      className={cn("mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)]", dsFocus)}
+      heading={<div className="operation-decision-heading">
         <UserRoundSearch
           aria-hidden
           className={cn(dsIcon.md, "shrink-0 text-[color:var(--ds-status-waiting-fg)]")}
@@ -86,7 +83,7 @@ export function InlineDecision({
         <span
           className={cn(
             dsText.ui,
-            "min-w-0 truncate font-semibold text-[color:var(--ds-status-waiting-fg)]",
+            "operation-decision-label font-semibold text-[color:var(--ds-status-waiting-fg)]",
           )}
         >
           {gate.label}
@@ -113,20 +110,21 @@ export function InlineDecision({
         >
           open {decisionAge(gate.openedAt, nowIso)} · since {fmtClock(gate.openedAt)}
         </span>
-      </div>
+      </div>}
+      footer={actions.length > 0 ? <><span className={dsText.meta}>Awaiting explicit confirmation</span><BannerActions actions={actions} target={{ runId, expectedVersion: gate.revision }} onAction={onAction} /></> : undefined}
+    >
 
-      <div className="flex flex-col gap-[var(--ds-space-base)] pl-5">
+
+      <div className="flex flex-col gap-[var(--ds-space-base)]">
         {/* Says the quiet part: this run is STOPPED, and it is stopped here. */}
         <span className={cn(dsText.meta, "mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
-          The run is held here. It cannot go past this step until you pick.
+          {identity?.state === "available" ? "Identity confirmation required. The run is held here." : "The run is held here. Resolution evidence is not available."}
         </span>
-        <BannerActions
-          actions={actions}
-          target={{ runId, expectedVersion: gate.revision }}
-          onAction={onAction}
-        />
+        {identity?.state === "available" && <IdentityGateEvidence gate={identity.value} />}
+        {identity?.state !== "available" && <KeyValueList items={[{ key: "Resolution evidence", value: identity === undefined ? "Not yet served" : "Unavailable" }]} />}
+        {identity !== undefined && identity.state !== "available" && <details className={cn("operation-evidence-disclosure", dsText.meta)}><summary>Why resolution is unavailable</summary><p>{"reason" in identity ? identity.reason : identity.message}</p></details>}
       </div>
-    </div>
+    </OperationEvidenceFrame>
   );
 }
 
@@ -149,12 +147,6 @@ export function InlineDecision({
  * compete with the outcome bar for the same glance while saying something the
  * outcome bar cannot say.
  */
-const GATE_RECORD_TONE: Record<"approved" | "rejected", string> = {
-  approved:
-    "border-[color:var(--ds-status-verified-done-border)] bg-[var(--ds-status-verified-done-bg)]",
-  rejected:
-    "border-[color:var(--ds-danger-border)] bg-[var(--ds-danger-quiet)]",
-};
 const GATE_RECORD_FG: Record<"approved" | "rejected", string> = {
   approved: "text-[color:var(--ds-status-verified-done-fg)]",
   rejected: "text-[color:var(--ds-danger)]",
@@ -173,47 +165,17 @@ export function InlineGateDecisionRecord({
 }) {
   const { resolution } = gate;
   return (
-    <div
-      ref={anchorRef}
-      tabIndex={-1}
-      data-panel-gate-record=""
-      aria-label={`Decision record — ${gate.label}`}
-      className={cn(
-        "mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)] ml-5 border p-[var(--ds-space-cozy)]",
-        dsRadius.lg,
-        dsFocus,
-        "border-[length:var(--ds-border-w-rail)]",
-        GATE_RECORD_TONE[resolution],
-      )}
+    <OperationEvidenceFrame ref={anchorRef} tabIndex={-1} data-panel-gate-record=""
+      aria-label={`Decision record — ${gate.label}`} className={cn("mx-[var(--ds-space-cozy)] my-[var(--ds-space-base)]", dsFocus)}
+      heading={<div className="flex items-center gap-[var(--ds-space-snug)]">
+        <UserRoundSearch aria-hidden className={cn(dsIcon.md, GATE_RECORD_FG[resolution])} />
+        <span className={cn(dsText.ui, "min-w-0 font-semibold")}>{gate.label}</span>
+        <Chip label="decision" tone={resolution === "approved" ? "neutral" : "danger"}>{GATE_RECORD_WORD[resolution]}</Chip>
+        <time title={gate.resolvedAt} className={cn(dsText.meta, dsText.nums, "ml-auto shrink-0")}>{fmtActionClock(gate.resolvedAt)}</time>
+      </div>}
     >
-      <div className="flex items-center gap-[var(--ds-space-snug)]">
-        <UserRoundSearch aria-hidden className={cn(dsIcon.md, "shrink-0", GATE_RECORD_FG[resolution])} />
-        <span className={cn(dsText.ui, "min-w-0 truncate font-semibold", GATE_RECORD_FG[resolution])}>
-          {gate.label}
-        </span>
-        {/* The card's own tint already carries the verdict's loudness, so the
-            chip stays neutral for an approval and goes loud only for a refusal
-            — a rejected identity is the one an operator must not read past. */}
-        <Chip label="decision" tone={resolution === "approved" ? "neutral" : "danger"}>
-          {GATE_RECORD_WORD[resolution]}
-        </Chip>
-        <span
-          className={cn(
-            dsText.meta,
-            dsText.nums,
-            "ml-auto shrink-0 whitespace-nowrap opacity-85",
-            GATE_RECORD_FG[resolution],
-          )}
-        >
-          {fmtClock(gate.resolvedAt)}
-        </span>
-      </div>
-
-      <div className="flex flex-col gap-[var(--ds-space-base)] pl-5">
-        {/* The whole point of the record: a name and an instant, both durable. */}
-        <MetaLine items={[`${GATE_RECORD_WORD[resolution]} by ${gate.resolvedBy}`, fmtClock(gate.resolvedAt)]} />
-      </div>
-    </div>
+      <details><summary className={dsText.meta}>Decision audit</summary><MetaLine items={[gate.resolvedBy, gate.resolvedAt]} /></details>
+    </OperationEvidenceFrame>
   );
 }
 

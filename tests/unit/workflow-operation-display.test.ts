@@ -500,6 +500,17 @@ describe("workflow operation display declarations", () => {
     expect(snapshot?.invocations[0]?.label).toBe("Find employee");
     expect(() => requireWorkflowOperationDisplaySnapshot({ ...snapshot, invocations: snapshot?.invocations.map((item) => ({ ...item, label: "Different" })) }, { workflowId: "fixture-operation-display-negative", definitionFingerprint: "a".repeat(64) })).toThrow(/digest/u);
   });
+  it("admits optional exact computed output slots and refuses undeclared or input slots", () => {
+    const computed: TaskOperationDeclaration = { version: 1, id: "computed-result", system: "local", session: { kind: "local", id: "computed-local" }, values: [
+      { id: "result", presentation: "local-operator", source: { kind: "contract-output", path: "selection.status" } },
+      { id: "input", source: { kind: "contract-input", path: "kind" } },
+    ], transforms: [{ id: "derive-result", input: z.strictObject({ text: z.string() }), output: z.strictObject({ result: z.string() }), example: { text: "resolved" }, derive: (input) => ({ result: z.strictObject({ text: z.string() }).parse(input).text }) }], actions: [{ id: "compute-result", kind: "compute", transform: "derive-result", valueSlot: "result" }] };
+    const contract = { id: "ocr/extract-form-page", input: SearchPersonOrg.input, output: SearchPersonOrg.output };
+    expect(() => assertTaskOperationDeclaration(computed, contract)).not.toThrow();
+    expect(() => assertTaskOperationDeclaration({ ...computed, actions: [{ ...computed.actions[0], valueSlot: undefined }] }, contract)).not.toThrow();
+    for (const valueSlot of ["missing", "input"]) expect(() => assertTaskOperationDeclaration({ ...computed, actions: [{ ...computed.actions[0], valueSlot }] }, contract)).toThrow(/declared contract-output value slot/u);
+  });
+
   it("models every required action kind and renders task-owned templates without scenario coupling", () => {
     expect(OPERATION_ACTION_KINDS).toEqual([
       "open-page",

@@ -46,7 +46,9 @@ for (const theme of PARITY_THEMES) {
             await expect(header.getByRole('button', { name: 'Plan a bump' })).toHaveCount(1);
             await expect(header.getByRole('button', { name: 'Refresh' })).toHaveCount(0);
           } else {
-            await expect(header.getByRole('button')).toHaveCount(0);
+            await expect(header.getByRole('button')).toHaveCount(2);
+            await expect(header.getByRole('button', { name: 'Source', exact: true })).toHaveCount(1);
+            await expect(header.getByRole('button', { name: 'Version registry', exact: true })).toHaveCount(1);
           }
           await expect(header).not.toContainText('read-only');
         }

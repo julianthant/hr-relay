@@ -64,6 +64,7 @@ export interface DiagnosticAttachmentSource {
 
 export interface DiagnosticCaptureRequest {
   readonly trigger: DiagnosticCaptureTrigger;
+  readonly operation?: DiagnosticBundle["operation"];
   readonly runId: string;
   /** Mandatory for every trigger but `operator-request`. */
   readonly failureId?: string;
@@ -130,6 +131,10 @@ export function createDiagnosticCaptureService(
       ...(request.failureId === undefined ? {} : { failureId: request.failureId }),
       ...(request.requestedBy === undefined ? {} : { requestedBy: request.requestedBy }),
     });
+    if (request.operation !== undefined) {
+      if (request.operation.runId !== request.runId || request.operation.definitionFingerprint !== request.descriptorFingerprint) throw new Error("diagnostic-operation-request-owner-mismatch");
+      dependencies.authority.diagnosticBundles.validateOperation(request.operation);
+    }
     const capturedAt = IsoInstantSchema.parse(dependencies.clock.now().toISOString());
     // Keep the capture's original classified values with its provenance.
     const redaction = assertDiagnosticExportSafe(redactDiagnosticFields(request.fields));
@@ -153,6 +158,7 @@ export function createDiagnosticCaptureService(
       bundleId: DiagnosticBundleIdSchema.parse(dependencies.ids.uuid()),
       runId: RunIdSchema.parse(request.runId),
       origin,
+      ...(request.operation === undefined ? {} : { operation: request.operation }),
       createdAt: capturedAt,
       contentDigest: deriveDiagnosticContentDigest({
         runId: request.runId,
@@ -162,6 +168,7 @@ export function createDiagnosticCaptureService(
         descriptorFingerprint: request.descriptorFingerprint,
         redaction,
         attachments,
+        ...(request.operation === undefined ? {} : { operation: request.operation }),
       }),
       configFingerprint: FingerprintSchema.parse(request.configFingerprint),
       descriptorFingerprint: FingerprintSchema.parse(request.descriptorFingerprint),

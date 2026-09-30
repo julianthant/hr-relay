@@ -1,3 +1,5 @@
+import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { OperationSourceRequestSchema, OperationSourceResponseSchema, type OperationSourceRequest, type OperationSourceResponse } from "../../domain/dashboard/operation-structure.js";
 import { RunAdvisoryWireSchema,type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
 import {
   ItemAttemptHistoryResponseSchema,
@@ -32,6 +34,7 @@ export function runIdentityError(context: string, code: string, requestedRunId: 
 
 
 export interface DetailQueries {
+  operationSource(runId: string, request: OperationSourceRequest, signal?: AbortSignal): Promise<OperationSourceResponse>;
 
   runDetail(runId: string): Promise<RunDetailWire>;
 
@@ -68,6 +71,17 @@ export interface DetailQueries {
 }
 
 export function createDetailQueries(transport: DashboardTransport): DetailQueries { return Object.freeze({
+
+    async operationSource(runId: string, request: OperationSourceRequest, signal?: AbortSignal): Promise<OperationSourceResponse> {
+      const parsed = OperationSourceRequestSchema.parse(request);
+      const path = `/api/v1/runs/${encodeURIComponent(runId)}/operation-source?request=${encodeURIComponent(JSON.stringify(parsed))}`;
+      const response = parseOrThrow(OperationSourceResponseSchema, `GET ${path}`, await transport.requestJson(path, signal === undefined ? undefined : { signal }));
+      if (response.state === "found" && !response.structure.observations.some((observation) => {
+        const { value: _value, ...identity } = observation.occurrence;
+        return canonicalJsonStringify(identity) === canonicalJsonStringify(parsed.identity);
+      })) throw runIdentityError("operation source", "OPERATION_SOURCE_IDENTITY_MISMATCH", runId);
+      return response;
+    },
 
     async runDetail(runId: string): Promise<RunDetailWire> {
       const context = `GET /api/v1/runs/${runId}`;

@@ -1,3 +1,5 @@
+import { FailureDisplaySchema } from "./failure-display.js";
+import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../protected-input.js";
 import { z } from "zod";
@@ -741,6 +743,7 @@ const ReceiptSectionSchema = RunEvidenceReceiptSchema;
  * separate 2g slice, so an absent bundle says why instead of rendering empty.
  */
 export const FailureDetailWireSchema = z.strictObject({
+  display: FailureDisplaySchema.optional(),
   resolution: z.strictObject({capability:FailureResolutionCapabilitySchema,capture:FailureResolutionCaptureSchema}).optional(),
   runId: RunIdSchema,
   failureId: FailureIdSchema,
@@ -799,8 +802,12 @@ export const FailureDetailWireSchema = z.strictObject({
 
 /** D292: provenance is a closed membership, not failure detail or actor data. */
 export const RunCaptureOriginWireSchema = z.strictObject({
+  operation: DeclaredActionIdentitySchema.optional(),
+  capturedAt: IsoInstantSchema.optional(),
   bundleId: DiagnosticBundleIdSchema,
   originKind: z.enum(["failure", "unexpected-state", "subject-mismatch", "recovery-park", "operator-request"]),
+}).superRefine((origin, context) => {
+  if ((origin.operation === undefined) !== (origin.capturedAt === undefined)) context.addIssue({ code: "custom", message: "an exact capture anchor requires its capture instant" });
 });
 export const RunCaptureArtifactWireSchema = z.strictObject({
   artifact: ArtifactRefWireSchema,

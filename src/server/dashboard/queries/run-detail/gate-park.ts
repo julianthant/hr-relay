@@ -25,7 +25,7 @@ import { SectionUnavailableError } from "../../../failures.js";
 import type { RunDetailQueryDeps } from "../run-detail-types.js";
 import { requireTrustRun } from "../../../trust/run-reader.js";
 import { availableSections } from "./availability.js";
-import { descriptorRuntimeNodes } from "../../../../base/workflow.js";
+import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../../base/workflow.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../domain/workflow/build-manifest.js";
 import { checkpointLookupKey } from "../../../../domain/workflow/checkpoint.js";
 import { deriveSchemaHash } from "../../../../domain/schema-bound-value.js";
@@ -133,10 +133,15 @@ export function buildRunGate(
     if (result.runId !== runId) throw new Error(`TRUST_EVIDENCE_IDENTITY_MISMATCH: gate for ${runId}`);
   }
   if (run.lifecycle.state === "parked-gate") {
+    const descriptor = deps.canonical?.descriptors.resolve(run.envelope.workflow);
+    const gateId = String(run.lifecycle.gateId);
+    const gate = descriptor !== undefined && descriptor.version === run.envelope.descriptorVersion && descriptor.contractFingerprint === run.envelope.contractFingerprint
+      ? descriptorRuntimeNodes(descriptor).find((node) => node.kind === "gate" && String(node.id) === gateId)
+      : undefined;
     return {
       state: "open",
       gateId: deterministicUuid(`gate:${runId}:${run.lifecycle.gateId}`),
-      label: run.lifecycle.gateId,
+      label: gate === undefined ? run.lifecycle.gateId : runtimeNodeLabel(gate),
       openedAt: run.lifecycle.parkedAt,
       revision: 1,
     };

@@ -174,6 +174,8 @@ describe("commandFailureToast — where the command died decides what may be cla
       toast.description.includes("open the run"),
       "an unknown result is only actionable if the toast names the one thing that resolves it",
     );
+    assert.ok(toast.description.includes("check its logs"), "unknown results point to the current inspection surface");
+    assert.ok(!toast.description.includes("receipt"), "the retired tab cannot be a recovery destination");
   });
 
   it("keeps the two stages DISTINGUISHABLE, which is the whole finding", () => {

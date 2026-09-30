@@ -83,7 +83,7 @@ export function captureDayRevision(runId: string, rowRevision: number) {
   return DashboardDayWireSchema.parse({ ...CAPTURE_DAY,
     workflowCounts: [{ workflowId: "fixture-workflow", count: 1, statusCounts: counts }], statusCounts: counts,
     queueSurfaces: [{
-      runId, itemId: "00000000-0000-4000-8000-000000000740", workflowId: "fixture-workflow",
+      runId, itemId: runId, workflowId: "fixture-workflow",
       traceId: "fw-100001-0000", attempt: 1, lineage: { state: "root" }, actorId: "local-operator",
       appVersion: { state: "present", value: "0.1.0" }, descriptorVersion: 1, descriptorHash: HASH,
       configFingerprint: HASH, resolvedInstances: [], dryRun: false, priority: "interactive",
@@ -236,7 +236,7 @@ export async function mountCaptureApp(input: {
     throw error;
   }
   return { client, host, requests, unmount,
-    async navigate(runId: string) {
+    async navigate(runId: string | undefined) {
       await act(async () => {
         const historyState: unknown = window.history.state;
         assert.ok(typeof historyState === "object" && historyState !== null, "the mounted dashboard must own history state");
@@ -245,7 +245,7 @@ export async function mountCaptureApp(input: {
         window.history.pushState(
           { hrDashboardRouteCursor: routeCursor + 1 },
           "",
-          `/?day=2026-08-30&run=${runId}&section=receipt`,
+          runId === undefined ? "/?day=2026-08-30" : `/?day=2026-08-30&run=${runId}&section=receipt`,
         );
         window.dispatchEvent(new PopStateEvent("popstate"));
       });

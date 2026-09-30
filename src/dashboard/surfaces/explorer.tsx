@@ -1,3 +1,4 @@
+import { OperationTimeline } from "./operation-structure.js";
 import { observeAsyncResource } from "../state/async-resource.js";
 import "./explorer.css";
 /**
@@ -213,6 +214,10 @@ const DIR_INK = {
  * is the deliberate cost — the DS's own note already says a row that is not a
  * track of peers "is a flex row, and the chip is one item in it".
  */
+function SecondaryDefinition({ secondary, children }: { secondary: boolean; children: ReactNode }) {
+  return secondary ? <details className="explorer-secondary-definition"><summary className={dsText.meta}>Contracts and presentation</summary>{children}</details> : <>{children}</>;
+}
+
 function FactChips({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-w-0 flex-wrap items-center gap-[var(--ds-space-tight)]">
@@ -2493,7 +2498,7 @@ export function WorkflowExplorer({
       <PageHeader
         title="Explorer"
         icon={<Workflow aria-hidden className={dsIcon.md} />}
-        className="explorer-header min-h-[calc(var(--ds-h-bar)+var(--ds-space-cozy))]"
+
         actions={<div className="flex items-center gap-[var(--ds-space-tight)]">
           {workflow !== undefined && <Popover>
             <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<FileCode2 aria-hidden className={dsIcon.sm} />}>Source</Button></PopoverTrigger>
@@ -2591,8 +2596,8 @@ export function WorkflowExplorer({
                 className={cn("explorer-main min-h-0 min-w-0 overflow-y-auto", dsSurface.bodyPage)}
               >
                 <DsBodyScope className="!max-w-none">
-                <WorkflowIntroduction workflow={workflow} />
-                <div className="explorer-columns grid min-w-0 grid-cols-[minmax(0,1fr)_190px] gap-[20px] min-[1151px]:grid-cols-[minmax(0,1fr)_minmax(205px,250px)] min-[1151px]:gap-[30px]">
+                {workflow.operationStructure.state === "declared" ? <div className="explorer-introduction"><PageHeading as="h2" title={workflow.label} /><div className="explorer-summary">{workflow.summary.state === "authored" && <Prose prose={workflow.summary} />}</div></div> : <WorkflowIntroduction workflow={workflow} />}
+                {workflow.operationStructure.state === "declared" && <OperationTimeline definition={workflow.operationStructure.definition} labels={Object.fromEntries(workflow.nodes.map((node) => [node.id, node.label]))} sessionNeeds={workflow.nodes.flatMap((node) => node.tasks.flatMap((task) => task.binding.state === "bound" ? task.binding.sessions ?? [] : []))} />}<SecondaryDefinition secondary={workflow.operationStructure.state === "declared"}><div className="explorer-columns grid min-w-0 grid-cols-[minmax(0,1fr)_190px] gap-[20px] min-[1151px]:grid-cols-[minmax(0,1fr)_minmax(205px,250px)] min-[1151px]:gap-[30px]">
                 <GraphPanel
                   wire={wire}
                   workflow={workflow}
@@ -2632,7 +2637,7 @@ export function WorkflowExplorer({
                     </Dialog>
                   </aside>
                 )}
-                </div>
+                </div></SecondaryDefinition>
                 </DsBodyScope>
                 <ExplorerEditDialog
                   workflow={workflow}

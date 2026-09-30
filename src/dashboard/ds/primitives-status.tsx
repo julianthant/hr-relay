@@ -256,7 +256,7 @@ export const DS_STATUS: Record<DsStatus, DsStatusSpec> = {
     dot: "bg-[var(--ds-status-verified-done-mark)]",
     dotBorder: "border-[color:var(--ds-status-verified-done-mark)]",
     meaning:
-      "Finished AND read back from the system. The receipt carries the proof.",
+      "Finished and read back from the system.",
   },
 };
 

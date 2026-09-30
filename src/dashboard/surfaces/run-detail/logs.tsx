@@ -1,3 +1,4 @@
+import type { PanelSections } from "./sections.js";
 import { Fragment, useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownToLine,
@@ -35,9 +36,12 @@ import type { DashboardActionHandler } from "../actions.js";
 import { InlineDecision, InlineGateDecisionRecord } from "./gate-park.js";
 import { InlineFailureRecord } from "./receipt-failure.js";
 import { InlineParkedWrite, type ParkedWritePayload } from "../park-resolve.js";
+import { OperationSourceNavigation } from "../operation-source-navigation.js";
+import { OperationObservedGroup } from "../operation-structure.js";
+import { operationGroupBreakIds, contiguousOperationRows } from "../operation-structure-model.js";
 import { fmtClock, plural } from "../format.js";
 import { RunCaptures } from "../run-captures.js";
-import type { RunCapturesState } from "../run-captures-model.js";
+import { exactBundleCaptures, exactOperationCaptures, type RunCapturesState } from "../run-captures-model.js";
 import { RunProvenanceBar, type QueueSurfaceWire } from "../run-identity.js";
 import type { BrowserSystemId } from "../system-chip-model.js";
 import { SystemChip } from "../system-chip.js";
@@ -349,6 +353,7 @@ export function LogsTab({
   notes,
   failure,
   parked,
+  identity,
   gateActions,
   onResolveGate,
   onResolvePark,
@@ -368,6 +373,7 @@ export function LogsTab({
   notes: NotePage | undefined;
   failure: FailurePayload | undefined;
   parked: ParkedWritePayload | undefined;
+  identity?: PanelSections["identity-gate"];
   gateActions: readonly ActionDescriptorWire[];
   /**
    * The gate's own resolutions open the ceremony dialog (D226). They do NOT
@@ -421,12 +427,23 @@ export function LogsTab({
   // The park's own instant, off the served section — the run stopped when the
   // kernel parked it, which is not the same moment as any line in the stream.
   const parkedAt = parked === undefined ? undefined : anchorIndex(lines, parked.parkedAt);
+  const operationStructure = paged.page?.operationStructure;
+  const breakIds = operationGroupBreakIds(lines, [decisionAt, gateRecordAt, failureAt, parkedAt]);
   const errorNotes = lines.flatMap((row) => row.kind === "note" && row.note.level === "error" ? [row.note] : []);
+  const failureBundleId = failureAt !== undefined && failure?.state === "available"
+    && failure.value.diagnosticBundle.state === "present" ? failure.value.diagnosticBundle.bundleId : undefined;
+  const ordinaryCaptures = captures?.state === "available" ? captures.items.filter(item =>
+    failureBundleId === undefined || exactBundleCaptures([item], failureBundleId).length === 0) : undefined;
+  const tailCaptures = captures?.state === "available" ? { ...captures, items: (ordinaryCaptures ?? []).filter(item =>
+    operationStructure?.state !== "observed" || !operationStructure.observations.some(observation =>
+      (observation.occurrence.state === "confirmed" || observation.occurrence.state === "failed" || observation.occurrence.state === "not-run")
+      && exactOperationCaptures([item], observation.occurrence).length > 0)) } : captures;
 
   const decision =
     gate.state === "open" ? (
       <InlineDecision
         gate={gate}
+        identity={identity}
         actions={gateActions}
         runId={detail.runId}
         onAction={onResolveGate}
@@ -446,15 +463,16 @@ export function LogsTab({
         anchorRef={failureRef}
         runId={detail.runId}
         aiAdvisory={aiAdvisory}
+        captures={captures?.state === "available" ? captures.items : undefined}
       />
     ) : null;
   const parkedRecord =
     parked !== undefined ? (
-      <InlineParkedWrite parked={parked} onResolve={onResolvePark} anchorRef={parkedRef} />
+      <InlineParkedWrite key={`${parked.runId}:${parked.writeIntentId}:${String(parked.generation)}`} parked={parked} onResolve={onResolvePark} anchorRef={parkedRef} />
     ) : null;
 
   return (
-    <>
+    <OperationSourceNavigation key={detail.runId} observations={operationStructure?.state === "observed" ? operationStructure.observations.filter((item) => lineIndex.has(item.logId)) : []} onReveal={() => setQuery("")}>
       {/* NO SCROLLER OF ITS OWN. The panel body is one region, so the stream is
           plain content in it and the track beside it runs the whole panel. */}
       <div className="flex flex-1 flex-col pb-[var(--ds-space-base)] pt-[var(--ds-space-tight)]">
@@ -502,14 +520,15 @@ export function LogsTab({
                     <span aria-hidden className="h-px min-w-0 flex-1 bg-[var(--ds-border-subtle)]" />
                   </div>
                 )}
-                {group.rows.map((row) => {
-                  const index = lineIndex.get(row.logId);
+                {(operationStructure?.state === "observed" ? contiguousOperationRows(group.rows, operationStructure.definition, operationStructure.observations, breakIds) : group.rows.map((row) => ({ rows: [row], observations: [] }))).map((chunk) => {
+                  const row = chunk.rows[0];
+                  const index = lineIndex.get(chunk.rows.at(-1)!.logId);
                   if (index === undefined) throw new Error(`log row ${String(row.logId)} is absent from its own grouped sequence`);
-                  const hit = matches(row);
+                  const hit = chunk.rows.some(matches);
                   const dim = trimmed.length > 0 && !hit;
                   return (
                     <div key={row.logId}>
-                      <LogLine row={row} hit={hit} dim={dim} />
+                      {operationStructure?.state === "observed" && chunk.observations.length > 0 ? <OperationObservedGroup definition={operationStructure.definition} observations={chunk.observations} ownerRunId={detail.runId} captures={ordinaryCaptures} hit={hit} dim={dim} /> : <LogLine row={row} hit={hit} dim={dim} />}
                       {decisionAt === index && decision}
                       {gateRecordAt === index && gateRecord}
                       {failureAt === index && failureRecord}
@@ -543,7 +562,7 @@ export function LogsTab({
             </Button>
           </div>
         )}
-        {captures !== undefined && <RunCaptures captures={captures} compact />}
+        {tailCaptures !== undefined && <RunCaptures captures={tailCaptures} compact />}
       </div>
 
       {/* Pinned to the FLOOR of the same scroller, not parked below it: a
@@ -592,6 +611,6 @@ export function LogsTab({
           </span>
         )}
       </div>
-    </>
+    </OperationSourceNavigation>
   );
 }

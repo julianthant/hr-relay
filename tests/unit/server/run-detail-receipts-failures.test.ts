@@ -83,6 +83,11 @@ describe("run-detail failure diagnostic-bundle linkage", () => {
     const h = fixture();
     const value = availableFailure(buildReceiptFailureSection(h.f.deps, h.run.envelope.runId, "failure"));
     assert.equal(value.diagnosticBundle.state, "absent");
+    assert.ok(value.display?.title);
+    assert.ok(value.display?.observation);
+    assert.equal(value.summary, h.failure.summary);
+    assert.deepEqual(value.remediation, h.failure.remediation);
+    assert.equal(value.writeState, h.failure.writeState);
   });
 
   it.each([

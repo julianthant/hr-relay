@@ -5,8 +5,8 @@ import { PARITY_DIST_DIR,ensureParityBundle } from "./helpers/bundle.js";
 import { startFixtureServer,type FixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 
-/** What `--ds-h-toolbar` paints for a mouse: `--ds-h-md`. */
-const TOOLBAR_PAINT = 28;
+/** Approved shared Explorer/Dashboard toolbar height: `--ds-h-lg`. */
+const TOOLBAR_PAINT = 32;
 
 const VIEWPORT = { width: 1440, height: 900 } as const;
 

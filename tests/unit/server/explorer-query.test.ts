@@ -313,6 +313,14 @@ describe("Explorer presentation override readback", () => {
 });
 
 describe("the workflow explorer projection", () => {
+  it("serves startup session needs from each bound task implementation", () => {
+    for (const projected of allTasks()) {
+      if (projected.binding.state !== "bound") continue;
+      const task = taskStoreRegistry.stores.flatMap((store) => Object.values(store.tasks)).find((candidate) => candidate.contract.id === projected.taskId);
+      assert.ok(task);
+      assert.deepEqual(projected.binding.sessions, task.impl.sessions);
+    }
+  });
   it("parses through its own wire schema over the real registry", () => {
     const wire = buildWorkflowExplorer(explorerQueryDeps(CLOCK, HASH));
     // `buildWorkflowExplorer` already parses on the way out; re-parsing proves

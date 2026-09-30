@@ -56,6 +56,14 @@ function openGate(): Extract<z.infer<typeof GateDecisionWireSchema>, { state: "o
 }
 
 describe("B91 — the open decision card prints the age AND the clock", () => {
+  it("keeps a generic gate neutral when no identity packet was served", () => {
+    const html = renderToStaticMarkup(createElement(InlineDecision, { gate: openGate(), actions: [], runId: RUN_ID, onAction: () => undefined, nowIso: NOW }));
+    assert.ok(html.includes("Resolution evidence is not available"));
+    assert.ok(html.includes("Not yet served"));
+    assert.ok(!html.includes("choose an action"));
+    assert.ok(!html.includes("approve or reject this subject"));
+  });
+
   it("carries both halves of the wait", () => {
     const html = renderToStaticMarkup(createElement(InlineDecision, {
       gate: openGate(),

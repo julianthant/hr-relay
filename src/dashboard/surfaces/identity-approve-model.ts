@@ -20,3 +20,25 @@ export function identityGateArm(action: ActionDescriptorWire): "approved" | "rej
   if (action.kind !== "command" || action.command !== "resolve-gate") return undefined;
   return action.resolution;
 }
+
+
+import type { IdentityGateDetail } from "../app/identity-ceremony.js";
+
+const JOB_DISPOSITION_LABEL = {
+  "single-active-job": "One active job", "no-active-job": "No active jobs",
+  "concurrent-active-jobs": "Multiple active jobs", "indeterminate-status": "Employment status unknown",
+} as const;
+
+export function identityComparisonRows(gate: IdentityGateDetail) {
+  const { packet } = gate;
+  return packet.comparisons.map(row => {
+    switch (row.field) {
+      case "name": return { ...row, label: "Name" };
+      case "eid": return { ...row, label: "Employee ID" };
+      case "employment": return { ...row, label: "Employment", documentValue: "Separation request", ucpathValue: `${JOB_DISPOSITION_LABEL[packet.jobs.disposition]} · ${String(packet.jobs.rowCount)} record(s)` };
+      case "name-search": return { ...row, label: "Name search", documentValue: packet.documentName,
+        ucpathValue: packet.nameSearch.status === "resolved" ? `${packet.nameSearch.candidate.name} · ${packet.nameSearch.candidate.eid}`
+          : packet.nameSearch.status === "ambiguous" ? `Multiple candidates · ${packet.nameSearch.candidateEids.join(", ")}` : "No matching employee" };
+    }
+  });
+}

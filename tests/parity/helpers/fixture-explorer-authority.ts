@@ -21,6 +21,7 @@ import { operatorMutationIngressGuard } from "../../../src/server/dashboard/rout
 import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
 import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
 import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
+import type { ExplorerQueryDeps } from "../../../src/server/dashboard/queries/explorer.js";
 import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
 import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
@@ -32,7 +33,7 @@ import { fixtureHelloEnvelope, fixtureSnapshotEnvelope, fixtureHealthEnvelope, s
 
 function unexpected(): never { throw new Error("Explorer acceptance reached an unrelated effect"); }
 
-export async function startExplorerAuthorityServer(fault?: "empty-registry" | "unresolved-sources" | "stale-catalog" | "malformed-catalog") {
+export async function startExplorerAuthorityServer(fault?: "empty-registry" | "unresolved-sources" | "stale-catalog" | "malformed-catalog", operation?: Pick<ExplorerQueryDeps, "modules" | "buildManifest">) {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "explorer-browser-"));
   const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
   const database = AuthorityDatabase.open({ path: join(root, "authority.db"), busyTimeoutMs: 250, migrationOwner: "explorer-browser" }, clock);
@@ -63,7 +64,7 @@ export async function startExplorerAuthorityServer(fault?: "empty-registry" | "u
   const routes = composition.routes;
   registerExplorerRoutes(app, {
     ...routes,
-    explorer: { ...routes.explorer,
+    explorer: { ...routes.explorer, ...operation,
       ...(fault === "empty-registry" ? { modules: [] } : {}),
       ...(fault === "unresolved-sources" ? { listScenarioSources: () => [] } : {}),
     },

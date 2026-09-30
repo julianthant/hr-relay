@@ -268,6 +268,10 @@ export function FooterActions({
 // Banner — the decision the row is sitting on
 // ---------------------------------------------------------------------------
 
+export function DataActions({ actions, target, onAction = NOOP_ACTION }: { actions: readonly ActionDescriptorWire[]; target: ActionTarget; onAction?: DashboardActionHandler }) {
+  return <div className="flex gap-[var(--ds-space-snug)]">{actionsAt(actions, "data").map((action) => <BareButton key={action.key} className={intentPill(action.intent, "md")} onClick={() => onAction(action, target)}>{action.label}</BareButton>)}</div>;
+}
+
 export function BannerActions({
   actions,
   target,

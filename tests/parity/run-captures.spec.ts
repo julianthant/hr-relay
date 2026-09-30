@@ -1,4 +1,4 @@
-/** D292's actual Receipt consumer over the opt-in real HTTP capture fixture. */
+/** D292 captures in Logs, including historical Receipt URL compatibility. */
 import { expect,test,type Locator,type Page } from "@playwright/test";
 import { createHash } from "node:crypto";
 import { RunDetailWireSchema } from "../../src/domain/dashboard/run-detail.js";
@@ -39,6 +39,8 @@ function captureRegion(page: Page): Locator {
 
 async function openReceipt(page: Page, runId: string): Promise<Locator> {
   await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: runId, section: "receipt" });
+  await expect(page.getByRole("tab", { name: "Receipt", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("tab", { name: "Logs", exact: true })).toHaveAttribute("aria-selected", "true");
   const region = captureRegion(page);
   await expect(region).toBeVisible();
   return region;
@@ -300,8 +302,8 @@ test(
   await installTheme(page, { name: "graphite-warm", attribute: "dark" });
   const region = await openReceipt(page, FIXTURE_IDS.doneRun);
   await assertThemeApplied(page, { name: "graphite-warm", attribute: "dark" });
-  await expect(page.getByLabel("Run detail", { exact: true }).getByText("Done", { exact: true })).toBeVisible();
-  await expect(page.getByText(EXPECTED_FULL_RECEIPT_ID, { exact: false })).toBeVisible();
+  await expect(page.getByLabel("Run detail", { exact: true })).toContainText("verified-done");
+  await expect(page.getByText(EXPECTED_FULL_RECEIPT_ID, { exact: false })).toHaveCount(0);
   await expect(region.locator("article")).toHaveCount(2);
   await attachRenderedEvidence(page, "run-captures-full-graphite-desktop", 'region "Run captures":');
 
@@ -373,7 +375,7 @@ test.describe("narrow desktop Receipt", () => {
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Workflow Panel", exact: true })).toHaveCount(0);
     await assertThemeApplied(page, { name: "paper-ink", attribute: "light" });
-    await expect(page.getByText("No receipt", { exact: true })).toBeVisible();
+    await expect(page.getByText("No receipt", { exact: true })).toHaveCount(0);
     const capture = captureFor(FIXTURE_IDS.failedRun, RUN_CAPTURE_FIXTURE_IDS.png);
     const tile = region.locator("article").filter({ hasText: capture.artifact.artifactId });
     await expect(tile).toHaveClass(/border-\[color:var\(--ds-danger\)\]/u);

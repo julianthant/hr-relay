@@ -1,56 +1,10 @@
-/**
- * THE IDENTITY-APPROVAL CEREMONY (ref write-safety §14.4/§14.6/§14.10, D226).
- *
- * The gate asks one question — *is this the right person* — and ref write-safety §14.6
- * risk 1 is explicit that the control must reflect the evidence. The gate is
- * present only for a name-resolved EID; supplied-EID read-back proceeds with
- * machine authority and never renders this dialog. When present, the SERVER
- * decides the decision shape.
- *
- * This surface renders what the server said and adds nothing:
- *
- * | served `approvalShape` | what the operator does |
- * |---|---|
- * | `one-click` | reads the packet and presses the server's own confirm verb |
- * | `choose-a-candidate` | picks WHICH candidate the document means, from the served options |
- * | `type-the-eid` | types the 8-digit EID — and it must still be one the packet showed |
- *
- * plus the fourth ceremony every shape carries: **reject**, with the operator's
- * own reason, which terminalizes the run and never falls through to a write.
- *
- * **A shape this build does not know draws a REFUSAL, never the approve
- * button.** That is the one rule this file exists to keep. A surface that met
- * an unrecognised ceremony and approved anyway would be §14.6 risk 1 with the
- * server's own guard removed — strictly worse than no guard, because the server
- * would still be reporting that it had asked for a choice.
- *
- * WHAT IS ON SCREEN, and why each part is there rather than one level away:
- *
- *  - **the disagreements, FIRST** (§14.6 risk 1). `comparisons` arrives sorted
- *    disagreements-first by construction and is rendered in that order, under
- *    its own heading, above everything that agrees;
- *  - **every approvable candidate**, in `CompareGrid` — the primitive that
- *    exists because two identity candidates are read ACROSS, name against name
- *    and EID against EID, not down a page;
- *  - **the write plan** (§14.10 / D211). The approval binds to the digest of the
- *    exact packet shown, so the values the writes will consume are ON the packet
- *    — *an approval of a person is not an approval of a date*. Rendering them
- *    here is what makes that binding something the operator actually saw.
- *
- * Every fact is served. This file composes no sentence about the decision, and
- * the commit verb is the SERVER's `confirmLabel` (ref frontend-backend-integration §8.5), for the same
- * reason `park-resolve.tsx` gives: only the server knows the casualties.
- */
+/** R1 evidence presentation. The served ceremony and complete bound write plan govern approval. */
 import { useEffect, useState } from "react";
 import { CheckCircle2, CircleSlash } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   Banner,
   Button,
-  Chip,
-  ChipRow,
-  CompareCard,
-  CompareGrid,
   Dialog,
   DialogBody,
   DialogContent,
@@ -63,14 +17,13 @@ import {
   Refusal,
   SectionLabel,
   Textarea,
-  Well,
   dsIcon,
   dsText,
   useToasts,
 } from "../ds/ui.js";
 import { RefusedNotice } from "./refused-notice.js";
 import type { Refused } from "./refused-notice-model.js";
-import { identityGateArm } from "./identity-approve-model.js";
+import { identityGateArm, identityComparisonRows } from "./identity-approve-model.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { composeCommandRequest, type CommandAction } from "../app/command-dispatch.js";
 import { settleCommandResult } from "../app/command-result.js";
@@ -100,121 +53,32 @@ type Outcome =
 
 /* ── the evidence, in §14.4's own order ──────────────────────────────────── */
 
-/**
- * The subject the packet is about, as served chips.
- *
- * `documentName` and `ucpathName` sit side by side because the incident this
- * whole control exists for — `T002173685` — was two spellings of one name that
- * `classifyNameSimilarity` calls the SAME person. The operator reads them; the
- * classifier's tier is printed beside them rather than instead of them.
- */
 function PacketSubject({ gate }: { gate: IdentityGateDetail }) {
-  const { packet } = gate;
-  return (
-    <Well className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-      {packet.documentNumber === "protected document" ? null : <Chip label="document">{packet.documentNumber}</Chip>}
-      <Chip label="document name">{packet.documentName}</Chip>
-      <Chip label="UCPath name">{packet.ucpathName}</Chip>
-      <Chip label="name tier" tone={packet.nameTier === "same" ? "neutral" : "warning"}>
-        {packet.nameTier}
-      </Chip>
-      <Chip label="EID read">{packet.emplId}</Chip>
-      <Chip label="observed">{fmtClock(packet.observedAt)}</Chip>
-      {/*
-        The packet's own identity, cut for the eye and whole on the element's
-        `title`. §14.5 binds this approval to THIS digest: if the evidence moves
-        between opening the dialog and pressing the verb, the identity authority check
-        refuses with `identity-approval-evidence-moved` and the gate re-opens.
-        The ceremony is printed beside it because it is the server's statement
-        about this decision's risk, and the operator is entitled to see that the
-        control they are being given is the one the server asked for.
-      */}
-      <MetaLine
-        items={[
-          `packet ${gate.evidenceDigest.slice(0, 12)}…`,
-          `ceremony ${gate.approvalShape}`,
-          `parked ${fmtClock(gate.parkedAt)}`,
-        ]}
-      />
-    </Well>
-  );
+  return <div className="operation-identity-context">
+    <span>{gate.packet.documentNumber === "protected document" ? "Protected separation document" : gate.packet.documentNumber}</span>
+    <time>{fmtClock(gate.packet.observedAt)}</time>
+  </div>;
 }
 
-/**
- * DISCONFIRMING EVIDENCE FIRST — §14.6 risk 1's cheap half, and the reason the
- * packet's `comparisons` array is ordered rather than merely populated.
- *
- * The two groups are drawn as two SECTIONS with their own headings, not as one
- * list with a mark per row, because the operator's eye has to land on the
- * disagreements before it lands on the verb. A run where nothing disagrees says
- * so in a sentence — an empty heading would read as a rendering fault.
- */
 function PacketComparisons({ gate }: { gate: IdentityGateDetail }) {
-  const disagreements = gate.packet.comparisons.filter(({ agrees }) => !agrees);
-  const agreements = gate.packet.comparisons.filter(({ agrees }) => agrees);
-  return (
-    <div className="flex flex-col gap-[var(--ds-space-cozy)]">
-      <section className="flex flex-col gap-[var(--ds-space-snug)]">
-        <SectionLabel>What disagrees</SectionLabel>
-        {disagreements.length === 0 ? (
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>
-            Every compared field agreed. That is not the same as being the right person — it is the
-            absence of a reason to doubt it.
-          </span>
-        ) : (
-          <KeyValueList
-            items={disagreements.map((row) => ({
-              key: row.field,
-              tone: "warning" as const,
-              value: `${row.documentValue} → ${row.ucpathValue} · ${row.note}`,
-            }))}
-          />
-        )}
-      </section>
-      {agreements.length > 0 && (
-        <section className="flex flex-col gap-[var(--ds-space-snug)]">
-          <SectionLabel>What agrees</SectionLabel>
-          <KeyValueList
-            items={agreements.map((row) => ({
-              key: row.field,
-              value: `${row.documentValue} · ${row.note}`,
-            }))}
-          />
-        </section>
-      )}
-    </div>
-  );
+  const rows = identityComparisonRows(gate);
+  return <table className="operation-comparison">
+    <caption className="sr-only">Identity evidence</caption>
+    <thead><tr><th scope="col">Field</th><th scope="col">Request</th><th scope="col">UCPath</th></tr></thead>
+    <tbody>{rows.map((row, index) => <tr key={`${row.field}:${String(index)}`} data-disagrees={!row.agrees}>
+      <th scope="row">{row.label}</th><td>{row.documentValue}</td><td>{row.ucpathValue}</td>
+    </tr>)}</tbody>
+  </table>;
 }
 
-/**
- * Every EID a human may legitimately approve, read ACROSS.
- *
- * `CompareGrid` rather than a list: DESIGN.md names two identity candidates as
- * the case the primitive was built for, because the reading is horizontal —
- * name against name, EID against EID, origin against origin. Every card renders
- * the same three children in the same order, which is the contract the subgrid
- * alignment rests on.
- */
 function PacketCandidates({ gate }: { gate: IdentityGateDetail }) {
-  return (
-    <section className="flex flex-col gap-[var(--ds-space-snug)]">
-      <SectionLabel>Approvable candidates</SectionLabel>
-      <CompareGrid rows={3} min="14rem">
-        {gate.options.map((option) => (
-          <CompareCard key={option.eid} rows={3}>
-            <span className={cn(dsText.ui, "font-semibold text-[color:var(--ds-fg)]")}>
-              {option.displayName}
-            </span>
-            <ChipRow>
-              <Chip label="EID">{option.eid}</Chip>
-              <Chip label="from">{option.chosenFrom}</Chip>
-            </ChipRow>
-            <span className={cn(dsText.meta, "text-[color:var(--ds-fg-muted)]")}>{option.origin}</span>
-          </CompareCard>
-        ))}
-      </CompareGrid>
-    </section>
-  );
+  return <section className="operation-candidates" aria-label="Approvable candidates">
+    <SectionLabel>Approvable candidates</SectionLabel>
+    {gate.options.map(option => <div className="operation-candidate" key={option.eid}>
+      <div><strong>{option.displayName}</strong><span>{option.origin}</span></div>
+      <span className={dsText.nums}>{option.eid}</span>
+    </div>)}
+  </section>;
 }
 
 /**
@@ -241,8 +105,8 @@ function PacketPlan({ gate }: { gate: IdentityGateDetail }) {
   }
   const { termination, document, dates } = plan;
   return (
-    <section className="flex flex-col gap-[var(--ds-space-snug)]">
-      <SectionLabel>What this approval authorizes</SectionLabel>
+    <section className="operation-bound-plan flex flex-col gap-[var(--ds-space-snug)]">
+      <SectionLabel>Planned write values</SectionLabel>
       <KeyValueList
         items={[
           { key: "Termination", value: `${termination.terminationType} · ${termination.classification}` },
@@ -285,6 +149,33 @@ function PacketPlan({ gate }: { gate: IdentityGateDetail }) {
   );
 }
 
+export function IdentityGateEvidence({ gate, fullPlan = false }: { gate: IdentityGateDetail; fullPlan?: boolean }) {
+  return <div className="operation-identity-evidence">
+    <PacketSubject gate={gate} />
+    <PacketComparisons gate={gate} />
+    <PacketCandidates gate={gate} />
+    {gate.packet.jobs.disposition !== "single-active-job" && <table className="operation-comparison">
+      <caption>Observed employment</caption><thead><tr><th scope="col">Record</th><th scope="col">Department / title</th><th scope="col">HR status</th></tr></thead>
+      <tbody>{gate.packet.jobs.rows.map(row => <tr key={row.rowIndex}><th scope="row">{row.emplRecord}</th><td>{row.department} · {row.jobTitle}</td><td>{row.hrStatus}</td></tr>)}</tbody>
+    </table>}
+    {!fullPlan && gate.packet.plan.state === "planned" && <dl className="operation-plan-summary">
+      <div><dt>Effective date</dt><dd>{gate.packet.plan.termination.effectiveDate}</dd></div>
+      <div><dt>Last day worked</dt><dd>{gate.packet.plan.dates.lastDayWorked}</dd></div>
+      <div><dt>Template</dt><dd>{gate.packet.plan.termination.template}</dd></div>
+      <div><dt>Reason</dt><dd>{gate.packet.plan.termination.reasonCode}</dd></div>
+    </dl>}
+    {fullPlan && <PacketPlan gate={gate} />}
+    <details className="operation-evidence-disclosure">
+      <summary>{fullPlan ? "Evidence details" : "Planned write values and evidence details"}</summary>
+      <div className="operation-secondary-tools">
+        {!fullPlan && <PacketPlan gate={gate} />}
+        <KeyValueList items={gate.packet.comparisons.map((row, index) => ({ key: `${row.field} · ${String(index + 1)}`, value: `${row.documentValue} → ${row.ucpathValue} · ${row.note}` }))} />
+        <MetaLine items={[`packet ${gate.evidenceDigest}`, `ceremony ${gate.approvalShape}`]} />
+      </div>
+    </details>
+  </div>;
+}
+
 /* ── the three ceremonies ────────────────────────────────────────────────── */
 
 /**
@@ -325,8 +216,7 @@ function CeremonyControl({
     case "confirm":
       return (
         <Banner tone="info" title="One unambiguous candidate">
-          The server set this decision&apos;s ceremony to one click:{" "}
-          {ceremony.option.displayName} · EID {ceremony.option.eid}. {ceremony.option.origin}.
+          {ceremony.option.displayName} · EID {ceremony.option.eid}
         </Banner>
       );
     case "choose":
@@ -348,7 +238,7 @@ function CeremonyControl({
       return (
         <Field
           label="Type the employee ID this separation is about"
-          description="The server called this decision ambiguous, so the EID is stated rather than selected. It must still be one this packet showed."
+          description="Enter an 8-digit ID shown in this evidence."
           error={showProblem ? problem ?? null : null}
           required
         >
@@ -504,10 +394,7 @@ export function IdentityApproveDialog({
           control and a reserved answer slot. */}
       <DialogContent size="lg" title={confirm.title} description={confirm.body}>
         <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
-          <PacketSubject gate={served} />
-          <PacketComparisons gate={served} />
-          <PacketCandidates gate={served} />
-          <PacketPlan gate={served} />
+          <IdentityGateEvidence gate={served} fullPlan />
 
           <CeremonyControl
             ceremony={ceremony}
@@ -532,7 +419,7 @@ export function IdentityApproveDialog({
         </DialogBody>
 
         <DialogFooter
-          meta={`${served.runId} · gate ${served.gateId} · rev ${String(action.expectedVersion)}`}
+          meta={`No approval recorded until confirmed`}
         >
           <Button variant="secondary" onClick={onClose} disabled={sending}>
             Not yet

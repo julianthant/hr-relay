@@ -1,3 +1,4 @@
+import { DeclaredActionIdentitySchema } from "../workflow/operation-action-identity.js";
 import { z } from "zod";
 import {
   ActorIdSchema,
@@ -51,6 +52,7 @@ export const DiagnosticBundleSchema = z.strictObject({
   bundleId: DiagnosticBundleIdSchema,
   runId: RunIdSchema,
   origin: DiagnosticOriginSchema,
+  operation: DeclaredActionIdentitySchema.optional(),
   createdAt: IsoInstantSchema,
   contentDigest: FingerprintSchema,
   configFingerprint: FingerprintSchema,
@@ -62,6 +64,7 @@ export const DiagnosticBundleSchema = z.strictObject({
     z.strictObject({ kind: z.literal("pinned"), reason: z.enum(["knowledge", "fix", "write-recovery"]) }),
   ]),
 }).superRefine((bundle, context) => {
+  if (bundle.operation !== undefined && (bundle.operation.runId !== bundle.runId || bundle.operation.definitionFingerprint !== bundle.descriptorFingerprint)) context.addIssue({ code: "custom", path: ["operation"], message: "diagnostic operation must belong to its exact run and definition" });
   const artifactIds = bundle.attachments.map(({ artifactId }) => artifactId);
   if (new Set(artifactIds).size !== artifactIds.length) {
     context.addIssue({ code: "custom", path: ["attachments"], message: "diagnostic attachment artifact ids must be unique" });

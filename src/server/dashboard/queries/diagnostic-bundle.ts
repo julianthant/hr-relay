@@ -64,6 +64,7 @@ function verifyContentIdentity(bundle: DiagnosticBundle): void {
       descriptorFingerprint: bundle.descriptorFingerprint,
       redaction: bundle.redaction,
       attachments: bundle.attachments,
+      ...(bundle.operation === undefined ? {} : { operation: bundle.operation }),
     });
   } catch (error: unknown) {
     normalizeCorruption(bundleId, "the content identity could not be verified", error);

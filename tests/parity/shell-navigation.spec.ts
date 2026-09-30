@@ -36,14 +36,19 @@ for(const theme of PARITY_THEMES){
     await gotoAppState(page,fixture.baseUrl,{day:FIXTURE_DAY,run:FIXTURE_IDS.doneRun,section:"receipt"});
     const receipt=page.getByRole("tab",{name:"Receipt",exact:true});
     const logs=page.getByRole("tab",{name:"Logs",exact:true});
-    await expect(receipt).toHaveAttribute("aria-selected","true");
+    await expect(receipt).toHaveCount(0);
+    await expect(logs).toHaveAttribute("aria-selected","true");
     await logs.click();await expect(page).toHaveURL(/section=logs/);
-    await page.goBack();await expect(receipt).toHaveAttribute("aria-selected","true");
+    await page.goBack();await expect(page).toHaveURL(/section=receipt/);await expect(logs).toHaveAttribute("aria-selected","true");
     await page.goForward();await expect(logs).toHaveAttribute("aria-selected","true");
     await page.reload();await expect(logs).toHaveAttribute("aria-selected","true");
-    await receipt.click();await page.getByRole("button",{name:"Back",exact:true}).click();
+    await page.locator(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`).click();
+    await expect(page).toHaveURL(new RegExp(`run=${FIXTURE_IDS.runningRun}`));
+    await page.getByRole("button",{name:"Back",exact:true}).click();
+    await expect(page).toHaveURL(new RegExp(`run=${FIXTURE_IDS.doneRun}`));
     await expect(logs).toHaveAttribute("aria-selected","true");
-    await page.getByRole("button",{name:"Forward",exact:true}).click();await expect(receipt).toHaveAttribute("aria-selected","true");
+    await page.getByRole("button",{name:"Forward",exact:true}).click();
+    await expect(page).toHaveURL(new RegExp(`run=${FIXTURE_IDS.runningRun}`));
     for(const name of ["Archive","Explorer","Activity","Dashboard"]){
       const door=page.getByRole("button",{name,exact:true});await door.click();
       await expect(door).toHaveAttribute("aria-pressed","true");

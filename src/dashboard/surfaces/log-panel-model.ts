@@ -10,14 +10,8 @@ export * from "./run-detail/logs-model.js";
 
 export type PanelTab = "review" | "people" | "logs" | "receipt";
 
-/**
- * The tabs are SERVED, never fixed at four and never decided from a workflow.
- * `availableSections` is the descriptor's own answer, and the ORDER is ref frontend-backend-integration
- * §3.3's fixed composition: `Review · Logs · Receipt` / `People · Logs ·
- * Receipt` / `Logs · Receipt`. A section the wire does not advertise draws no
- * tab — a dead tab that opens an empty panel is worse than an absent one.
- */
-export const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs", "receipt"];
+/** Display only advertised operator tabs; historical receipt selections fall back to Logs. */
+export const TAB_ORDER: readonly PanelTab[] = ["review", "people", "logs"];
 
 /**
  * The tab's WORD, in the one place both readers of it can see.
@@ -34,25 +28,18 @@ export const PANEL_TAB_LABEL: Record<PanelTab, string> = {
   receipt: "Receipt",
 };
 
-export function tabsFor(detail: RunDetailWire): PanelTab[] {
+export function tabsFor(detail: Pick<RunDetailWire, "availableSections">): PanelTab[] {
   const advertised = new Set<RunDetailSection>(detail.availableSections);
   return TAB_ORDER.filter((tab) => advertised.has(tab));
 }
 
-/**
- * A failed run opens on the LOGS, ahead of every other default: its record now
- * lives in the stream at the line it died on, and moving the record off the
- * panel top must never put it behind a tab. Otherwise a run that has finished
- * opens on its receipt — the answer — and a run still working opens on its
- * stream.
- */
-export function defaultTabFor(detail: RunDetailWire): PanelTab {
+/** Run outcomes and failures remain in the chronological Logs stream. */
+export function defaultTabFor(detail: Pick<RunDetailWire, "availableSections" | "outcome">): PanelTab {
   const available = tabsFor(detail);
   const pick = (...preferred: PanelTab[]): PanelTab =>
     preferred.find((tab) => available.includes(tab)) ?? available[0] ?? "logs";
   if (detail.outcome.state === "terminal" && detail.outcome.result === "failed") return pick("logs");
-  if (detail.outcome.state === "terminal") return pick("receipt", "logs");
-  return pick("logs", "receipt");
+  return pick("logs");
 }
 
 /**

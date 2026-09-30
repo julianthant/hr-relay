@@ -373,7 +373,7 @@ for (const viewport of [
   { name: "desktop", width: 1440, height: 900 },
   { name: "narrow", width: 1024, height: 768 },
 ]) {
-  test(`observed fields sit in Run data while Logs narrates actions at ${viewport.name}`, async ({ page }, testInfo) => {
+  test(`observed values and action notes share Logs without retired Run data reads at ${viewport.name}`, async ({ page }, testInfo) => {
     await page.setViewportSize(viewport);
     await page.route(`**/api/v1/runs/${RUN}/logs**`, async (route) => route.fulfill({
       contentType: "application/json",
@@ -381,17 +381,13 @@ for (const viewport of [
         runId: RUN,
         rows: [{ kind: "note", logId: note.noteId, sequence: 0, note: {
           ...note, sequence: 0, message: "Typed into Kuali action list search input",
-        } }, { ...fence, sequence: 1 }],
+        } }, { ...observed, sequence: 1 }, { ...serviceObserved, sequence: 2 }, { ...fence, sequence: 3 }],
         notes: [{ ...note, sequence: 0, message: "Typed into Kuali action list search input" }],
         nextCursor: { state: "absent", reason: "end-of-page" },
       } }),
     }));
-    await page.route(`**/api/v1/runs/${RUN}/context-data**`, async (route) => route.fulfill({
-      contentType: "application/json",
-      body: JSON.stringify({ section: "context-data", payload: {
-        runId: RUN, state: "available", entries: [], observations: [observed, serviceObserved],
-      } }),
-    }));
+    const retiredReads: string[] = [];
+    page.on("request", (request) => { if (/context-(?:data|evidence)/u.test(request.url())) retiredReads.push(request.url()); });
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, run: RUN, section: "logs" });
     await page.keyboard.press("Escape");
     await expect(page.getByRole("dialog", { name: "Workflow Panel" })).toHaveCount(0);
@@ -399,17 +395,19 @@ for (const viewport of [
     const log = page.getByRole("list", { name: "Run log lines" });
     await expect(log).toBeVisible();
     await expect(log.getByText("Typed into Kuali action list search input")).toBeVisible();
-    await expect(log.getByRole("listitem", { name: /observed at Find person/i })).toHaveCount(0);
+    await expect(log.getByRole("listitem", { name: /observed at Find person/i })).toHaveCount(1);
     const fenced = log.getByRole("listitem", { name: /authority transaction fence/i });
     await expect(fenced).toContainText("Authority fence");
-    const data = page.getByRole("region", { name: "Extracted fields" });
-    await expect(data.getByText("Find person")).toBeVisible();
-    await expect(data.getByText("UCPATH", { exact: true })).toBeVisible();
-    await expect(data.getByText("redacted", { exact: true }).first()).toBeVisible();
-    await expect(data.getByText("Read separation plan")).toBeVisible();
-    await expect(data.getByText("No run data recorded")).toHaveCount(0);
-    const width = await data.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
-    expect(width, "recorded values must fit the Context rail").toEqual({ scroll: width.client, client: width.client });
+    await expect(page.getByRole("region", { name: "Extracted fields" })).toHaveCount(0);
+    await expect(page.getByRole("tab", { name: "Receipt", exact: true })).toHaveCount(0);
+    await expect(log.getByText("Find person").first()).toBeVisible();
+    await expect(log.getByText("UCPATH", { exact: true }).first()).toBeVisible();
+    await expect(log.getByText("redacted", { exact: true }).first()).toBeVisible();
+    await expect(log.getByText("Read separation plan").first()).toBeVisible();
+    await expect(page.getByText("No run data recorded")).toHaveCount(0);
+    expect(retiredReads).toEqual([]);
+    const width = await log.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+    expect(width, "recorded values must fit Logs").toEqual({ scroll: width.client, client: width.client });
     await page.screenshot({ path: testInfo.outputPath(`observed-data-${viewport.name}.png`), fullPage: true });
   });
 }

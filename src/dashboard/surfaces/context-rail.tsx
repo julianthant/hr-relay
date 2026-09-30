@@ -562,7 +562,7 @@ function attemptLabel(entry: ItemAttemptHistoryRun): string {
   return "Attempt " + entry.attempt + (entry.disposition === "archived" ? " · archived" : "");
 }
 
-function AttemptHistorySection({
+export function AttemptHistorySection({
   payload,
 }: {
   payload: { runId: string };

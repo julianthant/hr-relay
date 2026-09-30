@@ -1,27 +1,5 @@
 // @vitest-environment jsdom
-/**
- * D273 item 8, rendered — the markup half of the failure-record ports.
- *
- * The sheet is `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §R-E; the
- * ruling is `ref dashboard-surfaces` §"D273 — run detail" item 8. The audited
- * rows are E2, E4, E5, E6, E8, E9, E11, E15, E22 and E30.
- * `failure-record-model.test.ts` pins the three folds; this file pins that the
- * record CONSUMES them, which no fold can see.
- *
- * The load-bearing claim here is a NEGATIVE one and it exists in no fold: what
- * the disclosure may hide. `ref dashboard-surfaces` D18 rules that the
- * write-state sentence and the remediation ladder render unconditionally and
- * that only diagnosis sits behind a press — so the test that matters asserts
- * both halves at once, on a CLOSED record: the diagnosis is gone AND the two
- * sentences are still there. Either half alone passes for the wrong reason (a
- * disclosure that hides nothing passes the second; one that hides everything
- * passes the first).
- *
- * The head's words are the other half a fold cannot reach: `summary`, `code`
- * and permanence are composed in `log-panel.tsx`'s JSX from three different
- * places, so only the markup says whether the record leads with the run's own
- * sentence or with a category the surface authored.
- */
+/** D360 primary layout plus retained D273 diagnostic and Archive behavior. */
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
@@ -36,6 +14,8 @@ import {
 import { wireResourceSchema } from "../../../src/domain/dashboard/primitives.js";
 import { FailureDetailBody } from "../../../src/dashboard/surfaces/trust.js";
 import { InlineFailureRecord } from "../../../src/dashboard/surfaces/log-panel.js";
+import { LogsTab } from "../../../src/dashboard/surfaces/run-detail/logs.js";
+import { CAPTURE_BUNDLE_A, CAPTURE_BUNDLE_B, captureDetail, captureImage } from "./fixtures/run-captures-app-fixture.js";
 import { ArchivedFailureCard } from "../../../src/dashboard/surfaces/archive.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
@@ -255,7 +235,7 @@ function renderRecord(failure: Record<string, unknown>): string {
 /* ── the head says the FACT, not the category (E2/E4/E5/E6) ──────────────── */
 
 describe("the failure record's head (E2/E4/E5/E6)", () => {
-  it("leads with the run's own summary, its code and its permanence", () => {
+  it("leads with a concise classification and preserves the recorded facts in Details", () => {
     const html = renderRecord({ state: "available", value: failureDetail() });
 
     // E4: the constant `This run failed` said what the status pill, the outcome
@@ -268,7 +248,7 @@ describe("the failure record's head (E2/E4/E5/E6)", () => {
     assert.ok(html.includes("permanent — the same input will fail again"));
     assert.ok(!html.includes("transient — a later attempt may differ"));
     // E2: the anchor's accessible name is the record's own sentence.
-    assert.ok(html.includes(`aria-label="Failure record — ${SUMMARY}"`));
+    assert.ok(html.includes(`aria-label="Failure record — Employee identity mismatch"`));
   });
 
   it("says the OPPOSITE permanence when the wire says transient", () => {
@@ -282,12 +262,13 @@ describe("the failure record's head (E2/E4/E5/E6)", () => {
     // must NOT grow a code, a permanence chip or a borrowed summary — that
     // would be the surface authoring a record the projection refused.
     const html = renderRecord({ state: "missing", reason: "the failure record was never projected" });
-    assert.ok(html.includes("This run failed"));
+    assert.ok(html.includes("Failure details unavailable"));
     assert.ok(html.includes("the failure record was never projected"));
-    assert.ok(html.includes('aria-label="Failure record"'));
+    assert.ok(html.includes('aria-label="Failure record — Failure details unavailable"'));
     assert.ok(!html.includes("permanent"), "an unserved record grew a permanence claim");
     assert.ok(!html.includes("transient"), "an unserved record grew a permanence claim");
-    assert.ok(!html.includes("What this run left behind"), "an unserved record grew a write state");
+    assert.ok(html.includes("Write state unavailable"));
+    assert.ok(!html.includes("No write attempted"), "an unserved record grew a write state");
   });
 });
 
@@ -462,6 +443,8 @@ describe("the diagnostic disclosure (E15)", () => {
     assert.ok(!html.includes("First time"), "the fingerprint history rendered on a closed record");
     assert.ok(!html.includes("no diagnostic bundle"), "the bundle arm rendered on a closed record");
 
+    assert.ok(html.includes("expected eid ••••5001"));
+    assert.ok(html.includes("observed eid ••••4136"));
     // NEVER behind the press. Both of these are the ruling, not the layout:
     // the write state is the difference between a safe retry and a duplicate
     // termination, and "why can I not just retry this" is a question a hidden
@@ -746,5 +729,88 @@ describe("D live failure resolution", () => {
       children: createElement(FailureDetailBody, { detail: annotatedDetail(2, true) }),
     })));
     assert.equal(oldSignal?.aborted, true); assert.doesNotMatch(host.textContent ?? "", /Mark resolved|Reopen/u);
+  });
+});
+
+
+describe("approved F2 outcome-first Logs", () => {
+  it("places exact failure screenshots once and leaves unrelated captures in the gallery", () => {
+    const value = failureDetail({ diagnosticBundle: { state: "present", bundleId: CAPTURE_BUNDLE_A } });
+    const linked = captureImage();
+    const unrelated = { ...captureImage("00000000-0000-4000-8000-000000000799"),
+      origins: [{ bundleId: CAPTURE_BUNDLE_B, originKind: "failure" as const }] };
+    const detail = captureDetail(value.runId, { outcome: { state: "terminal", result: "failed", completedAt: value.occurredAt } });
+    const html = renderToStaticMarkup(createElement(DashboardClientProvider, {
+      client: refusingClient(), children: createElement(LogsTab, {
+        detail, failure: { state: "available", value }, notes: { runId: value.runId, rows: [], notes: [], nextCursor: { state: "absent", reason: "end-of-page" } },
+        captures: { state: "available", runId: value.runId, generation: 1, selectedId: undefined, select: () => undefined,
+          items: [linked, unrelated].map(capture => ({ capture, downloadUrl: `/artifacts/${capture.artifact.artifactId}` })) },
+        parked: undefined, gateActions: [], onResolveGate: () => undefined, onResolvePark: () => undefined,
+        decisionRef: () => undefined, failureRef: () => undefined, parkedRef: () => undefined,
+        workflowLabel: "Fixture workflow", currentAppVersion: "0.1.0", servedDescriptorHash: undefined,
+        aiAdvisory: { state: "unavailable", code: "not-configured", reason: "No advisory configured" },
+        nowIso: value.occurredAt, actorId: "fixture-operator",
+      }),
+    }));
+    const host = document.createElement("div"); host.innerHTML = html;
+    const failure = host.querySelector('[data-panel-failure-record]');
+    const gallery = host.querySelector('[aria-label="Run captures"]');
+    const linkedControl = `button[aria-label="Open capture ${linked.artifact.artifactId}"]`;
+    assert.ok(failure?.querySelector(linkedControl));
+    assert.equal(host.querySelectorAll(linkedControl).length, 1);
+    assert.equal(gallery?.querySelector(linkedControl), null);
+    assert.ok(gallery?.querySelector(`button[aria-label="Open capture ${unrelated.artifact.artifactId}"]`));
+    assert.equal(failure?.querySelector(".operation-capture time"), null, "Legacy origins must not acquire an invented capture timestamp");
+  });
+  function primary(value: FailureDetailWire): HTMLElement {
+    const host = document.createElement("div");
+    host.innerHTML = renderRecord({ state: "available", value });
+    const details = host.querySelector(".operation-outcome-details");
+    assert.ok(details instanceof HTMLElement);
+    assert.equal(details.hasAttribute("open"), false);
+    assert.ok(details.textContent?.includes(value.summary));
+    assert.ok(details.textContent?.includes(value.failureId));
+    for (const remediation of value.remediation) assert.ok(details.textContent?.includes(remediation.message));
+    details.remove();
+    return host;
+  }
+  it("keeps raw errors, IDs and follow-up controls out of the primary layout", () => {
+    const value = failureDetail();
+    const host = primary(value);
+    assert.ok(host.textContent?.includes("Employee identity mismatch"));
+    assert.ok(host.textContent?.includes("No write attempted"));
+    assert.ok(host.textContent?.includes("••••5001"));
+    assert.ok(host.textContent?.includes("••••4136"));
+    assert.ok(!host.textContent?.includes(value.summary));
+    assert.ok(!host.textContent?.includes(value.failureId));
+    assert.ok(!host.textContent?.includes(value.code));
+    assert.ok(!host.textContent?.includes("Problem follow-up"));
+    assert.ok(!host.textContent?.includes("no advisory is configured"));
+  });
+  it.each([
+    ["not-attempted", "No write attempted"], ["prepared", "Staged · not submitted"],
+    ["attempting", "Submission outcome unsettled"], ["committed", "Submitted · verification incomplete"],
+    ["verified", "Write committed and verified"], ["unknown", "Write outcome unknown"],
+  ] as const)("keeps %s distinct while Details is closed", (writeState, label) => {
+    const host = primary(failureDetail({ writeState, action: { operation: "commit" } }));
+    assert.ok(host.textContent?.includes(label));
+    if (writeState === "unknown" || writeState === "attempting") assert.ok(host.textContent?.includes("Do not retry this submission."));
+    if (writeState === "committed" || writeState === "verified") assert.ok(host.textContent?.includes("Do not submit"));
+  });
+  it.each(["retry-when-served", "operator-action", "configuration", "code-change", "no-safe-action"] as const)("keeps the %s next step visible and its complete message in Details", kind => {
+    const value = failureDetail({ remediation: [{ kind, message: `Required correction for ${kind}` }] });
+    const host = primary(value);
+    const next = host.querySelector('[aria-label="What is safe to retry"]');
+    assert.ok(next?.textContent?.includes("Next step"));
+    assert.ok(next?.textContent && next.textContent.length > 20);
+    assert.ok(!host.textContent?.includes(`Required correction for ${kind}`));
+    if (kind === "retry-when-served") assert.ok(next.textContent.includes("only when this run offers a retry action"));
+    if (kind === "no-safe-action") assert.ok(next.textContent.includes("No safe recovery action"));
+  });
+  it("keeps unclassified failures honest without parsing their raw message", () => {
+    const host = primary(failureDetail({ code: "UNMAPPED_ERROR", summary: "SUBJECT_MISMATCH session expired and allegedly saved" }));
+    assert.ok(host.textContent?.includes("Step could not be completed"));
+    assert.ok(!host.textContent?.includes("Employee identity mismatch"));
+    assert.ok(!host.textContent?.includes("session expired"));
   });
 });
