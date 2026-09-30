@@ -10,6 +10,7 @@ import { acquireRuntimeRestoreAdmission } from "../src/infra/sqlite/runtime-proc
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../src/infra/runtime-control/admission.js";
+import { assertDashboardBuildCurrent } from "../src/server/dashboard/build-identity.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 
@@ -19,6 +20,7 @@ export interface SecureEnvironmentBootstrapDependencies {
   readonly runCli?: (admission: RuntimeAdmission) => Promise<void>;
   readonly runTestTargetDocumentNumberSmoke?: () => Promise<number>;
   readonly acquireAdmission?: (mode: "shared" | "exclusive") => RuntimeAdmission;
+  readonly validateDashboardBundle?: (workspace: string) => void;
   readonly runRelocation?: (input: Readonly<{ workspace: string; args: readonly string[];
     admission?: RuntimeAdmission }>) => Promise<Readonly<{ operationId: string; generation: number }>>;
   readonly inspectRelocationStatus?: (workspace: string) => ReturnType<typeof inspectPendingRelocationStatus>;
@@ -90,6 +92,13 @@ export async function runSecureEnvironmentBootstrap(
       }
     } finally { admission?.release(); }
     return;
+  }
+  if (entrypoint === "cli" && entrypointArgs.length === 2
+    && entrypointArgs[0] === "dashboard" && entrypointArgs[1] === "--prod") {
+    // A missing or stale bundle must refuse before installation admission can create authority.
+    (dependencies.validateDashboardBundle ?? ((root: string) => {
+      assertDashboardBuildCurrent({ distDir: join(root, "dist", "dashboard"), repoRoot: root });
+    }))(workspace);
   }
   const mode = entrypoint === "cli" && entrypointArgs[0] === "storage"
     && !["backup", "doctor", "transactions", "help", "--help", "-h"].includes(entrypointArgs[1] ?? "")
