@@ -1321,6 +1321,25 @@ existing driver and graph execution paths and binds only completed driver gestur
 projection. No current descriptor is a substitute for missing historical structure.
 
 
+#### 1.6.6 Expected-effect action confirmation (D359, 2026-09-29)
+
+An optional task action `confirmationActionId` names its frozen same-page verification action.
+`runDeclaredAction` completion proves callback return only. Its optional confirmation callback
+executes that declared verifier after the gesture and retains a separate confirmed occurrence
+linked to the exact verification occurrence and timestamp. The binder requires the declared
+link, later verification, matching physical session incarnation and current action occurrence;
+new starts and failures invalidate old completion evidence, and confirmation is single-use.
+The same consumed value is captured once. Both durable Notes and dashboard wire preserve this
+optional evidence; old observations remain unconfirmed without reconstruction.
+
+Invocation headings retain the sealed entry’s optional human label in the frozen snapshot and
+its digest. Historical snapshots without a label use their stable declared operation identity.
+
+Logs may display successful structured actions only with this evidence. Started and completed
+gestures remain neutral driver diagnostics. Verification failures propagate through the existing
+executor/write authority; confirmation does not create write proof, change fences or enable retries
+of unknown writes. Buffered note drain remains outside the operation's write window.
+
 #### 1.6.5 Exact child and derived-result sources (D358, 2026-09-29)
 
 An awaited `one/terminal/one` child may be a terminal result dependency. The existing terminal

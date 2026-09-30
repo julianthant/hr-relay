@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ContractFieldPathSchema } from "../contracts/base.js";
-import { BrowserSessionIdSchema, DelegationEdgeIdSchema, FingerprintSchema, NodeIdSchema, PositiveIntSchema, RunIdSchema, TaskIdSchema } from "../ids.js";
+import { BrowserSessionIdSchema, DelegationEdgeIdSchema, FingerprintSchema, NodeIdSchema, PositiveIntSchema, IsoInstantSchema, RunIdSchema, TaskIdSchema } from "../ids.js";
 import { OperationActionIdSchema, OperationIdSchema, OperationOccurrenceSegmentSchema, OperationSessionIdSchema } from "./operation-display.js";
 
 export const DeclaredActionIdentitySchema = z.strictObject({
@@ -18,8 +18,11 @@ export const DeclaredActionIdentitySchema = z.strictObject({
   occurrence: PositiveIntSchema,
   logicalSessionId: OperationSessionIdSchema,
   physicalSessionId: BrowserSessionIdSchema.optional(),
-  state: z.enum(["started", "completed", "failed", "not-run"]).optional(),
+  state: z.enum(["started", "completed", "failed", "not-run", "confirmed"]).optional(),
+  confirmation: z.strictObject({ verificationActionId: OperationActionIdSchema, verificationOccurrence: PositiveIntSchema, verifiedAt: IsoInstantSchema }).optional(),
   reason: z.enum(["condition-false", "dry-run", "cancelled", "callback-failed"]).optional(),
+}).superRefine((identity, context) => {
+  if ((identity.state === "confirmed") !== (identity.confirmation !== undefined)) context.addIssue({ code: "custom", path: ["confirmation"], message: "confirmed action requires exact verification evidence" });
 });
 export type DeclaredActionIdentity = z.infer<typeof DeclaredActionIdentitySchema>;
 

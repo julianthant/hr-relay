@@ -141,6 +141,7 @@ type SnapshotTaskAction = Readonly<{
   transform?: string;
   page?: z.infer<typeof SnapshotPageSchema>;
   continuedFrom?: string;
+  confirmationActionId?: string;
   outcomes?: readonly z.infer<typeof SnapshotTaskOutcomeCaseSchema>[];
   children?: readonly SnapshotTaskAction[];
 }>;
@@ -154,6 +155,7 @@ const SnapshotTaskActionSchema: z.ZodType<SnapshotTaskAction> = z.lazy(() => z.s
   transform: OperationTransformIdSchema.optional(),
   page: SnapshotPageSchema.optional(),
   continuedFrom: OperationActionIdSchema.optional(),
+  confirmationActionId: OperationActionIdSchema.optional(),
   outcomes: z.array(SnapshotTaskOutcomeCaseSchema).optional(),
   children: z.array(SnapshotTaskActionSchema).min(1).optional(),
 }));
@@ -237,6 +239,7 @@ const SnapshotWorkflowTransformSchema = z.strictObject({
 });
 
 const SnapshotInvocationSchema = z.strictObject({
+  label: z.string().min(1).optional(),
   id: OperationIdSchema,
   entryId: NodeIdSchema,
   taskId: TaskIdSchema,
@@ -352,6 +355,7 @@ function snapshotTaskAction(action: TaskOperationAction): SnapshotTaskAction {
     ...(action.valueSlot === undefined ? {} : { valueSlot: action.valueSlot }),
     ...(action.transform === undefined ? {} : { transform: action.transform }),
     ...(action.page === undefined ? {} : { page: snapshotPage(action.page) }),
+    ...(action.confirmationActionId === undefined ? {} : { confirmationActionId: action.confirmationActionId }),
     ...(action.continuedFrom === undefined ? {} : { continuedFrom: action.continuedFrom }),
     ...(action.outcomes === undefined ? {} : { outcomes: action.outcomes.map(snapshotTaskOutcome) }),
     ...(action.children === undefined ? {} : { children: action.children.map(snapshotTaskAction) }),
@@ -469,6 +473,7 @@ export function freezeWorkflowOperationDisplaySnapshot(input: Readonly<{
       id: invocation.id,
       entryId: invocation.entryId,
       taskId: invocation.taskId,
+      ...(invocation.label === undefined ? {} : { label: invocation.label }),
       contractRole: invocation.contractRole,
       occurrencePath: invocation.occurrencePath,
       bindings: (invocation.bindings ?? []).map((binding) => ({

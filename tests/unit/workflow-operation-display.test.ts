@@ -466,6 +466,12 @@ function withReference(value: WorkflowValueReference): WorkflowOperationDisplayD
 }
 
 describe("workflow operation display declarations", () => {
+  it("freezes a human invocation label from the sealed entry and protects its digest", () => {
+    const display = compileMinimal(minimalDisplay(), [{ ...SearchEntry, label: "Find employee" }]);
+    const snapshot = freezeWorkflowOperationDisplaySnapshot({ workflowId: "fixture-operation-display-negative", definitionFingerprint: FingerprintSchema.parse("a".repeat(64)), display });
+    expect(snapshot?.invocations[0]?.label).toBe("Find employee");
+    expect(() => requireWorkflowOperationDisplaySnapshot({ ...snapshot, invocations: snapshot?.invocations.map((item) => ({ ...item, label: "Different" })) }, { workflowId: "fixture-operation-display-negative", definitionFingerprint: "a".repeat(64) })).toThrow(/digest/u);
+  });
   it("models every required action kind and renders task-owned templates without scenario coupling", () => {
     expect(OPERATION_ACTION_KINDS).toEqual([
       "open-page",

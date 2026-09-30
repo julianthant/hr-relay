@@ -1,4 +1,11 @@
-# `reference/decisions.md` — the decision ledger (D1–D358, 2026-07-17 → 2026-09-29)
+# `reference/decisions.md` — the decision ledger (D1–D359, 2026-07-17 → 2026-09-29)
+
+**D359 — Explicit expected-effect confirmation (approved Plan 1 Assignment B, 2026-09-29):**
+Completed callbacks remain gesture evidence. A frozen action may name a same-page verification;
+the existing action helper and binder retain confirmed state only after that exact later verifier
+succeeds in the same physical incarnation and current occurrence. Historical evidence is not
+upgraded, consumed values are captured once, and existing write outcome/fence/drain authority stays
+unchanged. Owner: [workflow-model §1.6.6](workflow-model.md#166-expected-effect-action-confirmation-d359-2026-09-29).
 
 **D358 — Exact child and derived-result sources (approved Plan 1 Assignment A, 2026-09-29):**
 Awaited single-child terminal results use the existing sealed dependency authority with exact

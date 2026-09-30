@@ -164,6 +164,7 @@ export interface TaskOperationAction {
   readonly page?: LogicalPageReference;
   /** Only `resume-page` may continue an existing page occurrence. */
   readonly continuedFrom?: string;
+  readonly confirmationActionId?: string;
   readonly outcomes?: readonly OperationOutcomeCase[];
   /** Ordered presentation only; execution derives from the workflow graph. */
   readonly children?: readonly TaskOperationAction[];
@@ -419,6 +420,10 @@ export function assertTaskOperationDeclaration(
 
   const continuationEdges = new Map<string, readonly string[]>();
   for (const [id, { action, page }] of actions) {
+    if (action.confirmationActionId !== undefined) {
+      const verification = actions.get(action.confirmationActionId);
+      if (verification?.action.kind !== "verify" || (page !== undefined || verification.page !== undefined) && !samePage(page, verification.page)) throw operationError(contract, operation, `action "${id}" has an invalid expected-effect verification "${action.confirmationActionId}"`);
+    }
     if (action.continuedFrom !== undefined) {
       if (action.kind !== "resume-page") throw operationError(contract, operation, `action "${id}" only resume-page may continue a page`);
       const source = actions.get(action.continuedFrom);
@@ -568,6 +573,7 @@ export interface WorkflowOperationContractProjection {
 }
 
 export interface WorkflowOperationEntryProjection {
+  readonly label?: string;
   readonly id: string;
   readonly kind: "task" | "transaction" | "gate" | "parallel" | "delegate";
   readonly dependsOn: readonly string[];
@@ -598,6 +604,7 @@ export interface CompleteWorkflowOperationDisplay {
     operation: TaskOperationDeclaration;
     /** Exact sealed task contract that owns the reusable operation. */
     taskId: string;
+    label?: string;
   }>)[];
   readonly presentation: readonly WorkflowOperationPresentationNode[];
   /** Derived from the existing graph only; presentation is never an edge source. */
@@ -783,6 +790,7 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
   const compiledInvocations: (OperationInvocationDeclaration & Readonly<{
     operation: TaskOperationDeclaration;
     taskId: string;
+    label?: string;
   }>)[] = [];
   for (const invocation of declaration.invocations) {
     OperationIdSchema.parse(invocation.id);
@@ -826,6 +834,7 @@ export function compileWorkflowOperationDisplay(input: WorkflowOperationDisplayC
     compiledInvocations.push(Object.freeze({
       ...invocation,
       taskId: TaskIdSchema.parse(expectedContract.contract.id),
+      ...(entries.get(invocation.entryId)?.label === undefined ? {} : { label: z.string().trim().min(1).parse(entries.get(invocation.entryId)?.label) }),
       occurrencePath: Object.freeze(occurrencePath),
       ...(invocation.bindings === undefined ? {} : { bindings: Object.freeze([...invocation.bindings]) }),
       ...(invocation.outcomes === undefined ? {} : { outcomes: Object.freeze([...invocation.outcomes]) }),

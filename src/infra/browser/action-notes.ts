@@ -7,7 +7,8 @@ export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "c
 export interface BrowserAction {
   readonly kind: BrowserActionKind;
   readonly declaredActionId?: string;
-  readonly state?: "started" | "completed" | "failed" | "not-run";
+  readonly state?: "started" | "completed" | "failed" | "not-run" | "confirmed";
+  readonly confirmation?: NonNullable<DeclaredActionOccurrence["confirmation"]>;
   readonly reason?: "condition-false" | "dry-run" | "cancelled" | "callback-failed";
   readonly declaredValue?: JsonValue;
   readonly targetId: string;
@@ -96,9 +97,14 @@ export async function runDeclaredAction<T>(
   action: Readonly<{ id: string; kind: BrowserActionKind; targetId: string }>,
   operation: () => Promise<T>,
   consumed?: (result: T) => JsonValue,
+  confirmation?: Readonly<{ id: string; targetId: string; verify: (result: T) => Promise<boolean> }>,
 ): Promise<T> {
   const capture = scope.getStore();
-  if (capture?.state.active !== true || capture.bind === undefined) return await operation();
+  if (capture?.state.active !== true || capture.bind === undefined) {
+    const result = await operation();
+    if (confirmation !== undefined && !await confirmation.verify(result)) throw new Error("declared-action-effect-not-confirmed");
+    return result;
+  }
   const record = (state: BrowserAction["state"], value?: JsonValue): void => {
     capture.actions.push(capture.bind!({
       kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
@@ -116,7 +122,21 @@ export async function runDeclaredAction<T>(
     catch (recordError) { throw new AggregateError([error, recordError], "declared action and failure attribution both failed", { cause: recordError }); }
     throw error;
   }
-  record("completed", consumed?.(result));
+  const observedValue = consumed?.(result);
+  record("completed", observedValue);
+  if (confirmation !== undefined) {
+    await runDeclaredAction({ id: confirmation.id, kind: "verified", targetId: confirmation.targetId }, async () => {
+      if (!await confirmation.verify(result)) throw new Error("declared-action-effect-not-confirmed");
+    });
+    const verification = capture.actions.at(-1)?.operation;
+    if (verification === undefined || verification.logicalActionId !== confirmation.id || verification.state !== "completed") throw new Error("declared-action-confirmation-identity-missing");
+    capture.actions.push(capture.bind({ kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
+      at: capture.clock.now().toISOString(), state: "confirmed",
+      confirmation: { verificationActionId: verification.logicalActionId, verificationOccurrence: verification.occurrence, verifiedAt: capture.actions.at(-1)!.at },
+      ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
+      ...(observedValue === undefined ? {} : { declaredValue: observedValue }),
+    }));
+  }
   return result;
 }
 

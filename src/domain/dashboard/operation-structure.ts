@@ -9,7 +9,7 @@ import { z } from "zod";
 import { IsoInstantSchema, NoteIdSchema, RunIdSchema } from "../ids.js";
 import { ContractFieldPathSchema } from "../contracts/base.js";
 import { ProtectedInputBindingSchema } from "../protected-input.js";
-import { ActionValueProducerSchema, DeclaredActionOccurrenceSchema } from "../task-provenance.js";
+import { ActionValueProducerSchema, DeclaredActionIdentitySchema } from "../task-provenance.js";
 import { OperationValueIdSchema } from "../workflow/operation-display.js";
 import { WorkflowOperationDisplaySnapshotSchema } from "../workflow/operation-display-snapshot.js";
 
@@ -60,9 +60,8 @@ const OperationActionValueWireSchema = z.strictObject({
   }
 });
 
-const OperationActionOccurrenceWireSchema = DeclaredActionOccurrenceSchema
-  .omit({ value: true })
-  .extend({ value: OperationActionValueWireSchema.optional() });
+const OperationActionOccurrenceWireSchema = DeclaredActionIdentitySchema
+  .safeExtend({ value: OperationActionValueWireSchema.optional() });
 
 /** A complete declaration served by Explorer, or honest legacy absence. */
 export const ExplorerOperationStructureWireSchema = z.discriminatedUnion("state", [
@@ -100,7 +99,7 @@ export function requireOperationSourceDeclaration(
     || (invocation.operation.session.kind === "browser" && identity.state !== "not-run" && identity.physicalSessionId === undefined)) throw new Error("operation-source-frozen-session-mismatch");
   if ((identity.state === "failed" && identity.reason !== "callback-failed")
     || (identity.state === "not-run" && (identity.reason === undefined || identity.reason === "callback-failed"))
-    || ((identity.state === undefined || identity.state === "started" || identity.state === "completed") && identity.reason !== undefined)) throw new Error("operation-source-lifecycle-reason-mismatch");
+    || ((identity.state === undefined || identity.state === "started" || identity.state === "completed" || identity.state === "confirmed") && identity.reason !== undefined)) throw new Error("operation-source-lifecycle-reason-mismatch");
 }
 
 function actionsWithChildren(
@@ -211,6 +210,10 @@ export const ObservedOperationStructureWireSchema = z.strictObject({
       });
       continue;
     }
+    if ((occurrence.state === "confirmed") !== (occurrence.confirmation !== undefined)
+      || (occurrence.confirmation !== undefined && !actionsWithChildren(invocation.operation.actions).some((candidate) => candidate.kind === "verify" && candidate.id === occurrence.confirmation?.verificationActionId && action.confirmationActionId === candidate.id))) {
+      context.addIssue({ code: "custom", path: ["observations", index, "occurrence", "confirmation"], message: "operation confirmation requires an exact frozen verification action" });
+    }
     if (!declaredKindsFor(observation.action).includes(action.kind)) {
       context.addIssue({
         code: "custom",
@@ -254,7 +257,7 @@ export const ObservedOperationStructureWireSchema = z.strictObject({
       }
     }
     if (producer?.kind === "child-output" && producer.inputs !== undefined && producer.result === undefined) context.addIssue({ code: "custom", message: "child lineage requires its immediate retained result identity" });
-    if ((occurrence.state === undefined || occurrence.state === "completed") && occurrence.value?.slot !== action.valueSlot) {
+    if ((occurrence.state === undefined || occurrence.state === "completed" || occurrence.state === "confirmed") && occurrence.value?.slot !== action.valueSlot) {
       context.addIssue({
         code: "custom",
         path: ["observations", index, "occurrence", "value", "slot"],
@@ -276,7 +279,7 @@ export const RunOperationStructureWireSchema = z.discriminatedUnion("state", [
 export type RunOperationStructureWire = z.infer<typeof RunOperationStructureWireSchema>;
 
 export const OperationSourceRequestSchema = z.strictObject({
-  identity: DeclaredActionOccurrenceSchema.omit({ value: true }),
+  identity: DeclaredActionIdentitySchema,
   cursor: z.string().regex(/^[a-f0-9]{64}$/u).optional(),
 });
 export type OperationSourceRequest = z.infer<typeof OperationSourceRequestSchema>;

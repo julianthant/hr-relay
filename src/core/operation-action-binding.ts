@@ -217,10 +217,13 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
   const actions = flattenActions(invocation.operation.actions);
   const counts = new Map<string, number>();
   const pending = new Map<string, number>();
+  const completed = new Map<string, Readonly<{ occurrence: number; at: string; sequence: number; physicalSessionId?: string }>>();
   const bindings = new Map(invocation.bindings.map((binding) => [binding.slot, binding.value]));
   const slots = new Map(invocation.operation.values.map((slot) => [slot.id, slot]));
 
+  let sequence = 0;
   return (observed: BrowserAction): BrowserAction => {
+    sequence += 1;
     const declared = findAction(actions, observed, invocation.operation.page);
     if (declared === undefined) {
       // Session/navigation and field-clear observations are real notes, but
@@ -237,17 +240,26 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
       throw new Error(`declared action ${declared.id} has no physical browser session incarnation`);
     }
     const finishing = observed.state === "completed" || observed.state === "failed";
-    const occurrence = finishing ? pending.get(declared.id) : (counts.get(declared.id) ?? 0) + 1;
+    const occurrence = observed.state === "confirmed" ? completed.get(declared.id)?.occurrence : finishing ? pending.get(declared.id) : (counts.get(declared.id) ?? 0) + 1;
     if (occurrence === undefined) throw new Error(`declared action ${declared.id} finished without a recorded start`);
     if (observed.state === "started") {
       if (pending.has(declared.id)) throw new Error(`declared action ${declared.id} started concurrently within one invocation`);
+      completed.delete(declared.id);
       pending.set(declared.id, occurrence);
-    } else if (finishing) pending.delete(declared.id);
+    } else if (finishing) { pending.delete(declared.id); if (observed.state === "failed") completed.delete(declared.id); }
     counts.set(declared.id, occurrence);
+    if (observed.state === "completed") completed.set(declared.id, { occurrence, at: observed.at, sequence, ...(observed.physicalSessionId === undefined ? {} : { physicalSessionId: observed.physicalSessionId }) });
+    if (observed.state === "confirmed") {
+      const proof = observed.confirmation;
+      const verification = proof === undefined ? undefined : actions.find((candidate) => candidate.id === proof.verificationActionId && candidate.id === declared.confirmationActionId && candidate.kind === "verify");
+      const retained = proof === undefined ? undefined : completed.get(proof.verificationActionId);
+      if (verification === undefined || retained === undefined || retained.occurrence !== proof?.verificationOccurrence || retained.at !== proof.verifiedAt || retained.sequence <= completed.get(declared.id)!.sequence || retained.physicalSessionId !== completed.get(declared.id)!.physicalSessionId || observed.physicalSessionId !== retained.physicalSessionId) throw new Error("declared-action-confirmation-mismatch");
+      completed.delete(declared.id);
+    } else if (observed.confirmation !== undefined) throw new Error("declared-action-confirmation-state-mismatch");
 
     let value: unknown;
     let redactActionValue = false;
-    if (declared.valueSlot !== undefined && (observed.state === undefined || observed.state === "completed")) {
+    if (declared.valueSlot !== undefined && (observed.state === undefined || observed.state === "completed" || observed.state === "confirmed")) {
       const slot = slots.get(OperationValueIdSchema.parse(declared.valueSlot));
       if (slot === undefined) throw new Error(`declared action ${declared.id} references missing value slot ${declared.valueSlot}`);
       if (observed.declaredValue === undefined && observed.value === undefined) {
@@ -319,17 +331,18 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
       logicalSessionId: invocation.operation.session.id,
       ...(observed.physicalSessionId === undefined ? {} : { physicalSessionId: observed.physicalSessionId }),
       ...(observed.state === undefined ? {} : { state: observed.state }),
+      ...(observed.confirmation === undefined ? {} : { confirmation: observed.confirmation }),
       ...(observed.reason === undefined ? {} : { reason: observed.reason }),
       ...(value === undefined ? {} : { value }),
     });
-    if (operation.value?.producer.kind === "task-output" && operation.value.producer.entryId === input.nodeId
+    if (observed.state !== "confirmed" && operation.value?.producer.kind === "task-output" && operation.value.producer.entryId === input.nodeId
       && operation.value.consumed.state === "observed") {
       const { value: _value, ...identity } = operation;
       const key = `${input.nodeId}/${operation.value.fieldPath}`;
       const previous = input.sources?.get(key);
       input.sources?.set(key, { identity, value: operation.value.consumed.value, ...(previous === undefined ? {} : { ambiguous: true }) });
     }
-    const { value: rawValue, declaredValue: _declaredValue, declaredActionId: _declaredActionId, state: _state, reason: _reason, ...withoutRawValue } = observed;
+    const { value: rawValue, declaredValue: _declaredValue, declaredActionId: _declaredActionId, state: _state, reason: _reason, confirmation: _confirmation, ...withoutRawValue } = observed;
     return {
       ...withoutRawValue,
       ...(redactActionValue || rawValue === undefined ? {} : { value: rawValue }),

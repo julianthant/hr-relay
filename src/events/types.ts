@@ -432,8 +432,11 @@ const DeclaredActionIdentityWireSchema = z.strictObject({
   occurrence: PositiveIntSchema,
   logicalSessionId: SlugSchema,
   physicalSessionId: UuidSchema.optional(),
-  state: z.enum(["started", "completed", "failed", "not-run"]).optional(),
+  state: z.enum(["started", "completed", "failed", "not-run", "confirmed"]).optional(),
+  confirmation: z.strictObject({ verificationActionId: SlugSchema, verificationOccurrence: PositiveIntSchema, verifiedAt: IsoInstantSchema }).optional(),
   reason: z.enum(["condition-false", "dry-run", "cancelled", "callback-failed"]).optional(),
+}).superRefine((identity, context) => {
+  if ((identity.state === "confirmed") !== (identity.confirmation !== undefined)) context.addIssue({ code: "custom", path: ["confirmation"], message: "confirmed action requires exact verification evidence" });
 });
 
 const ActionValueProducerWireSchema = z.discriminatedUnion("kind", [
@@ -458,7 +461,7 @@ const ProtectedActionBindingWireSchema = z.discriminatedUnion("kind", [
     name: z.enum(["timekeeperName", "separationsKualiFinalizationCanaryDocumentNumber", "personLookupCanaryEid"]) }),
 ]);
 
-const DeclaredActionOccurrenceWireSchema = DeclaredActionIdentityWireSchema.extend({
+const DeclaredActionOccurrenceWireSchema = DeclaredActionIdentityWireSchema.safeExtend({
   value: z.strictObject({
     slot: SlugSchema,
     fieldPath: SpanFieldPathSchema,

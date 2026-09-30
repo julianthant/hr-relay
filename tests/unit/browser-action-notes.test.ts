@@ -4,6 +4,32 @@ import { manualClock } from "../../src/domain/clock.js";
 import { recordBrowserAction, runDeclaredAction, recordDeclaredActionNotRun, withBrowserActionBinding, withBrowserActionSession, withBrowserActionNotes, type BrowserAction } from "../../src/infra/browser/action-notes.js";
 
 describe("browser action notes", () => {
+  it("requires an explicit verified effect, preserves unconfirmed gestures and propagates verifier failures", async () => {
+    const clock = manualClock(new Date("2026-09-23T12:00:00.000Z"));
+    const run = async (verify?: () => Promise<boolean>) => {
+      let drained: readonly BrowserAction[] = [];
+      let occurrence = 0;
+      const operation = withBrowserActionNotes(clock, () => withBrowserActionBinding((action) => ({ ...action,
+        operation: { runId: "00000000-0000-4000-8000-000000000001", definitionFingerprint: "a".repeat(64), nodeId: "fixture", taskId: "fixture", attempt: 2, claimGeneration: 3, taskAttempt: 4, invocationId: "fixture", occurrencePath: ["fixture"], logicalActionId: action.declaredActionId!, occurrence: ++occurrence, logicalSessionId: "fixture", state: action.state },
+      }), () => runDeclaredAction({ id: "save", kind: "clicked", targetId: "fixture.save" }, async () => "protected-result", undefined,
+        verify === undefined ? undefined : { id: "verify-save", targetId: "fixture.saved", verify })), (actions) => { drained = actions; });
+      try { await operation; } catch (error) { return { drained, error }; }
+      return { drained, error: undefined };
+    };
+    assert.deepEqual((await run()).drained.map((action) => action.state), ["started", "completed"]);
+    const success = await run(async () => true);
+    assert.deepEqual(success.drained.map((action) => action.state), ["started", "completed", "started", "completed", "confirmed"]);
+    assert.deepEqual(success.drained.at(-1)?.confirmation, { verificationActionId: "verify-save", verificationOccurrence: 4, verifiedAt: clock.now().toISOString() });
+    assert.ok(success.drained.every((action) => action.value === undefined && action.declaredValue === undefined));
+    const failed = await run(async () => false);
+    assert.match(String(failed.error), /declared-action-effect-not-confirmed/u);
+    assert.deepEqual(failed.drained.map((action) => action.state), ["started", "completed", "started", "failed"]);
+    const failure = new Error("selector timeout");
+    const thrown = await run(async () => { throw failure; });
+    assert.equal(thrown.error, failure);
+    assert.ok(thrown.drained.every((action) => action.state !== "confirmed"));
+  });
+
   it("buffers explicit lifecycle and not-run decisions, preserving the original failure", async () => {
     const clock = manualClock(new Date("2026-09-23T12:00:00.000Z"));
     const failure = new Error("driver failed");

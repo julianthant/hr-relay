@@ -98,7 +98,7 @@ export type ActionValueProvenance = z.infer<typeof ActionValueProvenanceSchema>;
  * Identity for one completed declared driver gesture.  It is self-contained so
  * a retained note can be joined to its frozen structure without current code.
  */
-export const DeclaredActionOccurrenceSchema = DeclaredActionIdentitySchema.extend({
+export const DeclaredActionOccurrenceSchema = DeclaredActionIdentitySchema.safeExtend({
   value: ActionValueProvenanceSchema.optional(),
 });
 export type DeclaredActionOccurrence = z.infer<typeof DeclaredActionOccurrenceSchema>;

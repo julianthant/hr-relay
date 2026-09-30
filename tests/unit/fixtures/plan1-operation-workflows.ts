@@ -11,7 +11,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presenta
 import { runDeclaredAction, recordDeclaredActionNotRun } from "../../../src/infra/browser/action-notes.js";
 import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
 
-export const Plan1Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat"]) });
+export const Plan1Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat", "confirmed"]) });
 export const Plan1Output = z.strictObject({ eid: EidSchema, disposition: z.string(), providerState: z.string() });
 export const Plan1CanonicalInput = defineCanonicalInput(Plan1Input, Plan1Input, [{ emplId: "10800000", text: "same", mode: "ok" }]);
 const scenario = ScenarioIdSchema.parse("ocr/capability-wiring-happy");
@@ -25,22 +25,27 @@ export const plan1Contract = defineTaskContract({ id: taskId("ocr/extract-form-p
     { id: "disposition", presentation: "local-operator", source: { kind: "contract-output", path: "disposition" } },
     { id: "provider-state", presentation: "local-operator", source: { kind: "contract-output", path: "providerState" } },
   ], actions: [
-    { id: "consume-text", kind: "read-field", valueSlot: "text" },
-    { id: "read-eid", kind: "read-field", valueSlot: "eid" },
-    { id: "read-disposition", kind: "read-field", valueSlot: "disposition" },
-    { id: "read-provider-state", kind: "read-field", valueSlot: "provider-state" },
+    { id: "consume-text", kind: "read-field", confirmationActionId: "verify-consume-text", valueSlot: "text" },
+    { id: "read-eid", kind: "read-field", confirmationActionId: "verify-read-eid", valueSlot: "eid" },
+    { id: "read-disposition", kind: "read-field", confirmationActionId: "verify-read-disposition", valueSlot: "disposition" },
+    { id: "read-provider-state", kind: "read-field", confirmationActionId: "verify-read-provider-state", valueSlot: "provider-state" },
+    { id: "verify-consume-text", kind: "verify" },
+    { id: "verify-read-eid", kind: "verify" },
+    { id: "verify-read-disposition", kind: "verify" },
+    { id: "verify-read-provider-state", kind: "verify" },
     { id: "optional-read", kind: "read-field", valueSlot: "provider-state" },
   ] },
 });
 export const plan1Task = defineTask(plan1Contract, { sessions: [], async run({ input, ctx }) {
-  await runDeclaredAction({ id: "consume-text", kind: "read", targetId: "consume-text" }, async () => input.text, (value) => value);
+  const confirm = (id: string, expected: string) => input.mode === "confirmed" ? { id: `verify-${id}`, targetId: `verify-${id}`, verify: async (value: string) => value === expected } : undefined;
+  await runDeclaredAction({ id: "consume-text", kind: "read", targetId: "consume-text" }, async () => input.text, (value) => value, confirm("consume-text", input.text));
   recordDeclaredActionNotRun({ id: "optional-read", kind: "read", targetId: "optional-read" }, "condition-false");
-  const eid = await runDeclaredAction({ id: "read-eid", kind: "read", targetId: "read-eid" }, async () => input.emplId, (value) => value);
+  const eid = await runDeclaredAction({ id: "read-eid", kind: "read", targetId: "read-eid" }, async () => input.emplId, (value) => value, confirm("read-eid", input.emplId));
   const disposition = await runDeclaredAction({ id: "read-disposition", kind: "read", targetId: "read-disposition" }, async () => {
     if (input.mode === "fail") throw new Error("synthetic callback failure"); return input.text;
-  }, (value) => value);
+  }, (value) => value, confirm("read-disposition", input.text));
   if (input.mode === "repeat") await runDeclaredAction({ id: "read-disposition", kind: "read", targetId: "read-disposition" }, async () => input.text, (value) => value);
-  const providerState = await runDeclaredAction({ id: "read-provider-state", kind: "read", targetId: "read-provider-state" }, async () => input.text, (value) => value);
+  const providerState = await runDeclaredAction({ id: "read-provider-state", kind: "read", targetId: "read-provider-state" }, async () => input.text, (value) => value, confirm("read-provider-state", input.text));
   ctx.recordData([{ direction: "read", field: "eid", value: eid }, { direction: "read", field: "disposition", value: disposition }, { direction: "read", field: "providerState", value: providerState }]);
   return { eid, disposition, providerState };
 } });

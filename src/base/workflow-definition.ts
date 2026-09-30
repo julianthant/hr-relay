@@ -1069,6 +1069,7 @@ function operationDisplayEntries(definition: AnyWorkflowDefinition): readonly Wo
     const base = {
       id: entry.id,
       kind: entry.kind,
+      ...(entry.label === undefined ? {} : { label: entry.label }),
       dependsOn: Object.freeze(entry.references.map(({ id }) => id)),
     } as const;
     if (entry.kind === "task") {
