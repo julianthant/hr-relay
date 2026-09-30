@@ -164,6 +164,7 @@ export interface TestClock extends Clock {
 }
 
 export const systemClock: Clock = Object.freeze({ /* new Date() / Date.now() / performance.now() */ });
+export function capturedInstantClock(instant: string, elapsed?: Pick<Clock, "monotonicMs">): Clock { /* … */ }
 export function manualClock(at: Date, initialMonotonicMs = 0): TestClock { /* … */ }
 ```
 
@@ -171,8 +172,8 @@ Three shape choices are load-bearing. `systemClock` is **frozen at module load**
 monkey-patch the production clock in place and leave it patched for the next file. `TestClock`
 advances wall and monotonic time **independently**, which is what makes skew and elapsed-budget
 behaviour testable without sleeping. And `localDatePart` / `formatTraceTimestamp` are exported pure
-functions taking a `Date`, so the two implementations (`systemClock` and `manualClock`) share one
-formatter rather than agreeing by coincidence.
+functions taking a `Date`, so the clock implementations share one formatter rather than agreeing
+by coincidence.
 
 **Composition with the other contracts (nothing else changes shape — only the `now` input):**
 
@@ -1894,6 +1895,10 @@ Before writing that configuration, a durable operation-bound activation checkpoi
 native authority/archive snapshots, nonsecret inventory binding, ordinary Settings revision and
 fingerprint, and the selected configuration snapshot identity, contents, fingerprint, and time.
 Recovery reuses this intent rather than selecting a fresh backup or probing a new host configuration.
+The activation transaction uses `capturedInstantClock` for the intent's validated captured instant,
+so durable snapshot and authority timestamps match that exact checkpoint. Its wall instant is
+immutable and each `now()` returns a fresh Date; elapsed budgets still use the live monotonic
+clock. The production adapter exposes only `Clock`, without test-only advance or set operations.
 It accepts only the exact pre-activation authority or the exact transactionally committed intent;
 a third state refuses. This also applies to artifact-only moves, where activation changes the source
 database itself. Credential bytes are compared privately and do not contribute secret-derived

@@ -6,7 +6,7 @@ import { rebuildRuntimeIsolation } from "../../config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { ConfigSnapshotWriteSchema } from "../../domain/config/snapshot.js";
 import type { StorageRelocationPlanView } from "../../domain/commands.js";
-import { manualClock, systemClock, type Clock } from "../../domain/clock.js";
+import { capturedInstantClock, systemClock, type Clock } from "../../domain/clock.js";
 import { hostConfigFacts, type HostConfigFacts } from "../../domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
@@ -190,7 +190,7 @@ function selectActivationIntent(operation: RuntimeRelocationOperation, admission
 
 function applyActivationIntent(admission: RuntimeAdmission, intent: VerifiedRelocationActivationIntent,
   verifiedStageBackupPath = intent.stageAuthority.backupPath, beforeTransaction?: () => void): void {
-  const clock = manualClock(new Date(intent.snapshot.capturedAt));
+  const clock = capturedInstantClock(intent.snapshot.capturedAt);
   const inspect = () => {
     const database = AuthorityDatabase.open(admission, { path: intent.nativeDestinationPath,
       busyTimeoutMs: 5000, migrationOwner: "storage-relocation", openMode: "storage-doctor-read-only-no-migrate" }, clock);
