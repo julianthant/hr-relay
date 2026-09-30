@@ -445,7 +445,16 @@ read while still permitting replay-safe browser downloads.
   unions are exhaustive; unknown keys fail. AST guards reject exported persistence/wire interfaces
   with no schema, decision-bearing `Record<string,unknown|JsonValue>`, `any`, unchecked `as`, and
   catch/default parsing at these seams. Runtime corruption fixtures exercise JSONL, SQLite, HTTP,
-  SSE, and config reads.
+  SSE, and config reads. D355/D356's exact operation-display authoring/compiler symbols and
+  validated snapshot-identity argument are in-process APIs; their symbol-level classification
+  permits no additional export or unsafe source construct in either module.
+- **`workflow-operation-display-boundary.test.ts`.** D355/D356 declarations retain a browser-safe
+  runtime import closure with no Node builtin, browser runtime, or store/driver implementation.
+  Only compiler-produced complete displays freeze into recursively strict JSON snapshots. The
+  real reader refuses unknown nested fields, executable values, missing complete structure,
+  mismatched envelope identity and altered content digests. Import-closure and durable-boundary
+  negative controls accompany the valid compiler-produced round-trip; legacy capability remains
+  the explicit active result for definitions without complete declarations.
 - **`canonical-input-snapshot.test.ts`.** Ingress input applies defaults/coercions/transforms once;
   the stored canonical value round-trips through the descriptor's validation-only `canonicalInput`
   schema on every DB/resume read. A deliberately non-idempotent transform proves resume does not

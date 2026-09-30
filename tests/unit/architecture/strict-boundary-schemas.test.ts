@@ -1588,6 +1588,38 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   // transactionOutcomeSchema(), and childRunOutcomeSchema() are all catalogued.
   // A schema TYPE, like CanonicalJsonSchema above — it describes a validator,
   // not a value that crosses a boundary, so it cannot itself be schema-derived.
+  // D355/D356 authoring and compiler APIs carry Zod validators and pure functions.
+  // Only their recursively strict, integrity-checked snapshot is stored or served;
+  // workflow-operation-display-boundary proves that crossing and compiler provenance.
+  "src/domain/workflow/operation-display.ts:OperationActionKind",
+  "src/domain/workflow/operation-display.ts:WorkflowCompositionActionKind",
+  "src/domain/workflow/operation-display.ts:LogicalSessionReference",
+  "src/domain/workflow/operation-display.ts:LogicalPageReference",
+  "src/domain/workflow/operation-display.ts:TaskOperationValueSlot",
+  "src/domain/workflow/operation-display.ts:TemplateVariable",
+  "src/domain/workflow/operation-display.ts:TemplateCondition",
+  "src/domain/workflow/operation-display.ts:OperationTemplateSegment",
+  "src/domain/workflow/operation-display.ts:OperationTemplate",
+  "src/domain/workflow/operation-display.ts:OperationTransformDeclaration",
+  "src/domain/workflow/operation-display.ts:OperationOutcomeCase",
+  "src/domain/workflow/operation-display.ts:TaskOperationAction",
+  "src/domain/workflow/operation-display.ts:TaskOperationDeclaration",
+  "src/domain/workflow/operation-display.ts:WorkflowValueReference",
+  "src/domain/workflow/operation-display.ts:WorkflowDisplayTransformDeclaration",
+  "src/domain/workflow/operation-display.ts:WorkflowOutcomePredicate",
+  "src/domain/workflow/operation-display.ts:WorkflowOutcomeCase",
+  "src/domain/workflow/operation-display.ts:OperationInvocationDeclaration",
+  "src/domain/workflow/operation-display.ts:WorkflowOperationPresentationNode",
+  "src/domain/workflow/operation-display.ts:WorkflowOperationDisplayDeclaration",
+  "src/domain/workflow/operation-display.ts:WorkflowOperationContractProjection",
+  "src/domain/workflow/operation-display.ts:WorkflowOperationEntryProjection",
+  "src/domain/workflow/operation-display.ts:WorkflowOperationDisplayCompileInput",
+  "src/domain/workflow/operation-display.ts:LegacyWorkflowOperationDisplay",
+  "src/domain/workflow/operation-display.ts:CompleteWorkflowOperationDisplay",
+  "src/domain/workflow/operation-display.ts:WorkflowOperationDisplay",
+  // In-process identity argument; requireWorkflowOperationDisplaySnapshot parses
+  // both fields and compares them with the schema-validated durable snapshot.
+  "src/domain/workflow/operation-display-snapshot.ts:OperationDisplaySnapshotIdentity",
   "src/domain/workflow/canonical-input.ts:CanonicalInputSchema",
   // D341 test-data inputs: `TestDataLocalInputEntry` is a generic projection of
   // the schema-derived `TestDataLocalInputs` (one entry, keyed by input name),
@@ -1795,6 +1827,25 @@ describe("strict boundary schemas", () => {
       "export const parsed = Schema.parse(input ?? {});",
     ].join("\n");
     assert.equal(boundarySourceViolations("src/domain/new-boundary.ts", fixture).length >= 5, true);
+  });
+
+  it("keeps exact operational classifications from exempting either display module", () => {
+    const fixtures = [
+      { source: "export interface UndeclaredWire { value: string }", refusal: "exported boundary interface has no schema" },
+      { source: "export type UndeclaredWire = { value: string }", refusal: "exported boundary type is not schema-derived" },
+      { source: "export const Schema = z.object({ value: z.string() });", refusal: "z.object is open" },
+      { source: "export interface OperationTransformDeclaration { value: any }", refusal: "any is forbidden" },
+      { source: "export const value = input as OperationTransformDeclaration;", refusal: "unchecked type assertion" },
+      { source: "export const parsed = Schema.parse(input ?? {});", refusal: "parse cannot default malformed boundary input" },
+    ];
+    for (const path of ["src/domain/workflow/operation-display.ts", "src/domain/workflow/operation-display-snapshot.ts"]) {
+      const current = readFileSync(join(REPO_ROOT, path), "utf8");
+      assert.deepEqual(boundarySourceViolations(path, current), []);
+      for (const { source, refusal } of fixtures) {
+        assert.equal(boundarySourceViolations(path, `${current}\n${source}`).some((violation) => violation.includes(refusal)), true,
+          `${path} did not refuse ${refusal}`);
+      }
+    }
   });
 
   it("keeps every current domain boundary source free of unsafe escape hatches", () => {

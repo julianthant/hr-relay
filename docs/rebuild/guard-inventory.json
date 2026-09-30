@@ -171,11 +171,19 @@
       "replacementRequired": true
     },
     {
+      "name": "workflow-operation-display-boundary",
+      "file": "tests/unit/architecture/workflow-operation-display-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/workflow-model.md; docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "D355/D356's in-process operation-display vocabulary retains a browser-safe runtime import closure, with no Node builtin, browser runtime or store/driver implementation reach. Only compiler-produced complete displays freeze into recursively strict serializable snapshots; the real reader validates envelope identity and content digest, refuses missing complete structure, nested unknown keys and executable values, and never substitutes a current descriptor. Legacy capability remains active for definitions without complete declarations. Positive compiler/freeze/read round-trip and Node/store, forged projection, nested unknown/function, wrong identity, missing snapshot and changed payload/digest negative controls prove both boundaries.",
+      "replacementRequired": true
+    },
+    {
       "name": "strict-boundary-schemas",
       "file": "tests/unit/architecture/strict-boundary-schemas.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every cataloged external or durable boundary is schema-derived, recursively strict across object/union/lazy members, and rejects nested unknown keys and unsafe type/parser escape hatches. C catalogs strict RunCompletion and explicitly historical receipt schemas; nested unknown-key negative fixtures remain. Deciding evidence: C focused strict-boundary-schemas, five cases. The removed config binding schema/empty registry is not an external or durable boundary; current no-env authority is covered by runtime-environment-coverage and secrets-single-source negative controls. 3.1.9 A adds recursively strict Explorer import source/receipt fixtures; only the schema-valued in-process reader/repository methods are operational interfaces.",
+      "invariant": "Every cataloged external or durable boundary is schema-derived, recursively strict across object/union/lazy members, and rejects nested unknown keys and unsafe type/parser escape hatches. C catalogs strict RunCompletion and explicitly historical receipt schemas; nested unknown-key negative fixtures remain. Deciding evidence: C focused strict-boundary-schemas, five cases. The removed config binding schema/empty registry is not an external or durable boundary; current no-env authority is covered by runtime-environment-coverage and secrets-single-source negative controls. 3.1.9 A adds recursively strict Explorer import source/receipt fixtures; only the schema-valued in-process reader/repository methods are operational interfaces. D355/D356 admits exactly 27 authoring/compiler and validated snapshot-identity symbols as in-process operational types; same-file injected new interface/type, open schema, any, assertion and malformed parse fallback controls retain source guard strength. The active workflow-operation-display-boundary guard proves the schema-validated durable crossing and compiler provenance.",
       "replacementRequired": true
     },
     {
