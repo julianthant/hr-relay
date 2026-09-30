@@ -14,6 +14,16 @@ function dateValue(value: string | undefined): CalendarDate | null {
   }
 }
 
+function dateBound(value: string | undefined, bound: "min" | "max"): CalendarDate | undefined {
+  if (value === undefined) return undefined;
+  try { return parseDate(value); }
+  catch {
+    const error = new Error(`DateInput: invalid ${bound} date bound`);
+    error.name = "InvalidDateInputBoundError";
+    throw error;
+  }
+}
+
 function textDateValue(value: string): CalendarDate | null {
   const match = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/u.exec(value);
   if (match === null) return null;
@@ -42,8 +52,8 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
       onOpenChange={open => { if (!open) setYearPickerOpen(false); }}
       value={selected}
       onChange={date => onChange(date === null ? "" : textEntry ? `${String(date.month)}/${String(date.day)}/${String(date.year)}` : date.toString())}
-      minValue={dateValue(min) ?? undefined}
-      maxValue={dateValue(max) ?? undefined}
+      minValue={dateBound(min, "min")}
+      maxValue={dateBound(max, "max")}
       isInvalid={value !== "" && selected === null}
       isDisabled={disabled}
       isRequired={required}

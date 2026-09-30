@@ -8,6 +8,7 @@
  * Every process edge is a recording fake at the system boundary: the spawner,
  * the lease probe, the graceful-stop channel, the clock and the scheduler.
  */
+import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import type { TestClock } from "../../../src/domain/clock.js";
@@ -1391,4 +1392,18 @@ describe("browser session arms", () => {
     await expect(harness.supervisor.execute({ command: "reopen-browser", member: target, browserSessionId }))
       .rejects.toThrow(/worker-browser-channel-unavailable/);
   });
+});
+
+it("observes an early drain rejection on the original promise and still refuses shutdown", async () => {
+  const { harness } = await runningHarness();
+  const failure = new Error("durable stop unavailable");
+  harness.nextGracefulStop = () => { throw failure; };
+  await assert.rejects(harness.supervisor.drainOwnedChildren(stopDirective(NOW)), error => {
+    assert.ok(error instanceof AggregateError);
+    assert.equal(error.message, "dashboard could not observe every owned worker exit");
+    assert.ok(error.errors.some((cause: unknown) => cause instanceof Error && cause.message.includes("durable stop unavailable")));
+    return true;
+  });
+  expect(harness.children[0]?.signalsSent).toEqual([]);
+  harness.children[0]?.emitExit(0, null); harness.supervisor.close();
 });

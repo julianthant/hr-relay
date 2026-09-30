@@ -13,7 +13,7 @@ import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/boot
 
 vi.mock("node:fs", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs")>();
-  return { ...actual, mkdirSync: vi.fn(actual.mkdirSync) };
+  return { ...actual, mkdirSync: vi.fn(actual.mkdirSync), lstatSync: vi.fn(actual.lstatSync) };
 });
 
 const roots: string[] = [];
@@ -138,4 +138,11 @@ it("refuses symlink mutex custody and preserves an immediate exclusive lease con
   symlinkSync(join(target, ".runtime-control"), join(root, ".runtime-control", "admission-mutex"));
   assert.throws(() => acquireEntrypointAdmission(root, "shared"), /unsafe directory/u);
   assert.equal(existsSync(join(target, ".runtime-control", "installation.json")), true);
+});
+
+it("propagates installation lstat access failure instead of treating the path as absent", () => {
+  const root = initializedRoot();
+  const failure = Object.assign(new Error("injected lstat access failure"), { code: "EACCES" });
+  vi.mocked(filesystem.lstatSync).mockImplementationOnce(() => { throw failure; });
+  assert.throws(() => acquireEntrypointAdmission(root, "shared"), error => error === failure);
 });
