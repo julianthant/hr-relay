@@ -27,6 +27,10 @@ including secret, credential-file, direct-identifier, sensitive-HR, and safe-dia
 those values are already supplied to an authorized evidence boundary. New classified evidence
 uses `state: allowed`, `transform: allow`, its original classification, and its complete value.
 Capture and display do not drop, shorten, count, hash, or substitute basenames for these values.
+Search metadata diagnostic exports use format 2 with the complete already-collected selection and
+values; CSV and XLSX include supplied query text, identifiers, and available subject/actor values.
+Activity XLSX includes supplied sampled run identifiers and its longest-run identifier.
+Snapshot membership, order, limits, formula-safe CSV encoding, typed XLSX cells and access control remain required.
 This amendment supersedes classification-based presentation/capture masking rules in this reference
 and its importing contracts. It does not authorize discovering or reading additional credentials.
 The obsolete `no-secret-values-in-logs` interpolation guard is retired with its exact deciding

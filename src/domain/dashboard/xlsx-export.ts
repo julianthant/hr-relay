@@ -1,11 +1,10 @@
 import { ActivitySnapshotTokenSchema } from "./activity-selection.js";
 /**
- * DCR5 operator XLSX export: a strict, redacted selection document.
+ * DCR5 operator XLSX export: a strict complete selection document.
  *
  * The current search arm contains the bounded metadata corpus admitted by
  * `CrossDateSearchResultSchema`. Full run, trace and retry ids are
- * required to prove the authority selection, but the workbook composer omits
- * them; its durable run number is the only row label that leaves in the file.
+ * required to prove the authority selection and retained in the workbook.
  */
 import { z } from "zod";
 import { HistoricalOperatorXlsxExportEvidenceSchema } from "./xlsx-export-history.js";
@@ -328,9 +327,9 @@ export function operatorXlsxSearchCaveats(document: OperatorXlsxSearchDocument):
     "This workbook is a snapshot of non-archived run authority for the exact cross-date search selection recorded with the export.",
     `The bounded metadata selection includes every supported workflow and run shape; this snapshot contains ${String(document.results.length)} row${document.results.length === 1 ? "" : "s"}.`,
     `Coverage: ${String(document.selection.snapshot.coverage.subjectUnavailable)} matching runs lack searchable subjects; ${String(document.selection.snapshot.coverage.actorUnavailable)} lack recorded actors.`,
-    "Person, actor, run, trace and retry identifiers are omitted. A durable workflow run number is the only row label included in the workbook.",
-    "Search text is retained in the export evidence but omitted from workbook cells so an identifier-shaped query cannot become exported data.",
-    "Rows retain the authority order: match strength, enqueue instant descending, then run id ascending. The final run-id tie-break is not displayed.",
+    "Complete collected person, actor, run, trace and retry identifiers are included. Missing source values carry their recorded reason.",
+    "Search text and filters are retained in both export evidence and workbook cells.",
+    "Rows retain the authority order: match strength, enqueue instant descending, then run id ascending. The final run-id tie-break is displayed.",
     "Every instant is a typed spreadsheet date displayed in UTC; partition days remain Pacific calendar dates from the search authority.",
   ]);
 }
@@ -346,7 +345,7 @@ export function operatorXlsxActivityCaveats(document: OperatorXlsxActivityDocume
     `${openRunStatement} Open work contributes only to the workbook totals and buckets that explicitly name it.`,
     "Run totals come from the same validated summary snapshot served by Activity. Archived runs are excluded by that authority before this workbook is composed.",
     "Finished-run warning counts come from evidence receipts. A missing derived receipt remains warnings unread instead of being reported as clean.",
-    "The served Activity report carries sampled run identifiers for interactive drill-down. This XLSX exports only each sample's count; every sampled, longest-run and failure-run identifier is omitted without a suffix substitute.",
+    "The served Activity report carries sampled run identifiers for interactive drill-down. This XLSX includes each supplied sample and the longest-run identifier.",
     "The Ledger sheet is a second authority: it counts what was filed in HR systems and is not derived from run totals. Ledger entries can outlive archived runs.",
     "Every day is a typed spreadsheet date. Duration values are typed milliseconds, and absent medians or longest durations retain their served reason instead of becoming zero.",
   ]);

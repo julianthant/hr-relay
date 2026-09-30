@@ -7,7 +7,6 @@ import { ActorIdSchema } from "../../domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../domain/workflow/checkpoint.js";
 import { FailureRecordSchema } from "../../domain/trust/failure.js";
-import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { CROSS_DATE_SEARCH_MATCH_ORDER, SearchMetadataSchema } from "../../domain/dashboard/search.js";
 import { RunSearchDeclarationSchema, RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchReadRequestSchema, RunSearchRebuildRequestSchema } from "../../domain/dashboard/search-index.js";
 import { unarchivedRunSql } from "./archive-compatibility.js";
@@ -72,13 +71,6 @@ function safeSubject(database: DatabaseSync, run: RunRecord): z.infer<typeof Sea
     value = Reflect.get(value, part);
   }
   if (typeof value !== "string" || value.trim().length === 0 || value.length > 500) throw new Error("run-search-subject-invalid");
-  const input = run.input.parsed.value;
-  // A declared name is public metadata; known protected values never become search terms.
-  for (const binding of retainedRunProtectedBindings(run)) {
-    const secret: unknown = input !== null && typeof input === "object" ? Reflect.get(input, binding.inputPath) : undefined;
-    if (typeof secret === "string" && secret.length > 0 && value.includes(secret)) return { state: "unavailable", reason: "withheld" };
-  }
-  if (/10\d{6}/u.test(value)) return { state: "unavailable", reason: "withheld" };
   return { state: "available", value: value.trim() };
 }
 

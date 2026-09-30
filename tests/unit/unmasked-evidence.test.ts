@@ -4,6 +4,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
+import { FailureRecordSchema } from "../../src/domain/trust/failure.js";
+import { failureRecordOf } from "./server/helpers/dashboard-harness.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { projectReceiptForOperator } from "../../src/domain/trust/evidence.js";
 import { ArchivedRunContentSchema } from "../../src/domain/archive/model.js";
@@ -126,5 +128,32 @@ describe("D358 durable receipt boundaries", () => {
     });
     assert.ok(archived.receipt.state === "present");
     assert.equal(canonicalJsonStringify(archived.receipt.value), canonicalJsonStringify(receipt));
+  });
+});
+
+describe("D358 supplied failure diagnostics", () => {
+  it("retains complete supplied failure summary only in new composition 5", () => {
+    const evidence = kualiReceiptEvidence();
+    const done = RunRecordSchema.parse(evidence.run);
+    assert.ok(done.lifecycle.state === "terminal" && done.completion?.kind === "done");
+    const failure = FailureRecordSchema.parse({ ...failureRecordOf({ seed: 984, code: "SUBJECT_MISMATCH" }),
+      runId: done.envelope.runId, traceId: done.envelope.traceId, workflowId: done.envelope.workflow,
+      summary: "synthetic complete diagnostic for identifier 10800001 and transaction T1234567",
+    });
+    const { resultDigest: _resultDigest, ...completion } = done.completion;
+    const failed = RunRecordSchema.parse({ ...done,
+      lifecycle: { ...done.lifecycle, outcome: "failed", failureId: failure.failureId },
+      completion: { ...completion, kind: "failed", failureId: failure.failureId },
+    });
+    const input = { descriptor: separationsKualiFinalizationDescriptor, run: failed,
+      checkpoints: evidence.checkpoints, writes: evidence.writes, failure };
+    const current = buildRunEvidenceReceipt(input, 5);
+    const historical = buildRunEvidenceReceipt(input, 4);
+    const currentWarning = current.warnings.find(warning => warning.code === failure.code);
+    const historicalWarning = historical.warnings.find(warning => warning.code === failure.code);
+    assert.ok(currentWarning?.summary.includes(failure.summary));
+    assert.ok(historicalWarning);
+    assert.ok(historicalWarning.summary.includes("Free diagnostic text remains in authority"));
+    assert.ok(!historicalWarning.summary.includes(failure.summary));
   });
 });

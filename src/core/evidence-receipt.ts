@@ -1056,7 +1056,7 @@ export function deriveRunEvidenceReceipt(
     warnings.push({
       id: entryId("warning", "failure"),
       code: failure.code,
-      summary: composition >= 3
+      summary: composition >= 3 && composition < 5
         ? `failure ${failure.code}; write state at failure: ${failure.writeState}. `
           + "Free diagnostic text remains in authority and is not copied into this receipt"
         : `${failure.summary} — write state at failure: ${failure.writeState}`,

@@ -808,26 +808,12 @@ function ValidationReview({
   );
 }
 
-/**
- * The offending value, exactly as the durable manifest would keep it.
- *
- * It is REDACTED by the canonical field's own declared transform, so an EID
- * reads as its last four and a name as a digest — and the transform is named
- * beside it, because "…3698" presented as the cell's contents would be a lie
- * about what the operator is looking at. The real cell is in the file; that is
- * where the correction is made from.
- */
 function rejectRawText(reject: RowReject): string | undefined {
   if (reject.kind !== "cell-coercion" && reject.kind !== "field-schema") return undefined;
   const raw = reject.raw;
-  if (raw.state === "redacted") return `withheld (${raw.classification})`;
-  if (raw.state === "transformed") return `${String(raw.value)} (${raw.transform})`;
-  // The `allowed` arm is the only one carrying arbitrary JSON, and a cell that
-  // is an object has no honest one-line rendering — say so rather than print
-  // `[object Object]` where a value belongs.
-  return typeof raw.value === "object" && raw.value !== null
-    ? "(a structured value)"
-    : String(raw.value);
+  const value = raw.rawValue !== undefined ? raw.rawValue : raw.state === "allowed" ? raw.value : undefined;
+  return value === undefined ? "Complete value unavailable in this historical record"
+    : typeof value === "string" ? value : JSON.stringify(value);
 }
 
 function RejectedRowsTable({

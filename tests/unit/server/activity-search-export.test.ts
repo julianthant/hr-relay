@@ -266,16 +266,25 @@ it("binds Activity volume series into the snapshot digest for CSV and XLSX downl
   assert.equal(f.database.getMeta().authorityGeneration,generation);
 });
 
-it("exports the complete ordered search selection with coverage while omitting private values and raw evidence",async()=>{
+it("exports the complete ordered collected search values with coverage and exact snapshot ownership",async()=>{
   const f=fixture();await f.artifacts.ready;
   const query={q:"",scope:"all" as const,facets:{from:"2026-09-20",to:"2026-09-20"},limit:1};
   const page=f.search.search(query),selection={kind:"search" as const,query,snapshot:{...page.snapshot,generatedAt:page.generatedAt}};
   assert.equal(page.results.length,1);assert.equal(page.totalMatches,3);
   const response=exportSearchMetadata(f,{format:"diagnostic",selection}),text=await response.text();
-  const diagnostic=JSON.parse(text) as {totalMatches:number;coverage:unknown;rows:{runNumber:number|null}[]};
+  const diagnostic=JSON.parse(text) as {format:number;selection:{kind:string;query:unknown;snapshot:{generatedAt:string;authorityGeneration:number;order:string;totalMatches:number;coverage:unknown;sourceIdentity:string}};totalMatches:number;coverage:unknown;rows:{runId:string;traceId:string;runNumber:number|null}[]};
   assert.equal(diagnostic.totalMatches,3);assert.deepEqual(diagnostic.coverage,page.coverage);assert.equal(diagnostic.rows.length,3);
-  assert.doesNotMatch(text,/Private Ingress Subject|10000000|configFingerprint|traceId|runId|checkpoint/u);
-  const csv=await exportSearchMetadata(f,{format:"csv",selection}).text();assert.match(csv,/Matches,3/u);assert.doesNotMatch(csv,/Private Ingress Subject|10000000/u);
+  assert.equal(diagnostic.format,2);
+  assert.equal(diagnostic.selection.kind,"search");
+  assert.deepEqual(diagnostic.selection.query,query);
+  const {sourceIdentity,...snapshotValues}=diagnostic.selection.snapshot;
+  assert.match(sourceIdentity,/^[a-f0-9]{64}$/u);
+  assert.deepEqual(snapshotValues,{generatedAt:page.generatedAt,authorityGeneration:page.snapshot.authorityGeneration,order:page.snapshot.order,totalMatches:page.totalMatches,coverage:page.coverage});
+  assert.equal(diagnostic.rows[0]?.runId,page.results[0]?.runId);
+  assert.equal(diagnostic.rows[0]?.traceId,page.results[0]?.traceId);
+  assert.ok(text.includes("complete-search-diagnostic-metadata"));
+  assert.ok(!text.includes("queryText\":\"omitted"));
+  const csv=await exportSearchMetadata(f,{format:"csv",selection}).text();assert.match(csv,/Matches,3/u);assert.match(csv,/Run id,Trace id,Retry of,Subject,Actor/u);
   const xlsx=await f.xlsx.export(ActorIdSchema.parse("synthetic-operator"),{requestVersion:3,selection});
   const sheets=await readXlsxFile(xlsx.bytes),runs=sheets.find(sheet=>sheet.sheet==="Runs");assert.ok(runs);
   assert.equal(runs.data.length,4);assert.deepEqual(runs.data.slice(1).map(row=>row[0]),diagnostic.rows.map(row=>row.runNumber));
