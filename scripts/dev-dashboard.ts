@@ -1,83 +1,102 @@
-/**
- * `npm run dashboard` — the whole dev dashboard in ONE terminal.
- *
- * The dashboard is two processes: the BFF (`cli dashboard`, port 3938, serves
- * `/api/v1/*` and the SSE day stream) and the vite dev server (`web`, port
- * 5174, serves the bundle and proxies `/api` to the BFF). Run only the second
- * and every page load logs `http proxy error: /api/v1/bootstrap … ECONNREFUSED
- * 127.0.0.1:3938` — which is not a defect anywhere, just the BFF not being up.
- * This launcher starts both through their own declared scripts (so the command
- * each runs is still the ONE string `config/runtime-isolation.json` pins and
- * the operational-isolation guard audits), and ties their lifetimes together:
- *
- *  - Ctrl+C (SIGINT) or SIGTERM stops both and waits for both to exit.
- *  - If either exits on its own — the BFF refusing because another holder owns
- *    the D181 server lock, a vite crash — the other is stopped and this process
- *    exits with that code, so the failure is the thing on screen rather than a
- *    half-running dashboard that looks alive.
- *
- * Output is inherited verbatim (no prefixing) so vite keeps its own TTY
- * rendering; the BFF prints one `listening` line and then structured logs.
- * The BFF alone is still `npm run cli -- dashboard`; vite alone is `npm run web`.
- */
+/** `npm run dashboard` owns the BFF and Vite dev server, including their shutdown. */
 import { spawn, type ChildProcess } from "node:child_process";
 import { randomBytes } from "node:crypto";
+import { EventEmitter } from "node:events";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
 } from "../src/server/dashboard/frontend-owner.js";
 
-const NPM = process.platform === "win32" ? "npm.cmd" : "npm";
 const launchNonce = DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
 const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce };
+const repositoryRoot = fileURLToPath(new URL("..", import.meta.url));
 
 interface Managed {
   readonly name: string;
   readonly child: ChildProcess;
+  closed: boolean;
 }
 
-const managed: Managed[] = [];
-let stopping = false;
+export interface DashboardLauncherOptions {
+  readonly startupTimeoutMs?: number;
+  readonly signals?: EventEmitter;
+  readonly writeError?: (message: string) => void;
+}
 
-function stopOthers(except: ChildProcess, signal: NodeJS.Signals): void {
-  for (const { child } of managed) {
-    if (child !== except && child.exitCode === null && child.signalCode === null) child.kill(signal);
+export function runDevDashboard(options: DashboardLauncherOptions = {}): Promise<number> {
+  const signals = options.signals ?? process;
+  const writeError = options.writeError ?? ((message: string) => { process.stderr.write(message); });
+  const managed: Managed[] = [];
+  let stopping = false;
+  let result = 0;
+  let ready = false;
+  let finish: (code: number) => void = () => undefined;
+  const done = new Promise<number>(resolve => { finish = resolve; });
+
+  function completeIfClosed(): void {
+    if (!stopping || !managed.every(item => item.closed)) return;
+    signals.removeListener("SIGINT", onInterrupt);
+    signals.removeListener("SIGTERM", onTerminate);
+    finish(result);
   }
-}
 
-function launch(name: string, args: readonly string[]): void {
-  const child = spawn(NPM, args, { stdio: "inherit", env: childEnvironment });
-  managed.push({ name, child });
-  child.on("error", (error) => {
-    process.stderr.write(`[dashboard] could not start ${name}: ${error.message}\n`);
+  function stop(signal: NodeJS.Signals, code: number): void {
+    if (stopping) return;
     stopping = true;
-    stopOthers(child, "SIGTERM");
-    process.exitCode = 1;
-  });
-  child.on("exit", (code, signal) => {
-    if (!stopping) {
-      stopping = true;
-      const how = signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
-      process.stderr.write(`\n[dashboard] ${name} stopped (${how}); stopping the rest.\n`);
-      process.exitCode = code ?? 1;
-      stopOthers(child, "SIGTERM");
+    result = code;
+    clearTimeout(startupTimer);
+    for (const { child, closed } of managed) {
+      if (!closed && child.exitCode === null && child.signalCode === null) child.kill(signal);
     }
-    if (managed.every(({ child: c }) => c.exitCode !== null || c.signalCode !== null)) {
-      process.exit(process.exitCode ?? 0);
-    }
+    completeIfClosed();
+  }
+
+  function launch(name: string, args: readonly string[], ipc = false): ChildProcess {
+    const child = spawn(process.execPath, args, {
+      cwd: repositoryRoot,
+      stdio: ipc ? ["inherit", "inherit", "inherit", "ipc"] : "inherit",
+      env: childEnvironment,
+    });
+    const item: Managed = { name, child, closed: false };
+    managed.push(item);
+    child.on("error", (error) => {
+      writeError(`[dashboard] could not start ${name}: ${error.message}\n`);
+      if (stopping) result = 1;
+      else stop("SIGTERM", 1);
+    });
+    child.on("exit", (code, signal) => {
+      if (!stopping) {
+        const how = signal === null ? `exit code ${String(code)}` : `signal ${signal}`;
+        writeError(`\n[dashboard] ${name} stopped (${how}); stopping the rest.\n`);
+        stop("SIGTERM", code ?? 1);
+      } else if (code !== null && code !== 0 && result === 0) result = code;
+    });
+    child.on("close", () => { item.closed = true; completeIfClosed(); });
+    return child;
+  }
+
+  function onInterrupt(): void { stop("SIGINT", 0); }
+  function onTerminate(): void { stop("SIGTERM", 0); }
+  signals.on("SIGINT", onInterrupt);
+  signals.on("SIGTERM", onTerminate);
+  const startupTimer = setTimeout(() => {
+    writeError("[dashboard] BFF readiness timed out; stopping the backend.\n");
+    stop("SIGTERM", 1);
+  }, options.startupTimeoutMs ?? 30_000);
+
+  const backend = launch("bff", ["--import", "tsx", fileURLToPath(new URL("./secure-env-bootstrap.ts", import.meta.url)), "cli", "dashboard"], true);
+  backend.on("message", (message: unknown) => {
+    if (stopping || ready || message === null || typeof message !== "object"
+      || !("type" in message) || message.type !== "hrauto-dashboard-ready") return;
+    ready = true;
+    clearTimeout(startupTimer);
+    launch("web", [fileURLToPath(new URL("../node_modules/vite/bin/vite.js", import.meta.url)), "--config", "vite.dashboard.config.ts"]);
   });
+  return done;
 }
 
-for (const signal of ["SIGINT", "SIGTERM"] as const) {
-  process.on(signal, () => {
-    // A terminal Ctrl+C already reaches the children through the process
-    // group; forwarding is for the case where only this process was signalled.
-    stopping = true;
-    for (const { child } of managed) {
-      if (child.exitCode === null && child.signalCode === null) child.kill(signal);
-    }
-  });
+const entryPath = process.argv[1];
+if (entryPath !== undefined && pathToFileURL(entryPath).href === import.meta.url) {
+  process.exitCode = await runDevDashboard();
 }
-
-launch("bff", ["run", "cli", "--", "dashboard"]);
-launch("web", ["run", "web"]);

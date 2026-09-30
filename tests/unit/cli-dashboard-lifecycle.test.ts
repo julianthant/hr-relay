@@ -36,7 +36,7 @@ import { writeDashboardBuildIdentity } from "../../src/server/dashboard/build-id
 
 const REPO_ROOT = fileURLToPath(new URL("../../", import.meta.url));
 const BOOTSTRAP = join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts");
-/** `stdio: ["ignore", "pipe", "pipe"]` — no stdin, both output streams readable. */
+/** Ignored stdin and readable output streams; an optional fourth descriptor carries owned IPC. */
 type DashboardChild = ChildProcessByStdio<null, Readable, Readable>;
 
 const REFERENCE_ENVIRONMENT = "CEREBRAS_API_KEY=reference-only-fixture\n";
@@ -263,13 +263,28 @@ describe("the `dashboard` CLI command's shutdown lifecycle", () => {
       const child = spawn(
         process.execPath,
         ["--import", "tsx", join(scratchRoot, "scripts", "secure-env-bootstrap.ts"), "cli", "dashboard", "--prod"],
-        { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe"] },
-      );
+        { cwd: scratchRoot, stdio: ["ignore", "pipe", "pipe", "ipc"] },
+      ) as DashboardChild;
+      const readiness = new Promise<unknown>((resolve, reject) => {
+        const timer = setTimeout(() => reject(new Error("owned dashboard IPC readiness timed out")), BOOT_TIMEOUT_MS);
+        const onMessage = (message: unknown): void => {
+          clearTimeout(timer); child.removeListener("exit", onExit); resolve(message);
+        };
+        const onExit = (): void => {
+          clearTimeout(timer); child.removeListener("message", onMessage);
+          reject(new Error("dashboard exited before IPC readiness"));
+        };
+        child.once("message", onMessage);
+        child.once("exit", onExit);
+      });
       const pid = child.pid;
       assert.ok(pid, "the spawned dashboard must report a pid");
 
       try {
-        await waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS);
+        const [, readinessMessage] = await Promise.all([
+          waitForStdout(child, LISTENING_MARKER, BOOT_TIMEOUT_MS), readiness,
+        ]);
+        assert.deepEqual(readinessMessage, { type: "hrauto-dashboard-ready" });
         const staticResponse = await fetch(`http://127.0.0.1:${String(rebuildRuntimeIsolation.backendPort)}/`);
         assert.equal(staticResponse.status, 200, "the production child serves the built dashboard bytes");
         assert.match(staticResponse.headers.get("content-type") ?? "", /text\/html/u);
