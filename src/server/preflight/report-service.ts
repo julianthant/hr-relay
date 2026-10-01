@@ -1,15 +1,20 @@
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import type { Clock } from "../../domain/clock.js";
-import { PreflightAdmissionRefusal } from "../../domain/preflight-admission.js";
+import { PreflightAdmissionRefusal, type PreflightAdmission, type PreflightAdmissionScope } from "../../domain/preflight-admission.js";
 import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../domain/preflight-contract.js";
 import type { createPreflightAuthority } from "../../domain/preflight.js";
-import type { RuntimePreflight } from "../../backend/app/preflight/runtime-admission.js";
+import type { InstanceSelection } from "../../domain/run/envelope.js";
 import type { z } from "zod";
 
 type Result = z.infer<typeof PreflightRerunCommandResultWireSchema>;
+export interface PreflightReportRuntime {
+  readonly admission: Pick<PreflightAdmission, "read" | "prepare">;
+  currentScope(workflowId?: string, requestedInstance?: InstanceSelection): PreflightAdmissionScope;
+}
+
 /** One bounded read-only replay namespace across dashboard and workflow scopes. */
 export function createPreflightReportService(input: Readonly<{
-  dashboard: ReturnType<typeof createPreflightAuthority>; runtime: RuntimePreflight; clock: Clock;
+  dashboard: ReturnType<typeof createPreflightAuthority>; runtime: PreflightReportRuntime; clock: Clock;
 }>) {
   const commands = new Map<string, { identity: string; result: Promise<Result> }>();
   const lastCompleted = new Map<string, Extract<PreflightReadinessWire, { state: "present" }>["report"]>();

@@ -4,8 +4,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { buildPreflightReport, requiredPreflightChecks } from "../../../src/domain/preflight.js";
 import { PreflightAdmissionRefusal } from "../../../src/domain/preflight-admission.js";
 import { WorkflowIdSchema } from "../../../src/domain/ids.js";
-import { createPreflightReportService } from "../../../src/server/preflight/report-service.js";
-import type { RuntimePreflight } from "../../../src/backend/app/preflight/runtime-admission.js";
+import { createPreflightReportService, type PreflightReportRuntime } from "../../../src/server/preflight/report-service.js";
 import type { createPreflightAuthority } from "../../../src/domain/preflight.js";
 
 const clock = manualClock(new Date("2026-09-19T12:00:00Z"));
@@ -45,7 +44,7 @@ it("retains completed failed verdicts for the selected workflow while expiry and
         return report;
       },
     },
-  } as unknown as RuntimePreflight;
+  } as unknown as PreflightReportRuntime;
   const service = createPreflightReportService({ dashboard, runtime, clock });
   const command = { commandId: "abababab-abab-4bab-abab-abababababab", requestedAt: clock.now().toISOString(), requestedBy: "local-operator", source: "settings-surface", type: "rerun-preflight", target: {
     expectedConfigFingerprint: configFingerprint, expectedDescriptorFingerprint: descriptorFingerprint, selection } };
