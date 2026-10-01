@@ -1,8 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import { NormalizeContactInputSchema } from "../../../../../src/domain/contracts/normalization/normalize-contact.js";
-import type { NormalizeContactOutput } from "../../../../../src/domain/contracts/normalization/normalize-contact.js";
+import {
+  NormalizeContactInputSchema,
+  NormalizeContactOutputSchema,
+  type NormalizeContactOutput,
+} from "../../../../../src/domain/contracts/normalization/normalize-contact.js";
 import { GeocodeRequestSchema } from "../../../../../src/domain/normalization/geocode.js";
 import { readContactAdviceTask } from "../../../../../src/stores/normalization/index.js";
 
@@ -75,7 +78,7 @@ async function runAdvice(
     log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
   };
   try {
-    const output = await readContactAdviceTask.impl.run({
+    const output = NormalizeContactOutputSchema.parse(await readContactAdviceTask.impl.run({
       input: NormalizeContactInputSchema.parse({
         contact,
         geocode: options.geocode ?? false,
@@ -83,7 +86,7 @@ async function runAdvice(
         readAt: READ_AT,
       }),
       ctx: ctx as never,
-    });
+    }));
     return { outcome: "success" as const, output, calls, requests, recorded };
   } catch (error) {
     const caught = error as Error & { code?: string };
@@ -188,5 +191,3 @@ describe("normalization task wrapper", () => {
     assert.deepEqual(empty.calls, []);
   });
 });
-
-

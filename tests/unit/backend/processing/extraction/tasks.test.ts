@@ -5,7 +5,10 @@ import { describe, it } from "vitest";
 import type { ContentAddressedArtifactWriter } from "../../../../../src/base/artifacts.js";
 import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
 import { ExtractPdfPagesOutputSchema } from "../../../../../src/domain/contracts/extraction/extract-pdf-pages.js";
-import type { ExtractSpreadsheetOutput } from "../../../../../src/domain/contracts/extraction/extract-spreadsheet.js";
+import {
+  ExtractSpreadsheetOutputSchema,
+  type ExtractSpreadsheetOutput,
+} from "../../../../../src/domain/contracts/extraction/extract-spreadsheet.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
 import { extractPdfPagesTask, extractSpreadsheetTask } from "../../../../../src/stores/extraction/index.js";
 
@@ -49,10 +52,10 @@ async function runSpreadsheet(
     recordData: (point: unknown) => { facts.push(point); },
   };
   try {
-    const output = await extractSpreadsheetTask.impl.run({
+    const output = ExtractSpreadsheetOutputSchema.parse(await extractSpreadsheetTask.impl.run({
       input: { artifact, ...options },
       ctx: ctx as never,
-    });
+    }));
     return { outcome: "success" as const, output, facts, opened, artifact };
   } catch (error) {
     const caught = error as Error & { code?: string };
@@ -124,10 +127,10 @@ async function runPdf(
     recordData: (point: unknown) => { facts.push(point); },
   };
   try {
-    const output = await extractPdfPagesTask.impl.run({
+    const output = ExtractPdfPagesOutputSchema.parse(await extractPdfPagesTask.impl.run({
       input: { document, ...(toPage === undefined ? {} : { toPage }) },
       ctx: ctx as never,
-    });
+    }));
     return { outcome: "success" as const, output, writes, facts, opened, document };
   } catch (error) {
     const caught = error as Error & { code?: string };

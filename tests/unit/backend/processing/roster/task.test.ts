@@ -3,8 +3,11 @@ import { Readable } from "node:stream";
 import { describe, it } from "vitest";
 import type { ContentAddressedArtifactWriter } from "../../../../../src/base/artifacts.js";
 import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
-import { MatchSpreadsheetInputSchema } from "../../../../../src/domain/contracts/roster/match-spreadsheet.js";
-import type { MatchSpreadsheetOutput } from "../../../../../src/domain/contracts/roster/match-spreadsheet.js";
+import {
+  MatchSpreadsheetInputSchema,
+  MatchSpreadsheetOutputSchema,
+  type MatchSpreadsheetOutput,
+} from "../../../../../src/domain/contracts/roster/match-spreadsheet.js";
 import { FingerprintSchema, IsoInstantSchema } from "../../../../../src/domain/ids.js";
 import { ColumnMappingSchema, detectColumns, headerFingerprint } from "../../../../../src/domain/intake/mapping.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
@@ -80,7 +83,7 @@ async function runMatch(
     log: { debug: () => undefined, info: () => undefined, warn: () => undefined },
   };
   try {
-    const output = await matchSpreadsheetTask.impl.run({
+    const output = MatchSpreadsheetOutputSchema.parse(await matchSpreadsheetTask.impl.run({
       input: MatchSpreadsheetInputSchema.parse({
         subjects,
         rosterFileRef,
@@ -88,7 +91,7 @@ async function runMatch(
         readAt: READ_AT,
       }),
       ctx: ctx as never,
-    });
+    }));
     return { outcome: "success" as const, output, facts, opened, rosterFileRef };
   } catch (error) {
     const caught = error as Error & { code?: string };

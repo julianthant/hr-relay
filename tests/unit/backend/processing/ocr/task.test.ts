@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
-import type { AdmittedExtraction } from "../../../../../src/domain/ocr/extraction.js";
+import { AdmittedExtractionSchema, type AdmittedExtraction } from "../../../../../src/domain/ocr/extraction.js";
 import { deriveSchemaHash } from "../../../../../src/domain/schema-bound-value.js";
 import { extractFormPageTask } from "../../../../../src/stores/ocr/index.js";
 
@@ -70,10 +70,10 @@ async function run(response: unknown): Promise<TaskResult<AdmittedExtraction, Re
   const sent: unknown[] = [];
   const recorded: unknown[] = [];
   try {
-    const output = await extractFormPageTask.impl.run({
+    const output = AdmittedExtractionSchema.parse(await extractFormPageTask.impl.run({
       input: { formType: "oath", page: PAGE, sourcePage: 4 },
       ctx: taskCtx(response, sent, recorded) as never,
-    });
+    }));
     return { outcome: "success" as const, output, sent, recorded };
   } catch (error) {
     const caught = error as Error & { code?: string };
