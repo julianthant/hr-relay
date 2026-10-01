@@ -77,6 +77,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await outcomes.locator("..").evaluate(node => getComputedStyle(node).borderTopStyle)).toBe("solid");
       const transactions = surface.getByRole("table", { name: "Confirmed transactions", exact: true });
       const coverage = surface.getByRole("table", { name: "Evidence coverage", exact: true });
+      const valueTypography = (node: Element) => { const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, lineHeight: style.lineHeight }; };
+      expect(await transactions.getByRole("cell").first().evaluate(valueTypography)).toEqual(await performance.getByRole("cell").first().evaluate(valueTypography));
+      expect(await coverage.getByRole("cell").first().evaluate(valueTypography)).toEqual(await performance.getByRole("cell").first().evaluate(valueTypography));
       const transactionsBounds = (await transactions.boundingBox())!;
       const coverageBounds = (await coverage.boundingBox())!;
       expect(coverageBounds.y).toBeGreaterThan(transactionsBounds.y + transactionsBounds.height);

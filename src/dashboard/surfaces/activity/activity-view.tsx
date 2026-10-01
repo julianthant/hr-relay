@@ -31,17 +31,17 @@ function Outcomes({ report }: { report: ActivitySummary }) {
   </section>;
 }
 
-function RecordTable({ label, rows, valueClassName = "text-body" }: {
-  label: string; rows: readonly { id: string; label: string; note?: string; value: ReactNode }[]; valueClassName?: string;
+function RecordTable({ label, rows }: {
+  label: string; rows: readonly { id: string; label: string; note?: string; value: ReactNode }[];
 }) {
   return <div className="overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel"><table aria-label={label} className="w-full border-collapse text-body"><tbody>
-    {rows.map(row => <tr key={row.id} className="border-b border-ui-stroke last:border-b-0"><th scope="row" className="px-4 py-3.5 text-left font-medium"><span className="block text-control">{row.label}</span>{row.note && <span className="mt-1 block text-caption font-normal text-ui-muted">{row.note}</span>}</th><td className={`px-4 py-3.5 text-right tabular-nums ${valueClassName}`}>{row.value}</td></tr>)}
+    {rows.map(row => <tr key={row.id} className="border-b border-ui-stroke last:border-b-0"><th scope="row" className="px-4 py-3.5 text-left font-medium"><span className="block text-control">{row.label}</span>{row.note && <span className="mt-1 block text-caption font-normal text-ui-muted">{row.note}</span>}</th><td className="px-4 py-3.5 text-right text-body tabular-nums">{row.value}</td></tr>)}
   </tbody></table></div>;
 }
 
 function Transactions({ report }: { report: ActivitySummary }) {
   return <section aria-labelledby="activity-transactions"><h2 id="activity-transactions" className="mb-3 mt-0 text-section">Confirmed transactions</h2>
-    {!!report.transactions.length && <RecordTable label="Confirmed transactions" valueClassName="text-section" rows={report.transactions.map(transaction => ({ id: transaction.id, label: transaction.label, note: `${transaction.environment === "test" ? "Test receipts" : "Production receipts"} confirmed in this period`, value: transaction.count }))} />}
+    {!!report.transactions.length && <RecordTable label="Confirmed transactions" rows={report.transactions.map(transaction => ({ id: transaction.id, label: transaction.label, note: `${transaction.environment === "test" ? "Test receipts" : "Production receipts"} confirmed in this period`, value: transaction.count }))} />}
     {!report.transactions.length && <p className="text-body text-ui-secondary">No confirmed transactions in this period</p>}
   </section>;
 }
