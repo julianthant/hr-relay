@@ -24,7 +24,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(await surface.getByRole("navigation").evaluate((node) => node.getBoundingClientRect().width)).toBe(width === 1024 ? 190 : 230);
       expect(await surface.locator('[data-step-number="1"] > span').evaluate((node) => node.getBoundingClientRect().width)).toBe(28);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      await expect(surface.getByRole("button", { name: "Back to dashboard" }).locator("svg")).toHaveCount(1);
+      await expect(surface.getByRole("button", { name: "Back to dashboard" })).toHaveCount(0);
+      await expect(surface.getByRole("group", { name: "Explorer actions", exact: true })).toBeVisible();
       await expect(surface.getByRole("button", { name: "Show action legend" }).locator("svg")).toHaveCount(1);
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });

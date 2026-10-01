@@ -16,6 +16,34 @@ function surfaceRequests(page: Page): string[] {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
+  test(`shared dashboard, Activity and Explorer action bar @ ${theme.attribute} ${width}`, async ({ page }) => {
+    ensureParityBundle();
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    try {
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
+      await installTheme(page, theme);
+      const dimensions: unknown[] = [];
+      for (const [path, label] of [[`/?day=${FIXTURE_DAY}`, "Queue actions"], ["/?activity=", "Activity actions"], ["/?explore=fixture-ui-explorer", "Explorer actions"]]) {
+        await page.goto(`${server.baseUrl}${path}`);
+        const bar = page.getByRole("group", { name: label, exact: true });
+        await expect(bar).toBeVisible();
+        dimensions.push(await bar.evaluate(node => {
+          const row = getComputedStyle(node);
+          const frame = getComputedStyle(node.parentElement!);
+          return { height: node.getBoundingClientRect().height, padding: row.paddingInline, gap: row.gap, radius: frame.borderRadius, border: frame.borderTopWidth };
+        }));
+        if (label === "Queue actions") {
+          await bar.getByRole("button", { name: "Select", exact: true }).click();
+          await expect(page.getByRole("button", { name: /^Select all \d+ in view$/ })).toBeVisible();
+          await bar.getByRole("button", { name: "Select", exact: true }).click();
+          await expect(page.getByRole("button", { name: /^Select all \d+ in view$/ })).toHaveCount(0);
+        }
+      }
+      expect(dimensions[1]).toEqual(dimensions[0]);
+      expect(dimensions[2]).toEqual(dimensions[0]);
+    } finally { await server.close(); }
+  });
+
   const evidence = `activity-presentation-${theme.attribute}-${width}.a11y.yml`;
   test(`Activity A local presentation @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: evidence }] }, async ({ page }) => {
     ensureParityBundle();
@@ -28,12 +56,69 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Activity report", exact: true });
       const metrics = surface.getByLabel("Activity summary");
       await expect(metrics).toContainText("38");
-      await expect(metrics).toContainText("36 measured · 4 unmeasured terminal runs");
+      await expect(metrics).toContainText("36 measured · 4 unmeasured");
       await expect(surface.getByRole("row", { name: "Separations Version 2.1 24 3 2 29" })).toBeVisible();
       await expect(surface).toContainText("35 of 38 completed");
-      await expect(surface.getByRole("group", { name: /44 runs/ })).toBeVisible();
+      const chart = surface.getByRole("group", { name: /runs? across.*interval/ });
+      await expect(chart).toBeVisible();
+      await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toBeVisible();
+      const outcomes = surface.getByRole("table", { name: "Workflow outcomes", exact: true });
+      const outcomeBounds = await outcomes.boundingBox();
+      const chartSection = chart.locator("..").locator("..");
+      const chartBounds = await chartSection.boundingBox();
+      expect(outcomeBounds).not.toBeNull();
+      expect(chartBounds).not.toBeNull();
+      expect(Math.abs(outcomeBounds!.width - chartBounds!.width)).toBeLessThanOrEqual(2);
+      expect(await outcomes.locator("..").evaluate(node => getComputedStyle(node).borderTopStyle)).toBe("solid");
+      const transactions = surface.getByRole("table", { name: "Confirmed transactions", exact: true });
+      const coverage = surface.getByRole("table", { name: "Evidence coverage", exact: true });
+      const transactionsBounds = (await transactions.boundingBox())!;
+      const coverageBounds = (await coverage.boundingBox())!;
+      expect(coverageBounds.y).toBeGreaterThan(transactionsBounds.y + transactionsBounds.height);
+      expect(coverageBounds.x).toBe(transactionsBounds.x);
+      expect(coverageBounds.width).toBe(transactionsBounds.width);
+      expect(await coverage.locator("..").evaluate(node => getComputedStyle(node).backgroundColor)).toBe(await transactions.locator("..").evaluate(node => getComputedStyle(node).backgroundColor));
+      const bars = chart.getByRole("button");
+      for (const [index, day, count] of [[0, 20, 0], [3, 23, 7], [5, 25, 9], [6, 26, 9]]) {
+        const bar = bars.nth(index);
+        await bar.hover();
+        const tooltip = chart.getByRole("tooltip");
+        await expect(tooltip).toHaveText(`Sep ${day}${count} runs`);
+        const tipBounds = (await tooltip.boundingBox())!;
+        const barBounds = (await bar.boundingBox())!;
+        const plotBounds = (await chart.boundingBox())!;
+        const anchor = barBounds.x + barBounds.width / 2;
+        const expectedLeft = Math.max(plotBounds.x, Math.min(anchor - tipBounds.width / 2, plotBounds.x + plotBounds.width - tipBounds.width));
+        expect(Math.abs(tipBounds.x - expectedLeft)).toBeLessThanOrEqual(1);
+        await expect(bar).toHaveAttribute("aria-describedby", await tooltip.getAttribute("id") as string);
+      }
+      await page.mouse.move(0, 0);
+      await bars.last().focus();
+      await surface.getByRole("combobox", { name: "Report period" }).selectOption("today");
+      await expect(bars).toHaveCount(24);
+      await expect(chart.getByRole("tooltip")).toContainText("Sep 26");
+      await expect(chart.getByRole("tooltip")).toContainText("0 runs");
+      const solo = (await bars.first().boundingBox())!;
+      const soloTip = (await chart.getByRole("tooltip").boundingBox())!;
+      const hourlyPlot = (await chart.boundingBox())!;
+      const hourlyLeft = Math.max(hourlyPlot.x, Math.min(solo.x + solo.width / 2 - soloTip.width / 2, hourlyPlot.x + hourlyPlot.width - soloTip.width));
+      expect(Math.abs(soloTip.x - hourlyLeft)).toBeLessThanOrEqual(1);
+      await surface.getByRole("combobox", { name: "Report period" }).selectOption("this-week");
+      await expect(bars).toHaveCount(7);
+      await bars.nth(3).focus();
+      await expect(chart.getByRole("tooltip")).toHaveText("Sep 237 runs");
+      await page.keyboard.press("ArrowRight");
+      await expect(bars.nth(4)).toBeFocused();
+      await expect(chart.getByRole("tooltip")).toHaveText("Sep 246 runs");
+      await page.keyboard.press("Home");
+      await expect(bars.first()).toBeFocused();
+      await expect(chart.getByRole("tooltip")).toHaveText("Sep 200 runs");
+      await page.keyboard.press("Escape");
+      await expect(chart.getByRole("tooltip")).toHaveCount(0);
+      await surface.getByRole("heading", { name: "Activity", exact: true }).click();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-      expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(width === 1024 ? 2 : 4);
+      expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(4);
+      expect((await metrics.boundingBox())!.height).toBeLessThan(130);
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });

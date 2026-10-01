@@ -61,9 +61,9 @@ describe("frontend presentation producers", () => {
     assert.match(activity, /Workflow outcomes/);
     assert.match(activity, /36 measured/);
     assert.match(activity, /Sample data/);
-    const explorer = renderToStaticMarkup(createElement(WorkflowExplorer, { onBack: noop, onVersionRegistry: noop }));
+    const explorer = renderToStaticMarkup(createElement(WorkflowExplorer, { onVersionRegistry: noop }));
     assert.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
-    assert.doesNotMatch(explorer, /Registered definition/);
+    assert.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup(createElement(LogSample));
     assert.match(logs, /Save and Submit/);
     assert.doesNotMatch(logs, /Load more actions|No captures|dry run|Rerun|0s working/);
