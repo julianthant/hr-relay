@@ -1,6 +1,7 @@
 # Backend, unit tests and confirmed Logs connection
 
-Status: Phase 1 accepted locally on 2026-10-01; Phases 2–5 remain proposed. This descriptive
+Status: Phase 1 and its startup reconciliation prerequisite accepted locally on 2026-10-01;
+Phases 2–5 remain proposed. This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -511,6 +512,12 @@ Phase 2 may consume this accepted local candidate only after the operator launch
 integration and complex-test review remain separate choices.
 
 ## Prompts for fresh chats
+
+The [startup reconciliation prerequisite](backend-continuation-reconciliation.md) is accepted locally
+at `dd585d2e7815bc892474f31ebb49c4b905c50735`. It preserves the accepted Phase 1 and approved Logs
+inputs, accounts for all 30 startup-only commits, and records focused evidence, baseline static
+failures and explicit deferrals. Future authorized backend work consumes this combined candidate;
+this record does not launch Phase 2 or admit complex/full gates.
 
 Each prompt is self-contained about its boundary. Read this plan and the audit before executing;
 load only the relevant source/reference/module instructions. If a predecessor has not been accepted,
