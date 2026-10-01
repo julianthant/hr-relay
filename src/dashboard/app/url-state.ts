@@ -44,6 +44,8 @@ export interface AppRouteState {
    * both were reachable.
    */
   readonly explore?: string;
+  /** Explicit fictional Explorer presentation; never a registered workflow projection. */
+  readonly explorerPreview?: true;
   /**
    * The generated UI catalog's search term (2i-G, D177), SUBORDINATE to
    * `settings` since D295.
@@ -136,6 +138,7 @@ export function parseRoute(search: string): AppRouteState {
     start: boolean;
     intake?: string;
     explore?: string;
+    explorerPreview?: true;
     catalog?: string;
     catalogView?: CatalogView;
     archive?: string;
@@ -152,6 +155,7 @@ export function parseRoute(search: string): AppRouteState {
   if (section !== null && section.length > 0) route.section = section;
   if (intake !== null && intake.length > 0) route.intake = intake;
   if (explore !== null && explore.length > 0) route.explore = explore;
+  if (route.explore !== undefined && params.get("explorerPreview") === "1") route.explorerPreview = true;
   // D295: the catalog keys are subordinate to `settings`. An empty VALUE is
   // still meaningful — the section open with no search term — but presence no
   // longer opens anything, so a bare `?catalog=kuali` is dropped rather than
@@ -200,6 +204,7 @@ export function routeToSearch(route: AppRouteState): string {
   if (route.start) params.set("start", "1");
   if (route.intake !== undefined) params.set("intake", route.intake);
   if (route.explore !== undefined) params.set("explore", route.explore);
+  if (route.explore !== undefined && route.explorerPreview) params.set("explorerPreview", "1");
   // The other half of `parseRoute`'s D295 gate, so the pair round-trips: a
   // catalog term is written only while the section that reads it is open.
   if (route.catalog !== undefined && route.settings === SETTINGS_UI_CATALOG_SECTION_ID) {
@@ -337,7 +342,7 @@ export function shellViewOf(takeover: ActiveTakeover): ShellViewSelection {
 
 /** A close leaves one queue surface, including links containing competing keys. */
 export function routeWithoutTakeovers(route: AppRouteState): AppRouteState {
-  return { ...route, intake: undefined, explore: undefined, archive: undefined, archiveView: undefined,
+  return { ...route, intake: undefined, explore: undefined, explorerPreview: undefined, archive: undefined, archiveView: undefined,
     archiveDashboard: undefined, archiveWorkflow: undefined, archiveBrowse: undefined, archiveBrowseInvalid: undefined,
     activity: undefined, settings: undefined, catalog: undefined, catalogView: undefined };
 }

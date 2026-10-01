@@ -6,6 +6,7 @@ import { ActivityReport } from "../surfaces/activity.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-runtime.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
+import { ExplorerFlow } from "../surfaces/explorer/explorer-flow.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { SettingsPage } from "../surfaces/settings.js";
@@ -136,8 +137,13 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
 
               NO WRAPPER — see the Settings arm above (UF-EX-2).
             */
-            <WorkflowExplorer
+            route.explorerPreview ? <ExplorerFlow
+              onBack={() => setRoute(routeWithoutTakeovers(route))}
+              onConnected={() => setRoute({ ...route, explorerPreview: undefined })}
+              onVersionRegistry={() => setRoute({ ...routeWithoutTakeovers(route), archive: ARCHIVE_INDEX, archiveView: "versions" })}
+            /> : <WorkflowExplorer
               workflowId={route.explore ?? activeWorkflowId}
+              onPreview={() => setRoute({ ...route, explorerPreview: true })}
               onWorkflow={(next) => setRoute({ ...route, explore: next })}
               onVersionRegistry={() => setRoute({
                 ...route,

@@ -2413,11 +2413,13 @@ export function WorkflowExplorer({
   workflowId,
   onWorkflow,
   onVersionRegistry,
+  onPreview,
 }: {
   workflowId: string;
   onWorkflow: (next: string) => void;
   /** Opens Archive's real Versions & bumps view through the dashboard route. */
   onVersionRegistry: () => void;
+  onPreview?: () => void;
 }) {
   const client = useDashboardClient();
   const bootstrap = useBootstrap();
@@ -2500,6 +2502,7 @@ export function WorkflowExplorer({
         icon={<Workflow aria-hidden className={dsIcon.md} />}
 
         actions={<div className="flex items-center gap-[var(--ds-space-tight)]">
+          {onPreview && <Button size="toolbar" variant="secondary" onClick={onPreview}>UI preview</Button>}
           {workflow !== undefined && <Popover>
             <PopoverTrigger asChild><Button size="toolbar" variant="secondary" icon={<FileCode2 aria-hidden className={dsIcon.sm} />}>Source</Button></PopoverTrigger>
             <PopoverContent title={`${workflow.label} source`} side="bottom" align="end" width="lg">

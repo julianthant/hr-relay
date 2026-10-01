@@ -66,6 +66,9 @@
   --text-page: 1.25rem;
   --text-page--line-height: 1.75rem;
   --text-page--font-weight: 600;
+  --text-workflow: 1.6875rem;
+  --text-workflow--line-height: 2rem;
+  --text-workflow--font-weight: 650;
   --spacing-log-time: 4rem;
   --spacing-log-label: 8rem;
   --container-log-capture: 28.75rem;
