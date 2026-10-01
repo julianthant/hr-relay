@@ -10,6 +10,7 @@ import { HostConfigFactsSchema, type HostConfigFacts } from "./host-display.js";
 import {
   ConfigLeafPathSchema,
   ConfigProvenanceSchema,
+  configLeafPaths,
   type ConfigProvenance,
 } from "./provenance.js";
 import {
@@ -20,7 +21,7 @@ import {
   type SettingsOverride,
 } from "./schema.js";
 
-export { ConfigLeafPathSchema, ConfigProvenanceSchema } from "./provenance.js";
+export { ConfigLeafPathSchema, ConfigProvenanceSchema, configLeafPaths } from "./provenance.js";
 export type { ConfigLeafPath, ConfigProvenance } from "./provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
@@ -134,21 +135,6 @@ function mergeSettings(defaults: Config, override: SettingsOverride): Config {
   });
 }
 
-function collectLeafPaths(value: unknown, prefix = ""): string[] {
-  if (value === null || typeof value !== "object" || Array.isArray(value)) return prefix ? [prefix] : [];
-  return Object.entries(value).flatMap(([key, child]) => collectLeafPaths(child, prefix ? `${prefix}.${key}` : key));
-}
-
-/**
- * Every POPULATED leaf path of a config value, in exactly the form a provenance
- * key takes. This is the set a durable snapshot row actually contains, so it is
- * also the set `./snapshot-generations.ts` versions: a leaf that is absent here
- * is absent from the stored bytes.
- */
-export function configLeafPaths(config: unknown): readonly string[] {
-  return Object.freeze(collectLeafPaths(config));
-}
-
 function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts, runtimeStoragePair?: AdmittedRuntimeStoragePair): ResolvedConfig {
   const settings = SettingsOverrideInputSchema.parse(settingsInput);
   const hostFacts = HostConfigFactsSchema.parse(hostFactsInput);
@@ -158,8 +144,8 @@ function resolveInternal(settingsInput: unknown, hostFactsInput: HostConfigFacts
   });
   const config = mergeSettings(defaults, settings);
 
-  const settingsPaths = new Set(collectLeafPaths(settings));
-  const effectivePaths = collectLeafPaths(config);
+  const settingsPaths = new Set(configLeafPaths(settings));
+  const effectivePaths = configLeafPaths(config);
   const provenance = Object.fromEntries(effectivePaths.map((path): readonly [string, ConfigProvenance] => [
     path,
     settingsPaths.has(path) ? "settings" : "default",

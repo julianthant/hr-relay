@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { deepFreeze } from "../immutability.js";
-import { ConfigLeafPathSchema, configLeafPaths } from "./resolve.js";
+import { ConfigLeafPathSchema, configLeafPaths } from "./provenance.js";
 import { ConfigSchema } from "./schema.js";
 import { ConfigSchema as HistoricalConfigSchema } from "./settings-v29-schema.js";
 

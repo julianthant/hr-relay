@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { ActorIdSchema, ConfigSnapshotIdSchema, FingerprintSchema, IsoInstantSchema, PositiveIntSchema } from "../ids.js";
-import { ConfigLeafPathSchema } from "./resolve.js";
+import { ConfigLeafPathSchema } from "./provenance.js";
 import {
   StoredConfigSchema,
   configSnapshotAbsentLeaves,
