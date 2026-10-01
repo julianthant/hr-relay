@@ -116,6 +116,11 @@ started for this UI review.
 
 ## Cleanup
 
+The consuming chat's proposed backend/test restructuring phases and fresh-chat prompts are in
+[the supporting backend and unit-test plan](../rebuild/plans/phase-3/backend-and-unit-tests.md),
+with a linked static test audit. These documents record proposed work, not implementation or
+roadmap admission. Complex-test design and execution remain deferred for operator participation.
+
 The new chat owns the continuation worktree. Retain both checkouts until the operator chooses
 integration and cleanup. After verifying this handoff and preserving its surviving facts in the
 owning documents, the consuming chat may remove this exact temporary file. Do not remove it while
