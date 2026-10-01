@@ -13,8 +13,8 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
  * empty target set: a suite that accidentally reaches an intake arm must see
  * the reason, not a session mapped against nothing.
  */
+import type { IntakeParser } from "../../src/base/intake-parser.js";
 import type {
-  IntakeParser,
   IntakeProjectionResolver,
   RunConfigIdentity,
 } from "../../src/backend/runs/command-kernel.js";
