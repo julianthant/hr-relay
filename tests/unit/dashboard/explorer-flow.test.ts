@@ -20,7 +20,7 @@ describe("approved Explorer presentation", () => {
   });
   it("stops downstream writes on rejection or inconclusive reads and rejoins the existing receipt path", () => {
     assert.equal(blockedAfter({ ...DEFAULT_SCENARIO, identity: "rejected" }), 15);
-    assert.equal(blockedAfter({ ...DEFAULT_SCENARIO, pending: "unknown" }), 17);
+    assert.equal(blockedAfter({ ...DEFAULT_SCENARIO, pending: "unknown" }), 18);
     assert.equal(blockedAfter({ ...DEFAULT_SCENARIO, termination: "unknown" }), 19);
     assert.equal(blockedAfter(DEFAULT_SCENARIO), undefined);
     const existing = buildExplorerPreview({ ...DEFAULT_SCENARIO, termination: "present" });

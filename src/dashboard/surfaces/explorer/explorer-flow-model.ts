@@ -48,7 +48,7 @@ export function allFields(parts: readonly FlowPart[]): FlowField[] {
 
 export function blockedAfter(scenario: PreviewScenario): number | undefined {
   if (scenario.identity === "rejected") return 15;
-  if (scenario.pending === "unknown") return 17;
+  if (scenario.pending === "unknown") return 18;
   if (scenario.termination === "unknown") return 19;
   return undefined;
 }

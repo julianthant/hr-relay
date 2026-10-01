@@ -89,6 +89,8 @@ test("Explorer branch previews stop writes, recover and reuse an existing receip
     await pending.selectOption("some");
     await expect(page.getByText("Click Delete", { exact: true })).toBeVisible();
     await pending.selectOption("unknown");
+    await expect(page.locator("#explorer-step-18")).toBeVisible();
+    await expect(page.getByText("Pending terminations could not be verified", { exact: true })).toBeVisible();
     await expect(page.locator("#explorer-step-19")).toBeHidden();
     await pending.selectOption("none");
     await termination.selectOption("present");
