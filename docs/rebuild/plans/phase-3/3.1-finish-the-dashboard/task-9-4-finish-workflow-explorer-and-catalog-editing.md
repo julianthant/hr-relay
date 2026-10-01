@@ -421,3 +421,9 @@ hides later steps. Whole-repository typecheck retains 72 unchanged diagnostics; 
 wire suite reports one failure for four existing Archive workflow literals. Broad parity/coverage,
 actual browser zoom, live HR, and backend integration remain unrun; screenshot references were not
 refrozen. Backend wiring requires a separately approved producer scope.
+
+**Operator wiring direction — 2026-10-01:** The approved mock's components are the production
+Explorer UI target. Future wiring supplies real data to those components and preserves their
+layout and interactions. The existing registered-definition UI will be retired rather than used
+as the connected presentation. This records the frontend direction; backend implementation remains
+deferred.
