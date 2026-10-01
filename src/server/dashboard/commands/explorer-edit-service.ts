@@ -16,7 +16,7 @@ import {
   auditWorkflowCodes,
   auditWorkflowModuleBindings,
   auditWorkflowModuleRoles,
-} from "../../../backend/app/control/workflow-registry.js";
+} from "../../../validation/workflow-module-audit.js";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import {
   ExplorerCodeChangeBriefSchema,

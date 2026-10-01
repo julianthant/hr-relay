@@ -8,8 +8,8 @@ import { workflowProjections } from "../../src/base/workflow.js";
 import {
   WORKFLOW_MODULES,
   WORKFLOW_DEFINITIONS,
-  workflowDefinitionRegistry,
 } from "../../src/backend/app/control/workflow-registry.js";
+import { workflowDefinitionRegistry } from "../../src/validation/workflow-module-audit.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { buildBootstrap } from "../../src/server/dashboard/queries/bootstrap.js";

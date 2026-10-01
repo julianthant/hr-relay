@@ -371,7 +371,7 @@ function auditCycles(files: readonly string[]): string[] {
 }
 
 const LAYERS = new Map([
-  ["domain", 0],
+  ["base", 0], ["domain", 0], ["validation", 0],
   ["infra", 1], ["services", 1], ["systems", 1], ["stores", 1],
   ["core", 2],
   ["control", 3], ["workflows", 3], ["server", 3],

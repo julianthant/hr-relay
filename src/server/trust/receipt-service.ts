@@ -1,4 +1,4 @@
-import { composeFailureResolution } from "../../backend/app/dashboard/compose/failure-resolution.js";
+import { createFailureResolutionQuery } from "../dashboard/queries/failure-resolution.js";
 import type { RunRecordService } from "../../core/run-record-service.js";
 /**
  * The ONE authority-backed receipt path (D141).
@@ -36,13 +36,13 @@ export interface ReceiptService {
   ensureReceipt(runId: string): RunEvidenceReceipt;
   getFailure(failureId: string): FailureRecord | undefined;
   countFailuresByFingerprint(fingerprint: string): number;
-  failureResolution: ReturnType<typeof composeFailureResolution>["query"];
+  failureResolution: ReturnType<typeof createFailureResolutionQuery>;
 }
 
 export function createReceiptService(deps: ReceiptServiceDeps): ReceiptService {
   const byId = new Map(deps.descriptors.map((descriptor) => [String(descriptor.id), descriptor]));
   const { authority } = deps.database;
-  const failures = composeFailureResolution(authority).query;
+  const failures = createFailureResolutionQuery(authority);
 
   const store: EvidenceReceiptStore = Object.freeze({
     getRun: (runId: string) => {

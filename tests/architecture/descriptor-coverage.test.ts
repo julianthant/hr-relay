@@ -28,14 +28,16 @@ import {
   WORKFLOW_IDS_BY_CODE,
   WORKFLOW_ROLES,
   auditImplBindings,
+  readPendingImplBindings,
+} from "../../src/backend/app/control/workflow-registry.js";
+import {
   auditWorkflowCodes,
   auditWorkflowModuleBindings,
   auditWorkflowModuleRoles,
   intakeProjectionRegistry,
-  readPendingImplBindings,
   workflowCodeRegistry,
   workflowRoleRegistry,
-} from "../../src/backend/app/control/workflow-registry.js";
+} from "../../src/validation/workflow-module-audit.js";
 import { STEP_PROOF_MODULES } from "../../src/backend/app/control/step-proof-modules.js";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../src/base/workflow.js";

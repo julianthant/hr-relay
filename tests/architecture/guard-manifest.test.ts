@@ -449,14 +449,20 @@ describe("reviewed architecture guard manifest", () => {
       writeFixture(root,"src/backend/app/boot.ts","export const boot = true;\n");
       writeFixture(root,"src/backend/runtime/engine.ts","export const engine = true;\n");
       writeFixture(root,"src/backend/storage/repository.ts","export const repository = true;\n");
+      writeFixture(root,"src/base/pure.ts","export const pure = true;\n");
       writeFixture(root,"src/domain/value.ts","export const value = true;\n");
+      writeFixture(root,"src/validation/pure.ts","export const pure = true;\n");
       assert.deepEqual(auditRebuildRatchetArm("control-layering",root).violations,[]);
       writeFixture(root,"src/backend/storage/repository.ts",'import { boot } from "../app/boot.js"; export const repository = boot;\n');
+      writeFixture(root,"src/base/pure.ts",'import { boot } from "../backend/app/boot.js"; export const pure = boot;\n');
       writeFixture(root,"src/domain/value.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Value = typeof engine;\n');
+      writeFixture(root,"src/validation/pure.ts",'import type { engine } from "../backend/runtime/engine.js"; export type Pure = typeof engine;\n');
       writeFixture(root,"src/backend/misc/helper.ts","export const helper = true;\n");
       const issues=auditRebuildRatchetArm("control-layering",root).violations.join("\n");
       assert.match(issues,/backend\/storage\/repository\.ts: layer inversion imports backend\/app\/boot\.ts/u);
+      assert.match(issues,/base\/pure\.ts: layer inversion imports backend\/app\/boot\.ts/u);
       assert.match(issues,/domain\/value\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
+      assert.match(issues,/validation\/pure\.ts: layer inversion imports backend\/runtime\/engine\.ts/u);
       assert.match(issues,/backend\/misc\/helper\.ts: unclassified backend responsibility/u);
     } finally {rmSync(root,{recursive:true,force:true});}
   });
