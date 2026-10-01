@@ -1,4 +1,5 @@
 import type { LogEntry, LogField, LogStep } from "../log-feed-model.js";
+import type { LogTimelineStage } from "./log-timeline-model.js";
 
 type FieldInput = readonly [time: string, label: string, value: string, kind?: LogField["kind"]];
 const fields = (id: string, title: string | undefined, rows: readonly FieldInput[], result?: string): LogEntry => ({
@@ -76,8 +77,27 @@ export const separationLogs: readonly LogStep[] = [
   ], "Separation filed · Kuali document verified")] },
 ];
 
+export function logTimelineSample(scenario: string): readonly LogTimelineStage[] {
+  if (!["separation", "reading", "waiting", "failed", "empty"].includes(scenario)) throw new Error("log-timeline-sample-missing");
+  const stages = [
+    { id: "request", label: "Read request", stepId: "find-document", time: "09:31:00", durationLabel: "14s" },
+    { id: "employee", label: "Verify employee", stepId: "search-person", time: "09:31:14", durationLabel: "11s" },
+    { id: "timecard", label: "Read timecard", stepId: "timecard", time: "09:31:25", durationLabel: "44s" },
+    { id: "termination", label: "File termination", stepId: "pending", time: "09:32:09", durationLabel: "1m 9s" },
+    { id: "document", label: "Finalize document", stepId: "finalize", time: "09:33:18", durationLabel: "18s" },
+  ];
+  return stages.map((stage, index) => {
+    const state: LogTimelineStage["state"] = scenario === "empty" || ((scenario === "reading" || scenario === "waiting") && index > 2) ? "pending"
+      : scenario === "reading" && index === 2 ? "active" : scenario === "waiting" && index === 2 ? "waiting"
+        : scenario === "failed" && index === 4 ? "failed" : "completed";
+    return state === "pending" ? { id: stage.id, label: stage.label, state } : { ...stage, durationLabel: state === "completed" ? stage.durationLabel : undefined, state };
+  });
+}
+
 export const previewScenarios = [
   { id: "separation", label: "Full separation", subject: "Alex Morgan", status: "Completed", steps: separationLogs },
   { id: "reading", label: "Reading timecard", subject: "Alex Morgan", status: "In progress", steps: separationLogs.slice(0, 6) },
+  { id: "waiting", label: "Awaiting confirmation", subject: "Alex Morgan", status: "Waiting", steps: separationLogs.slice(0, 6) },
+  { id: "failed", label: "Document read failed", subject: "Alex Morgan", status: "Failed", steps: separationLogs.slice(0, 12) },
   { id: "empty", label: "Waiting for actions", subject: "Alex Morgan", status: "Starting", steps: [] },
-] as const;
+].map(scenario => ({ ...scenario, timeline: logTimelineSample(scenario.id) }));

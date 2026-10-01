@@ -1,4 +1,4 @@
-import { useId, useMemo, useRef, useState, type ReactNode } from "react";
+import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Check, Copy, Cpu, Eye, GitBranch, Info, Monitor, MousePointer2, PanelsTopLeft, PencilLine, ScanSearch } from "lucide-react";
 import { Button, Dialog, DialogBody, DialogContent, DialogTrigger, IconButton, SearchInput } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -53,7 +53,7 @@ function FieldValue({ value }: { value: string }) {
 }
 
 /** Shared presentation for the operator stream and the isolated design preview. */
-export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, loading = false }: {
+export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, loading = false }: {
   steps: readonly LogStep[];
   label?: string;
   embedded?: boolean;
@@ -62,12 +62,28 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
   afterStep?: (id: string) => ReactNode;
   trailingContent?: ReactNode;
   footerContent?: ReactNode;
+  navigation?: (jump: (stepId: string) => void) => ReactNode;
 }) {
   const [query, setQuery] = useState("");
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const id = useId();
   const scroller = useRef<HTMLDivElement>(null);
   const end = useRef<HTMLDivElement>(null);
+  const headings = useRef(new Map<string, HTMLHeadingElement>());
+  const jumpFrame = useRef<number | undefined>(undefined);
+  useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
+  const jump = (stepId: string) => {
+    if (!visualLogSteps(steps).some(step => step.id === stepId)) throw new Error("log-timeline-step-missing");
+    setQuery("");
+    if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current);
+    jumpFrame.current = requestAnimationFrame(() => {
+      const heading = headings.current.get(stepId);
+      if (!heading) throw new Error("log-timeline-heading-missing");
+      heading.scrollIntoView({ block: "start", behavior: "instant" });
+      heading.focus({ preventScroll: true });
+      jumpFrame.current = undefined;
+    });
+  };
   const visible = useMemo(() => filterLogSteps(visualLogSteps(steps), query), [steps, query]);
   const count = logRowCount(visible);
   const copy = async () => {
@@ -75,6 +91,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
     catch { setCopyState("failed"); }
   };
   return <div className={cn("ui-theme-scope flex min-h-0 min-w-0 flex-1 flex-col bg-ui-panel font-ui text-body text-ui-primary", embedded && "relative flex-none")}>
+    {navigation?.(jump)}
     <div className={cn("min-w-0 flex-1 px-4 pb-6 pt-5", !embedded && "overflow-y-auto focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info")} ref={scroller} role={embedded ? undefined : "region"} aria-label={embedded ? undefined : label} tabIndex={embedded ? undefined : 0} aria-busy={loading || undefined}>
       {beforeContent}
       {steps.filter(step => !visible.some(item => item.id === step.id)).map(step => {
@@ -84,7 +101,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
       {visible.map(step => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-b border-ui-stroke py-5 first:pt-0 last:border-b-0">
         <time className="pt-0.5 font-data text-caption tabular-nums text-ui-muted">{step.time}</time>
         <div className="min-w-0">
-          <header className="mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"><h3 id={`${id}-${step.id}`} className="m-0 text-heading">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
+          <header className="mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
           <div className="flex min-w-0 flex-col gap-3">{step.entries.map(entry => <Entry key={entry.id} entry={entry} />)}</div>
           {[...new Map(step.entries.flatMap(entry => entry.kind === "note" ? [] : entry.screenshots ?? []).map(screenshot => [screenshot.src, screenshot])).values()].map(screenshot => <Screenshot key={screenshot.src} screenshot={screenshot} />)}
         </div>

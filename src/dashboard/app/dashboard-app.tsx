@@ -4,7 +4,6 @@ import { PreflightActionsProvider } from "../state/preflight-actions.js";
 import { resolveDateSelection, routeForDay, routeForStartedRun } from "./date-state-model.js";
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
-import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
 import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
@@ -830,9 +829,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     },
     [boot.actor.id, client, nowIso, toast],
   );
-  const workerCommands = useMemo(() => createWorkerCommandDispatch(client, { actorId: boot.actor.id, source: "session-panel" }), [client, boot.actor.id]);
-  const planWorkerCount = workerCommands.plan;
-  const spawnWorker = workerCommands.spawn;
 
   /**
    * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
@@ -1439,17 +1435,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       <SessionPanel
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}
-        workerCards={dayWire?.workerCards ?? []}
-        queueSurfaces={dayWire?.queueSurfaces ?? []}
-        workerPools={dayWire?.workerPools ?? []}
-        workflows={workflows}
-        counts={dayWire?.workflowCounts ?? []}
-        nowIso={nowIso}
-        connection={connection}
-        appVersion={boot.appVersion}
-        workerCommands={workerCommands}
-        onPlanWorkerCount={planWorkerCount}
-        onSpawnWorker={spawnWorker}
       />
 
       <RunLaunchHost

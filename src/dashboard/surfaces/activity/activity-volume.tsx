@@ -55,8 +55,8 @@ export function ActivityVolume({ volume }: { volume?: Volume }) {
                 const next = event.key === "ArrowRight" ? Math.min(index + 1, model.buckets.length - 1) : event.key === "ArrowLeft" ? Math.max(index - 1, 0) : event.key === "Home" ? 0 : event.key === "End" ? model.buckets.length - 1 : undefined;
                 if (next !== undefined) { event.preventDefault(); buttons.current.get(model.buckets[next].key)?.focus(); }
               }}
-              className={`relative flex h-full min-w-0 flex-1 items-end justify-center rounded-sm ${bucketKey === item.key ? "bg-ui-hover/50" : ""} ${dsFocus}`}>
-              <span aria-hidden className={item.runs === 0 ? "block h-px w-3/4 bg-ui-stroke-control" : `block w-3/4 rounded-t ${bucketKey === item.key ? "bg-ui-info" : "bg-ui-info/65"}`} style={item.runs === 0 ? undefined : { height: `${item.barHeightPercent}%` }} />
+              className={`relative flex h-full min-w-0 flex-1 items-end justify-center rounded-sm ${bucketKey === item.key ? "bg-ui-hover" : ""} ${dsFocus}`}>
+              <span aria-hidden className={item.runs === 0 ? "block h-px w-3/4 bg-ui-stroke-control" : "block w-3/4 rounded-t bg-ui-info"} style={item.runs === 0 ? undefined : { height: `${item.barHeightPercent}%` }} />
               {item.showAxisLabel && <span aria-hidden className="absolute inset-x-0 top-full mt-2 whitespace-nowrap text-center text-caption text-ui-muted">{item.axisLabel}</span>}
             </button>)}
           </div>
