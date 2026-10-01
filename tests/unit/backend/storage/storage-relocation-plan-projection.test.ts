@@ -84,9 +84,11 @@ describe("pure storage relocation history projection", () => {
 
   it("refuses request fingerprint and desired destination digest drift independently", () => {
     const original = plan(0, 4);
-    expect(() => projectStorageRelocationPlanHistory(repositories([{
+    const staleFingerprint = StorageRelocationCommandRequestSchema.parse({
       ...original, payload: { ...original.payload, desiredDigest: ZERO_FINGERPRINT },
-    }], []), EPOCH, [], WORKSPACE)).toThrow(/request fingerprint mismatch/u);
+    });
+    expect(() => projectStorageRelocationPlanHistory(repositories([staleFingerprint], []), EPOCH, [], WORKSPACE))
+      .toThrow(/request fingerprint mismatch/u);
     const changed = StorageRelocationCommandRequestSchema.parse({ ...original,
       payload: { ...original.payload, desiredDigest: ZERO_FINGERPRINT, requestFingerprint: ZERO_FINGERPRINT } });
     const rebound = StorageRelocationCommandRequestSchema.parse({ ...changed,
