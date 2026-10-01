@@ -5,7 +5,7 @@ import { describe, it } from "vitest";
 import { ActivityVolumeSchema } from "../../../src/domain/dashboard/activity-volume.js";
 import { ActivityReport } from "../../../src/dashboard/surfaces/activity.js";
 import { ACTIVITY_SAMPLE_RANGE, activitySample } from "../../../src/dashboard/surfaces/activity/activity-fixture.js";
-import { activityDuration, activityFailureRate } from "../../../src/dashboard/surfaces/activity/activity-view-model.js";
+import { activityCompletionRate, activityDuration, activityFailureRate } from "../../../src/dashboard/surfaces/activity/activity-view-model.js";
 import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { LogSample } from "../../../src/dashboard/surfaces/logs/log-sample.js";
 import { separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
@@ -20,7 +20,8 @@ describe("frontend presentation producers", () => {
     const report = data.report;
     assert.deepEqual([report.total, report.completed, report.outstanding, report.failed], [44, 38, 4, 2]);
     assert.deepEqual([report.running, report.waiting, report.terminal], [3, 1, 40]);
-    assert.deepEqual(report.duration, { medianSeconds: 134, measured: 36, unmeasured: 4 });
+    assert.deepEqual(report.duration, { medianSeconds: 134, longestSeconds: 281, totalSeconds: 4911, measured: 36, unmeasured: 4 });
+    assert.deepEqual(report.failures, [{ label: "Document read timeout", runs: 2 }]);
     assert.deepEqual(report.evidence, { verified: 35, unread: 3 });
     assert.deepEqual(report.workflows.map(row => [row.completed, row.outstanding, row.failed, row.total]), [[24, 3, 2, 29], [14, 1, 0, 15]]);
     assert.deepEqual(report.transactions.map(row => row.count), [18, 17]);
@@ -55,6 +56,25 @@ describe("frontend presentation producers", () => {
     assert.equal(activityFailureRate(2, 40), "2 of 40 terminal runs · 5%");
     assert.equal(activityDuration(null), "Unavailable");
     assert.equal(activityDuration(134), "2m 14s");
+  });
+  it("keeps new performance metrics scoped to finished and measured runs, with unknown distinct from zero", () => {
+    assert.equal(activityCompletionRate(38, 40), "95%");
+    assert.equal(activityCompletionRate(0, 0), "No finished runs");
+    assert.equal(activityDuration(4911), "1h 21m");
+    const missing = activitySample(ACTIVITY_SAMPLE_RANGE, "incomplete");
+    const empty = activitySample(ACTIVITY_SAMPLE_RANGE, "empty");
+    if (missing.state !== "loaded" || empty.state !== "loaded") throw new Error("samples must load");
+    assert.equal(missing.report.duration.longestSeconds, null);
+    assert.equal(missing.report.duration.totalSeconds, null);
+    assert.equal(missing.report.failures, null);
+    assert.equal(empty.report.duration.longestSeconds, null);
+    assert.equal(empty.report.duration.totalSeconds, 0);
+    assert.deepEqual(empty.report.failures, []);
+    const today = activitySample({ from: "2026-09-26", to: "2026-09-26" }, "normal");
+    if (today.state !== "loaded") throw new Error("today sample must load");
+    assert.equal(activityCompletionRate(today.report.completed, today.report.terminal), "100%");
+    assert.equal(today.report.duration.longestSeconds, 134);
+    assert.equal(today.report.duration.totalSeconds, 536);
   });
   it("renders canonical surfaces without a client provider or registered-definition fallback", () => {
     const activity = renderToStaticMarkup(createElement(ActivityReport, { range: "", onRange: noop }));

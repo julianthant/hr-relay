@@ -59,6 +59,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(metrics).toContainText("36 measured · 4 unmeasured");
       await expect(surface.getByRole("row", { name: "Separations Version 2.1 24 3 2 29" })).toBeVisible();
       await expect(surface).toContainText("35 of 38 completed");
+      const performance = surface.getByRole("table", { name: "Run performance", exact: true });
+      await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("95%");
+      await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("4m 41s");
+      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("1h 21m");
+      await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Document read timeout");
       const chart = surface.getByRole("group", { name: /runs? across.*interval/ });
       await expect(chart).toBeVisible();
       await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toBeVisible();
@@ -79,6 +84,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(coverageBounds.width).toBe(transactionsBounds.width);
       expect(await coverage.locator("..").evaluate(node => getComputedStyle(node).backgroundColor)).toBe(await transactions.locator("..").evaluate(node => getComputedStyle(node).backgroundColor));
       const bars = chart.getByRole("button");
+      const barSize = (await bars.nth(3).locator(":scope > span").first().boundingBox())!;
+      const bandSize = (await bars.nth(3).boundingBox())!;
+      expect(barSize.width / bandSize.width).toBeGreaterThan(.65);
+      expect(barSize.width / bandSize.width).toBeLessThan(.9);
+      expect((await chart.boundingBox())!.height).toBeGreaterThanOrEqual(160);
+      if (width === 1440) expect((await chart.boundingBox())!.height).toBeGreaterThan(160);
       for (const [index, day, count] of [[0, 20, 0], [3, 23, 7], [5, 25, 9], [6, 26, 9]]) {
         const bar = bars.nth(index);
         await bar.hover();
@@ -115,6 +126,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(chart.getByRole("tooltip")).toHaveText("Sep 200 runs");
       await page.keyboard.press("Escape");
       await expect(chart.getByRole("tooltip")).toHaveCount(0);
+      await surface.getByRole("combobox", { name: "Report period" }).selectOption("last-3-months");
+      expect(await bars.count()).toBeGreaterThan(7);
+      const denseBar = (await bars.first().locator(":scope > span").first().boundingBox())!;
+      const denseBand = (await bars.first().boundingBox())!;
+      expect(denseBar.width / denseBand.width).toBeGreaterThan(.65);
+      expect(denseBar.width / denseBand.width).toBeLessThan(.9);
+      await bars.first().hover();
+      await expect(chart.getByRole("tooltip")).toContainText("0 runs");
+      await surface.getByRole("combobox", { name: "Report period" }).selectOption("this-week");
       await surface.getByRole("heading", { name: "Activity", exact: true }).click();
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(4);
@@ -127,9 +147,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface).toContainText("Volume unavailable");
       await expect(surface.getByLabel("Activity summary")).toContainText("Unavailable");
       await expect(surface).toContainText("Readback verifiedUnavailable");
+      await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("Unavailable");
+      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("Unavailable");
+      await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Unavailable");
       await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("empty");
       await expect(surface).toContainText("No workflow activity in this period");
       await expect(surface).toContainText("No runs in this period");
+      await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("No finished runs");
+      await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("0s");
+      await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("No failures");
       await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("loading");
       await expect(surface.getByRole("status", { name: "Loading activity report" })).toBeVisible();
       await expect(surface.getByRole("button", { name: "Export report", exact: true })).toBeDisabled();
