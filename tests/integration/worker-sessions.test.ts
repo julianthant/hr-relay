@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import type { TestClock } from "../../src/domain/clock.js";
-import type { MonotonicDeadlineScheduler } from "../../src/core/deadline-scheduler.js";
+import type { MonotonicDeadlineScheduler } from "../../src/backend/runtime/deadline-scheduler.js";
 import {
   BrowserSessionIdSchema,
   FingerprintSchema,
@@ -12,12 +12,12 @@ import {
 } from "../../src/domain/ids.js";
 import {
   WorkerSessionManager,
-} from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/worker-sessions.js";
 import type {
   BrowserSessionCloseProof,
   WorkerBrowserSessionFactory,
   WorkerSessionEvent,
-} from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/worker-sessions.js";
 import type { RunBrowserScreenshotCapture } from "../../src/base/diagnostics.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";

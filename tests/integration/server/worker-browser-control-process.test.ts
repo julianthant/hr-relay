@@ -20,7 +20,7 @@ import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
-import type { WorkerProcessSpawner } from "../../../src/server/dashboard/worker-supervisor.js";
+import type { WorkerProcessSpawner } from "../../../src/backend/runtime/dashboard/worker-supervisor.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 
 const worker = (index: number) => `person-lookup-worker-${String(index)}`;

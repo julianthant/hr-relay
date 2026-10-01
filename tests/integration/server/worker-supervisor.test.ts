@@ -26,7 +26,7 @@ import {
   type WorkerPoolMember,
   type WorkerStopDirectiveContext,
   type WorkerStopEscalationPolicy,
-} from "../../../src/core/worker-loop.js";
+} from "../../../src/backend/runtime/worker-loop.js";
 import {
   createDashboardWorkerProcessSupervisor,
   WORKER_EXIT_OBSERVATION_TIMEOUT_MS,
@@ -36,7 +36,7 @@ import {
   type WorkerDurableStopReceipt,
   type WorkerLeaseBirthFact,
   type WorkerProcessSpawnRequest,
-} from "../../../src/server/dashboard/worker-supervisor.js";
+} from "../../../src/backend/runtime/dashboard/worker-supervisor.js";
 import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
 
 const WORKFLOW = WorkflowIdSchema.parse("person-lookup");

@@ -103,7 +103,7 @@ function open(...paths: readonly string[]): unknown[] {
 /**
  * `sensitive-hr` + `drop` — free-form text this repository does not control
  * the contents of. `FailureRecord.summary` is `error.message` verbatim
- * (`src/core/run-failure.ts`), so a task that threw "no candidate matched EID
+ * (`src/backend/runtime/run-failure.ts`), so a task that threw "no candidate matched EID
  * 10123456" would put an employee id on the wire. The advisory is built from
  * the CLOSED vocabularies beside it instead: code, node, task, write state,
  * page state, remediation kind. Those are enough to explain a failure CLASS,

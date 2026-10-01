@@ -16,7 +16,7 @@
  * ## The single-minter rule
  *
  * `mintMutationCapability` has exactly one permitted caller —
- * `src/core/write-sequencer.ts`, immediately after its fence CAS wins and
+ * `src/backend/runtime/write-sequencer.ts`, immediately after its fence CAS wins and
  * immediately before the commit impl runs. `task-driver-boundary` fails if any
  * other module so much as names it, and fails on any attempt to conjure the
  * brand through `as` / `satisfies` anywhere else in the tree.
@@ -31,7 +31,7 @@ interface MintedCapabilityShape {
   readonly bindingDigest: Fingerprint;
 }
 
-/** DO NOT CALL. `src/core/write-sequencer.ts` is the only permitted caller. */
+/** DO NOT CALL. `src/backend/runtime/write-sequencer.ts` is the only permitted caller. */
 export function mintMutationCapability(
   intentGeneration: PositiveInt,
   bindingDigest: Fingerprint,

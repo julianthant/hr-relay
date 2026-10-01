@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { settingsFixture } from "../../unit/settings-activation/fixture.js";
 
 const close: Array<() => void> = [];

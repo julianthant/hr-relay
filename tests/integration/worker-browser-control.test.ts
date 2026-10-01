@@ -6,13 +6,13 @@ import { tmpdir } from "node:os";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { BrowserSessionIdSchema, FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
-import { WorkerSessionManager, type WorkerBrowserSessionFactory } from "../../src/core/worker-sessions.js";
+import { WorkerSessionManager, type WorkerBrowserSessionFactory } from "../../src/backend/runtime/worker-sessions.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { ManualScheduler } from "../helpers/phase1f-executor-harness.js";
 import type { WorkerBrowserObservation } from "../../src/domain/worker-control.js";
-import { createWorkerBrowserControl } from "../../src/server/worker/worker-browser-control.js";
+import { createWorkerBrowserControl } from "../../src/backend/runtime/worker/worker-browser-control.js";
 
 const NOW = "2026-09-18T18:00:00.000Z";
 const WORKER = WorkerIdSchema.parse("person-lookup-worker-1");

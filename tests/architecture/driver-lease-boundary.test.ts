@@ -9,13 +9,13 @@
  * Enforced structurally over the whole tree:
  *
  * - `withDriver(` is called only by the manager itself, the one graph
- *   interpreter (`src/core/run-executor.ts`), and the ref write-safety write sequencer
- *   (`src/core/write-sequencer.ts`), whose probe read lease and transaction
+ *   interpreter (`src/backend/runtime/run-executor.ts`), and the ref write-safety write sequencer
+ *   (`src/backend/runtime/write-sequencer.ts`), whose probe read lease and transaction
  *   lease are exactly the callback leases ref write-safety §3 assigns it;
  * - `withTransactionDriver(` is called only by the write sequencer, which
  *   crosses its retention boundary only after the durable fence;
  * - the browser-session factory's `.open(` — the raw resource mint — is
- *   invoked only inside `src/core/worker-sessions.ts`;
+ *   invoked only inside `src/backend/runtime/worker-sessions.ts`;
  * - `new WorkerSessionManager(` is constructed only by the worker loop, so a
  *   task, store, or workflow cannot mint a private ownership scope.
  */
@@ -36,9 +36,9 @@ function sourceFiles(): readonly { path: string; content: string }[] {
 describe("driver lease boundary", () => {
   it("keeps withDriver callers to the manager and the interpreter alone", () => {
     const allowed = new Set([
-      "src/core/worker-sessions.ts",
-      "src/core/run-executor.ts",
-      "src/core/write-sequencer.ts",
+      "src/backend/runtime/worker-sessions.ts",
+      "src/backend/runtime/run-executor.ts",
+      "src/backend/runtime/write-sequencer.ts",
     ]);
     const violations = sourceFiles()
       .filter(({ path, content }) => content.includes(".withDriver(") && !allowed.has(path))
@@ -48,8 +48,8 @@ describe("driver lease boundary", () => {
 
   it("keeps the fence-retained transaction lease exclusive to the write sequencer", () => {
     const allowed = new Set([
-      "src/core/worker-sessions.ts",
-      "src/core/write-sequencer.ts",
+      "src/backend/runtime/worker-sessions.ts",
+      "src/backend/runtime/write-sequencer.ts",
     ]);
     const violations = sourceFiles()
       .filter(({ path, content }) => content.includes(".withTransactionDriver(") && !allowed.has(path))
@@ -60,14 +60,14 @@ describe("driver lease boundary", () => {
   it("keeps raw browser-resource minting inside the session manager", () => {
     const violations = sourceFiles()
       .filter(({ path, content }) =>
-        path !== "src/core/worker-sessions.ts"
+        path !== "src/backend/runtime/worker-sessions.ts"
         && /[Ff]actory\.open\(/.test(content))
       .map(({ path }) => path);
     assert.deepEqual(violations, [], "browser-session factory open() leaked outside worker-sessions");
   });
 
   it("keeps WorkerSessionManager construction at the worker loop", () => {
-    const allowed = new Set(["src/core/worker-loop.ts", "src/core/worker-sessions.ts"]);
+    const allowed = new Set(["src/backend/runtime/worker-loop.ts", "src/backend/runtime/worker-sessions.ts"]);
     const violations = sourceFiles()
       .filter(({ path, content }) => content.includes("new WorkerSessionManager(") && !allowed.has(path))
       .map(({ path }) => path);
@@ -76,20 +76,20 @@ describe("driver lease boundary", () => {
 
   it("proves the lease surface it guards actually exists", () => {
     // A rename would otherwise turn every scan above vacuously green.
-    const manager = readFileSync(join(REPO_ROOT, "src/core/worker-sessions.ts"), "utf8");
+    const manager = readFileSync(join(REPO_ROOT, "src/backend/runtime/worker-sessions.ts"), "utf8");
     assert.ok(manager.includes("async withDriver<"), "worker-sessions must own the withDriver lease");
     assert.ok(
       manager.includes("async withTransactionDriver<"),
       "worker-sessions must own the fence-retained transaction lease",
     );
-    const interpreter = readFileSync(join(REPO_ROOT, "src/core/run-executor.ts"), "utf8");
+    const interpreter = readFileSync(join(REPO_ROOT, "src/backend/runtime/run-executor.ts"), "utf8");
     assert.ok(interpreter.includes(".withDriver("), "the interpreter must consume the lease");
-    const sequencer = readFileSync(join(REPO_ROOT, "src/core/write-sequencer.ts"), "utf8");
+    const sequencer = readFileSync(join(REPO_ROOT, "src/backend/runtime/write-sequencer.ts"), "utf8");
     assert.ok(
       sequencer.includes(".withTransactionDriver("),
       "the write sequencer must consume the fence-retained transaction lease",
     );
-    const loop = readFileSync(join(REPO_ROOT, "src/core/worker-loop.ts"), "utf8");
+    const loop = readFileSync(join(REPO_ROOT, "src/backend/runtime/worker-loop.ts"), "utf8");
     assert.ok(loop.includes("new WorkerSessionManager("), "the worker loop must own the manager");
   });
 });

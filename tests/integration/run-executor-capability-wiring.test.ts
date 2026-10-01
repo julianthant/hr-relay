@@ -28,7 +28,7 @@ import {
   executeClaimedRun,
   type RunExecutorDependencies,
   type RunProviderWiring,
-} from "../../src/core/run-executor.js";
+} from "../../src/backend/runtime/run-executor.js";
 import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../src/domain/config/schema.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";

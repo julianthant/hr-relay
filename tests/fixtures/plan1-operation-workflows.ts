@@ -8,7 +8,7 @@ import { EidSchema, ItemIdSchema, ScenarioIdSchema, taskId } from "../../src/dom
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { runDeclaredAction, recordDeclaredActionNotRun } from "../../src/infra/browser/action-notes.js";
+import { runDeclaredAction, recordDeclaredActionNotRun } from "../../src/backend/systems/browser-shared/action-notes.js";
 import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";
 
 export const Plan1Input = z.strictObject({ emplId: EidSchema, text: z.string(), mode: z.enum(["ok", "fail", "repeat", "confirmed"]) });

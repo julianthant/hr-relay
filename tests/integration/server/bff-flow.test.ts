@@ -1,6 +1,6 @@
 import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
+import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
 import {captureArchiveReport} from "../../../src/backend/storage/archive/report-capture.js";
 import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
@@ -71,7 +71,7 @@ import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../helpers/synthetic-storage-admission.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";

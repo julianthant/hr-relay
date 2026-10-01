@@ -16,7 +16,7 @@ import { executeSettingsCommand, type CommandAuthority } from "../../../src/back
 import { RunRecordService, type CreateRunRequest, requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
 import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";

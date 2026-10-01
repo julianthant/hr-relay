@@ -29,9 +29,9 @@ import { TaskError } from "../../src/base/errors.js";
 import {
   executeClaimedRun,
   type RunExecutorDependencies,
-} from "../../src/core/run-executor.js";
+} from "../../src/backend/runtime/run-executor.js";
 import { taskSpanPath, ExecutorSpanEventSchema } from "../../src/core/span-emitter.js";
-import type { WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import type { WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/domain/workflow/scenario-execution.js";
 import { EidSchema, NodeIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
@@ -54,7 +54,7 @@ import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { readEventStreamLines } from "../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
-import { recordBrowserAction, runDeclaredAction } from "../../src/infra/browser/action-notes.js";
+import { recordBrowserAction, runDeclaredAction } from "../../src/backend/systems/browser-shared/action-notes.js";
 import { NoteWireSchema } from "../../src/events/types.js";
 import { ucpathStore } from "../../src/stores/ucpath/index.js";
 import { ucpathDriver } from "../../src/stores/ucpath/driver-declaration.js";

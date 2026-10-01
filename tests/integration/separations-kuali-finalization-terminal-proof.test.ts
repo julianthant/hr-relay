@@ -20,7 +20,7 @@ import {
   executeClaimedRun,
   type RunExecutionAuthority,
   type RunExecutorDependencies,
-} from "../../src/core/run-executor.js";
+} from "../../src/backend/runtime/run-executor.js";
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { SeparationsMatchDepartmentOption } from "../../src/domain/contracts/separations/match-department-option.js";
 import { MatchIdentityOutputSchema } from "../../src/domain/contracts/separations/match-identity.js";

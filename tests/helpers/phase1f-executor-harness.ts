@@ -30,7 +30,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
-} from "../../src/core/deadline-scheduler.js";
+} from "../../src/backend/runtime/deadline-scheduler.js";
 import type {
   ExecutorSpanEvent,
   SpanEmitter,
@@ -41,7 +41,7 @@ import {
   type BrowserSessionCloseReason,
   type WorkerBrowserSessionFactory,
   type WorkerSessionEvent,
-} from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/worker-sessions.js";
 import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";
 import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { AuthorityDatabase } from "./synthetic-database-admission.js";

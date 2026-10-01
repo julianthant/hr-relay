@@ -11,13 +11,13 @@ import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
-import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope } from "../../src/core/gate-source-runtime.js";
+import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope } from "../../src/backend/runtime/gate-source-runtime.js";
 import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
 import {
   executeClaimedRun,
   type ChildRunExecutor,
   type RunExecutorDependencies,
-} from "../../src/core/run-executor.js";
+} from "../../src/backend/runtime/run-executor.js";
 import {
   DelegationEdgeIdSchema,
   GateIdSchema,

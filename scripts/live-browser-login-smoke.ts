@@ -53,8 +53,8 @@ import { randomUUID } from "node:crypto";
 import { rmSync } from "node:fs";
 import { join } from "node:path";
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
-import { composeDuoCeremonyGateFactory } from "../src/core/duo-ceremony-gate.js";
-import { WorkerSessionManager } from "../src/core/worker-sessions.js";
+import { composeDuoCeremonyGateFactory } from "../src/backend/runtime/duo-ceremony-gate.js";
+import { WorkerSessionManager } from "../src/backend/runtime/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../src/backend/app/config/resolve.js";
 import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
@@ -68,11 +68,11 @@ import {
 import {
   PlaywrightWorkerSessionFactory,
   workerProfileDirectory,
-} from "../src/infra/browser/browser-session-factory.js";
-import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
-import { createCredentialSecretSource, readSettings } from "../src/server/settings-runtime.js";
+} from "../src/backend/runtime/browser/browser-session-factory.js";
+import type { BrowserDeadlineScheduler } from "../src/backend/runtime/browser/browser-session-factory.js";
+import { createCredentialSecretSource, readSettings } from "../src/backend/runtime/settings/settings-runtime.js";
 import { probePrimaryDisplay } from "../src/backend/app/host/primary-display.js";
-import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
+import type { AuthenticatedApplicationEvidence } from "../src/backend/systems/browser-shared/login-contract.js";
 import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../src/backend/app/task-registry.js";

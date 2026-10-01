@@ -40,9 +40,9 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import type { RuntimeFlowNode } from "../../src/domain/workflow/graph.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
-import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
-import { assertSequencerMintedMutationCapability } from "../../src/core/write-sequencer.js";
-import { recordBrowserAction, runDeclaredAction } from "../../src/infra/browser/action-notes.js";
+import { WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
+import { assertSequencerMintedMutationCapability } from "../../src/backend/runtime/write-sequencer.js";
+import { recordBrowserAction, runDeclaredAction } from "../../src/backend/systems/browser-shared/action-notes.js";
 import { HASH_C, UUID_2, UUID_3, UUID_4 } from "./phase1c-contract-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,

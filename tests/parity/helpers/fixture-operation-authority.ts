@@ -15,7 +15,7 @@ import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands
 import { projectStartSteps, startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
 import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../src/base/workflow-definition.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../../src/core/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies } from "../../../src/backend/runtime/run-executor.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";

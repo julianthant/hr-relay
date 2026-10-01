@@ -9,7 +9,7 @@ import { runQueuedSpanEvent } from "../../src/backend/runs/dashboard/commands/ru
 import { ActorIdSchema, GateIdSchema, RunIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import { createSettingsApplicationExecutor } from "../../src/backend/runs/dashboard/commands/settings-service.js";
 import { composeDashboardRuntime } from "../../src/backend/app/dashboard/compose.js";
-import { createCredentialSecretSource, readSettings } from "../../src/server/settings-runtime.js";
+import { createCredentialSecretSource, readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
 import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
@@ -35,8 +35,8 @@ import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { DESCRIPTORS, personLookupModule } from "../../src/backend/app/control/workflow-registry.js";
 import { createCommandKernel, executeSettingsCommand, type CommandKernel } from "../../src/backend/runs/command-kernel.js";
-import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId, runWorkerLoop } from "../../src/core/worker-loop.js";
-import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../src/core/gate-source-runtime.js";
+import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId, runWorkerLoop } from "../../src/backend/runtime/worker-loop.js";
+import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../src/backend/runtime/gate-source-runtime.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import {
@@ -60,7 +60,7 @@ import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
 } from "../../src/infra/sqlite/runtime-process-locks.js";
-import type { WorkerProcessSupervisor } from "../../src/core/worker-loop.js";
+import type { WorkerProcessSupervisor } from "../../src/backend/runtime/worker-loop.js";
 import {
   composeWorkerRuntime,
   createTimeoutDeadlineScheduler,

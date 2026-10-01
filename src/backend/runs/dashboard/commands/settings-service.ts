@@ -12,7 +12,7 @@ import {
 } from "../../../../domain/config/settings.js";
 import { canonicalJsonStringify } from "../../../../domain/canonical-json.js";
 import type { AuthorityRepositories } from "../../../../infra/sqlite/authority-database.js";
-import { readSettings } from "../../../../server/settings-runtime.js";
+import { readSettings } from "../../../runtime/settings/settings-runtime.js";
 import { z } from "zod";
 import { ProviderKeyStoreConflictError, type createProviderKeyStore } from "../../../../infra/config/provider-key-store.js";
 import { providerStoreRequest } from "./provider-key-projection.js";

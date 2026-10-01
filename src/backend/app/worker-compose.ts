@@ -1,9 +1,9 @@
 import { composeRuntimePreflight } from "./preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "./preflight/runtime-runners.js";
 import { claimWithPreflight } from "./preflight/worker-admission.js";
-import { createWorkerBrowserControl } from "../../server/worker/worker-browser-control.js";
+import { createWorkerBrowserControl } from "../runtime/worker/worker-browser-control.js";
 import { selectRunRuntime } from "../runs/run-settings.js";
-import { createRunResourcesFactory } from "../../server/worker/run-resources.js";
+import { createRunResourcesFactory } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../runs/failure-resolution.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
@@ -60,16 +60,16 @@ import { DESCRIPTORS, SERVER_REGISTRY } from "./control/workflow-registry.js";
 import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
-} from "../../core/deadline-scheduler.js";
+} from "../runtime/deadline-scheduler.js";
 import {
   poolWorkerId,
   runWorkerLoop,
   type WorkerLoopReport,
-} from "../../core/worker-loop.js";
-import type { DuoCeremonyGateFactory } from "../../core/duo-ceremony-gate.js";
-import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
-import { createWriteSequencer } from "../../core/write-sequencer.js";
-import { createGateSourceRuntime, type GateSourcePort } from "../../core/gate-source-runtime.js";
+} from "../runtime/worker-loop.js";
+import type { DuoCeremonyGateFactory } from "../runtime/duo-ceremony-gate.js";
+import type { WorkerBrowserSessionFactory } from "../runtime/worker-sessions.js";
+import { createWriteSequencer } from "../runtime/write-sequencer.js";
+import { createGateSourceRuntime, type GateSourcePort } from "../runtime/gate-source-runtime.js";
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { resolveConfigWithProvenance } from "./config/resolve.js";
 import { systemIdFactory, type IdFactory } from "../../domain/identifiers.js";
@@ -92,13 +92,13 @@ import {
   createRunBrowserScreenshotCapture,
   createRunDiagnosticCapture,
 } from "../../services/trust/run-diagnostic-capture.js";
-import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../server/settings-runtime.js";
+import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
 import { createNoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
 import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
 
 
-import { createTimeoutDeadlineScheduler } from "../../server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,

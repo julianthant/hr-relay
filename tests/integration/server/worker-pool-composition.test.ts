@@ -40,7 +40,7 @@ import {
   type WorkerPoolRuntimeSeam,
   type WorkerRuntimeContext,
 } from "../../../src/backend/runs/command-kernel.js";
-import { poolWorkerId } from "../../../src/core/worker-loop.js";
+import { poolWorkerId } from "../../../src/backend/runtime/worker-loop.js";
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -58,7 +58,7 @@ import {
 import type {
   SpawnedWorkerHandle,
   WorkerProcessSpawnRequest,
-} from "../../../src/server/dashboard/worker-supervisor.js";
+} from "../../../src/backend/runtime/dashboard/worker-supervisor.js";
 import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
 import { QUEUED_RUN, RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {

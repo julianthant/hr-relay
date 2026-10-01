@@ -51,7 +51,7 @@
  * only ever over-refuse — it can never manufacture a false absence.
  */
 import type { Locator, Page } from "playwright";
-import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../../backend/systems/browser-shared/action-notes.js";
 import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import type { Eid, ElementId } from "../../../domain/ids.js";

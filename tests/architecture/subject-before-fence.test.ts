@@ -22,12 +22,12 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
-import type { WriteSequencerContext } from "../../src/core/run-executor.js";
+import type { WriteSequencerContext } from "../../src/backend/runtime/run-executor.js";
 import {
   assertSequencerMintedMutationCapability,
   createWriteSequencer,
-} from "../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint } from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/write-sequencer.js";
+import { withBoundRunConfigFingerprint } from "../../src/backend/runtime/worker-sessions.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { defineTaskContract, ContractFieldPathSchema } from "../../src/domain/contracts/base.js";
 import { EidSchema, taskId, TaskIdSchema } from "../../src/domain/ids.js";

@@ -28,7 +28,7 @@ import {
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
 } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { WriteParkedError } from "../../../../src/backend/runtime/write-sequencer.js";
 import { ucpathPendingTransactionSetDigest } from "../../../../src/domain/contracts/ucpath/delete-pending-terminations.js";
 import type {
   UcpathTerminationStaging,

@@ -8,7 +8,7 @@ import { ConfigSchema, type SettingsOverride } from "../../../src/domain/config/
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
-import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
+import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import {
 type SettingsFactsWire
 } from "../../../src/domain/dashboard/settings.js";

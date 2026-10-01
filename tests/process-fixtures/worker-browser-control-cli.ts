@@ -10,10 +10,10 @@ import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolv
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 import { systemClock } from "../../src/domain/clock.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { PlaywrightWorkerSessionFactory } from "../../src/infra/browser/browser-session-factory.js";
+import { PlaywrightWorkerSessionFactory } from "../../src/backend/runtime/browser/browser-session-factory.js";
 import { composeWorkerRuntime, createTimeoutDeadlineScheduler } from "../../src/backend/app/worker-compose.js";
 import { resolveSystemEntryUrl } from "../../src/domain/config/instance.js";
-import type { BrowserSystemBinding } from "../../src/infra/browser/system-bindings.js";
+import type { BrowserSystemBinding } from "../../src/backend/runtime/browser/system-bindings.js";
 import { healthyCrmDriver, healthyUcpathDriver } from "../helpers/phase1f-executor-harness.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { protectedSecretSource } from "../helpers/protected-secret-source.js";

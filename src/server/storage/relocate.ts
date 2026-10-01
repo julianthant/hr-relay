@@ -24,7 +24,7 @@ import { inspectPendingRelocationRecovery, type RelocationPlanBinding, type Veri
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../infra/runtime-control/installation.js";
 import { probePrimaryDisplay } from "../../backend/app/host/primary-display.js";
 import { projectStorageRelocationPlanHistory } from "../../core/storage-relocation-plans.js";
-import { readSettings } from "../settings-runtime.js";
+import { readSettings } from "../../backend/runtime/settings/settings-runtime.js";
 import { backupStoppedAuthority, upgradeRelocationCapabilityV56 } from "./upgrade.js";
 import { copyRelocationFile, inspectRelocationFiles, prepareRelocationDirectories, verifyRelocationBackupTree,
   verifyRelocationFileCopies, verifyRelocationLiveReferences, verifyRetainedRelocationCopies,

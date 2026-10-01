@@ -21,7 +21,7 @@ import {
   type WriteBindingCheck,
   type WriteBindingRepositories,
   type WriteResolutionBinding,
-} from "../../src/core/write-resolution-binding.js";
+} from "../../src/backend/runtime/write-resolution-binding.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";

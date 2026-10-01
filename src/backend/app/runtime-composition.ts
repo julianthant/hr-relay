@@ -16,7 +16,7 @@ import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
 import { DRY_RUN_SCENARIO_USAGE } from "../runs/dry-run-scenario-runner.js";
 import { TEST_DATA_USAGE } from "../runs/test-data-usage.js";
-import type { WorkerLoopReport } from "../../core/worker-loop.js";
+import type { WorkerLoopReport } from "../runtime/worker-loop.js";
 
 export interface RunningDashboard {
   readonly port: number;

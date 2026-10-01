@@ -68,7 +68,7 @@ import {
   type DashboardRuntime,
 } from "../../../src/backend/app/dashboard/compose.js";
 import { writeDashboardBuildIdentity } from "../../../src/backend/app/dashboard/build-identity.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
   persistCorruptJournaledSettings,

@@ -8,7 +8,7 @@ import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { composeWorkerProcessControl } from "../../../src/backend/app/dashboard/compose.js";
-import { poolWorkerId } from "../../../src/core/worker-loop.js";
+import { poolWorkerId } from "../../../src/backend/runtime/worker-loop.js";
 import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
 import assert from "node:assert/strict";

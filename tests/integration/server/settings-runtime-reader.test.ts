@@ -15,7 +15,7 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import { executeSettingsCommand, type CommandAuthority } from "../../../src/backend/runs/command-kernel.js";
 import { buildSettingsEditor } from "../../../src/backend/runs/dashboard/queries/settings-editor.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
-import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../src/server/settings-runtime.js";
+import { activeSettingsConfig, activeSettingsRuntimeIdentity, createCredentialSecretSource, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader, readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { requireSecret } from "../../../src/domain/secrets.js";
 
 const cleanups: (() => void)[] = [];

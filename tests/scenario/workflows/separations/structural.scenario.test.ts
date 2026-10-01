@@ -41,7 +41,7 @@ import { join } from "node:path";
 import ts from "typescript";
 import { afterEach, describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../../../src/base/workflow.js";
-import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { WriteParkedError } from "../../../../src/backend/runtime/write-sequencer.js";
 import { NewKronosReadSeparationTimecard } from "../../../../src/domain/contracts/new-kronos/read-separation-timecard.js";
 import {
   legacyUcpathPendingSweepIdempotencyKey,

@@ -1,5 +1,5 @@
 import type { Page } from "playwright";
-import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../../backend/systems/browser-shared/action-notes.js";
 import { assertMintedMutationCapability } from "../../../base/mutation-capability.js";
 import { EidSchema } from "../../../domain/ids.js";
 import { UiActionProofSchema } from "../../../domain/ui/driver.js";

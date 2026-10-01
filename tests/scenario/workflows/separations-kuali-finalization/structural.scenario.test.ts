@@ -44,7 +44,7 @@ import { z } from "zod";
 import { mintMutationCapability } from "../../../../src/base/mutation-capability.js";
 import { workflowTerminalResultExecution } from "../../../../src/base/workflow.js";
 import { buildRunPreviewResult } from "../../../../src/backend/runs/run-result.js";
-import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
+import { WriteParkedError } from "../../../../src/backend/runtime/write-sequencer.js";
 import { manualClock } from "../../../../src/domain/clock.js";
 import type { RunRecord } from "../../../../src/domain/run/record.js";
 import { RunDryRunPreviewResultSchema } from "../../../../src/domain/run/result.js";
@@ -276,7 +276,7 @@ function harness(options?: Parameters<typeof finalizationHarness>[0]): Finalizat
 /**
  * The fake's `commit` verifies a sequencer-minted capability and there is no
  * back door — which is the point of D111's WeakSet. A task-level arm therefore
- * mints one directly. `src/core/write-sequencer.ts` remains the only PRODUCTION
+ * mints one directly. `src/backend/runtime/write-sequencer.ts` remains the only PRODUCTION
  * caller (`task-driver-boundary` audits `src/**` and would fail any other), and
  * the fenced beats that mint it for real are chunk 5b's sequencer-driven
  * scenarios.

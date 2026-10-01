@@ -18,7 +18,7 @@ import {
   createCommandKernel,
   type CommandKernel,
 } from "../../runs/command-kernel.js";
-import type { DuoCeremonyGateFactory } from "../../../core/duo-ceremony-gate.js";
+import type { DuoCeremonyGateFactory } from "../../runtime/duo-ceremony-gate.js";
 import type {
   DryRunScenarioRuntime,
   DryRunScenarioStarted,
@@ -40,7 +40,7 @@ import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../infra/r
 import type { ProcessIdentityObserver } from "../../../infra/sqlite/runtime-process-locks.js";
 import { createStartPlanService } from "../../runs/dashboard/commands/start-plan-service.js";
 import { runQueuedSpanEvent } from "../../runs/dashboard/commands/run-queued-span.js";
-import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../../server/settings-runtime.js";
+import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../runtime/settings/settings-runtime.js";
 import { createTrustRunReader } from "../../runs/trust/canonical-reader.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "../../runs/trust/run-reader.js";
 import { createReceiptService } from "../../runs/trust/receipt-service.js";

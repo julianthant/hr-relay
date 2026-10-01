@@ -1,5 +1,5 @@
 import type { CommandKernel } from "../../command-kernel.js";
-import { MAX_WORKERS_PER_POOL, poolWorkerId } from "../../../../core/worker-loop.js";
+import { MAX_WORKERS_PER_POOL, poolWorkerId } from "../../../runtime/worker-loop.js";
 import { WorkerBrowserCommandRequestSchema, type CommandRequest, type CommandResult } from "../../../../domain/commands.js";
 import { lifecycleCommandId } from "../../../../domain/lifecycle-command-id.js";
 import { PositiveIntSchema } from "../../../../domain/ids.js";

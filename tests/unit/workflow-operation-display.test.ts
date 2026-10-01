@@ -1,7 +1,7 @@
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { WriteFixturePrepare, WriteFixtureCommit, WriteFixtureProbe, WriteFixtureVerify } from "../fixtures/write-sequencer-fixtures.js";
 import { ObservedOperationStructureWireSchema } from "../../src/domain/dashboard/operation-structure.js";
-import { createDeclaredActionBinder } from "../../src/core/operation-action-binding.js";
+import { createDeclaredActionBinder } from "../../src/backend/runtime/operation-action-binding.js";
 import { DeclaredActionIdentitySchema } from "../../src/domain/workflow/operation-action-identity.js";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";

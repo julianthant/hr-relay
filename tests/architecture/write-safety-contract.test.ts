@@ -22,7 +22,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
-import { createWriteRecoveryService } from "../../src/core/write-recovery.js";
+import { createWriteRecoveryService } from "../../src/backend/runtime/write-recovery.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   RuntimeTaskContractDefinitionSchema,

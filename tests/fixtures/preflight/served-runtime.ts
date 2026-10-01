@@ -7,7 +7,7 @@ import { composeRuntimePreflight } from "../../../src/backend/app/preflight/runt
 import { createRuntimePreflightRunners } from "../../../src/backend/app/preflight/runtime-runners.js";
 import { createPreflightAuthority } from "../../../src/domain/preflight.js";
 import { createPreflightReportService } from "../../../src/server/preflight/report-service.js";
-import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
@@ -15,7 +15,7 @@ import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { buildSettingsEditor } from "../../../src/backend/runs/dashboard/queries/settings-editor.js";
-import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
+import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { FIXTURE_DESCRIPTOR_HASH, FIXTURE_NOW } from "../../parity/helpers/fixture-identity.js";

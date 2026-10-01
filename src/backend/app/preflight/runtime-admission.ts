@@ -13,7 +13,7 @@ import type { InstanceSelection, RunEnvelope } from "../../../domain/run/envelop
 import { AuthorityHealthPreflightRunner, type AuthorityDatabase } from "../../../infra/sqlite/index.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
 import { workflowPreflightScope } from "../../runs/start/preflight-scope.js";
-import { createTimeoutDeadlineScheduler } from "../../../server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerFactory } from "./runtime-runners.js";
 
 export function composeRuntimePreflight(input: Readonly<{

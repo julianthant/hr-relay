@@ -10,7 +10,7 @@
  * inbox was built for.
  *
  * **The seam is a transition-watcher over authority, not the park itself.** The
- * park is written by the WORKER (`src/core/run-executor.ts`, the §4 gate arm), a
+ * park is written by the WORKER (`src/backend/runtime/run-executor.ts`, the §4 gate arm), a
  * separate OS process with no operator attached, no desktop channel, and — by
  * D82's argument — no business making a projection a precondition of settling a
  * run: a run must park even when the inbox cannot be written. What makes the

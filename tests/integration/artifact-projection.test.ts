@@ -32,7 +32,7 @@ import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/
 import {
   executeClaimedRun,
   type RunExecutorDependencies,
-} from "../../src/core/run-executor.js";
+} from "../../src/backend/runtime/run-executor.js";
 import { deriveArtifactProjectionRows } from "../../src/domain/workflow/artifact-projection.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { ScenarioIdSchema, TraceIdSchema, taskId } from "../../src/domain/ids.js";

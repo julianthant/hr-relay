@@ -16,7 +16,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { TaskError } from "../../src/base/errors.js";
-import type { WriteSequencerContext } from "../../src/core/run-executor.js";
+import type { WriteSequencerContext } from "../../src/backend/runtime/run-executor.js";
 import {
   createWriteSequencer,
   buildCommittedSettlement,
@@ -27,9 +27,9 @@ import {
   type ProductionWriteSequencer,
   type TransactionDryRunPreview,
   type WriteSequencerHooks,
-} from "../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../src/core/worker-sessions.js";
-import { withBrowserActionNotes } from "../../src/infra/browser/action-notes.js";
+} from "../../src/backend/runtime/write-sequencer.js";
+import { withBoundRunConfigFingerprint, type WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
+import { withBrowserActionNotes } from "../../src/backend/systems/browser-shared/action-notes.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { ActorIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import { classifyEvidenceLeaf } from "../../src/domain/trust/evidence-classification.js";

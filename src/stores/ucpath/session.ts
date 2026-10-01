@@ -39,18 +39,18 @@
  *    every return path including the early one.
  */
 import { resolveSystemEntryUrl, resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import { recordBrowserAction } from "../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../backend/systems/browser-shared/action-notes.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
   probeSessionCookie,
-} from "../../infra/browser/authenticated-application.js";
-import { BrowserLoginError } from "../../infra/browser/login-contract.js";
+} from "../../backend/systems/browser-shared/authenticated-application.js";
+import { BrowserLoginError } from "../../backend/systems/browser-shared/login-contract.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
   SystemLoginContext,
-} from "../../infra/browser/login-contract.js";
+} from "../../backend/systems/browser-shared/login-contract.js";
 import {
   abortIfCancelled,
   fillSsoCredentials,
@@ -61,7 +61,7 @@ import {
   verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
   waitForSsoForm,
-} from "../../infra/browser/ucsd-sso.js";
+} from "../../backend/systems/browser-shared/ucsd-sso.js";
 export { ucpathSession } from "./session-provider.js";
 
 const SYSTEM = "ucpath" as const;

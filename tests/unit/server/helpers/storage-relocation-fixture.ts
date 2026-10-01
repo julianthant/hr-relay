@@ -26,7 +26,7 @@ import { createRunSearchIndex } from "../../../../src/infra/sqlite/run-search-in
 import { createCredentialStore } from "../../../../src/infra/config/credential-store.js";
 import { acquireExclusiveRuntimeAdmission, acquireInitialRuntimeAdmission, acquireSharedRuntimeAdmission } from "../../../../src/infra/runtime-control/admission.js";
 import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/dashboard/commands/settings-service.js";
-import { readSettings } from "../../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { runOfflineStorageRelocation, StorageRelocationIncompleteError } from "../../../../src/server/storage/relocate.js";
 
 export const clock = manualClock(new Date("2026-09-26T12:00:00.000Z"));

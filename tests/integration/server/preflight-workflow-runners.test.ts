@@ -14,7 +14,7 @@ import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, PreflightCheckIdSchema, 
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/backend/app/preflight/runtime-runners.js";
 import { PreflightReportWireSchema } from "../../../src/domain/preflight-contract.js";
 import { createWorkflowPreflightRunners } from "../../../src/backend/app/preflight/workflow-runners.js";
-import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

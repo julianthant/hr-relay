@@ -10,7 +10,7 @@ import { createPreflightAuthority, type PreflightRunner } from "../../../src/dom
 import { PROVIDER_ADAPTER_SPECS, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } from "../../../src/domain/runtime-dependencies.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
 import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/backend/app/preflight/runtime-runners.js";
-import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 
 export function populatedProtectedRecord(omitted?: string) {
   const names = ["ucpathUserId", "ucpathPassword", "timekeeperName", "sharepointOnboardingRosterUrl"];

@@ -16,7 +16,7 @@ import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../src/infra/sqlite/backup-service.js";
 import { acquireSharedRuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { cleanupFixtureRoots, clock, durableSnapshot, installation, interruptedRelocation, leaveStoppedWal,
   plan, relocate, WAL_NOTIFICATION_TITLE } from "../../unit/server/helpers/storage-relocation-fixture.js";
 

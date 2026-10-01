@@ -4,7 +4,7 @@
  * context, and no second code path that authenticates a session.
  *
  * - STRUCTURAL: `store.session.login(` is invoked only inside
- *   `src/core/worker-sessions.ts` (the manager's `#openAndLogin`), so no task,
+ *   `src/backend/runtime/worker-sessions.ts` (the manager's `#openAndLogin`), so no task,
  *   workflow, or service can authenticate around the ownership model.
  * - BEHAVIORAL: two concurrent driver leases for one system on one worker
  *   produce exactly ONE session open and ONE login — the second lease reuses
@@ -30,10 +30,10 @@ describe("single-flight login", () => {
         content: readFileSync(file, "utf8"),
       }))
       .filter(({ path, content }) =>
-        path !== "src/core/worker-sessions.ts" && content.includes("session.login("))
+        path !== "src/backend/runtime/worker-sessions.ts" && content.includes("session.login("))
       .map(({ path }) => path);
     assert.deepEqual(violations, [], "a login path outside the session manager appeared");
-    const manager = readFileSync(join(REPO_ROOT, "src/core/worker-sessions.ts"), "utf8");
+    const manager = readFileSync(join(REPO_ROOT, "src/backend/runtime/worker-sessions.ts"), "utf8");
     assert.ok(manager.includes("session.login("), "the manager must own the one login call");
   });
 

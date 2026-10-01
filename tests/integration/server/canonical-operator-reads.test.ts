@@ -1,6 +1,6 @@
 import { plan1Leaf, plan1Contract } from "../../fixtures/plan1-operation-workflows.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/domain/workflow/operation-display-snapshot.js";
-import { createDeclaredActionBinder } from "../../../src/core/operation-action-binding.js";
+import { createDeclaredActionBinder } from "../../../src/backend/runtime/operation-action-binding.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { resolveOperationSource } from "../../../src/backend/runs/dashboard/queries/operation-source.js";
 import { archivedRunContentDigest, type ArchivedRunRecord } from "../../../src/domain/archive/model.js";

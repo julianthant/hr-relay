@@ -26,9 +26,9 @@ import {
   DuoCeremonyLeaseExpiredError,
   DuoCeremonyLeaseHeldError,
   DuoCeremonyReleaseFailedError,
-} from "../../src/core/duo-ceremony-gate.js";
-import type { DuoCeremonyGateFactory } from "../../src/core/duo-ceremony-gate.js";
-import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/duo-ceremony-gate.js";
+import type { DuoCeremonyGateFactory } from "../../src/backend/runtime/duo-ceremony-gate.js";
+import { WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
 import { manualClock } from "../../src/domain/clock.js";
 import type { TestClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
@@ -39,9 +39,9 @@ import {
   WorkflowIdSchema,
 } from "../../src/domain/ids.js";
 import type { BrowserSystemId, WorkerId } from "../../src/domain/ids.js";
-import { defineVerifiedLoginRecipe } from "../../src/infra/browser/authenticated-application.js";
-import { DuoTerminalRefusalError } from "../../src/infra/browser/login-contract.js";
-import type { SystemLoginContext } from "../../src/infra/browser/login-contract.js";
+import { defineVerifiedLoginRecipe } from "../../src/backend/systems/browser-shared/authenticated-application.js";
+import { DuoTerminalRefusalError } from "../../src/backend/systems/browser-shared/login-contract.js";
+import type { SystemLoginContext } from "../../src/backend/systems/browser-shared/login-contract.js";
 import type { AuthorityDatabase, DuoCeremonyLeaseRepository } from "../helpers/synthetic-storage-admission.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {

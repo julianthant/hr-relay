@@ -6,7 +6,7 @@ import type { createProviderKeyStore } from "../../../../infra/config/provider-k
 import type { ProviderBootProvenance } from "../../../../domain/config/provider-boot-provenance.js";
 import { ProviderKeySlotSchema } from "../../../../domain/config/provider-keys.js";
 import { activeProviderKeySlots } from "../../../../domain/secrets.js";
-import { activeSettingsConfig, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader } from "../../../../server/settings-runtime.js";
+import { activeSettingsConfig, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader } from "../../../runtime/settings/settings-runtime.js";
 import { createSettingsApplicationExecutor } from "../../../runs/dashboard/commands/settings-service.js";
 import type { SettingsRouteDeps } from "../../../transports/dashboard/routes/settings-types.js";
 import type { StorageRelocationPlanReader } from "../../../../core/storage-relocation-plans.js";

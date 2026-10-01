@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { selectActiveRunSettings } from "../../../src/backend/runs/run-settings.js";
 import { requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
 import { settingsFixture } from "../../unit/settings-activation/fixture.js";

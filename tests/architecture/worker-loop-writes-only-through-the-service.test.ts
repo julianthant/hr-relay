@@ -30,7 +30,7 @@ function repositoryMutator(declaration: ts.Declaration | undefined): boolean {
 
 function audit(extraSource?: string): readonly string[] {
   // Scan every core helper: moving a forbidden call into another core module cannot hide it.
-  const roots = gitVisibleFiles(["src/core", "src/server/worker"])
+  const roots = gitVisibleFiles(["src/core", "src/server/worker", "src/backend/runtime"])
     .filter((file) => file.endsWith(".ts") && !["src/backend/runs/command-kernel.ts", "src/backend/runs/run-fan-out.ts"].includes(file));
   roots.push("src/backend/app/dashboard/compose.ts");
   const fixture = resolve(REPO_ROOT, "src/core/worker-mutator-proof.ts");
@@ -52,7 +52,7 @@ function audit(extraSource?: string): readonly string[] {
       if (file === "src/backend/runs/run-record-service.ts" && ts.isClassDeclaration(node)
         && node.name?.text === "RunRecordService") return;
       // Task 4 retains the two negative-resolution paths; positive recovery/present remain scanned.
-      if (file === "src/core/write-recovery.ts"
+      if (file === "src/backend/runtime/write-recovery.ts"
         && ((ts.isMethodDeclaration(node) && node.name.getText() === "resolveAbsent")
           || (ts.isIfStatement(node) && node.expression.getText() === 'evaluation.state === "safe-to-retry"'))) return;
       if (file === "src/backend/app/dashboard/compose.ts") {
@@ -73,7 +73,7 @@ function audit(extraSource?: string): readonly string[] {
     };
     visit(source);
   }
-  assert.ok(visited > 0 && roots.includes("src/core/write-sequencer.ts") && roots.includes("src/core/write-recovery.ts"));
+  assert.ok(visited > 0 && roots.includes("src/backend/runtime/write-sequencer.ts") && roots.includes("src/backend/runtime/write-recovery.ts"));
   return violations;
 }
 

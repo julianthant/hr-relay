@@ -51,26 +51,33 @@ describe("task to system-driver boundary", () => {
   });
 
   it("still fences tasks off from the session-factory raw-browser family", () => {
-    // Widening the owner set to `src/infra/browser/**` must not make it
+    // Widening the owner set to `src/backend/runtime/browser/**` must not make it
     // reachable: a task that imports the factory (directly or through a
     // helper) is the same ownership bypass as importing a private driver.
     const root = resolve(tmpdir(), `hrauto-ui-factory-${String(process.pid)}-${String(Date.now())}`);
     const task = resolve(root, "src/stores/ucpath/tasks/bad.ts");
     const helper = resolve(root, "src/stores/ucpath/helper.ts");
-    const factory = resolve(root, "src/infra/browser/browser-session-factory.ts");
+    const factory = resolve(root, "src/backend/runtime/browser/browser-session-factory.ts");
+    const shared = resolve(root, "src/backend/systems/browser-shared/action-notes.ts");
     try {
       mkdirSync(dirname(task), { recursive: true });
       mkdirSync(dirname(factory), { recursive: true });
       writeFileSync(task, 'import { open } from "../helper.js";\nexport const bad = open;\n');
-      writeFileSync(helper, 'export { open } from "../../infra/browser/browser-session-factory.js";\n');
+      writeFileSync(helper, 'export { open } from "../../backend/runtime/browser/browser-session-factory.js";\n');
       writeFileSync(factory, 'import { chromium } from "playwright";\nexport const open = chromium;\n');
       const issues = auditTaskDriverBoundary(root).join("\n");
-      assert.match(issues, /import graph reaches private raw-browser owner src\/infra\/browser/);
+      assert.match(issues, /import graph reaches private raw-browser owner src\/backend\/runtime\/browser/);
       assert.doesNotMatch(
         issues,
         /browser-session-factory\.ts: Playwright import/,
         "the factory itself is a sanctioned owner",
       );
+      mkdirSync(dirname(shared), { recursive: true });
+      writeFileSync(shared, 'import { type Page } from "playwright";\nexport const open = (page: Page) => page;\n');
+      writeFileSync(helper, 'export { open } from "../../backend/systems/browser-shared/action-notes.js";\n');
+      const sharedIssues = auditTaskDriverBoundary(root).join("\n");
+      assert.match(sharedIssues, /import graph reaches private raw-browser owner src\/backend\/systems\/browser-shared/);
+      assert.doesNotMatch(sharedIssues, /action-notes\.ts: Playwright import/, "shared browser adapter is a sanctioned owner");
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -135,9 +142,10 @@ it("allows only the declared durable archive callback and rejects browser, any, 
   const path = resolve(root, "src/core/kernel.ts");
   try {
     mkdirSync(dirname(path), { recursive: true });
+    mkdirSync(resolve(root, "src/backend/runs"), { recursive: true });
     writeFileSync(resolve(root, "src/backend/runs/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
     writeFileSync(resolve(root, "src/core/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
-    const imports = 'import type { CommandApplication } from "./command-application.js"; import { publishManualArchive } from "./archive-terminal-runs.js";';
+    const imports = 'import type { CommandApplication } from "../backend/runs/command-application.js"; import { publishManualArchive } from "./archive-terminal-runs.js";';
     writeFileSync(path, imports + 'export function prepare(): CommandApplication { return { commit: () => publishManualArchive("verified") }; }');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
     for (const source of [

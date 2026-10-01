@@ -35,7 +35,7 @@ import {
 } from "../helpers/synthetic-storage-admission.js";
 import { SettingsCurrentRecordSchema } from "../../src/infra/compat/d331-settings-current.js";
 import { SettingsRootAuthoritySchema } from "../../src/infra/compat/d331-settings-root.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import {
   D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
   D350HistoricalSettingsFileRecordSchema,

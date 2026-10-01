@@ -11,24 +11,26 @@ const RAW_BROWSER_MEMBERS = new Set([
 
 /**
  * The closed set of modules allowed to name a Playwright type or drive a raw
- * page. Two families, for two different reasons:
+ * page. Three closed families, each with one responsibility:
  *
  * - `src/stores/<system>/driver/**` and `.../session.ts` own ONE system's page
  *   knowledge — its semantic driver and its login recipe.
- * - `src/infra/browser/**` owns browser CREATION itself: the persistent
+ * - `src/backend/runtime/browser/**` owns browser CREATION itself: the persistent
  *   context, the Duo Autopilot extension, and the provable teardown behind
  *   `WorkerBrowserSessionFactory` (ref execution-and-sessions §4 — "concrete browser creation
  *   remains a factory injected at the runtime composition boundary"). It has
- *   nowhere else it could live: it is neither one system's driver nor kernel
- *   policy, and `core` sits above `infra` in the layer matrix.
+ *   runtime resource ownership stays separate from one system's driver.
+ * - `src/backend/systems/browser-shared/**` owns the reusable browser action
+ *   and login adapters consumed by system sessions and drivers.
  *
- * Membership is the whole enforcement — a task or workflow that reaches either
- * family transitively is still a violation, checked below.
+ * Membership is the whole enforcement — a task or workflow that reaches any
+ * private browser family transitively is still a violation, checked below.
  */
 function isRawBrowserOwner(path: string): boolean {
   return /^src\/stores\/[a-z0-9-]+\/driver\//u.test(path)
     || /^src\/stores\/[a-z0-9-]+\/session\.ts$/u.test(path)
-    || /^src\/infra\/browser\//u.test(path);
+    || /^src\/backend\/runtime\/browser\//u.test(path)
+    || /^src\/backend\/systems\/browser-shared\//u.test(path);
 }
 
 function isTaskOrWorkflow(path: string): boolean {
@@ -206,7 +208,7 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.Ty
 }
 
 const MUTATION_CAPABILITY_REGISTRY = "src/base/mutation-capability.ts";
-const MUTATION_CAPABILITY_MINTER = "src/core/write-sequencer.ts";
+const MUTATION_CAPABILITY_MINTER = "src/backend/runtime/write-sequencer.ts";
 const DRIVER_OWNER_PATTERN = /^src\/stores\/[a-z0-9-]+\/driver\//u;
 
 export function auditTaskDriverBoundary(root: string): readonly string[] {

@@ -8,7 +8,7 @@ import { renderOperationTemplate, type OperationTemplate, type TaskOperationActi
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { DataPoint } from "../../src/domain/task-provenance.js";
-import { runDeclaredAction } from "../../src/infra/browser/action-notes.js";
+import { runDeclaredAction } from "../../src/backend/systems/browser-shared/action-notes.js";
 import { kualiSession } from "../../src/stores/kuali/session-provider.js";
 import { ucpathSession } from "../../src/stores/ucpath/session-provider.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output } from "./plan1-operation-workflows.js";

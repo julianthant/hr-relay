@@ -17,7 +17,7 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../src/base/stor
 import { defineTask } from "../../src/base/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
 import { taskSpanPath } from "../../src/core/span-emitter.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { NodeIdSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../src/domain/ids.js";

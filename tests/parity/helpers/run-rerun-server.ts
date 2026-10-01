@@ -4,7 +4,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatc
 import { executeSettingsCommand } from "../../../src/backend/runs/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 /** Private launch fixture: real SQLite, planner, command kernel, projection and controlled executor. */
 import { mkdtempSync, rmSync } from "node:fs";
 import { readFile } from "node:fs/promises";

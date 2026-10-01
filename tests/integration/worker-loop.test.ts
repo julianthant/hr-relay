@@ -15,7 +15,7 @@ import {
   poolWorkerId,
   runWorkerLoop,
   type WorkerLoopDependencies,
-} from "../../src/core/worker-loop.js";
+} from "../../src/backend/runtime/worker-loop.js";
 import type { WorkerRuntimeExecutor } from "../../src/backend/runs/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";

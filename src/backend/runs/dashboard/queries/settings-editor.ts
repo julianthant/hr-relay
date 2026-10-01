@@ -13,7 +13,7 @@ import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../
 import { EditableSettingsSectionIdSchema, settingsCatalogEntry, settingsControlFor, settingsSectionFor } from "../../../../domain/dashboard/settings-catalog.js";
 import type { Clock } from "../../../../domain/clock.js";
 import { activeProviderKeySlots, optionalSecretFamily, SecretFamilyNameSchema } from "../../../../domain/secrets.js";
-import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../../../server/settings-runtime.js";
+import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
 import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../../../../domain/config/provider-keys.js";
 import type { ProviderBootProvenance } from "../../../../domain/config/provider-boot-provenance.js";
 import type { createProviderKeyStore } from "../../../../infra/config/provider-key-store.js";

@@ -5,7 +5,7 @@ import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import type { MonotonicDeadlineScheduler } from "../../../src/core/deadline-scheduler.js";
+import type { MonotonicDeadlineScheduler } from "../../../src/backend/runtime/deadline-scheduler.js";
 import { executePreflightRunner } from "../../../src/domain/preflight.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {

@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import {
   buildEntryValidationFailureRecord,
   buildNodeFailureRecord,
-} from "../../src/core/run-failure.js";
+} from "../../src/backend/runtime/run-failure.js";
 import {
   CURRENT_DIAGNOSTIC_SAFETY_VERSION,
   projectFailureForOperator,

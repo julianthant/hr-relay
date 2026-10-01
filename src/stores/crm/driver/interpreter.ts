@@ -1,5 +1,5 @@
 import type { Locator, Page } from "playwright";
-import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../../backend/systems/browser-shared/action-notes.js";
 import { z } from "zod";
 import {
   CrmReadOnboardingDates,

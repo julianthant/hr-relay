@@ -3,7 +3,7 @@ import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import type { DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { createCalendarQuery } from "../../../src/backend/runs/dashboard/queries/calendar.js";
-import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
+import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
 import { join } from "node:path";
 import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";

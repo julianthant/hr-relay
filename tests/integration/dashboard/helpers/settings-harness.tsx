@@ -23,7 +23,7 @@ import { executeSettingsCommand } from "../../../../src/backend/runs/command-ker
 import { AuthorityDatabase } from "../../../../src/infra/sqlite/authority-database.js";
 import { createCredentialStore } from "../../../../src/infra/config/credential-store.js";
 import { RuntimeAdmission } from "../../../../src/infra/runtime-control/admission.js";
-import { activeSettingsRuntimeIdentity, readSettings } from "../../../../src/server/settings-runtime.js";
+import { activeSettingsRuntimeIdentity, readSettings } from "../../../../src/backend/runtime/settings/settings-runtime.js";
 import { composeSettings } from "../../../../src/backend/app/dashboard/compose/settings.js";
 import { buildSettingsEditor } from "../../../../src/backend/runs/dashboard/queries/settings-editor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";

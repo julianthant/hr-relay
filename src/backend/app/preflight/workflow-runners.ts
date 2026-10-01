@@ -1,6 +1,6 @@
 import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
-import { bundledChromiumExecutablePath } from "../../../infra/browser/executable-path.js";
+import { bundledChromiumExecutablePath } from "../../runtime/browser/executable-path.js";
 import { requireAnnualDates } from "../../../domain/config/fiscal-year.js";
 import { CONFIG_ROUTE_SCHEMAS } from "../../../domain/config/schema.js";
 import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../domain/preflight.js";

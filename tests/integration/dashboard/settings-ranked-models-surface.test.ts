@@ -1,4 +1,4 @@
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act } from "react";

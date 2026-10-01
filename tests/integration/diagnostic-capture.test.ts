@@ -14,7 +14,7 @@ import { Readable } from "node:stream";
 import { afterEach, describe, it } from "vitest";
 import { TaskError } from "../../src/base/errors.js";
 import type { ContentAddressedArtifactWriter } from "../../src/base/artifacts.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { ArtifactRefSchema } from "../../src/domain/artifacts.js";

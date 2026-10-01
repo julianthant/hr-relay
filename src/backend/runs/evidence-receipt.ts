@@ -146,7 +146,7 @@ import {
   evaluateReceiptDerivationBinding,
   evaluateReceiptRederivation,
   type ReceiptBindingCheckResult,
-} from "../../core/receipt-derivation-binding.js";
+} from "../runtime/receipt-derivation-binding.js";
 import { FailureRecordSchema, type FailureRecord } from "../../domain/trust/failure.js";
 import type { RuntimeFlowNode } from "../../domain/workflow/graph.js";
 import {

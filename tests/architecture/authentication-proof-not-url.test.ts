@@ -38,12 +38,12 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
-import { BROWSER_SYSTEM_BINDINGS } from "../../src/infra/browser/system-bindings.js";
+import { BROWSER_SYSTEM_BINDINGS } from "../../src/backend/runtime/browser/system-bindings.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const WRAPPER = "defineVerifiedLoginRecipe";
 const RESET_ASSERTION = "assertAuthenticatedApplication";
-const FACTORY = "src/infra/browser/browser-session-factory.ts";
+const FACTORY = "src/backend/runtime/browser/browser-session-factory.ts";
 
 function parse(path: string, content: string): ts.SourceFile {
   return ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);

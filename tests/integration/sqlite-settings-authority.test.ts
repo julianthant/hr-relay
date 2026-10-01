@@ -15,7 +15,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { createCommandKernel, executeSettingsCommand, type CommandAuthority } from "../../src/backend/runs/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../src/backend/runs/dashboard/commands/settings-service.js";
 import { createCredentialStore, type CredentialStoreHooks } from "../helpers/synthetic-storage-admission.js";
-import { readSettings, createCredentialSecretSource } from "../../src/server/settings-runtime.js";
+import { readSettings, createCredentialSecretSource } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";

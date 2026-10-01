@@ -36,18 +36,18 @@
  * **3.32 s** measured; whole browser-launch-to-home ≈ 33 s.
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import { recordBrowserAction } from "../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../backend/systems/browser-shared/action-notes.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
   probeSessionCookie,
-} from "../../infra/browser/authenticated-application.js";
-import { BrowserLoginError } from "../../infra/browser/login-contract.js";
-import type { ObservedFact } from "../../infra/browser/authenticated-application.js";
+} from "../../backend/systems/browser-shared/authenticated-application.js";
+import { BrowserLoginError } from "../../backend/systems/browser-shared/login-contract.js";
+import type { ObservedFact } from "../../backend/systems/browser-shared/authenticated-application.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
-} from "../../infra/browser/login-contract.js";
+} from "../../backend/systems/browser-shared/login-contract.js";
 import type { Page } from "playwright";
 import {
   abortIfCancelled,
@@ -57,7 +57,7 @@ import {
   verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
   waitForSsoForm,
-} from "../../infra/browser/ucsd-sso.js";
+} from "../../backend/systems/browser-shared/ucsd-sso.js";
 export { newKronosSession } from "./session-provider.js";
 
 const SYSTEM = "new-kronos" as const;

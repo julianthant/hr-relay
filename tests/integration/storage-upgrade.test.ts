@@ -33,7 +33,7 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority, upgradeStorage, syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 
 const roots: string[] = [];
 const now = "2026-09-06T12:00:00.000Z";

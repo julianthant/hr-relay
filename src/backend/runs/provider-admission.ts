@@ -34,7 +34,7 @@ import {
 } from "../../domain/providers.js";
 import type { SchemaBoundCanonicalValue } from "../../domain/schema-bound-value.js";
 import { RunRequeueRequestSchema } from "../../infra/sqlite/run-store-contracts.js";
-import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
+import type { MonotonicDeadlineScheduler } from "../runtime/deadline-scheduler.js";
 
 export type ProviderAdapterRegistry = Readonly<{
   "ocr.extract"?: ProviderAdapter<"ocr.extract">;
@@ -50,7 +50,7 @@ export interface ProviderAdmissionIdFactory {
 export type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
-} from "../../core/deadline-scheduler.js";
+} from "../runtime/deadline-scheduler.js";
 
 export class ProviderOutcomeUncertainError extends Error {
   readonly admissionId: ProviderAdmissionId;

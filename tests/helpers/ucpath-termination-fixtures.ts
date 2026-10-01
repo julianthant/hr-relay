@@ -19,12 +19,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import type { WriteSequencerContext } from "../../src/core/run-executor.js";
+import type { WriteSequencerContext } from "../../src/backend/runtime/run-executor.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
-} from "../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/write-sequencer.js";
+import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
 import {
   EidSchema,
   FingerprintSchema,

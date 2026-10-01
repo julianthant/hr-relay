@@ -50,13 +50,13 @@
  * lost with the case: `TransactionDryRunPreviewSchema`'s
  * `subject: { state: "mismatch" }` arm is UNREACHABLE — `executeDryRun` wraps
  * any binding-proof failure, including a genuine mismatch, into a generic
- * error (`src/core/write-sequencer.ts:2221-2227`), and `state: "mismatch"` is
+ * error (`src/backend/runtime/write-sequencer.ts:2221-2227`), and `state: "mismatch"` is
  * constructed nowhere in `src/` or `tests/`. It is fail-closed rather than
  * dangerous; it stays an open item in ref guards-and-tests §10.4, with no live
  * subject behind it.
  *
  * **What a dry run of THIS workflow actually does**, so the expectations below
- * are not guesses (`src/core/write-sequencer.ts`, `src/core/run-executor.ts`):
+ * are not guesses (`src/backend/runtime/write-sequencer.ts`, `src/backend/runtime/run-executor.ts`):
  * the five read/fold nodes execute and checkpoint normally, the canonical
  * document-EID path verifies the UCPath read-back without opening a gate, and
  * only `finalize-kuali` branches on `envelope.dryRun` — its declared

@@ -50,7 +50,7 @@
  * bare `getByText(eid)`.
  */
 import type { FrameLocator, Locator, Page } from "playwright";
-import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../../backend/systems/browser-shared/action-notes.js";
 import type { Clock } from "../../../domain/clock.js";
 import { IsoInstantSchema } from "../../../domain/ids.js";
 import {

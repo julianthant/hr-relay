@@ -45,7 +45,7 @@ function isProviderConsumer(path: string): boolean {
 const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/base/providers.ts",
   "src/backend/runs/provider-admission.ts",
-  "src/core/run-executor.ts",
+  "src/backend/runtime/run-executor.ts",
   // D178. Ref operator-trust §4.4's advisory is the first provider consumer OUTSIDE a run
   // task: a task receives its clients through `ctx.providers` and never names
   // the type, but an on-demand operator advisory has no task context to
@@ -56,7 +56,7 @@ const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
 ]);
 const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/backend/runs/provider-admission.ts",
-  "src/core/run-executor.ts",
+  "src/backend/runtime/run-executor.ts",
 ]);
 // D184: the admission module itself was listed here and could never suppress
 // an issue — `resolveLocal` resolves an IMPORT, and no module imports itself —
@@ -64,7 +64,7 @@ const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
 // An allowlist that carries dead names cannot be read as the reviewed set of
 // exceptions, which is the only thing an allowlist is for.
 const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
-  "src/core/run-executor.ts",
+  "src/backend/runtime/run-executor.ts",
   "src/backend/app/worker-compose.ts",
   // D178. The dashboard process became a second admitted-provider consumer
   // when ref operator-trust §4.4's on-demand advisory landed: it composes the pool and
@@ -312,7 +312,7 @@ describe("provider capability boundary", () => {
       writeFileSync(kernelPath, "export function createAdmittedProviderClient() { return {}; }\n");
       writeFileSync(
         helperPath,
-        'import { createAdmittedProviderClient as hiddenFactory } from "../core/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
+        'import { createAdmittedProviderClient as hiddenFactory } from "../backend/runs/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
       );
       assert.match(
         auditProviderCapabilityBoundary(root).join("\n"),

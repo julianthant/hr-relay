@@ -33,7 +33,7 @@ import {
   type ReceiptBuildInput,
   type ReceiptWriteEvidence,
 } from "../../src/backend/runs/evidence-receipt.js";
-import { diffReceipts } from "../../src/core/receipt-derivation-binding.js";
+import { diffReceipts } from "../../src/backend/runtime/receipt-derivation-binding.js";
 import { failureStatus } from "../../src/backend/transports/dashboard/routes/failure-status.js";
 import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";

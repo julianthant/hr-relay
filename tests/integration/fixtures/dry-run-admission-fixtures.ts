@@ -16,7 +16,7 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
-import { readSettings } from "../../../src/server/settings-runtime.js";
+import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";

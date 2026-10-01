@@ -1,7 +1,7 @@
 import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
 import { storageTree } from "./helpers/storage-recovery-fixture.js";
 import { restoreHistoricalStorage } from "../helpers/synthetic-storage-admission.js";
-import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
+import { executeSequencedWriteCommit } from "../../src/backend/runtime/write-sequencer.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT } from "../fixtures/phase1c-contract-fixtures.js";

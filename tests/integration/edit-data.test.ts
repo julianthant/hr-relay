@@ -25,12 +25,12 @@ import { flow } from "../../src/base/flow.js";
 import { defineServiceStore, defineTaskStoreRegistry } from "../../src/base/store.js";
 import { defineTask } from "../../src/base/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import { applyCheckpointPatches } from "../../src/core/checkpoint-patch.js";
+import { applyCheckpointPatches } from "../../src/backend/runtime/checkpoint-patch.js";
 import { createCommandKernel, type CommandKernel } from "../../src/backend/runs/command-kernel.js";
 import {
   executeClaimedRun,
   type RunExecutorDependencies,
-} from "../../src/core/run-executor.js";
+} from "../../src/backend/runtime/run-executor.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ContractFieldPathSchema, defineTaskContract } from "../../src/domain/contracts/base.js";
 import { ScenarioIdSchema, TraceIdSchema, taskId } from "../../src/domain/ids.js";

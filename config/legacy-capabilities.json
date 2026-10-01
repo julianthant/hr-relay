@@ -1251,14 +1251,14 @@
         "kind": "replaced",
         "milestone": "1a",
         "replacement": "duo-autopilot/src/options.js",
-        "differencesAccepted": "Enrollment moved out of the CLI into the Duo Autopilot extension's own options page (`Set up a credential` then `Enroll`, documented in duo-autopilot/README.md), which is where the WebAuthn ceremony can actually run. The rebuild runtime only CONSUMES the stored credential: src/domain/secrets.ts is its single reader and assertDuoAutopilotReady in src/infra/browser/browser-session-factory.ts refuses a session when it is missing rather than falling through to a manual Duo wait. A brand-new credential enrollment stays the one step Duo Autopilot cannot do unattended."
+        "differencesAccepted": "Enrollment moved out of the CLI into the Duo Autopilot extension's own options page (`Set up a credential` then `Enroll`, documented in duo-autopilot/README.md), which is where the WebAuthn ceremony can actually run. The rebuild runtime only CONSUMES the stored credential: src/domain/secrets.ts is its single reader and assertDuoAutopilotReady in src/backend/runtime/browser/browser-session-factory.ts refuses a session when it is missing rather than falling through to a manual Duo wait. A brand-new credential enrollment stays the one step Duo Autopilot cannot do unattended."
       },
       "ownerMilestone": "1a",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/duo-webauthn-enroll.ts",
         "duo-autopilot/src/options.js",
         "duo-autopilot/README.md",
-        "src/infra/browser/browser-session-factory.ts"
+        "src/backend/runtime/browser/browser-session-factory.ts"
       ],
       "status": "implemented"
     },

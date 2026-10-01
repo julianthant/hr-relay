@@ -72,7 +72,7 @@ import { AuthorityDatabase, type AuthorityRepositories } from "../helpers/synthe
 import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { planStart } from "../../src/backend/runs/start/plan.js";
 import { createSettingsApplicationExecutor } from "../../src/backend/runs/dashboard/commands/settings-service.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import {
   COMMAND_FIXTURES,

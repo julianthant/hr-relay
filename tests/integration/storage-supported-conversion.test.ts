@@ -10,7 +10,7 @@ import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-adm
 import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { readLatestDatabaseUpgrade } from "../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 
 describe("supported stopped database recovery after settings import expiry", () => {
   it.each(Array.from({ length: UPGRADE_FLOOR_SCHEMA_VERSION - 1 }, (_, index) => index + 1))("refuses schema %s before backup, conversion, locks or credentials", async version => {

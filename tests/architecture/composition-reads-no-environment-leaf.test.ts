@@ -1,4 +1,4 @@
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures, AuthorityDatabase } from "../helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import assert from "node:assert/strict";

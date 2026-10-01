@@ -1,5 +1,5 @@
 import type { Clock } from "../../src/domain/clock.js";
-import { createTimeoutDeadlineScheduler } from "../../src/server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import {
   buildPreflightReport,
   requiredPreflightChecks,

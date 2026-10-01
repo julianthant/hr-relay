@@ -10,7 +10,7 @@ import {
   buildSuccessTerminalAuthorization,
   buildTerminalAuthorization,
 } from "../../../../../src/backend/runs/terminal-authorization.js";
-import { buildEntryValidationFailureRecord } from "../../../../../src/core/run-failure.js";
+import { buildEntryValidationFailureRecord } from "../../../../../src/backend/runtime/run-failure.js";
 import { RunRecordSchema } from "../../../../../src/domain/run/record.js";
 import { LATER, NOW, UUID_6, UUID_7 } from "../../../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID } from "../../../../fixtures/phase1f-run-fixtures.js";

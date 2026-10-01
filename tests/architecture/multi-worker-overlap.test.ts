@@ -26,7 +26,7 @@ import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { runWorkerLoop, type WorkerLoopDependencies } from "../../src/core/worker-loop.js";
+import { runWorkerLoop, type WorkerLoopDependencies } from "../../src/backend/runtime/worker-loop.js";
 import type { ExecutorSpanEvent, SpanEmitter } from "../../src/core/span-emitter.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { RunRecord } from "../../src/domain/run/record.js";

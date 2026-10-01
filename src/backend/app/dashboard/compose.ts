@@ -2,7 +2,7 @@ import { createPreflightReportService } from "../../../server/preflight/report-s
 import { composeRuntimePreflight, type RuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { PreflightAdmissionRefusal } from "../../../domain/preflight-admission.js";
-import { createWorkerBrowserChannel } from "../../../server/dashboard/worker-browser-channel.js";
+import { createWorkerBrowserChannel } from "../../runtime/dashboard/worker-browser-channel.js";
 import { WorkerControlRefusal } from "../../../domain/worker-control.js";
 import { notificationWireOf } from "../../../domain/dashboard/projection.js";
 import { createNotificationTargetQuery } from "../../runs/dashboard/queries/notifications.js";
@@ -91,19 +91,19 @@ import {
   type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
 } from "../../runs/command-kernel.js";
-import { createWorkerPoolRuntimeExecutor } from "../../../core/worker-loop.js";
-import type { MonotonicDeadlineScheduler } from "../../../core/deadline-scheduler.js";
+import { createWorkerPoolRuntimeExecutor } from "../../runtime/worker-loop.js";
+import type { MonotonicDeadlineScheduler } from "../../runtime/deadline-scheduler.js";
 import { isLiveWorker } from "../../../domain/run/worker.js";
 import {
   createDashboardWorkerProcessSupervisor,
   type DashboardWorkerProcessSupervisor,
   type WorkerCliLaunchSpec,
   type WorkerProcessSpawner,
-} from "../../../server/dashboard/worker-supervisor.js";
+} from "../../runtime/dashboard/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../runs/run-record-service.js";
 import { createRuntimeVersionChanges } from "../../../core/archive-runtime-version-changes.js";
 import { createStorageRelocationPlanReader } from "../../../core/storage-relocation-plans.js";
-import { createWriteResolutionExecutor } from "../../../core/write-recovery.js";
+import { createWriteResolutionExecutor } from "../../runtime/write-recovery.js";
 import type { Clock } from "../../../domain/clock.js";
 import { systemClock } from "../../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
@@ -142,7 +142,7 @@ import { createContentAddressedArtifactWriter } from "../../../infra/artifacts/c
 import { createServerVerifiedArtifactReader } from "../../../infra/artifacts/server-verified-artifact-reader.js";
 
 import { createIntakeParser } from "../../../server/intake/intake-parser.js";
-import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../../../server/settings-runtime.js";
+import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../../runtime/settings/settings-runtime.js";
 import { createDashboardCommandService } from "../../runs/dashboard/commands/command-service.js";
 import { createRunWorkerCapacity } from "../../runs/dashboard/commands/run-worker-capacity.js";
 import { runQueuedSpanEvent } from "../../runs/dashboard/commands/run-queued-span.js";
@@ -155,7 +155,7 @@ import { createAdvisoryProviderClient } from "../../runs/provider-admission.js";
 import { produceFailureTriageAdvisory } from "../../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../../infra/providers/gemini-advisory.js";
 import { createProviderPool } from "../../../infra/providers/provider-pool.js";
-import { createTimeoutDeadlineScheduler } from "../../../server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { optionalSecretFamily, providerModelChain } from "../../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "../../runs/dashboard/queries/advisory.js";
 import { createArchiveSnapshotSource } from "../../runs/dashboard/queries/archive-snapshot.js";

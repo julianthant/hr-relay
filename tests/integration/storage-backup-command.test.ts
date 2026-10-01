@@ -1,4 +1,4 @@
-import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
+import { executeSequencedWriteCommit } from "../../src/backend/runtime/write-sequencer.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
@@ -40,7 +40,7 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { composeStorageCommand } from "../helpers/synthetic-storage-admission.js";
 import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
 import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 
 const CLOCK = manualClock(new Date("2026-09-03T12:00:00.000Z"));
 const ManifestGenerationSchema = z.object({ authorityGeneration: z.number().int().nonnegative() });

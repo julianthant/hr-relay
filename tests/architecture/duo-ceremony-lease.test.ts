@@ -37,8 +37,8 @@ import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const TOKEN_MODULE = "src/base/duo-ceremony-lease.ts";
 const LEASE_STORE = "src/infra/sqlite/authority-database.ts";
-const WRAPPER_MODULE = "src/infra/browser/authenticated-application.ts";
-const GATE_MODULE = "src/core/duo-ceremony-gate.ts";
+const WRAPPER_MODULE = "src/backend/systems/browser-shared/authenticated-application.ts";
+const GATE_MODULE = "src/backend/runtime/duo-ceremony-gate.ts";
 const WRAPPER = "defineVerifiedLoginRecipe";
 const ACQUIRE = "withCeremony";
 const MINT_FUNCTIONS = ["mintDuoCeremonyLeaseToken", "retireDuoCeremonyLeaseToken"] as const;
@@ -143,7 +143,7 @@ describe("the Duo ceremony lease is structural", () => {
     assert.deepEqual(files.flatMap((path) => auditMintingCallers(path, read(path))), []);
     assert.ok(read(LEASE_STORE).includes(MINT_FUNCTIONS[0]), "the lease store must be the minter");
     assert.match(
-      auditMintingCallers("src/core/worker-sessions.ts", "const token = mintDuoCeremonyLeaseToken(input);").join("\n"),
+      auditMintingCallers("src/backend/runtime/worker-sessions.ts", "const token = mintDuoCeremonyLeaseToken(input);").join("\n"),
       /only src\/infra\/sqlite\/authority-database\.ts may mint/,
     );
   });

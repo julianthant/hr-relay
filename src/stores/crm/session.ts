@@ -25,19 +25,19 @@
  * poll loop (ref execution-and-sessions §5).
  */
 import { resolveSystemLoginUrl } from "../../domain/config/instance.js";
-import { recordBrowserAction } from "../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../backend/systems/browser-shared/action-notes.js";
 import type { DuoCeremonyLeaseToken } from "../../base/duo-ceremony-lease.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,
   probeSessionCookie,
-} from "../../infra/browser/authenticated-application.js";
-import { BrowserLoginError } from "../../infra/browser/login-contract.js";
+} from "../../backend/systems/browser-shared/authenticated-application.js";
+import { BrowserLoginError } from "../../backend/systems/browser-shared/login-contract.js";
 import type {
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
   SystemLoginContext,
-} from "../../infra/browser/login-contract.js";
+} from "../../backend/systems/browser-shared/login-contract.js";
 import {
   abortIfCancelled,
   fillSsoCredentials,
@@ -46,7 +46,7 @@ import {
   verifyUcsdAuthenticatedApplication,
   waitForAuthenticatedLanding,
   waitForSsoForm,
-} from "../../infra/browser/ucsd-sso.js";
+} from "../../backend/systems/browser-shared/ucsd-sso.js";
 export { crmSession } from "./session-provider.js";
 
 const SYSTEM = "crm" as const;
@@ -80,7 +80,7 @@ const COMMUNITIES_LOGIN_SELECTOR = 'input#username, input[name="username"], inpu
 /**
  * legacy src/infra/auth/login.ts:247-251 — the landing predicate. NECESSARY,
  * never sufficient: `verifyCrmAuthenticatedApplication` is the proof (see
- * `src/infra/browser/authenticated-application.ts` for why a URL is not one).
+ * `src/backend/systems/browser-shared/authenticated-application.ts` for why a URL is not one).
  */
 export function isAuthenticatedCrmUrl(rawUrl: string): boolean {
   const url = rawUrl.toLowerCase();

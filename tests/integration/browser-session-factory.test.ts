@@ -23,22 +23,22 @@ import {
   workerProfileDirectory,
   type BrowserDeadlineScheduler,
   type PersistentContextLauncher,
-} from "../../src/infra/browser/browser-session-factory.js";
+} from "../../src/backend/runtime/browser/browser-session-factory.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import type { Config } from "../../src/domain/config/schema.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
-import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
+import { WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";
-import type { BrowserSystemBindings } from "../../src/infra/browser/system-bindings.js";
+import type { BrowserSystemBindings } from "../../src/backend/runtime/browser/system-bindings.js";
 import type {
   AuthenticatedApplicationEvidence,
   AuthenticatedApplicationVerifier,
   AuthenticationProbe,
   AuthenticationVerificationContext,
-} from "../../src/infra/browser/login-contract.js";
+} from "../../src/backend/systems/browser-shared/login-contract.js";
 import type { ProtectedSecretSource } from "../../src/domain/secrets.js";
 import { protectedSecretSource } from "../helpers/protected-secret-source.js";
 

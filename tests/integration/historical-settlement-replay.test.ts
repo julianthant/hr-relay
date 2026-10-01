@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { z } from "zod";
 import { RunRecordService, workerRunLifecyclePort } from "../../src/backend/runs/run-record-service.js";
-import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
+import { executeSequencedWriteCommit } from "../../src/backend/runtime/write-sequencer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";

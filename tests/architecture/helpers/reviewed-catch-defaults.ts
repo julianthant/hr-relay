@@ -102,8 +102,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Malformed supplied cursors become explicit refusal before authority reads; omitted cursors remain distinct valid first-page requests."
   },
   {
-    "path": "src/server/dashboard/worker-supervisor.ts",
-    "sha256": "252cde3ad225bee11b4358ea91c659e5f8202841c413f96b87a86cb53a1d5855",
+    "path": "src/backend/runtime/dashboard/worker-supervisor.ts",
+    "sha256": "4fa75207f0d1583416a9a8d00257132b24eab15a5edf225e7e1e27b3f0161545",
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
   },
   {

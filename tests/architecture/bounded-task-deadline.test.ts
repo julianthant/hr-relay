@@ -19,7 +19,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { executeClaimedRun } from "../../src/core/run-executor.js";
+import { executeClaimedRun } from "../../src/backend/runtime/run-executor.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
@@ -42,7 +42,7 @@ afterEach(() => {
 
 describe("bounded task deadline", () => {
   it("keeps the deadline mandatory and racing on every invocation path", () => {
-    const source = readFileSync(join(REPO_ROOT, "src/core/run-executor.ts"), "utf8");
+    const source = readFileSync(join(REPO_ROOT, "src/backend/runtime/run-executor.ts"), "utf8");
     assert.ok(/readonly taskDeadlineMs: number;/.test(source), "taskDeadlineMs must be a required dependency");
     assert.ok(!/taskDeadlineMs\s*\?\?/.test(source), "taskDeadlineMs must have no defaulting fallback");
     assert.ok(

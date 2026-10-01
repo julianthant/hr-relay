@@ -9,12 +9,12 @@
 import { mkdtempSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { MonotonicDeadlineScheduler } from "../../src/core/deadline-scheduler.js";
+import type { MonotonicDeadlineScheduler } from "../../src/backend/runtime/deadline-scheduler.js";
 import {
   createDuoCeremonyGateFactory,
   DUO_CEREMONY_LEASE_POLL_MS,
-} from "../../src/core/duo-ceremony-gate.js";
-import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../../src/core/duo-ceremony-gate.js";
+} from "../../src/backend/runtime/duo-ceremony-gate.js";
+import type { DuoCeremonyGateFactory, DuoCeremonyGateHandle } from "../../src/backend/runtime/duo-ceremony-gate.js";
 import { systemClock } from "../../src/domain/clock.js";
 import type { Clock } from "../../src/domain/clock.js";
 import { FingerprintSchema, WorkerIdSchema } from "../../src/domain/ids.js";

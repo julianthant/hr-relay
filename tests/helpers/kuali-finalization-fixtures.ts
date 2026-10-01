@@ -20,12 +20,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import type { WriteSequencerContext } from "../../src/core/run-executor.js";
+import type { WriteSequencerContext } from "../../src/backend/runtime/run-executor.js";
 import {
   createWriteSequencer,
   type ProductionWriteSequencer,
-} from "../../src/core/write-sequencer.js";
-import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/write-sequencer.js";
+import { withBoundRunConfigFingerprint, WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
 import { kualiFinalizationIdempotencyKey } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { SearchPersonOrgOutputSchema } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { UcpathVerifyTerminationFilingPresent } from "../../src/domain/contracts/ucpath/verify-termination-filing-present.js";

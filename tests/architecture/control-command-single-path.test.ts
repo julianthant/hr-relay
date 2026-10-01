@@ -317,7 +317,7 @@ describe("control-command-single-path", () => {
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
-      ["src/server/settings-runtime.ts", 1],
+      ["src/backend/runtime/settings/settings-runtime.ts", 1],
       ["src/core/storage-relocation-plans.ts", 1],
       ["src/backend/runs/dashboard/commands/provider-key-journal.ts", 3],
       ["src/infra/compat/d331-protected-journal.ts", 1],
@@ -335,7 +335,7 @@ describe("control-command-single-path", () => {
         if (expectedSettingsAuditReads !== undefined && token === "commandAudits") {
           const auditUses = content.match(/\bcommandAudits\.[A-Za-z]+/gu) ?? [];
           if (auditUses.length !== expectedSettingsAuditReads
-            || auditUses.some((use) => use !== (path === "src/server/settings-runtime.ts" ? "commandAudits.findSettingsHistory" : "commandAudits.findByCommand"))) {
+            || auditUses.some((use) => use !== (path === "src/backend/runtime/settings/settings-runtime.ts" ? "commandAudits.findSettingsHistory" : "commandAudits.findByCommand"))) {
             violations.push(
               `${path} may only authenticate settings through exactly ${String(expectedSettingsAuditReads)} `
               + "commandAudits.findByCommand reads",

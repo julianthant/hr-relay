@@ -26,12 +26,12 @@ import { testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { runWorkerLoop, WorkerLoopReportSchema, type WorkerLoopDependencies } from "../../src/core/worker-loop.js";
+import { runWorkerLoop, WorkerLoopReportSchema, type WorkerLoopDependencies } from "../../src/backend/runtime/worker-loop.js";
 import {
   WorkerSessionManager,
   type BrowserSessionCloseProof,
   type WorkerBrowserSessionFactory,
-} from "../../src/core/worker-sessions.js";
+} from "../../src/backend/runtime/worker-sessions.js";
 import type { ExecutorSpanEvent, SpanEmitter } from "../../src/core/span-emitter.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {

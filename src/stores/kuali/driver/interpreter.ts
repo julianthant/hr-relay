@@ -32,7 +32,7 @@
  * recorded by the 2026-07-23 probe and re-verified read-only 2026-08-04.
  */
 import type { ElementHandle, Locator, Page, Response } from "playwright";
-import { recordBrowserAction } from "../../../infra/browser/action-notes.js";
+import { recordBrowserAction } from "../../../backend/systems/browser-shared/action-notes.js";
 import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
 import { EidSchema, IsoInstantSchema } from "../../../domain/ids.js";

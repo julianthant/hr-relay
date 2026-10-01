@@ -7,7 +7,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS } from "../../src/domain/config/catalog.js";
 import { credentialTrap, storageTree } from "./helpers/storage-recovery-fixture.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { readSettings } from "../../src/server/settings-runtime.js";
+import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 const clock = manualClock(new Date("2026-09-06T12:00:00.000Z"));
 const roots: string[] = [];

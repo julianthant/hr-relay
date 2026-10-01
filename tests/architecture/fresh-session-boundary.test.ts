@@ -29,7 +29,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
-import type { WorkerSessionEvent } from "../../src/core/worker-sessions.js";
+import type { WorkerSessionEvent } from "../../src/backend/runtime/worker-sessions.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 import {
   healthyUcpathDriver,
@@ -46,8 +46,8 @@ const SIGNAL = new AbortController().signal;
 /** The closed set of modules allowed to name the boundary close reason. */
 const BOUNDARY_REASON_OWNERS = new Set([
   "src/base/session.ts",
-  "src/core/worker-sessions.ts",
-  "src/core/worker-loop.ts",
+  "src/backend/runtime/worker-sessions.ts",
+  "src/backend/runtime/worker-loop.ts",
 ]);
 
 function sourceFiles(): readonly { path: string; content: string }[] {
@@ -89,7 +89,7 @@ describe("fresh session boundary", () => {
         content.includes("\"fresh-boundary\"") && !BOUNDARY_REASON_OWNERS.has(path))
       .map(({ path }) => path);
     assert.deepEqual(violations, [], "a boundary was minted outside worker session ownership");
-    const manager = readFileSync(join(REPO_ROOT, "src/core/worker-sessions.ts"), "utf8");
+    const manager = readFileSync(join(REPO_ROOT, "src/backend/runtime/worker-sessions.ts"), "utf8");
     assert.match(
       manager,
       /need\.session === "fresh"/u,

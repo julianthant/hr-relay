@@ -11,7 +11,7 @@ import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { UUID_5, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, WORKER_ID, WORKFLOW_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";

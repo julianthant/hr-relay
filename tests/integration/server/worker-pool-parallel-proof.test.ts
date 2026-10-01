@@ -46,12 +46,12 @@ import {
   type CommandKernelDependencies,
   type WorkerPoolRuntimeSeam,
 } from "../../../src/backend/runs/command-kernel.js";
-import { poolWorkerId, type WorkerPoolMember } from "../../../src/core/worker-loop.js";
+import { poolWorkerId, type WorkerPoolMember } from "../../../src/backend/runtime/worker-loop.js";
 import { manualClock, systemClock, type Clock, type TestClock } from "../../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
+import { createTimeoutDeadlineScheduler } from "../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import {
   composeDashboardRuntime,
   composeWorkerProcessControl,
@@ -61,7 +61,7 @@ import type {
   SpawnedWorkerHandle,
   WorkerProcessSpawnRequest,
   WorkerProcessSpawner,
-} from "../../../src/server/dashboard/worker-supervisor.js";
+} from "../../../src/backend/runtime/dashboard/worker-supervisor.js";
 import { ManualScheduler } from "../../helpers/phase1f-executor-harness.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import {

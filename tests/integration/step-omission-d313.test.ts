@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { defineWorkflow, type WorkflowAuthor } from "../../src/base/workflow-definition.js";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { CANONICAL_FIELDS } from "../../src/domain/fields/registry.js";

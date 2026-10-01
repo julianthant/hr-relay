@@ -10,7 +10,7 @@ import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
+import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { UUID_5 } from "../fixtures/phase1c-contract-fixtures.js";

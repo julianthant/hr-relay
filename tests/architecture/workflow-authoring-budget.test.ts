@@ -687,7 +687,7 @@ function cleanFixtureFiles(): Record<string, string> {
     "src/backend/app/control/workflow-registry.ts":
       "import { composeWorkflowModule } from \"../base/workflow-definition.js\";\n"
       + "export const soloModule = composeWorkflowModule(soloWorkflow, stores);\n",
-    "src/infra/browser/authenticated-application.ts":
+    "src/backend/systems/browser-shared/authenticated-application.ts":
       "// A login recipe returns only after observing an authenticated application.\n"
       + "export function defineVerifiedLoginRecipe(input) { return input.flow; }\n",
     "src/backend/app/dashboard/compose.ts":
@@ -1054,7 +1054,7 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
     // guard would be teaching authors to delete accurate prose.
     const harness = tree.sources.get("src/workflows/separations/kronos-timecard/workflow.ts");
     assert.ok(harness !== undefined && /login recipe/.test(harness), "the harness comment must stay in the scan");
-    const login = tree.sources.get("src/infra/browser/authenticated-application.ts");
+    const login = tree.sources.get("src/backend/systems/browser-shared/authenticated-application.ts");
     assert.ok(login !== undefined && /defineVerifiedLoginRecipe/.test(login), "the login seam must stay in the scan");
     assert.deepEqual(auditWorkflowAuthoringBudget(repositoryInputs(tree)), []);
   });

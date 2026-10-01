@@ -27,7 +27,7 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { MAX_WORKERS_PER_POOL, poolWorkerId } from "../../../src/core/worker-loop.js";
+import { MAX_WORKERS_PER_POOL, poolWorkerId } from "../../../src/backend/runtime/worker-loop.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import { DashboardDayWireSchema, type DashboardDayWire } from "../../../src/domain/dashboard/projection.js";
