@@ -268,7 +268,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const systems = first.getByRole("list", { name: "Worker 1 systems", exact: true });
       expect(await systems.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(2);
       expect((await systems.getByRole("listitem").first().boundingBox())!.height).toBeLessThanOrEqual(32);
+      expect((await systems.getByRole("listitem").last().boundingBox())!.width).toBe((await systems.boundingBox())!.width);
+      const soloSystem = second.getByRole("list", { name: "Worker 2 systems", exact: true });
+      expect((await soloSystem.getByRole("listitem").first().boundingBox())!.width).toBe((await soloSystem.boundingBox())!.width);
       expect(Math.abs((await systems.boundingBox())!.y - (await second.getByRole("list", { name: "Worker 2 systems", exact: true }).boundingBox())!.y)).toBeLessThanOrEqual(1);
+      expect((await first.getByRole("progressbar").boundingBox())!.y).toBeGreaterThan((await systems.boundingBox())!.y + (await systems.boundingBox())!.height);
       await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "11");
       await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "22");
       await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "11 of 22 nodes complete");
