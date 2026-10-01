@@ -10,7 +10,7 @@ function surfaceRequests(page: Page): string[] {
   const requests: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
-    if (request.method() !== "GET" || /\/api\/v1\/(?:explorer|activity|reports\/activity|exports|runs\/[^/]+)(?:\/|$)/u.test(path)) requests.push(`${request.method()} ${path}`);
+    if (request.method() !== "GET" || /\/api\/v1\/(?:explorer|activity|reports\/activity|exports|runs\/[^/]+|workers|worker-pools|sessions)(?:\/|$)/u.test(path)) requests.push(`${request.method()} ${path}`);
   });
   return requests;
 }
@@ -91,6 +91,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const bandSize = (await bars.nth(3).boundingBox())!;
       expect(barSize.width / bandSize.width).toBeGreaterThan(.65);
       expect(barSize.width / bandSize.width).toBeLessThan(.9);
+      const fillStyle = await bars.nth(3).locator(":scope > span").first().evaluate(node => {
+        const style = getComputedStyle(node);
+        return { color: style.backgroundColor, opacity: style.opacity };
+      });
+      expect(fillStyle.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/u);
+      expect(fillStyle.opacity).toBe("1");
       expect((await chart.boundingBox())!.height).toBeGreaterThanOrEqual(160);
       if (width === 1440) expect((await chart.boundingBox())!.height).toBeGreaterThan(160);
       for (const [index, day, count] of [[0, 20, 0], [3, 23, 7], [5, 25, 9], [6, 26, 9]]) {
@@ -190,6 +196,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.locator('[data-log-field="compute"]')).toHaveCount(0);
       await expect(surface.getByRole("button", { name: "Rerun", exact: true })).toHaveCount(0);
       await expect(surface.getByRole("tab")).toHaveCount(0);
+      const timeline = surface.getByRole("navigation", { name: "Run timeline", exact: true });
+      await expect(timeline.getByRole("button")).toHaveCount(5);
+      await expect(timeline.getByRole("button", { name: /^Read request.*09:31:00.*14s/ })).toBeVisible();
+      await expect(timeline).toContainText("14s");
+      expect((await timeline.boundingBox())!.height).toBeLessThan(85);
       const table = surface.locator('[data-log-field="fill"]').first().locator("..").locator("..");
       expect(await table.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(43, 43, 43)" : "rgb(244, 244, 244)");
       const snapshot = await surface.ariaSnapshot();
@@ -211,9 +222,97 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "No matching actions" })).toBeVisible();
       await surface.getByRole("region", { name: "Run logs", exact: true }).getByRole("button", { name: "Clear search", exact: true }).click();
       await expect(surface.getByRole("searchbox", { name: "Search logs" })).toHaveValue("");
+      await surface.getByRole("searchbox", { name: "Search logs" }).fill("unmatched");
+      await timeline.getByRole("button", { name: /^File termination/ }).focus();
+      await page.keyboard.press("Enter");
+      await expect(surface.getByRole("heading", { name: "Read pending terminations", exact: true })).toBeFocused();
+      await expect(surface.getByRole("searchbox", { name: "Search logs" })).toHaveValue("");
+      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("reading");
+      await expect(timeline.getByRole("button", { name: /^Read timecard.*In progress/ })).toBeEnabled();
+      await expect(timeline.getByRole("button", { name: /^File termination.*Upcoming/ })).toBeDisabled();
+      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("waiting");
+      await expect(timeline).toContainText("Waiting");
+      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("failed");
+      await expect(timeline.getByRole("button", { name: /^Finalize document.*Failed/ })).toBeEnabled();
       await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("empty");
       await expect(surface.getByRole("heading", { name: "No actions yet" })).toBeVisible();
       await expect(surface.getByRole("button", { name: "Copy logs" })).toBeDisabled();
+      await expect(timeline.getByRole("button", { disabled: true })).toHaveCount(5);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      expect(requests).toEqual([]);
+    } finally { await server.close(); }
+  });
+
+  const sessionsEvidence = `sessions-presentation-${theme.attribute}-${width}.a11y.yml`;
+  test(`Sessions local presentation @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: sessionsEvidence }] }, async ({ page }) => {
+    ensureParityBundle();
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    try {
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
+      await installTheme(page, theme);
+      const requests = surfaceRequests(page);
+      await page.goto(`${server.baseUrl}/?activity=`);
+      const panel = page.getByRole("region", { name: "Session Panel", exact: true });
+      const toggle = panel.getByRole("button", { name: "Sessions", exact: true });
+      await expect(toggle).toHaveAttribute("aria-expanded", "false");
+      await expect(panel.getByRole("article")).toHaveCount(0);
+      await toggle.click();
+      await expect(toggle).toHaveAttribute("aria-expanded", "true");
+      await expect(panel.getByRole("article")).toHaveCount(4);
+      const first = panel.getByRole("article", { name: "Worker 1 · Separations", exact: true });
+      const second = panel.getByRole("article", { name: "Worker 2 · Person lookup", exact: true });
+      await expect(first.getByRole("heading", { name: "Separations", exact: true })).toBeVisible();
+      await expect(panel.getByRole("heading", { name: /^Worker/ })).toHaveCount(0);
+      await expect(panel).not.toContainText("Worker 1");
+      await expect(first).toContainText("Alex Morgan");
+      const systems = first.getByRole("list", { name: "Worker 1 systems", exact: true });
+      expect(await systems.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(3);
+      expect(Math.abs((await systems.boundingBox())!.y - (await second.getByRole("list", { name: "Worker 2 systems", exact: true }).boundingBox())!.y)).toBeLessThanOrEqual(1);
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
+      const firstFooter = (await first.locator("footer").boundingBox())!;
+      const secondFooter = (await second.locator("footer").boundingBox())!;
+      expect(Math.abs(firstFooter.y - secondFooter.y)).toBeLessThanOrEqual(1);
+      expect(await first.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(43, 43, 43)" : "rgb(244, 244, 244)");
+      const snapshot = await panel.ariaSnapshot();
+      test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsEvidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
+      await test.info().attach(sessionsEvidence, { body: snapshot, contentType: "text/yaml" });
+      await test.info().attach(sessionsEvidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
+      await first.getByRole("button", { name: "Pause", exact: true }).click();
+      await expect(first).toContainText("Paused");
+      await first.getByRole("button", { name: "Resume", exact: true }).click();
+      await expect(first).toContainText("Running");
+      await second.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(second).toContainText("Idle");
+      await expect(second).toContainText("No run assigned");
+      const sample = panel.getByRole("combobox", { name: "Sessions sample data" });
+      await sample.selectOption("attention");
+      await expect(panel).toContainText("Waiting");
+      await second.getByRole("button", { name: "Retry", exact: true }).click();
+      await expect(second).toContainText("Opening");
+      await expect(second).not.toContainText("The document session expired.");
+      await sample.selectOption("empty");
+      await expect(panel.getByRole("heading", { name: "No workers yet", exact: true })).toBeVisible();
+      const add = panel.getByRole("button", { name: "Add workers", exact: true });
+      await add.click();
+      const dialog = page.getByRole("dialog", { name: "Add workers", exact: true });
+      await expect(dialog).toBeVisible();
+      await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("0");
+      await expect(dialog.getByRole("button", { name: "Add to preview", exact: true })).toBeDisabled();
+      await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("2");
+      await dialog.getByRole("button", { name: "Add to preview", exact: true }).click();
+      await expect(panel.getByRole("article")).toHaveCount(2);
+      await expect(add).toBeFocused();
+      await sample.selectOption("loading");
+      await expect(panel.getByRole("status", { name: "Loading sessions", exact: true })).toBeVisible();
+      await expect(add).toBeDisabled();
+      await sample.selectOption("unavailable");
+      await expect(panel.getByRole("alert")).toContainText("Sessions unavailable");
+      await expect(add).toBeDisabled();
+      await sample.selectOption("idle");
+      await expect(panel.getByRole("article")).toHaveCount(2);
+      await expect(panel.getByRole("button", { name: "Stop", exact: true })).toHaveCount(0);
+      await toggle.click();
+      await expect(panel.getByRole("article")).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(requests).toEqual([]);
     } finally { await server.close(); }
