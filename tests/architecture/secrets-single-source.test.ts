@@ -159,18 +159,18 @@ describe("secrets single source", () => {
 
   it("rejects every AST-level attempt to invoke or relay an admitted runner", () => {
     const violations = [
-      'import { runCli as start } from "../unit/cli.js"; start();',
-      'import { runCli } from "../unit/cli.js"; runCli ( );',
-      'import * as runtime from "../unit/cli.js"; runtime.runCli();',
-      'void (await import("../unit/cli.js")).runCli();',
-      'void import("../unit/cli.js").then(({ runCli }) => runCli());',
+      'import { runCli as start } from "../cli.js"; start();',
+      'import { runCli } from "../cli.js"; runCli ( );',
+      'import * as runtime from "../cli.js"; runtime.runCli();',
+      'void (await import("../cli.js")).runCli();',
+      'void import("../cli.js").then(({ runCli }) => runCli());',
       'const root = "../"; const specifier = root + "cli.js"; void (await import(specifier)).runCli();',
       'declare const atRuntime: string; void (await import(atRuntime)).runCli();',
-      'import { runCli } from "../unit/cli.js"; runCli.call(undefined);',
-      'import { runCli } from "../unit/cli.js"; runCli.apply(undefined, []);',
-      'import { runCli } from "../unit/cli.js"; runCli.bind(undefined)();',
-      'export { runCli as start } from "../unit/cli.js";',
-      'import { runCli } from "../unit/cli.js"; const invoke = runCli; invoke();',
+      'import { runCli } from "../cli.js"; runCli.call(undefined);',
+      'import { runCli } from "../cli.js"; runCli.apply(undefined, []);',
+      'import { runCli } from "../cli.js"; runCli.bind(undefined)();',
+      'export { runCli as start } from "../cli.js";',
+      'import { runCli } from "../cli.js"; const invoke = runCli; invoke();',
     ].map((content, index) => auditSoleRunnerInvocation([
       { path: "src/core/bypass.ts", content },
       { path: "src/cli.ts", content: "export function runCli(): void {}" },
@@ -192,15 +192,15 @@ describe("secrets single source", () => {
       "const payload = [cli.runCli]; payload[0]();",
     ]) {
       const bootstrap = [
-        'import { admitLocalEnvironmentFile } from "../unit/src/domain/secrets.js";',
+        'import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";',
         "declare function repositoryEnvironmentFilePath(): string;",
         "export async function main(): Promise<void> {",
         "  const path = repositoryEnvironmentFilePath();",
         "  admitLocalEnvironmentFile(path);",
-        '  const cli = await import("../unit/src/cli.js");',
+        '  const cli = await import("../src/cli.js");',
         "  await cli.runCli();",
         `  ${packedInvocation}`,
-        '  const smoke = await import("../unit/architecture/smoke-test-target-document-number.js");',
+        '  const smoke = await import("./smoke-test-target-document-number.js");',
         "  await smoke.runTestTargetDocumentNumberSmoke();",
         "}",
       ].join("\n");
@@ -230,15 +230,15 @@ describe("secrets single source", () => {
       "const runtimeKey = String(Date.now()); const payload = { [runtimeKey]: cli.runCli }; const { invoke } = payload; invoke();",
     ]) {
       const bootstrap = [
-        'import { admitLocalEnvironmentFile } from "../unit/src/domain/secrets.js";',
+        'import { admitLocalEnvironmentFile } from "../src/domain/secrets.js";',
         "declare function repositoryEnvironmentFilePath(): string;",
         "export async function main(): Promise<void> {",
         "  const path = repositoryEnvironmentFilePath();",
         "  admitLocalEnvironmentFile(path);",
-        '  const cli = await import("../unit/src/cli.js");',
+        '  const cli = await import("../src/cli.js");',
         "  await cli.runCli();",
         `  ${packedInvocation}`,
-        '  const smoke = await import("../unit/architecture/smoke-test-target-document-number.js");',
+        '  const smoke = await import("./smoke-test-target-document-number.js");',
         "  await smoke.runTestTargetDocumentNumberSmoke();",
         "}",
       ].join("\n");
@@ -274,7 +274,7 @@ describe("secrets single source", () => {
     const sources = [
       {
         path: "vite.dashboard.config.ts",
-        content: 'void (await import("../unit/architecture/src/cli.js")).runCli();',
+        content: 'void (await import("./src/cli.js")).runCli();',
       },
       { path: "src/cli.ts", content: "export function runCli(): void {}" },
       {
@@ -292,14 +292,14 @@ describe("secrets single source", () => {
     const files: Readonly<Record<string, string>> = {
       "vite.dashboard.config.ts": [
         'import { defineConfig } from "vite";',
-        'import { config } from "../unit/architecture/vite-support/config-helper.js";',
+        'import { config } from "./vite-support/config-helper.js";',
         "export default defineConfig(config);",
       ].join("\n"),
       "vite-support/config-helper.ts": [
-        'export { config } from "../unit/architecture/nested-config.js";',
+        'export { config } from "./nested-config.js";',
       ].join("\n"),
       "vite-support/nested-config.ts": [
-        'import { runCli } from "../unit/src/cli.js";',
+        'import { runCli } from "../src/cli.js";',
         "export const config = runCli();",
       ].join("\n"),
       "src/cli.ts": "export function runCli(): void {}",
@@ -342,7 +342,7 @@ describe("secrets single source", () => {
         "export = nested;",
       ].join("\n"),
       "vite-support/nested-config.cts": [
-        'import { runCli } from "../unit/src/cli.js";',
+        'import { runCli } from "../src/cli.js";',
         "export const config = runCli();",
       ].join("\n"),
       "src/cli.ts": "export function runCli(): void {}",
@@ -405,7 +405,7 @@ describe("secrets single source", () => {
       () => packageDeclaredExternalProductionSources(
         { web: "vite --config vite.dashboard.config.ts" },
         (path) => {
-          if (path === "vite.dashboard.config.ts") return 'import "../unit/architecture/missing-helper.js";';
+          if (path === "vite.dashboard.config.ts") return 'import "./missing-helper.js";';
           throw new Error("ENOENT");
         },
       ),
@@ -414,7 +414,7 @@ describe("secrets single source", () => {
     assert.throws(
       () => packageDeclaredExternalProductionSources(
         { web: "vite --config vite.dashboard.config.ts" },
-        (path) => path === "vite.dashboard.config.ts" ? 'export * from "../unit/outside.ts";' : "",
+        (path) => path === "vite.dashboard.config.ts" ? 'export * from "../outside.ts";' : "",
       ),
       /imports outside the repository/u,
     );
@@ -425,7 +425,7 @@ describe("secrets single source", () => {
           const match = /^module-(\d+)\.ts$/u.exec(path);
           if (match === null) throw new Error("ENOENT");
           const index = Number(match[1]);
-          return index < 256 ? `import "../unit/architecture/module-${String(index + 1)}.js";` : "export {};";
+          return index < 256 ? `import "./module-${String(index + 1)}.js";` : "export {};";
         },
       ),
       /exceeds 256 files/u,
@@ -454,7 +454,7 @@ describe("secrets single source", () => {
       {
         path: "src/core/harmless.ts",
         content: [
-          'import type { CliShape } from "../unit/cli.js";',
+          'import type { CliShape } from "../cli.js";',
           'export const doc = "runCli();";',
           "// runTestTargetDocumentNumberSmoke.call(undefined)",
         ].join("\n"),

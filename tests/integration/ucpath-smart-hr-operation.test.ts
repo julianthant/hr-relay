@@ -269,7 +269,7 @@ describe("SS Smart HR transaction scan", () => {
     // exercise it in a fresh browser-like realm with no __name helper.
     const browserPredicateSource = JSON.parse(execFileSync(process.execPath, [
       "--import", "tsx", "--input-type=module", "-e", `
-        import { scanTerminationTransactionsOnPage } from "../unit/src/stores/ucpath/driver/smart-hr-operation.ts";
+        import { scanTerminationTransactionsOnPage } from "./src/stores/ucpath/driver/smart-hr-operation.ts";
         let captured;
         const locator = {
           first() { return this; }, async waitFor() {}, async fill() {},

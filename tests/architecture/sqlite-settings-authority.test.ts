@@ -296,7 +296,7 @@ describe("sqlite-settings-authority", () => {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, [
         'import { join } from "node:path";',
-        'import { createSettingsFileAuthority as legacy } from "../infra/config/settings-file.js";',
+        'import { createSettingsFileAuthority as legacy } from "../../infra/config/settings-file.js";',
         'export const authorityPath = join(stateRoot, "settings.json");',
         'export const createProtectedSettingsFileAuthority = legacy;',
         'export interface Repositories { protectedSettingsCurrent: unknown }',

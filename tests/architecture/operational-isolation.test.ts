@@ -55,7 +55,7 @@ function seedValidRuntime(root: string): void {
   write(root, "src/config/define-runtime-isolation.ts",
     "export function defineRuntimeIsolation<T>(value: T): T { return value; }\n");
   write(root, config.module, [
-    `import { ${config.factory} } from "../unit/architecture/define-runtime-isolation.js";`,
+    `import { ${config.factory} } from "./define-runtime-isolation.js";`,
     `export const ${config.exportName} = ${config.factory}({`,
     `  stateRoot: ${JSON.stringify(side.stateRoot)},`,
     ...(side.archiveDatabaseFile === undefined ? [] : [`  archiveDatabaseFile: ${JSON.stringify(side.archiveDatabaseFile)},`]),
@@ -71,8 +71,8 @@ function seedValidRuntime(root: string): void {
   write(root, "src/core/runtime-composition.ts",
     "export function startRebuildRuntime(_input: { isolation: unknown }): void {}\n");
   write(root, "src/cli.ts", [
-    `import { ${config.exportName} } from "../unit/architecture/config/runtime-isolation.js";`,
-    'import { startRebuildRuntime } from "../unit/architecture/core/runtime-composition.js";',
+    `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
+    'import { startRebuildRuntime } from "./core/runtime-composition.js";',
     `export function runCli(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
     "",
   ].join("\n"));
@@ -171,8 +171,8 @@ describe("operational isolation", () => {
 
       // Mention without invocation.
       write(root, "src/cli.ts", [
-        `import { ${config.exportName} } from "../unit/architecture/config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "../unit/architecture/core/runtime-composition.js";',
+        `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
+        'import { startRebuildRuntime } from "./core/runtime-composition.js";',
         `export const unused = [${config.exportName}, startRebuildRuntime];`,
         "",
       ].join("\n"));
@@ -181,8 +181,8 @@ describe("operational isolation", () => {
 
       // A call hidden inside the wrong exported function is not the declared runner.
       write(root, "src/cli.ts", [
-        `import { ${config.exportName} } from "../unit/architecture/config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "../unit/architecture/core/runtime-composition.js";',
+        `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
+        'import { startRebuildRuntime } from "./core/runtime-composition.js";',
         `export function main(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));
@@ -191,8 +191,8 @@ describe("operational isolation", () => {
 
       // The wrong binding argument path.
       write(root, "src/cli.ts", [
-        `import { ${config.exportName} } from "../unit/architecture/config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "../unit/architecture/core/runtime-composition.js";',
+        `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
+        'import { startRebuildRuntime } from "./core/runtime-composition.js";',
         `export function runCli(): void { startRebuildRuntime({ notIsolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));

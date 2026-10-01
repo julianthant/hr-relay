@@ -228,12 +228,12 @@ try {
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import assert from 'node:assert/strict';
       import { randomUUID } from 'node:crypto';
-      import { AuthorityDatabase } from '../unit/src/infra/sqlite/authority-database.ts';
-      import { manualClock } from '../unit/src/domain/clock.ts';
-      import { resolveConfigWithProvenance } from '../unit/src/domain/config/resolve.ts';
-      import { executeSettingsCommand } from '../unit/src/core/command-kernel.ts';
+      import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
+      import { manualClock } from './src/domain/clock.ts';
+      import { resolveConfigWithProvenance } from './src/domain/config/resolve.ts';
+      import { executeSettingsCommand } from './src/core/command-kernel.ts';
       import { createCredentialStore } from '../helpers/synthetic-storage-admission.js';
-      import { createSettingsApplicationExecutor } from '../unit/src/server/dashboard/commands/settings-service.ts';
+      import { createSettingsApplicationExecutor } from './src/server/dashboard/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
       const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
       try {

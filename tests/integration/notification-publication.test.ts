@@ -23,9 +23,9 @@ describe("durable notification publication", () => {
   it.each(["before", "after"])("survives process death %s publication commit", boundary => {
     const f = harness(); const initial = f.open(); initial.close();
     const script = `
-      import { AuthorityDatabase } from "../unit/src/infra/sqlite/authority-database.ts";
-      import { manualClock } from "../unit/src/domain/clock.ts";
-      import { createNotificationInbox } from "../unit/src/services/notifications/inbox.ts";
+      import { AuthorityDatabase } from "./src/infra/sqlite/authority-database.ts";
+      import { manualClock } from "./src/domain/clock.ts";
+      import { createNotificationInbox } from "./src/services/notifications/inbox.ts";
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
       const db = AuthorityDatabase.open({path:process.argv[1],busyTimeoutMs:250,migrationOwner:"crash-proof"},clock);
       const inbox = createNotificationInbox({authority:db,clock,ids:{uuid:()=>"00000000-0000-4000-8000-000000000991"},actorId:"local-operator"});

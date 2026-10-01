@@ -94,7 +94,7 @@ describe("ref data-intake-and-edit-data §7 intake mapping boundary", () => {
       assert.deepEqual(
         intakeBoundaryViolations([{
           path: "src/domain/intake/suggestions.ts",
-          source: 'import { ColumnBindingSchema } from "../unit/architecture/mapping.js";',
+          source: 'import { ColumnBindingSchema } from "./mapping.js";',
         }]),
         ["src/domain/intake/suggestions.ts: reaches the binding schemas; a scorer must not be able to build one"],
       );

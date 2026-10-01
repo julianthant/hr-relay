@@ -646,7 +646,7 @@ const CLEAN_WORKFLOWS: readonly RegisteredWorkflowSource[] = [
 ] as const;
 
 function fixtureWorkflowFile(id: string, extra = ""): string {
-  return `import { defineWorkflow } from "../base/workflow-definition.js";\n`
+  return `import { defineWorkflow } from "../../base/workflow-definition.js";\n`
     + `${extra}export const ${id.replaceAll("-", "_")}Workflow = defineWorkflow({ id: "${id}", steps: [] });\n`;
 }
 

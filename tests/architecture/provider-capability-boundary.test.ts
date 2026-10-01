@@ -271,7 +271,7 @@ describe("provider capability boundary", () => {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(
         path,
-        'import "node:https";\nimport type { ProviderAdapter } from "../../base/providers.js";\nconst forged = {} satisfies ProviderAdapter<"ocr.extract">;\nexport async function bad() { return fetch("https://example.invalid"); }\nvoid forged;\n',
+        'import "node:https";\nimport type { ProviderAdapter } from "../../../base/providers.js";\nconst forged = {} satisfies ProviderAdapter<"ocr.extract">;\nexport async function bad() { return fetch("https://example.invalid"); }\nvoid forged;\n',
       );
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /raw network\/provider module/);
@@ -291,8 +291,8 @@ describe("provider capability boundary", () => {
       mkdirSync(dirname(taskPath), { recursive: true });
       mkdirSync(dirname(helperPath), { recursive: true });
       mkdirSync(dirname(adapterPath), { recursive: true });
-      writeFileSync(taskPath, 'import { hidden } from "../../services/provider-helper.js";\nvoid hidden;\n');
-      writeFileSync(helperPath, 'import { adapter } from "../unit/infra/providers/bad-adapter.js";\nimport type { ProviderClient } from "../unit/base/providers.js";\nexport const hidden: ProviderClient<"ocr.extract"> = adapter;\n');
+      writeFileSync(taskPath, 'import { hidden } from "../../../services/provider-helper.js";\nvoid hidden;\n');
+      writeFileSync(helperPath, 'import { adapter } from "../infra/providers/bad-adapter.js";\nimport type { ProviderClient } from "../base/providers.js";\nexport const hidden: ProviderClient<"ocr.extract"> = adapter;\n');
       writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /task import graph reaches infra provider adapter/);
@@ -312,7 +312,7 @@ describe("provider capability boundary", () => {
       writeFileSync(kernelPath, "export function createAdmittedProviderClient() { return {}; }\n");
       writeFileSync(
         helperPath,
-        'import { createAdmittedProviderClient as hiddenFactory } from "../unit/core/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
+        'import { createAdmittedProviderClient as hiddenFactory } from "../core/provider-admission.js";\nexport const hidden = hiddenFactory;\n',
       );
       assert.match(
         auditProviderCapabilityBoundary(root).join("\n"),

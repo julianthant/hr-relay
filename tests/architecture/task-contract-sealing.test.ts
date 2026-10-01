@@ -156,9 +156,9 @@ describe("task contract sealing architecture", () => {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(
         file,
-        'import { z } from "zod";\nimport { helper } from "../unit/helper.js";\nvoid import("playwright");\nexport const open = z.object({ value: z.string() });\nexport const forged = { __sealed: true, helper } as SealedReadContract;\n',
+        'import { z } from "zod";\nimport { helper } from "../helper.js";\nvoid import("playwright");\nexport const open = z.object({ value: z.string() });\nexport const forged = { __sealed: true, helper } as SealedReadContract;\n',
       );
-      writeFileSync(helper, 'export { taskFailer as helper } from "../base/task.js";\n');
+      writeFileSync(helper, 'export { taskFailer as helper } from "../../base/task.js";\n');
       const issues = auditTaskContractSources(root).join("\n");
       assert.match(issues, /dynamic imports/);
       assert.match(issues, /external runtime module playwright/);

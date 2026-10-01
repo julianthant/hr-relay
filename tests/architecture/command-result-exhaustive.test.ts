@@ -248,7 +248,7 @@ describe("command-result-exhaustive (D253)", () => {
     // one dispatch is unfolded regardless of what the import line says.
     expect(foldsFewerCommandsThanItPosts(
       "fixture.ts",
-      'import type { CommandSettlement } from "../unit/app/command-result.js";\n'
+      'import type { CommandSettlement } from "../app/command-result.js";\n'
       + '// settleCommandResult(result) would settle this, but nothing calls it.\n'
       + 'export function post(client: { executeCommand: (r: unknown) => Promise<CommandSettlement> }, r: unknown) {\n'
       + '  void client.executeCommand(r);\n'
@@ -258,14 +258,14 @@ describe("command-result-exhaustive (D253)", () => {
     // cannot be satisfied by one that answers `true` for everything.
     expect(foldsFewerCommandsThanItPosts(
       "fixture.ts",
-      'import { settleCommandResult } from "../unit/app/command-result.js";\n'
+      'import { settleCommandResult } from "../app/command-result.js";\n'
       + 'client.executeCommand(a).then((r) => { if (settleCommandResult(r).kind === "refused") stop(); });\n'
       + 'client.executeCommand(b).then((r) => { settleCommandResult(r); });',
     )).toBe(false);
     // Passing settleCommandResult directly as a .then callback settles the command.
     expect(foldsFewerCommandsThanItPosts(
       "fixture.ts",
-      'import { settleCommandResult } from "../unit/app/command-result.js";\n'
+      'import { settleCommandResult } from "../app/command-result.js";\n'
       + 'client.executeCommand(a).then(settleCommandResult);\n',
     )).toBe(false);
     // Passing an un-settled callback to .then leaves the command unhandled (negative control).
@@ -276,7 +276,7 @@ describe("command-result-exhaustive (D253)", () => {
     // Passing settleCommandResult as second (rejection) argument to .then leaves the fulfillment unhandled (negative control).
     expect(foldsFewerCommandsThanItPosts(
       "fixture.ts",
-      'import { settleCommandResult } from "../unit/app/command-result.js";\n'
+      'import { settleCommandResult } from "../app/command-result.js";\n'
       + 'client.executeCommand(a).then(() => toastSuccess(), settleCommandResult);\n',
     )).toBe(true);
     // And a module that posts nothing is out of this arm's scope entirely.

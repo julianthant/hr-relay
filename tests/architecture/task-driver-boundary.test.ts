@@ -22,9 +22,9 @@ describe("task to system-driver boundary", () => {
       mkdirSync(dirname(driver), { recursive: true });
       writeFileSync(
         path,
-        'import { helper } from "../unit/helper.js";\nexport async function bad(context: { newPage(): Promise<{ $(value: string): unknown }> }) { const api = await import("playwright"); const page = await context["newPage"](); page.$("#raw"); return [api, helper]; }\n',
+        'import { helper } from "../helper.js";\nexport async function bad(context: { newPage(): Promise<{ $(value: string): unknown }> }) { const api = await import("playwright"); const page = await context["newPage"](); page.$("#raw"); return [api, helper]; }\n',
       );
-      writeFileSync(helper, 'export { helper } from "../unit/architecture/driver/interpreter.js";\n');
+      writeFileSync(helper, 'export { helper } from "./driver/interpreter.js";\n');
       writeFileSync(driver, "export const helper = true;\n");
       const issues = auditTaskDriverBoundary(root).join("\n");
       assert.match(issues, /dynamic Playwright import/);
@@ -47,8 +47,8 @@ describe("task to system-driver boundary", () => {
     try {
       mkdirSync(dirname(task), { recursive: true });
       mkdirSync(dirname(factory), { recursive: true });
-      writeFileSync(task, 'import { open } from "../unit/helper.js";\nexport const bad = open;\n');
-      writeFileSync(helper, 'export { open } from "../infra/browser/browser-session-factory.js";\n');
+      writeFileSync(task, 'import { open } from "../helper.js";\nexport const bad = open;\n');
+      writeFileSync(helper, 'export { open } from "../../infra/browser/browser-session-factory.js";\n');
       writeFileSync(factory, 'import { chromium } from "playwright";\nexport const open = chromium;\n');
       const issues = auditTaskDriverBoundary(root).join("\n");
       assert.match(issues, /import graph reaches private raw-browser owner src\/infra\/browser/);

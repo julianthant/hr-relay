@@ -242,7 +242,7 @@ describe("test runtime-root isolation", () => {
   it("catches the exact regression it was written for, direct and laundered", () => {
     const direct = auditTestRuntimeRootWrites("fixture.test.ts", [
       'import { rmSync } from "node:fs";',
-      'import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";',
+      'import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";',
       "rmSync(rebuildRuntimeIsolation.browserProfileRoot, { recursive: true, force: true });",
     ].join("\n"));
     assert.equal(direct.length, 1, direct.join("\n"));
@@ -271,20 +271,20 @@ describe("test runtime-root isolation", () => {
 
   it("requires a test that opens real sessions to bind its own profile root", () => {
     const unbound = auditTestRuntimeRootWrites("fixture.test.ts", [
-      'import { PlaywrightWorkerSessionFactory } from "../src/infra/browser/browser-session-factory.js";',
+      'import { PlaywrightWorkerSessionFactory } from "../../src/infra/browser/browser-session-factory.js";',
       "const factory = new PlaywrightWorkerSessionFactory({ config, isolation, clock, scheduler, newSessionId, bindings, launcher });",
     ].join("\n"));
     assert.match(unbound.join("\n"), /without binding paths\.browserProfileRoot/);
 
     assert.deepEqual(auditTestRuntimeRootWrites("fixture.test.ts", [
-      'import { PlaywrightWorkerSessionFactory } from "../src/infra/browser/browser-session-factory.js";',
+      'import { PlaywrightWorkerSessionFactory } from "../../src/infra/browser/browser-session-factory.js";',
       'const config = { ...base, paths: { ...base.paths, browserProfileRoot: join(root, "profiles") } };',
       "const factory = new PlaywrightWorkerSessionFactory({ config, isolation, clock, scheduler, newSessionId, bindings, launcher });",
     ].join("\n")), []);
 
     // Binding it to the real root is worse than not binding it.
     assert.match(auditTestRuntimeRootWrites("fixture.test.ts", [
-      'import { PlaywrightWorkerSessionFactory } from "../src/infra/browser/browser-session-factory.js";',
+      'import { PlaywrightWorkerSessionFactory } from "../../src/infra/browser/browser-session-factory.js";',
       "const config = { ...base, paths: { ...base.paths, browserProfileRoot: rebuildRuntimeIsolation.browserProfileRoot } };",
       "void new PlaywrightWorkerSessionFactory({ config });",
     ].join("\n")).join("\n"), /binds browserProfileRoot to the REAL isolation root/);

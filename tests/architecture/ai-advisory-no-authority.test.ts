@@ -216,11 +216,11 @@ describe("ai-advisory-no-authority — the module graph", () => {
         writeFileSync(absolute, body);
       };
       // ① an advisory module that reaches a writer, three hops down.
-      write("src/domain/trust/advisory.ts", 'import { helper } from "../services/trust/helper.js";\nexport const a = helper;\n');
-      write("src/services/trust/helper.ts", 'import { db } from "../infra/sqlite/authority-database.js";\nexport const helper = db;\n');
+      write("src/domain/trust/advisory.ts", 'import { helper } from "../../services/trust/helper.js";\nexport const a = helper;\n');
+      write("src/services/trust/helper.ts", 'import { db } from "../../infra/sqlite/authority-database.js";\nexport const helper = db;\n');
       write("src/infra/sqlite/authority-database.ts", "export const db = 1;\n");
       // ② a command module that imports the advisory.
-      write("src/domain/commands.ts", 'import { a } from "../unit/architecture/trust/advisory.js";\nexport const c = a;\n');
+      write("src/domain/commands.ts", 'import { a } from "./trust/advisory.js";\nexport const c = a;\n');
       const issues = auditAdvisoryAuthorityEdge(root).join("\n");
       assert.match(issues, /advisory reaches authority writer src\/infra\/sqlite\/authority-database\.ts/u);
       assert.match(issues, /advisory\.ts -> .*helper\.ts -> .*authority-database\.ts/u);
@@ -235,7 +235,7 @@ describe("ai-advisory-no-authority — the module graph", () => {
     try {
       const absolute = resolve(root, "src/domain/trust/advisory.ts");
       mkdirSync(dirname(absolute), { recursive: true });
-      writeFileSync(absolute, 'import type { Db } from "../infra/sqlite/authority-database.js";\nexport type A = Db;\n');
+      writeFileSync(absolute, 'import type { Db } from "../../infra/sqlite/authority-database.js";\nexport type A = Db;\n');
       const dbPath = resolve(root, "src/infra/sqlite/authority-database.ts");
       mkdirSync(dirname(dbPath), { recursive: true });
       writeFileSync(dbPath, "export type Db = number;\n");

@@ -146,7 +146,7 @@ describe("operator mutation admission (ref frontend-backend-integration §3.4, D
 it("audits imported registrations at the call site and detects relocated unguarded mutations", () => {
   const entry = "/route-proof/api.ts";
   const child = "/route-proof/child.ts";
-  const root = `import { attachChild } from "../unit/architecture/child.js";
+  const root = `import { attachChild } from "./child.js";
     export function createDashboardApp() {
       app.use("/guarded", operatorMutationIngressGuard);
       attachChild(app);

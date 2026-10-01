@@ -129,7 +129,7 @@ describe("authentication is never concluded from a URL", () => {
   it("catches a recipe that returns a login result on its own authority", () => {
     assert.match(
       auditLoginRecipeShape("src/stores/onbase/session.ts", [
-        'import type { SystemLoginRecipe } from "../infra/browser/login-contract.js";',
+        'import type { SystemLoginRecipe } from "../../infra/browser/login-contract.js";',
         "export const onbaseLoginRecipe: SystemLoginRecipe = async (context) => {",
         '  if (context.page.url().includes("hylandcloud.com")) return "already-authenticated";',
         '  return "logged-in";',

@@ -260,8 +260,8 @@ describe("authority-upgrade-adapters-retired", () => {
       writeFileSync(absolute, body);
     };
     try {
-      write("src/server/dashboard/compose.ts", 'import "../unit/architecture/helper.js";\n');
-      write("src/server/dashboard/helper.ts", 'import "../infra/sqlite/stopped-database-conversion.js";\n');
+      write("src/server/dashboard/compose.ts", 'import "./helper.js";\n');
+      write("src/server/dashboard/helper.ts", 'import "../../infra/sqlite/stopped-database-conversion.js";\n');
       write(STOPPED_CONVERTER, "export const adapter = true;\n");
       const graph = buildSourceGraph(root);
       const issues = adapterReachabilityIssues(
@@ -286,7 +286,7 @@ describe("authority-upgrade-adapters-retired", () => {
       assert.ok(auditUpgradeAdapterRetirement(root).includes(`${path}: retired adapter restored`));
       rmSync(resolve(root, path));
       mkdirSync(resolve(root, "src"), { recursive: true });
-      writeFileSync(resolve(root, "src/probe.ts"), `export * from "../unit/architecture/infra/compat/${path.split("/").at(-1)?.replace(/\.ts$/u, ".js") ?? "missing"}";`);
+      writeFileSync(resolve(root, "src/probe.ts"), `export * from "./infra/compat/${path.split("/").at(-1)?.replace(/\.ts$/u, ".js") ?? "missing"}";`);
       assert.ok(auditUpgradeAdapterRetirement(root).some(issue => issue.includes("retired adapter reference")));
       writeFileSync(resolve(root, "src/probe.ts"), "export function readUpgradeSources() { return {}; }");
       assert.ok(auditUpgradeAdapterRetirement(root).some(issue => issue.includes("retired import API readUpgradeSources")));
@@ -313,7 +313,7 @@ describe("authority-upgrade-adapters-retired", () => {
   it("rejects an eager upgrade edge and a CLI registration that does not dispatch storage", () => {
     const staticGraph: SourceGraph = {
       sources: new Map([
-        [STORAGE_COMPOSE, parse(STORAGE_COMPOSE, 'import "../unit/architecture/upgrade.js";')],
+        [STORAGE_COMPOSE, parse(STORAGE_COMPOSE, 'import "./upgrade.js";')],
         [STORAGE_UPGRADE, parse(STORAGE_UPGRADE, "export const upgrade = true;")],
         [SECURE_BOOTSTRAP, parse(SECURE_BOOTSTRAP, "runCli();")],
         [CLI, parse(CLI, "registerStorageComposer(() => undefined);")],

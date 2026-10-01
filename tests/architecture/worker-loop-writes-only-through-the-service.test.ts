@@ -84,7 +84,7 @@ describe("worker-loop-writes-only-through-the-service", () => {
 
   it("detects a relocated helper and aliased repository mutators", () => {
     const violations = audit(`
-      import type { AuthorityRepositories, AuthorityDatabase } from "../unit/infra/sqlite/authority-database.js";
+      import type { AuthorityRepositories, AuthorityDatabase } from "../infra/sqlite/authority-database.js";
       export function relocated(repositories: AuthorityRepositories, database: AuthorityDatabase) {
         repositories.runs.transition({});
         const resume = repositories.runs.resume;

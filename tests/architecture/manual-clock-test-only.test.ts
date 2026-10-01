@@ -32,10 +32,10 @@ describe("manual clock test-only boundary", () => {
 
   it("detects imports, calls, re-exports, and dynamic property access", () => {
     assert.equal(findManualClockReferences("fixture.ts", [
-      'import { manualClock } from "../unit/architecture/clock.js";',
+      'import { manualClock } from "./clock.js";',
       "manualClock(new Date());",
-      'export { manualClock } from "../unit/architecture/clock.js";',
-      'void import("../unit/architecture/clock.js").then((module) => module["manualClock"]);',
+      'export { manualClock } from "./clock.js";',
+      'void import("./clock.js").then((module) => module["manualClock"]);',
     ].join("\n")).length, 4);
   });
 

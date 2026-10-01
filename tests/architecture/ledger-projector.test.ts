@@ -38,7 +38,7 @@ function sources() { return gitVisibleFiles(["src"]).filter((path) => /\.tsx?$/u
 describe("ledger projector retirement", () => {
   it("keeps current consumers absent and catches an injected read-through or repository alias", () => {
     assert.deepEqual(retiredLedgerConsumerViolations(sources()), []);
-    for (const content of ['import { x } from "../unit/infra/ledger/index.js";', 'db.authority.ledgerProjection.list()', 'db.authority.durableOutbox.get(id)', 'createLedgerReadThrough(root)']) assert.deepEqual(retiredLedgerConsumerViolations([{ path: "violating.ts", content }]), ["violating.ts"]);
+    for (const content of ['import { x } from "../infra/ledger/index.js";', 'db.authority.ledgerProjection.list()', 'db.authority.durableOutbox.get(id)', 'createLedgerReadThrough(root)']) assert.deepEqual(retiredLedgerConsumerViolations([{ path: "violating.ts", content }]), ["violating.ts"]);
   });
   it("allows no ledger appender or current cleanup path, with violating controls", () => {
     assert.deepEqual(ledgerSoleWriterViolations(sources()), []); assert.deepEqual(ledgerPruneReachabilityViolations(sources()), []);
