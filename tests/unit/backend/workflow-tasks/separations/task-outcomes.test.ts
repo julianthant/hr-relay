@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { DataPoint } from "../../../../../src/domain/task-provenance.js";
-import { DateOnlySchema, EidSchema, FingerprintSchema } from "../../../../../src/domain/ids.js";
+import { DateOnlySchema, EidSchema, FingerprintSchema, IsoInstantSchema } from "../../../../../src/domain/ids.js";
 import type { UcpathJobRow, UcpathJobSummary } from "../../../../../src/domain/ui/ucpath-job-summary.js";
 import { UcpathJobSummarySchema } from "../../../../../src/domain/ui/ucpath-job-summary.js";
 import type { UcpathPersonSelection } from "../../../../../src/domain/contracts/ucpath/search-person-org.js";
@@ -22,7 +22,7 @@ const DOCUMENT = "4444";
 const EID = EidSchema.parse("10800000");
 const OTHER_EID = EidSchema.parse("10800001");
 const NAME = "Person, Deterministic";
-const NOW = "2026-08-14T19:00:00.000Z";
+const NOW = IsoInstantSchema.parse("2026-08-14T19:00:00.000Z");
 
 class TaskRefusal extends Error {
   constructor(readonly code: string, message: string) {
@@ -403,7 +403,7 @@ describe("separations workflow task wrappers", () => {
       input: {
         documentNumber: DOCUMENT,
         terminationType: { state: "present", value: "Graduated/No longer a Student" },
-        observedOptions: KUALI_TERMINATION_TYPE_OPTIONS,
+        observedOptions: [...KUALI_TERMINATION_TYPE_OPTIONS],
       },
       ctx: success.ctx,
     });
@@ -420,7 +420,7 @@ describe("separations workflow task wrappers", () => {
       input: {
         documentNumber: DOCUMENT,
         terminationType: { state: "absent", reason: "the control was empty" },
-        observedOptions: KUALI_TERMINATION_TYPE_OPTIONS,
+        observedOptions: [...KUALI_TERMINATION_TYPE_OPTIONS],
       },
       ctx: refusal.ctx,
     }), "blank-termination-type");
