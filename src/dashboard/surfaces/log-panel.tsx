@@ -536,6 +536,8 @@ export const LogPanel = memo(function LogPanel({
       : gate.state === "open"
         ? gate.label
         : outcome.reason;
+  const showOutcome = effectiveTab !== "logs" || outcome.state !== "terminal"
+    || outcome.rehearsal !== true || outcome.result !== "partial";
   /**
    * At most ONE notice, and the gate wins.
    *
@@ -628,8 +630,7 @@ export const LogPanel = memo(function LogPanel({
             "min-w-0 shrink-0 border",
             "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
             dsRadius.lg,
-            "@min-[868px]/detail:col-span-2 @min-[868px]/detail:row-start-1",
-            "@min-[1068px]/detail:col-span-1 @min-[1068px]/detail:col-start-1",
+            "@min-[868px]/detail:col-span-1 @min-[868px]/detail:col-start-1 @min-[868px]/detail:row-start-1",
           )}
         >
           <Timeline detail={detail} nowIso={nowIso} />
@@ -643,8 +644,8 @@ export const LogPanel = memo(function LogPanel({
           // NOT scroll with the body: an `absolute` child of a scroller is
           // positioned against the scrolled content, so the reminder would
           // slide away the moment the operator moved the stream.
-          "@container relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden border",
-          "border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]",
+          "ui-theme-scope @container relative flex min-h-[24rem] min-w-0 flex-col overflow-hidden border",
+          "border-ui-stroke bg-ui-panel font-ui text-ui-primary",
           dsRadius.lg,
           "@min-[868px]/detail:col-start-1 @min-[868px]/detail:row-start-2 @min-[868px]/detail:min-h-0",
         )}
@@ -654,7 +655,7 @@ export const LogPanel = memo(function LogPanel({
           ref={scrollRef}
           className="scroll-pt-[var(--ds-panel-head-h,0px)] flex min-h-0 flex-1 flex-col overflow-x-hidden overflow-y-auto"
         >
-          <div ref={headRef} className={cn("sticky top-0 shrink-0 bg-[var(--ds-surface-1)]", dsLayer.sticky)}>
+          <div ref={headRef} className={cn("sticky top-0 shrink-0 bg-ui-panel", dsLayer.sticky)}>
             {/*
               THE HEADER CARRIES IDENTITY, AND ONLY IDENTITY: title · ⓘ · trace.
 
@@ -674,22 +675,18 @@ export const LogPanel = memo(function LogPanel({
             */}
             <div
               className={cn(
-                "flex flex-wrap items-center border-b",
-                dsBorder.subtle,
-                "gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]",
+                "flex min-h-12 flex-wrap items-center gap-x-4 gap-y-2 border-b border-ui-stroke px-4 py-3",
               )}
             >
               <span
                 className={cn(
-                  dsText.title,
-                  dsText.flush,
-                  "min-w-0 max-w-full break-words font-semibold text-[color:var(--ds-fg)]",
+                  "min-w-0 max-w-full text-heading text-ui-primary text-balance [overflow-wrap:break-word]",
                 )}
               >
                 {detail.header.title}
               </span>
-              <DataActions actions={actions} target={{ runId: detail.runId, expectedVersion: detail.rowRevision }} onAction={handleAction} />
-              <span className="ml-auto flex min-w-0 max-w-full items-center gap-[var(--ds-space-base)]">
+              <DataActions actions={actions.filter(action => action.key !== "rerun")} target={{ runId: detail.runId, expectedVersion: detail.rowRevision }} onAction={handleAction} />
+              <span className="ml-auto flex min-w-0 max-w-full items-center gap-2">
                 <PanelKindInfo
                   panelKind={detail.panelKind}
                   workflowLabel={workflowLabel}
@@ -697,9 +694,7 @@ export const LogPanel = memo(function LogPanel({
                 />
                 <span
                   className={cn(
-                    dsText.meta,
-                    dsText.nums,
-                    "min-w-0 break-all text-[color:var(--ds-fg-muted)]",
+                    "min-w-0 break-all font-data text-caption text-ui-muted",
                   )}
                 >
                   {detail.header.traceId}
@@ -715,7 +710,7 @@ export const LogPanel = memo(function LogPanel({
                 as another hairline strip. Same wrap rule as the identity
                 header — the sentence fills; the age and the action sit beside
                 it when they fit, else under at natural length. */}
-            <div
+            {showOutcome && <div
               className={cn(
                 "flex flex-wrap items-center border-b",
                 "gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
@@ -747,10 +742,9 @@ export const LogPanel = memo(function LogPanel({
                   omitKeys={PANEL_OMITS_OUTCOME_ACTIONS}
                 />
               </span>
-            </div>
+            </div>}
 
-            {/* tabs — derived from what the run ADVERTISES, never a fixed set */}
-            <div
+            {available.length > 1 && <div
               role="tablist"
               aria-label="Run detail sections"
               className={cn(
@@ -787,7 +781,7 @@ export const LogPanel = memo(function LogPanel({
                   </Tooltip>
                 );
               })}
-            </div>
+            </div>}
           </div>
 
           {/* THE TAB BODY, in the same scroller as the head above it. */}

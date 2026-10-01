@@ -5,8 +5,7 @@ import { BareButton, dsBorder, dsClip, dsFocus, dsMotion, dsRadius, dsText } fro
 import { fmtClock, fmtElapsed } from "../format.js";
 import { timelineEventDuration, RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
 import {
-  decisionAge, timelineAxisTotals, timelineHasOrphanGate, timelineSegmentUnmeasured,
-  type TimelineAxisTotals,
+  decisionAge, timelineHasOrphanGate, timelineSegmentUnmeasured,
 } from "./timeline-model.js";
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
@@ -376,57 +375,6 @@ function StepStrip({
   );
 }
 
-/**
- * THE AXIS — when it started, and where the time went (D273 item 2, ledger 2
- * rows B60/B61; `DemoLogPanel.tsx:711-717`).
- *
- * With equal-width segments this line is where duration lives, so it names BOTH
- * halves rather than one total. It used to print the first→last event SPAN
- * under the word `elapsed`, which is a real number about the wrong thing: a run
- * parked for an hour after four seconds of work reported an hour.
- *
- * A half with nothing behind it does not print. There is no "0s working" for a
- * run nothing measured and no "waiting on you" for a run nobody is waiting on.
- */
-function TimelineAxis({
-  startAt,
-  totals,
-}: {
-  startAt: string;
-  totals: TimelineAxisTotals;
-}) {
-  const working = totals.workingSec === undefined ? undefined : `${fmtElapsed(totals.workingSec)} working`;
-  const waiting = totals.waitingSec === undefined ? undefined : `${fmtElapsed(totals.waitingSec)} waiting on you`;
-  const measure = [working, waiting].filter((half): half is string => half !== undefined).join(" · ");
-  return (
-    <div
-      className={cn(
-        "mt-[var(--ds-space-snug)] flex items-baseline gap-[var(--ds-space-base)] border-t pt-[var(--ds-space-tight)]",
-        dsBorder.subtle,
-        dsText.micro,
-        dsText.nums,
-        "text-[color:var(--ds-fg-muted)]",
-      )}
-    >
-      <span>{fmtClock(startAt)}</span>
-      <span aria-hidden className="h-px flex-1 bg-[var(--ds-border)]" />
-      {measure.length > 0 && (
-        <span className={totals.waitingSec === undefined ? undefined : "text-[color:var(--ds-status-waiting-fg)]"}>
-          {measure}
-        </span>
-      )}
-    </div>
-  );
-}
-
-/**
- * Exported so the D273 item 2 ports are pinned by a RENDER rather than only by
- * a screenshot (`tests/unit/dashboard/run-detail-timeline-render.test.ts`).
- * Four of the ruled facts — the segment being a focusable `<button>`, the
- * disclosure's `Status` row, the orphan wait's own segment, and the axis's two
- * halves — are decisions about MARKUP, and the folds beneath them cannot see
- * whether the component actually consumed one.
- */
 export function Timeline({ detail, nowIso }: { detail: RunDetailWire; nowIso: string }) {
   const events = detail.timeline.events;
   const steps = detail.timeline.steps;
@@ -434,18 +382,11 @@ export function Timeline({ detail, nowIso }: { detail: RunDetailWire; nowIso: st
   if (!categorical && events.length === 0) return null;
 
   const ordered = [...events].sort((a, b) => a.sequence - b.sequence);
-  const first = ordered[0];
 
   if (categorical) {
     return (
       <div className="px-[var(--ds-space-cozy)] py-[var(--ds-space-base)]">
         <StepStrip key={detail.runId} steps={steps} gate={detail.gate} nowIso={nowIso} />
-        {first !== undefined && (
-          <TimelineAxis
-            startAt={first.at}
-            totals={timelineAxisTotals(steps.map((step) => step.durationSec), detail.gate, nowIso)}
-          />
-        )}
       </div>
     );
   }
@@ -513,19 +454,6 @@ export function Timeline({ detail, nowIso }: { detail: RunDetailWire; nowIso: st
           )}
       </div>
 
-      {first !== undefined && (
-        <TimelineAxis
-          startAt={first.at}
-          totals={timelineAxisTotals(
-            ordered.map((event) => {
-              const measured = timelineEventDuration(event);
-              return measured.state === "present" ? Math.round(measured.ms / 1000) : undefined;
-            }),
-            detail.gate,
-            nowIso,
-          )}
-        />
-      )}
     </div>
   );
 }

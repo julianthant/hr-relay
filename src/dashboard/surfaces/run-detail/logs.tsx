@@ -15,7 +15,6 @@ import { LogFeed } from "../log-feed.js";
 import { retainedLogFeed } from "./log-feed-adapter.js";
 import { operationGroupBreakIds } from "../operation-structure-model.js";
 import { exactBundleCaptures, type RunCapturesState } from "../run-captures-model.js";
-import { RunCaptures } from "../run-captures.js";
 import type { QueueSurfaceWire } from "../run-identity.js";
 import { logRowsOf, useLogPages } from "./logs-model.js";
 
@@ -124,14 +123,12 @@ export function LogsTab({
     { at: failureAt, content: failure !== undefined && failureAt !== undefined ? <InlineFailureRecord liveContext={{ actorId, nowIso }} failure={failure} errorNotes={errorNotes} {...(detail.outcome.state === "terminal" ? { completedAt: detail.outcome.completedAt } : {})} anchorRef={failureRef} runId={detail.runId} aiAdvisory={aiAdvisory} captures={captures?.state === "available" ? captures.items : undefined} /> : null },
     { at: parkedAt, content: parked !== undefined ? <InlineParkedWrite key={`${parked.runId}:${parked.writeIntentId}:${String(parked.generation)}`} parked={parked} onResolve={onResolvePark} anchorRef={parkedRef} /> : null },
   ];
-  const displayedCaptureUrls = new Set(projected.flatMap(item => item.step.entries.flatMap(entry => entry.kind === "note" ? [] : entry.screenshots?.map(screenshot => screenshot.src) ?? [])));
-  const tailCaptures = captures?.state === "available" ? { ...captures, items: ordinaryCaptures.filter(item => !displayedCaptureUrls.has(item.downloadUrl)) } : captures;
   return <LogFeed key={detail.runId} embedded steps={projected.map(item => item.step)} loading={notes === undefined}
     beforeContent={cards.map((card, index) => card.at !== undefined && cardStep(card.at) === undefined ? <Fragment key={index}>{card.content}</Fragment> : null)}
     afterStep={id => {
       const matched = cards.filter(card => card.at !== undefined && cardStep(card.at) === id);
       return matched.length ? <div className="col-span-2 mt-4">{matched.map((card, index) => <Fragment key={index}>{card.content}</Fragment>)}</div> : undefined;
     }}
-    trailingContent={<>{paged.error !== undefined && <p role="alert" className="text-body text-ui-danger">{paged.error.message}</p>}{paged.page?.nextCursor.state === "present" && <Button variant="ghost" size="sm" onClick={paged.loadMore} disabled={paged.loading} aria-busy={paged.loading || undefined}>{paged.loading ? "Loading more actions…" : "Load more actions"}</Button>}{tailCaptures !== undefined && <RunCaptures captures={tailCaptures} compact />}</>}
+    trailingContent={<>{paged.error !== undefined && <p role="alert" className="text-body text-ui-danger">{paged.error.message}</p>}{captures?.state === "error" && <p role="alert" className="text-body text-ui-danger">{captures.message}</p>}{paged.page?.nextCursor.state === "present" && <Button variant="ghost" size="sm" onClick={paged.loadMore} disabled={paged.loading} aria-busy={paged.loading || undefined}>{paged.loading ? "Loading more actions…" : "Load more actions"}</Button>}</>}
   />;
 }

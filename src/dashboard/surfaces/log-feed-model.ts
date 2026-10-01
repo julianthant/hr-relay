@@ -42,6 +42,17 @@ export type LogStep = Readonly<{
   entries: readonly LogEntry[];
 }>;
 
+export function visualLogSteps(steps: readonly LogStep[]): readonly LogStep[] {
+  return steps.flatMap(step => {
+    const entries = step.entries.flatMap<LogEntry>(entry => {
+      if (entry.kind !== "fields") return [entry];
+      const fields = entry.fields.filter(field => field.kind !== "compute");
+      return fields.length ? [{ ...entry, fields }] : [];
+    });
+    return entries.length ? [{ ...step, entries }] : [];
+  });
+}
+
 export function logEntryText(entry: LogEntry): string {
   switch (entry.kind) {
     case "fields": return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label} ${field.value}`), entry.result].filter(Boolean).join(" ");
