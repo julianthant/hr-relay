@@ -58,8 +58,9 @@ columns of 32px tiles: one or an odd final system fills its row, while two syste
 Active cards stay below 250px tall. Each timeline segment represents a supplied node, and its
 completed/total count comes from that node array. The bar shows the Sessions toggle, nonzero state
 counts (or “No workers”), and a secondary Add workers action. Scenarios come from the `sessionsPreview`
-URL parameter, not a visible selector. The dialog offers workflow selection and an editable 1–6 count
-with increment/decrement controls. An idle worker without a timeline shows a full-width empty gray bar
+URL parameter, not a visible selector. The 320px dialog groups workflow selection and an editable
+positive whole-number count with increment/decrement controls; there is no fixed worker-count cap.
+An idle worker without a timeline shows “Ready for the next run” above a full-width empty gray bar
 with the accessible label “No run in progress.” Pause/resume/retry/stop controls change fixtures only;
 App no longer passes worker cards, pools, clock, connection/version or worker command dispatch to the
 UI. The former connected SessionPanel and timeline renderer are retired. Backend worker/browser

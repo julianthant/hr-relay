@@ -626,11 +626,11 @@ system or an odd final item fills its row, and two systems share a row. Active c
 App no longer passes worker cards, pools, clock, connection/version or worker command dispatch into
 this surface. The old connected SessionPanel and timeline renderer are retired; legacy/domain models
 and old connected-UI tests remain for deliberate future wiring and migration. The exact checks and
-retained limits are recorded in the [deployment evidence checkpoint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/activity-ui-2026-10-01/current-state.md).
+retained limits are recorded in the [latest Sessions refinement checkpoint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/sessions-dialog-2026-10-01/current-state.md).
 
 The Sessions bar shows its toggle, nonzero state counts (or “No workers”) and an outlined Add workers
 action. It has no visible scenario selector; local cases use the `sessionsPreview` query parameter with
-`active`, `attention`, `idle`, `empty`, `loading` or `unavailable`. The Add workers dialog selects a
-workflow and an editable 1–6 count, with increment/decrement controls, Cancel and Add workers. An idle
-worker without nodes shows one full-width empty gray bar with accessible “No run in progress” labeling,
-not “Ready for the next run.”
+`active`, `attention`, `idle`, `empty`, `loading` or `unavailable`. The 320px Add workers dialog groups
+workflow selection and an editable positive whole-number count, with increment/decrement controls,
+Cancel and Add workers. There is no fixed worker-count cap. An idle worker without nodes shows
+“Ready for the next run” above one full-width empty gray bar labeled “No run in progress.”

@@ -69,7 +69,8 @@ metadata. Its restored compact timeline uses equal-width 10px bars above the log
 `text-heading` for its panel label, `text-control` for workflow titles, `text-body` for current actions,
 and `text-caption` for state, subject, node count, system status and elapsed time.
 The Session bar's Add workers action uses the outlined secondary button. An idle card without nodes
-uses one full-width `ui-stroke-control` bar with accessible “No run in progress” labeling.
+shows “Ready for the next run” above one full-width `ui-stroke-control` bar labeled “No run in progress.”
+The Add workers dialog is 320px wide, with a 12px gap between fields and no fixed worker-count cap.
 
 For Logs tables, use one opaque gray `ui-table` fill for each header and body. Leave tables open,
 keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed
