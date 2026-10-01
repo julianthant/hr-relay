@@ -6,7 +6,6 @@ import { ActivityReport } from "../surfaces/activity.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-runtime.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
-import { ExplorerFlow } from "../surfaces/explorer/explorer-flow.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { SettingsPage } from "../surfaces/settings.js";
@@ -21,11 +20,11 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
- workflowLabelOf,supportsDryRun,today,queueRows,closeTakeoverTo,onSettingsExitGuardChange,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,children}: {
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
  workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
- supportsDryRun: boolean; today: string; queueRows: ComponentProps<typeof ActivityReport>["queueRows"];
+ supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; children: ReactNode;
 }) {return (takeover === "settings" ? (
@@ -104,58 +103,10 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
             />
           ) : takeover === "activity" ? (
-            /*
-              No `onClose`: the report carries no back button (the demo's own
-              rule — the product switcher above it holds the Activity entry
-              that got you here, so a second door would be a duplicate). It
-              does carry the actor and the app version, because a report
-              leaves the operator's screen and its footer says who made it.
-
-              NO WRAPPER — see the Settings arm above (UF-AC-2).
-            */
-            <ActivityReport
-              range={route.activity ?? ""}
-              today={today}
-              actorId={boot.actor.id}
-              appVersion={boot.appVersion}
-              /*
-                The report's Who column resolves a sampled run id against the
-                rows the shell ALREADY holds — no second fetch, so the report
-                and the queue cannot name the same run two ways. These are
-                the day's rows and the report spans a range, so a sampled run
-                from another day is simply not here and names itself by id.
-              */
-              queueRows={queueRows}
-              onRange={(next) => setRoute({ ...route, activity: next })}
-            />
+            <ActivityReport range={route.activity ?? ""} onRange={(next) => setRoute({ ...route, activity: next })} />
           ) : takeover === "explore" ? (
-            /*
-              The explorer takes over for the same reason intake does: it is a
-              different task, and a half-visible queue behind a reference view
-              is the modal this deliberately is not. It carries no session, so
-              closing it simply drops the key.
-
-              NO WRAPPER — see the Settings arm above (UF-EX-2).
-            */
-            route.explorerPreview ? <ExplorerFlow
+            <WorkflowExplorer
               onBack={() => setRoute(routeWithoutTakeovers(route))}
-              onConnected={() => setRoute({ ...route, explorerPreview: undefined })}
               onVersionRegistry={() => setRoute({ ...routeWithoutTakeovers(route), archive: ARCHIVE_INDEX, archiveView: "versions" })}
-            /> : <WorkflowExplorer
-              workflowId={route.explore ?? activeWorkflowId}
-              onPreview={() => setRoute({ ...route, explorerPreview: true })}
-              onWorkflow={(next) => setRoute({ ...route, explore: next })}
-              onVersionRegistry={() => setRoute({
-                ...route,
-                intake: undefined,
-                archive: ARCHIVE_INDEX,
-                archiveView: "versions",
-                archiveDashboard: undefined,
-                archiveWorkflow: undefined,
-                activity: undefined,
-                explore: undefined,
-                catalog: undefined,
-                catalogView: undefined,
-              })}
             />
           ) : children);}

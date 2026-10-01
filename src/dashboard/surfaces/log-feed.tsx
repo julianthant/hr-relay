@@ -15,7 +15,7 @@ function Screenshot({ screenshot }: { screenshot: LogScreenshot }) {
           }} />
         </button>
       </DialogTrigger>
-      <DialogContent title="Screenshot" description={`Captured ${screenshot.time}`} size="xl">
+      <DialogContent className="ui-theme-scope bg-ui-panel font-ui text-ui-primary" title="Screenshot" description={`Captured ${screenshot.time}`} size="xl">
         <DialogBody><img className="block h-auto w-full" src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} /></DialogBody>
       </DialogContent>
     </Dialog>}

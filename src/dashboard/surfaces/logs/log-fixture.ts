@@ -1,4 +1,4 @@
-import type { LogEntry, LogField, LogStep } from "../surfaces/log-feed-model.js";
+import type { LogEntry, LogField, LogStep } from "../log-feed-model.js";
 
 type FieldInput = readonly [time: string, label: string, value: string, kind?: LogField["kind"]];
 const fields = (id: string, title: string | undefined, rows: readonly FieldInput[], result?: string): LogEntry => ({

@@ -8,7 +8,6 @@ import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
 import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
-import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../domain/absence.js";
 import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
@@ -22,7 +21,6 @@ import { useDashboardClient } from "../state/client-context.js";
 import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
 import { useDashboardDay } from "../state/use-dashboard-day.js";
-import { useRunDetail } from "../state/use-run-detail.js";
 import {
 commandResultFeedEntry,
 toastAppliedCommandResult,
@@ -38,8 +36,8 @@ import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/command-
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { serverLocalDay,type DayCountWire } from "../surfaces/date-navigation-model.js";
 import { fmtClock } from "../surfaces/format.js";
-import { tabsFor,type PanelTab } from "../surfaces/log-panel-model.js";
-import { LogPanel } from "../surfaces/log-panel.js";
+import { type PanelTab } from "../surfaces/log-panel-model.js";
+import { LogSample } from "../surfaces/logs/log-sample.js";
 import { type NotificationRowWire } from "../surfaces/notification-bell-model.js";
 import type { QueueBatch } from "../surfaces/queue-model.js";
 import {
@@ -58,7 +56,6 @@ QueueToolbar,
 type PendingBulkCommand,
 } from "../surfaces/queue-toolbar.js";
 import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue.js";
-import { useRunCaptures } from "../surfaces/run-captures-model.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js";
 import { RunStartButton } from "../surfaces/run-start.js";
 import { SessionPanel } from "../surfaces/session-panel.js";
@@ -92,7 +89,7 @@ import { useGlobalKeys } from "./global-keys.js";
 import { useDashboardNavigation } from "./navigation-model.js";
 import type { NativeRouteHistory,PopstateRouteHandler } from "./route-history-model.js";
 import { useRoute } from "./route-history-model.js";
-import { SHELL_PANEL_TABS, shellSelection } from "./shell-selection-model.js";
+import { SHELL_PANEL_TABS } from "./shell-selection-model.js";
 import { useTakeoverCloseFocus } from "./takeover-focus-model.js";
 import {
 activeTakeover,
@@ -100,29 +97,8 @@ routeForCrossDateSearchResult,
 shellViewOf,
 type AppRouteState
 } from "./url-state.js";
-import { usePanelSections } from "./use-panel-sections.js";
 
 
-/**
- * THE ROW'S OWN CONTROLS, off the row (ref frontend-backend-integration §8.5).
- *
- * This was `SERVED_ACTIONS = []` — an honest constant while `QueueBaseFields`
- * carried no `actions` field and no projector built one, which meant every
- * queue row drew no command controls at all. Both halves now exist
- * (`server/dashboard/projectors/queue-row-actions.ts`), so the array is READ
- * off the surface the server sent and nothing in the tree branches on status
- * to decide what a row may do.
- *
- * A row whose served list is empty draws nothing, with no client branch: the
- * surfaces already render exactly the descriptors they are handed.
- *
- * The SECTION-level descriptors still do NOT come through here, and must not:
- * the parked write's two resolutions are read off `sections["parked-write"]` by
- * the panel's own dialog (which captures the evidence note the kernel
- * requires), and the identity gate's two `resolve-gate` actions are read off
- * `sections["identity-gate"]` beside the packet they are about. Each payload is
- * composable only where its evidence is.
- */
 /**
  * The stable empties the three `memo`'d panels are handed when the day has not
  * loaded (D4). `?? []` in a prop slot mints a fresh array on every render, so
@@ -135,6 +111,8 @@ const NO_SURFACES: readonly QueueSurfaceWire[] = Object.freeze([]);
 const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
 
 const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
+
+const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
 
 const NO_ACTION_DESCRIPTORS: readonly ActionDescriptorWire[] = Object.freeze([]);
 
@@ -336,41 +314,7 @@ function LoadedApp({
   const { day: dayResource, connection } = useDashboardDay(dateSelection.state === "valid" ? day : undefined);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
-  // Bumped by an applied Data correction: the save moved the run version, so
-  // the open detail (and, through its rowRevision, every fetched section)
-  // refetches rather than serving a CAS basis the kernel will now refuse.
-  const [detailNonce, setDetailNonce] = useState(0);
-  /** Refused command answers are local, bounded reading context; the durable
-   * audit remains the server's authority. Applied answers toast instead. */
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
-  /**
-   * THE OPEN PANEL FOLLOWS ITS RUN (D257).
-   *
-   * The day stream is the one live feed this app has, and the run's own row on
-   * it carries `rowRevision` — the authority version the panel's detail is
-   * read at. Handing it to `useRunDetail` is what makes the panel notice its
-   * run moving: before it, the nonce above was bumped ONLY by a dispatched
-   * command or an applied Data edit, so a panel left open through a run's
-   * progress kept serving the wire as of the last thing the operator clicked.
-   * A run whose row is not on this day (an archived run, another day's run)
-   * serves no revision and is not followed — it cannot move.
-   */
-  const servedRowRevision = dayWire?.queueSurfaces
-    .find((row) => String(row.runId) === route.run)?.rowRevision;
-  const detail = useRunDetail(dateSelection.state === "valid" ? route.run : undefined, detailNonce, servedRowRevision);
-  const selection = shellSelection(route, day, dayWire, detail);
-  const detailValue = selection.state === "ready" ? selection.detail : undefined;
-  const offered = detailValue === undefined ? [] : tabsFor(detailValue);
-  const effectiveTab = selection.state === "ready" ? selection.tab : "logs";
-  const { sections } = usePanelSections(detailValue, effectiveTab);
-  const logsAdvertiseCaptures = detailValue?.captures !== undefined
-    || detailValue?.availableSections.includes("captures") === true;
-  const captures = useRunCaptures(
-    route.run,
-    detailValue,
-    activeTakeover(route) === "none"
-      && (effectiveTab === "receipt" || (effectiveTab === "logs" && logsAdvertiseCaptures)),
-  );
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
@@ -426,22 +370,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
   const workflowLabelOf = useCallback(
     (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.label ?? workflowId,
-    [workflows],
-  );
-  /**
-   * The fingerprint ONE workflow is served under today (§9.22 item 3).
-   *
-   * The provenance bar's shape hazard compares a run's own
-   * `contractFingerprint` against this. It used to compare against
-   * `boot.descriptorHash` — the hash of the whole descriptor SET — which a
-   * one-workflow fingerprint can never equal, so the amber "the run's SHAPE
-   * moved" chip was on for every run ever drawn. A workflow this build does
-   * not register serves no fingerprint, and that is its own verdict rather
-   * than an assumed move.
-   */
-  const workflowShapeOf = useCallback(
-    (workflowId: string): string | undefined =>
-      workflows.find((w) => w.id === workflowId)?.descriptorFingerprint,
     [workflows],
   );
   /**
@@ -522,23 +450,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     if (filter === "needsYou") return { kind: "needsYou" };
     return { kind: "status", word: PROPOSED_STATUS[dsStatusOf(filter)].label.toLowerCase() };
   }, [filter]);
-
-  /**
-   * The first consumer of `featureAvailability` (2i-G, D178). A feature the
-   * boot document does not mention is `not-configured` with a reason naming
-   * exactly that — never a silent `available`, which is how a surface starts
-   * offering something the server never wired.
-   */
-  const advisoryAvailability = useMemo((): CapabilityAvailability => {
-    const entry = boot.featureAvailability.find(({ feature }) => feature === "ai-advisory");
-    return entry === undefined
-      ? {
-        state: "unavailable",
-        code: "not-configured",
-        reason: "this server's bootstrap document does not report the ai-advisory feature",
-      }
-      : CapabilityAvailabilitySchema.parse(entry.availability);
-  }, [boot.featureAvailability]);
 
   const startWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
 
@@ -721,24 +632,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         const requestedAt = answers.requestedAt ?? nowIso;
         const source = answers.source ?? "queue";
 
-        /*
-          The gate section is still handed to the composer even though the gate's
-          own controls no longer route here (D226 sends them to the ceremony
-          dialog, which is the only surface that can carry the operator's answer).
-          It stays because a `resolve-gate` descriptor arriving on THIS path is a
-          control that reached the generic dispatcher without a ceremony, and the
-          composer's refusal is far more useful with the section in hand: it names
-          the shape the server asked for instead of reporting that no gate is open.
-          No `gateAnswer` is supplied here on purpose — nothing on this path
-          authored one, and a dispatcher that minted one would be answering for
-          the human (ref write-safety §14.6 risk 1).
-        */
         const composed = composeCommandRequest(action, target, {
           actorId: boot.actor.id,
           source,
           commandId,
           requestedAt,
-          gate: sections["identity-gate"],
           ...(answers.renameAnswer === undefined ? {} : { renameAnswer: answers.renameAnswer }),
         });
         if (composed.state === "refused") {
@@ -824,7 +722,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               onBulkIds(remainingBulk);
             }
           }
-          setDetailNonce((nonce) => nonce + 1);
         },
       ).catch((caught: unknown) => {
         inFlightCommands.current.delete(inFlightKey);
@@ -845,7 +742,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         toast(commandFailureToast({ stage: "after-dispatch", caught }));
       });
     },
-    [boot.actor.id, client, sections, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
+    [boot.actor.id, client, toast, dayWire, workflowLabelOf, activeWorkflowId, nowIso, setRoute, onBulkIds],
   );
 
   /**
@@ -915,7 +812,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             title: `${planToExecute.label} — ${String(response.results.length)} of ${String(response.requestedCount)} answered`,
             description: "Each run's own outcome is listed under the selection bar.",
           });
-          setDetailNonce((nonce) => nonce + 1);
         },
       ).catch((caught: unknown) => {
         inFlightCommands.current.delete(inFlightKey);
@@ -1029,13 +925,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [runAction],
   );
 
-  const runDetailAction = useCallback(
-    (action: ActionDescriptorWire, target: ActionTarget): void => {
-      runAction(action, target, "run-detail");
-    },
-    [runAction],
-  );
-
   /**
    * THE KEYBOARD, BOUND (R2 D13/D14, R3 finding 8, R5 finding 7, R8 finding 7).
    *
@@ -1130,7 +1019,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     attentionRunIds: keyboardAttention,
     selectedRunId: route.run,
     onSelectRun: selectRun,
-    panelTabs: offered,
+    panelTabs: NO_LOG_TABS,
     onTab,
   });
 
@@ -1181,25 +1070,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   );
 
   const onToday = useCallback(() => leaveSettings(() => setRoute(routeForDay(route, undefined))), [leaveSettings, route, setRoute]);
-
-  /**
-   * The open panel's ROW and its served controls, resolved ONCE.
-   *
-   * Both used to be written inline, and the `find` ran twice per render over
-   * the whole day. Since D4's patch-splice an untouched row keeps its
-   * reference through an SSE patch, so this memo returns the SAME surface
-   * across a patch for any OTHER run — which is exactly what lets `LogPanel`'s
-   * `memo` skip a 2,000-line subtree during a bulk run.
-   */
-  const openPanelSurface = useMemo(
-    (): QueueSurfaceWire | undefined =>
-      detailValue === undefined
-        ? undefined
-        : dayWire?.queueSurfaces.find((s) => s.runId === detailValue.runId),
-    [dayWire, detailValue],
-  );
-  const openPanelActions = useMemo(() => servedActions(openPanelSurface), [openPanelSurface]);
-  const onDetailEdited = useCallback((): void => setDetailNonce((nonce) => nonce + 1), []);
 
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
@@ -1369,7 +1239,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           <DashboardTakeovers takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
-            today={today} queueRows={dayWire?.queueSurfaces ?? []} closeTakeoverTo={closeTakeoverTo}
+            closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange}>
           <>
           {/*
@@ -1475,7 +1345,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             onDismiss={(id) => setCommandResults((previous) => previous.filter((entry) => entry.id !== id))}
             onRefreshRow={(entry) => {
               setCommandResults((previous) => previous.filter((result) => result.id !== entry.id));
-              setDetailNonce((nonce) => nonce + 1);
               selectRun(entry.targetRunId);
             }}
           />
@@ -1532,51 +1401,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
 
-            {/* NOTHING SELECTED IS A STATE, not the absence of one. It owes the
-                three things ref dashboard-surfaces §9 says an empty state owes and no more:
-                what would be here, why it is not, and what to do. It is reached
-                by switching workflows, so the reason is the switch. */}
-            {selection.state === "ready" ? (
-                <LogPanel
-                  detail={selection.detail}
-                  sections={sections}
-                  captures={captures}
-                  surface={openPanelSurface}
-                  /*
-                    The WHOLE served list, not a placement slice: the prop's
-                    contract is "every action the server served for this run"
-                    and the panel filters by placement itself. Pre-filtering
-                    here to `footer` and letting `OutcomeActionButton` filter
-                    again to `outcome` intersected the two, so only a descriptor
-                    carrying BOTH placements could ever have arrived.
-                  */
-                  actions={openPanelActions}
-                  onAction={runDetailAction}
-                  tab={effectiveTab}
-                  onTab={onTab}
-                  workflowLabel={workflowLabelOf(selection.detail.header.workflowId)}
-                  currentAppVersion={boot.appVersion}
-                  servedDescriptorHash={workflowShapeOf(selection.detail.header.workflowId)}
-                  actorId={boot.actor.id}
-                  onDetailEdited={onDetailEdited}
-                  aiAdvisory={advisoryAvailability}
-                  /* The SAME instant `viewState.nowIso` dates the queue's rows
-                     from, so a waiting run's age is one number wherever it is
-                     read. The panel used to take its own wall clock; since
-                     D256 the shared instant TICKS instead of being frozen at
-                     page load. */
-                  servedNow={nowIso}
-                />
+            {route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
+              <LogSample key={route.run} />
             ) : (
-              <Panel className="min-h-0">
-                <PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
-                  <EmptyState
-                    icon={<PanelRight aria-hidden className={dsIcon.lg} />}
-                    title={selection.absence.title}
-                    description={selection.absence.description}
-                  />
-                </PanelBody>
-              </Panel>
+              <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
+                icon={<PanelRight aria-hidden className={dsIcon.lg} />}
+                title={route.run === undefined ? "No run open" : "Run unavailable"}
+                description={route.run === undefined ? "Select a run from the queue to open the sample logs." : `Run ${route.run} is not in the loaded queue for ${day}. Select a run from this day.`}
+              /></PanelBody></Panel>
             )}
             </div>
 

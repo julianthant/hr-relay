@@ -1,0 +1,59 @@
+import { ActivityVolumeSchema, buildActivityVolumeBoundarySkeleton } from "../../../domain/dashboard/activity-volume.js";
+import type { ActivityDateRange } from "../activity-model.js";
+import type { ActivityViewState } from "./activity-view-model.js";
+
+export const ACTIVITY_SAMPLE_TODAY = "2026-09-26";
+export const ACTIVITY_SAMPLE_RANGE: ActivityDateRange = { from: "2026-09-20", to: ACTIVITY_SAMPLE_TODAY };
+export const ACTIVITY_SAMPLE_STATES = [
+  { id: "normal", label: "Full report" }, { id: "empty", label: "Empty period" },
+  { id: "incomplete", label: "Missing evidence" }, { id: "loading", label: "Loading" },
+  { id: "unavailable", label: "Unavailable" },
+] as const;
+export type ActivitySampleState = typeof ACTIVITY_SAMPLE_STATES[number]["id"];
+
+// Synthetic records exist only in the temporary producer. Views receive the same summary contract later.
+const records = [5, 8, 7, 6, 9, 9].flatMap((count, day) => Array.from({ length: count }, (_, index) => ({
+  day: `2026-09-${21 + day}`,
+  instant: `2026-09-${21 + day}T${String(16 + index % 6).padStart(2, "0")}:00:00.000Z`,
+}))).map((record, index) => ({
+  ...record,
+  workflow: index < 29 ? "sample-separations" : "sample-person-lookup",
+  status: index < 24 || index >= 29 && index < 43 ? "completed" : index === 28 ? "waiting" : index === 24 || index === 25 ? "failed" : "running",
+  duration: index < 39 ? 134 : null,
+  readback: index < 21 || index >= 29,
+  ucpath: index < 18,
+  kuali: index < 17,
+}));
+
+export function activitySample(range: ActivityDateRange, scenario: ActivitySampleState): ActivityViewState {
+  if (scenario === "loading") return { state: "loading" };
+  if (scenario === "unavailable") return { state: "unavailable", reason: "The report is unavailable. Try another period or return later." };
+  const rows = scenario === "empty" ? [] : records.filter(row => row.day >= range.from && row.day <= range.to);
+  const count = (status: string) => rows.filter(row => row.status === status).length;
+  const completed = count("completed");
+  const failed = count("failed");
+  const terminal = rows.filter(row => row.status === "completed" || row.status === "failed");
+  const measured = scenario === "incomplete" ? [] : terminal.flatMap(row => row.duration === null ? [] : [row.duration]);
+  const skeleton = buildActivityVolumeBoundarySkeleton(range, "America/Los_Angeles");
+  const volume = ActivityVolumeSchema.parse({ state: "complete", ...skeleton, coveredRuns: rows.length,
+    buckets: skeleton.buckets.map(bucket => ({ ...bucket, runs: rows.filter(row => row.instant >= bucket.start && row.instant < bucket.endExclusive).length })),
+  });
+  return { state: "loaded", report: {
+    range, timeZone: volume.timeZone, total: rows.length, completed, failed,
+    running: count("running"), waiting: count("waiting"), outstanding: count("running") + count("waiting"), terminal: terminal.length,
+    duration: { medianSeconds: measured.length ? 134 : null, measured: measured.length, unmeasured: terminal.length - measured.length },
+    evidence: scenario === "incomplete" ? { verified: null, unread: null } : { verified: rows.filter(row => row.status === "completed" && row.readback).length, unread: rows.filter(row => row.status === "completed" && !row.readback).length },
+    workflows: [
+      { id: "sample-separations", label: "Separations", version: "2.1" },
+      { id: "sample-person-lookup", label: "Person lookup", version: "2.0" },
+    ].flatMap(workflow => {
+      const group = rows.filter(row => row.workflow === workflow.id);
+      return group.length ? [{ ...workflow, total: group.length, completed: group.filter(row => row.status === "completed").length,
+        failed: group.filter(row => row.status === "failed").length, outstanding: group.filter(row => row.status === "running" || row.status === "waiting").length }] : [];
+    }),
+    transactions: [
+      { id: "sample-ucpath", label: "UCPath terminations", count: rows.filter(row => row.ucpath).length, environment: "test" },
+      { id: "sample-kuali", label: "Kuali finalizations", count: rows.filter(row => row.kuali).length, environment: "test" },
+    ], ...(scenario === "incomplete" ? {} : { volume }),
+  } };
+}
