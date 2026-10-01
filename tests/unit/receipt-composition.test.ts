@@ -52,4 +52,3 @@ describe("D361 receipt composition", () => {
     assert.ok(proof.values.every(value => value.state === "allowed" && value.transform === "allow"));
   });
 });
-

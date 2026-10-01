@@ -55,4 +55,3 @@ export const ArchiveDatabase = new Proxy(RealArchiveDatabase, {
     return Reflect.get(target, property, receiver) as unknown;
   },
 }) as unknown as SyntheticArchiveStatic;
-
