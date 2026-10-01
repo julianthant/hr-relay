@@ -3,6 +3,7 @@ import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../.
 import { valueFreeProtectedData } from "../../domain/protected-input.js";
 import { isFreshOccurrenceProof } from "./repeat-proof.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
+import { decideDurableIntent } from "./policies/durable-intent.js";
 /**
  * The Phase-1f fenced write sequencer — ref write-safety §3's seven-beat kernel write
  * sequence (D111), the D117 transaction-node semantics of ref workflow-model §3.1, and the
@@ -1849,32 +1850,31 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
 
     /* beat ① — durable permanent-key lookup, regardless of status/origin */
     const durable = deps.authority.authority.writeIntents.findByPermanentKey(system, key);
-    let generation = 1;
-    let refenceExpectedVersion: number | undefined;
-    if (durable !== undefined) {
-      if (durable.status === "committed" || durable.status === "observed-present") {
-        return reuseDurableIntent(context, commitContract, durable);
-      }
-      if (durable.status === "attempting") {
-        if (durable.runId === envelope.runId && durable.runAttempt === envelope.attempt) {
-          return await recoverOwnAttemptingIntent(context, commitContract, commitInput, durable);
-        }
-        throw new Error(
-          `another run (${durable.runId} attempt ${String(durable.runAttempt)}) is mid-submit for `
-          + `${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} — refusing to double-fence`,
-        );
-      }
-      if (durable.status === "parked") {
-        throw new Error(
-          `write intent ${durable.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} is parked (`
-          + `${durable.parkedCode}); stored detail is retained only in authority. `
-          + "only the typed operator resolutions may release it",
-        );
-      }
-      // retryable — the next fence CASes a new generation with a FRESH proof.
-      generation = durable.generation + 1;
-      refenceExpectedVersion = durable.version;
+    const decision = decideDurableIntent(durable, { runId: envelope.runId, runAttempt: envelope.attempt });
+    if (decision.kind === "reuse") {
+      return reuseDurableIntent(context, commitContract, decision.record);
     }
+    if (decision.kind === "recover-own") {
+      return await recoverOwnAttemptingIntent(context, commitContract, commitInput, decision.record);
+    }
+    if (decision.kind === "refuse-foreign") {
+      const existing = decision.record;
+      throw new Error(
+        `another run (${existing.runId} attempt ${String(existing.runAttempt)}) is mid-submit for `
+        + `${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} — refusing to double-fence`,
+      );
+    }
+    if (decision.kind === "refuse-parked") {
+      const existing = decision.record;
+      throw new Error(
+        `write intent ${existing.writeIntentId} for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} is parked (`
+        + `${existing.parkedCode}); stored detail is retained only in authority. `
+        + "only the typed operator resolutions may release it",
+      );
+    }
+    // A retryable intent CASes the next generation with a fresh proof.
+    const generation = decision.generation;
+    const refenceExpectedVersion = decision.expectedVersion;
 
     /* beat ① — the policy-controlled live probe on a separate read lease */
     const mustProbe = sourceBound !== undefined || node.probePolicy === "always"

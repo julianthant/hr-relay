@@ -74,6 +74,7 @@ import {
   type WorkerSessionEvent,
 } from "./worker-sessions.js";
 import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
+import { decideIdleClaim } from "./policies/idle-claim.js";
 
 import { lifecycleCommandId, requireLifecycleApplied, type WorkerRunLifecyclePort, type RunMutationOutcome } from "../runs/run-record-service.js";
 
@@ -337,23 +338,18 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
         ...(configFingerprint === undefined ? {} : { configFingerprint }),
       };
       const claimed = await deps.claimNext(claimRequest);
-      if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible"
-        && claimed.refusal.notBefore === undefined) {
-        if (deps.exitWhenIdle) {
+      if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible") {
+        const notBefore = claimed.refusal.notBefore;
+        const decision = deps.exitWhenIdle
+          ? decideIdleClaim({ exitWhenIdle: true, notBefore })
+          : notBefore === undefined
+            ? decideIdleClaim({ exitWhenIdle: false, cadenceMs: deps.idleCadence?.() ?? deps.idleRepollMs })
+            : decideIdleClaim({ exitWhenIdle: false, notBefore, nowMs: clock.nowMs(), cadenceMs: deps.idleCadence?.() ?? deps.idleRepollMs });
+        if (decision.kind === "exit") {
           stopped = "idle";
           break;
         }
-        await boundedWait(deps.scheduler, clock, (deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
-        continue;
-      }
-      if (claimed.state === "refused" && claimed.refusal.reason === "none-eligible"
-        && claimed.refusal.notBefore !== undefined) {
-        if (deps.exitWhenIdle) {
-          stopped = "idle";
-          break;
-        }
-        const untilMs = Math.max(0, Date.parse(claimed.refusal.notBefore) - clock.nowMs());
-        await boundedWait(deps.scheduler, clock, Math.min(untilMs, deps.idleCadence?.() ?? deps.idleRepollMs), deps.stopSignal);
+        await boundedWait(deps.scheduler, clock, decision.delayMs, deps.stopSignal);
         continue;
       }
 

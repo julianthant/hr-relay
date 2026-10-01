@@ -12,8 +12,10 @@ import {
 } from "../../../../../src/backend/runs/terminal-authorization.js";
 import { buildEntryValidationFailureRecord } from "../../../../../src/backend/runtime/run-failure.js";
 import { RunRecordSchema } from "../../../../../src/domain/run/record.js";
+import { RunResultRecordSchema } from "../../../../../src/domain/run/result.js";
 import { LATER, NOW, UUID_6, UUID_7 } from "../../../../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID } from "../../../../fixtures/phase1f-run-fixtures.js";
+import { kualiReceiptEvidence } from "../../../../fixtures/receipt-run-fixtures.js";
 
 const RUNNING_RUN = RunRecordSchema.parse({
   ...QUEUED_RUN,
@@ -38,6 +40,41 @@ function failureFor(run: unknown) {
 }
 
 describe("terminal authorization factory", () => {
+  it("binds a successful consequence to its exact run, claim, version and result digest", () => {
+    const evidence = kualiReceiptEvidence();
+    const completed = RunRecordSchema.parse(evidence.run);
+    const result = RunResultRecordSchema.parse(evidence.result);
+    const running = RunRecordSchema.parse({
+      ...completed,
+      lifecycle: {
+        state: "running", workerId: WORKER_ID,
+        claimedAt: completed.envelope.enqueuedAt,
+        heartbeatAt: completed.envelope.enqueuedAt,
+        currentNodeId: "finalize-kuali",
+      },
+      claimGeneration: 3,
+      version: 7,
+      completion: undefined,
+    });
+    const authorization = buildSuccessTerminalAuthorization({
+      run: running,
+      authorizedAt: result.createdAt,
+      consequence: { kind: "done", result },
+    });
+    assert.deepEqual(authorization, {
+      kind: "done",
+      runId: running.envelope.runId,
+      workflowId: running.envelope.workflow,
+      attempt: running.envelope.attempt,
+      descriptorVersion: running.envelope.descriptorVersion,
+      contractFingerprint: running.envelope.contractFingerprint,
+      expectedVersion: 7,
+      claim: { workerId: WORKER_ID, claimGeneration: 3 },
+      authorizedAt: result.createdAt,
+      resultDigest: result.resultDigest,
+    });
+  });
+
   it("binds the failed arm to the exact run, claim, and pre-terminal version", () => {
     const failure = failureFor(RUNNING_RUN);
     const authorization = buildFailureTerminalAuthorization({

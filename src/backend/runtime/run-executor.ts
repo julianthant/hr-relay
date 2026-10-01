@@ -8,6 +8,7 @@ import { localDatePart } from "../../domain/clock.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
 import type { GateSourceRuntime } from "./gate-source-runtime.js";
+import { shouldRetryTaskFailure } from "./policies/task-retry.js";
 /**
  * The Phase-1f graph interpreter (ref workflow-model §§4–5; ref execution-and-sessions §3): a worker claims a
  * queued run and walks the descriptor's node tuple to a terminal state.
@@ -1608,7 +1609,7 @@ export async function executeClaimedRun(
             diagnosticSafetyVersion: CURRENT_DIAGNOSTIC_SAFETY_VERSION,
             errorSummary: `task ${contract.id} failed; inspect its structured failure record`,
           });
-          const retryable = taskError.transient && taskAttempt < attempts;
+          const retryable = shouldRetryTaskFailure(taskError.transient, taskAttempt, attempts);
           if (!retryable) return await failNode(node, contract.id, taskError);
           await waitForBackoff(backoffMs);
         }
