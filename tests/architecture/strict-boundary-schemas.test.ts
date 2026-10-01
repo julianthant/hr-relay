@@ -310,9 +310,9 @@ import {
   SuccessTerminalizationStorageStepSchema,
 } from "../../src/infra/sqlite/index.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
-import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
-import { CRM_UI_REGISTRY } from "../../src/stores/crm/driver/ui-registry.js";
-import { UCPATH_UI_REGISTRY } from "../../src/stores/ucpath/driver/ui-registry.js";
+import { buildSafeUiCatalog } from "../../src/backend/systems/ucpath/driver/catalog.js";
+import { CRM_UI_REGISTRY } from "../../src/backend/systems/crm/driver/ui-registry.js";
+import { UCPATH_UI_REGISTRY } from "../../src/backend/systems/ucpath/driver/ui-registry.js";
 import {
   ABSENCE_1,
   ABSENCE_2,
@@ -578,7 +578,7 @@ const KNOWLEDGE = {
 
 const FIX = {
   id: UUID_3, failureFingerprint: HASH_B, status: "verified", requestedBy: "codex", summary: "Close race",
-  affected: ["ucpath/search-person"], files: ["src/stores/ucpath/driver/person-search.ts"],
+  affected: ["ucpath/search-person"], files: ["src/backend/systems/ucpath/driver/person-search.ts"],
   scenarios: ["ucpath/person-search-frame-race"], verification: [`observation:${UUID_2}`], commit: "abcdef1",
   knowledge: [UUID_1], createdAt: NOW,
 };

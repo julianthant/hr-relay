@@ -13,7 +13,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { UiCatalogWireSchema } from "../../../src/domain/dashboard/explorer.js";
 import { UiCatalogEntrySchema, type UiCatalogEntry } from "../../../src/domain/ui/contracts.js";
-import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog } from "../../../src/backend/systems/ucpath/driver/catalog.js";
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { UiCatalogSection } from "../../../src/dashboard/surfaces/ui-catalog.js";

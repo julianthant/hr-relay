@@ -238,23 +238,33 @@ function contractSourceLink(
  * fingerprinted closure rather than guessed from its id.
  *
  * A task's closure contains exactly the files its fingerprint covers, so the
- * implementation is whichever of them sits under `src/stores/<namespace>/tasks/`.
+ * implementation is whichever of them sits under a system or service store's
+ * `tasks/` directory.
  * Two matches would mean the convention no longer identifies one file, so the
  * link refuses rather than picking the first.
  */
 function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined): SourceLinkWire {
   const tail = taskPathTail(taskId);
-  const directory = `src/stores/${tail.slice(0, tail.indexOf("/"))}/tasks`;
+  const namespace = tail.slice(0, tail.indexOf("/"));
+  const directories = [
+    `src/backend/systems/${namespace}/tasks`,
+    `src/stores/${namespace}/tasks`,
+  ];
   if (closure === undefined) {
-    return unresolved(directory, `the build manifest carries no task entry for ${taskId}`);
+    return unresolved(directories[0] ?? "src/backend/systems", `the build manifest carries no task entry for ${taskId}`);
   }
-  const matches = [...closure].filter((path) => path.startsWith(`${directory}/`)).sort();
+  const matches = [...closure]
+    .filter((path) => directories.some((directory) => path.startsWith(`${directory}/`)))
+    .sort();
   if (matches.length === 1) return resolved(matches[0] ?? "");
+  const directory = directories.find((candidate) => [...closure].some((path) => path.startsWith(`${candidate}/`)))
+    ?? directories[0]
+    ?? "src/backend/systems";
   return unresolved(
     directory,
     matches.length === 0
-      ? "the task's fingerprinted closure contains no implementation in this directory"
-      : `the task's closure contains ${String(matches.length)} implementations in this directory`,
+      ? "the task's fingerprinted closure contains no implementation in a system or service store directory"
+      : `the task's closure contains ${String(matches.length)} implementations across system and service store directories`,
   );
 }
 

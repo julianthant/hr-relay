@@ -1118,14 +1118,15 @@
         "milestone": "1d",
         "targetIds": [
           "src/domain/timecard-period.ts",
-          "src/stores/common/timecard.ts"
+          "src/backend/systems/kronos-shared/timecard.ts"
         ]
       },
       "ownerMilestone": "1d",
       "verificationEvidence": [
         "legacy-source-present:src/services/timecard",
         "ported-with-provenance:793abe1f8265f3213ffe8a80d6cfd9860a32a1dc:src/services/timecard/index.ts:91c5b930a77dcc40c4185475ab59d720edcc90b7",
-        "tests/unit/timecard-period.test.ts"
+        "tests/unit/domain/timecard-period/timecard-period.test.ts",
+        "tests/unit/backend/systems/kronos-shared/timecard-check.test.ts"
       ],
       "status": "implemented"
     },
@@ -1449,13 +1450,13 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1d",
-        "replacement": "src/stores/ucpath/driver/catalog.ts",
+        "replacement": "src/backend/systems/ucpath/driver/catalog.ts",
         "differencesAccepted": "The legacy weighted title/tag/body scorer over indexed markdown sections is not ported. Ranking now runs over the closed catalog projection's id/label/searchTerms, which are curated vocabulary rather than scraped prose, so substring stemming heuristics are unnecessary; a search-term collision fails catalog generation instead of being resolved by score."
       },
       "ownerMilestone": "1d",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/selectors/search-lib.ts",
-        "tests/unit/ui-registry.test.ts",
+        "tests/unit/backend/systems/ucpath/ui-registry.test.ts",
         "tests/unit/ui-catalog-cli.test.ts"
       ],
       "status": "implemented"

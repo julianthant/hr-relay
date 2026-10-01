@@ -29,7 +29,7 @@ import {
   workflowProjections,
 } from "../../src/base/workflow.js";
 import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
-import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog } from "../../src/backend/systems/ucpath/driver/catalog.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../src/backend/runs/dashboard/queries/explorer.js";
 import { manualClock } from "../../src/domain/clock.js";

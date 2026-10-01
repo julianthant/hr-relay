@@ -5,7 +5,7 @@
  *
  * Kuali's only address for a document is `…/actions/<actionId>`, and an
  * `actionId` names a workflow STEP rather than a document (2026-08-04,
- * `src/stores/kuali/CLAUDE.md`). So until this module a separations run had to
+ * `src/backend/systems/kuali/CLAUDE.md`). So until this module a separations run had to
  * be handed BOTH identifiers, which is what **D260** measured as two varying
  * values per run and therefore no typed start box. The operator's ruling of
  * 2026-08-20 — *"document number should work. no need action id."* — is

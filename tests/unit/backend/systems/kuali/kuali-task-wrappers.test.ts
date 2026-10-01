@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import { TaskError } from "../../../../../src/base/errors.js";
 import { taskFailer, type AnyTask } from "../../../../../src/base/task.js";
 import type { DataPoint } from "../../../../../src/domain/task-provenance.js";
+import { IsoInstantSchema } from "../../../../../src/domain/ids.js";
 import { KUALI_RRSS_SAVE_BUTTON } from "../../../../../src/domain/ui/kuali-rrss-document.js";
 import type { MutationCapability, UiActionProof } from "../../../../../src/domain/ui/driver.js";
 import {
@@ -25,14 +26,14 @@ import {
   KualiFinalizationVerdictSchema,
   KualiMatchSeparationFinalization,
 } from "../../../../../src/domain/contracts/kuali/match-separation-finalization.js";
-import { matchSeparationFinalizationTask } from "../../../../../src/stores/kuali/tasks/match-separation-finalization.js";
-import { readSeparationDocumentTask } from "../../../../../src/stores/kuali/tasks/read-separation-document.js";
-import { saveSeparationFinalizationTask } from "../../../../../src/stores/kuali/tasks/save-separation-finalization.js";
-import { searchSeparationActionTask } from "../../../../../src/stores/kuali/tasks/search-separation-action.js";
-import { stageSeparationFinalizationTask } from "../../../../../src/stores/kuali/tasks/stage-separation-finalization.js";
-import { verifySeparationFinalizationTask } from "../../../../../src/stores/kuali/tasks/verify-separation-finalization.js";
+import { matchSeparationFinalizationTask } from "../../../../../src/backend/systems/kuali/tasks/match-separation-finalization.js";
+import { readSeparationDocumentTask } from "../../../../../src/backend/systems/kuali/tasks/read-separation-document.js";
+import { saveSeparationFinalizationTask } from "../../../../../src/backend/systems/kuali/tasks/save-separation-finalization.js";
+import { searchSeparationActionTask } from "../../../../../src/backend/systems/kuali/tasks/search-separation-action.js";
+import { stageSeparationFinalizationTask } from "../../../../../src/backend/systems/kuali/tasks/stage-separation-finalization.js";
+import { verifySeparationFinalizationTask } from "../../../../../src/backend/systems/kuali/tasks/verify-separation-finalization.js";
 
-const NOW = "2026-08-20T17:24:11.000Z";
+const NOW = IsoInstantSchema.parse("2026-08-20T17:24:11.000Z");
 const TARGET: KualiFinalizationTarget = KualiFinalizationTargetSchema.parse({
   actionId: "0123456789abcdef01234567",
   documentNumber: "4444",
@@ -51,9 +52,9 @@ const TARGET: KualiFinalizationTarget = KualiFinalizationTargetSchema.parse({
   },
 });
 
-const FINALIZATION_PROOF = KualiSavedFinalizationProofSchema.parse(
-  KualiMatchSeparationFinalization.example.proof,
-);
+const MATCH_EXAMPLE = KualiMatchSeparationFinalization.example;
+if (MATCH_EXAMPLE.state !== "present") throw new Error("Kuali match example must carry a present proof");
+const FINALIZATION_PROOF = KualiSavedFinalizationProofSchema.parse(MATCH_EXAMPLE.proof);
 const FINALIZATION_FIELDS = KualiFinalizationFieldsSchema.parse(FINALIZATION_PROOF.fields);
 const STAGING = KualiFinalizationStagingSchema.parse(KualiStageSeparationFinalization.example);
 const DOCUMENT = ReadSeparationDocumentOutputSchema.parse(KualiReadSeparationDocument.example);

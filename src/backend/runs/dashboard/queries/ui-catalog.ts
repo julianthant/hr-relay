@@ -3,7 +3,7 @@
  *
  * It serves the **committed** `generated/ui-catalog.json` — the same bytes the
  * `semantic-ui-registry` guard pins, the same file `npm run selector:search`
- * reads, and the same projection `src/stores/<system>/UI-CATALOG.md` renders.
+ * reads, and the same projection `src/backend/systems/<system>/UI-CATALOG.md` renders.
  * That is the whole point of the surface: an operator reading a selector's
  * semantics must be reading the artifact under review, not a fourth rendering
  * of the registries that could drift from it.
@@ -27,7 +27,7 @@ import { UiCatalogSchema, type UiCatalog } from "../../../../domain/ui/contracts
 import {
   UI_CATALOG_JSON_PATH,
   assertSafeUiCatalogFresh,
-} from "../../../../stores/ucpath/driver/catalog.js";
+} from "../../../systems/ucpath/driver/catalog.js";
 
 export interface UiCatalogQueryDeps {
   /**

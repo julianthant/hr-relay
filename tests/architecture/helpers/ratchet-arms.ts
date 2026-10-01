@@ -53,9 +53,12 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
     },
   },
   "wait-for-timeout-allowlist": {
-    roots: ["src/stores"],
+    roots: ["src/stores", "src/backend/systems"],
     fixture: {
-      files: { "src/stores/ucpath/tasks/bad.ts": "export const bad = async (page: any) => page.waitForTimeout(25);\n" },
+      files: {
+        "src/stores/ucpath/tasks/bad.ts": "export const bad = async (page: any) => page.waitForTimeout(25);\n",
+        "src/backend/systems/ucpath/tasks/bad.ts": "export const bad = async (page: any) => page.waitForTimeout(25);\n",
+      },
       expected: /waitForTimeout/,
     },
   },
@@ -83,17 +86,23 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
    * a table cannot make that claim without also showing the exceptions.
    */
   "inline-selectors-workflows": {
-    roots: ["src/stores"],
+    roots: ["src/stores", "src/backend/systems"],
     select: (path) => path.includes("/tasks/"),
     fixture: {
-      files: { "src/stores/ucpath/tasks/bad.ts": "export const bad = (page: any) => page.locator(\"#employee\");\n" },
+      files: {
+        "src/stores/ucpath/tasks/bad.ts": "export const bad = (page: any) => page.locator(\"#employee\");\n",
+        "src/backend/systems/ucpath/tasks/bad.ts": "export const bad = (page: any) => page.locator(\"#employee\");\n",
+      },
       expected: /raw page\/locator/,
     },
   },
   "evaluate-named-fn": {
-    roots: ["src/stores"],
+    roots: ["src/stores", "src/backend/systems"],
     fixture: {
-      files: { "src/stores/ucpath/driver/bad.ts": "export const bad = (page: any) => page.evaluate(function named() { return true; });\n" },
+      files: {
+        "src/stores/ucpath/driver/bad.ts": "export const bad = (page: any) => page.evaluate(function named() { return true; });\n",
+        "src/backend/systems/ucpath/driver/bad.ts": "export const bad = (page: any) => page.evaluate(function named() { return true; });\n",
+      },
       expected: /named evaluated function/,
     },
   },

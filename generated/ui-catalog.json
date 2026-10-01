@@ -17,7 +17,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.person-org.search"
     },
@@ -37,7 +37,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.person-org.detail"
     },
@@ -57,7 +57,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.ss-smart-hr.transaction"
     },
@@ -80,7 +80,7 @@
         "ucpath/stage-termination",
         "ucpath/stage-pending-termination-sweep"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.smart-hr.setup"
     },
@@ -102,7 +102,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.smart-hr.details"
     },
@@ -124,7 +124,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.smart-hr.information"
     },
@@ -149,7 +149,7 @@
         "ucpath/verify-termination",
         "ucpath/verify-pending-terminations-cleared"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "screen",
       "id": "ucpath.ss-smart-hr.search"
     },
@@ -169,7 +169,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.navigation-link",
       "screen": "ucpath.person-org.search",
@@ -193,7 +193,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.eid-input",
       "screen": "ucpath.person-org.search",
@@ -216,7 +216,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.last-name-input",
       "screen": "ucpath.person-org.search",
@@ -239,7 +239,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.given-name-input",
       "screen": "ucpath.person-org.search",
@@ -262,7 +262,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.search-button",
       "screen": "ucpath.person-org.search",
@@ -285,7 +285,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.no-results-status",
       "screen": "ucpath.person-org.search",
@@ -308,7 +308,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.results-grid",
       "screen": "ucpath.person-org.search",
@@ -331,7 +331,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.results-view-toggle",
       "screen": "ucpath.person-org.search",
@@ -354,7 +354,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.result-drill-in",
       "screen": "ucpath.person-org.search",
@@ -377,7 +377,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.eid-display",
       "screen": "ucpath.person-org.detail",
@@ -400,7 +400,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.name-display",
       "screen": "ucpath.person-org.detail",
@@ -423,7 +423,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.assignments-grid",
       "screen": "ucpath.person-org.detail",
@@ -446,7 +446,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.employment-view-toggle",
       "screen": "ucpath.person-org.detail",
@@ -469,7 +469,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.person-org.return-to-search",
       "screen": "ucpath.person-org.detail",
@@ -492,7 +492,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.ss-smart-hr.receipt-display",
       "screen": "ucpath.ss-smart-hr.transaction",
@@ -515,7 +515,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.ss-smart-hr.approval-status-display",
       "screen": "ucpath.ss-smart-hr.transaction",
@@ -541,7 +541,7 @@
         "ucpath/stage-termination",
         "ucpath/stage-pending-termination-sweep"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.template-input",
       "screen": "ucpath.smart-hr.setup",
@@ -567,7 +567,7 @@
         "ucpath/stage-termination",
         "ucpath/stage-pending-termination-sweep"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.transaction-date-input",
       "screen": "ucpath.smart-hr.setup",
@@ -593,7 +593,7 @@
         "ucpath/stage-termination",
         "ucpath/stage-pending-termination-sweep"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.create-transaction-button",
       "screen": "ucpath.smart-hr.setup",
@@ -618,7 +618,7 @@
       "taskUses": [
         "ucpath/delete-pending-terminations"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.delete-selected-button",
       "screen": "ucpath.smart-hr.setup",
@@ -643,7 +643,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.details-eid-input",
       "screen": "ucpath.smart-hr.details",
@@ -668,7 +668,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.reason-code-select",
       "screen": "ucpath.smart-hr.details",
@@ -693,7 +693,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.continue-button",
       "screen": "ucpath.smart-hr.details",
@@ -718,7 +718,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.override-ldw-checkbox",
       "screen": "ucpath.smart-hr.information",
@@ -743,7 +743,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.last-date-worked-input",
       "screen": "ucpath.smart-hr.information",
@@ -768,7 +768,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.initiator-comments-field",
       "screen": "ucpath.smart-hr.information",
@@ -793,7 +793,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.transaction-comments-field",
       "screen": "ucpath.smart-hr.information",
@@ -818,7 +818,7 @@
       "taskUses": [
         "ucpath/create-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.smart-hr.save-and-submit-button",
       "screen": "ucpath.smart-hr.information",
@@ -846,7 +846,7 @@
         "ucpath/verify-termination",
         "ucpath/verify-pending-terminations-cleared"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.ss-smart-hr.search-eid-input",
       "screen": "ucpath.ss-smart-hr.search",
@@ -874,7 +874,7 @@
         "ucpath/verify-termination",
         "ucpath/verify-pending-terminations-cleared"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "element",
       "id": "ucpath.ss-smart-hr.search-button",
       "screen": "ucpath.ss-smart-hr.search",
@@ -897,7 +897,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.person-org.search-ready",
       "screen": "ucpath.person-org.search"
@@ -918,7 +918,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.person-org.results-ready",
       "screen": "ucpath.person-org.search"
@@ -939,7 +939,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.person-org.no-results",
       "screen": "ucpath.person-org.search"
@@ -960,7 +960,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.person-org.detail-ready",
       "screen": "ucpath.person-org.detail"
@@ -981,7 +981,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.ss-smart-hr.transaction-ready",
       "screen": "ucpath.ss-smart-hr.transaction"
@@ -1005,7 +1005,7 @@
         "ucpath/stage-termination",
         "ucpath/stage-pending-termination-sweep"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.smart-hr.setup-ready",
       "screen": "ucpath.smart-hr.setup"
@@ -1028,7 +1028,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.smart-hr.details-ready",
       "screen": "ucpath.smart-hr.details"
@@ -1051,7 +1051,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.smart-hr.information-ready",
       "screen": "ucpath.smart-hr.information"
@@ -1074,7 +1074,7 @@
       "taskUses": [
         "ucpath/stage-termination"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.smart-hr.termination-staged",
       "screen": "ucpath.smart-hr.information"
@@ -1100,7 +1100,7 @@
         "ucpath/verify-termination",
         "ucpath/verify-pending-terminations-cleared"
       ],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "page-state",
       "id": "ucpath.ss-smart-hr.search-ready",
       "screen": "ucpath.ss-smart-hr.search"
@@ -1121,7 +1121,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "observation",
       "id": "ucpath.person-org.displayed-eid",
       "screen": "ucpath.person-org.detail",
@@ -1146,7 +1146,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "observation",
       "id": "ucpath.person-org.displayed-name",
       "screen": "ucpath.person-org.detail",
@@ -1170,7 +1170,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "observation",
       "id": "ucpath.ss-smart-hr.transaction-receipt",
       "screen": "ucpath.ss-smart-hr.transaction",
@@ -1194,7 +1194,7 @@
         ]
       },
       "taskUses": [],
-      "sourceLink": "src/stores/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/ucpath/driver/ui-registry.ts#UCPATH_UI_REGISTRY",
       "kind": "observation",
       "id": "ucpath.ss-smart-hr.approval-status",
       "screen": "ucpath.ss-smart-hr.transaction",
@@ -1221,7 +1221,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "screen",
       "id": "crm.onboarding.search"
     },
@@ -1244,7 +1244,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "screen",
       "id": "crm.onboarding.record"
     },
@@ -1267,7 +1267,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "screen",
       "id": "crm.onboarding.history"
     },
@@ -1290,7 +1290,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "element",
       "id": "crm.onboarding.search-result-rows",
       "screen": "crm.onboarding.search",
@@ -1316,7 +1316,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "element",
       "id": "crm.onboarding.search-result-row-cells",
       "screen": "crm.onboarding.search",
@@ -1342,7 +1342,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "element",
       "id": "crm.onboarding.search-result-name-link",
       "screen": "crm.onboarding.search",
@@ -1368,7 +1368,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "element",
       "id": "crm.onboarding.record-field-value",
       "screen": "crm.onboarding.record",
@@ -1393,7 +1393,7 @@
       "taskUses": [
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "element",
       "id": "crm.onboarding.history-rows",
       "screen": "crm.onboarding.history",
@@ -1419,7 +1419,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "page-state",
       "id": "crm.onboarding.search-ready",
       "screen": "crm.onboarding.search"
@@ -1443,7 +1443,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "page-state",
       "id": "crm.onboarding.search-empty",
       "screen": "crm.onboarding.search"
@@ -1467,7 +1467,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "page-state",
       "id": "crm.onboarding.record-ready",
       "screen": "crm.onboarding.record"
@@ -1490,7 +1490,7 @@
       "taskUses": [
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "page-state",
       "id": "crm.onboarding.history-ready",
       "screen": "crm.onboarding.history"
@@ -1514,7 +1514,7 @@
         "crm/read-onboarding-record",
         "crm/read-onboarding-dates"
       ],
-      "sourceLink": "src/stores/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/crm/driver/ui-registry.ts#CRM_UI_REGISTRY",
       "kind": "observation",
       "id": "crm.onboarding.displayed-eid",
       "screen": "crm.onboarding.record",
@@ -1545,7 +1545,7 @@
         "kuali/verify-separation-finalization",
         "kuali/save-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "screen",
       "id": "kuali.rrss-document"
     },
@@ -1567,7 +1567,7 @@
       "taskUses": [
         "kuali/search-separation-action"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "screen",
       "id": "kuali.action-list"
     },
@@ -1592,7 +1592,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.eid-field",
       "screen": "kuali.rrss-document",
@@ -1620,7 +1620,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.timekeeper-field",
       "screen": "kuali.rrss-document",
@@ -1645,7 +1645,7 @@
       "taskUses": [
         "kuali/save-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.save-button",
       "screen": "kuali.rrss-document",
@@ -1670,7 +1670,7 @@
       "taskUses": [
         "kuali/search-separation-action"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.action-list.search-input",
       "screen": "kuali.action-list",
@@ -1695,7 +1695,7 @@
       "taskUses": [
         "kuali/search-separation-action"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.action-list.search-go-button",
       "screen": "kuali.action-list",
@@ -1720,7 +1720,7 @@
       "taskUses": [
         "kuali/search-separation-action"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.action-list.document-link",
       "screen": "kuali.action-list",
@@ -1745,7 +1745,7 @@
       "taskUses": [
         "kuali/read-separation-document"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.employee-name-field",
       "screen": "kuali.rrss-document",
@@ -1773,7 +1773,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.last-day-worked-field",
       "screen": "kuali.rrss-document",
@@ -1801,7 +1801,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.separation-date-field",
       "screen": "kuali.rrss-document",
@@ -1826,7 +1826,7 @@
       "taskUses": [
         "kuali/read-separation-document"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.termination-type-field",
       "screen": "kuali.rrss-document",
@@ -1851,7 +1851,7 @@
       "taskUses": [
         "kuali/read-separation-document"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.location-field",
       "screen": "kuali.rrss-document",
@@ -1879,7 +1879,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.request-acknowledged-checkbox",
       "screen": "kuali.rrss-document",
@@ -1907,7 +1907,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.timekeeper-comments-field",
       "screen": "kuali.rrss-document",
@@ -1935,7 +1935,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.termination-effective-date-field",
       "screen": "kuali.rrss-document",
@@ -1963,7 +1963,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.department-field",
       "screen": "kuali.rrss-document",
@@ -1991,7 +1991,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.payroll-title-code-field",
       "screen": "kuali.rrss-document",
@@ -2019,7 +2019,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.payroll-title-field",
       "screen": "kuali.rrss-document",
@@ -2047,7 +2047,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.submitted-template-checkbox",
       "screen": "kuali.rrss-document",
@@ -2075,7 +2075,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.transaction-number-field",
       "screen": "kuali.rrss-document",
@@ -2103,7 +2103,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "element",
       "id": "kuali.rrss-document.final-pay-student-radio",
       "screen": "kuali.rrss-document",
@@ -2128,7 +2128,7 @@
       "taskUses": [
         "kuali/search-separation-action"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
       "id": "kuali.action-list.ready",
       "screen": "kuali.action-list"
@@ -2154,7 +2154,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
       "id": "kuali.rrss-document.ready",
       "screen": "kuali.rrss-document"
@@ -2177,7 +2177,7 @@
       "taskUses": [
         "kuali/read-separation-document"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
       "id": "kuali.rrss-document.separation-ready",
       "screen": "kuali.rrss-document"
@@ -2201,7 +2201,7 @@
         "kuali/stage-separation-finalization",
         "kuali/save-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "page-state",
       "id": "kuali.rrss-document.finalization-staged",
       "screen": "kuali.rrss-document"
@@ -2224,7 +2224,7 @@
       "taskUses": [
         "kuali/search-separation-action"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
       "id": "kuali.action-list.matched-document-number",
       "screen": "kuali.action-list",
@@ -2253,7 +2253,7 @@
         "kuali/stage-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
       "id": "kuali.rrss-document.displayed-eid",
       "screen": "kuali.rrss-document",
@@ -2279,7 +2279,7 @@
       "taskUses": [
         "kuali/read-separation-document"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
       "id": "kuali.rrss-document.displayed-number",
       "screen": "kuali.rrss-document",
@@ -2305,7 +2305,7 @@
       "taskUses": [
         "kuali/read-separation-document"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
       "id": "kuali.rrss-document.displayed-form-type",
       "screen": "kuali.rrss-document",
@@ -2332,7 +2332,7 @@
         "kuali/match-separation-finalization",
         "kuali/verify-separation-finalization"
       ],
-      "sourceLink": "src/stores/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/kuali/driver/ui-registry.ts#KUALI_UI_REGISTRY",
       "kind": "observation",
       "id": "kuali.rrss-document.displayed-transaction-number",
       "screen": "kuali.rrss-document",
@@ -2358,7 +2358,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "screen",
       "id": "new-kronos.employee-search"
     },
@@ -2380,7 +2380,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "screen",
       "id": "new-kronos.timecard"
     },
@@ -2402,7 +2402,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.open-button",
       "screen": "new-kronos.employee-search",
@@ -2427,7 +2427,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.query-field",
       "screen": "new-kronos.employee-search",
@@ -2452,7 +2452,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.submit-button",
       "screen": "new-kronos.employee-search",
@@ -2477,7 +2477,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.no-results-text",
       "screen": "new-kronos.employee-search",
@@ -2502,7 +2502,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.result-slat",
       "screen": "new-kronos.employee-search",
@@ -2527,7 +2527,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.result-select-checkbox",
       "screen": "new-kronos.employee-search",
@@ -2552,7 +2552,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.close-button",
       "screen": "new-kronos.employee-search",
@@ -2577,7 +2577,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.go-to-button",
       "screen": "new-kronos.employee-search",
@@ -2602,7 +2602,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.employee-search.go-to-timecard-option",
       "screen": "new-kronos.employee-search",
@@ -2627,7 +2627,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.employee-id",
       "screen": "new-kronos.timecard",
@@ -2652,7 +2652,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.period-trigger-button",
       "screen": "new-kronos.timecard",
@@ -2677,7 +2677,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.period-label",
       "screen": "new-kronos.timecard",
@@ -2702,7 +2702,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.select-range-button",
       "screen": "new-kronos.timecard",
@@ -2727,7 +2727,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.range-start-field",
       "screen": "new-kronos.timecard",
@@ -2752,7 +2752,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.range-end-field",
       "screen": "new-kronos.timecard",
@@ -2777,7 +2777,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "element",
       "id": "new-kronos.timecard.range-apply-button",
       "screen": "new-kronos.timecard",
@@ -2802,7 +2802,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "page-state",
       "id": "new-kronos.employee-search.results-ready",
       "screen": "new-kronos.employee-search"
@@ -2825,7 +2825,7 @@
       "taskUses": [
         "new-kronos/search-employee"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "page-state",
       "id": "new-kronos.employee-search.no-results",
       "screen": "new-kronos.employee-search"
@@ -2848,7 +2848,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "page-state",
       "id": "new-kronos.timecard.ready",
       "screen": "new-kronos.timecard"
@@ -2871,7 +2871,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "page-state",
       "id": "new-kronos.timecard.range-applied",
       "screen": "new-kronos.timecard"
@@ -2894,7 +2894,7 @@
       "taskUses": [
         "new-kronos/read-separation-timecard"
       ],
-      "sourceLink": "src/stores/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
+      "sourceLink": "src/backend/systems/new-kronos/driver/ui-registry.ts#NEW_KRONOS_UI_REGISTRY",
       "kind": "observation",
       "id": "new-kronos.timecard.displayed-eid",
       "screen": "new-kronos.timecard",

@@ -9,7 +9,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { UiCatalogEntrySchema, type UiCatalogEntry } from "../../../src/domain/ui/contracts.js";
-import { buildSafeUiCatalog } from "../../../src/stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog } from "../../../src/backend/systems/ucpath/driver/catalog.js";
 import {
   ENTRY_KIND,
   catalogRowDomId,

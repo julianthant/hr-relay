@@ -133,7 +133,7 @@ function sourceFiles(): readonly string[] {
 }
 
 function storeSessionFiles(): readonly string[] {
-  return gitVisibleFiles(["src/stores"]).filter((path) => /\/session\.ts$/.test(path));
+  return gitVisibleFiles(["src/stores", "src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
 }
 
 describe("the Duo ceremony lease is structural", () => {
@@ -151,7 +151,7 @@ describe("the Duo ceremony lease is structural", () => {
   it("never conjures the token brand outside its module", () => {
     assert.deepEqual(sourceFiles().flatMap((path) => auditTokenConjuring(path, read(path))), []);
     assert.match(
-      auditTokenConjuring("src/stores/onbase/session.ts", [
+      auditTokenConjuring("src/backend/systems/onbase/session.ts", [
         `const token = { credentialKey, generation, holder, expiresAt } as ${TOKEN_TYPE};`,
         `const other = {} satisfies ${TOKEN_TYPE};`,
       ].join("\n")).join("\n"),
@@ -163,7 +163,7 @@ describe("the Duo ceremony lease is structural", () => {
     assert.ok(read(WRAPPER_MODULE).includes(`.${ACQUIRE}(`), "the wrapper must acquire through the gate");
     assert.deepEqual(sourceFiles().flatMap((path) => auditAcquirers(path, read(path))), []);
     assert.match(
-      auditAcquirers("src/stores/onbase/session.ts", "await context.duoCeremony.withCeremony(async (token) => run(token));").join("\n"),
+      auditAcquirers("src/backend/systems/onbase/session.ts", "await context.duoCeremony.withCeremony(async (token) => run(token));").join("\n"),
       /the only acquirer/,
     );
   });
@@ -174,10 +174,10 @@ describe("the Duo ceremony lease is structural", () => {
     assert.deepEqual(
       withRecipes.sort(),
       [
-        "src/stores/crm/session.ts",
-        "src/stores/kuali/session.ts",
-        "src/stores/new-kronos/session.ts",
-        "src/stores/ucpath/session.ts",
+        "src/backend/systems/crm/session.ts",
+        "src/backend/systems/kuali/session.ts",
+        "src/backend/systems/new-kronos/session.ts",
+        "src/backend/systems/ucpath/session.ts",
       ],
       "a landed login recipe must be scanned by this guard",
     );

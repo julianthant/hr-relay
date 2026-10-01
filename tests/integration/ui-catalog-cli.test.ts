@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { promisify } from "node:util";
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { buildSafeUiCatalog, uiCatalogProjections } from "../../src/stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog, uiCatalogProjections } from "../../src/backend/systems/ucpath/driver/catalog.js";
 
 /**
  * Behavioural fixtures for the two 1d maintenance CLIs that close the legacy
@@ -37,7 +37,7 @@ const CLI_TIMEOUT_MS = 180_000;
 const run = promisify(execFile);
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 // Derived, never listed: this used to be a hand-maintained triple that omitted
-// `src/stores/kuali/UI-CATALOG.md`, so the generator wrote a projection no
+// `src/backend/systems/kuali/UI-CATALOG.md`, so the generator wrote a projection no
 // fixture ever read back. The generator and this fixture now agree by
 // construction, and the `semantic-ui-registry` guard pins the derived set
 // against the stores that actually ship a registry.
@@ -50,7 +50,7 @@ const TRACKED_BYTES_AT_IMPORT = TRACKED_PROJECTIONS.map(
 
 let outRoot = "";
 const generatedCatalog = (root: string): string => resolve(root, "generated/ui-catalog.json");
-const generatedMarkdown = (root: string): string => resolve(root, "src/stores/ucpath/UI-CATALOG.md");
+const generatedMarkdown = (root: string): string => resolve(root, "src/backend/systems/ucpath/UI-CATALOG.md");
 
 beforeAll(async () => {
   outRoot = await mkdtemp(resolve(tmpdir(), "hrauto-ui-catalog-"));

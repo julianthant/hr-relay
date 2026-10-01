@@ -101,7 +101,7 @@ describe("fresh session boundary", () => {
     assert.deepEqual(computedSessionFields(), []);
     // Negative control: the same audit on a synthetic computed need must fail.
     const synthetic = ts.createSourceFile(
-      "src/stores/ucpath/tasks/bad.ts",
+      "src/backend/systems/ucpath/tasks/bad.ts",
       "export const t = { sessions: [{ system: \"ucpath\", session: attempt > 1 ? \"fresh\" : \"reuse-worker\" }] };",
       ts.ScriptTarget.Latest,
       true,

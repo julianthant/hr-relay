@@ -236,28 +236,29 @@ function descriptorEntries(repoRoot: string): readonly { readonly id: string; re
 function taskEntries(
   repoRoot: string,
 ): readonly { readonly id: string; readonly entries: readonly string[] }[] {
-  const storesRoot = join(repoRoot, "src/stores");
-  if (!existsSync(storesRoot)) return [];
   const entries: { id: string; entries: readonly string[] }[] = [];
-  for (const storeDirectory of readdirSync(storesRoot)) {
-    const storeRoot = join(storesRoot, storeDirectory);
-    if (!statSync(storeRoot).isDirectory()) continue;
-    const tasksRoot = join(storeRoot, "tasks");
-    if (!existsSync(tasksRoot)) continue;
-    const indexPath = join(storeRoot, "index.ts");
-    const indexSource = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : "";
-    const workflowMatch = /defineWorkflowStore\(\s*["']([a-z0-9]+(?:-[a-z0-9]+)*)["']/u.exec(indexSource);
-    const namespace = workflowMatch === null ? storeDirectory : `workflow:${workflowMatch[1]}`;
-    const driverEntry = join(storeRoot, "driver/interpreter.ts");
-    for (const file of readdirSync(tasksRoot)) {
-      if (!file.endsWith(".ts")) continue;
-      entries.push({
-        id: `${namespace}/${file.slice(0, -3)}`,
-        entries: [
-          join(tasksRoot, file),
-          ...(workflowMatch === null && existsSync(driverEntry) ? [driverEntry] : []),
-        ],
-      });
+  for (const storesRoot of [join(repoRoot, "src/backend/systems"), join(repoRoot, "src/stores")]) {
+    if (!existsSync(storesRoot)) continue;
+    for (const storeDirectory of readdirSync(storesRoot)) {
+      const storeRoot = join(storesRoot, storeDirectory);
+      if (!statSync(storeRoot).isDirectory()) continue;
+      const tasksRoot = join(storeRoot, "tasks");
+      if (!existsSync(tasksRoot)) continue;
+      const indexPath = join(storeRoot, "index.ts");
+      const indexSource = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : "";
+      const workflowMatch = /defineWorkflowStore\(\s*["']([a-z0-9]+(?:-[a-z0-9]+)*)["']/u.exec(indexSource);
+      const namespace = workflowMatch === null ? storeDirectory : `workflow:${workflowMatch[1]}`;
+      const driverEntry = join(storeRoot, "driver/interpreter.ts");
+      for (const file of readdirSync(tasksRoot)) {
+        if (!file.endsWith(".ts")) continue;
+        entries.push({
+          id: `${namespace}/${file.slice(0, -3)}`,
+          entries: [
+            join(tasksRoot, file),
+            ...(workflowMatch === null && existsSync(driverEntry) ? [driverEntry] : []),
+          ],
+        });
+      }
     }
   }
   return entries.sort((left, right) => left.id < right.id ? -1 : 1);

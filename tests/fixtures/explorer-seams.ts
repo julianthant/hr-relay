@@ -22,7 +22,7 @@ import {
   readCommittedUiCatalog,
   type UiCatalogQueryDeps,
 } from "../../src/backend/runs/dashboard/queries/ui-catalog.js";
-import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog } from "../../src/backend/systems/ucpath/driver/catalog.js";
 
 /** The same anchor production uses, so a harness cannot read a different tree. */
 const REPO_ROOT = EXPLORER_SOURCE_ROOT;

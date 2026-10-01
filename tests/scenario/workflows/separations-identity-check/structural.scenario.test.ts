@@ -29,9 +29,9 @@ import { classifyJobSummary } from "../../../../src/domain/separations/job-summa
 import { UcpathJobSummaryReadSchema } from "../../../../src/domain/ui/ucpath-job-summary.js";
 import type { UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
 import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucpath/search-person-org.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
 import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
 import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
 import { separationsIdentityCheckDescriptor } from "../../../helpers/registered-workflows.js";

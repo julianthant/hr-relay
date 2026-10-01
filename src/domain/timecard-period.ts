@@ -13,7 +13,7 @@
  * the argument. Here every reference time is an explicit `Clock` read, so there
  * is no default to omit and `clock-single-source` covers it.
  *
- * Browser orchestration is NOT here — see `src/stores/common/timecard.ts`.
+ * Browser orchestration is NOT here — see `src/backend/systems/kronos-shared/timecard.ts`.
  */
 import { z } from "zod";
 import type { Clock } from "./clock.js";

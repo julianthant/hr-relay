@@ -3,21 +3,21 @@ import {
 } from "../../base/store.js";
 import type { RegisteredTaskStore } from "../../base/store.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../domain/workflow/scenario-execution.js";
-import { crmStore } from "../../stores/crm/index.js";
+import { crmStore } from "../systems/crm/store.js";
 import { extractionStore } from "../../stores/extraction/index.js";
-import { i9Store } from "../../stores/i9/index.js";
-import { kualiStore } from "../../stores/kuali/index.js";
-import { newKronosStore } from "../../stores/new-kronos/index.js";
+import { i9Store } from "../systems/i9/store.js";
+import { kualiStore } from "../systems/kuali/store.js";
+import { newKronosStore } from "../systems/new-kronos/store.js";
 import { normalizationStore } from "../../stores/normalization/index.js";
 import { ocrStore } from "../../stores/ocr/index.js";
-import { oldKronosStore } from "../../stores/old-kronos/index.js";
-import { onbaseStore } from "../../stores/onbase/index.js";
+import { oldKronosStore } from "../systems/old-kronos/store.js";
+import { onbaseStore } from "../systems/onbase/store.js";
 import { personLookupStore } from "../../stores/person-lookup/index.js";
 import { rosterStore } from "../../stores/roster/index.js";
 import { separationsStore } from "../../stores/separations/index.js";
-import { servicenowStore } from "../../stores/servicenow/index.js";
-import { sharepointStore } from "../../stores/sharepoint/index.js";
-import { ucpathStore } from "../../stores/ucpath/index.js";
+import { servicenowStore } from "../systems/servicenow/store.js";
+import { sharepointStore } from "../systems/sharepoint/store.js";
+import { ucpathStore } from "../systems/ucpath/store.js";
 
 export const BROWSER_STORES = Object.freeze([
   ucpathStore,

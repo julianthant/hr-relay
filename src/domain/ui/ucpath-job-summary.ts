@@ -13,7 +13,7 @@
  * effective date, business unit, position, dept id + description, job code +
  * description, expected end date, FTE, empl class — as **one** grid on **one**
  * visit, and this tree has already live-verified and registered every anchor it
- * needs (`src/stores/ucpath/driver/ui-registry.ts`, 2026-08-02). One page visit
+ * needs (`src/backend/systems/ucpath/driver/ui-registry.ts`, 2026-08-02). One page visit
  * for the whole surface is exactly what D194 asks for, so the read is authored
  * here rather than against a page that would need two.
  *

@@ -21,7 +21,7 @@
  *
  * `activeTier` uses exactly the predicates the Person Org port already carries
  * (`isInactiveHrStatus` / `employeeStatus` in
- * `src/stores/ucpath/driver/person-org-operation.ts`, ported from legacy
+ * `src/backend/systems/ucpath/driver/person-org-operation.ts`, ported from legacy
  * `793abe1f8265f3213ffe8a80d6cfd9860a32a1dc`). A status this vocabulary does not
  * recognize is `unknown` — never "probably active", never "probably terminated"
  * — and one unknown row makes the whole disposition `indeterminate-status`,

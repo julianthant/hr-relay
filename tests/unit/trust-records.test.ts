@@ -202,7 +202,7 @@ describe("strict trust records", () => {
       requestedBy: "codex",
       summary: "Close the page-state race",
       affected: ["ucpath/search-person", "ucpath.person-search.submit"],
-      files: ["src/stores/ucpath/driver/person-search.ts"],
+      files: ["src/backend/systems/ucpath/driver/person-search.ts"],
       scenarios: ["ucpath/person-search-frame-race"],
       verification: [EVIDENCE_REF],
       commit: "abcdef1",

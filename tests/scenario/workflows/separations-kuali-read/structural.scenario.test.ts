@@ -20,9 +20,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../../../src/domain/clock.js";
-import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
-import type { KualiFakeSeparationForm } from "../../../../src/stores/kuali/driver/fake.js";
-import { readSeparationDocumentTask } from "../../../../src/stores/kuali/tasks/read-separation-document.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/backend/systems/kuali/driver/fake.js";
+import type { KualiFakeSeparationForm } from "../../../../src/backend/systems/kuali/driver/fake.js";
+import { readSeparationDocumentTask } from "../../../../src/backend/systems/kuali/tasks/read-separation-document.js";
 import { matchTerminationTypeTask } from "../../../../src/stores/separations/tasks/match-termination-type.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
 import { separationsKualiReadDescriptor } from "../../../helpers/registered-workflows.js";

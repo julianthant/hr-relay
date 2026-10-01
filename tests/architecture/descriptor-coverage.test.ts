@@ -87,7 +87,8 @@ const ALL: readonly AnyWorkflowDescriptor[] = [...DESCRIPTORS, fixtureDescriptor
  * and the ruling is explicit that the D106 boundary is untouched by the move —
  * a step folder's files "value-import only what a descriptor may". The walk is
  * transitive, so a descriptor that reached a `module.ts` and through it a store
- * still fails on `src/stores/`, which is what the negative arm below proves.
+ * still fails on service stores, while system-store source is also outside the
+ * safe roots. The negative arms below prove both classes remain excluded.
  */
 const BUNDLE_SAFE_ROOTS = ["src/domain/", "src/base/", "src/validation/", "src/workflows/"];
 
@@ -424,6 +425,22 @@ describe("descriptor coverage", () => {
     }
   });
 
+  it("rejects a workflow value closure reaching a browser-system task", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-system-bundle-"));
+    try {
+      mkdirSync(join(root, "src/workflows/probe"), { recursive: true });
+      mkdirSync(join(root, "src/backend/systems/crm/tasks"), { recursive: true });
+      writeFileSync(join(root, "src/backend/systems/crm/tasks/read.ts"), "export const read = true;\n");
+      writeFileSync(join(root, "src/workflows/probe/workflow.ts"), 'import { read } from "../../backend/systems/crm/tasks/read.js"; export const value = read;\n');
+      assert.match(
+        bundleViolations("src/workflows/probe/workflow.ts", root).join("\n"),
+        /reaches src\/backend\/systems\/crm\/tasks\/read\.ts, which is outside the bundle-safe roots/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("keeps the checked-in build manifest current", () => {
     const regenerated = computeCurrentBuildManifest();
     assert.deepEqual(regenerated, BUILD_MANIFEST, "run `npm run build:manifest` and commit the result");
@@ -478,7 +495,7 @@ describe("descriptor coverage", () => {
     const regenerated = computeCurrentBuildManifest();
     const task = regenerated.tasks.find(({ id }) => id === "crm/read-onboarding-record");
     assert.ok(task, "CRM onboarding task has no implementation fingerprint");
-    const driverPath = "src/stores/crm/driver/interpreter.ts";
+    const driverPath = "src/backend/systems/crm/driver/interpreter.ts";
     assert.ok(task.sources.some(({ path }) => path === driverPath));
     const mutatedSources = task.sources.map((source) => source.path === driverPath
       ? { ...source, sha256: FingerprintSchema.parse("0".repeat(64)) }

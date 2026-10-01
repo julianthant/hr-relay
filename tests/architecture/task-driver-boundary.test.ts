@@ -28,9 +28,9 @@ describe("task to system-driver boundary", () => {
 
   it("catches dynamic imports, newPage/$ bypasses, and an indirect private-driver import", () => {
     const root = resolve(tmpdir(), `hrauto-ui-boundary-${String(process.pid)}-${String(Date.now())}`);
-    const path = resolve(root, "src/stores/ucpath/tasks/bad.ts");
-    const helper = resolve(root, "src/stores/ucpath/helper.ts");
-    const driver = resolve(root, "src/stores/ucpath/driver/interpreter.ts");
+    const path = resolve(root, "src/backend/systems/ucpath/tasks/bad.ts");
+    const helper = resolve(root, "src/backend/systems/ucpath/helper.ts");
+    const driver = resolve(root, "src/backend/systems/ucpath/driver/interpreter.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
       mkdirSync(dirname(driver), { recursive: true });
@@ -55,8 +55,8 @@ describe("task to system-driver boundary", () => {
     // reachable: a task that imports the factory (directly or through a
     // helper) is the same ownership bypass as importing a private driver.
     const root = resolve(tmpdir(), `hrauto-ui-factory-${String(process.pid)}-${String(Date.now())}`);
-    const task = resolve(root, "src/stores/ucpath/tasks/bad.ts");
-    const helper = resolve(root, "src/stores/ucpath/helper.ts");
+    const task = resolve(root, "src/backend/systems/ucpath/tasks/bad.ts");
+    const helper = resolve(root, "src/backend/systems/ucpath/helper.ts");
     const factory = resolve(root, "src/backend/runtime/browser/browser-session-factory.ts");
     const shared = resolve(root, "src/backend/systems/browser-shared/action-notes.ts");
     try {
@@ -85,7 +85,7 @@ describe("task to system-driver boundary", () => {
 
   it("catches premature capability forgery and commit implementations", () => {
     const root = resolve(tmpdir(), `hrauto-ui-capability-${String(process.pid)}-${String(Date.now())}`);
-    const path = resolve(root, "src/stores/ucpath/driver/bad.ts");
+    const path = resolve(root, "src/backend/systems/ucpath/driver/bad.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(path, "const token = {} as MutationCapability;\nexport const driver = { commit: async () => token };\n");
@@ -163,7 +163,7 @@ it("allows only the declared durable archive callback and rejects browser, any, 
 
 it("preserves capability-validating driver commits while rejecting raw methods in runtime-control", () => {
   const root = resolve(tmpdir(), `hrauto-ui-owner-${String(process.pid)}-${String(Date.now())}`);
-  const driver = resolve(root, "src/stores/ucpath/driver/commit.ts");
+  const driver = resolve(root, "src/backend/systems/ucpath/driver/commit.ts");
   const runtime = resolve(root, "src/infra/runtime-control/reader.ts");
   try {
     mkdirSync(dirname(driver), { recursive: true }); mkdirSync(dirname(runtime), { recursive: true });

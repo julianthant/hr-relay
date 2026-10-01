@@ -3,7 +3,7 @@ import { dirname, resolve } from "node:path";
 import {
   buildSafeUiCatalog,
   uiCatalogProjections,
-} from "../src/stores/ucpath/driver/catalog.js";
+} from "../src/backend/systems/ucpath/driver/catalog.js";
 
 const USAGE = "usage: npm run ui:catalog -- [--out-root <path>]";
 const DEFAULT_OUT_ROOT = resolve(import.meta.dirname, "..");

@@ -22,13 +22,13 @@ import {
 } from "../../src/backend/app/dry-run-scenario/compose.js";
 import { loadDryRunScenarioManifest } from "../../src/backend/app/dry-run-scenario/manifests.js";
 import { createProductionDryRunScenarioRuntime } from "../../src/backend/app/dry-run-scenario/runtime.js";
-import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/backend/systems/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../src/backend/systems/ucpath/driver/fake.js";
 import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
-} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
-import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
+} from "../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
+import { deriveJobRowFromCells } from "../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { SeparationsKualiFinalizationCanonicalInput } from "../../src/workflows/separations/kuali-finalization/workflow.js";
 import {
   FINALIZATION_ACTION_ID,

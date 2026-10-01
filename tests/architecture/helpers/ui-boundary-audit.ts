@@ -13,8 +13,9 @@ const RAW_BROWSER_MEMBERS = new Set([
  * The closed set of modules allowed to name a Playwright type or drive a raw
  * page. Three closed families, each with one responsibility:
  *
- * - `src/stores/<system>/driver/**` and `.../session.ts` own ONE system's page
- *   knowledge — its semantic driver and its login recipe.
+ * - `src/backend/systems/<system>/driver/**` and `.../session.ts` own ONE
+ *   system's page knowledge — its semantic driver and its login recipe. The
+ *   service-store implementations remain under `src/stores/`.
  * - `src/backend/runtime/browser/**` owns browser CREATION itself: the persistent
  *   context, the Duo Autopilot extension, and the provable teardown behind
  *   `WorkerBrowserSessionFactory` (ref execution-and-sessions §4 — "concrete browser creation
@@ -29,12 +30,15 @@ const RAW_BROWSER_MEMBERS = new Set([
 function isRawBrowserOwner(path: string): boolean {
   return /^src\/stores\/[a-z0-9-]+\/driver\//u.test(path)
     || /^src\/stores\/[a-z0-9-]+\/session\.ts$/u.test(path)
+    || /^src\/backend\/systems\/[a-z0-9-]+\/driver\//u.test(path)
+    || /^src\/backend\/systems\/[a-z0-9-]+\/session\.ts$/u.test(path)
     || /^src\/backend\/runtime\/browser\//u.test(path)
     || /^src\/backend\/systems\/browser-shared\//u.test(path);
 }
 
 function isTaskOrWorkflow(path: string): boolean {
   return /^src\/stores\/[a-z0-9-]+\/tasks\//u.test(path)
+    || /^src\/backend\/systems\/[a-z0-9-]+\/tasks\//u.test(path)
     || /^src\/workflows\//u.test(path);
 }
 
@@ -209,7 +213,7 @@ function rawBrowserAstIssues(path: string, source: ts.SourceFile, checker: ts.Ty
 
 const MUTATION_CAPABILITY_REGISTRY = "src/base/mutation-capability.ts";
 const MUTATION_CAPABILITY_MINTER = "src/backend/runtime/write-sequencer.ts";
-const DRIVER_OWNER_PATTERN = /^src\/stores\/[a-z0-9-]+\/driver\//u;
+const DRIVER_OWNER_PATTERN = /^src\/(?:stores|backend\/systems)\/[a-z0-9-]+\/driver\//u;
 
 export function auditTaskDriverBoundary(root: string): readonly string[] {
   const issues: string[] = [];

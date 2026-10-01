@@ -24,7 +24,7 @@ import {
 } from "../../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../src/domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
-import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
+import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import {
   composeCommandRequest,
   type CommandAction,

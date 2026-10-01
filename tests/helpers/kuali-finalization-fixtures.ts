@@ -52,12 +52,12 @@ import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,
   type KualiFakeWorld,
-} from "../../src/stores/kuali/driver/fake.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
+} from "../../src/backend/systems/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../src/backend/systems/ucpath/driver/fake.js";
 import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
-} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
+} from "../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import type { KualiFinalizationFieldName } from "../../src/domain/ui/kuali-separation-finalization.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {

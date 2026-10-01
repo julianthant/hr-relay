@@ -52,8 +52,8 @@ describe("task/store/session declaration boundaries", () => {
     });
     assert.deepEqual(auditBrowserDeclarations(declarations), []);
     for (const system of BrowserSystemIdSchema.options) {
-      for (const file of ["index.ts", "session.ts"]) {
-        assert.ok(existsSync(resolve(REPO_ROOT, "src/stores", system, file)), `${system}/${file}`);
+      for (const file of ["store.ts", "session.ts"]) {
+        assert.ok(existsSync(resolve(REPO_ROOT, "src/backend/systems", system, file)), `${system}/${file}`);
       }
     }
   });

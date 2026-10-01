@@ -26,7 +26,7 @@ import {
   deriveIdentityEvidenceDigest,
 } from "../../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../src/domain/separations/identity-evidence.js";
-import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
+import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { attentionRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
 import { nextAttention, stepSelection } from "../../../src/dashboard/app/global-keys.js";
 import {

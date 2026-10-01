@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { assertSafeUiCatalogFresh } from "../src/stores/ucpath/driver/catalog.js";
+import { assertSafeUiCatalogFresh } from "../src/backend/systems/ucpath/driver/catalog.js";
 
 const USAGE = "usage: npm run selector:search -- [--catalog <path>] \"<intent>\"";
 const DEFAULT_CATALOG_PATH = resolve(import.meta.dirname, "../generated/ui-catalog.json");

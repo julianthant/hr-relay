@@ -8,7 +8,7 @@ import { ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { UCPATH_PERSON_ORG_SEARCH_SCREEN, UCPATH_PERSON_ORG_EID_INPUT, UCPATH_PERSON_ORG_SEARCH_BUTTON, UCPATH_PERSON_ORG_RESULTS_GRID } from "../../src/domain/ui/ucpath-person-org.js";
-import { ucpathSession } from "../../src/stores/ucpath/session-provider.js";
+import { ucpathSession } from "../../src/backend/systems/ucpath/session-provider.js";
 import { runDeclaredAction } from "../../src/backend/systems/browser-shared/action-notes.js";
 import { Plan1Input, Plan1CanonicalInput, Plan1Output, plan1Stores } from "./plan1-operation-workflows.js";
 import { fixtureBuildManifest } from "./workflow-definition-fixtures.js";

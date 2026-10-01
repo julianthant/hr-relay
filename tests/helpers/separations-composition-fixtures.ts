@@ -61,12 +61,12 @@ import {
   createDeterministicKualiDriver,
   createKualiFakeWorld,
   type KualiFakeWorld,
-} from "../../src/stores/kuali/driver/fake.js";
+} from "../../src/backend/systems/kuali/driver/fake.js";
 import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
   type UcpathSmartHrFakeWorld,
-} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
+} from "../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { SeparationsCanonicalInput, SeparationsInput } from "../../src/workflows/separations/workflow.js";
 import { UUID_2, UUID_3, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";

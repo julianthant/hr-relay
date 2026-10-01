@@ -9,11 +9,11 @@ import {
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
 } from "../../src/domain/ui/ucpath-person-org.js";
 import { UCPATH_SS_SMART_HR_TRANSACTION_SCREEN } from "../../src/domain/ui/ucpath-ss-smart-hr.js";
-import { UCPATH_PERSON_ORG_OPERATION_ELEMENTS } from "../../src/stores/ucpath/driver/person-org-operation.js";
-import { UCPATH_UI_REGISTRY } from "../../src/stores/ucpath/driver/ui-registry.js";
+import { UCPATH_PERSON_ORG_OPERATION_ELEMENTS } from "../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { UCPATH_UI_REGISTRY } from "../../src/backend/systems/ucpath/driver/ui-registry.js";
 
 const REPO_ROOT = resolve(import.meta.dirname, "../../..");
-const OPERATION_PATH = resolve(REPO_ROOT, "src/stores/ucpath/driver/person-org-operation.ts");
+const OPERATION_PATH = resolve(REPO_ROOT, "src/backend/systems/ucpath/driver/person-org-operation.ts");
 
 const REQUIRED_PROVENANCE = Object.freeze([
   "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc",

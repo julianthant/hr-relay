@@ -11,28 +11,28 @@ import {
   uiCatalogMarkdownPath,
   uiCatalogProjections,
   uiCatalogSystems,
-} from "../../src/stores/ucpath/driver/catalog.js";
+} from "../../src/backend/systems/ucpath/driver/catalog.js";
 import {
   CRM_UI_REGISTRY,
   auditCrmUiEvidenceBindings,
   auditCrmUiRegistry,
-} from "../../src/stores/crm/driver/ui-registry.js";
+} from "../../src/backend/systems/crm/driver/ui-registry.js";
 import {
   NEW_KRONOS_UI_REGISTRY,
   auditNewKronosUiEvidenceBindings,
   auditNewKronosUiRegistry,
-} from "../../src/stores/new-kronos/driver/ui-registry.js";
+} from "../../src/backend/systems/new-kronos/driver/ui-registry.js";
 import {
   UCPATH_UI_REGISTRY,
   auditUcpathUiEvidenceBindings,
   auditUcpathUiRegistry,
-} from "../../src/stores/ucpath/driver/ui-registry.js";
+} from "../../src/backend/systems/ucpath/driver/ui-registry.js";
 import {
   CandidateProposalIdSchema,
   LegacySelectorPortMapSchema,
 } from "./helpers/legacy-selector-port-map-audit.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 function readJson(path: string): unknown {
   return JSON.parse(readFileSync(resolve(REPO_ROOT, path), "utf8"));
@@ -162,11 +162,11 @@ describe("semantic UI registry architecture", () => {
   it("derives the guarded projection set from the stores that publish, not from a list", () => {
     const catalog = buildSafeUiCatalog();
     // The set of stores that ship a semantic registry is the ONLY authority for
-    // which markdown projections must exist. `src/stores/kuali/UI-CATALOG.md`
+    // which markdown projections must exist. `src/backend/systems/kuali/UI-CATALOG.md`
     // was generated but guarded nowhere precisely because that set was retyped
     // by hand in three places; both directions are asserted so neither a
     // registry the catalog forgot nor an orphan markdown can hide.
-    const storesRoot = resolve(REPO_ROOT, "src/stores");
+    const storesRoot = resolve(REPO_ROOT, "src/backend/systems");
     const registryStores = readdirSync(storesRoot, { withFileTypes: true })
       .filter((entry) => entry.isDirectory()
         && existsSync(resolve(storesRoot, entry.name, "driver/ui-registry.ts")))
@@ -183,7 +183,7 @@ describe("semantic UI registry architecture", () => {
     assert.deepEqual(markdownStores, registryStores, "an orphan UI-CATALOG.md has no registry behind it");
     assert.deepEqual(
       uiCatalogProjections(catalog).map(({ path }) => path),
-      ["generated/ui-catalog.json", ...registryStores.map((store) => `src/stores/${store}/UI-CATALOG.md`)],
+      ["generated/ui-catalog.json", ...registryStores.map((store) => `src/backend/systems/${store}/UI-CATALOG.md`)],
     );
   });
 
@@ -212,7 +212,7 @@ describe("semantic UI registry architecture", () => {
     assert.match(
       auditUiCatalogProjections(catalog, (path) =>
         path === uiCatalogMarkdownPath("kuali") ? "# stale projection\n" : read(path)).join("\n"),
-      /src\/stores\/kuali\/UI-CATALOG\.md is stale/,
+      /src\/backend\/systems\/kuali\/UI-CATALOG\.md is stale/,
     );
   });
 

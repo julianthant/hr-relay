@@ -36,7 +36,7 @@ import { timelineCheckpointReference } from "../../../src/events/timeline.js";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { separationsIdentityCheckModule } from "../../../src/backend/app/control/step-proof-modules.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
+import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import {
   availableSections,
   buildRunDetail,

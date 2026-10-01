@@ -3,7 +3,7 @@ import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-datab
 import type { Clock } from "../../../../domain/clock.js";
 import type { Fingerprint } from "../../../../domain/ids.js";
 import { WORKFLOW_MODULES, readPendingImplBindings } from "../../control/workflow-registry.js";
-import { buildSafeUiCatalog } from "../../../../stores/ucpath/driver/catalog.js";
+import { buildSafeUiCatalog } from "../../../systems/ucpath/driver/catalog.js";
 import { createExplorerEditService } from "../../../runs/dashboard/commands/explorer-edit-service.js";
 import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "../../../runs/dashboard/queries/explorer.js";
 import type { ExplorerRouteDeps } from "../../../transports/dashboard/routes/explorer-types.js";

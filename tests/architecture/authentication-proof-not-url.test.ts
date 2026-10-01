@@ -99,7 +99,7 @@ export function auditResetVerification(path: string, content: string): readonly 
 }
 
 function storeSessionFiles(): readonly string[] {
-  return gitVisibleFiles(["src/stores"]).filter((path) => /\/session\.ts$/.test(path));
+  return gitVisibleFiles(["src/stores", "src/backend/systems"]).filter((path) => /\/session\.ts$/.test(path));
 }
 
 describe("authentication is never concluded from a URL", () => {
@@ -111,10 +111,10 @@ describe("authentication is never concluded from a URL", () => {
     assert.deepEqual(
       withRecipes.sort(),
       [
-        "src/stores/crm/session.ts",
-        "src/stores/kuali/session.ts",
-        "src/stores/new-kronos/session.ts",
-        "src/stores/ucpath/session.ts",
+        "src/backend/systems/crm/session.ts",
+        "src/backend/systems/kuali/session.ts",
+        "src/backend/systems/new-kronos/session.ts",
+        "src/backend/systems/ucpath/session.ts",
       ],
       "a landed login recipe must be scanned by this guard",
     );
@@ -128,7 +128,7 @@ describe("authentication is never concluded from a URL", () => {
 
   it("catches a recipe that returns a login result on its own authority", () => {
     assert.match(
-      auditLoginRecipeShape("src/stores/onbase/session.ts", [
+      auditLoginRecipeShape("src/backend/systems/onbase/session.ts", [
         'import type { SystemLoginRecipe } from "../../infra/browser/login-contract.js";',
         "export const onbaseLoginRecipe: SystemLoginRecipe = async (context) => {",
         '  if (context.page.url().includes("hylandcloud.com")) return "already-authenticated";',

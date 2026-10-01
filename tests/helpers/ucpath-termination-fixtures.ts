@@ -40,7 +40,7 @@ import {
   createDeterministicUcpathSmartHrWorldDriver,
   createUcpathSmartHrFakeWorld,
   type UcpathSmartHrFakeWorld,
-} from "../../src/stores/ucpath/driver/smart-hr-fake.js";
+} from "../../src/backend/systems/ucpath/driver/smart-hr-fake.js";
 import type {
   UcpathPendingTransactionSet,
   UcpathSsSmartHrSettlementDiagnostic,

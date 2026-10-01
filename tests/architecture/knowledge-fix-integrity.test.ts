@@ -80,7 +80,7 @@ function fix(overrides: Record<string, unknown> = {}): Record<string, unknown> {
     requestedBy: "claude",
     summary: "Wait for the ready page state before the submit click.",
     affected: ["ucpath.smart-hr.save-submit"],
-    files: ["src/stores/ucpath/driver/smart-hr.ts"],
+    files: ["src/backend/systems/ucpath/driver/smart-hr.ts"],
     scenarios: ["ucpath/submit-before-ready"],
     verification: [EVIDENCE_B],
     commit: COMMIT,

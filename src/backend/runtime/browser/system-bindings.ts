@@ -11,17 +11,17 @@ import type { BrowserDriver } from "../../../base/task.js";
 import type { Clock } from "../../../domain/clock.js";
 import type { BrowserSystemId } from "../../../domain/ids.js";
 import type { AuthenticatedApplicationVerifier, SystemLoginRecipe } from "../../systems/browser-shared/login-contract.js";
-import { createCrmOnboardingDriver } from "../../../stores/crm/driver/interpreter.js";
-import { createKualiRrssDocumentDriver } from "../../../stores/kuali/driver/interpreter.js";
-import { kualiLoginRecipe, verifyKualiAuthenticatedApplication } from "../../../stores/kuali/session.js";
-import { crmLoginRecipe, verifyCrmAuthenticatedApplication } from "../../../stores/crm/session.js";
-import { createNewKronosTimecardDriver } from "../../../stores/new-kronos/driver/interpreter.js";
+import { createCrmOnboardingDriver } from "../../systems/crm/driver/interpreter.js";
+import { createKualiRrssDocumentDriver } from "../../systems/kuali/driver/interpreter.js";
+import { kualiLoginRecipe, verifyKualiAuthenticatedApplication } from "../../systems/kuali/session.js";
+import { crmLoginRecipe, verifyCrmAuthenticatedApplication } from "../../systems/crm/session.js";
+import { createNewKronosTimecardDriver } from "../../systems/new-kronos/driver/interpreter.js";
 import {
   newKronosLoginRecipe,
   verifyNewKronosAuthenticatedApplication,
-} from "../../../stores/new-kronos/session.js";
-import { createUcpathPersonOrgDriver } from "../../../stores/ucpath/driver/interpreter.js";
-import { ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../../stores/ucpath/session.js";
+} from "../../systems/new-kronos/session.js";
+import { createUcpathPersonOrgDriver } from "../../systems/ucpath/driver/interpreter.js";
+import { ucpathLoginRecipe, verifyUcpathAuthenticatedApplication } from "../../systems/ucpath/session.js";
 import type { Page } from "playwright";
 
 export interface BrowserSystemBinding {

@@ -35,7 +35,7 @@ export const UiEvidenceReferenceSchema = z.string().regex(
   "UI evidence refs must be checked-in sanitized JSON manifests",
 );
 export const UiSourceLinkSchema = z.string().regex(
-  /^src\/stores\/[a-z0-9-]+\/driver\/[a-z0-9-]+\.ts#[A-Z0-9_]+$/,
+  /^src\/(?:stores|backend\/systems)\/[a-z0-9-]+\/driver\/[a-z0-9-]+\.ts#[A-Z0-9_]+$/,
 );
 export const UiPortMapRowReferenceSchema = z.strictObject({
   system: BrowserSystemIdSchema,

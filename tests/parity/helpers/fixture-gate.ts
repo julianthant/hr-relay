@@ -39,7 +39,7 @@ import {
 } from "../../../src/domain/separations/identity-evidence.js";
 import type { IdentityEvidencePacket } from "../../../src/domain/separations/identity-evidence.js";
 import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
-import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
+import { deriveJobRowFromCells } from "../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 
 /** The EID resolved by name and then read back from UCPath. */
 export const FIXTURE_GATE_CHECKED_EID = "10688204";

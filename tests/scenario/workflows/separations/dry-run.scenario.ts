@@ -70,7 +70,7 @@
  *   §9.19's row-① finding on 4537 (2026-08-19): "UCPath holds five
  *   transactions for this EID, every one `Approved`, zero `Pending`; the probe
  *   settles `already-present` at beat ①" — combined with the probe's declared
- *   polarity in `src/stores/ucpath/tasks/match-pending-terminations.ts`
+ *   polarity in `src/backend/systems/ucpath/tasks/match-pending-terminations.ts`
  *   (`present` means "there is nothing to sweep", so the sweep settles
  *   `already-present` and clicks nothing) and `clearPendingNode`'s
  *   `probePolicy: "always"` / `dryRun: "stop-after-prepare"`

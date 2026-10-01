@@ -78,18 +78,18 @@ import {
   KUALI_FAKE_UNFINALIZED_FIELDS,
   createDeterministicKualiDriver,
   createKualiFakeWorld,
-} from "../../../../src/stores/kuali/driver/fake.js";
-import type { KualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
-import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/stores/ucpath/driver/fake.js";
-import { deriveJobRowFromCells } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
-import { readJobSummaryTask } from "../../../../src/stores/ucpath/tasks/read-job-summary.js";
+} from "../../../../src/backend/systems/kuali/driver/fake.js";
+import type { KualiFakeWorld } from "../../../../src/backend/systems/kuali/driver/fake.js";
+import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
+import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
+import { readJobSummaryTask } from "../../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
 import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
 import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
 import { matchDepartmentOptionTask } from "../../../../src/stores/separations/tasks/match-department-option.js";
-import { matchSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/match-separation-finalization.js";
-import { saveSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/save-separation-finalization.js";
-import { stageSeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/stage-separation-finalization.js";
-import { verifySeparationFinalizationTask } from "../../../../src/stores/kuali/tasks/verify-separation-finalization.js";
+import { matchSeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/match-separation-finalization.js";
+import { saveSeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/save-separation-finalization.js";
+import { stageSeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/stage-separation-finalization.js";
+import { verifySeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/verify-separation-finalization.js";
 import { separationsKualiFinalizationDescriptor } from "../../../helpers/registered-workflows.js";
 import { SEPARATIONS_KUALI_FINALIZATION_CLAIMS } from "../../coverage-claims.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";

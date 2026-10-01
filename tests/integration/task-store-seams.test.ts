@@ -7,63 +7,15 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { describe, it } from "vitest";
-import { z } from "zod";
-import {
-  declareDriver,
-  declareDriverFor,
-  defineBrowserStore,
-  defineServiceStore,
-  defineTaskStoreRegistry,
-} from "../../src/base/store.js";
-import {
-  createDeterministicSessionProvider,
-  defineUnwiredSessionProvider,
-} from "../../src/base/session.js";
-import { defineTask } from "../../src/base/task.js";
-import { defineTaskContract } from "../../src/domain/contracts/base.js";
+import { createDeterministicSessionProvider } from "../../src/base/session.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,
   ProviderAdmissionIdSchema,
-  ScenarioIdSchema,
-  taskId,
 } from "../../src/domain/ids.js";
-import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-org.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
-import { browserStoreRegistry } from "../../src/backend/app/task-registry.js";
-
-const SCENARIO = ScenarioIdSchema.parse("ucpath/store-fixture-happy");
-const INPUT = z.strictObject({ value: z.string().min(1) });
-const OUTPUT = z.strictObject({ value: z.string().min(1) });
-const FIXTURE_DRIVER = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
-
-function fixtureReadContract() {
-  return defineTaskContract({
-    id: taskId("ucpath/search-store-fixture"),
-    title: "Search store fixture",
-    effect: "read",
-    input: INPUT,
-    output: OUTPUT,
-    errorCodes: ["fixture-missing"] as const,
-    subject: { kind: "none", reason: "registry resolution fixture" },
-    scenarios: [SCENARIO],
-    freshness: { defaultMaxAgeMs: 0 },
-    provenance: { default: "live" },
-    example: { value: "fixture" },
-  });
-}
-
-function fixtureReadTask() {
-  const contract = fixtureReadContract();
-  return defineTask(FIXTURE_DRIVER, contract, {
-    sessions: [{ system: "ucpath", access: "read", session: "reuse-worker" }],
-    async run({ input }) {
-      return input;
-    },
-  });
-}
 
 async function readStream(stream: Readable): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];
@@ -75,121 +27,6 @@ async function readStream(stream: Readable): Promise<Uint8Array> {
 }
 
 describe("task, store, session, provider, and artifact seams", () => {
-  it("declares all nine browser stores with wired worker authentication and OnBase-only exclusivity", async () => {
-    const expected = [
-      "crm",
-      "i9",
-      "kuali",
-      "new-kronos",
-      "old-kronos",
-      "onbase",
-      "servicenow",
-      "sharepoint",
-      "ucpath",
-    ];
-    assert.deepEqual(browserStoreRegistry.stores.map(({ namespace }) => namespace).sort(), expected);
-    const authenticated: string[] = [];
-    const handle = {
-      authenticate(system: string) {
-        authenticated.push(system);
-        return Promise.resolve("logged-in" as const);
-      },
-    };
-    for (const store of browserStoreRegistry.stores) {
-      assert.equal(store.kind, "browser");
-      assert.equal(store.driver.system, store.namespace);
-      assert.equal(store.session.system, store.namespace);
-      assert.equal(store.session.exclusive === true, store.namespace === "onbase");
-      assert.equal(await store.session.login(handle, {}), "logged-in");
-    }
-    assert.deepEqual(authenticated.sort(), expected);
-    assert.throws(() => defineUnwiredSessionProvider("onbase"), /must declare exclusive:true/);
-    assert.throws(
-      () => defineUnwiredSessionProvider("ucpath", { exclusive: true }),
-      /cannot declare exclusive:true/,
-    );
-  });
-
-  it("binds tasks to exact effects/sessions and resolves corpus references in the store registry", () => {
-    const task = fixtureReadTask();
-    const session = createDeterministicSessionProvider("ucpath", ["logged-in"]).provider;
-    const store = defineBrowserStore(
-      "ucpath",
-      FIXTURE_DRIVER,
-      session,
-      { searchStoreFixture: task },
-    );
-    assert.equal(task.driver, FIXTURE_DRIVER);
-    assert.equal(store.tasks.searchStoreFixture.driver, store.driver);
-    const corpus = {
-      scenarioIds: [SCENARIO],
-      tasks: [{ id: task.contract.id, effect: task.contract.effect }],
-    };
-    assert.doesNotThrow(() => defineTaskStoreRegistry([store], corpus));
-    assert.throws(
-      () => defineTaskStoreRegistry([store], { ...corpus, scenarioIds: [] }),
-      /unresolved scenario/,
-    );
-    assert.throws(
-      () => defineTaskStoreRegistry([store], { scenarioIds: [SCENARIO], tasks: [] }),
-      /absent from the contract corpus/,
-    );
-    assert.throws(() => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, task.contract, {
-      sessions: [{ system: "ucpath", access: "transaction", session: "reuse-worker" }],
-      run: async ({ input }: { input: z.output<typeof INPUT> }) => input,
-    }]), /requires read session access/);
-    assert.throws(() => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, { ...task.contract }, task.impl]),
-      /exact contract object returned by defineTaskContract/);
-    assert.throws(() => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, task.contract, { run: task.impl.run }]),
-      /requires sessions/);
-    assert.throws(
-      () => Reflect.apply(defineTask, undefined, [declareDriver("crm", "unwired"), task.contract, task.impl]),
-      /cannot bind crm driver/,
-    );
-    const replacementDriver = declareDriverFor<UcpathPersonOrgDriver>()("ucpath", "semantic-ready");
-    assert.throws(
-      () => defineBrowserStore("ucpath", replacementDriver, session, { searchStoreFixture: task }),
-      /must use the browser store's exact driver declaration/,
-    );
-    assert.throws(
-      () => defineBrowserStore("crm", declareDriver("crm", "unwired"), session, {}),
-      /cannot use ucpath session provider/,
-    );
-  });
-
-  it("keeps service tasks sessionless and provider declarations capability-narrowed", () => {
-    const scenario = ScenarioIdSchema.parse("ocr/provider-fixture-happy");
-    const contract = defineTaskContract({
-      id: taskId("ocr/read-provider-fixture"),
-      title: "Read provider fixture",
-      effect: "read",
-      input: z.strictObject({}),
-      output: OUTPUT,
-      errorCodes: ["provider-unavailable"] as const,
-      providers: ["ocr.extract"] as const,
-      subject: { kind: "none", reason: "service provider fixture" },
-      scenarios: [scenario],
-      freshness: { defaultMaxAgeMs: 0 },
-      provenance: { default: "derived" },
-      example: { value: "fixture" },
-    });
-    const task = defineTask(contract, {
-      sessions: [],
-      async run() {
-        return { value: "fixture" };
-      },
-    });
-    const store = defineServiceStore("ocr", { readProviderFixture: task });
-    assert.throws(
-      () => Reflect.apply(defineTask, undefined, [FIXTURE_DRIVER, contract, task.impl]),
-      /headless task cannot bind a browser driver/,
-    );
-    assert.doesNotThrow(() => defineTaskStoreRegistry([store], {
-      scenarioIds: [scenario],
-      tasks: [{ id: contract.id, effect: "read" }],
-    }));
-  });
-
   it("atomically persists and deduplicates content bytes without exposing a backing path", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifacts-"));
     try {
@@ -219,7 +56,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
-  });
+  })
 
   it("cleans pre-publication faults and recovers committed artifacts after every write boundary", async () => {
     const steps: readonly ArtifactWriteFaultStep[] = [
@@ -256,7 +93,7 @@ describe("task, store, session, provider, and artifact seams", () => {
         await rm(workspace, { recursive: true, force: true });
       }
     }
-  });
+  })
 
   it("recovers after a child process is hard-killed before publication", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-hard-crash-"));
@@ -316,7 +153,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
-  });
+  })
 
   it("rejects relative fixture roots and symlinked storage roots", async () => {
     assert.throws(() => RuntimeAdmission.syntheticRoots("relative-workspace", "relative-workspace/artifacts"),
@@ -339,7 +176,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       await rm(aliasRoot, { recursive: true, force: true });
       await rm(outside, { recursive: true, force: true });
     }
-  });
+  })
 
   it("fails loud on corrupted artifact JSON, digest, payload, and length metadata", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-corrupt-"));
@@ -368,7 +205,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
-  });
+  })
 
   it("atomically converges concurrent same-digest writes on one winner ref", async () => {
     const workspace = await mkdtemp(join(tmpdir(), "hrauto-artifact-concurrent-"));
@@ -394,7 +231,7 @@ describe("task, store, session, provider, and artifact seams", () => {
     } finally {
       await rm(workspace, { recursive: true, force: true });
     }
-  });
+  })
 
   it("validates deterministic provider envelopes and fails loud when scripted outcomes end", async () => {
     const hash = FingerprintSchema.parse("a".repeat(64));
@@ -435,7 +272,7 @@ describe("task, store, session, provider, and artifact seams", () => {
       }),
       /cannot estimate capability ai\.advisory/,
     );
-  });
+  })
 
   it("records deterministic session calls without manufacturing fallback results", async () => {
     const harness = createDeterministicSessionProvider(
@@ -447,5 +284,5 @@ describe("task, store, session, provider, and artifact seams", () => {
     assert.equal(await harness.provider.login(undefined, {}), "logged-in");
     assert.equal(harness.calls().length, 2);
     await assert.rejects(harness.provider.login(undefined, {}), /no queued login result/);
-  });
+  })
 });

@@ -150,8 +150,8 @@ describe("task contract sealing architecture", () => {
 
   it("catches store-contract dynamic/import-graph, schema, and sealing bypasses", () => {
     const root = resolve(tmpdir(), `hrauto-task-contract-${String(process.pid)}-${String(Date.now())}`);
-    const file = resolve(root, "src/stores/ucpath/contracts/bad.ts");
-    const helper = resolve(root, "src/stores/ucpath/helper.ts");
+    const file = resolve(root, "src/backend/systems/ucpath/contracts/bad.ts");
+    const helper = resolve(root, "src/backend/systems/ucpath/helper.ts");
     try {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(

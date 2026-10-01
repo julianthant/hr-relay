@@ -60,8 +60,8 @@ import type { UcpathPersonSelection } from "../../../../src/domain/contracts/ucp
 import type { UcpathJobRow, UcpathJobSummary } from "../../../../src/domain/ui/ucpath-job-summary.js";
 import type { UcpathTerminationProof } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
 import type { UcpathTransactionRow } from "../../../../src/domain/ui/ucpath-smart-hr-termination.js";
-import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/stores/kuali/driver/fake.js";
-import { searchSeparationActionTask } from "../../../../src/stores/kuali/tasks/search-separation-action.js";
+import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/backend/systems/kuali/driver/fake.js";
+import { searchSeparationActionTask } from "../../../../src/backend/systems/kuali/tasks/search-separation-action.js";
 import { manualClock } from "../../../../src/domain/clock.js";
 import { matchActiveEmploymentTask } from "../../../../src/stores/separations/tasks/match-active-employment.js";
 import { matchDepartmentOptionTask } from "../../../../src/stores/separations/tasks/match-department-option.js";
@@ -73,7 +73,7 @@ import { readSeparationPlanTask } from "../../../../src/stores/separations/tasks
 import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
 import { verifyTerminationReceiptTask } from "../../../../src/stores/separations/tasks/verify-termination-receipt.js";
 import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
-import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../../../src/stores/kuali/driver/fake.js";
+import { KUALI_FAKE_UNFINALIZED_FIELDS } from "../../../../src/backend/systems/kuali/driver/fake.js";
 import { SEPARATIONS_CLAIMS } from "../../coverage-claims.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";
 import {

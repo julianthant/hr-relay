@@ -51,18 +51,18 @@ import { EidSchema } from "../../../../src/domain/ids.js";
 import { directIdentifierDisplay } from "../../../../src/domain/redaction.js";
 import { DataPointSchema } from "../../../../src/domain/task-provenance.js";
 import type { DataPoint } from "../../../../src/domain/task-provenance.js";
-import { createDeterministicCrmOnboardingDriver } from "../../../../src/stores/crm/driver/fake.js";
-import { chooseExactCrmRecord } from "../../../../src/stores/crm/driver/interpreter.js";
-import { readOnboardingDatesTask } from "../../../../src/stores/crm/tasks/read-onboarding-dates.js";
-import { readOnboardingRecordTask } from "../../../../src/stores/crm/tasks/read-onboarding-record.js";
+import { createDeterministicCrmOnboardingDriver } from "../../../../src/backend/systems/crm/driver/fake.js";
+import { chooseExactCrmRecord } from "../../../../src/backend/systems/crm/driver/interpreter.js";
+import { readOnboardingDatesTask } from "../../../../src/backend/systems/crm/tasks/read-onboarding-dates.js";
+import { readOnboardingRecordTask } from "../../../../src/backend/systems/crm/tasks/read-onboarding-record.js";
 import {
   parsePersonOrgGridRows,
   searchPersonOrgWithPagePort,
-} from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+} from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import type {
   PersonOrgDetail,
   PersonOrgPagePort,
-} from "../../../../src/stores/ucpath/driver/person-org-operation.js";
+} from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { executeClaimedRun } from "../../../../src/backend/runtime/run-executor.js";
 import type { RunExecutorDependencies } from "../../../../src/backend/runtime/run-executor.js";
 import { taskStoreRegistry } from "../../../../src/backend/app/task-registry.js";

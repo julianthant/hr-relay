@@ -56,7 +56,9 @@ function resolveSourceFile(from: string, specifier: string): string | undefined 
 
 function forbiddenRuntimePath(file: string): string | undefined {
   const relative = repoRelative(file);
-  if (relative.startsWith("src/stores/")) return "store/driver implementation";
+  if (relative.startsWith("src/stores/") || relative.startsWith("src/backend/systems/")) {
+    return "store/driver implementation";
+  }
   if (relative.startsWith("src/infra/browser/")) return "browser runtime implementation";
   return undefined;
 }
@@ -94,8 +96,8 @@ describe("workflow operation display browser boundary", () => {
   it("detects both classes of forbidden runtime reach", () => {
     expect(auditOperationDisplayImportClosure("src/backend/app/config/resolve.ts"))
       .toContain("src/backend/app/config/resolve.ts imports Node builtin node:crypto");
-    expect(auditOperationDisplayImportClosure("src/stores/ucpath/driver/person-org-operation.ts"))
-      .toContain("src/stores/ucpath/driver/person-org-operation.ts is a store/driver implementation");
+    expect(auditOperationDisplayImportClosure("src/backend/systems/ucpath/driver/person-org-operation.ts"))
+      .toContain("src/backend/systems/ucpath/driver/person-org-operation.ts is a store/driver implementation");
   });
 });
 

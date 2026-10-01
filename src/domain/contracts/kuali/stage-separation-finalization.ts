@@ -66,7 +66,7 @@ export const KualiStageSeparationFinalization = defineTaskContract({
   input: KualiFinalizationTargetSchema,
   output: KualiFinalizationStagingSchema,
   // Every code below has exactly one producer in
-  // `src/stores/kuali/tasks/stage-separation-finalization.ts`; a declared code
+  // `src/backend/systems/kuali/tasks/stage-separation-finalization.ts`; a declared code
   // with no producer is a dead union member.
   errorCodes: [
     "unexpected-page-state",
