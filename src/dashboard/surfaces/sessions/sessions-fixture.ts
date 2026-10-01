@@ -50,6 +50,6 @@ export function previewSessionControl(data: SessionsViewState, id: string, contr
 export function previewSessionAdd(data: SessionsViewState, workflowId: string, count: number, firstOrdinal: number): SessionsViewState {
   if (data.state !== "ready") throw new Error("sessions-preview-not-ready");
   const workflow = SESSION_SAMPLE_WORKFLOWS.find(item => item.id === workflowId);
-  if (!workflow || !Number.isSafeInteger(count) || count < 1 || count > 6) throw new Error("sessions-preview-add-invalid");
+  if (!workflow || !Number.isSafeInteger(count) || count < 1) throw new Error("sessions-preview-add-invalid");
   return { state: "ready", workers: [...data.workers, ...Array.from({ length: count }, (_, index): SessionWorker => ({ id: `sample-added-${firstOrdinal + index}`, label: `Worker ${firstOrdinal + index}`, workflow: workflow.label, state: "starting", action: "Open browser sessions", timeline: sampleTimeline(workflow.id, 0), browsers: [{ id: "ucpath", label: "UCPath", state: "starting" }] }))] };
 }

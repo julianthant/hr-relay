@@ -11,7 +11,7 @@ function WorkerCard({ worker, onControl }: { worker: SessionWorker; onControl: (
     <p className="mb-0 mt-1 text-caption text-ui-secondary">{worker.subject ?? "No run assigned"}</p>
     <ul aria-label={`${worker.label} systems`} className="mb-3 mt-3 grid list-none grid-cols-2 gap-1.5 pl-0">{worker.browsers.map(browser => <li key={browser.id} className="flex min-h-8 min-w-0 items-center justify-between gap-2 rounded-md bg-ui-panel px-2 py-1 text-caption last:odd:col-span-2"><span className="flex min-w-0 items-center gap-1"><Monitor aria-hidden className="size-3 shrink-0 text-ui-muted" /><span className="truncate">{browser.label}</span></span><span className={cn("shrink-0", browser.state === "unavailable" ? "text-ui-danger" : browser.state === "starting" ? "text-ui-warning" : browser.state === "active" ? "text-ui-info" : "text-ui-secondary")}>{browser.state === "active" ? "In use" : browser.state === "ready" ? "Ready" : browser.state === "starting" ? "Opening" : "Unavailable"}</span></li>)}</ul>
     <div className="mt-auto min-h-10 border-t border-ui-stroke pt-2">
-      {worker.timeline ? <SessionTimeline nodes={worker.timeline} label={`${worker.label} node timeline`} action={worker.action} /> : worker.state === "idle" ? <div className="flex min-h-8 items-center"><div role="img" aria-label="No run in progress" className="h-1.5 w-full rounded-sm bg-ui-stroke-control" /></div> : <p className="m-0 text-body">{worker.action}</p>}
+      {worker.timeline ? <SessionTimeline nodes={worker.timeline} label={`${worker.label} node timeline`} action={worker.action} /> : worker.state === "idle" ? <div><p className="mb-2 mt-0 text-body">Ready for the next run</p><div role="img" aria-label="No run in progress" className="h-1.5 w-full rounded-sm bg-ui-stroke-control" /></div> : <p className="m-0 text-body">{worker.action}</p>}
       {worker.problem && <p className="mb-0 mt-2 text-caption text-ui-danger">{worker.problem}</p>}
     </div>
     <footer className="mt-2 flex min-h-8 items-center justify-between gap-2 border-t border-ui-stroke pt-2"><span className="text-caption tabular-nums text-ui-muted">{worker.elapsed ?? (worker.state === "idle" ? "Available" : "Not measured")}</span><span className="flex items-center gap-1">
@@ -32,7 +32,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const [addOpen, setAddOpen] = useState(false);
   const [workflow, setWorkflow] = useState(workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
-  const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1 && Number(count) <= 6;
+  const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
   const validWorkflow = workflows.some(item => item.id === workflow);
   return <section aria-label="Session Panel" className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     <ActionBarRow label="Session actions" className="h-11 gap-3 px-3"><button type="button" aria-expanded={open} aria-controls={contentId} onClick={() => onOpenChange(!open)} className="flex shrink-0 items-center gap-2 rounded-md px-1 py-1.5 hover:bg-ui-hover focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-info">{open ? <ChevronDown aria-hidden className="size-3.5 text-ui-muted" /> : <ChevronUp aria-hidden className="size-3.5 text-ui-muted" />}<UsersRound aria-hidden className="size-3.5 text-ui-muted" /><span className="text-heading">Sessions</span></button>
@@ -40,13 +40,13 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       <span className="ml-auto flex shrink-0 items-center gap-2">
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild><Button size="sm" variant="secondary" disabled={data.state !== "ready" || !workflows.length} icon={<Plus aria-hidden className="size-3.5" />}>Add workers</Button></DialogTrigger>
-          <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
-            <DialogBody><div className="grid gap-5">
+          <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
+            <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={workflow} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
-              <Field label="Workers" description="Up to 6 at a time."><div className="flex items-center gap-2">
+              <Field label="Workers"><div className="flex items-center gap-2">
                 <Button variant="secondary" aria-label="Remove one worker" icon={<Minus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) <= 1} onClick={() => setCount(String(Number(count) - 1))} />
-                <Input aria-label="Workers" className="min-w-0 flex-1 text-center tabular-nums" type="number" min={1} max={6} step={1} value={count} onChange={event => setCount(event.target.value)} />
-                <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) >= 6} onClick={() => setCount(String(Number(count) + 1))} />
+                <Input aria-label="Workers" className="min-w-0 flex-1 text-center tabular-nums" type="number" min={1} step={1} value={count} onChange={event => setCount(event.target.value)} />
+                <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount} onClick={() => setCount(String(Number(count) + 1))} />
               </div></Field>
             </div></DialogBody>
             <DialogFooter><Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button><Button disabled={!validCount || !validWorkflow || data.state !== "ready"} onClick={() => { onAdd(workflow, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
