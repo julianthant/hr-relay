@@ -65,7 +65,13 @@ describe("frontend timeline and sessions", () => {
     if (empty.state !== "ready" || added.state !== "ready") throw new Error("ready sample required");
     assert.equal(empty.workers.length, 0);
     assert.deepEqual(added.workers.map(worker => [worker.id, worker.workflow, worker.state]), [["sample-added-1", "Separations", "starting"], ["sample-added-2", "Separations", "starting"]]);
-    for (const count of [0, 7, 1.5, NaN]) assert.throws(() => previewSessionAdd(empty, "separations", count, 1), /sessions-preview-add-invalid/);
+    const many = previewSessionAdd(empty, "person-lookup", 12, 3);
+    if (many.state !== "ready") throw new Error("ready result required");
+    assert.equal(many.workers.length, 12);
+    assert.equal(new Set(many.workers.map(worker => worker.id)).size, 12);
+    assert.ok(many.workers.every(worker => worker.workflow === "Person lookup"));
+    assert.equal(empty.workers.length, 0);
+    for (const count of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => previewSessionAdd(empty, "separations", count, 1), /sessions-preview-add-invalid/);
     assert.throws(() => previewSessionAdd(empty, "missing", 1, 1), /sessions-preview-add-invalid/);
   });
   it("distinguishes unknown state from empty workers and rejects false progress", () => {
@@ -84,7 +90,8 @@ describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host without any dashboard client provider", () => {
     const markup = renderToStaticMarkup(createElement(SessionPanel, { open: true, onOpenChange: () => {} }));
     assert.equal((markup.match(/<article /gu) ?? []).length, 4);
-    assert.doesNotMatch(markup, /Sample data|Ready for the next run|Add to preview/);
+    assert.doesNotMatch(markup, /Sample data|Add to preview/);
+    assert.match(markup, /Ready for the next run/);
     assert.match(markup, /aria-label="No run in progress"/);
     assert.match(markup, /Read the timecard/);
     assert.doesNotMatch(markup, /pool version|expectedVersion|lease|Live<|No worker is running|>Worker \d+</);
