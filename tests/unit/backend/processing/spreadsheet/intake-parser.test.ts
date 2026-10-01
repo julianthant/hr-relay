@@ -10,10 +10,11 @@ import { createIntakeParser } from "../../../../../src/server/intake/intake-pars
 type FixtureCell = string | number | boolean | Date | null;
 
 async function workbook(sheets: readonly { name: string; data: readonly (readonly FixtureCell[])[] }[]) {
-  return Buffer.from(await writeXlsxFile(sheets.map(({ name, data }) => ({
+  const workbookSheets = sheets.map(({ name, data }) => ({
     sheet: name,
-    data: data.map((row) => row.map((value) => ({ value }))),
-  }))).toBuffer());
+    data: data.map((row) => row.map((value) => value === null ? null : { value })),
+  }));
+  return Buffer.from(await writeXlsxFile(workbookSheets).toBuffer());
 }
 
 function artifactFor(bytes: Buffer) {
@@ -137,5 +138,4 @@ describe("prepared intake parser", () => {
     if (newest.state === "parsed") assert.deepEqual(newest.layout?.rows, [["10800000", "Avery Example"]]);
   });
 });
-
 

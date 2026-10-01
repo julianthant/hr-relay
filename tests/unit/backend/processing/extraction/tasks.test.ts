@@ -4,10 +4,17 @@ import { Readable } from "node:stream";
 import { describe, it } from "vitest";
 import type { ContentAddressedArtifactWriter } from "../../../../../src/base/artifacts.js";
 import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
+import { ExtractPdfPagesOutputSchema } from "../../../../../src/domain/contracts/extraction/extract-pdf-pages.js";
+import type { ExtractSpreadsheetOutput } from "../../../../../src/domain/contracts/extraction/extract-spreadsheet.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
 import { extractPdfPagesTask, extractSpreadsheetTask } from "../../../../../src/stores/extraction/index.js";
 
 const CSV = "text/csv";
+type ArtifactReference = ReturnType<typeof ArtifactRefSchema.parse>;
+type ExtractPdfPagesOutput = ReturnType<typeof ExtractPdfPagesOutputSchema.parse>;
+type TaskResult<Output, Metadata extends object> =
+  | (Readonly<{ outcome: "success"; output: Output }> & Metadata)
+  | (Readonly<{ outcome: "failure"; failure: Readonly<{ code: string; message: string }> }> & Metadata);
 
 function artifactFor(bytes: Buffer, mediaType: string) {
   return ArtifactRefSchema.parse({
@@ -22,7 +29,10 @@ function fail(code: string, message: string): never {
   throw Object.assign(new Error(message), { code });
 }
 
-async function runSpreadsheet(csv: string, options: Readonly<{ sheet?: string; headerRowIndex?: number }> = {}) {
+async function runSpreadsheet(
+  csv: string,
+  options: Readonly<{ sheet?: string; headerRowIndex?: number }> = {},
+): Promise<TaskResult<ExtractSpreadsheetOutput, Readonly<{ facts: unknown[]; opened: unknown[]; artifact: ArtifactReference }>>> {
   const bytes = Buffer.from(csv, "utf8");
   const artifact = artifactFor(bytes, CSV);
   const opened: unknown[] = [];
@@ -43,11 +53,11 @@ async function runSpreadsheet(csv: string, options: Readonly<{ sheet?: string; h
       input: { artifact, ...options },
       ctx: ctx as never,
     });
-    return { output, facts, opened, artifact };
+    return { outcome: "success" as const, output, facts, opened, artifact };
   } catch (error) {
     const caught = error as Error & { code?: string };
     if (caught.code === undefined) throw error;
-    return { failure: { code: caught.code, message: caught.message }, facts, opened, artifact };
+    return { outcome: "failure" as const, failure: { code: caught.code, message: caught.message }, facts, opened, artifact };
   }
 }
 
@@ -78,7 +88,15 @@ function buildOnePagePdf(): Buffer {
   return Buffer.from(pdf, "latin1");
 }
 
-async function runPdf(bytes: Buffer, toPage?: number) {
+async function runPdf(
+  bytes: Buffer,
+  toPage?: number,
+): Promise<TaskResult<ExtractPdfPagesOutput, Readonly<{
+  writes: { bytes: Buffer; mediaType: string }[];
+  facts: unknown[];
+  opened: unknown[];
+  document: ArtifactReference;
+}>>> {
   const document = artifactFor(bytes, "application/pdf");
   const writes: { bytes: Buffer; mediaType: string }[] = [];
   const facts: unknown[] = [];
@@ -110,11 +128,11 @@ async function runPdf(bytes: Buffer, toPage?: number) {
       input: { document, ...(toPage === undefined ? {} : { toPage }) },
       ctx: ctx as never,
     });
-    return { output, writes, facts, opened, document };
+    return { outcome: "success" as const, output, writes, facts, opened, document };
   } catch (error) {
     const caught = error as Error & { code?: string };
     if (caught.code === undefined) throw error;
-    return { failure: { code: caught.code, message: caught.message }, writes, facts, opened, document };
+    return { outcome: "failure" as const, failure: { code: caught.code, message: caught.message }, writes, facts, opened, document };
   }
 }
 
@@ -123,8 +141,7 @@ describe("extraction task wrappers", () => {
     const result = await runSpreadsheet(
       "Preamble,\nEmployee ID#,Effective Date\n10800000,07/01/2026\n",
     );
-    assert.equal("failure" in result, false, JSON.stringify(result));
-    if (!("output" in result)) throw new Error("expected spreadsheet output");
+    if (result.outcome !== "success") throw new Error(`expected spreadsheet output, received ${result.failure.code}`);
 
     assert.equal(result.output.sheet, "default");
     assert.equal(result.output.headerRowIndex, 1);
@@ -141,28 +158,23 @@ describe("extraction task wrappers", () => {
 
   it("refuses an unknown sheet without recording a successful read", async () => {
     const missing = await runSpreadsheet("Employee ID#,Full Name\n10800000,Avery\n", { sheet: "Missing" });
-    assert.equal("failure" in missing, true);
-    if ("failure" in missing) {
-      assert.equal(missing.failure.code, "unknown-sheet");
-      assert.equal(missing.failure.message, "a CSV has one sheet, named default");
-      assert.deepEqual(missing.facts, []);
-    }
+    if (missing.outcome !== "failure") throw new Error("expected unknown-sheet refusal");
+    assert.equal(missing.failure.code, "unknown-sheet");
+    assert.equal(missing.failure.message, "a CSV has one sheet, named default");
+    assert.deepEqual(missing.facts, []);
   });
 
   it("refuses an invalid explicit header instead of clamping and recording facts", async () => {
     const row = await runSpreadsheet("Employee ID#,Full Name\n10800000,Avery\n", { headerRowIndex: 9 });
-    assert.equal("failure" in row, true);
-    if ("failure" in row) {
-      assert.equal(row.failure.code, "invalid-header-selection");
-      assert.match(row.failure.message, /row 9 is beyond the 2 rows/u);
-      assert.deepEqual(row.facts, []);
-    }
+    if (row.outcome !== "failure") throw new Error("expected invalid-header-selection refusal");
+    assert.equal(row.failure.code, "invalid-header-selection");
+    assert.match(row.failure.message, /row 9 is beyond the 2 rows/u);
+    assert.deepEqual(row.facts, []);
   });
 
   it("returns the selected PDF page and its rendered PNG bytes", async () => {
     const rendered = await runPdf(buildOnePagePdf());
-    assert.equal("failure" in rendered, false);
-    if (!("output" in rendered)) throw new Error("expected rendered output");
+    if (rendered.outcome !== "success") throw new Error(`expected rendered output, received ${rendered.failure.code}`);
 
     assert.equal(rendered.output.pageCount, 1);
     assert.deepEqual(rendered.output.pages.map((page) => page.sourcePage), [1]);
@@ -181,11 +193,9 @@ describe("extraction task wrappers", () => {
 
   it("refuses a page range past the PDF without writing bytes or recording facts", async () => {
     const refused = await runPdf(buildOnePagePdf(), 2);
-    assert.equal("failure" in refused, true);
-    if ("failure" in refused) {
-      assert.equal(refused.failure.code, "page-out-of-range");
-      assert.match(refused.failure.message, /pages 1–2 were requested but the document has 1/u);
-    }
+    if (refused.outcome !== "failure") throw new Error("expected page-out-of-range refusal");
+    assert.equal(refused.failure.code, "page-out-of-range");
+    assert.match(refused.failure.message, /pages 1–2 were requested but the document has 1/u);
     assert.equal(refused.writes.length, 0);
     assert.deepEqual(refused.facts, []);
   });

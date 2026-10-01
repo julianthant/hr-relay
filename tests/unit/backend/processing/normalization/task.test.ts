@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
+import { z } from "zod";
 import { NormalizeContactInputSchema } from "../../../../../src/domain/contracts/normalization/normalize-contact.js";
+import type { NormalizeContactOutput } from "../../../../../src/domain/contracts/normalization/normalize-contact.js";
+import { GeocodeRequestSchema } from "../../../../../src/domain/normalization/geocode.js";
 import { readContactAdviceTask } from "../../../../../src/stores/normalization/index.js";
 
 const READ_AT = "2026-08-08T12:00:00.000Z";
@@ -23,6 +26,18 @@ const UNAVAILABLE = {
   state: "unavailable",
   reason: { code: "rate-exhausted", message: "throttled", retryAt: "2026-08-08T12:01:00.000Z" },
 };
+const GeocodeProviderRequestSchema = z.strictObject({
+  schemaHash: z.string().min(1),
+  value: GeocodeRequestSchema,
+});
+const RecordedFactSchema = z.strictObject({
+  direction: z.literal("read"),
+  field: z.string(),
+  value: z.unknown(),
+});
+type TaskResult<Output, Metadata extends object> =
+  | (Readonly<{ outcome: "success"; output: Output }> & Metadata)
+  | (Readonly<{ outcome: "failure"; failure: Readonly<{ code: string; message: string }> }> & Metadata);
 
 function scriptedClient(capability: string, response: unknown, calls: string[], requests: unknown[]) {
   return {
@@ -38,7 +53,11 @@ function scriptedClient(capability: string, response: unknown, calls: string[], 
 async function runAdvice(
   contact: Record<string, string>,
   options: Readonly<{ geocode?: boolean; ai?: boolean; census?: unknown; nominatim?: unknown }>,
-) {
+): Promise<TaskResult<NormalizeContactOutput, Readonly<{
+  calls: string[];
+  requests: unknown[];
+  recorded: unknown[];
+}>>> {
   const calls: string[] = [];
   const requests: unknown[] = [];
   const recorded: unknown[] = [];
@@ -65,11 +84,11 @@ async function runAdvice(
       }),
       ctx: ctx as never,
     });
-    return { output, calls, requests, recorded };
+    return { outcome: "success" as const, output, calls, requests, recorded };
   } catch (error) {
     const caught = error as Error & { code?: string };
     if (caught.code === undefined) throw error;
-    return { failure: { code: caught.code, message: caught.message }, calls, requests, recorded };
+    return { outcome: "failure" as const, failure: { code: caught.code, message: caught.message }, calls, requests, recorded };
   }
 }
 
@@ -80,15 +99,14 @@ describe("normalization task wrapper", () => {
       state: "california",
       relationship: "Wife",
     }, {});
-    assert.equal("output" in result, true);
-    if (!("output" in result)) throw new Error("expected normalization advice");
+    if (result.outcome !== "success") throw new Error(`expected normalization advice, received ${result.failure.code}`);
 
     assert.equal(result.output.normalized.cellPhone, "8585551212");
     assert.equal(result.output.normalized.state, "CA");
     assert.equal(result.output.relationshipCanonical, "Spouse");
     assert.deepEqual(result.output.disposition, { kind: "complete" });
     assert.deepEqual(result.calls, []);
-    const recorded = result.recorded[0] as readonly { direction: string; field: string; value: unknown }[];
+    const recorded = z.array(RecordedFactSchema).parse(result.recorded[0]);
     assert.deepEqual(recorded.map(({ direction, field }) => [direction, field]), [
       ["read", "normalized"],
       ["read", "relationshipCanonical"],
@@ -110,11 +128,10 @@ describe("normalization task wrapper", () => {
       state: "CA",
       postalCode: "90001",
     }, { geocode: true, census: RESOLVED_CENSUS });
-    assert.equal("output" in result, true);
-    if (!("output" in result)) throw new Error("expected geocode advice");
+    if (result.outcome !== "success") throw new Error(`expected geocode advice, received ${result.failure.code}`);
 
     assert.deepEqual(result.calls, ["geocode.census"]);
-    assert.deepEqual((result.requests[0] as { value: unknown }).value, {
+    assert.deepEqual(GeocodeProviderRequestSchema.parse(result.requests[0]).value, {
       street: "123 Fixture Rd",
       city: "example town",
       state: "CA",
@@ -133,11 +150,10 @@ describe("normalization task wrapper", () => {
       address1: "123 Fixture Rd",
       state: "CA",
     }, { geocode: true, census: UNAVAILABLE, nominatim: UNAVAILABLE });
-    assert.equal("output" in result, true);
-    if (!("output" in result)) throw new Error("expected an advice disposition");
+    if (result.outcome !== "success") throw new Error(`expected an advice disposition, received ${result.failure.code}`);
 
     assert.deepEqual(result.calls, ["geocode.census", "geocode.nominatim"]);
-    assert.deepEqual(result.requests.map((request) => (request as { value: unknown }).value), [
+    assert.deepEqual(result.requests.map((request) => GeocodeProviderRequestSchema.parse(request).value), [
       { street: "123 Fixture Rd", state: "CA" },
       { street: "123 Fixture Rd", state: "CA" },
     ]);
@@ -152,12 +168,11 @@ describe("normalization task wrapper", () => {
 
   it("keeps sensitive relationship text ambiguous without sending it to AI", async () => {
     const withheld = await runAdvice({ relationship: "acquaintance from work" }, { ai: true });
-    assert.equal("output" in withheld, true);
-    if (!("output" in withheld)) throw new Error("expected ambiguous advice");
+    if (withheld.outcome !== "success") throw new Error(`expected ambiguous advice, received ${withheld.failure.code}`);
     assert.deepEqual(withheld.calls, []);
     assert.deepEqual(withheld.requests, []);
     assert.deepEqual(withheld.output.disposition, { kind: "ambiguous", fields: ["relationship"] });
-    const recorded = withheld.recorded[0] as readonly { field: string; value: unknown }[];
+    const recorded = z.array(RecordedFactSchema).parse(withheld.recorded[0]);
     assert.deepEqual(recorded.find(({ field }) => field === "disposition")?.value, {
       kind: "ambiguous",
       fields: ["relationship"],
@@ -166,16 +181,12 @@ describe("normalization task wrapper", () => {
 
   it("refuses an empty contact without recording a normalized result", async () => {
     const empty = await runAdvice({}, {});
-    assert.equal("failure" in empty, true);
-    if ("failure" in empty) {
-      assert.equal(empty.failure.code, "empty-contact");
-      assert.match(empty.failure.message, /carries no fields/u);
-      assert.deepEqual(empty.recorded, []);
-      assert.deepEqual(empty.calls, []);
-    }
+    if (empty.outcome !== "failure") throw new Error("expected empty-contact refusal");
+    assert.equal(empty.failure.code, "empty-contact");
+    assert.match(empty.failure.message, /carries no fields/u);
+    assert.deepEqual(empty.recorded, []);
+    assert.deepEqual(empty.calls, []);
   });
 });
-
-
 
 

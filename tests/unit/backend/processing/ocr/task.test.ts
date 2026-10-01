@@ -3,6 +3,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
+import type { AdmittedExtraction } from "../../../../../src/domain/ocr/extraction.js";
 import { deriveSchemaHash } from "../../../../../src/domain/schema-bound-value.js";
 import { extractFormPageTask } from "../../../../../src/stores/ocr/index.js";
 
@@ -14,6 +15,18 @@ const PAGE = ArtifactRefSchema.parse({
   mediaType: "image/png",
 });
 const RESPONSE_HASH = deriveSchemaHash(z.unknown(), "output");
+const OcrProviderRequestSchema = z.strictObject({
+  schemaHash: z.string().min(1),
+  value: z.strictObject({
+    formType: z.literal("oath"),
+    instruction: z.string().min(1),
+    page: ArtifactRefSchema,
+    sourcePage: z.number().int().positive(),
+  }),
+});
+type TaskResult<Output, Metadata extends object> =
+  | (Readonly<{ outcome: "success"; output: Output }> & Metadata)
+  | (Readonly<{ outcome: "failure"; failure: Readonly<{ code: string; message: string }> }> & Metadata);
 
 function completeAnswers() {
   return {
@@ -53,7 +66,7 @@ function taskCtx(response: unknown, sent: unknown[], recorded: unknown[]) {
   };
 }
 
-async function run(response: unknown) {
+async function run(response: unknown): Promise<TaskResult<AdmittedExtraction, Readonly<{ sent: unknown[]; recorded: unknown[] }>>> {
   const sent: unknown[] = [];
   const recorded: unknown[] = [];
   try {
@@ -61,11 +74,11 @@ async function run(response: unknown) {
       input: { formType: "oath", page: PAGE, sourcePage: 4 },
       ctx: taskCtx(response, sent, recorded) as never,
     });
-    return { output, sent, recorded };
+    return { outcome: "success" as const, output, sent, recorded };
   } catch (error) {
     const caught = error as Error & { code?: string };
     if (caught.code === undefined) throw error;
-    return { failure: { code: caught.code, message: caught.message }, sent, recorded };
+    return { outcome: "failure" as const, failure: { code: caught.code, message: caught.message }, sent, recorded };
   }
 }
 
@@ -75,11 +88,10 @@ describe("OCR provider task wrapper", () => {
       state: "produced",
       value: { schemaHash: RESPONSE_HASH, value: completeAnswers() },
     });
-    assert.equal("failure" in result, false);
-    if (!("output" in result)) throw new Error("expected admitted extraction");
+    if (result.outcome !== "success") throw new Error(`expected admitted extraction, received ${result.failure.code}`);
 
     assert.equal(result.sent.length, 1);
-    const request = result.sent[0] as { value: { formType: string; page: unknown; sourcePage: number; instruction: string } };
+    const request = OcrProviderRequestSchema.parse(result.sent[0]);
     assert.equal(request.value.formType, "oath");
     assert.deepEqual(request.value.page, PAGE);
     assert.equal(request.value.sourcePage, 4);
@@ -107,38 +119,32 @@ describe("OCR provider task wrapper", () => {
         retryAt: "2026-08-06T10:00:00.000Z",
       },
     });
-    assert.equal("failure" in result, true);
-    if ("failure" in result) {
-      assert.equal(result.failure.code, "provider-unavailable");
-      assert.match(result.failure.message, /rate-exhausted/u);
-      assert.match(result.failure.message, /2026-08-06T10:00:00.000Z/u);
-      assert.deepEqual(result.recorded, []);
-    }
+    if (result.outcome !== "failure") throw new Error("expected provider-unavailable refusal");
+    assert.equal(result.failure.code, "provider-unavailable");
+    assert.match(result.failure.message, /rate-exhausted/u);
+    assert.match(result.failure.message, /2026-08-06T10:00:00.000Z/u);
+    assert.deepEqual(result.recorded, []);
   });
 
   it("names an unreadable provider response without recording successful facts", async () => {
     const unreadable = await run({ state: "invalid-response", reason: "not JSON" });
-    assert.equal("failure" in unreadable, true);
-    if ("failure" in unreadable) {
-      assert.equal(unreadable.failure.code, "unreadable-page");
-      assert.deepEqual(unreadable.recorded, []);
-    }
+    if (unreadable.outcome !== "failure") throw new Error("expected unreadable-page refusal");
+    assert.equal(unreadable.failure.code, "unreadable-page");
+    assert.deepEqual(unreadable.recorded, []);
   });
 
   it("names a partial answer as incomplete without recording successful facts", async () => {
-    const partial = completeAnswers();
-    delete (partial.record.answers as Record<string, unknown>).signatureDate;
+    const complete = completeAnswers();
+    const { signatureDate, ...answers } = complete.record.answers;
+    assert.equal(signatureDate.state, "read");
+    const partial = { ...complete, record: { ...complete.record, answers } };
     const incomplete = await run({
       state: "produced",
       value: { schemaHash: RESPONSE_HASH, value: partial },
     });
-    assert.equal("failure" in incomplete, true);
-    if ("failure" in incomplete) {
-      assert.equal(incomplete.failure.code, "incomplete-extraction");
-      assert.match(incomplete.failure.message, /signatureDate not answered/u);
-      assert.deepEqual(incomplete.recorded, []);
-    }
+    if (incomplete.outcome !== "failure") throw new Error("expected incomplete-extraction refusal");
+    assert.equal(incomplete.failure.code, "incomplete-extraction");
+    assert.match(incomplete.failure.message, /signatureDate not answered/u);
+    assert.deepEqual(incomplete.recorded, []);
   });
 });
-
-
