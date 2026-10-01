@@ -1,5 +1,6 @@
 export type SessionWorkerState = "running" | "starting" | "idle" | "waiting" | "paused" | "failed";
 export type SessionControl = "pause" | "resume" | "retry" | "stop";
+export type SessionNode = Readonly<{ id: string; label: string; state: "completed" | "active" | "pending" | "waiting" | "paused" | "failed" }>;
 export type SessionWorker = Readonly<{
   id: string;
   label: string;
@@ -8,7 +9,7 @@ export type SessionWorker = Readonly<{
   action: string;
   state: SessionWorkerState;
   elapsed?: string;
-  progress?: Readonly<{ completed: number; total: number }>;
+  timeline?: readonly SessionNode[];
   problem?: string;
   browsers: readonly Readonly<{ id: string; label: string; state: "ready" | "active" | "starting" | "unavailable" }>[];
 }>;
@@ -26,7 +27,7 @@ export function sessionTallies(workers: readonly SessionWorker[]): readonly { st
   return order.map(state => ({ state, count: workers.filter(worker => worker.state === state).length }))
     .filter(tally => tally.count > 0 || ["running", "starting", "idle"].includes(tally.state));
 }
-export function sessionProgressPercent(progress: NonNullable<SessionWorker["progress"]>): number {
-  if (!Number.isSafeInteger(progress.completed) || !Number.isSafeInteger(progress.total) || progress.total < 1 || progress.completed < 0 || progress.completed > progress.total) throw new Error("session-progress-invalid");
-  return progress.completed / progress.total * 100;
+export function sessionTimelineSummary(nodes: readonly SessionNode[]): { completed: number; total: number } {
+  if (!nodes.length || new Set(nodes.map(node => node.id)).size !== nodes.length) throw new Error("session-timeline-invalid");
+  return { completed: nodes.filter(node => node.state === "completed").length, total: nodes.length };
 }
