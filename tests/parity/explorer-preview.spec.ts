@@ -15,8 +15,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       const requests: string[] = [];
-      page.on("request", (request) => { if (request.method() !== "GET") requests.push(`${request.method()} ${request.url()}`); });
-      await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer&explorerPreview=1`);
+      page.on("request", (request) => { if (request.method() !== "GET" || /\/api\/v1\/(?:explorer|runs\/)/u.test(new URL(request.url()).pathname)) requests.push(`${request.method()} ${request.url()}`); });
+      await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       await expect(surface).toBeVisible();
       await expect(surface.getByRole("list", { name: "Workflow steps" }).getByRole("listitem")).toHaveCount(22);
@@ -75,7 +75,7 @@ test("Explorer branch previews stop writes, recover and reuse an existing receip
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
-    await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer&explorerPreview=1`);
+    await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
     const identity = page.getByRole("combobox", { name: "Identity check preview" });
     const pending = page.getByRole("combobox", { name: "Read result preview" });
     const termination = page.getByRole("combobox", { name: "Existing termination preview" });
@@ -108,7 +108,7 @@ test("named comment conditions update both UCPath fields and preserve Kuali text
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
-    await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer&explorerPreview=1`);
+    await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
     await page.getByRole("button", { name: "Expand all", exact: true }).click();
     const ucpath = page.getByLabel("UCPath comment template", { exact: true });
     await page.getByRole("combobox", { name: "Leave scenario", exact: true }).selectOption("tie");

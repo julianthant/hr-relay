@@ -13,7 +13,7 @@ import {
 } from "../../../src/domain/dashboard/run-detail.js";
 import { wireResourceSchema } from "../../../src/domain/dashboard/primitives.js";
 import { FailureDetailBody } from "../../../src/dashboard/surfaces/trust.js";
-import { InlineFailureRecord } from "../../../src/dashboard/surfaces/log-panel.js";
+import { InlineFailureRecord } from "../../../src/dashboard/surfaces/run-detail/receipt-failure.js";
 import { LogsTab } from "../../../src/dashboard/surfaces/run-detail/logs.js";
 import { CAPTURE_BUNDLE_A, CAPTURE_BUNDLE_B, captureDetail, captureImage } from "./fixtures/run-captures-app-fixture.js";
 import { ArchivedFailureCard } from "../../../src/dashboard/surfaces/archive.js";

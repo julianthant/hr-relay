@@ -17,7 +17,8 @@ import { afterEach, describe, it } from "vitest";
 import type { z } from "zod";
 import { GateDecisionWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { InlineDecision, RunLivenessDot } from "../../../src/dashboard/surfaces/log-panel.js";
+import { InlineDecision } from "../../../src/dashboard/surfaces/run-detail/gate-park.js";
+import { RunLivenessDot } from "../../../src/dashboard/surfaces/run-detail/logs.js";
 import { ContextRail } from "../../../src/dashboard/surfaces/context-rail.js";
 import { RunProvenanceBar } from "../../../src/dashboard/surfaces/run-identity.js";
 

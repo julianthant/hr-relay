@@ -58,13 +58,13 @@ describe("approved Explorer presentation", () => {
     assert.equal(kuali.match(/per operator entry at run start/g)?.length, 2);
     assert.ok(kuali.endsWith("-{initials} {asOfDate}"));
   });
-  it("makes preview state explicit and subordinate to the Explorer route", () => {
-    const route = parseRoute("?explore=fixture&explorerPreview=1");
-    assert.equal(route.explorerPreview, true);
+  it("uses the canonical Explorer route and ignores the retired preview switch", () => {
+    const route = parseRoute("?explore=fixture");
     assert.deepEqual(parseRoute(routeToSearch(route)), route);
-    assert.equal(routeWithoutTakeovers(route).explorerPreview, undefined);
-    assert.equal(parseRoute("?explorerPreview=1").explorerPreview, undefined);
-    assert.equal(parseRoute("?explore=fixture&explorerPreview=invalid").explorerPreview, undefined);
-    assert.doesNotMatch(routeToSearch({ start: false, explorerPreview: true }), /explorerPreview/);
+    assert.equal(routeWithoutTakeovers(route).explore, undefined);
+    assert.deepEqual(parseRoute("?explore=fixture&explorerPreview=1"), route);
+    assert.deepEqual(parseRoute("?explore=fixture&explorerPreview=invalid"), route);
+    assert.equal(parseRoute("?explorerPreview=1").explore, undefined);
+    assert.doesNotMatch(routeToSearch(route), /explorerPreview/);
   });
 });

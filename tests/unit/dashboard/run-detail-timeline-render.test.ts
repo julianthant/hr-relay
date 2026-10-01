@@ -25,7 +25,7 @@ import { createRoot, type Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, describe, it } from "vitest";
 import { RunDetailWireSchema, type RunDetailWire } from "../../../src/domain/dashboard/run-detail.js";
-import { Timeline } from "../../../src/dashboard/surfaces/log-panel.js";
+import { Timeline } from "../../../src/dashboard/surfaces/run-detail/timeline.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
