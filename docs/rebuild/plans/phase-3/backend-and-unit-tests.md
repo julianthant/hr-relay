@@ -21,6 +21,9 @@ branch `codex/logs-backend`, source HEAD `27fd907207ab42fc938856954ef75a136da32f
 It contains the approved Logs UI commit `1211a24b81547ec2b7c6e27837c4d57c081d259e`.
 Verify the checkout and any new changes before each phase. Keep the existing worktree; do not
 create more worktrees, repurpose another checkout, push or merge without operator authorization.
+Before Phase 2, complete the separately authorized [continuation reconciliation](backend-continuation-reconciliation.md)
+and verify its accepted combined candidate. Phase 1 acceptance alone does not incorporate the
+startup branch or finish the module layout.
 
 These are five implementation phases for this initiative, not the numbered roadmap's phase-exit
 gates. Each fresh chat implements only its requested phase. Heavy execution follows the current
@@ -131,6 +134,8 @@ tests/
     domain/<module>/
     backend/<module>/
     dashboard/<module>/
+    workflows/<module>/
+    tooling/<capability>/       deterministic script, build and test-runner policies
   integration/<module>/         real storage, process, transport or composed boundary proofs
   architecture/                import, schema, collection and generated-product invariants
   scenario/                    existing workflow/feature scenarios and live manifests
@@ -150,10 +155,21 @@ case that would catch a bug. An external adapter call can be a necessary effect 
 all private call order is not a useful default. Do not mock the policy under test, derive the
 expected result by calling that policy again, or equate a fake repository with durability.
 
-The layout audit covers every discovered file. Quality review and rewriting follow the modules
-being changed. Each retirement needs a mapped surviving behavior or a deliberately retired
-requirement. Complex suites remain collected by their own explicit projects/scripts; preserve
-their membership while changing their location. They are not in the development phase gates below.
+Phase 1 establishes accurate tiers and collection ownership. Phase 2 finishes module ownership
+for every retained unit and its support files; the flat unit root is not the final layout. Existing
+domain, dashboard, workflow and tooling units receive explicit homes without requiring unrelated
+source refactors. Keep fixtures with their consumers; use shared fixture folders only for actual
+cross-module data, and do not leave unused resource harnesses under units merely for compatibility.
+
+Substantive unit quality review happens with each changed module, after a short triage and before
+behavior-sensitive refactoring. Reuse adequate tests; rewrite poor tests, consolidate overlapping
+coverage, and remove obsolete or redundant units only with a recorded reason and surviving behavior
+mapping. A deliberately retired requirement must be identified explicitly. Private implementation
+assertions need a meaningful behavior or constraint to justify keeping them. Do not retire a test
+because it fails, nor lose distinct refusal, boundary or safety cases when consolidating.
+Complex-suite redesign and retirement remain for later operator discussion; their retained files
+stay collected in their own tiers. Extracting a pure case does not authorize deleting its original
+complex proof. These suites are not in the development phase gates below.
 
 ## Shared logging contract to implement
 
@@ -243,7 +259,9 @@ from any later coverage run. Use the current maximum of four test-file workers.
 
 Do not run or redesign integration, scenario, browser parity or live HR suites in these phases.
 Do not globally exclude them, lower floors, remove assertions or hide them from the complete runner
-to obtain a green result. Adjust path-bound guard and coverage ownership deliberately during moves.
+to obtain a green result. Approved unit rewrites, consolidation and exact retirements require the
+Phase 2 behavior/disposition mapping and must preserve useful behavior, refusal and safety coverage.
+Adjust path-bound guard and coverage ownership deliberately during moves.
 New test project collection must preserve every retained file exactly once.
 Keep the effective safety-critical coverage ownership when moving code: a former `src/core/**`
 module must not silently lose its 80% floor under a new `src/backend/**` path.
@@ -267,7 +285,8 @@ policy. Start with the audit, not deletion.
    move it intact to integration initially; extract its pure cases with the owning backend change.
 2. Record keep/move/rewrite/retire dispositions. Quality-review the affected seams first; leave
    unreviewed complex behavior explicitly pending rather than issuing a blanket quality verdict.
-3. Move clearly classified tests to the target tier/module homes, preserving assertions and cases.
+3. Move clearly classified tests to their tier homes and preserve existing module groups, assertions
+   and cases. Phase 2 finishes the module layout alongside backend restructuring.
    Update imports, shared fixture ownership, instructions twins where present, and project/guard
    collection. Keep scenarios and parity in their existing tiers.
 4. Add `test:unit` and an explicit integration project/script without changing the complete runner's
@@ -288,28 +307,43 @@ require rewriting every old assertion or completing complex-test design.
 
 ## Phase 2 — Give backend modules and their unit tests matching homes
 
-**Deliverable:** the cohesive backend structure above, with a thin boot/composition boundary and
-focused unit coverage beside each changed responsibility.
+**Deliverable:** the cohesive backend structure above, with a thin boot/composition boundary,
+finished unit module ownership, and reviewed focused coverage for each changed responsibility.
+Unit cleanup belongs inside this phase; do not launch a separate wholesale cleanup first.
 
-1. Produce a current-to-target source/test move map and dependency rules before moving code.
-   Preserve pure `base`/domain/workflow imports and frozen runtime identities.
-2. Move modules in bounded sequential packages: composition/transports, run services, runtime,
+1. Verify accepted Phase 1 and reconciliation handoffs. Produce a current-to-target source/test/support
+   move map and dependency rules before moving code. Assign every retained unit and support file
+   a clear module owner, including units outside the backend packages. Preserve pure
+   `base`/domain/workflow imports and frozen runtime identities.
+2. Before each module's refactor, map its public responsibilities and meaningful success, refusal,
+   boundary and safety behavior. Triage relevant cases as keep, rewrite, consolidate or remove;
+   record reasons, gaps and surviving coverage. Use the actual bodies and called harnesses, not
+   filenames alone. Establish or refine focused behavior checks before behavior-sensitive changes;
+   reuse adequate existing units and do not add tests solely for a mechanical move.
+3. Move modules in bounded sequential packages: composition/transports, run services, runtime,
    browser stores, processing stores, workflow-task stores, storage/adapters. Update registrations,
    CLI imports, task fingerprints,
    build-manifest/catalog generators, instruction links and path-bound guards from their sources.
-3. Separate pure execution, checkpoint, terminal and write-decision policies from resource I/O.
+4. Separate pure execution, checkpoint, terminal and write-decision policies from resource I/O.
    Preserve authority transactions and fence/submit/verify/settle order. Do not broadly redesign
    persistence or change transaction decisions in the same mechanical move.
-4. For each package, rebuild its focused units around the extracted public behavior. Map replaced
-   cases and retain complex composition proofs in their explicit tier.
+5. Finish unit cleanup with each package: rewrite poor cases around public behavior, consolidate
+   genuine overlap, and remove exact obsolete or redundant cases with the recorded disposition.
+   Keep meaningful failure visibility and independent expected outcomes; do not replace durability
+   evidence with fake repositories or delete complex proofs. Place tests and fixtures at their
+   final owners, remove verified unused unit support, and record focused units/lint and affected
+   static/generated checks before accepting the package.
 
 **Unit coverage:** worker ownership and sequential claiming policy; cancellation/claim-loss decisions;
 exact action/attempt binding; checkpoint compatibility; submit/verify/UNKNOWN/refusal policy. No fake
 database assertion is described as proof of atomic settlement or recovery.
 
 **Verifiable outcome:** no renderer/workflow runtime imports from the backend, no stale imports or
-unowned moved code, matching test homes, focused units/lint passing, affected generated closures
-current, and a production bundle check for browser-safe imports. Report any static baseline limits.
+unowned moved code; every retained unit/support file has a named module home, with no unexplained
+loose files at the unit root. Each changed module has a completed behavior/disposition map linking
+rewritten, consolidated or removed cases to surviving coverage or an explicitly retired requirement.
+Focused units/lint pass, affected generated closures are current, and the production bundle check
+confirms browser-safe imports. Report any static baseline limits.
 Real process boot, DB recovery and external-write behavior remain deferred complex proofs.
 
 ## Phase 3 — Implement the shared confirmed action and step API
@@ -408,7 +442,7 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 | Phase | State | Accepted candidate and evidence |
 | --- | --- | --- |
 | 1 — Test ownership and unit execution | Accepted locally | `a46d792273af908dd9bfd29d6f5eb19b874a319e`; focused checks and independent preservation verification below; broad checks deferred |
-| 2 — Backend modules and matching units | Proposed | Requires Phase 1 |
+| 2 — Backend modules and reviewed units | Proposed | Requires accepted Phase 1 and continuation reconciliation |
 | 3 — Confirmed action/step API | Proposed | Requires Phase 2 |
 | 4 — Ordered worker streams | Proposed | Requires Phase 3 |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
@@ -513,20 +547,33 @@ Work in /Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-l
 Use Heavy route only: read ~/.codex/codex_workflow/heavy_route.md and follow it directly.
 Do not use /astra-orchestrator, /luna-worker or other worker-adapter skills.
 Read current instructions, docs/README.md,
-docs/rebuild/plans/phase-3/backend-and-unit-tests.md and its sibling audit.
-Verify checkout ownership and the accepted Phase 1 candidate; preserve unrelated changes.
+docs/rebuild/plans/phase-3/backend-and-unit-tests.md, its sibling audit and
+backend-continuation-reconciliation.md. Verify checkout ownership, accepted Phase 1 and
+the accepted combined reconciliation candidate; preserve unrelated changes. Do not start
+Phase 2 on an unreconciled base.
 Execute only Phase 2: reorganize the backend into cohesive modules and rebuild focused
-unit coverage with each module. Begin with an exact source/test move and dependency map.
+unit coverage with each module. Begin with an exact source/test/support move and dependency
+map. Give every retained unit and support file a clear module home; finish the flat unit
+layout without broad source refactors outside this phase's backend responsibilities.
+For each module, triage meaningful behaviors and existing cases before changing code:
+keep, rewrite, consolidate or remove, with reasons, gaps and surviving coverage. Establish
+or refine focused public-behavior and refusal checks before behavior-sensitive refactoring;
+reuse adequate tests. Finish unit cleanup alongside each module, not as a separate blanket
+cleanup phase. Remove only exact obsolete or redundant units with recorded dispositions;
+preserve distinct boundary, refusal and safety cases. Do not delete tests because they fail.
 Include browser, service and workflow stores using this plan's Store ownership section.
 Keep browser-safe base/domain/workflows outside backend. Separate mechanical moves from
 policy extraction, preserve authority transaction ownership and write ordering, and update
 registrations, generators, fingerprints, guards, imports and nearest instruction twins.
-Split mixed test suites by behavior without replacing real persistence evidence with fakes.
+Extract deterministic cases from mixed suites without replacing real persistence evidence
+with fakes or retiring their original complex proofs. Remove verified unused unit support.
 Run exact affected units, lint and affected static/generated/build checks. Record unrelated
-baseline failures without weakening the checks. Complex-test execution/design stays deferred.
+baseline failures without weakening the checks. Complex-test execution, redesign and
+retirement stay deferred for operator discussion.
 Do not implement the new log contract, migrate every workflow or add Electron packaging.
 Reuse this worktree. No push, merge, peer cleanup or next-phase launch. Commit logical
-categories and record Phase 2 evidence, exact mappings and remaining obligations in this plan.
+categories and record Phase 2 evidence, exact source/test/support mappings, unit disposition
+and surviving-coverage mappings, and remaining obligations in this plan.
 ```
 
 ### Phase 3 prompt
