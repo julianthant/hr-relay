@@ -28,8 +28,8 @@ The `ui-*` names are semantic Tailwind utilities, so surfaces can use `bg-ui-pan
 | `ui-danger` | Errors | `#ab3232` | `#f18d8d` |
 
 Use `font-ui` for interface text. It follows the platform UI sans family (San Francisco on macOS,
-then the system fallbacks). Use `font-data` for fixed-width values such as timestamps. The six
-named text utilities are:
+then the system fallbacks). Use `font-data` for fixed-width values such as timestamps. The named
+text utilities are:
 
 | Utility | Size / line height | Weight | Usage |
 |---|---:|---|---|
@@ -39,18 +39,19 @@ named text utilities are:
 | `text-heading` | 14px / 20px | semibold | Step and panel titles |
 | `text-section` | 16px / 22px | semibold | Settings and content groups |
 | `text-page` | 20px / 28px | semibold | Page titles |
+| `text-workflow` | 27px / 32px | 650 | Explorer title |
 
 `w-log-time` and `w-log-label` use the named spacing tokens; `max-w-log-capture` uses the named
-capture container token. `lib/utils.ts` extends `cn()`'s Tailwind merge groups with all six text
+capture container token. `lib/utils.ts` extends `cn()`'s Tailwind merge groups with all seven text
 utilities, so conditional size classes resolve by precedence instead of leaving both classes.
 
 ## Incremental adoption
 
 The dashboard stylesheet imports this theme. Put `.ui-theme-scope` on the migrated surface root,
-then use the `ui-*`, typography, and `font-*` utilities. The scope maps the palette onto the
-existing DS variables for controls inside that surface. Existing DS consumers outside the scope
-keep their current styling; adding these global custom properties does not reskin them. Migrate
-surface by surface as later dashboard work adopts the palette.
+then use the `ui-*`, typography, and `font-*` utilities. Explorer scopes shared controls to the
+`ui-*` palette, while other DS consumers outside that scope keep their current styling. Adding
+these global custom properties does not reskin them. Migrate surface by surface as later dashboard
+work adopts the palette.
 
 For Logs, use one opaque gray `ui-table` fill for each table's header and body. Leave tables open,
 keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed

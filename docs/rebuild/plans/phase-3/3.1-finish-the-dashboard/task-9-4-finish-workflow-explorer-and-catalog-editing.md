@@ -400,3 +400,24 @@ Candidate: `codex/explorer-timeline` at
 Settings-derived base `897158ece84471dd86b67ca8d49e73477b1280e8`. Focused Phase 3.1 cadence applies.
 The coordinator owns shared contracts and acceptance; the operator retains integration choice.
 Evidence: `/Users/julianhein/Projects/hr-automation-rebuild-evidence/archive-explorer-activity-2026-09-26/implementation/explorer/`.
+
+### Approved UI-only preview follow-up — 2026-10-01
+
+This closes only the approved frontend preview scope and does not change the earlier 3.1.9.4
+service/backend acceptance recorded above. Final implementation is commit
+`eddcf045ddcb37251390613f7bf0dad45784c2cb` on `codex/explorer-ui-polish`, based on
+`27fd907207ab42fc938856954ef75a136da32f74`.
+
+Open the mounted preview at `/?explore=fixture-plan1-separation&explorerPreview=1` (automated browser
+proof uses the dedicated `fixture-ui-explorer` fixture). Ordinary Explorer remains connected; the
+preview is explicitly mock data, offers a Registered definition return, and sends no execution
+commands. Design source is `/Users/julianhein/Projects/hr-automation-rebuild-evidence/explorer-structure-2026-09-27/separations-structure.html`, revision 5. Implementation evidence and inspected screenshots are in
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/explorer-ui-2026-10-01/`; see
+`current-state.md` for the full record.
+
+Focused evidence: 33 unit tests and six browser cases pass; both themes were checked at 1024×720 and
+1440×1000, and scoped lint/build pass. The pending-read stop retains its step 18 explanation and
+hides later steps. Whole-repository typecheck retains 72 unchanged diagnostics; the architecture
+wire suite reports one failure for four existing Archive workflow literals. Broad parity/coverage,
+actual browser zoom, live HR, and backend integration remain unrun; screenshot references were not
+refrozen. Backend wiring requires a separately approved producer scope.
