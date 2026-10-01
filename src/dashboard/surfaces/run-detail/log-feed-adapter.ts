@@ -69,12 +69,14 @@ export function retainedLogFeed(rows: readonly LogRowWire[], structure: RunOpera
     const lastLogId = chunk.rows.at(-1)!.logId;
     const identity = first.occurrence;
     const invocationKey = [identity.invocationId, identity.attempt, identity.claimGeneration, identity.taskAttempt, identity.physicalSessionId].join(":");
+    if (previousInvocation !== invocationKey) previousInvocation = undefined;
     if (entries.length) {
       const previous = steps.at(-1);
       if (previous !== undefined && previousInvocation === invocationKey) steps[steps.length - 1] = { lastLogId, step: { ...previous.step, entries: [...previous.step.entries, ...entries] } };
       else steps.push({ lastLogId, step: { id: first.logId, time: fmtActionClock(first.occurrence.confirmation!.verifiedAt), title: invocation.label ?? invocation.operation.id, ...(invocation.operation.system === "local" ? {} : { system: SYSTEM_HOST_PRESENTATION[invocation.operation.system].name }), entries } });
+      previousInvocation = invocationKey;
     }
-    previousInvocation = breaks.has(lastLogId) ? undefined : invocationKey;
+    if (breaks.has(lastLogId)) previousInvocation = undefined;
   }
   return steps;
 }
