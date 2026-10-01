@@ -116,10 +116,12 @@ started for this UI review.
 
 ## Cleanup
 
-The consuming chat's proposed backend/test restructuring phases and fresh-chat prompts are in
-[the supporting backend and unit-test plan](../rebuild/plans/phase-3/backend-and-unit-tests.md),
-with a linked static test audit. These documents record proposed work, not implementation or
-roadmap admission. Complex-test design and execution remain deferred for operator participation.
+Phase 1 is accepted locally at `a46d792273af908dd9bfd29d6f5eb19b874a319e`, as recorded in
+[the backend and unit-test plan](../rebuild/plans/phase-3/backend-and-unit-tests.md#phase-1-acceptance--2026-10-01).
+Phases 2–5 remain proposed and need separate operator authorization. The linked static audit
+retains its 2026-09-30 baseline and points to the current execution record. This handoff's approved
+UI, operator choices, and unresolved backend contract and capture context remain relevant to later
+work. Complex-test review and execution remain deferred for operator participation.
 
 The new chat owns the continuation worktree. Retain both checkouts until the operator chooses
 integration and cleanup. After verifying this handoff and preserving its surviving facts in the

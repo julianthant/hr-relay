@@ -1,9 +1,8 @@
 # Backend, unit tests and confirmed Logs connection
 
-Status: proposed sequential delivery plan, 2026-09-30. Planning and audit only; implementation has
-not started. This descriptive supporting plan does not assign new roadmap task numbers, reopen
-accepted task checkboxes, or grant release/freeze/cutover admission. Roadmap recording and integration
-remain separate operator choices.
+Status: Phase 1 accepted locally on 2026-10-01; Phases 2–5 remain proposed. This descriptive
+supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
+release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
 ## Goal and agreed direction
 
@@ -408,11 +407,74 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 
 | Phase | State | Accepted candidate and evidence |
 | --- | --- | --- |
-| 1 — Test ownership and unit execution | Proposed | Not executed |
+| 1 — Test ownership and unit execution | Accepted locally | `a46d792273af908dd9bfd29d6f5eb19b874a319e`; focused checks and independent preservation verification below; broad checks deferred |
 | 2 — Backend modules and matching units | Proposed | Requires Phase 1 |
 | 3 — Confirmed action/step API | Proposed | Requires Phase 2 |
 | 4 — Ordered worker streams | Proposed | Requires Phase 3 |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
+
+### Phase 1 acceptance — 2026-10-01
+
+Accepted code candidate: `a46d792273af908dd9bfd29d6f5eb19b874a319e`, branch
+`codex/logs-backend`, in the assigned continuation worktree. The source base is
+`27fd907207ab42fc938856954ef75a136da32f74`; approved UI commit
+`1211a24b81547ec2b7c6e27837c4d57c081d259e` remains an ancestor. Production source and
+dependency-lock inputs are unchanged. This acceptance covers only this initiative's Phase 1.
+
+Logical commits: `cf776d22c` preserves the supplied planning inputs; `8636292be` establishes
+test ownership, collection and artifact policy; `c3a39c570` moves remaining resource suites
+intact and corrects the current tier owner; `a46d79227` preserves synthetic-source fixture
+paths after relocation. The recording-only closure retains this tested code candidate.
+
+The [complete disposition mapping](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-09-30/logs-backend-phase1/disposition.json)
+accounts for all 666 original source tests: 239 unit, 267 integration, 84 architecture,
+17 scenario and 59 parity files. There are 351 moves, 315 keeps and no retirements. Mixed
+DB, filesystem, process, HTTP and workflow-composition suites moved intact. Fixture-only reads,
+injected policies and DOM wiring remain units; the two resource-capable helper imports retained
+in units were checked against the functions their cases actually call. Case extraction and
+complex-suite quality redesign remain deferred to their owning backend work and operator review.
+
+All 607 original offline Vitest files remain uniquely collected. Three new policy files produce
+610 files across four projects: unit 241, integration 267, architecture 85 and scenario 17.
+Independent AST comparison preserves all 6,407 original registration titles and counts, with
+no original assertion-count decrease. Changed bodies are explained by relocated paths/project
+ownership and strengthened fixture guards. Scenario/parity test and support-source bytes, and
+the three uncollected live manifests, match baseline. Fork isolation, four-worker limit,
+timeouts, coverage inputs and floors are unchanged.
+
+| Focused command or receipt | Actual outcome |
+| --- | --- |
+| `npm run test:unit -- tests/unit/scripts/test-project-policy.test.ts tests/unit/scripts/test-artifact-policy.test.ts tests/unit/advisory-redaction.test.ts tests/unit/system-login-recipes.test.ts tests/unit/canonical-run-reader-fixture.test.ts` | 5 files / 48 cases passed; final-candidate policy rerun passed 3/3 |
+| `npm run test:unit -- --project integration` | Expected refusal, exit 1: `Invalid unit test filter: "--project"`; named commands reject options that could widen selection |
+| `npm run test:architecture -- tests/architecture/test-data-ownership.test.ts tests/architecture/test-artifact-ownership.test.ts` | Final candidate: 2 files / 6 cases passed |
+| `npm run test:architecture -- tests/architecture/guard-manifest.test.ts -t 'recursively registers every guard file exactly once\|keeps architecture recursively complete and out of the unit project'` | Final candidate: 2 selected cases passed; empty, duplicate and orphan controls also pass in the pure policy units |
+| Path-sensitive secret-safety controls and six other affected static guards | Six reported fixture regressions repaired and passed; 11 additional negative controls passed. Exact commands and logs are in the verification report below |
+| Scoped ESLint with `--max-warnings 0` over affected runner/config/test inputs, then repair-touched files | Passed; unchanged inputs reuse the earlier scoped receipt, and all repair-touched files were checked again |
+| `npm run roadmap:check` | Passed after the affected path-reference regeneration |
+| [Final collection receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-09-30/logs-backend-phase1/all-collection-fixture-repair.json) | 610 unique files, no retained orphan or duplicate owner; listing did not execute complex suites |
+
+The existing runner still removes successful owned scratch and retains failed-run diagnostics
+under `/tmp/hrt-<uid>/run-*`. Generated coverage, parity scratch and `test-results/` metadata
+are ignored; reviewed parity references and source fixtures remain tracked. Only the unused
+tracked `test-results/.last-run.json` was removed. No unknown directory contents or peer checkout
+was cleaned. The fixture guards deliberately pin the exact compatibility exports and three
+existing resource harness exceptions.
+
+Independent verification passed this bounded acceptance surface; its
+[decision-ready report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-09-30/logs-backend-phase1/verification/candidate-verification-report-a46d792.md)
+links the fingerprint, classification, command and raw diagnostic evidence. `npm run typecheck`
+still exits 2 with 72 diagnostics: the normalized baseline/candidate diagnostic multisets match
+exactly, with no candidate-only error. Full secret guards retain two baseline failures on
+`identity-approve-model.ts`; fail-loud and SQLite-boundary failures also reproduce on the
+immutable base. These checks are red, not waived or represented as passing; broad production
+repair is outside this assignment.
+
+Integration, scenario, browser/parity, live HR, full coverage and full-suite execution remain
+unrun. No backend behavior, approved UI, Electron, release/freeze/cutover, push, merge, peer
+cleanup or next-phase launch occurred. The peer-owned untracked
+`docs/rebuild/plans/phase-3/backend-continuation-reconciliation.md` was left untouched.
+Phase 2 may consume this accepted local candidate only after the operator launches that work;
+integration and complex-test review remain separate choices.
 
 ## Prompts for fresh chats
 

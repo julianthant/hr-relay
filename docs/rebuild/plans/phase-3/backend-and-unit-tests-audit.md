@@ -4,6 +4,15 @@ Status: static audit and supporting proposal, 2026-09-30. No test was executed o
 This is the test evidence for [the backend and unit-test plan](backend-and-unit-tests.md), not
 acceptance of a numbered roadmap phase.
 
+## Current execution pointer — 2026-10-01
+
+The static inventory and findings below describe the 2026-09-30 baseline. Initiative Phase 1 is
+accepted locally at `a46d792273af908dd9bfd29d6f5eb19b874a319e`; see the plan's
+[Phase 1 acceptance record](backend-and-unit-tests.md#phase-1-acceptance--2026-10-01) for current
+dispositions, collection, verification, baseline failures, and deferrals. Phases 2–5 remain proposed.
+The acceptance is local to this initiative and does not admit a roadmap phase or later complex-suite
+execution.
+
 ## Verified checkout and audit scope
 
 - Checkout: `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-logs-backend`.
