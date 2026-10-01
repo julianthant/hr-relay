@@ -17,6 +17,17 @@ Verification details stay in a secondary disclosure; exact source jumps open it 
 An operator gate without a supported resolution packet remains held and names that unavailable
 ceremony. The shared renderer does not invent a generic approve command or decision payload.
 
+## Frontend-first Logs amendment — 2026-09-30
+
+The current Logs work is a frontend projection using the shared `LogFeed` and isolated `logs.html`
+mock preview. For observed operation records, it projects only existing confirmed read, fill,
+compute, click, and keypress data. Legacy rows retain neutral activity and observed facts through the
+existing read. It adds no backend transport or runtime behavior. Driver, source, template disclosures,
+and the Attempts dropdown are removed from this surface. Under the operator's explicit scope,
+existing identity, resolve, and failure blocks plus related backend and test work stay deferred, not
+retired; their internal contracts remain authoritative. The reusable palette and type scale are in
+the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that
 feeds it: the span/notes event model (§1), the storage and transport split between authority and
