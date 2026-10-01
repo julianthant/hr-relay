@@ -21,7 +21,7 @@ import { parseDryRunScenarioManifest } from "./domain/trust/dry-run-scenario.js"
 import { composeTestDataCommand } from "./backend/app/test-data/compose.js";
 import { createProductionDryRunScenarioRuntime } from "./backend/app/dry-run-scenario/runtime.js";
 import { composeExplainRuntime } from "./backend/app/explain-compose.js";
-import { composeOcrCommand } from "./server/ocr/compose.js";
+import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
 import { composeStorageCommand } from "./backend/app/storage-compose.js";
 import { composeWorkerRuntime } from "./backend/app/worker-compose.js";
 import type { RuntimeAdmission } from "./infra/runtime-control/admission.js";

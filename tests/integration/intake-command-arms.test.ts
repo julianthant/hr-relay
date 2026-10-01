@@ -42,7 +42,7 @@ import { ItemIdSchema } from "../../src/domain/ids.js";
 import { detectColumns, headerFingerprint } from "../../src/domain/intake/mapping.js";
 import { IntakeSessionSchema } from "../../src/domain/intake/session.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { deriveIntakeParse } from "../../src/server/intake/intake-parser.js";
+import { deriveIntakeParse } from "../../src/backend/processing/spreadsheet/intake-parser.js";
 import {
   CONFIG_SNAPSHOT,
   HASH_A,

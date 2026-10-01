@@ -716,7 +716,7 @@ new readers, any other audit method, or any write outside the kernel fails the g
   system acceptance, which remains with 3.1.19.
 - **`provider-capability-boundary.test.ts`.** Every service task with remote I/O declares a D63
   capability and receives only its narrowed injected client. Direct provider SDK/raw network imports
-  are allowed only in registered `infra/providers/**` adapters. Every capability has timeout/abort,
+  are allowed only in registered `src/backend/processing/providers/**` adapters. Every capability has timeout/abort,
   concurrency/rate admission, config/secret preflight, redaction, evidence, and unavailable/invalid
   scenarios; every adapter has a consuming contract. Scheduler fixtures prove an exhausted provider
   cannot bypass its provider budget or occupy a worker indefinitely.
@@ -848,7 +848,7 @@ marker advanced.
 directions plus two extras, and the checked-in empty set is correct against the as-built — but its
 "a store now implements this, delete the entry" arm had **no fixture**, so it was enforced only by
 the empty set happening to be right. An empty allowlist cannot prove an arm; it now has one.
-`provider-capability-boundary`'s exact `src/infra/providers` file list is airtight in the
+`provider-capability-boundary`'s exact `src/backend/processing/providers` file list is airtight in the
 tree→guard direction, but two defects sat on the other side: `ADMISSION_MODULE_IMPORTERS` listed
 the admission module as its own importer (unreachable — the arm resolves *imports*), and the D68
 declared provider inventory had drifted from the built adapter tree with nothing watching (groq,
@@ -3295,7 +3295,7 @@ root, temp→fsync→atomic-rename durability sequence, crash-boundary recovery,
 idempotency; its AST canary rejects direct mutable filesystem access from task/workflow
 implementations.
 `provider-capability-boundary` confines raw network/provider modules and adapter implementations to
-`infra/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
+`src/backend/processing/providers`, pins exact capability client narrowing, and has a direct-network/forged-adapter
 canary. The recursive strict-boundary catalog now includes session, retry, artifact, provider, and
 artifact-root schemas. These active guards cover only the real 1d interfaces/declarations,
 artifact writer, and provider deterministic fakes: 1f admission/budget/worker/session-runtime
@@ -3337,7 +3337,7 @@ same commits as those targets. The acceptance set is non-vacuous and fail-both-w
   no sleeping worker. Production pool/consumer coverage remains 2h.
 
 The activated D112 guard walks every `src/**` import and each task's transitive local import graph:
-raw network/vendor modules and adapter implementations remain under `infra/providers/**`; task and
+raw network/vendor modules and adapter implementations remain under `src/backend/processing/providers/**`; task and
 store graphs cannot reach those adapters; only `core/provider-admission.ts` constructs the admitted
 client or consumes the adapter interface. It audits the closed capability/config mapping in both
 directions, pins one deterministic harness surface, proves denial/timeout/abort never fall through

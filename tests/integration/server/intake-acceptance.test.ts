@@ -3,7 +3,7 @@ import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-stora
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
-import { readArtifactBytes } from "../../../src/stores/common/spreadsheet-grid.js";
+import { readArtifactBytes } from "../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import assert from "node:assert/strict";
 import { readFileSync, rmSync } from "node:fs";
 import { afterEach, it } from "vitest";

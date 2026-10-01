@@ -10,7 +10,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { extractFormPageTask } from "../../src/stores/ocr/index.js";
+import { extractFormPageTask } from "../../src/backend/processing/ocr/store.js";
 import { admitOcrExtraction } from "../../src/domain/ocr/extraction.js";
 import { buildExtractionInstruction } from "../../src/domain/ocr/instruction.js";
 import { ArtifactRefSchema } from "../../src/domain/artifacts.js";

@@ -26,7 +26,7 @@ import {
   AdvisoryAnswerEnvelopeSchema,
   buildFailureTriagePrompt,
 } from "../../src/domain/trust/advisory.js";
-import { createGeminiAdvisoryAdapter } from "../../src/infra/providers/gemini-advisory.js";
+import { createGeminiAdvisoryAdapter } from "../../src/backend/processing/providers/gemini-advisory.js";
 import { produceFailureTriageAdvisory } from "../../src/services/trust/advisory.js";
 import {
   ADVISORY_NOW,

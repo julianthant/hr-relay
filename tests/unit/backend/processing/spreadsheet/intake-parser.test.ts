@@ -5,7 +5,7 @@ import writeXlsxFile from "write-excel-file/node";
 import type { ContentAddressedArtifactWriter } from "../../../../../src/base/artifacts.js";
 import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
-import { createIntakeParser } from "../../../../../src/server/intake/intake-parser.js";
+import { createIntakeParser } from "../../../../../src/backend/processing/spreadsheet/intake-parser.js";
 
 type FixtureCell = string | number | boolean | Date | null;
 

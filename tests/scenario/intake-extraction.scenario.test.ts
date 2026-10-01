@@ -18,7 +18,7 @@ import { Readable } from "node:stream";
 import assert from "node:assert/strict";
 import writeXlsxFile from "write-excel-file/node";
 import { describe, it } from "vitest";
-import { extractSpreadsheetTask } from "../../src/stores/extraction/index.js";
+import { extractSpreadsheetTask } from "../../src/backend/processing/extraction/store.js";
 import { ArtifactRefSchema } from "../../src/domain/artifacts.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import type { ContentAddressedArtifactWriter } from "../../src/base/artifacts.js";

@@ -9,7 +9,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe,it } from "vitest";
 import { createAdmittedProviderClient } from "../../../src/backend/runs/provider-admission.js";
-import { createDeterministicProviderHarness } from "../../../src/infra/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../../src/backend/processing/providers/deterministic-provider.js";
 import { ProviderAdmissionIdSchema, IsoInstantSchema, FingerprintSchema } from "../../../src/domain/ids.js";
 import { composeFailureResolution } from "../../../src/backend/app/dashboard/compose/failure-resolution.js";
 import { bindFailureCapture } from "../../../src/backend/runs/failure-resolution.js";

@@ -20,8 +20,8 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { createAdvisoryProviderClient } from "../../src/backend/runs/provider-admission.js";
 import { ADVISORY_ANSWER_SCHEMA_HASH } from "../../src/domain/trust/advisory.js";
-import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
-import { createProviderPool } from "../../src/infra/providers/provider-pool.js";
+import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
+import { createProviderPool } from "../../src/backend/processing/providers/provider-pool.js";
 import { produceFailureTriageAdvisory } from "../../src/services/trust/advisory.js";
 import {
   ADVISORY_NOW,

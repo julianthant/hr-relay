@@ -50,6 +50,26 @@ describe("task to system-driver boundary", () => {
     }
   });
 
+  it("keeps processing task implementations away from private browser owners transitively", () => {
+    const root = resolve(tmpdir(), `hrauto-processing-driver-${String(process.pid)}-${String(Date.now())}`);
+    const task = resolve(root, "src/backend/processing/extraction/tasks/bad.ts");
+    const helper = resolve(root, "src/backend/processing/extraction/helper.ts");
+    const driver = resolve(root, "src/backend/systems/ucpath/driver/interpreter.ts");
+    try {
+      mkdirSync(dirname(task), { recursive: true });
+      mkdirSync(dirname(driver), { recursive: true });
+      writeFileSync(task, 'import { helper } from "../helper.js";\nexport const bad = helper;\n');
+      writeFileSync(helper, 'export { helper } from "../../systems/ucpath/driver/interpreter.js";\n');
+      writeFileSync(driver, "export const helper = true;\n");
+      assert.match(
+        auditTaskDriverBoundary(root).join("\n"),
+        /src\/backend\/processing\/extraction\/tasks\/bad\.ts: import graph reaches private raw-browser owner src\/backend\/systems\/ucpath\/driver\/interpreter\.ts/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("still fences tasks off from the session-factory raw-browser family", () => {
     // Widening the owner set to `src/backend/runtime/browser/**` must not make it
     // reachable: a task that imports the factory (directly or through a
@@ -63,7 +83,7 @@ describe("task to system-driver boundary", () => {
       mkdirSync(dirname(task), { recursive: true });
       mkdirSync(dirname(factory), { recursive: true });
       writeFileSync(task, 'import { open } from "../helper.js";\nexport const bad = open;\n');
-      writeFileSync(helper, 'export { open } from "../../backend/runtime/browser/browser-session-factory.js";\n');
+      writeFileSync(helper, 'export { open } from "../../runtime/browser/browser-session-factory.js";\n');
       writeFileSync(factory, 'import { chromium } from "playwright";\nexport const open = chromium;\n');
       const issues = auditTaskDriverBoundary(root).join("\n");
       assert.match(issues, /import graph reaches private raw-browser owner src\/backend\/runtime\/browser/);
@@ -74,7 +94,7 @@ describe("task to system-driver boundary", () => {
       );
       mkdirSync(dirname(shared), { recursive: true });
       writeFileSync(shared, 'import { type Page } from "playwright";\nexport const open = (page: Page) => page;\n');
-      writeFileSync(helper, 'export { open } from "../../backend/systems/browser-shared/action-notes.js";\n');
+      writeFileSync(helper, 'export { open } from "../browser-shared/action-notes.js";\n');
       const sharedIssues = auditTaskDriverBoundary(root).join("\n");
       assert.match(sharedIssues, /import graph reaches private raw-browser owner src\/backend\/systems\/browser-shared/);
       assert.doesNotMatch(sharedIssues, /action-notes\.ts: Playwright import/, "shared browser adapter is a sanctioned owner");

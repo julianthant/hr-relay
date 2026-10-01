@@ -23,7 +23,7 @@ import { FingerprintSchema, IsoInstantSchema, ItemIdSchema } from "../../src/dom
 import { ColumnMappingSchema, detectColumns, headerFingerprint } from "../../src/domain/intake/mapping.js";
 import { MatchSpreadsheetInputSchema } from "../../src/domain/contracts/roster/match-spreadsheet.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
-import { matchSpreadsheetTask } from "../../src/stores/roster/index.js";
+import { matchSpreadsheetTask } from "../../src/backend/processing/roster/store.js";
 
 const CSV_MEDIA_TYPE = "text/csv";
 const READ_AT = IsoInstantSchema.parse("2026-08-08T12:00:00.000Z");

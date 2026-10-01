@@ -13,7 +13,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createIntakeService } from "../../../src/backend/runs/dashboard/commands/intake-service.js";
-import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
+import { createIntakeParser } from "../../../src/backend/processing/spreadsheet/intake-parser.js";
 import { registerIntakeRoutes } from "../../../src/backend/transports/dashboard/routes/intake.js";
 import { registerCommandsRoutes } from "../../../src/backend/transports/dashboard/routes/commands.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "../../../src/backend/transports/dashboard/routes/operator-mutation-ingress.js";

@@ -141,7 +141,7 @@ import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../../infra/even
 import { createContentAddressedArtifactWriter } from "../../../infra/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../infra/artifacts/server-verified-artifact-reader.js";
 
-import { createIntakeParser } from "../../../server/intake/intake-parser.js";
+import { createIntakeParser } from "../../processing/spreadsheet/intake-parser.js";
 import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../../runtime/settings/settings-runtime.js";
 import { createDashboardCommandService } from "../../runs/dashboard/commands/command-service.js";
 import { createRunWorkerCapacity } from "../../runs/dashboard/commands/run-worker-capacity.js";
@@ -153,8 +153,8 @@ import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../transports/dashboard/frontend-
 import { startDashboardHttpServer, type DashboardHttpServer } from "../../transports/dashboard/http-server.js";
 import { createAdvisoryProviderClient } from "../../runs/provider-admission.js";
 import { produceFailureTriageAdvisory } from "../../../services/trust/advisory.js";
-import { createGeminiAdvisoryAdapter } from "../../../infra/providers/gemini-advisory.js";
-import { createProviderPool } from "../../../infra/providers/provider-pool.js";
+import { createGeminiAdvisoryAdapter } from "../../processing/providers/gemini-advisory.js";
+import { createProviderPool } from "../../processing/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";
 import { optionalSecretFamily, providerModelChain } from "../../../domain/secrets.js";
 import type { AdvisoryQueryDeps } from "../../runs/dashboard/queries/advisory.js";

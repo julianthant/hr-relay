@@ -64,7 +64,7 @@ export const RuntimeConsumerSpecSchema = z.strictObject({
 export const RUNTIME_CONSUMERS = deepFreeze(RuntimeConsumerSpecSchema.array().parse([
   { id: "runtime-composition", kind: "composition", owner: "src/core" },
   { id: "system-driver", kind: "driver", owner: "src/backend/systems" },
-  { id: "provider-adapter", kind: "adapter", owner: "src/infra/providers" },
+  { id: "provider-adapter", kind: "adapter", owner: "src/backend/processing/providers" },
   { id: "workflow-enqueue", kind: "command", owner: "src/control" },
   { id: "dashboard-startup", kind: "composition", owner: "src/server" },
   { id: "settings-health", kind: "projection", owner: "src/server/dashboard" },

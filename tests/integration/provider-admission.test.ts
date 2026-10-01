@@ -21,7 +21,7 @@ import {
   ProviderAdmissionIdSchema,
 } from "../../src/domain/ids.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
 import {
   HASH_A,
   HASH_B,

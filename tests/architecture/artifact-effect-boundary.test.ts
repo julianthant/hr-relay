@@ -25,7 +25,9 @@ function moduleText(node: ts.Expression | undefined): string | undefined {
 }
 
 function isTaskImplementation(path: string): boolean {
-  return /^src\/stores\/.+\/tasks\/.+\.ts$/u.test(path) || /^src\/workflows\/.+\.ts$/u.test(path);
+  return /^src\/stores\/.+\/tasks\/.+\.ts$/u.test(path)
+    || /^src\/backend\/processing\/.+\/tasks\/.+\.ts$/u.test(path)
+    || /^src\/workflows\/.+\.ts$/u.test(path);
 }
 
 export function auditArtifactEffectBoundary(root: string): readonly string[] {
@@ -87,7 +89,7 @@ describe("content-addressed artifact boundary", () => {
 
   it("catches direct mutable filesystem writes in a task implementation", () => {
     const root = resolve(tmpdir(), `hrauto-artifact-boundary-${process.pid}-${Date.now()}`);
-    const path = resolve(root, "src/stores/extraction/tasks/bad.ts");
+    const path = resolve(root, "src/backend/processing/extraction/tasks/bad.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(

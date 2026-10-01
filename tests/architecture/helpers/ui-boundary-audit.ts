@@ -38,6 +38,7 @@ function isRawBrowserOwner(path: string): boolean {
 
 function isTaskOrWorkflow(path: string): boolean {
   return /^src\/stores\/[a-z0-9-]+\/tasks\//u.test(path)
+    || /^src\/backend\/processing\/[a-z0-9-]+\/tasks\//u.test(path)
     || /^src\/backend\/systems\/[a-z0-9-]+\/tasks\//u.test(path)
     || /^src\/workflows\//u.test(path);
 }

@@ -57,7 +57,7 @@ import { suggestBindings } from "../../../../domain/intake/suggestions.js";
 import { validateIntakeRows } from "../../../../domain/intake/validate.js";
 import { IntakeSessionWireSchema, type IntakeSessionWire } from "../../../../domain/intake/wire.js";
 import type { AuthorityRepositories } from "../../../../infra/sqlite/authority-database.js";
-import type { PreparedIntakeParser } from "../../../../server/intake/intake-parser.js";
+import type { PreparedIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
 import { TargetNotFoundError } from "../../refusals.js";
 
 /**

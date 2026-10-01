@@ -11,7 +11,7 @@ import {
   requiredPreflightChecks,
   type PreflightRunner,
 } from "../../../domain/preflight.js";
-import { probeOwnedViteServer } from "../../../infra/providers/local-vite-probe.js";
+import { probeOwnedViteServer } from "../host/local-vite-probe.js";
 import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../../infra/sqlite/runtime-process-locks.js";
 
 const RuntimePackageSchema = z.object({

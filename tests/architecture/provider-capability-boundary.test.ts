@@ -8,7 +8,7 @@ import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerBudget } from "../../src/domain/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../src/domain/ids.js";
 import { PROVIDER_ADAPTER_SPECS, ProviderIdSchema } from "../../src/domain/runtime-dependencies.js";
-import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
 import { gitVisibleFiles, REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const NETWORK_MODULE_PATTERN = /^(?:node:)?(?:http|https|http2)$|^(?:axios|got|undici|openai)$/u;
@@ -20,7 +20,10 @@ function moduleText(node: ts.Expression | undefined): string | undefined {
 }
 
 function isNetworkOwner(path: string): boolean {
-  if (path.startsWith("src/infra/providers/")) return true;
+  if (path.startsWith("src/backend/processing/providers/")) return true;
+  // The local Vite probe checks the dashboard's owned development server; it
+  // is a host resource, not a provider adapter.
+  if (path === "src/backend/app/host/local-vite-probe.ts") return true;
   // Ref frontend-backend-integration §2: `src/dashboard/client/**` is the ONE fetch/EventSource owner —
   // the same single-owner principle this guard enforces for providers, applied
   // to the frontend transport. No other dashboard module may touch fetch.
@@ -32,6 +35,7 @@ function isNetworkOwner(path: string): boolean {
 
 function isProviderConsumer(path: string): boolean {
   return path.startsWith("src/stores/")
+    || (path.startsWith("src/backend/processing/") && !path.startsWith("src/backend/processing/providers/"))
     || path.startsWith("src/backend/systems/")
     || path.startsWith("src/workflows/");
 }
@@ -98,23 +102,23 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
       }
       if (!isNetworkOwner(path) && (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))
         && NETWORK_MODULE_PATTERN.test(moduleText(node.moduleSpecifier) ?? "")) {
-        issues.push(`${path}: raw network/provider module is confined to infra/providers`);
+        issues.push(`${path}: raw network/provider module is confined to declared network owners`);
       }
       if (!isNetworkOwner(path) && ts.isCallExpression(node)
         && ((node.expression.kind === ts.SyntaxKind.ImportKeyword
             || ts.isIdentifier(node.expression) && node.expression.text === "require")
           && NETWORK_MODULE_PATTERN.test(moduleText(node.arguments[0]) ?? ""))) {
-        issues.push(`${path}: dynamic raw network/provider module is confined to infra/providers`);
+        issues.push(`${path}: dynamic raw network/provider module is confined to declared network owners`);
       }
       if (!isNetworkOwner(path) && ts.isIdentifier(node) && node.text === "fetch") {
-        issues.push(`${path}: raw fetch is confined to infra/providers`);
+        issues.push(`${path}: raw fetch is confined to declared network owners`);
       }
       if (((ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderAdapter")
           || (ts.isExpressionWithTypeArguments(node) && node.expression.getText(source) === "ProviderAdapter"))
         && path !== "src/base/providers.ts"
         && path !== "src/backend/runs/provider-admission.ts"
-        && !path.startsWith("src/infra/providers/")) {
-        issues.push(`${path}: ProviderAdapter implementations are confined to infra/providers`);
+        && !path.startsWith("src/backend/processing/providers/")) {
+        issues.push(`${path}: ProviderAdapter implementations are confined to backend/processing/providers`);
       }
       if (ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderClient"
         && !PROVIDER_CLIENT_TYPE_OWNERS.has(path)) {
@@ -156,8 +160,8 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
       const dependency = stack.pop();
       if (dependency === undefined || visited.has(dependency)) continue;
       visited.add(dependency);
-      if (dependency.startsWith("src/infra/providers/")) {
-        issues.push(`${path}: task import graph reaches infra provider adapter ${dependency}`);
+      if (dependency.startsWith("src/backend/processing/providers/")) {
+        issues.push(`${path}: task import graph reaches processing provider adapter ${dependency}`);
         continue;
       }
       for (const specifier of imports.get(dependency) ?? []) {
@@ -172,7 +176,7 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
 describe("provider capability boundary", () => {
   it("keeps raw provider I/O behind bounded adapters and pins compile-time client narrowing", () => {
     assert.deepEqual(auditProviderCapabilityBoundary(REPO_ROOT), []);
-    assert.ok(gitVisibleFiles(["src/base/providers.ts", "src/infra/providers"]).length >= 2);
+    assert.ok(gitVisibleFiles(["src/base/providers.ts", "src/backend/processing/providers"]).length >= 2);
     const fixture = readFileSync(resolve(REPO_ROOT, "tests/types/task-contracts.typecheck.ts"), "utf8");
     assert.match(fixture, /provider clients are narrowed to the declared capability/u);
     assert.match(fixture, /ctx\.providers\["ocr\.extract"\]/u);
@@ -188,20 +192,25 @@ describe("provider capability boundary", () => {
       }]).adapter.capability, capability);
     }
     assert.deepEqual(
-      gitVisibleFiles(["src/infra/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
+      gitVisibleFiles(["src/backend/processing/providers"]).map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
       [
-        "src/infra/providers/deterministic-provider.ts",
-        "src/infra/providers/gemini-advisory.ts",
-        "src/infra/providers/gemini-ocr-extract.ts",
-        "src/infra/providers/gemini-transport.ts",
-        "src/infra/providers/geocode-adapters.ts",
-        "src/infra/providers/local-vite-probe.ts",
-        "src/infra/providers/provider-pool.ts",
+        "src/backend/processing/providers/deterministic-provider.ts",
+        "src/backend/processing/providers/gemini-advisory.ts",
+        "src/backend/processing/providers/gemini-ocr-extract.ts",
+        "src/backend/processing/providers/gemini-transport.ts",
+        "src/backend/processing/providers/geocode-adapters.ts",
+        "src/backend/processing/providers/provider-pool.ts",
       ].sort(),
-      "the dashboard loopback HTTP probe, the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory"
+      "the deterministic harness, the D161 gemini ocr.extract adapter, the D178 gemini ai.advisory"
         + " adapter and the transport half they share, the D165 census/nominatim geocode adapters,"
-        + " the local Vite ownership probe, and the D165 rotation pool; a new production adapter joins this list deliberately, in"
+        + " and the D165 rotation pool; a new production adapter joins this list deliberately, in"
         + " the same commit that reviews it",
+    );
+    assert.deepEqual(
+      gitVisibleFiles(["src/backend/app/host/local-vite-probe.ts"])
+        .map((path) => relative(REPO_ROOT, path).replaceAll("\\", "/")),
+      ["src/backend/app/host/local-vite-probe.ts"],
+      "the dashboard loopback HTTP probe belongs to the app host",
     );
   });
 
@@ -228,12 +237,12 @@ describe("provider capability boundary", () => {
     // Reconciling them both ways makes adding a fifth a deliberate act.
     const BUILT_PROVIDER_ADAPTERS: Readonly<Record<string, readonly string[]>> = {
       gemini: [
-        "src/infra/providers/gemini-ocr-extract.ts",
-        "src/infra/providers/gemini-advisory.ts",
-        "src/infra/providers/gemini-transport.ts",
+        "src/backend/processing/providers/gemini-ocr-extract.ts",
+        "src/backend/processing/providers/gemini-advisory.ts",
+        "src/backend/processing/providers/gemini-transport.ts",
       ],
-      census: ["src/infra/providers/geocode-adapters.ts"],
-      nominatim: ["src/infra/providers/geocode-adapters.ts"],
+      census: ["src/backend/processing/providers/geocode-adapters.ts"],
+      nominatim: ["src/backend/processing/providers/geocode-adapters.ts"],
     };
     const DECLARED_WITHOUT_ADAPTER: Readonly<Record<string, string>> = {
       groq: "Legacy OCR/LLM key family carried forward as ENV inventory only; D161 built the gemini adapter alone and the pool rotates gemini keys. A groq adapter is a 2h-shaped piece of work nobody has scheduled.",
@@ -266,14 +275,14 @@ describe("provider capability boundary", () => {
     }
   });
 
-  it("catches direct network use and adapter forgery outside infra providers", () => {
+  it("catches direct network use and adapter forgery outside network owners", () => {
     const root = resolve(tmpdir(), `hrauto-provider-boundary-${process.pid}-${Date.now()}`);
-    const path = resolve(root, "src/stores/ocr/tasks/bad.ts");
+    const path = resolve(root, "src/backend/processing/ocr/tasks/bad.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(
         path,
-        'import "node:https";\nimport type { ProviderAdapter } from "../../../base/providers.js";\nconst forged = {} satisfies ProviderAdapter<"ocr.extract">;\nexport async function bad() { return fetch("https://example.invalid"); }\nvoid forged;\n',
+        'import "node:https";\nimport type { ProviderAdapter } from "../../../../base/providers.js";\nconst forged = {} satisfies ProviderAdapter<"ocr.extract">;\nexport async function bad() { return fetch("https://example.invalid"); }\nvoid forged;\n',
       );
       const issues = auditProviderCapabilityBoundary(root).join("\n");
       assert.match(issues, /raw network\/provider module/);
@@ -286,18 +295,18 @@ describe("provider capability boundary", () => {
 
   it("catches transitive adapter reachability and client construction hidden behind helpers", () => {
     const root = resolve(tmpdir(), `hrauto-provider-transitive-${process.pid}-${Date.now()}`);
-    const taskPath = resolve(root, "src/stores/ocr/tasks/bad.ts");
+    const taskPath = resolve(root, "src/backend/processing/ocr/tasks/bad.ts");
     const helperPath = resolve(root, "src/services/provider-helper.ts");
-    const adapterPath = resolve(root, "src/infra/providers/bad-adapter.ts");
+    const adapterPath = resolve(root, "src/backend/processing/providers/bad-adapter.ts");
     try {
       mkdirSync(dirname(taskPath), { recursive: true });
       mkdirSync(dirname(helperPath), { recursive: true });
       mkdirSync(dirname(adapterPath), { recursive: true });
-      writeFileSync(taskPath, 'import { hidden } from "../../../services/provider-helper.js";\nvoid hidden;\n');
-      writeFileSync(helperPath, 'import { adapter } from "../infra/providers/bad-adapter.js";\nimport type { ProviderClient } from "../base/providers.js";\nexport const hidden: ProviderClient<"ocr.extract"> = adapter;\n');
+      writeFileSync(taskPath, 'import { hidden } from "../../../../services/provider-helper.js";\nvoid hidden;\n');
+      writeFileSync(helperPath, 'import { adapter } from "../backend/processing/providers/bad-adapter.js";\nimport type { ProviderClient } from "../base/providers.js";\nexport const hidden: ProviderClient<"ocr.extract"> = adapter;\n');
       writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
       const issues = auditProviderCapabilityBoundary(root).join("\n");
-      assert.match(issues, /task import graph reaches infra provider adapter/);
+      assert.match(issues, /task import graph reaches processing provider adapter/);
       assert.match(issues, /only the admission kernel and the run executor's D162 wiring type ProviderClient/);
     } finally {
       rmSync(root, { recursive: true, force: true });

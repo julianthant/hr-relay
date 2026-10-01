@@ -11,7 +11,7 @@
 import { Readable } from "node:stream";
 import assert from "node:assert/strict";
 import { describe, it, vi } from "vitest";
-import { extractPdfPagesTask } from "../../src/stores/extraction/index.js";
+import { extractPdfPagesTask } from "../../src/backend/processing/extraction/store.js";
 import { ArtifactRefSchema } from "../../src/domain/artifacts.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { buildMinimalPdf } from "./helpers/minimal-pdf.js";

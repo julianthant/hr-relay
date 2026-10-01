@@ -7,7 +7,7 @@ import {
   type NormalizeContactOutput,
 } from "../../../../../src/domain/contracts/normalization/normalize-contact.js";
 import { GeocodeRequestSchema } from "../../../../../src/domain/normalization/geocode.js";
-import { readContactAdviceTask } from "../../../../../src/stores/normalization/index.js";
+import { readContactAdviceTask } from "../../../../../src/backend/processing/normalization/store.js";
 
 const READ_AT = "2026-08-08T12:00:00.000Z";
 const RESOLVED_CENSUS = {

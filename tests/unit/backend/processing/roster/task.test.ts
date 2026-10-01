@@ -11,7 +11,7 @@ import {
 import { FingerprintSchema, IsoInstantSchema } from "../../../../../src/domain/ids.js";
 import { ColumnMappingSchema, detectColumns, headerFingerprint } from "../../../../../src/domain/intake/mapping.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
-import { matchSpreadsheetTask } from "../../../../../src/stores/roster/index.js";
+import { matchSpreadsheetTask } from "../../../../../src/backend/processing/roster/store.js";
 
 const READ_AT = IsoInstantSchema.parse("2026-08-08T12:00:00.000Z");
 const SUBJECT = "7c9e6679-7425-40de-944b-e07fc1f90ae7";

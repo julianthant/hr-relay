@@ -10,7 +10,7 @@ import {
   type ExtractSpreadsheetOutput,
 } from "../../../../../src/domain/contracts/extraction/extract-spreadsheet.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
-import { extractPdfPagesTask, extractSpreadsheetTask } from "../../../../../src/stores/extraction/index.js";
+import { extractPdfPagesTask, extractSpreadsheetTask } from "../../../../../src/backend/processing/extraction/store.js";
 
 const CSV = "text/csv";
 type ArtifactReference = ReturnType<typeof ArtifactRefSchema.parse>;

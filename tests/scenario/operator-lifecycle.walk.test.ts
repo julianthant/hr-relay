@@ -89,7 +89,7 @@ import { createRunQueueProjection } from "../../src/backend/runs/dashboard/proje
 
 import { buildRunDetail } from "../../src/backend/runs/dashboard/queries/run-detail.js";
 import type { RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail.js";
-import { createIntakeParser } from "../../src/server/intake/intake-parser.js";
+import { createIntakeParser } from "../../src/backend/processing/spreadsheet/intake-parser.js";
 import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { archiveSnapshots } from "../fixtures/archive-seams.js";
 import {

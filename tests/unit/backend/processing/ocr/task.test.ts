@@ -5,7 +5,7 @@ import { ArtifactRefSchema } from "../../../../../src/domain/artifacts.js";
 import { sha256Hex } from "../../../../../src/domain/sha256.js";
 import { AdmittedExtractionSchema, type AdmittedExtraction } from "../../../../../src/domain/ocr/extraction.js";
 import { deriveSchemaHash } from "../../../../../src/domain/schema-bound-value.js";
-import { extractFormPageTask } from "../../../../../src/stores/ocr/index.js";
+import { extractFormPageTask } from "../../../../../src/backend/processing/ocr/store.js";
 
 const PAGE_SHA = sha256Hex("fixture-oath-page");
 const PAGE = ArtifactRefSchema.parse({

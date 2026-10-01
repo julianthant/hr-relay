@@ -10,9 +10,9 @@
  * source, and there is nothing it could be reconciled against.
  *
  * This module owns the SHAPE of that derivation, not the derivation itself. The
- * parse is produced behind the kernel's injected `intakeParser` seam because a
- * spreadsheet parser lives in `src/stores/**`, which neither `src/domain` nor
- * `src/core` may reach.
+ * parse is produced behind the kernel's injected `intakeParser` seam because the
+ * spreadsheet parser implementation lives in `src/backend/processing`, which
+ * neither `src/domain` nor `src/core` may reach.
  *
  * ## Why `layout` is nullable rather than a second refusal code
  *

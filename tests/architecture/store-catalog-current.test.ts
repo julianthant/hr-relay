@@ -22,8 +22,8 @@ import {
 import type { StoreCatalogRegistry } from "../../scripts/generate-store-catalog.js";
 import { readPendingImplBindings } from "../../src/backend/app/control/workflow-registry.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
+import { REPO_ROOT } from "./helpers/guard-files.js";
 
-const REPO_ROOT = join(import.meta.dirname, "..", "..", "..");
 const DOC = readFileSync(join(REPO_ROOT, STORE_CATALOG_DOC_PATH), "utf8");
 const PENDING = readPendingImplBindings(REPO_ROOT);
 

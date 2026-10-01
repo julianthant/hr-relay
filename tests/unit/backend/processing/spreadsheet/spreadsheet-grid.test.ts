@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { Buffer } from "node:buffer";
 import writeXlsxFile from "write-excel-file/node";
-import { parseSpreadsheetGrid } from "../../../../../src/stores/common/spreadsheet-grid.js";
+import { parseSpreadsheetGrid } from "../../../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 
 const CSV = "text/csv";
 

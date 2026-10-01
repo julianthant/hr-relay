@@ -14,7 +14,7 @@ import {
   type PreflightDeadlineScheduler,
 } from "../../src/domain/preflight.js";
 import { createDashboardPreflightRunners } from "../../src/backend/app/preflight/dashboard-runners.js";
-import type { probeOwnedViteServer } from "../../src/infra/providers/local-vite-probe.js";
+import type { probeOwnedViteServer } from "../../src/backend/app/host/local-vite-probe.js";
 import { PreflightCheckIdSchema } from "../../src/domain/runtime-dependencies.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 

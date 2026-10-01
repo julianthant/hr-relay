@@ -1,7 +1,7 @@
 import { join } from "node:path";
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { WorkerIdSchema } from "../../../src/domain/ids.js";
-import * as geminiOcr from "../../../src/infra/providers/gemini-ocr-extract.js";
+import * as geminiOcr from "../../../src/backend/processing/providers/gemini-ocr-extract.js";
 import { runWorkerLoop } from "../../../src/backend/runtime/worker-loop.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";

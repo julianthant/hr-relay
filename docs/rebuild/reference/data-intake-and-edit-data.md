@@ -472,8 +472,8 @@ silently abandon the first one's mapping and let both enqueue the same rows.
 **Rows and detected columns are RE-DERIVED on every read, never stored.** They are a pure function of
 `(artifact bytes, sheet, headerRowIndex)`, all three of which are immutable or retained, so a stored
 copy has nothing to be reconciled against and could only drift. The kernel therefore reads them
-through an injected deterministic `intakeParser` seam — it cannot import a spreadsheet parser
-(`src/stores/**` is below it) and its authority transaction is synchronous — which is split into an
+through an injected deterministic `intakeParser` seam — it cannot import the spreadsheet parser
+(`src/backend/processing/spreadsheet/intake-parser.ts` is below it) and its authority transaction is synchronous — which is split into an
 async `prepare` (read the artifact once, parse the grid) and a pure synchronous `parse` (rank header
 candidates, settle a header row, detect columns, compute the layout fingerprint). A key nobody
 prepared **throws by name**; the kernel never maps against a guessed layout.
@@ -589,7 +589,7 @@ satisfy the very schema the workflow validates with. The descriptor's source clo
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/stores/{extraction,ocr,roster}/tasks/`, `src/domain/ocr/stack.ts`, `src/server/ocr/compose.ts:91` and `ls src/workflows/`; left: the workflow
 
 `extraction` is a service store (`sessions: []`, no browser, no `page` ctx). Contracts live in
-`src/domain/contracts/extraction/`; impls in `src/stores/extraction/tasks/` (ref task-contract §3.4).
+`src/domain/contracts/extraction/`; impls in `src/backend/processing/extraction/tasks/` (ref task-contract §3.4).
 
 ```ts
 // src/domain/contracts/extraction/extract-spreadsheet.ts:70-90 — as built (D149)
@@ -793,7 +793,7 @@ above: `src/domain/matching/match-confidence.ts` carries the tier bucketing VERB
 `match-confidence.ts` at `0fd181c2`), `name-match.ts`/`levenshtein.ts` carry the five-tier scorer
 and the same/similar/different classifier (legacy `match.ts` at `ab9ab5ab`, `levenshtein.ts` at
 `c5caad80`), and `roster-match.ts` is the REDESIGNED composition — every verdict arm pinned in
-`tests/unit/roster-match.test.ts` and awaiting its real-roster re-verify at the roster migration.
+`tests/unit/domain/matching/roster-match.test.ts` and awaiting its real-roster re-verify at the roster migration.
 The composition's fail-closed choices: a `name-eid-conflict` reports **confidence 0** (a number
 implying partial trust on a conflicted identity is how a wrong person gets paid); a subject's
 CLAIMED EID is never overridden by a name-matched different one (that is a conflict too); a
@@ -807,7 +807,7 @@ input (canonical coercers demand the observation instant — the intake-validati
 optional `sheet`; and `mapping-mismatch` + `no-eid-column` join the error codes — a mapping that
 does not fit these exact bytes (proved by re-detecting columns and comparing the mapping's own
 header fingerprint) and a mapping with no EID binding are refusals worth naming. The task parses
-through the ONE shared grid edge (`src/stores/common/spreadsheet-grid.ts`, lifted verbatim from
+through the ONE shared grid edge (`src/backend/processing/spreadsheet/spreadsheet-grid.ts`, lifted verbatim from
 `extract-spreadsheet` so the date-cell canonicalization cannot fork), and a cell that fails its
 canonical coercion nulls THAT fact on THAT row through the sanctioned discriminated wrapper —
 counted, logged, never an erased row and never a swallowed error. Five executable scenarios
@@ -939,7 +939,7 @@ tables, country aliases, and the relationship table with the in-law-before-subst
 LLM fallback did not port at D165 (the `ai` source arm was left for 2i's advisory producer, so the
 schema carried no arm nothing could produce; **D178 landed both** — the arm is
 `src/domain/contracts/normalization/normalize-contact.ts:107-112` and its producer is
-`src/stores/normalization/tasks/read-contact-advice.ts:266`, described at the end of this section). A rule that cannot decide is `ambiguous`; provider
+`src/backend/processing/normalization/tasks/read-contact-advice.ts`, described at the end of this section). A rule that cannot decide is `ambiguous`; provider
 exhaustion is `advisory-unavailable` carrying each capability's closed reason; `before` values
 are redacted under each canonical field's own classification/transform through the ONE
 `redactValue` implementation, narrowed at the contract boundary to the string-valued arms a
@@ -949,17 +949,17 @@ deliberately NOT offered (the 2026-07-13 incident surface — `isSafeStreetRepla
 house-number primitives ported into `src/domain/normalization/street-safety.ts` for the
 confidence rules and the EC migration, which owns the live re-verify); city/state/ZIP advice
 comes only from a `resolved` outcome above `unverified`. The geocode adapters
-(`src/infra/providers/geocode-adapters.ts`) are transport+provenance like D161's — Census
+(`src/backend/processing/providers/geocode-adapters.ts`) are transport+provenance like D161's — Census
 builds the street NAME from components, never TIGER ranges; Nominatim carries the policy
 User-Agent; legacy's 1.1s sleep did not port because the kernel's `geocodeNominatim` budget
 (`requestsPerMinute: 1`) is the durable form of the same policy. **The pool**
-(`src/infra/providers/provider-pool.ts`) is ONE adapter per capability selecting which
+(`src/backend/processing/providers/provider-pool.ts`) is ONE adapter per capability selecting which
 key/model child answers each invocation: "one invocation is ONE model call" holds exactly —
 rotation advances ACROSS invocations on the exhaustion code family, never a second remote
 attempt under one admission; model tiers order the children and keys rotate within a tier;
 evidence names the child. `composeWorkerRuntime` now composes the gemini pool (keys × models)
-and both keyless geocoders. Proof: `tests/unit/normalization-rules.test.ts`,
-`tests/unit/provider-pool.test.ts`, and five executable scenarios in
+and both keyless geocoders. Proof: `tests/unit/domain/normalization/normalization-rules.test.ts`,
+`tests/unit/backend/processing/providers/provider-pool.test.ts`, and five executable scenarios in
 `tests/scenario/normalization-contact.scenario.test.ts`.
 
 **As-built delta (D178, 2026-08-09) — the `ai` arm goes live, NARROWER than legacy's.** The
@@ -987,8 +987,8 @@ scenario corpus — the second asserts the withheld value appears NOWHERE in the
 <!-- roadmap: p2-2h -->
 
 - [x] the three producers are admitted through ONE gate that cannot branch on the source, and an operator's hand reading fingerprints identically to the provider's (§4.3, D151; `src/domain/ocr/extraction.ts`, held by `ocr-producer-parity`)
-- [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/server/ocr/compose.ts:73`)
-- [x] route 1's production adapter is built as transport plus provenance (§4.11, D161; `src/infra/providers/gemini-ocr-extract.ts`)
+- [x] routes 2 and 3 are usable from a terminal today — `cli ocr forms | instruction | admit`, non-zero exit on refusal (`src/backend/transports/cli/ocr.ts`)
+- [x] route 1's production adapter is built as transport plus provenance (§4.11, D161; `src/backend/processing/providers/gemini-ocr-extract.ts`)
 - [ ] the review row and the approval cards this square wires are the DRAWN surface, which this doc does not own — ref dashboard-surfaces §9 (D7/D8/D10) and ref frontend-backend-integration §5.1
 - [ ] `ocr_approvals` (schema v10) has no writer in `src/` outside the storage layer — the approval ACT is what the review surface adds
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `src/domain/ocr/{extraction,instruction,form-registry,stack}.ts`, `src/server/ocr/compose.ts` and `grep -rl ocr_approvals src` (storage layer only); left: everything drawn
@@ -1031,7 +1031,7 @@ never approved. `answersFingerprint` digests what was read while excluding who r
 so "two routes agree" is checkable rather than asserted, and confidence is excluded because it is
 the producer's opinion of itself rather than a fact about the page.
 
-**Routes 2 and 3 are usable now**, through `cli ocr` (`src/server/ocr/compose.ts:73` — three
+**Routes 2 and 3 are usable now**, through `cli ocr` (`src/backend/transports/cli/ocr.ts` — three
 subjects, `forms` · `instruction` · `admit`):
 
 ```
@@ -1327,7 +1327,7 @@ schema decision (the shape is shared by every consumer), left open rather than g
 
 <!-- roadmap: p2-2h -->
 
-The first production `ocr.extract` adapter exists: `src/infra/providers/gemini-ocr-extract.ts`,
+The first production `ocr.extract` adapter exists: `src/backend/processing/providers/gemini-ocr-extract.ts`,
 Gemini, legacy's priority-1 OCR provider. The design constraint is §4.3's, made concrete: the
 adapter ADDS NO RULE. It sends the instruction the store task built from the registry, inline with
 the page bytes as base64 (the shape legacy proved on this corpus), and what comes back goes through

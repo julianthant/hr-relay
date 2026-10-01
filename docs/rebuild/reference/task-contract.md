@@ -1165,8 +1165,8 @@ Pure compute and non-browser pipelines get **service stores** under the same con
   geocoder reads and optional model suggestions return a strict discriminated result with one
   provenance-labelled change per field (`rule|census|nominatim|ai`) plus explicit
   `unchanged|ambiguous|unavailable`; provider exhaustion or error can never become “no change.” The
-  workflow decides whether an advisory enters an approval gate. Shared provider clients live in
-  infra and may also serve OCR; one store never imports another store's implementation.
+  workflow decides whether an advisory enters an approval gate. Shared provider adapters live under
+  `src/backend/processing/providers/` and may also serve OCR; one store never imports another store's implementation.
 
 Rules:
 
@@ -1178,7 +1178,7 @@ Rules:
   cross-system sessions fails both the type and the factory.
 - A service ctx has no driver member (type-level) and no session provider; `defineServiceStore`
   takes no `SessionProvider`. Remote I/O is not ambient: direct provider SDK, `fetch` or
-  HTTP-client imports are confined to `src/infra/providers/**`, a service task declares
+  HTTP-client imports are confined to `src/backend/processing/providers/**`, a service task declares
   `providers`, and `ctx.providers` is narrowed to exactly those capabilities. Pure extraction and
   roster tasks declare none and cannot call the network.
 - Provider adapters apply the immutable Clock/config snapshot, timeout, abort, admission,
@@ -1472,7 +1472,7 @@ exist is worse than no promise, because a reviewer stops looking.
 | 16 | **Person input mistaken for page identity** — a stale employee remains open after a search | Explicit `subject` on every contract; `subject-before-fence` proves prepare-end < fresh subject observation < fence < mutation call on one lease, with mismatch/unknown producing zero fence and zero click; `identity-gate-before-commit` proves every separation write and identity-bearing terminal crosses the shared identity-authority task, with the exact name-resolved gate condition pinned separately (D202/D309) |
 | 17 | **Selector duplication returns behind task helpers** | `task-driver-boundary`: raw Playwright, locator/frame/`getBy`/`newPage`/`evaluate`/`$` operations and private driver/session ownership are confined to `src/stores/*/driver/**`, `session.ts` and `src/infra/browser/**`, transitively |
 | 18 | **One example masquerades as behavioral coverage** | `scenario-coverage` — every branch arm, gate open/resolve, delegation and transaction outcome is claimed by a registered scenario, every claim resolves to a file that exists, and the corpus DIRECTORY holds exactly two declared kinds |
-| 19 | **A service task hides provider/network I/O in an import** | `provider-capability-boundary`: capability→budget mapping, one durable admission kernel, whole-`src` and transitive task import scans confining vendor modules to `src/infra/providers/**`, and the D68 declared-inventory reconciliation both ways |
+| 19 | **A service task hides provider/network I/O in an import** | `provider-capability-boundary`: capability→budget mapping, one durable admission kernel, whole-`src` and transitive task import scans confining vendor modules to `src/backend/processing/providers/**`, and the D68 declared-inventory reconciliation both ways |
 
 Honest residual risks with no mechanical guard: (a) *output schemas that are too loose*
 (`z.string()` where an enum belongs) — mitigated by review and by the mandatory `example` pinning

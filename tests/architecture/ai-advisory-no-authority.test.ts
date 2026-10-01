@@ -69,7 +69,7 @@ const ADVISORY_ROOTS = [
   "src/domain/trust/advisory.ts",
   "src/domain/dashboard/advisory.ts",
   "src/services/trust/advisory.ts",
-  "src/infra/providers/gemini-advisory.ts",
+  "src/backend/processing/providers/gemini-advisory.ts",
   "src/backend/runs/dashboard/queries/advisory.ts",
 ] as const;
 

@@ -15,7 +15,7 @@ import {
 } from "../../src/domain/ids.js";
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
+import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
 
 async function readStream(stream: Readable): Promise<Uint8Array> {
   const chunks: Uint8Array[] = [];

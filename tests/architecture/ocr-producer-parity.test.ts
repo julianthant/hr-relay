@@ -66,7 +66,9 @@ export function ocrParityViolations(files: readonly ScannedFile[]): string[] {
 function ocrSources(): ScannedFile[] {
   return [
     ...walkFiles(join(REPO_ROOT, "src/domain/ocr"), { extensions: [".ts"] }),
-    ...walkFiles(join(REPO_ROOT, "src/server/ocr"), { extensions: [".ts"] }),
+    ...walkFiles(join(REPO_ROOT, "src/backend/processing/ocr"), { extensions: [".ts"] }),
+    ...walkFiles(join(REPO_ROOT, "src/backend/processing/providers"), { extensions: [".ts"] }),
+    ...walkFiles(join(REPO_ROOT, "src/backend/transports/cli"), { extensions: [".ts"] }),
   ].map((absolute) => ({ path: repoRelative(absolute), source: readFileSync(absolute, "utf8") }));
 }
 
@@ -186,10 +188,10 @@ describe("D151 OCR producer parity", () => {
     it("catches a second module minting an admitted record", () => {
       assert.deepEqual(
         ocrParityViolations([{
-          path: "src/server/ocr/compose.ts",
+          path: "src/backend/transports/cli/ocr.ts",
           source: "return AdmittedExtractionSchema.parse(whateverTheModelSaid);",
         }]),
-        [`src/server/ocr/compose.ts: mints an AdmittedExtraction; ${GATE} is the only admission path`],
+        [`src/backend/transports/cli/ocr.ts: mints an AdmittedExtraction; ${GATE} is the only admission path`],
       );
     });
 

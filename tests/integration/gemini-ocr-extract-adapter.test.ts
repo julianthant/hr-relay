@@ -22,7 +22,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { createGeminiOcrExtractAdapter } from "../../src/infra/providers/gemini-ocr-extract.js";
+import { createGeminiOcrExtractAdapter } from "../../src/backend/processing/providers/gemini-ocr-extract.js";
 import {
   createAdmittedProviderClient,
   type MonotonicDeadlineScheduler,

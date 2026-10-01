@@ -1697,7 +1697,7 @@ leak in D161's adapter:** `JSON.parse`'s own message QUOTES the offending input
 (`Unexpected token 'I', "I think the"…`), so the shared transport now reports only the error's
 NAME beside the answer's length.
 
-**One adapter, per-consumer schemas.** `src/infra/providers/gemini-advisory.ts` is transport +
+**One adapter, per-consumer schemas.** `src/backend/processing/providers/gemini-advisory.ts` is transport +
 provenance only — it stamps provider/model and passes the model's JSON through VERBATIM as
 `answer`, and the CONSUMER owns the closed shape. `gemini-transport.ts` is the half it shares with
 D161's OCR adapter (endpoint, header-borne key, the 429 → `rate-exhausted` mapping with the
