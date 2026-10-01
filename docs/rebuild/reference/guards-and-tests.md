@@ -1199,6 +1199,12 @@ all-project targeted convenience and `test:architecture` is the guard-only targe
 neither is an additional per-commit obligation. The 2026-08-12 timings above remain the historical
 evidence that adopted D191, not a claim about today's topology or runtime.
 
+**2026-09-30 Phase-1 tier amendment.** The current gate collects four disjoint projects: `unit`,
+`integration`, `architecture`, and `scenario`. A suite that exercises real storage, a process,
+socket, browser or composed workflow moves intact to integration; `test:unit` selects only
+deterministic units. The earlier three-project statement records the 2026-09-02 adoption state.
+This changes neither retained test membership nor D91's coverage floors.
+
 **2026-09-05 test-run reliability amendment (operator-approved maintenance).** The npm gate
 names, test membership, four-worker ceiling, timeouts, suite-size assertion and coverage floors stay
 unchanged. Batch Vitest entrypoints now execute through `scripts/test-runner.ts`, which launches
@@ -1595,7 +1601,8 @@ set. The test asserts:
    the complete recursive guard directory exactly, `unit` and `integration` use disjoint roots, the architecture
    project excludes nothing, and `test:architecture` selects only that project while forcing empty
    collection to fail; an
-   independently collected unit test exercises that refusal so
+   independently collected integration process test exercises that refusal, while pure unit
+   policy tests reject empty, duplicate and orphaned injected listings, so
    the architecture lane cannot be its sole witness (a rename or nested guard cannot orphan or
    double-run it);
 4. every active rebuild-`src/` scan resolves at least one file; a family is activated in the same
@@ -2210,27 +2217,30 @@ asks for it and its result is recorded.
 
 ### 10.1 The test family, as built
 
-Ten members. Folder, runner, when it runs, what it may touch, what it proves. R7 refreshed the
-family-wide census and taxonomy on 2026-09-02.
+Eleven members. Folder, runner, when it runs, what it may touch, what it proves. R7's
+2026-09-02 census labels below are historical; the current four-project collection and tier
+boundary are in §10.9 and §6.
 
 | family | folder | runner | when | may touch | proves |
 |---|---|---|---|---|---|
-| **unit** | `tests/unit/**` (306 files / 111,789 lines, architecture excluded) | vitest project `unit` | every commit | pure functions, fake ctx, temp dirs, its own SQLite files under a temp root — **never** a real runtime root (`test-runtime-root-isolation`) | one module's decision logic, against its own schemas |
-| **architecture guards** | `tests/unit/architecture/**` (70 files / 27,587 lines) | vitest project `architecture`; `npm run test:architecture` selects that project by name | every commit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each of the nine arms still fires against a violating fixture |
+| **unit** | `tests/unit/**` | vitest project `unit`; `npm run test:unit` selects only this project | focused Phase-1 iteration and the full gate at phase exit | pure functions, fake ctx, fixture reads and injected-port DOM wiring; no exercised database, process, socket, browser or composed workflow | one module's deterministic decision logic, against its own schemas |
+| **integration** | `tests/integration/**` | vitest project `integration`; `npm run test:integration` selects only this project | explicit later execution and the applicable full gate at phase exit | isolated real storage, processes, sockets and composed workflows; **never** a real runtime root (`test-runtime-root-isolation`) | actual adapter and composition behavior that a pure unit cannot establish |
+| **architecture guards** | `tests/architecture/**` | vitest project `architecture`; `npm run test:architecture` selects that project by name | focused affected checks and the full gate at phase exit | this repository as DATA — source text, ASTs, registries, `package.json`, and TypeScript configs; authenticated frozen provenance may describe legacy facts, but no finished gate reads the legacy checkout | that a rule holds everywhere, and — through `guard-manifest` — that each registered arm still fires against a violating fixture |
 | **fixture scenarios** | `tests/scenario/*.scenario.test.ts` (6 capability files) + `tests/scenario/workflows/<workflow-id>/structural.scenario.test.ts` (7 T1a files) + `tests/scenario/dashboard/**` (3 T2 files) | vitest project `scenario` | every commit | `walkDescriptor` over a real descriptor with caller-supplied node outputs; fake stores or one isolated authority database; no browser | that one declared graph or dashboard command/projection path binds, refuses and terminates as authored, and that graph coverage points claimed are the ones walked |
 | **integration walks** | `tests/scenario/*.walk.test.ts` (1) | vitest project `scenario` | every commit | ONE real authority database and the production read models | the JOINS only composition can falsify; it claims no coverage point and carries no manifest row (D185) |
-| **dashboard unit tests** | `tests/unit/dashboard/**` (102 files) | vitest project `unit` | every commit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests that opt in per file; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
+| **dashboard unit tests** | `tests/unit/dashboard/**` | vitest project `unit` | focused affected checks and the full gate at phase exit | extracted `*-model.ts` decisions plus wiring-level `jsdom` tests with injected ports; anything visual stays in parity | that a surface's pure half computes what it claims and its wiring dispatches/focuses as contracted |
 | **parity** | `tests/parity/**` — 17 specs, **281 cases**, **222 reference triples** (`.png` + `.a11y.yml` + `.meta.json`) | `npm run test:parity` (Playwright, outside Vitest and coverage) | on a dashboard change, and before a slice closes | the built bundle over ephemeral fixture and seeded BFFs; never ports 3938/5174 | that the rendered pixel/a11y/browser contract has not moved; every stored reference half is asserted, `maxDiffPixels: 0`, and dual-adapter structure proves fixture relevance |
 | **performance budgets** | `tests/perf/dashboard-benchmark.ts` | `npm run perf:dashboard` plus unit negative controls | before a slice closes and after a measured dashboard data-path change | one deterministic seeded authority database under a temp root; no production ports or runtime root | exact non-duration bounds on day-wire SQL, patch reparses, log scope, archive freeze and member-preview delta; elapsed timings remain observational because host contention is not a stable correctness oracle |
-| **the recovery drill** | inside `storage-recovery.test.ts` | vitest project `unit` | every commit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
+| **the recovery drill** | `tests/integration/storage-restore-drill.test.ts` and related recovery suites | vitest project `integration` | explicit later execution and the applicable full gate at phase exit | temporary SQLite databases and the official `node:sqlite` online-backup API | that a corrupted authority database restores from the newest verified backup, rebuilds projections ONLY, and that D181's stopped-system proof is derivable from real runtime-lock files |
 | **the controlled-commit proof** | `docs/rebuild/reference/write-safety.md` §Phase-2 controlled-commit as-built | **recorded, never re-run** | once, 2026-08-04 | a real Kuali document | that the write kernel fences, commits, verifies by reload read-back and refuses a replay in 2 ms. A recorded proof is evidence; re-running it would be a second real HR write, so it is cited, not executed. Each workflow still owes its own §3.2 controlled-commit proof at its migration. |
 | **live selector re-verification** | no folder — a pre-authorized act at each migration | `playwright-cli`, by the agent | at every workflow's migration | real pages, read-only (`snapshot`) | that a ported selector still resolves. D150 retired the cross-repo accounting in favour of exactly this, because a selector checked against the live system beats one diffed against legacy's copy of it. |
 
 ### 10.2 The split: no-dry-run tests and dry-run tests
 
-**A no-dry-run test needs nothing but this tree.** Unit, architecture guards, structural fixture
-scenarios, dashboard feature scenarios, parity. They are deterministic, they touch no external
-system, and they are cheap enough that the only sane policy is to run them.
+**A no-dry-run test needs nothing but this tree.** Unit, integration, architecture guards,
+structural fixture scenarios, dashboard feature scenarios and parity do not touch external HR
+systems. Integration proofs may still create isolated databases, sockets or child processes and
+need the applicable gate's resource budget.
 
 **When they run:**
 

@@ -12,7 +12,7 @@
  * The controls matter as much as the graph: `@ts-expect-error` fails the build
  * when the error it expects STOPS happening, so a transform that erodes to
  * `any`/`unknown`/`RuntimeFlowNode` fails this proof itself rather than passing
- * it vacuously. `tests/unit/flow-type-budget.test.ts` records the compile cost.
+ * it vacuously. `tests/integration/flow-type-budget.test.ts` records the compile cost.
  *
  * The D71 disposable 40-node simplified chain is a feasibility floor, not a
  * substitute — this file uses the REAL contract factory and the REAL builder.
