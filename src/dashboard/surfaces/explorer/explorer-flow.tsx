@@ -1,14 +1,14 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowLeft, ArrowUpRight, CheckCheck, ChevronsUpDown, Cpu, Eye, GitBranch, Keyboard, ListOrdered, Monitor, MousePointer2, PencilLine, Search, Workflow, X } from "lucide-react";
-import { Badge, Button, dsElev, dsFocus, IconButton, PageHeader, TakeoverFrame } from "../../ds/ui.js";
+import { ArrowUpRight, CheckCheck, ChevronsUpDown, Cpu, Eye, GitBranch, Keyboard, ListOrdered, Monitor, MousePointer2, PencilLine, Search, Workflow, X } from "lucide-react";
+import { ActionBar, ActionBarRow, Badge, Button, dsElev, dsFocus, IconButton, TakeoverFrame } from "../../ds/ui.js";
 import { blockedAfter, DEFAULT_COMMENTS, type CommentChoices, type FlowField, type FlowStep, type FieldSource, type PreviewScenario } from "./explorer-flow-model.js";
 import { ExplorerParts } from "./explorer-parts.js";
 import { ExplorerSource } from "./explorer-source.js";
 
-export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor, onBack, onVersionRegistry }: {
+export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor, onVersionRegistry }: {
   title: string; steps: readonly FlowStep[]; scenario: PreviewScenario; onScenario: (scenario: PreviewScenario) => void;
   sourceFor: (field: FlowField, step: number) => FieldSource | undefined;
-  onBack: () => void; onVersionRegistry: () => void;
+  onVersionRegistry: () => void;
 }) {
   const [comments, setComments] = useState<CommentChoices>(DEFAULT_COMMENTS);
   const [open, setOpen] = useState<Readonly<Record<string, boolean>>>({});
@@ -63,9 +63,10 @@ export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor
     onScenario(next); setSource(undefined); setSelected(undefined); setPendingFocus(undefined); focusRequest.current = undefined;
   };
   return <TakeoverFrame label="Workflow explorer preview" className="ui-theme-scope bg-ui-canvas font-ui text-ui-primary [--ds-surface-3:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-focus-ring:var(--ui-info)]">
-    <PageHeader title="Explorer" icon={<Workflow aria-hidden className="size-4" />} badge={<Badge className="border-ui-stroke bg-ui-table text-ui-secondary">Mock data</Badge>}
-      back={<IconButton label="Back to dashboard" size="sm" onClick={onBack} icon={<ArrowLeft aria-hidden className="size-4" />} />}
-      actions={<><Button size="toolbar" variant="secondary" onClick={() => setAllOpen(true)}>Expand all</Button><Button size="toolbar" variant="secondary" onClick={() => setAllOpen(false)}>Collapse all</Button><IconButton label="Show action legend" size="sm" onClick={() => setLegend(!legend)} icon={<ListOrdered aria-hidden className="size-4" />} /><Button size="toolbar" variant="secondary" icon={<Eye aria-hidden className="size-3.5" />} onClick={onVersionRegistry}>Version registry</Button></>} />
+    <ActionBar className="mx-3 mt-3 bg-ui-panel"><ActionBarRow label="Explorer actions">
+      <Workflow aria-hidden className="size-4 shrink-0 text-ui-muted" /><h1 className="m-0 text-heading">Explorer</h1><Badge className="border-ui-stroke bg-ui-table text-ui-secondary">Mock data</Badge>
+      <div className="ml-auto flex shrink-0 items-center gap-2"><Button size="toolbar" variant="secondary" onClick={() => setAllOpen(true)}>Expand all</Button><Button size="toolbar" variant="secondary" onClick={() => setAllOpen(false)}>Collapse all</Button><IconButton label="Show action legend" size="sm" onClick={() => setLegend(!legend)} icon={<ListOrdered aria-hidden className="size-4" />} /><Button size="toolbar" variant="secondary" icon={<Eye aria-hidden className="size-3.5" />} onClick={onVersionRegistry}>Version registry</Button></div>
+    </ActionBarRow></ActionBar>
     <div className="grid min-h-0 flex-1 grid-cols-[190px_minmax(0,1fr)] gap-2 p-3 min-[1151px]:grid-cols-[230px_minmax(0,1fr)]">
       <nav aria-label="Preview workflows" className="flex min-h-0 flex-col overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
         <label className="m-3 flex h-8 items-center gap-2 rounded-md border border-ui-stroke-control bg-ui-field px-2 text-ui-muted"><Search aria-hidden className="size-3.5 shrink-0" /><input aria-label="Find workflow" placeholder="Find workflow…" value={query} onChange={(event) => setQuery(event.target.value)} className={`min-w-0 flex-1 bg-transparent text-body text-ui-primary placeholder:text-ui-muted ${dsFocus}`} /></label>

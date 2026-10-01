@@ -28,7 +28,16 @@ import { cn } from "../lib/utils.js";
 import { ShadcnCard, ShadcnCardContent, ShadcnCardFooter, ShadcnCardHeader } from "./shadcn-card.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./shadcn-collapsible.js";
 import { ShadcnTabs, ShadcnTabsContent, ShadcnTabsList, ShadcnTabsTrigger } from "./shadcn-tabs.js";
-import { dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
+import { dsBorder, dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsSize, dsSurface, dsText } from "./tokens.js";
+
+/** Shared frame for dashboard and full-page action bars, including optional bands. */
+export function ActionBar({ children, className }: { children: ReactNode; className?: string }) {
+  return <div className={cn("flex shrink-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card, className)}>{children}</div>;
+}
+
+export function ActionBarRow({ children, label, className }: { children: ReactNode; label?: string; className?: string }) {
+  return <div role={label ? "group" : undefined} aria-label={label} className={cn("flex min-w-0 items-center", dsSize.hBar, "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)]", className)}>{children}</div>;
+}
 
 /** A compact disclosure composed from shadcn's Radix Collapsible parts. */
 export function Disclosure({

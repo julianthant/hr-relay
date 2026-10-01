@@ -106,7 +106,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
             <ActivityReport range={route.activity ?? ""} onRange={(next) => setRoute({ ...route, activity: next })} />
           ) : takeover === "explore" ? (
             <WorkflowExplorer
-              onBack={() => setRoute(routeWithoutTakeovers(route))}
               onVersionRegistry={() => setRoute({ ...routeWithoutTakeovers(route), archive: ARCHIVE_INDEX, archiveView: "versions" })}
             />
           ) : children);}

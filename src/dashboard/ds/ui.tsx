@@ -94,6 +94,8 @@ export type {
 } from "./primitives-status.js";
 
 export {
+  ActionBar,
+  ActionBarRow,
   Panel,
   PanelHeader,
   PanelToolbar,
