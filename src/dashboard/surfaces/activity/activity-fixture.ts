@@ -19,7 +19,7 @@ const records = [5, 8, 7, 6, 9, 9].flatMap((count, day) => Array.from({ length: 
   ...record,
   workflow: index < 29 ? "sample-separations" : "sample-person-lookup",
   status: index < 24 || index >= 29 && index < 43 ? "completed" : index === 28 ? "waiting" : index === 24 || index === 25 ? "failed" : "running",
-  duration: index < 39 ? 134 : null,
+  duration: index < 39 ? index === 0 ? 281 : index === 1 ? 74 : 134 : null,
   readback: index < 21 || index >= 29,
   ucpath: index < 18,
   kuali: index < 17,
@@ -41,7 +41,10 @@ export function activitySample(range: ActivityDateRange, scenario: ActivitySampl
   return { state: "loaded", report: {
     range, timeZone: volume.timeZone, total: rows.length, completed, failed,
     running: count("running"), waiting: count("waiting"), outstanding: count("running") + count("waiting"), terminal: terminal.length,
-    duration: { medianSeconds: measured.length ? 134 : null, measured: measured.length, unmeasured: terminal.length - measured.length },
+    duration: { medianSeconds: measured.length ? 134 : null, longestSeconds: measured.length ? Math.max(...measured) : null,
+      totalSeconds: measured.length ? measured.reduce((total, seconds) => total + seconds, 0) : terminal.length ? null : 0,
+      measured: measured.length, unmeasured: terminal.length - measured.length },
+    failures: scenario === "incomplete" ? null : failed ? [{ label: "Document read timeout", runs: failed }] : [],
     evidence: scenario === "incomplete" ? { verified: null, unread: null } : { verified: rows.filter(row => row.status === "completed" && row.readback).length, unread: rows.filter(row => row.status === "completed" && !row.readback).length },
     workflows: [
       { id: "sample-separations", label: "Separations", version: "2.1" },

@@ -20,7 +20,8 @@ export function ActivityVolume({ volume }: { volume?: Volume }) {
     observer.observe(node);
     return () => observer.disconnect();
   }, []);
-  const model = createActivityVolumeChartModel(volume, width - 48);
+  const model = createActivityVolumeChartModel(volume, width - 24);
+  const plotHeight = Math.round(Math.min(224, Math.max(160, (width - 24) * .32)));
   const active = hovered ?? focused;
   const bucket = model.state === "complete" ? model.buckets.find(item => item.key === active) : undefined;
   const bucketKey = bucket?.key;
@@ -44,7 +45,7 @@ export function ActivityVolume({ volume }: { volume?: Volume }) {
     <h2 id={`${tooltipId}-heading`} className="mb-3 mt-0 text-section">{model.state === "complete" ? model.title : "Run volume"}</h2>
     <div ref={plot} className="rounded-lg border border-ui-stroke bg-ui-panel px-3 pb-3 pt-4">
       {model.state === "unavailable" ? <p className="flex h-40 items-center justify-center text-body text-ui-secondary">Volume unavailable</p> : <>
-        <div ref={area} className="relative ml-6 h-40" role="group" aria-label={model.summary} onMouseLeave={() => setHovered(undefined)}>
+        <div ref={area} className="relative ml-6" style={{ height: plotHeight }} role="group" aria-label={model.summary} onMouseLeave={() => setHovered(undefined)}>
           {model.axisTicks.map(tick => <div key={tick.value} className="pointer-events-none absolute inset-x-0 border-t border-ui-stroke" style={{ top: `${tick.topPercent * .8125}%` }}><span className="absolute -left-6 -top-2 w-4 text-right text-caption tabular-nums text-ui-muted">{tick.value}</span></div>)}
           <div className="absolute inset-x-0 top-0 flex h-[81.25%] items-end gap-1.5">
             {model.buckets.map((item, index) => <button key={item.key} ref={node => { if (node) buttons.current.set(item.key, node); else buttons.current.delete(item.key); }} type="button" aria-label={item.accessibleLabel} aria-describedby={bucketKey === item.key ? tooltipId : undefined}
@@ -55,7 +56,7 @@ export function ActivityVolume({ volume }: { volume?: Volume }) {
                 if (next !== undefined) { event.preventDefault(); buttons.current.get(model.buckets[next].key)?.focus(); }
               }}
               className={`relative flex h-full min-w-0 flex-1 items-end justify-center rounded-sm ${bucketKey === item.key ? "bg-ui-hover/50" : ""} ${dsFocus}`}>
-              <span aria-hidden className={item.runs === 0 ? "block h-px w-full max-w-8 bg-ui-stroke-control" : `block w-full max-w-8 rounded-t ${bucketKey === item.key ? "bg-ui-info" : "bg-ui-info/65"}`} style={item.runs === 0 ? undefined : { height: `${item.barHeightPercent}%` }} />
+              <span aria-hidden className={item.runs === 0 ? "block h-px w-3/4 bg-ui-stroke-control" : `block w-3/4 rounded-t ${bucketKey === item.key ? "bg-ui-info" : "bg-ui-info/65"}`} style={item.runs === 0 ? undefined : { height: `${item.barHeightPercent}%` }} />
               {item.showAxisLabel && <span aria-hidden className="absolute inset-x-0 top-full mt-2 whitespace-nowrap text-center text-caption text-ui-muted">{item.axisLabel}</span>}
             </button>)}
           </div>

@@ -4,7 +4,7 @@ import { ActionBar, ActionBarRow, Button, IconButton, Popover, PopoverContent, P
 import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "../activity-model.js";
 import { ActivityRange } from "./activity-range.js";
 import { ActivityVolume } from "./activity-volume.js";
-import { activityDuration, activityFailureRate, type ActivitySummary, type ActivityViewState } from "./activity-view-model.js";
+import { activityCompletionRate, activityDuration, activityFailureRate, type ActivitySummary, type ActivityViewState } from "./activity-view-model.js";
 
 function Metrics({ report }: { report: ActivitySummary }) {
   const metrics = [
@@ -53,6 +53,17 @@ function Coverage({ report }: { report: ActivitySummary }) {
   ]} /></section>;
 }
 
+function Performance({ report }: { report: ActivitySummary }) {
+  const commonFailures = report.failures === null ? null : [...report.failures].sort((left, right) => right.runs - left.runs);
+  const common = commonFailures?.[0];
+  return <section aria-labelledby="activity-performance"><h2 id="activity-performance" className="mb-3 mt-0 text-section">Run performance</h2><RecordTable label="Run performance" rows={[
+    { id: "completion", label: "Completion rate", note: `${report.completed} of ${report.terminal} finished runs`, value: activityCompletionRate(report.completed, report.terminal) },
+    { id: "longest", label: "Longest run", note: `Among ${report.duration.measured} measured runs`, value: activityDuration(report.duration.longestSeconds) },
+    { id: "runtime", label: "Total measured runtime", note: `${report.duration.measured} measured · ${report.duration.unmeasured} unmeasured`, value: activityDuration(report.duration.totalSeconds) },
+    { id: "failure", label: "Most common failure", ...(common ? { note: `${common.runs} ${common.runs === 1 ? "run" : "runs"}` } : {}), value: commonFailures === null ? "Unavailable" : common?.label ?? "No failures" },
+  ]} /></section>;
+}
+
 export function ActivityView({ data, range, today, period, onPreset, onRange, onExport, sampleControl, notice }: {
   data: ActivityViewState; range: ActivityDateRange; today: string; period: ActivityDatePreset;
   onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
@@ -67,7 +78,7 @@ export function ActivityView({ data, range, today, period, onPreset, onRange, on
     </div></ActionBarRow></ActionBar>
     {notice && <p role="status" className="mx-3 mb-0 mt-2 text-body text-ui-secondary">{notice}</p>}
     <div className="m-3 min-h-0 flex-1 overflow-y-auto rounded-xl border border-ui-stroke bg-ui-canvas p-6" aria-busy={data.state === "loading" || undefined}>
-      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 grid grid-cols-2 items-start gap-6"><div className="flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><Transactions report={data.report} /><Coverage report={data.report} /></div><ActivityVolume volume={data.report.volume} /></div></> : data.state === "loading" ? <div role="status" aria-label="Loading activity report"><div className="grid grid-cols-4 gap-4">{[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-24 rounded-lg min-[1151px]:h-32" />)}</div><Skeleton className="mt-6 h-64 rounded-lg" /><p className="text-body text-ui-secondary">Loading activity…</p></div> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 grid grid-cols-2 items-start gap-6"><div className="flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><Transactions report={data.report} /><Coverage report={data.report} /></div><div className="flex min-w-0 flex-col gap-6"><ActivityVolume volume={data.report.volume} /><Performance report={data.report} /></div></div></> : data.state === "loading" ? <div role="status" aria-label="Loading activity report"><div className="grid grid-cols-4 gap-4">{[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-24 rounded-lg min-[1151px]:h-32" />)}</div><Skeleton className="mt-6 h-64 rounded-lg" /><p className="text-body text-ui-secondary">Loading activity…</p></div> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
     </div>
   </TakeoverFrame>;
 }
