@@ -791,7 +791,7 @@ export const LogPanel = memo(function LogPanel({
           </div>
 
           {/* THE TAB BODY, in the same scroller as the head above it. */}
-          {sections["context-attempts"] !== undefined && <details className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]"><summary className={dsText.meta}>Attempts</summary><AttemptHistorySection payload={sections["context-attempts"]} /></details>}
+          {effectiveTab !== "logs" && sections["context-attempts"] !== undefined && <details className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]"><summary className={dsText.meta}>Attempts</summary><AttemptHistorySection payload={sections["context-attempts"]} /></details>}
           {effectiveTab === "logs" && (
             <LogsTab
               actorId={actorId}
