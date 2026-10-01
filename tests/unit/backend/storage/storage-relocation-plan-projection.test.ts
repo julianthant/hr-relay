@@ -7,6 +7,7 @@ import {
   type CommandAuditRecord,
   type StorageRelocationCommandRequest,
 } from "../../../../src/domain/commands.js";
+import { FingerprintSchema, NonNegativeIntSchema } from "../../../../src/domain/ids.js";
 import {
   projectStorageRelocationPlanHistory,
   type StorageRelocationEpoch,
@@ -20,16 +21,19 @@ const EPOCH: StorageRelocationEpoch = {
   stateRoot: `${WORKSPACE}/.tracker`, artifactRoot: `${WORKSPACE}/.tracker/artifacts`,
 };
 const NOW = "2026-10-01T12:00:00.000Z";
+const ZERO_FINGERPRINT = FingerprintSchema.parse("0".repeat(64));
 
 function plan(expectedRevision: number, ordinal: number, desiredPair = {
   stateRoot: "/tmp/hr-storage-plan-projection-moved", artifactRoot: "/tmp/hr-storage-plan-projection-moved/artifacts",
 }): StorageRelocationCommandRequest {
-  const target = { installationId: EPOCH.installationId, sourceGeneration: EPOCH.generation,
-    sourcePair: { stateRoot: EPOCH.stateRoot, artifactRoot: EPOCH.artifactRoot }, expectedRevision };
+  const target = { installationId: EPOCH.installationId,
+    sourceGeneration: NonNegativeIntSchema.parse(EPOCH.generation),
+    sourcePair: { stateRoot: EPOCH.stateRoot, artifactRoot: EPOCH.artifactRoot },
+    expectedRevision: NonNegativeIntSchema.parse(expectedRevision) };
   const draft = StorageRelocationCommandRequestSchema.parse({ family: "storage-relocation", type: "plan-storage-relocation",
     commandId: uuid(10 + ordinal), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface", target,
     payload: { writeId: uuid(20 + ordinal), desiredPair,
-      desiredDigest: storageRelocationDesiredDigest(target, desiredPair), requestFingerprint: "0".repeat(64) } });
+      desiredDigest: storageRelocationDesiredDigest(target, desiredPair), requestFingerprint: ZERO_FINGERPRINT } });
   return StorageRelocationCommandRequestSchema.parse({ ...draft,
     payload: { ...draft.payload, requestFingerprint: storageRelocationRequestFingerprint(draft) } });
 }
@@ -40,7 +44,7 @@ function cancel(expectedRevision: number, ordinal: number, pending: Extract<Stor
     target: { installationId: EPOCH.installationId, sourceGeneration: EPOCH.generation,
       sourcePair: { stateRoot: EPOCH.stateRoot, artifactRoot: EPOCH.artifactRoot }, expectedRevision },
     payload: { writeId: uuid(40 + ordinal), cancelledPlanCommandId: pending.commandId,
-      cancelledPlanDigest: pending.payload.desiredDigest, requestFingerprint: "0".repeat(64) } });
+      cancelledPlanDigest: pending.payload.desiredDigest, requestFingerprint: ZERO_FINGERPRINT } });
   return StorageRelocationCommandRequestSchema.parse({ ...draft,
     payload: { ...draft.payload, requestFingerprint: storageRelocationRequestFingerprint(draft) } });
 }
@@ -81,10 +85,10 @@ describe("pure storage relocation history projection", () => {
   it("refuses request fingerprint and desired destination digest drift independently", () => {
     const original = plan(0, 4);
     expect(() => projectStorageRelocationPlanHistory(repositories([{
-      ...original, payload: { ...original.payload, desiredDigest: "0".repeat(64) },
+      ...original, payload: { ...original.payload, desiredDigest: ZERO_FINGERPRINT },
     }], []), EPOCH, [], WORKSPACE)).toThrow(/request fingerprint mismatch/u);
     const changed = StorageRelocationCommandRequestSchema.parse({ ...original,
-      payload: { ...original.payload, desiredDigest: "0".repeat(64), requestFingerprint: "0".repeat(64) } });
+      payload: { ...original.payload, desiredDigest: ZERO_FINGERPRINT, requestFingerprint: ZERO_FINGERPRINT } });
     const rebound = StorageRelocationCommandRequestSchema.parse({ ...changed,
       payload: { ...changed.payload, requestFingerprint: storageRelocationRequestFingerprint(changed) } });
     expect(() => projectStorageRelocationPlanHistory(repositories([rebound], []), EPOCH, [], WORKSPACE))
