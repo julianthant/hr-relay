@@ -54,5 +54,6 @@ surface by surface as later dashboard work adopts the palette.
 
 For Logs, use one opaque gray `ui-table` fill for each table's header and body. Leave tables open,
 keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed
-values while keeping identifiers unsplit. Render computations in opaque gray row containers with
-no header or result footer; they need not sit inside another table.
+values while keeping identifiers unsplit. Filled values use plain blue text without an input-like
+border. Logs shows visible reads, fills, and clicks; internal computations are omitted. Screenshots
+appear at the end of their associated step.

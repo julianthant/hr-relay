@@ -21,12 +21,19 @@ ceremony. The shared renderer does not invent a generic approve command or decis
 
 The current Logs work is a frontend projection using the shared `LogFeed` and isolated `logs.html`
 mock preview. For observed operation records, it projects only existing confirmed read, fill,
-compute, click, and keypress data. Legacy rows retain neutral activity and observed facts through the
+click, and keypress data; internal computation rows and steps are omitted from presentation.
+Legacy rows retain neutral activity and observed facts through the
 existing read. It adds no backend transport or runtime behavior. Driver, source, template disclosures,
-and the Attempts dropdown are removed from this surface. Under the operator's explicit scope,
+and the Attempts dropdown are removed from this surface. A panel with only Logs omits the redundant
+tab strip; panels with multiple advertised tabs retain navigation. Under the operator's explicit scope,
 existing identity, resolve, and failure blocks plus related backend and test work stay deferred, not
 retired; their internal contracts remain authoritative. The reusable palette and type scale are in
 the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+
+The run-panel header omits Rerun and the Logs view omits the completed dry-run/partial strip.
+Filled values use plain blue text without an input-like container.
+Screenshots appear at the end of their associated step, without a separate Captures section or
+empty-capture placeholder. The timeline keeps its step segments and omits its start/working-time footer.
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that
