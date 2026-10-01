@@ -84,7 +84,8 @@ describe("frontend timeline and sessions", () => {
   it("renders the canonical Sessions host without any dashboard client provider", () => {
     const markup = renderToStaticMarkup(createElement(SessionPanel, { open: true, onOpenChange: () => {} }));
     assert.equal((markup.match(/<article /gu) ?? []).length, 4);
-    assert.match(markup, /Sample data/);
+    assert.doesNotMatch(markup, /Sample data|Ready for the next run|Add to preview/);
+    assert.match(markup, /aria-label="No run in progress"/);
     assert.match(markup, /Read the timecard/);
     assert.doesNotMatch(markup, /pool version|expectedVersion|lease|Live<|No worker is running|>Worker \d+</);
   });
