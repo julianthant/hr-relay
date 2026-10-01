@@ -17,23 +17,38 @@ Verification details stay in a secondary disclosure; exact source jumps open it 
 An operator gate without a supported resolution packet remains held and names that unavailable
 ceremony. The shared renderer does not invent a generic approve command or decision payload.
 
-## Frontend-first Logs amendment — 2026-09-30
+## Frontend-only Activity, Explorer and Logs amendment — 2026-10-01
 
-The current Logs work is a frontend projection using the shared `LogFeed` and isolated `logs.html`
-mock preview. For observed operation records, it projects only existing confirmed read, fill,
-click, and keypress data; internal computation rows and steps are omitted from presentation.
-Legacy rows retain neutral activity and observed facts through the
-existing read. It adds no backend transport or runtime behavior. Driver, source, template disclosures,
-and the Attempts dropdown are removed from this surface. A panel with only Logs omits the redundant
-tab strip; panels with multiple advertised tabs retain navigation. Under the operator's explicit scope,
-existing identity, resolve, and failure blocks plus related backend and test work stay deferred, not
-retired; their internal contracts remain authoritative. The reusable palette and type scale are in
-the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+The three canonical UI hosts use local fictional producers: `ActivityReport` feeds `ActivityView`
+through `ActivityViewState`; `WorkflowExplorer` feeds `ExplorerTimeline`; and the run panel mounts
+`LogSample` through `LogPanel` and `LogFeed`. No connected or duplicate presentation path remains;
+backend services and contracts remain. Queue, Activity, and Explorer share `ActionBar` and
+`ActionBarRow`. Explorer has no back control or `onBack` prop; shell navigation exits it.
 
-The run-panel header omits Rerun and the Logs view omits the completed dry-run/partial strip.
-Filled values use plain blue text without an input-like container.
-Screenshots appear at the end of their associated step, without a separate Captures section or
-empty-capture placeholder. The timeline keeps its step segments and omits its start/working-time footer.
+Activity keeps four summary metrics in one row, with 20px values and reduced padding at 1024px and
+27px values at wider desktop widths. Its two report columns have equal width. The workflow table is
+framed; shared `RecordTable` renders confirmed transactions and evidence coverage, with evidence
+below transactions in the left column. The adaptive chart and Run performance table occupy the right
+column. Chart bars use 75% of each interval, plot height adapts from 160px to 224px with available
+width. Daily, hourly and long-range bins preserve interval semantics; zero markers and empty states
+remain explicit. Geometry and axis labels respond to range, granularity and plot width. Tooltips
+anchor to and highlight active buckets, clamping within the plot. Pointer hover and keyboard focus
+are separate; Arrow, Home, End and Escape support bucket navigation.
+
+The performance rows are completion rate among finished runs, longest measured run, total measured
+runtime, and most common failure. Nullable duration and failure data remains unavailable; an empty
+failure list means “No failures,” and an empty period retains zero runtime without a finished-run
+rate. Logs retains its approved field tables/click rows, search/copy/latest controls, and end-of-step
+screenshots; computations, connected identity/resolve/failure UI, run controls/status strip, tab band,
+capture gallery, and elapsed-time bar stay removed.
+
+Activity export remains a visible placeholder. Explorer has no registered-definition fallback or
+client request; Logs does not mount run-detail, section, or capture requests. A separately scoped
+backend producer must validate authoritative projections, replace the local producers, and feed these
+same components while preserving the approved layouts and interactions. Activity query/export
+authority and Logs failure/resolve wiring remain deferred; migrate old connected-UI tests
+intentionally. Synthetic samples are never live authority. The reusable palette and type scale are
+in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that

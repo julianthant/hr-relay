@@ -1,8 +1,8 @@
 # Dashboard theme tokens
 
-This guide records the reusable Tailwind v4 palette and type scale introduced with Logs. The
-canonical values and Tailwind theme mappings live in `dashboard-theme.css`; use those definitions
-when changing tokens.
+This guide records the reusable Tailwind v4 palette and type scale used by the Activity, Explorer,
+and Logs presentations. The canonical values and Tailwind theme mappings live in
+`dashboard-theme.css`; use those definitions when changing tokens.
 
 ## Palette
 
@@ -38,23 +38,34 @@ text utilities are:
 | `text-control` | 13px / 18px | inherited | Buttons and form controls |
 | `text-heading` | 14px / 20px | semibold | Step and panel titles |
 | `text-section` | 16px / 22px | semibold | Settings and content groups |
-| `text-page` | 20px / 28px | semibold | Page titles |
-| `text-workflow` | 27px / 32px | 650 | Explorer title |
+| `text-page` | 20px / 28px | semibold | Page titles; compact Activity metrics at 1024px |
+| `text-workflow` | 27px / 32px | 650 | Explorer title; wider Activity metrics |
 
 `w-log-time` and `w-log-label` use the named spacing tokens; `max-w-log-capture` uses the named
 capture container token. `lib/utils.ts` extends `cn()`'s Tailwind merge groups with all seven text
 utilities, so conditional size classes resolve by precedence instead of leaving both classes.
 
-## Incremental adoption
+## Current presentation seams
 
-The dashboard stylesheet imports this theme. Put `.ui-theme-scope` on the migrated surface root,
-then use the `ui-*`, typography, and `font-*` utilities. Explorer scopes shared controls to the
-`ui-*` palette, while other DS consumers outside that scope keep their current styling. Adding
-these global custom properties does not reskin them. Migrate surface by surface as later dashboard
-work adopts the palette.
+The dashboard stylesheet imports this theme. Activity, Explorer, and Logs put `.ui-theme-scope` on
+their presentation roots and use the `ui-*`, typography, and `font-*` utilities. Consumers outside
+that scope keep their current styling; migrate other dashboard surfaces separately. Activity's
+`ActivityReport` host supplies `activity-fixture.ts` through the typed `ActivityViewState` seam.
+`WorkflowExplorer` supplies `explorer-fixture.ts` to `ExplorerTimeline`. The run panel's `LogSample`
+uses fictional `log-fixture.ts` data with `LogPanel` and `LogFeed`. These are local producers, not
+authoritative records; approved backend wiring replaces the producers while retaining the renderers,
+layouts, and interactions.
 
-For Logs, use one opaque gray `ui-table` fill for each table's header and body. Leave tables open,
-keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed
+Queue, Activity, and Explorer share `ActionBar`/`ActionBarRow`. Activity keeps four metrics in one
+row: `text-page` values at 1024px and `text-workflow` values at wider desktop widths. Use `text-body`
+for labels and ordinary counts, `text-caption` for notes and metadata, and `text-section` for groups
+and transaction counts. Keep metric values tabular; unavailable durations and evidence remain
+explicit. Explorer uses `text-workflow` for its title and `text-section` for major groups. Logs uses
+`text-heading` for step and panel titles, `text-body` for rows and supporting copy, and `text-caption`
+for timestamps and metadata.
+
+For Logs tables, use one opaque gray `ui-table` fill for each header and body. Leave tables open, keep
+16px between a heading and its table, and put timestamps before action icons. Balance displayed
 values while keeping identifiers unsplit. Filled values use plain blue text without an input-like
-border. Logs shows visible reads, fills, and clicks; internal computations are omitted. Screenshots
-appear at the end of their associated step.
+border. Logs shows reads, fills, and clicks; internal computations are omitted. Screenshots appear at
+the end of their associated step.

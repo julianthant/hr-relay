@@ -422,8 +422,11 @@ wire suite reports one failure for four existing Archive workflow literals. Broa
 actual browser zoom, live HR, and backend integration remain unrun; screenshot references were not
 refrozen. Backend wiring requires a separately approved producer scope.
 
-**Operator wiring direction — 2026-10-01:** The approved mock's components are the production
-Explorer UI target. Future wiring supplies real data to those components and preserves their
-layout and interactions. The existing registered-definition UI will be retired rather than used
-as the connected presentation. This records the frontend direction; backend implementation remains
-deferred.
+**Operator wiring direction — 2026-10-01:** Final UI refinements are at `4d098a80a`, verified by
+`028ddb153`. They remove both the registered-definition connected UI and the separate preview route.
+Canonical `WorkflowExplorer` supplies local fictional steps from `explorer-fixture.ts` to
+`ExplorerTimeline`; no registered-definition fallback or client request remains. Explorer shares
+`ActionBar`/`ActionBarRow` with Queue and Activity and has no back control or `onBack` prop; shell
+navigation exits it. A separately approved backend task must replace the producer with validated
+authoritative data while preserving the timeline and interactions. No backend implementation is
+included.
