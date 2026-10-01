@@ -14,7 +14,7 @@
 import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
-import { FixtureReadReceipt } from "../architecture/helpers/descriptor-fixtures.js";
+import { FixtureReadReceipt } from "../../fixtures/descriptor-fixtures.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { EidSchema } from "../../../src/domain/ids.js";

@@ -4,15 +4,18 @@ import { availableParallelism } from "node:os";
 
 export const REBUILD_COVERAGE_INCLUDE = ["src/**/*.ts", "src/**/*.tsx"] as const;
 export const REBUILD_UNIT_TEST_INCLUDE = ["tests/unit/**/*.test.ts"] as const;
-export const REBUILD_UNIT_TEST_EXCLUDE = ["tests/unit/architecture/**"] as const;
+export const REBUILD_UNIT_TEST_EXCLUDE = [] as const;
+export const REBUILD_INTEGRATION_TEST_INCLUDE = ["tests/integration/**/*.test.ts"] as const;
+export const REBUILD_INTEGRATION_TEST_EXCLUDE = [] as const;
 export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
-  "tests/unit/architecture/**/*.test.ts",
+  "tests/architecture/**/*.test.ts",
 ] as const;
 export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
 export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
 export const REBUILD_SCENARIO_TEST_EXCLUDE = ["tests/scenario/combined/**"] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
+  { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
   {
     name: "architecture",
     include: REBUILD_ARCHITECTURE_TEST_INCLUDE,

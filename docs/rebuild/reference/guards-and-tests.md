@@ -1227,7 +1227,7 @@ checks and zero counted pixel-difference allowance are unchanged. Child progress
 remain visible. This bounds silent hangs; sustained output from a stuck child is not proof of
 progress and is not detected by this inactivity bound.
 
-Regression evidence lives in `tests/unit/scripts/test-runner.test.ts` and the existing parity JSON
+Regression evidence lives in `tests/integration/scripts/test-runner.test.ts` and the existing parity JSON
 and gate-manifest suites: real child success/failure, silent stall, worker/parent SIGKILL, live-group
 preservation, safe reclamation, path/ownership refusal and actual failing Vitest CLI execution.
 
@@ -1584,15 +1584,15 @@ nobody notices the umbrella shrank. Extends the existing `gate-coverage` meta-gu
 
 `docs/rebuild/guard-inventory.json` is the reviewed design inventory (owner, invariant, replacement
 required on removal); under D93 it travels with the plan docs into the rebuild repo, where
-`tests/unit/architecture/guard-manifest.test.ts` loads it rather than defining a second inline name
+`tests/architecture/guard-manifest.test.ts` loads it rather than defining a second inline name
 set. The test asserts:
-1. every inventory name maps to a real file recursively under `tests/unit/architecture/`;
+1. every inventory name maps to a real file recursively under `tests/architecture/`;
 2. every recursively discovered `*.test.ts` file is in the inventory (no unregistered guard — forces a
    conscious add, and forces this doc's inventory to stay honest);
-3. the named `unit`, `architecture`, and `scenario` Vitest projects form one exhaustive,
+3. the named `unit`, `integration`, `architecture`, and `scenario` Vitest projects form one exhaustive,
    non-overlapping collection of every offline authored `*.test.ts`/`*.test.tsx` file; the future
    live-dependent combined tier stays uncollected until it has its own runner; architecture includes
-   the complete recursive guard directory exactly, `unit` excludes it exactly, the architecture
+   the complete recursive guard directory exactly, `unit` and `integration` use disjoint roots, the architecture
    project excludes nothing, and `test:architecture` selects only that project while forcing empty
    collection to fail; an
    independently collected unit test exercises that refusal so
@@ -1663,9 +1663,9 @@ makes no stronger mechanical claim.
 
 The inventory is the one machine-readable place the umbrella is enumerated. Each doc owns its
 guards' contracts; the manifest owns that they exist and stay wired. **This list is the as-built set
-at HEAD, read from `docs/rebuild/guard-inventory.json` — 81 entries: 70 `active`, 9 `retired`, 2
+at HEAD, read from `docs/rebuild/guard-inventory.json` — 97 entries: 85 `active`, 11 `retired`, 1
 `planned`** — not an aspiration. `guard-manifest.test.ts` compares the active `file` list against a
-recursive walk of `tests/unit/architecture/` with `deepEqual`, which is bidirectional by
+recursive walk of `tests/architecture/` with `deepEqual`, which is bidirectional by
 construction and has one consequence worth stating outright: **a retired or planned guard's
 `.test.ts` file must not exist on disk**, or the walk finds a file the inventory does not claim.
 
@@ -2010,6 +2010,14 @@ read (§D332.9 rule 4) — the deletion and its proof are one commit, or the ada
 <!-- /roadmap-status -->
 
 "Same quality umbrella, made concrete." A new task or workflow is built **test-first** against these:
+
+The current local execution layout distinguishes deterministic units from integration proofs.
+`tests/unit/` may read a tracked fixture or wire a DOM component with injected ports. A test that
+actually opens SQLite (including `:memory:`), a server socket, a child process, a browser, or a
+composed workflow belongs under `tests/integration/`; a mixed suite moves intact until its owner
+extracts pure cases. Structural repository guards live under `tests/architecture/`. Scenario and
+browser parity sources retain their separate owners. The four write-order tiers below describe
+how new task evidence accumulates; they do not make a real database test a unit.
 
 1. **Pure-logic unit** — `task.impl.run({ input, ctx: fakeCtx })`. Ref task-contract §7B makes every task run a
   plain-object call; the `fakeCtx` contract uses the matching effect-specific ctx with a fake typed
@@ -2463,7 +2471,7 @@ run through the repository runner (`npm test -- <files>`), none needs a private 
 | P5 `test-data-local` binding (name + opaque `sourceId`, never a value) through start, receipts, redaction, resume/rerun/archive | `tests/unit/dry-run-scenario-composition.test.ts` (binding captured at `runtime.start`), `tests/unit/source-bound-repeat.test.ts`, `tests/unit/rerun-protected-identity.test.ts`, `tests/unit/archive-protected-identity.test.ts`, `tests/unit/run-record-service/service.test.ts`, `tests/unit/write-sequencer.test.ts`, `tests/unit/run-executor.test.ts` |
 | P6 destination missing/equal/conflict/invalid, source change under lock, failure after staging before source retirement, lock held, retry idempotence | `tests/unit/config/credential-test-data-migration.test.ts` |
 | P7 synthetic v1 history and upgrade binding replayed under the frozen legacy schema (`LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH` pinned), operational entries preserved, retired command/write/value identities fenced, ordinary reader refuses v1 until migrated; pre-D341 durable command/audit rows stay readable through `commands-history` | `tests/unit/config/credential-test-data-migration.test.ts`, `tests/unit/config/credential-store.test.ts`, `tests/unit/protected-settings-history.test.ts`, `tests/unit/storage-upgrade-d331.test.ts` |
-| P8 fixture accounting: no cross-tier import of `tests/unit/{fixtures,helpers}`, cross-tier imports of `tests/unit/architecture/helpers/` limited to the three recorded `descriptor-fixtures` importers, shared fixtures pure at import, tracked shared inputs, ignored private file and staging pattern, README ownership map | `tests/unit/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
+| P8 fixture accounting: cross-tier imports of unit-only fixtures/helpers are refused except exact parity compatibility exports; three unchanged scenario/shared callers use the pinned descriptor-fixture export; three named shared resource harnesses remain explicit. Shared data fixtures stay pure, tracked inputs and ignored private files are checked, and the README maps owners. | `tests/architecture/test-data-ownership.test.ts` (guard `test-data-ownership`), `tests/fixtures/README.md` |
 | P9 actual reset-root preflight, reviewed private conversion, readback, value-safe credential comparison, doctor | recorded below after integration; not inferred from P6/P7 |
 
 Defects the proofs found and fixed in the candidate: the credential store's pre-rename live check
@@ -2801,9 +2809,10 @@ restated:
 
 ```
 tests/
-  unit/                                     unchanged — one module's decision logic, fake ctx, no browser
-    architecture/                           unchanged — the 65 guards + helpers/ + fixtures/
-    dashboard/                              unchanged — the surfaces' extracted *-model.ts halves
+  unit/                                     deterministic policy and component wiring with injected ports
+    dashboard/                              the surfaces' extracted *-model.ts halves
+  integration/                              real storage, process, socket or composed workflow proofs
+  architecture/                             recursive structural guards, helpers and violation fixtures
   scenario/
     helpers/                                pure-walk, coverage-claims, the fake stores
     workflows/<workflow-id>/
@@ -2827,23 +2836,26 @@ a manifest that vitest picked up would start a browser inside the per-commit gat
 them by GLOB rather than by discipline. `*.walk.test.ts` keeps D185's meaning exactly: a walk claims
 no coverage point and the manifest's `file` regex refuses a walk path outright.
 
-**Vitest projects.** Three, as built. `vitest.config.ts` makes every authored Vitest file belong to
+**Vitest projects.** Four. `vitest.config.ts` makes every authored offline Vitest file belong to
 exactly one named project; `guard-manifest` enumerates the real corpus and rejects both orphaned and
 multiply collected files. A future dry-run-dependent `combined` tier stays uncollected until it has
 an executor and a deliberate script.
 
 | project | include | in `test:coverage` |
 |---|---|---|
-| `unit` | `tests/unit/**/*.test.ts`, **excluding** `tests/unit/architecture/**` | yes |
-| `architecture` | `tests/unit/architecture/**/*.test.ts` | yes |
+| `unit` | `tests/unit/**/*.test.ts` | yes |
+| `integration` | `tests/integration/**/*.test.ts` | yes |
+| `architecture` | `tests/architecture/**/*.test.ts` | yes |
 | `scenario` | `tests/scenario/**/*.test.ts`, excluding future live-dependent `tests/scenario/combined/**` | yes |
 
 **jsdom, per file (D277, 2026-08-27).** `jsdom` is a devDependency and is never a project default: a test that needs a real DOM to pin wiring — what a press dispatches, where focus returns — declares `@vitest-environment jsdom` at the top of its own file inside `unit`. The environment is opted into by the file, so a pure `*-model.ts` test never pays for a DOM, and a DOM test can never be mistaken for a visual claim — visual claims belong to `tests/parity/**`.
 
-The `unit` exclusion is the point of the architecture split: guard files execute once inside
-`test:coverage`. `test:architecture` is `tsx scripts/test-runner.ts run --project architecture --passWithNoTests=false`, and `guard-manifest`
-binds its script, complete recursive include, empty exclude, unit exclusion, and non-empty
-collection together.
+The distinct roots keep guards out of `test:unit` and execute them once inside `test:coverage`.
+`test:unit` and `test:integration` lock selection to their named projects and accept only positional
+file filters; project/config overrides are refused. `test:architecture` selects only its named
+project with non-empty collection. `guard-manifest` checks all four project includes, empty
+excludes where applicable, unique ownership and non-empty collection; injected-listing policy
+tests prove duplicate, orphan and empty refusals.
 
 `tests/e2e/**` is outside the vitest projects entirely, like `tests/parity/**`, and both are excluded
 from coverage instrumentation.
@@ -2853,7 +2865,9 @@ and D190's lesson is that a lane nobody chains is a lane that cannot fail.
 
 | script | runs | trigger |
 |---|---|---|
-| `npm run typecheck && npm run lint && npm run test:coverage` | unit + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
+| `npm run test:unit` | deterministic unit project only | focused local backend iterations in the supporting Phase 1–5 initiative |
+| `npm run test:integration` | preserved integration project only | explicit later operator-reviewed integration execution |
+| `npm run typecheck && npm run lint && npm run test:coverage` | unit + integration + architecture + T1 structural + T2 + the walks, with the floors | default implementation candidates and finalizer completion; focused parallel-worker and documentation-only exceptions in §3.14 D191 |
 | `npm run test:parity` | 281 browser cases, including 222 reference triples and the dual-adapter comparison | every dashboard change; before a slice closes |
 | `npm run perf:dashboard` | reproducible structural counters plus observational timings | after a measured dashboard data-path change; before a slice closes |
 | `npm run cli -- dry-run-scenario <workflow> --subject <label>` | ONE T1b manifest against the real systems | at a workflow's migration; whenever its graph or its transaction node changes; to refresh a stale recorded result |
@@ -2881,6 +2895,13 @@ Targeted local iteration is allowed, while supervisor integration and merge requ
 type/lint/coverage family. The affected-suite ≤30 s, full-coverage ≤90 s, and parity ≤75 s targets
 are measured objectives, never permission to delete unique protection, weaken isolation/parallelism,
 raise an allowance, lower a floor, or add an exclusion.
+
+Runner scratch lives under the owned `/tmp/hrt-<uid>/run-*` directory: successful runs remove
+their scratch, failed runs retain `failure.txt` and the tail, and `test:reap` checks ownership
+before explicit reclamation. `coverage/`, `test-results/`, and `tests/parity/.output/` are ignored
+generated output; reviewed parity references and reproducible fixtures stay tracked. Accepted
+task evidence belongs under the external rebuild-evidence root. `test-artifact-ownership` checks
+the current Git paths/ignore policy, with injected negative controls in the unit policy test.
 
 One configured streaming `verbose` reporter owns Vitest output: project, file, suite, and the full
 behavior/refusal title remain visible as work completes. Scripts do not layer a second reporter.

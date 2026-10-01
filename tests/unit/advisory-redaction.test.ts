@@ -18,7 +18,7 @@ import {
   buildAdvisoryFacts,
   buildFailureTriagePrompt,
 } from "../../src/domain/trust/advisory.js";
-import { LEAKY_EID, LEAKY_NAME, MAXIMAL_FAILURE } from "./fixtures/advisory-fixtures.js";
+import { LEAKY_EID, LEAKY_NAME, MAXIMAL_FAILURE } from "../fixtures/advisory-prompt-fixtures.js";
 
 describe("advisory redaction — the classified leaf never reaches the prompt", () => {
   it("withholds every free-text and person-bearing leaf from the prepared request", () => {

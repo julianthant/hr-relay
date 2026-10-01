@@ -4,7 +4,7 @@ The normative spec is `docs/rebuild/reference/guards-and-tests.md` §10 (R10). T
 what is in this directory, and which of the corpus's **three declared kinds** a new file must be.
 
 `auditScenarioCorpusLayout` (`src/domain/workflow/scenario-execution.ts`, guarded by
-`tests/unit/architecture/scenario-coverage.test.ts`) refuses any file here that is none of them, so
+`tests/architecture/scenario-coverage.test.ts`) refuses any file here that is none of them, so
 the choice below is enforced rather than conventional.
 
 | Kind | Path | Claims a scenario id? | Carries a manifest row? |

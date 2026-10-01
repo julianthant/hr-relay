@@ -1,5 +1,5 @@
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
-import { WriteFixturePrepare, WriteFixtureCommit, WriteFixtureProbe, WriteFixtureVerify } from "./fixtures/write-sequencer-fixtures.js";
+import { WriteFixturePrepare, WriteFixtureCommit, WriteFixtureProbe, WriteFixtureVerify } from "../fixtures/write-sequencer-fixtures.js";
 import { ObservedOperationStructureWireSchema } from "../../src/domain/dashboard/operation-structure.js";
 import { createDeclaredActionBinder } from "../../src/core/operation-action-binding.js";
 import { DeclaredActionIdentitySchema } from "../../src/domain/workflow/operation-action-identity.js";
@@ -48,7 +48,7 @@ import { taskStoreRegistry } from "../../src/stores/index.js";
 import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
-import { fixtureBuildManifest } from "./fixtures/workflow-definition-fixtures.js";
+import { fixtureBuildManifest } from "../fixtures/workflow-definition-fixtures.js";
 
 const DISPLAY_NESTED_ID = "fixture-operation-display-nested";
 const DISPLAY_CHILD_A_ID = "fixture-operation-display-child-a";

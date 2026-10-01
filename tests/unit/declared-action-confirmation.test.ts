@@ -5,7 +5,7 @@ import { DeclaredActionIdentitySchema } from "../../src/domain/workflow/operatio
 import { freezeWorkflowOperationDisplaySnapshot } from "../../src/domain/workflow/operation-display-snapshot.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { runDeclaredAction, withBrowserActionBinding, withBrowserActionNotes, type BrowserAction } from "../../src/infra/browser/action-notes.js";
-import { plan1Parent, plan1Contract } from "./fixtures/plan1-operation-workflows.js";
+import { plan1Parent, plan1Contract } from "../fixtures/plan1-operation-workflows.js";
 
 function fixture() {
   const frozen = freezeWorkflowOperationDisplaySnapshot({ workflowId: plan1Parent.descriptor.id, definitionFingerprint: plan1Parent.descriptor.contractFingerprint, display: plan1Parent.descriptor.operationDisplay });

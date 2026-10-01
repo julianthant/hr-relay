@@ -1,0 +1,1013 @@
+import { RunLifecycleSchema } from "../../src/domain/run/record.js";
+import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
+import { dashboardRouteSource } from "./helpers/dashboard-route-source.js";
+// @vitest-environment jsdom
+/**
+ * Wire connectivity — ref frontend-backend-integration §8.8, both directions (D107's pattern one layer up).
+ *
+ * The defect class this exists to make loud is "built one half, never
+ * connected", and this tree has shipped it twice with every gate green: a
+ * `captures` section arm no `availableSections` could ever return, and a
+ * `"degraded"` stream arm nothing could emit. Neither is a bug in any one
+ * module — each half is correct on its own, which is exactly why nothing
+ * caught them. The connection is the thing nobody owned.
+ *
+ * Three joints are audited, and each fails in BOTH directions:
+ *
+ *  1. **Section arms.** Every literal arm of `RunDetailSectionResponseSchema`
+ *     is either returnable by `availableSections` — proven by CALLING it over
+ *     records covering every lifecycle state, not by reading the source — or
+ *     declared in `config/pending-wire-bindings.json`. A declaration whose arm
+ *     has become reachable, or whose arm no longer exists, fails too: a stale
+ *     exception is how an inventory rots into a claim nobody can act on
+ *     (D184/D188).
+ *  2. **Command keys.** Every `ActionCommandKeySchema` verb is accepted by the
+ *     kernel's own request union, and every kernel verb is either serveable as
+ *     an action or named in a closed exemption table WITH the reason it is
+ *     kernel-internal. A served descriptor naming a command the kernel refuses
+ *     is a control that 422s on click. And — the direction D234 added, because
+ *     the guard had been blind to it — every serveable verb is one some
+ *     PRODUCER actually emits: `unhide` sat in the vocabulary for a whole phase
+ *     while `queue-row-actions.ts` structurally excluded it, so the key was
+ *     kernel-accepted, schema-blessed, and unreachable by any surface. Both
+ *     halves of a joint have to exist; a key nothing projects is the same
+ *     unbuilt half as a section arm nothing returns.
+ *  3. **Routes ↔ client.** Every path the dashboard client calls
+ *     resolves to a route `api.ts` registers; a registered route no client
+ *     calls is allowed only through the manifest.
+ *
+ * The manifest is the exception channel, deliberately: an unbuilt half is a
+ * legitimate state, and the thing that must never be legitimate is an unbuilt
+ * half nobody wrote down.
+ */
+import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { afterEach, describe, it } from "vitest";
+import { z } from "zod";
+import { ArchivedRunDetailWireSchema } from "../../src/domain/dashboard/archive.js";
+import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../parity/helpers/fixture-archive-evidence.js";
+import { savedArchiveBrowserRouteReferences, archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
+import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../unit/dashboard/fixtures/run-captures-app-fixture.js";
+import { runCaptureBrowserRouteReferences, type RunCaptureBrowserProbe } from "./helpers/run-capture-browser-route-references.js";
+import { ActionCommandKeySchema } from "../../src/domain/dashboard/actions.js";
+import {
+  ParkedWriteDetailWireSchema,
+  ParkedWriteSubjectEvidenceSchema,
+  RunDetailSectionResponseSchema,
+} from "../../src/domain/dashboard/run-detail.js";
+import { QueuePrioritySchema, QueueStatusSchema } from "../../src/domain/dashboard/projection.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
+import { queueRowActions } from "../../src/server/dashboard/projectors/queue-row-actions.js";
+import { CommandRequestSchema } from "../../src/domain/commands.js";
+import { RunPrioritySchema } from "../../src/domain/run/envelope.js";
+import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../src/domain/run/record.js";
+import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
+import { availableSections, readRunDetail, readRunSection } from "../../src/server/dashboard/queries/run-detail.js";
+import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
+import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
+import {
+  makeWorld,
+  queuedEventOf,
+  runRecordOf,
+  uuidOf,
+  type DashboardWorld,
+} from "../unit/server/helpers/dashboard-harness.js";
+import { REPO_ROOT } from "./helpers/guard-files.js";
+import {
+  armField,
+  clientRouteReferences,
+  discriminantValues,
+  projectedCommandKeys,
+  normalizeClientPath,
+  readPendingWireBindings,
+  routeConnectivityProblems,
+  routeMatches,
+  servedRoutes,
+  PENDING_WIRE_BINDINGS_PATH,
+  PendingWireBindingSchema,
+  type PendingWireBinding,
+  type ClientRouteReference,
+  type ServedRoute,
+} from "./helpers/wire-connectivity.js";
+
+const worlds: DashboardWorld[] = [];
+afterEach(() => {
+  for (const world of worlds.splice(0)) world.dispose();
+});
+
+const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
+/**
+ * The gate/park section `ActionDescriptorWire` producer, read as SOURCE.
+ *
+ * The queue row's producer beside it is CALLED instead (`queueRowActions` is a
+ * pure function of a policy and a flat fact record), which is the standard arm
+ * 1 already holds itself to. This one composes its descriptors deep inside a
+ * whole run-detail build, so a scan of the literals it can emit is the honest
+ * cheap reading — and its three verbs are plain literals there.
+ */
+const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail/gate-park.ts";
+const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
+const CLIENT_ROOTS = ["src/dashboard/client"];
+
+const MANIFEST = readPendingWireBindings();
+
+const ARCHIVE_ROUTE = "/artifacts/v1/archive/:runId/:artifactId";
+const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
+const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+
+async function scannedAndSavedReferences() {
+  return [...clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root))), ...await savedArchiveBrowserRouteReferences()];
+}
+
+function archiveProbe(runId: string = FIXTURE_ARCHIVE_EVIDENCE_RUN.runId, artifactId: string = FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId): ArchiveBrowserProbe {
+  const seed = FIXTURE_ARCHIVE_EVIDENCE_RUN;
+  if (seed.sections.state !== "present") throw new Error("the Archive guard fixture requires frozen sections");
+  const detail = ArchivedRunDetailWireSchema.parse({
+    ...seed, runId, row: { ...seed.row, runId },
+    detail: { ...seed.detail, runId, header: { ...seed.detail.header, runId } },
+    evidence: { ...seed.evidence, artifactIds: [artifactId] },
+    sections: { state: "present", value: { ...seed.sections.value,
+      captures: { state: "present", value: [{ ...FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, artifactId }] },
+    } },
+  });
+  return { detail, response: { runId, artifactId,
+    resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
+  } };
+}
+
+/** Observation failures remain fatal AND the same accounting still reports orphan routes. */
+async function auditArchiveBrowser(probe: ArchiveBrowserProbe, accounting: {
+  readonly routes?: readonly ServedRoute[];
+  readonly references?: readonly ClientRouteReference[];
+  readonly pending?: readonly PendingWireBinding[];
+} = {}) {
+  const routes = accounting.routes ?? servedRoutes(dashboardRouteSource());
+  const scanned = accounting.references ?? await scannedAndSavedReferences();
+  const observation = await archiveBrowserRouteReferences(probe).then(
+    (references) => ({ state: "observed", references }) as const,
+    (error: unknown) => ({ state: "refused", error }) as const,
+  );
+  const references = [...scanned, ...(observation.state === "observed" ? observation.references : [])];
+  const problems = routeConnectivityProblems({
+    routes, references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
+  });
+  return { observation, references, problems: [
+    ...(observation.state === "refused"
+      ? [observation.error instanceof Error ? observation.error.message : "Archive browser observation threw a non-Error value"] : []),
+    ...problems,
+  ] };
+}
+
+function withoutNativeSinks(selector: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+  return (dialog) => {
+    const nodes = [...dialog.querySelectorAll(selector)];
+    assert.ok(nodes.length > 0, "the native-sink negative control found no real sink to remove");
+    const replacements = nodes.map((node) => {
+      const placeholder = document.createComment("A8 temporarily removed native sink");
+      node.replaceWith(placeholder);
+      return { node, placeholder };
+    });
+    return () => { for (const { node, placeholder } of replacements) placeholder.replaceWith(node); };
+  };
+}
+
+function runCaptureProbe(runId: string = CAPTURE_RUN_A, artifactId: string = CAPTURE_ARTIFACT_A): RunCaptureBrowserProbe {
+  return { requestedRunId: runId, artifactId, detail: captureDetail(runId),
+    response: { section: "captures", payload: { runId, artifacts: [captureImage(artifactId)] } } };
+}
+
+async function auditRunCaptureBrowser(probe: RunCaptureBrowserProbe, accounting: {
+  readonly routes?: readonly ServedRoute[];
+  readonly references?: readonly ClientRouteReference[];
+  readonly pending?: readonly PendingWireBinding[];
+} = {}) {
+  const observation = await runCaptureBrowserRouteReferences(probe).then(
+    references => ({ state: "observed", references }) as const,
+    (error: unknown) => ({ state: "refused", error }) as const,
+  );
+  const references = [...(accounting.references ?? await scannedAndSavedReferences()),
+    ...(observation.state === "observed" ? observation.references : [])];
+  const problems = routeConnectivityProblems({
+    routes: accounting.routes ?? servedRoutes(dashboardRouteSource()),
+    references, pending: accounting.pending ?? MANIFEST, apiRoutesFile: API_ROUTES_FILE, clientRoots: CLIENT_ROOTS,
+  });
+  return { observation, references, problems: [
+    ...(observation.state === "refused" ? [observation.error instanceof Error ? observation.error.message : "Run capture observation threw a non-Error value"] : []),
+    ...problems,
+  ] };
+}
+
+function assertRefusedRunCapture(result: Awaited<ReturnType<typeof auditRunCaptureBrowser>>, message: RegExp): void {
+  assert.equal(result.observation.state, "refused", "the invalid generic observation was credited");
+  assert.match(result.problems[0], message);
+  assert.deepEqual(result.problems.slice(1), [GENERIC_ORPHAN, ARCHIVE_ORPHAN]);
+  assert.equal(result.references.some(({ path }) => routeMatches(GENERIC_ROUTE, path)), false);
+}
+
+function changedNativeAttribute(selector: string, attribute: string, value: string): NonNullable<ArchiveBrowserProbe["beforeObservation"]> {
+  return (dialog) => {
+    const node = dialog.querySelector(selector);
+    assert.ok(node instanceof HTMLElement, "the attribute negative control found no native sink");
+    const before = node.getAttribute(attribute);
+    assert.ok(before !== null, "the native attribute was already missing before the negative control");
+    node.setAttribute(attribute, value);
+    return () => { node.setAttribute(attribute, before); };
+  };
+}
+
+function assertRefusedArchive(result: Awaited<ReturnType<typeof auditArchiveBrowser>>, message: RegExp): void {
+  assert.equal(result.observation.state, "refused", "the invalid browser observation was credited");
+  assert.match(result.problems[0], message);
+  assert.deepEqual(result.problems.slice(1), [GENERIC_ORPHAN, ARCHIVE_ORPHAN]);
+  assert.equal(result.references.some(({ path }) => routeMatches(ARCHIVE_ROUTE, path)), false,
+    "a refused observation still supplied an Archive reference");
+}
+
+function bindingsFor(prefix: string): readonly PendingWireBinding[] {
+  return MANIFEST.filter(({ binding }) => binding.startsWith(prefix));
+}
+
+/* ── the reachable-section sweep ─────────────────────────────────────────── */
+
+const PARK_INTENT_ID = uuidOf(91);
+const PARK_INSTANT = "2026-07-31T17:00:00.000Z";
+const CLAIM = {
+  workerId: "sweep-worker-1",
+  claimedAt: PARK_INSTANT,
+  heartbeatAt: PARK_INSTANT,
+} as const;
+
+interface LifecycleCase {
+  readonly label: string;
+  readonly lifecycle: unknown;
+  /** A claimed/terminal run has been claimed at least once (the record refines it). */
+  readonly claimGeneration?: number;
+}
+
+/**
+ * One legal lifecycle per `RunStateSchema` member, terminal expanded over every
+ * `RunOutcomeSchema` member. They are built as plain objects and PARSED, so a
+ * state this sweep gets wrong is a schema error rather than a silently
+ * unreachable case — and the coverage assertion below makes a newly added
+ * lifecycle state fail here until somebody decides what it serves.
+ */
+function lifecycleCases(): readonly LifecycleCase[] {
+  const cases: LifecycleCase[] = [
+    { label: "queued", lifecycle: { state: "queued" } },
+    { label: "claimed", lifecycle: { state: "claimed", ...CLAIM }, claimGeneration: 1 },
+    { label: "validating", lifecycle: { state: "validating", ...CLAIM }, claimGeneration: 1 },
+    { label: "running", lifecycle: { state: "running", ...CLAIM }, claimGeneration: 1 },
+    {
+      label: "parked-gate",
+      lifecycle: { state: "parked-gate", gateId: "identity-approval", parkedAt: PARK_INSTANT, resumeAt: "probe" },
+    },
+    {
+      label: "parked-write",
+      lifecycle: {
+        state: "parked-write",
+        writeIntentId: PARK_INTENT_ID,
+        intentGeneration: 1,
+        parkedAt: PARK_INSTANT,
+        code: "unknown",
+        message: "the recovery probe is indeterminate",
+      },
+    },
+  ];
+  for (const outcome of RunOutcomeSchema.options) {
+    cases.push({
+      label: `terminal:${outcome}`,
+      claimGeneration: 1,
+      lifecycle: {
+        state: "terminal",
+        outcome,
+        endedAt: PARK_INSTANT,
+        ...(outcome === "failed" ? { failureId: uuidOf(92) } : {}),
+      },
+    });
+  }
+  return cases;
+}
+
+/** Every section any lifecycle can advertise, with and without the trust seam. */
+async function reachableSections(): Promise<{ readonly reachable: ReadonlySet<string>; readonly statesSwept: ReadonlySet<string> }> {
+  const world = makeWorld();
+  worlds.push(world);
+  queuedEventOf(world, { seed: 1 });
+  const row = world.projection.runFold(uuidOf(1));
+  if (row === undefined) throw new Error("the sweep's own fixture produced no span fold");
+
+  const trust = {
+    ensureReceipt: () => {
+      throw new Error("the sweep never derives a receipt; it only asks what is advertised");
+    },
+    getFailure: () => undefined,
+    countFailuresByFingerprint: () => 1,
+  };
+
+  const reachable = new Set<string>();
+  const statesSwept = new Set<string>();
+  for (const { lifecycle: lifecycleInput, claimGeneration } of lifecycleCases()) {
+    const lifecycle = RunLifecycleSchema.parse(lifecycleInput);
+    const record: RunRecord = RunRecordSchema.parse({
+      ...runRecordOf({ seed: 1, enqueuedAt: PARK_INSTANT, ...(claimGeneration === undefined ? {} : { claimGeneration }) }),
+      lifecycle,
+      ...(lifecycle.state === "terminal" && (lifecycle.outcome === "done" || lifecycle.outcome === "failed") ? {
+        version: 2, claimGeneration: 1, updatedAt: lifecycle.endedAt,
+        completion: { schemaVersion: 1, kind: lifecycle.outcome, expectedVersion: 1, claim: { workerId: "worker-1", claimGeneration: 1 }, authorizedAt: lifecycle.endedAt,
+          ...(lifecycle.outcome === "done" ? { resultDigest: "a".repeat(64) } : { failureId: lifecycle.failureId }) },
+      } : {}),
+    });
+    statesSwept.add(record.lifecycle.state);
+    // BOTH compositions: the trust seam is optional, so a section it gates is
+    // reachable only if some real composition supplies it — and one does.
+    for (const section of availableSections(row, record)) reachable.add(section);
+    for (const section of availableSections(row, record, trust)) reachable.add(section);
+  }
+  // Captures are an async verified capability, not a lifecycle-derived constant.
+  // Keep the complete lifecycle sweep above; add what the public read actually
+  // advertises after canonical SQLite diagnostic authority verifies real bytes.
+  const database = AuthorityDatabase.open({ path: join(world.stateRoot, "wire-capture-authority.db"),
+    busyTimeoutMs: 1000, migrationOwner: "wire-capture-census" }, world.clock);
+  try {
+    const run = world.authority.getRun(uuidOf(1));
+    assert.ok(run);
+    database.authority.runs.enqueue(run);
+    const bytes = Buffer.from("[]");
+    const digest = createHash("sha256").update(bytes).digest("hex");
+    const deps = { runReader: sqliteRunReader(database, world.clock), stateRoot: world.stateRoot, projection: world.projection,
+      authority: { ...world.authority, getRun: (id: string) => database.authority.runs.get(id) },
+      descriptors: { resolve: () => undefined },
+      captures: { authority: database.authority.diagnosticBundles, artifactReader: {
+        verify: async (ref: { id: string; bytes: number; sha256: string; mediaType: string }) => {
+          assert.deepEqual(ref, { id: uuidOf(931), bytes: 2, sha256: digest, mediaType: "application/json" });
+        },
+        prepare: async () => { throw new Error("census must not prepare response bytes"); },
+      } },
+    };
+    assert.equal((await readRunDetail(deps, uuidOf(1))).availableSections.includes("captures"), false);
+    const content = { runId: uuidOf(1), origin: { kind: "operator-request", requestedBy: "local-operator" },
+      capturedAt: PARK_INSTANT, configFingerprint: run.envelope.configFingerprint,
+      descriptorFingerprint: run.envelope.contractFingerprint, redaction: { fields: [], warnings: [] },
+      attachments: [{ kind: "console-summary", artifactId: uuidOf(931), mediaType: "application/json",
+        byteLength: bytes.length, digest, sensitivity: "redacted" }],
+    };
+    const { capturedAt, ...stored } = content;
+    database.authority.diagnosticBundles.insert(DiagnosticBundleSchema.parse({ ...stored,
+      bundleId: uuidOf(932), createdAt: capturedAt, contentDigest: deriveDiagnosticContentDigest(content),
+      retention: { kind: "ordinary", purgeAfter: "2026-09-02T17:00:00.000Z" },
+    }));
+    assert.equal((await readRunSection(deps, uuidOf(1), "captures")).section, "captures");
+    const detail = await readRunDetail(deps, uuidOf(1));
+    assert.deepEqual(detail.captures, { state: "available", artifactCount: 1 }, "the async census did not verify its canonical capture");
+    for (const section of detail.availableSections) reachable.add(section);
+  } finally { database.close(); }
+  return { reachable, statesSwept };
+}
+
+/* ── the kernel-internal command exemptions ──────────────────────────────── */
+
+/**
+ * Kernel commands that legitimately have no `ActionDescriptorWire`, each with
+ * the reason. This is a CLOSED table checked both ways: a verb the kernel
+ * dropped fails as a stale entry, and a verb that is neither serveable nor
+ * listed fails as an unreviewed asymmetry.
+ *
+ * The shape of the asymmetry is the point. An action descriptor is ref frontend-backend-integration
+ * §3.2's control on a run ROW — so a command whose target is not a run, or
+ * whose payload the operator composes on a dedicated surface rather than by
+ * clicking a row control, is correctly absent from the vocabulary.
+ */
+/**
+ * Every command verb the QUEUE ROW producer can emit, proven by CALLING it —
+ * the standard arm 1 holds itself to, and the reason a `key` that is computed
+ * (`cancel-tree` for a group, `cancel` otherwise) is read correctly here and
+ * would be missed by any scan of its source.
+ *
+ * The sweep runs every status against both member and non-member shapes,
+ * because the row's admission table narrows on both.
+ */
+function projectedRowCommands(): ReadonlySet<string> {
+  const commands = new Set<string>();
+  for (const status of QueueStatusSchema.options) {
+    for (const isMember of [false, true]) {
+      const actions = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {
+        status,
+        rowRevision: 1,
+        dryRun: false,
+        isChild: false,
+        parkedWrite: false,
+        memberCount: 0,
+        isMember,
+        named: false,
+        workflowLabel: "Person Lookup",
+        hasReviewPanel: false,
+      });
+      for (const action of actions) if (action.kind === "command") commands.add(action.command);
+    }
+  }
+  return commands;
+}
+
+// Operations replaced direct recovery buttons with reviewed Rerun navigation. The historical
+// command vocabulary remains kernel-readable; this exact asymmetry cannot credit any new key.
+const RETAINED_RECOVERY_ACTIONS = new Set(["retry", "restart"]);
+
+const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
+  "annotate-failure": "failure resolution targets an exact failure/version and uses the resolution command payload, not a generic run action descriptor",
+  "set-batch-grouping": "queue batch controls target batch presentation, not an executable run row",
+  "start-run": "the Start surface composes a start plan; there is no run row to hang it off yet",
+  "plan-worker-count": "worker-browser commands target the worker pool, not a run row",
+  "spawn-worker": "worker-browser commands target the worker pool, not a run row",
+  "stop-worker": "worker-browser commands target the worker pool, not a run row",
+  "pause-worker": "worker-browser commands target the worker pool, not a run row",
+  "resume-worker": "worker-browser commands target the worker pool, not a run row",
+  "refresh-browser": "worker-browser commands target the worker pool, not a run row",
+  "reopen-browser": "worker-browser commands target the worker pool, not a run row",
+  "apply-settings": "the Settings surface owns the whole payload; a row control cannot express it",
+  "apply-protected-settings": "the Settings surface owns its write-only protected payload; row actions cannot express it",
+  "apply-provider-keys": "the Settings surface owns provider slots; run row actions cannot express them",
+  "plan-storage-relocation": "Settings plans a complete installation root pair; no run row owns storage location",
+  "cancel-storage-relocation": "Settings cancels the current installation plan revision; no run row owns storage location",
+  "inspect-intake": "the intake surface drives the whole session; its targets are intake sessions, not runs",
+  "confirm-intake-mapping": "intake session target, not a run row",
+  "correct-intake-row": "intake session target, not a run row",
+  "exclude-intake-row": "intake session target, not a run row",
+  "validate-intake": "intake session target, not a run row",
+  "enqueue-intake-manifest": "intake session target, not a run row",
+  "notification-read": "the inbox targets a notification row; the bell owns these three",
+  "notification-unread": "notification target, not a run row",
+  "notification-snooze": "notification target, not a run row",
+  "plan-version-bump": "D179's archive planning surface targets the application/workflow scope",
+  "apply-version-bump": "archive scope target, not a run row",
+  "plan-runtime-version": "Archive runtime version planning targets selected workflows or the dashboard",
+  "apply-runtime-version": "Archive runtime version publication targets a reviewed change",
+  "relaunch-archived-run": "V retains historical request parsing; current HTTP and internal producers refuse creation",
+  "delete-archived-run": "D308 serves the delete from the ARCHIVED detail, which is not a live run row",
+  "apply-explorer-edit": "D283's reviewed Explorer draft targets a workflow override revision, not a run row",
+};
+
+/* ── the tests ───────────────────────────────────────────────────────────── */
+
+describe("wire connectivity — declared arms, served arms, and the manifest between them", () => {
+  it("A10 cleanup preserves prior history, globals and foreign DOM after a native preview", async () => {
+    const originalUrl = window.location.href;
+    const originalState: unknown = window.history.state;
+    const foreign = document.createElement("aside");
+    foreign.textContent = "Unrelated test-owned DOM";
+    document.body.append(foreign);
+    const priorChildren = [...document.body.childNodes];
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    window.history.replaceState({ checkpoint: "A10-prior" }, "", "/before-capture?keep=1#prior");
+    try {
+      const mounted = await mountCaptureApp({ runId: CAPTURE_RUN_A, runs: new Map([[CAPTURE_RUN_A, {
+        detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures",
+          payload: { runId: CAPTURE_RUN_A, artifacts: [captureImage()] } })),
+      }]]) });
+      try {
+        await pressCaptureControl(captureButton("Receipt"));
+        await pressCaptureControl(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
+      } finally { await mounted.unmount(); }
+      assert.equal(window.location.pathname + window.location.search + window.location.hash, "/before-capture?keep=1#prior");
+      assert.deepEqual(window.history.state, { checkpoint: "A10-prior" });
+      assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+      assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
+      assert.equal(document.body.childNodes.length, priorChildren.length);
+      assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+    } finally {
+      foreign.remove();
+      window.history.replaceState(originalState, "", originalUrl);
+    }
+  });
+
+  it("A10 cleanup restores owned state even when a real root effect cleanup throws", async () => {
+    const priorUrl = window.location.href;
+    const priorState: unknown = window.history.state;
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    const priorChildren = [...document.body.childNodes];
+    const mounted = await mountCaptureApp({ runId: CAPTURE_RUN_A, onUnmount: () => { throw new Error("A10 root cleanup sentinel"); },
+      runs: new Map([[CAPTURE_RUN_A, {
+        detail: () => captureDetail(), captures: () => Promise.resolve(Response.json({ section: "captures",
+          payload: { runId: CAPTURE_RUN_A, artifacts: [captureImage()] } })),
+      }]]),
+    });
+    try {
+      await pressCaptureControl(captureButton("Receipt"));
+      await pressCaptureControl(captureButton(`Open capture ${CAPTURE_ARTIFACT_A}`));
+    } finally {
+      await assert.rejects(() => mounted.unmount(), /Capture app cleanup failed: A10 root cleanup sentinel/u);
+    }
+    assert.equal(window.location.href, priorUrl);
+    assert.deepEqual(window.history.state, priorState);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
+    assert.equal(document.body.childNodes.length, priorChildren.length);
+    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+  });
+
+  it("has every run-detail section arm either reachable or declared", async () => {
+    const arms = discriminantValues(RunDetailSectionResponseSchema, "section");
+    assert.ok(arms.length > 0, "the section union introspection found no arms at all");
+
+    const { reachable, statesSwept } = await reachableSections();
+    // The sweep is only evidence if it covered every state the schema allows.
+    assert.deepEqual(
+      [...statesSwept].sort(),
+      [...RunStateSchema.options].sort(),
+      "the lifecycle sweep does not cover every RunStateSchema member; add the new state's case",
+    );
+
+    const declared = new Map(
+      bindingsFor(`${SECTION_SCHEMA_NAME}#`).map((entry) => [entry.binding.split("#")[1] ?? "", entry]),
+    );
+    const problems: string[] = [];
+    for (const arm of arms) {
+      if (reachable.has(arm)) {
+        if (declared.has(arm)) {
+          problems.push(
+            `${SECTION_SCHEMA_NAME}#${arm} is declared unserved in ${PENDING_WIRE_BINDINGS_PATH}, but `
+            + "availableSections now returns it — delete the stale entry in the commit that connected it",
+          );
+        }
+        continue;
+      }
+      if (!declared.has(arm)) {
+        problems.push(
+          `${SECTION_SCHEMA_NAME}#${arm} is a declared wire arm that no lifecycle can reach: `
+          + "availableSections never returns it, so a client asking for it gets a refusal. Either serve "
+          + `it or add {"binding": "${SECTION_SCHEMA_NAME}#${arm}", "direction": "declared-unserved", …} `
+          + `to ${PENDING_WIRE_BINDINGS_PATH}`,
+        );
+      }
+    }
+    for (const arm of declared.keys()) {
+      if (!arms.includes(arm)) {
+        problems.push(
+          `${PENDING_WIRE_BINDINGS_PATH} declares ${SECTION_SCHEMA_NAME}#${arm}, which the schema no `
+          + "longer carries; a manifest entry for a deleted arm is a claim nobody can act on",
+        );
+      }
+    }
+    assert.deepEqual(problems, [], `wire connectivity — sections:\n  ${problems.join("\n  ")}`);
+  });
+
+  it("names only commands the kernel accepts, and reviews every command it does not name", () => {
+    const actionKeys: readonly string[] = [...ActionCommandKeySchema.options];
+    const kernelTypes = discriminantValues(CommandRequestSchema, "type");
+    assert.ok(kernelTypes.length > actionKeys.length, "the kernel command union introspection under-read");
+
+    const problems: string[] = [];
+    for (const key of actionKeys) {
+      if (!kernelTypes.includes(key)) {
+        problems.push(
+          `ActionCommandKeySchema names "${key}", which CommandRequestSchema does not accept — a served `
+          + "control that 422s on click is worse than an absent one",
+        );
+      }
+      if (Object.hasOwn(KERNEL_ONLY_COMMANDS, key)) {
+        problems.push(
+          `"${key}" is both a served action key and listed as kernel-internal; one of the two is stale`,
+        );
+      }
+    }
+    for (const type of kernelTypes) {
+      if (actionKeys.includes(type)) continue;
+      if (!Object.hasOwn(KERNEL_ONLY_COMMANDS, type)) {
+        problems.push(
+          `the kernel accepts "${type}" but no action descriptor may name it and KERNEL_ONLY_COMMANDS `
+          + "gives no reason; add it to ActionCommandKeySchema or record why it is kernel-internal",
+        );
+      }
+    }
+    for (const type of Object.keys(KERNEL_ONLY_COMMANDS)) {
+      if (!kernelTypes.includes(type)) {
+        problems.push(`KERNEL_ONLY_COMMANDS exempts "${type}", which the kernel no longer accepts`);
+      }
+    }
+    /*
+     * The direction D234 added. A key the kernel accepts and the vocabulary
+     * names is still dead if nothing composes a descriptor for it — which is
+     * exactly what `unhide` was, and what the two checks above could not see.
+     */
+    const projected = new Set<string>([
+      ...projectedRowCommands(),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+    ]);
+    assert.ok(projected.size > 3, "the descriptor-producer read under-ran; the scan or the row sweep is stale");
+    for (const key of RETAINED_RECOVERY_ACTIONS) {
+      assert.ok(actionKeys.includes(key) && kernelTypes.includes(key), `stale retained recovery command: ${key}`);
+      assert.ok(!projected.has(key), `retained recovery command became directly projected: ${key}`);
+    }
+    const navigation = queueRowActions(STANDARD_WORKFLOW_ACTIONS, {status:"failed",rowRevision:1,dryRun:false,isChild:false,
+      parkedWrite:false,memberCount:0,isMember:false,named:false,workflowLabel:"Fixture",hasReviewPanel:false});
+    assert.ok(navigation.some(action => action.kind === "navigation" && action.navigate.kind === "rerun"));
+    for (const key of actionKeys) {
+      if (projected.has(key) || RETAINED_RECOVERY_ACTIONS.has(key)) continue;
+      problems.push(
+        `ActionCommandKeySchema names "${key}" and nothing projects it — not queueRowActions over any `
+        + `status, and no descriptor literal in ${SECTION_DESCRIPTOR_PRODUCER}. A served key nothing `
+        + "projects is a control no surface can draw: either project it or retire it from the vocabulary",
+      );
+    }
+    assert.deepEqual(problems, [], `wire connectivity — commands:\n  ${problems.join("\n  ")}`);
+  });
+
+  it("resolves every client-called path to a served route, and declares every uncalled route", async () => {
+    const routes = servedRoutes(dashboardRouteSource());
+    assert.ok(routes.length > 10, `route extraction from ${API_ROUTES_FILE} found only ${String(routes.length)}`);
+    const references = await scannedAndSavedReferences();
+    assert.ok(references.length > 10, "client path extraction found almost nothing; the scan is broken");
+
+    const archive = await auditArchiveBrowser(archiveProbe(), { routes, references });
+    assert.equal(archive.observation.state, "observed", archive.problems.join("\n"));
+    const { problems } = await auditRunCaptureBrowser(runCaptureProbe(), { routes, references: archive.references });
+    assert.deepEqual(problems, [], `wire connectivity — routes:\n  ${problems.join("\n  ")}`);
+  });
+
+  it.each([[CAPTURE_RUN_A, CAPTURE_ARTIFACT_A], [CAPTURE_RUN_B, CAPTURE_ARTIFACT_B]])(
+    "A10 credits only actual Receipt/Preview native sinks for run %s artifact %s", async (runId, artifactId) => {
+      const result = await auditRunCaptureBrowser(runCaptureProbe(runId, artifactId));
+      assert.equal(result.observation.state, "observed", result.problems.join("\n"));
+      if (result.observation.state !== "observed") throw new Error("Run capture observation refused");
+      assert.deepEqual(result.observation.references, [
+        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
+        { file: "src/dashboard/surfaces/run-captures.tsx", path: `/artifacts/v1/${artifactId}` },
+      ]);
+      assert.deepEqual(result.problems, [ARCHIVE_ORPHAN]);
+    },
+  );
+
+  for (const [name, selector, message] of [
+    ["download", "a[download]", /missing native download href sink/u],
+    ["image", "img[src]", /missing native image src sink/u],
+    ["both", "a[download], img[src]", /missing native download href sink/u],
+  ] as const) {
+    it(`A10 removing actual ${name} sinks retains observation failure and generic orphan`, async () => {
+      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), beforeObservation: withoutNativeSinks(selector) }), message);
+    });
+  }
+
+  it("A10 an unused builder supplies no generic consumption credit", async () => {
+    const unused = () => `/artifacts/v1/${CAPTURE_ARTIFACT_A}`;
+    assert.equal(typeof unused, "function");
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") }),
+      /missing native download href sink/u);
+  });
+
+  it("A10 refuses a foreign native image src even when its download href is correct", async () => {
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
+      beforeObservation: changedNativeAttribute("img[src]", "src", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_B}`),
+    }), /exact canonical generic artifact URL/u);
+  });
+
+  for (const [name, value] of [
+    ["foreign origin", `https://foreign.invalid/artifacts/v1/${CAPTURE_ARTIFACT_A}`],
+    ["foreign artifact", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_B}`],
+    ["Archive arity", `${CAPTURE_BASE_URL}/artifacts/v1/archive/${CAPTURE_RUN_A}/${CAPTURE_ARTIFACT_A}`],
+    ["bundle arity", `${CAPTURE_BASE_URL}/artifacts/v1/diagnostic-bundles/${CAPTURE_RUN_A}/${CAPTURE_ARTIFACT_A}`],
+    ["extra segment", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_A}/extra`],
+    ["query", `${CAPTURE_BASE_URL}/artifacts/v1/${CAPTURE_ARTIFACT_A}?extra=1`],
+  ]) {
+    it(`A10 refuses native ${name} instead of crediting another resource family`, async () => {
+      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
+        beforeObservation: changedNativeAttribute("a[download]", "href", value),
+      }), /exact canonical generic artifact URL/u);
+    });
+  }
+
+  it.each(["foreign run", "foreign artifact", "wrong section", "extra key", "invalid origin"])(
+    "A10 refuses %s returned to the actual app", async fault => {
+      const capture = captureImage();
+      const response = fault === "wrong section" ? { section: "logs", payload: { runId: CAPTURE_RUN_A, rows: [], notes: [] } }
+        : { section: "captures", payload: { runId: fault === "foreign run" ? CAPTURE_RUN_B : CAPTURE_RUN_A,
+          artifacts: [fault === "foreign artifact" ? captureImage(CAPTURE_ARTIFACT_B)
+            : fault === "invalid origin" ? { ...capture, origins: [{ ...capture.origins[0], originKind: "invented" }] } : capture],
+          ...(fault === "extra key" ? { extra: true } : {}),
+        } };
+      assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), response }),
+        fault === "foreign artifact" ? /foreign artifactId/u : /Run capture app read refused/u);
+    },
+  );
+
+  it("A10 preserves primary observation and real cleanup failures without granting credit", async () => {
+    const priorUrl = window.location.href;
+    const priorChildren = [...document.body.childNodes];
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const result = await auditRunCaptureBrowser({ ...runCaptureProbe(),
+      beforeObservation: () => { throw new Error("A10 primary observation sentinel"); },
+      onUnmount: () => { throw new Error("A10 secondary cleanup sentinel"); },
+    });
+    assertRefusedRunCapture(result, /primary observation sentinel.*secondary cleanup sentinel/u);
+    assert.equal(window.location.href, priorUrl);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+    assert.equal(document.body.childNodes.length, priorChildren.length);
+    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+  });
+
+  it("A10 a real root mount failure refuses credit and restores the pre-mount environment", async () => {
+    const priorUrl = window.location.href;
+    const priorAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const priorResize = Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver");
+    const priorChildren = [...document.body.childNodes];
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(),
+      onMount: () => { throw new Error("A10 mount sentinel"); },
+    }), /A10 mount sentinel/u);
+    assert.equal(window.location.href, priorUrl);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), priorAct);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "ResizeObserver"), priorResize);
+    assert.equal(document.body.childNodes.length, priorChildren.length);
+    assert.equal([...document.body.childNodes].every((node, i) => node === priorChildren[i]), true);
+  });
+
+  it("A10 refuses foreign initial detail identity before claiming the lazy consumer", async () => {
+    assertRefusedRunCapture(await auditRunCaptureBrowser({ ...runCaptureProbe(), detail: captureDetail(CAPTURE_RUN_B) }),
+      /initial detail returned a foreign runId/u);
+  });
+
+  it("A10 keeps native calls orphaned when the served generic route is removed", async () => {
+    const routes = servedRoutes(dashboardRouteSource());
+    const result = await auditRunCaptureBrowser(runCaptureProbe(), { routes: routes.filter(route => route.path !== GENERIC_ROUTE) });
+    assert.equal(result.observation.state, "observed");
+    const missing = `src/dashboard/surfaces/run-captures.tsx calls /artifacts/v1/${CAPTURE_ARTIFACT_A}, which ${API_ROUTES_FILE} does not register`;
+    assert.deepEqual(result.problems, [missing, missing, ARCHIVE_ORPHAN]);
+  });
+
+  it("A10 rejects a stale pending exception for the actually consumed generic route", async () => {
+    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: `route:GET ${GENERIC_ROUTE}`,
+      direction: "served-unconsumed", decision: "D292", note: "Test-only stale exception, never persisted." })];
+    const result = await auditRunCaptureBrowser(runCaptureProbe(), { pending });
+    assert.deepEqual(result.problems, [
+      `config/pending-wire-bindings.json declares route:GET ${GENERIC_ROUTE} unconsumed, but a client now calls it`, ARCHIVE_ORPHAN]);
+  });
+
+  it("A8 credits the actual mounted Archive parent native sinks and leaves the generic route open", async () => {
+    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const result = await auditArchiveBrowser(archiveProbe());
+    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
+    if (result.observation.state !== "observed") throw new Error("the Archive observation was refused");
+    assert.deepEqual(result.observation.references.map(({ path }) => path), [
+      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
+      "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
+    ]);
+    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
+  });
+
+  it("A8 follows a second distinct run/capture pair instead of a fixture URL constant", async () => {
+    const result = await auditArchiveBrowser(archiveProbe(
+      "00000000-0000-4000-8000-00000000a001", "00000000-0000-4000-8000-00000000a002",
+    ));
+    assert.equal(result.observation.state, "observed", result.problems.join("\n"));
+    if (result.observation.state !== "observed") throw new Error("the second Archive pair was refused");
+    assert.deepEqual(result.observation.references, [
+      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
+      { file: "src/dashboard/surfaces/archive.tsx", path: "/artifacts/v1/archive/00000000-0000-4000-8000-00000000a001/00000000-0000-4000-8000-00000000a002" },
+    ]);
+    assert.deepEqual(result.problems, [GENERIC_ORPHAN]);
+  });
+
+  for (const [name, selector, message] of [
+    ["download", "a[download]", /missing native download href sink/u],
+    ["image", "img[src]", /missing native image src sink/u],
+    ["both", "a[download], img[src]", /missing native download href sink/u],
+  ] as const) {
+    it(`A8 removing the actual ${name} sinks retains the named observation failure and orphan route`, async () => {
+      const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks(selector) });
+      assertRefusedArchive(result, message);
+    });
+  }
+
+  it("A8 an unused URL builder cannot substitute for removed native consumers", async () => {
+    const unusedBuilder = () => "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a";
+    assert.equal(typeof unusedBuilder, "function"); // Deliberately never called or passed to the collector.
+    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") });
+    assertRefusedArchive(result, /missing native download href sink/u);
+  });
+
+  for (const [name, selector, attribute, value] of [
+    ["foreign href", "a[download]", "href", "https://foreign.invalid/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a"],
+    ["mismatched src", "img[src]", "src", "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/00000000-0000-4000-8000-00000000a002"],
+    ["generic href", "a[download]", "href", "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a"],
+  ] as const) {
+    it(`A8 rejects an observed ${name} through the strict same-pair schema`, async () => {
+      const result = await auditArchiveBrowser({ ...archiveProbe(),
+        beforeObservation: changedNativeAttribute(selector, attribute, value),
+      });
+      assertRefusedArchive(result, /an archived capture download must name its exact runId and artifactId/u);
+    });
+  }
+
+  it("A8 rejects a foreign URL through the real resource response parser", async () => {
+    const probe = archiveProbe();
+    const result = await auditArchiveBrowser({ ...probe, response: {
+      runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
+      resource: { state: "available", downloadUrl: "https://foreign.invalid/artifact" },
+    } });
+    assertRefusedArchive(result, /Archive browser resource parse failed/u);
+  });
+
+  for (const foreign of ["runId", "artifactId"] as const) {
+    it(`A8 rejects a schema-valid foreign ${foreign} returned to the mounted parent`, async () => {
+      const probe = archiveProbe();
+      const runId = foreign === "runId" ? "00000000-0000-4000-8000-00000000a001" : probe.detail.runId;
+      const artifactId = foreign === "artifactId" ? "00000000-0000-4000-8000-00000000a002" : FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId;
+      const result = await auditArchiveBrowser({ ...probe, response: {
+        runId, artifactId, resource: { state: "available", downloadUrl: `/artifacts/v1/archive/${runId}/${artifactId}` },
+      } });
+      assertRefusedArchive(result, /ARCHIVE_CAPTURE_RESOURCE_IDENTITY_MISMATCH/u);
+      assert.match(result.problems[0], new RegExp(`${probe.detail.runId}/${FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId}`, "u"));
+      assert.doesNotMatch(result.problems[0], new RegExp(foreign === "runId" ? runId : artifactId, "u"));
+    });
+  }
+
+  for (const location of ["root", "resource"] as const) {
+    it(`A8 the real parser refuses extra ${location} wire keys`, async () => {
+      const probe = archiveProbe();
+      const result = await auditArchiveBrowser({ ...probe, response: {
+        runId: probe.detail.runId, artifactId: FIXTURE_ARCHIVE_EVIDENCE_CAPTURE.artifactId,
+        ...(location === "root" ? { unexpected: "A8" } : {}),
+        resource: { state: "available",
+          downloadUrl: "/artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a",
+          ...(location === "resource" ? { unexpected: "A8" } : {}),
+        },
+      } });
+      assertRefusedArchive(result, /Archive browser resource parse failed/u);
+    });
+  }
+
+  it("A8 a generic one-ID reference cannot satisfy the two-ID Archive route", async () => {
+    const references = await scannedAndSavedReferences();
+    const generic = { file: "A8 synthetic generic-only control", path: "/artifacts/v1/aa11bb22-000a-4000-8000-aa11bb22000a" };
+    assert.equal(routeMatches(GENERIC_ROUTE, generic.path), true);
+    assert.equal(routeMatches(ARCHIVE_ROUTE, generic.path), false);
+    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: withoutNativeSinks("a[download], img[src]") },
+      { references: [...references, generic] });
+    assert.equal(result.observation.state, "refused");
+    assert.match(result.problems[0], /missing native download href sink/u);
+    assert.deepEqual(result.problems.slice(1), [ARCHIVE_ORPHAN]);
+  });
+
+  it("A8 observed consumers still fail accounting when their server route is missing", async () => {
+    const routes = servedRoutes(dashboardRouteSource());
+    const result = await auditArchiveBrowser(archiveProbe(), { routes: routes.filter(({ path }) => path !== ARCHIVE_ROUTE) });
+    assert.equal(result.observation.state, "observed");
+    const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/server/dashboard/routes/api.ts does not register";
+    assert.deepEqual(result.problems, [missing, missing, GENERIC_ORPHAN]);
+  });
+
+  it("A8 a pending entry for a now-consumed Archive route is stale", async () => {
+    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /artifacts/v1/archive/:runId/:artifactId",
+      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, not a persisted exception or consumer waiver.",
+    })];
+    const result = await auditArchiveBrowser(archiveProbe(), { pending });
+    assert.equal(result.observation.state, "observed");
+    assert.deepEqual(result.problems, [
+      GENERIC_ORPHAN,
+      "config/pending-wire-bindings.json declares route:GET /artifacts/v1/archive/:runId/:artifactId unconsumed, but a client now calls it",
+    ]);
+  });
+
+  it("A8 a pending entry for a deleted server route still fails", async () => {
+    const pending = [...MANIFEST, PendingWireBindingSchema.parse({ binding: "route:GET /api/v1/a8-deleted",
+      direction: "served-unconsumed", decision: "D223", note: "A8 negative control, never written to the real pending manifest.",
+    })];
+    const result = await auditArchiveBrowser(archiveProbe(), { pending });
+    assert.equal(result.observation.state, "observed");
+    assert.deepEqual(result.problems, [GENERIC_ORPHAN,
+      "config/pending-wire-bindings.json declares route:GET /api/v1/a8-deleted, which src/server/dashboard/routes/api.ts does not serve",
+    ]);
+  });
+
+  it("A8 observation exceptions remain fatal and cleanup restores the mounted environment", async () => {
+    const beforeAct = Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT");
+    const beforeChildren = [...document.body.childNodes];
+    const result = await auditArchiveBrowser({ ...archiveProbe(), beforeObservation: () => { throw new Error("A8 observation sentinel"); } });
+    assertRefusedArchive(result, /A8 observation sentinel/u);
+    assert.deepEqual(Object.getOwnPropertyDescriptor(globalThis, "IS_REACT_ACT_ENVIRONMENT"), beforeAct);
+    assert.deepEqual([...document.body.childNodes], beforeChildren);
+  });
+
+  /*
+   * The negative controls. Each arm above is run against a synthesized
+   * violation through the SAME entry point, for the reason `ratchet-arms`
+   * fixtures exist: a check that has never been observed to fail is
+   * indistinguishable from a check that cannot.
+   */
+  it("catches a synthesized orphan arm, a synthesized bad command key, and an unserved path", async () => {
+    const orphanUnion = RunDetailSectionResponseSchema.options[0]?.extend({});
+    assert.ok(orphanUnion !== undefined);
+
+    // (a) an arm the introspection sees but the reachable set does not.
+    const arms = [...discriminantValues(RunDetailSectionResponseSchema, "section"), "invented-section"];
+    const { reachable } = await reachableSections();
+    assert.ok(!reachable.has("invented-section"));
+    assert.ok(arms.some((arm) => !reachable.has(arm) && arm === "invented-section"));
+
+    // (b) a command key the kernel does not accept.
+    const kernelTypes = discriminantValues(CommandRequestSchema, "type");
+    assert.ok(kernelTypes.includes("resolve-write-absent"), "introspection missed a known kernel verb");
+    assert.ok(!kernelTypes.includes("force-done"), "the kernel must never accept a force-done verb");
+
+    // (b2) the producer scan reads CODE, not prose — the arm that would have
+    //      caught `unhide`. A key named only in a comment must not count, and a
+    //      key named in a descriptor literal must.
+    assert.deepEqual(
+      projectedCommandKeys('/* key: "unhide" is never served */\nconst a = { key: "retry" };'),
+      ["retry"],
+    );
+    assert.deepEqual(projectedCommandKeys('// command: "unhide"\nconst a = { command: "resolve-gate" };'), ["resolve-gate"]);
+    //      And through the REAL readers: a verb no producer emits must be
+    //      absent from the projected set, which is what makes the arm above
+    //      able to fail at all. `unhide` is the retired key that motivated it
+    //      (D234) and `force-done` is one that never existed.
+    const projected = new Set<string>([
+      ...projectedRowCommands(),
+      ...projectedCommandKeys(readFileSync(join(REPO_ROOT, SECTION_DESCRIPTOR_PRODUCER), "utf8")),
+    ]);
+    assert.ok(projected.has("rename"), "the readers missed a verb the row demonstrably serves");
+    assert.ok(!projected.has("unhide"));
+    assert.ok(!projected.has("force-done"));
+
+    // (c) a client path with no route, and a route pattern that must not
+    //     over-match — a matcher that accepted anything would report every
+    //     joint healthy forever.
+    const routes = servedRoutes(dashboardRouteSource());
+    assert.ok(!routes.some(({ path }) => routeMatches(path, "/api/v1/invented")));
+    assert.ok(routeMatches("/api/v1/runs/:runId", normalizeClientPath("/api/v1/runs/${runId}")));
+    assert.ok(!routeMatches("/api/v1/runs/:runId", "/api/v1/runs/abc/logs"));
+    assert.ok(!routeMatches("/api/v1/runs/:runId/:section", "/api/v1/runs/abc"));
+    assert.ok(!routeMatches("/api/v1/archive", "/api/v1/explorer"));
+  });
+
+  it("keeps every wire mirror of a durable vocabulary member-for-member identical", () => {
+    /*
+     * A mirror is the fourth joint, and the one with no import to keep it
+     * honest. `run-detail.ts` re-declares ref write-safety's park codes and subject
+     * evidence because `write-safety.ts` imports `node:crypto` and this module
+     * is in the dashboard bundle's reach — the copy is forced by ref frontend-backend-integration §8.13,
+     * so the equality has to be asserted somewhere or it is only a comment.
+     *
+     * `z.toJSONSchema` is the comparison rather than a hand-listed member set:
+     * a member ADDED to either side, a regex loosened on one, or a branded id
+     * swapped for a bare string all show up, and none of them would if this
+     * test enumerated what it already believed.
+     */
+    const mirrors = [
+      {
+        name: "parked-write park codes",
+        durable: armField(WriteIntentRecordSchema, "status", "parked", "parkedCode"),
+        wire: ParkedWriteDetailWireSchema.shape.parkedCode,
+      },
+      {
+        name: "parked-write subject evidence",
+        durable: SubjectEvidenceSchema,
+        wire: ParkedWriteSubjectEvidenceSchema,
+      },
+      {
+        /*
+         * D95's scheduling class. `src/domain/dashboard/projection.ts` is in
+         * the dashboard bundle's reach and `src/domain/run/envelope.ts` reaches
+         * `workflow/checkpoint.js`, so the queue wire re-declares the enum for
+         * ref frontend-backend-integration §8.13's reason — and a member added to either side (a third
+         * priority class, say) has to show up on both.
+         */
+        name: "run priority",
+        durable: RunPrioritySchema,
+        wire: QueuePrioritySchema,
+      },
+    ] as const;
+
+    for (const mirror of mirrors) {
+      assert.deepEqual(
+        z.toJSONSchema(mirror.wire, { io: "output" }),
+        z.toJSONSchema(mirror.durable, { io: "output" }),
+        `${mirror.name}: the wire copy in src/domain/dashboard/run-detail.ts has drifted from its `
+        + "durable original in src/domain/write-safety.ts — the copy exists only because a "
+        + "descriptor-closure edit moves contractFingerprint, not because the two may differ",
+      );
+    }
+  });
+
+  it("keeps the manifest itself parseable, unique, and non-empty of reasons", () => {
+    const duplicates = MANIFEST
+      .map(({ binding }) => binding)
+      .filter((binding, index, all) => all.indexOf(binding) !== index);
+    assert.deepEqual(duplicates, [], "a wire binding is declared twice");
+    for (const entry of MANIFEST) {
+      assert.ok(
+        entry.note.length > 40,
+        `${entry.binding} carries a note too short to say who closes it: ${entry.note}`,
+      );
+    }
+  });
+});
+
+it("V refuses missing or foreign native saved-file sinks", async () => {
+  await assert.rejects(savedArchiveBrowserRouteReferences(withoutNativeSinks("a[href]")), /no exact native download sink/);
+  await assert.rejects(savedArchiveBrowserRouteReferences(changedNativeAttribute('section[aria-label="Retained attachments"] a[download][href]', "href", "/artifacts/v1/archive/foreign/files/foreign")), /saved-file-download-identity-mismatch/);
+});

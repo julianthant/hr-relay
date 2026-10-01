@@ -18,7 +18,7 @@ import {
   loadCheckpoint,
 } from "../../src/domain/workflow/checkpoint.js";
 import type { FactProvenance, RunCheckpointRecord } from "../../src/domain/workflow/checkpoint.js";
-import { fixtureDescriptor } from "../unit/architecture/helpers/descriptor-fixtures.js";
+import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 
 const HASH_A = "a".repeat(64);
 const HASH_B = "b".repeat(64);

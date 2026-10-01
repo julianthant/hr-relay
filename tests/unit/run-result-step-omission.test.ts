@@ -13,7 +13,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
-import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
+import { FixtureReadReceipt } from "../fixtures/descriptor-fixtures.js";
 import { FixtureCanonicalInput, stepOmissionTerminalDescriptor } from "./fixtures/step-omission-terminal-fixtures.js";
 import { HASH_A, LATER, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";

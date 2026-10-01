@@ -36,7 +36,7 @@ import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import {
   WriteFixtureCommit,
   WriteFixtureSaveCommit,
-} from "./fixtures/write-sequencer-fixtures.js";
+} from "../fixtures/write-sequencer-fixtures.js";
 import type { AnyTaskContract } from "../../src/domain/contracts/base.js";
 
 const ENTRY_ID = "b0b0b0b0-b0b0-4b0b-8b0b-b0b0b0b0b0b0";

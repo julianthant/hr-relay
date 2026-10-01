@@ -18,7 +18,7 @@ import { UcpathDeletePendingTerminations } from "../../src/domain/contracts/ucpa
 import { UcpathReadPendingTerminationSet } from "../../src/domain/contracts/ucpath/read-pending-termination-set.js";
 import { UcpathStagePendingTerminationSweep } from "../../src/domain/contracts/ucpath/stage-pending-termination-sweep.js";
 import { ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
-import { compileFixtureWorkflow, everyEntryKindWorkflow } from "./fixtures/workflow-definition-fixtures.js";
+import { compileFixtureWorkflow, everyEntryKindWorkflow } from "../fixtures/workflow-definition-fixtures.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";

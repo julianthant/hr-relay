@@ -23,7 +23,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { projectStartSteps } from "../../src/services/start/step-selection.js";
-import { compileFixtureWorkflow } from "./fixtures/workflow-definition-fixtures.js";
+import { compileFixtureWorkflow } from "../fixtures/workflow-definition-fixtures.js";
 
 const Input = z.strictObject({ emplId: EidSchema, expectedName: CANONICAL_FIELDS.fullName.schema });
 const CanonicalInput = defineCanonicalInput(

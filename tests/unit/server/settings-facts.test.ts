@@ -24,7 +24,7 @@ import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-inp
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
-import { FixtureCommit, FixtureStage } from "../architecture/helpers/descriptor-fixtures.js";
+import { FixtureCommit, FixtureStage } from "../../fixtures/descriptor-fixtures.js";
 
 const CLOCK = manualClock(new Date("2026-08-26T00:00:00.000Z"));
 const KUALI_PROD = "https://ucsd.kualibuild.com/build/space/5e47518b90adda9474c14adb";

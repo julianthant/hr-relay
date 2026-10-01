@@ -3,7 +3,7 @@ import { compileWorkflow, defineWorkflow } from "../../src/base/workflow-definit
 import { ItemIdSchema } from "../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { fixtureBuildManifest } from "./fixtures/workflow-definition-fixtures.js";
+import { fixtureBuildManifest } from "../fixtures/workflow-definition-fixtures.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { workflowTerminalResultExecution } from "../../src/base/workflow.js";
@@ -23,7 +23,7 @@ import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { HASH_A, HASH_B, LATER, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
-import { fixtureDescriptor } from "./architecture/helpers/descriptor-fixtures.js";
+import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(LATER));

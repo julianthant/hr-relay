@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
-  "reviewedAt": "2026-09-06",
-  "architectureRoot": "tests/unit/architecture",
+  "reviewedAt": "2026-09-30",
+  "architectureRoot": "tests/architecture",
   "testScript": "test:architecture",
   "coveragePolicy": {
     "exclusionListSha256": "3fd6cca7742da0cc489985c45cccf163136643a6819eb98fb3114a41f35dcc30",
@@ -18,7 +18,7 @@
   "guards": [
     {
       "name": "clock-single-source",
-      "file": "tests/unit/architecture/clock-single-source.test.ts",
+      "file": "tests/architecture/clock-single-source.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "All rebuild wall-clock and monotonic-time reads route through the sole clock adapter, including aliased, imported, destructured, computed, and globalThis forms.",
@@ -26,7 +26,7 @@
     },
     {
       "name": "dashboard-wire-boundary",
-      "file": "tests/unit/architecture/dashboard-wire-boundary.test.ts",
+      "file": "tests/architecture/dashboard-wire-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
       "invariant": "Ref frontend-backend-integration \u00a78.2/\u00a78.3/\u00a78.13 and ref operator-trust \u00a77: src/dashboard declares no handwritten structural mirror of a *Wire contract (schema-inferred types only), no dashboard file carries a registered workflow-id string literal \u2014 workflow identity reaches surfaces only as SERVED data, never as a branchable literal \u2014 and the bundled-import closure of EVERY *.html entry under src/dashboard reaches no Node built-in, so a shared domain contract can never drag node:path/node:fs/node:crypto into a browser bundle. 2i-F/D175 generalised that arm from the single hardcoded index.html to every entry, and added the phone-scope arm: the capture.html entry's closure may not reach src/dashboard/surfaces/**, src/dashboard/client/** or src/dashboard/app/**, because the capture ingress is ref operator-trust \u00a77's ONE exception to loopback-only and serves that page's own asset closure \u2014 a single transitive import would ship the run detail, the command envelope and the SSE transport to a public origin without touching a route. Both arms carry negative controls: the config resolver's real node:crypto/node:path reach, and the operator entry's legitimate reach into all three forbidden roots. D264/D11 added the registry-reach arm: no *.html entry's closure may reach src/workflows/** or src/control/**. D251 had let the Run Modal read summary/enqueue/surfaces.inputRun off the bundle-safe WORKFLOW_DESCRIPTORS tuple because those three are plain data, and the price was never measured \u2014 the tuple pulls every registered workflow's whole graph, node specs, task contracts and src/base/** builders, so the browser downloaded the composition root to render three fields (1,114,214 bytes; 753,197 after). The three are now served as WorkflowStartWireSchema and this arm holds the tuple out; it too carries a negative control \u2014 the walker's real resolution into src/workflows/** from the registry itself. D274 item 3 added the specimen-bundle arm (ledger 3 UK146-UK157): the kit.html entry's TS/TSX import closure may not reach src/dashboard/surfaces/**, client/**, state/**, app/** or phone/**, because the design-system specimen page's whole claim is that what it renders is the SYSTEM drawn against synthetic literals - a reach into a surface would present one surface's composition of a primitive as the primitive's own behaviour, and a reach into the client would put a served fact on a page whose premise is that it serves none. src/domain/** stays reachable on purpose (ds/primitives-status.tsx reads the shared status vocabulary). CARVE-OUT: kit/main.tsx deliberately imports app/index.css so the --ds-* layer resolves against the real app theme; the walker resolves only .ts/.tsx specifiers (a .css specifier never matches a resolvable candidate), so this import is invisible to the closure walk and does not trip the app/** arm \u2014 a fact about the walker's reach, not an exemption from it, and worth stating because the arm's own text would otherwise read as contradicted by that import. Its negative control is the operator entry's legitimate reach into four of the five roots, proven for app/** via a non-entry file (dashboard-app.tsx) rather than the entry file itself, which already sits under app/** and would pass the check vacuously. The same commit added the build-input arm: every *.html entry the walker guards must also appear as a rollup input in vite.dashboard.config.ts, because a page that only renders on the dev server is a page ref frontend-backend-integration \u00a77's parity lane - which serves dist/dashboard statically - can never photograph.",
@@ -34,23 +34,23 @@
     },
     {
       "name": "gate-coverage",
-      "file": "tests/unit/architecture/gate-coverage.test.ts",
+      "file": "tests/architecture/gate-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "The exact per-commit typecheck, lint and coverage commands plus the targeted all-project test convenience cannot be replaced by inert wrappers; the single TypeScript program and strict typed ESLint configuration cover every authored src/tests/scripts root plus the exact root TypeScript config set, lint warnings remain fatal, and no legacy debt or unmatched-pattern escape hatch can return. The approved test-runner wrapper executes the installed Vitest CLI with unchanged selection and propagates failure; tests/unit/scripts/test-runner.test.ts proves the executable boundary, including a deliberately failing test (2026-09-05 reliability amendment).",
+      "invariant": "The exact per-commit typecheck, lint and coverage commands plus the targeted all-project test convenience cannot be replaced by inert wrappers; the single TypeScript program and strict typed ESLint configuration cover every authored src/tests/scripts root plus the exact root TypeScript config set, lint warnings remain fatal, and no legacy debt or unmatched-pattern escape hatch can return. The approved test-runner wrapper executes the installed Vitest CLI with unchanged selection and propagates failure; tests/integration/scripts/test-runner.test.ts proves the executable boundary, including a deliberately failing test (2026-09-05 reliability amendment).",
       "replacementRequired": true
     },
     {
       "name": "guard-manifest",
-      "file": "tests/unit/architecture/guard-manifest.test.ts",
+      "file": "tests/architecture/guard-manifest.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every active architecture guard exists exactly once, every named retired replacement resolves to an active guard, and every offline authored Vitest file is collected exactly once across the disjoint unit, architecture and scenario projects; future live-dependent combined tests remain explicitly uncollected until their own runner exists. The recursive architecture project remains excluded from unit while the exact test:architecture command selects it, one configured verbose reporter owns labeled output, and coverage exclusions, floors and all required ratchet arms stay executable against violating fixtures. Task 3.1.12 classifies nine byte-pinned integrated catch sources whose defaults represent explicit failure or verified ENOENT, with mutation controls proving changed sources fail re-review and still trigger the original scanner. Runtime cycle checks exclude erased type-only imports/exports; separate negative controls retain value, mixed-value and side-effect cycles. Layering continues to inspect all imports. Evidence: final-additional.json.",
+      "invariant": "Every active architecture guard exists exactly once, every named retired replacement resolves to an active guard, and every offline authored Vitest file is collected exactly once across the disjoint unit, integration, architecture and scenario projects; future live-dependent combined tests remain explicitly uncollected until their own runner exists. The recursive architecture project remains disjoint from unit while the exact test:architecture command selects it, one configured verbose reporter owns labeled output, and coverage exclusions, floors and all required ratchet arms stay executable against violating fixtures. Task 3.1.12 classifies nine byte-pinned integrated catch sources whose defaults represent explicit failure or verified ENOENT, with mutation controls proving changed sources fail re-review and still trigger the original scanner. Runtime cycle checks exclude erased type-only imports/exports; separate negative controls retain value, mixed-value and side-effect cycles. Layering continues to inspect all imports. Evidence: final-additional.json.",
       "replacementRequired": true
     },
     {
       "name": "legacy-capability-disposition",
-      "file": "tests/unit/architecture/legacy-capability-disposition.test.ts",
+      "file": "tests/architecture/legacy-capability-disposition.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Every D58 legacy capability surface in exact in-repo frozen provenance is classified exactly once by a recursively strict disposition union that has no proxy arm; status is the disposition's projection in both directions; every native/replaced target and every evidence token resolves to a real repo path, a real package.json script, or a frozen legacy path, and a decided entry must cite rebuild proof rather than only that legacy still exists; and no entry stays open on a milestone at or before the completedThrough the runtime itself reports (D184). Finished gates never require an external checkout.",
@@ -58,7 +58,7 @@
     },
     {
       "name": "legacy-change-accounting",
-      "file": "tests/unit/architecture/legacy-change-accounting.test.ts",
+      "file": "tests/architecture/legacy-change-accounting.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "RETIRED by D150 (operator decision, 2026-08-05): the two repositories no longer touch each other in either direction, so there is nothing for an ongoing change-accounting ledger to reconcile. The guard required legacy's src/tests worktree to be CLEAN and every legacy commit since the Phase-0 baseline to be recorded here, which made an unrelated in-flight edit in the production repo a red gate in the rebuild. WHERE THE INVARIANT WENT: the risk it covered was a ported selector or page-state fact going stale after legacy fixed it. That is now covered by LIVE RE-VERIFICATION at each workflow's migration, which the charter already makes mandatory and pre-authorized, and which is strictly stronger \u2014 a selector checked against the live system beats one diffed against legacy's copy of it. `legacy-selector-port-provenance` still pins all 406 keys to a FIXED legacy commit's blobs, so it is unaffected by legacy moving on. config/legacy-change-accounting.json is kept as the frozen historical record of what was reconciled through the split; nothing reads it.",
@@ -67,7 +67,7 @@
     },
     {
       "name": "legacy-selector-port-provenance",
-      "file": "tests/unit/architecture/legacy-selector-port-provenance.test.ts",
+      "file": "tests/architecture/legacy-selector-port-provenance.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "All 406 legacy selector keys are represented exactly once with recipe-free search intent, exact clean-commit source/catalog Git provenance frozen in config/ports/legacy-architecture-provenance.json, and a selector definition at the pinned source line; disjoint candidate:<system>/<proposal> ids remain unclassified and cannot collide with any catalog kind, while ported semantic ids require exact fixture/live evidence bindings. Finished gates never require an external checkout.",
@@ -75,7 +75,7 @@
     },
     {
       "name": "legacy-test-disposition",
-      "file": "tests/unit/architecture/legacy-test-disposition.test.ts",
+      "file": "tests/architecture/legacy-test-disposition.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Every legacy test directory in the exact baseline/current frozen provenance is classified exactly once and later-retirement candidates carry rebuild evidence; malformed or duplicate frozen facts fail loud. Finished gates never require an external checkout. Owner re-pointed 2026-08-20: the design input this named (history/design-inputs/2026-07-27-testing-system-plan.md) is a historical memo, and D91 folded its coverage/sizing/preservation policy into ref guards-and-tests \u00a73.14, which is where the rule now lives.",
@@ -83,7 +83,7 @@
     },
     {
       "name": "manual-clock-test-only",
-      "file": "tests/unit/architecture/manual-clock-test-only.test.ts",
+      "file": "tests/architecture/manual-clock-test-only.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "manualClock references, imports, re-exports, calls, and dynamic property access remain test-only.",
@@ -91,15 +91,15 @@
     },
     {
       "name": "migration-history-immutability",
-      "file": "tests/unit/architecture/migration-history-immutability.test.ts",
+      "file": "tests/architecture/migration-history-immutability.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md; docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "Every released SQLite authority migration version and ordered statement byte sequence is SHA-256 pinned; new schema work appends a new version and digest without editing, inserting into, deleting from, or reordering prior history. Schema 33 appends the workflow table rename and batch-presentation migration; versions 1\u201332 retain their literal digests. C appends schema 41 completion conversion/retirement; all released versions 1\u201340 retain literal statement digests. Deciding evidence: C focused migration-history-immutability guard. F appends pinned migrations42\u201347 without changing the first41 literals; foundation mixed-history and migration-history guard supply conversion/pin evidence. 3.1.9 A appends schema51 and its literal digest, preserving all released 1\u201350 pins (migration-history-immutability focused proof). L retirement appends schema49 and its literal digest; versions1\u201348 remain unchanged. Deciding evidence: archive retirement populated/restart tests and the migration-history focused guard. 3.1.12 appends schema54 and its literal digest; versions1\u201353 are unchanged. Deciding evidence: assigned migration-history, upgrade/admission/supported-conversion and backup checks retained under 3.1.12-activity-search-2026-09-21. Task 3.1.24 appends schema55 for runtime-version authority, baseline adoption and immutable attribution; versions1–54 retain their literal digests. Deciding evidence: focused runtime-version migration, backup and migration-history checks.",
+      "invariant": "Every released SQLite authority migration version and ordered statement byte sequence is SHA-256 pinned; new schema work appends a new version and digest without editing, inserting into, deleting from, or reordering prior history. Schema 33 appends the workflow table rename and batch-presentation migration; versions 1\u201332 retain their literal digests. C appends schema 41 completion conversion/retirement; all released versions 1\u201340 retain literal statement digests. Deciding evidence: C focused migration-history-immutability guard. F appends pinned migrations42\u201347 without changing the first41 literals; foundation mixed-history and migration-history guard supply conversion/pin evidence. 3.1.9 A appends schema51 and its literal digest, preserving all released 1\u201350 pins (migration-history-immutability focused proof). L retirement appends schema49 and its literal digest; versions1\u201348 remain unchanged. Deciding evidence: archive retirement populated/restart tests and the migration-history focused guard. 3.1.12 appends schema54 and its literal digest; versions1\u201353 are unchanged. Deciding evidence: assigned migration-history, upgrade/admission/supported-conversion and backup checks retained under 3.1.12-activity-search-2026-09-21. Task 3.1.24 appends schema55 for runtime-version authority, baseline adoption and immutable attribution; versions1\u201354 retain their literal digests. Deciding evidence: focused runtime-version migration, backup and migration-history checks.",
       "replacementRequired": true
     },
     {
       "name": "config-snapshot-generations",
-      "file": "tests/unit/architecture/config-snapshot-generations.test.ts",
+      "file": "tests/architecture/config-snapshot-generations.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "The durable config leaf set is SHA-256 pinned per generation: adding or tightening a required config leaf without registering it in CONFIG_SNAPSHOT_GENERATIONS and bumping CURRENT_CONFIG_SNAPSHOT_GENERATION fails here. D331 P38/M14 adds the permanent retired-leaves-are-a-closed-list arm: operator.timekeeperName is retired only in generation 5, pre-floor snapshots retain it, current snapshots reject it, and any other vanished or unregistered leaf still fails loud rather than being defaulted.",
@@ -107,7 +107,7 @@
     },
     {
       "name": "settings-catalog",
-      "file": "tests/unit/architecture/settings-catalog.test.ts",
+      "file": "tests/architecture/settings-catalog.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "D331 P1/P2/P5/P8/P33: the closed 88-row settings registry covers every ordinary config leaf, protected entry, provider-key family, host-derived publication and runtime-isolation channel in both directions; each row has one legal sensitivity/source-class pairing, only existing named consumers, and one contract-owned restart scope. The ordinary schema is generated only from ordinary-settings rows and therefore cannot admit a protected name, production-only route or deployment-owned path. Red-capable controls remove and duplicate real rows, add an uncatalogued leaf, corrupt each sensitivity/source pairing, name a missing consumer, and restore protected members to the ordinary document.",
@@ -115,7 +115,7 @@
     },
     {
       "name": "no-secret-values-in-logs",
-      "file": "tests/unit/architecture/no-secret-values-in-logs.test.ts",
+      "file": "tests/architecture/no-secret-values-in-logs.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "No rebuild template interpolation or diagnostic-sink argument carries a credential-named binding; only structurally named descriptors (name/id/path/file/family/env) and loop variables drawn from descriptor collections are permitted.",
@@ -123,7 +123,7 @@
     },
     {
       "name": "operational-isolation",
-      "file": "tests/unit/architecture/operational-isolation.test.ts",
+      "file": "tests/architecture/operational-isolation.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Both runtimes on this machine bind distinct commands, state/artifact roots, ports, process locks, and browser profiles/sessions; exact legacy launch scripts are frozen with commit/blob provenance rather than read from an external checkout, and the rebuild's isolation values come from one exported direct-const defineRuntimeIsolation call that a composition root invokes at top level through unshadowed named imports.",
@@ -131,7 +131,7 @@
     },
     {
       "name": "operator-mutation-admission",
-      "file": "tests/unit/architecture/operator-mutation-admission.test.ts",
+      "file": "tests/architecture/operator-mutation-admission.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
       "invariant": "Ref frontend-backend-integration \u00a73.4 (D75, 2026-09-02): every browser-reachable mutating route the BFF registers in src/server/dashboard/routes/api.ts is admitted by a loopback Host/Origin door BEFORE its handler runs, per a closed admission table \u2014 JSON-envelope doors (commands, bulk, XLSX export, start plans, Explorer validation) also require application/json; opaque doors (intake bytes, the body-less advisory) own their media contract; the one inline door (preflight rerun) is named as such. An app.post without a row, a guard registered after its route, a wrong guard, a missing inline door, or a stale row is a violation; the arm carries a negative control fixture exhibiting all five. 3.1.12 adds POST /api/v1/exports/search to the guarded JSON doors; wrong origin and media type are refused before body/authority access. Deciding evidence: operator-mutation-admission focused guard and real Activity/search export browser journeys.",
@@ -139,7 +139,7 @@
     },
     {
       "name": "parity-reference-authority",
-      "file": "tests/unit/architecture/parity-reference-authority.test.ts",
+      "file": "tests/architecture/parity-reference-authority.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
       "invariant": "D132: the ref frontend-backend-integration \u00a77 parity lane can fail. Stored .a11y.yml/.meta.json references are compared, never rewritten, on a normal run \u2014 an accessibility-only change fails with a diff naming the reference and leaves the file untouched; refreshing requires PARITY_UPDATE=1 (npm run test:parity:update), the same single switch that drives Playwright's updateSnapshots so the pixel and semantic halves of a pair can never be refreshed independently. The served dist/dashboard must carry a build stamp binding both the working-tree source digest and the emitted output digest; a stale, unstamped, or post-build-edited bundle is refused before a port is bound. D145: the pixel half allows ZERO moved pixels (maxDiffPixels: 0) and pins its per-pixel colour tolerance explicitly \u2014 the old maxDiffPixelRatio: 0.001 was uncalibrated, hid a 112-px visible content change, and because updateSnapshots: \"changed\" reuses the same comparison it also stopped test:parity:update from repairing eight pairs whose .a11y.yml had refreshed while their .png stayed stale. No parity spec or helper may set its own screenshot allowance. All arms are executed against violating fixtures and through the lane's own captureA11yReference/startFixtureServer entry points. D340 immediate desktop-only transition (2026-09-06): the required diagnostic portrait and Receipt PNG/short evidence attachments move to narrow desktop names; exact attachment membership, byte digests, report freshness and refusal controls remain active. Ref frontend-backend-integration \u00a710 records the deciding evidence and replacement mapping. D340 minimum-canvas amendment replaces A170\u2019s horizontal-shrink expectation with the 1024\u00d7720 floor and removes the detail-container viewport exception; dashboard-reference.spec.ts proves side-by-side geometry, unchanged canvas after desktop-window shrinking, document scroll reachability and growth above the floor in both themes. 3.1.9 B preserves the guarded geometry-before-capture operation in reference-scenes.ts, binds all eight scene registrations to it, and scans every extracted fixture/seeded input for reference feedback. Deciding evidence: focused parity-reference-authority and complete 274-test discovery equality. 3.1.9.8 registers five inspected disposable authority/evidence writers and pins their exact write destinations. Redirected-reference and extra-write negative controls execute for each writer; reference-store remains the only reference writer. Deciding evidence: f4-focused-tests.log exposes the missing registration; f4-registration-green.log passes all 15 cases with both controls, retained under hr-surfaces-evidence-20260917-qy8rqtwg.",
@@ -147,15 +147,15 @@
     },
     {
       "name": "runtime-dependency-coverage",
-      "file": "tests/unit/architecture/runtime-dependency-coverage.test.ts",
+      "file": "tests/architecture/runtime-dependency-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
-      "invariant": "D349 (2026-09-25): the nine browser-system ids remain aligned with frozen legacy provenance, while the current runtime advertises only each system's production capability and endpoint check; retired test capabilities and checks stay absent. Historical test URLs remain readable and inert until a settings write removes them, and no defaults are persisted. Vision-provider inventory, secret families, provider-model environment keys, and all remaining runtime capabilities stay closed against the frozen legacy sources and each other in both directions. The registry self-audit runs in the architecture lane and finished gates never require an external checkout. Deciding evidence: clock-config-secrets §D349 and runtime-dependency-coverage.test.ts.",
+      "invariant": "D349 (2026-09-25): the nine browser-system ids remain aligned with frozen legacy provenance, while the current runtime advertises only each system's production capability and endpoint check; retired test capabilities and checks stay absent. Historical test URLs remain readable and inert until a settings write removes them, and no defaults are persisted. Vision-provider inventory, secret families, provider-model environment keys, and all remaining runtime capabilities stay closed against the frozen legacy sources and each other in both directions. The registry self-audit runs in the architecture lane and finished gates never require an external checkout. Deciding evidence: clock-config-secrets \u00a7D349 and runtime-dependency-coverage.test.ts.",
       "replacementRequired": true
     },
     {
       "name": "runtime-environment-coverage",
-      "file": "tests/unit/architecture/runtime-environment-coverage.test.ts",
+      "file": "tests/architecture/runtime-environment-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "Every direct, computed, test-only, and documented environment read is explicitly classified; config and secret ownership remain bidirectionally complete.",
@@ -163,7 +163,7 @@
     },
     {
       "name": "secrets-single-source",
-      "file": "tests/unit/architecture/secrets-single-source.test.ts",
+      "file": "tests/architecture/secrets-single-source.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "Only src/domain/secrets.ts reads provider credentials; protected catalog environment keys are forbidden there for reads, writes and deletes. Config modules admit no environment leaf; every other runtime module has zero process.env access. Catalog-derived protected negative controls prove each operation (Task 1.6.5.2).",
@@ -171,7 +171,7 @@
     },
     {
       "name": "strict-boundary-schemas",
-      "file": "tests/unit/architecture/strict-boundary-schemas.test.ts",
+      "file": "tests/architecture/strict-boundary-schemas.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Every cataloged external or durable boundary is schema-derived, recursively strict across object/union/lazy members, and rejects nested unknown keys and unsafe type/parser escape hatches. C catalogs strict RunCompletion and explicitly historical receipt schemas; nested unknown-key negative fixtures remain. Deciding evidence: C focused strict-boundary-schemas, five cases. 3.1.9 A adds recursively strict Explorer import source/receipt fixtures; only the schema-valued in-process reader/repository methods are operational interfaces.",
@@ -179,7 +179,7 @@
     },
     {
       "name": "test-runtime-root-isolation",
-      "file": "tests/unit/architecture/test-runtime-root-isolation.test.ts",
+      "file": "tests/architecture/test-runtime-root-isolation.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "No test may create, mutate, or delete a path rooted at a real runtime-isolation root (the isolation binding's state/artifact/lock/browser-profile properties, or a .auth*/.tracker* literal), directly or through a local binding; a test that constructs the real worker session factory must bind its own non-real paths.browserProfileRoot.",
@@ -187,7 +187,7 @@
     },
     {
       "name": "test-target-registry",
-      "file": "tests/unit/architecture/test-target-registry.test.ts",
+      "file": "tests/architecture/test-target-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Ref guards-and-tests \u00a710.5/\u00a710.9: the guard WALKS every tests/scenario/workflows/*/dry-run.scenario.ts, evaluates each declaration without importing it, and requires it to parse, to name only node ids its own descriptor declares, and to be registered in src/cli.ts at its own path in both directions; every T1b manifest case's (label, workflow, kind) matches an ARM of a strict registry entry, and every registry arm has a case in that workflow's own manifest (both directions, D284); the committed registry holds exactly one separations subject, `finalization-canary`, with a `separations` full-chain-dry-run arm and a `separations-kuali-finalization` ordinary arm, pins its dated availability and exactly the three declared-pending finalization leaves (transactionNumber, timekeeperComments, terminationEffectiveDate) that make the standalone resolver answer blocked BY NAME, and commits no observations from a retired document; D300/D341 \u2014 the chain arm commits the CLOSED document-number reference (name only) and never a number, neither arm commits a Kuali document number, the registry is the `subjects` member of shared `config/test-data.json` and the private values live only in ignored `config/test-data.local.json`, the two test-data input names (separations document number, Person Lookup EID) are judged by their workflows' own value schemas and are no longer protected Settings names, the retired secretInput block is gone from the finalization arm, and the finalization resolver has no ready path and no env parameter at all, so it cannot spend a credential; the checked-in export is recursively frozen (references included) and real EIDs cannot enter publicInput. Every entry names a workflow the generated build manifest actually built and records a purpose, and both resolvers answer from the one subject's own arm without cross-workflow guessing.",
@@ -195,7 +195,7 @@
     },
     {
       "name": "test-data-ownership",
-      "file": "tests/unit/architecture/test-data-ownership.test.ts",
+      "file": "tests/architecture/test-data-ownership.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D341: unit-only fixtures/helpers are imported by tests/unit alone; shared fixtures under tests/fixtures and tests/helpers import no private-input, credential, .env, database or browser seam; config/test-data.json, its example and every declared shared file are git-visible inside the repository while config/test-data.local.json is ignored; tests/fixtures/README.md names every shared module.",
@@ -203,7 +203,7 @@
     },
     {
       "name": "ai-advisory-no-authority",
-      "file": "tests/unit/architecture/ai-advisory-no-authority.test.ts",
+      "file": "tests/architecture/ai-advisory-no-authority.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "D178 (ref operator-trust \u00a74.4): optional AI assistance reads the evidence and never becomes it. ZERO AUTHORITY EDGE \u2014 the advisory closure's VALUE-import graph (domain/trust/advisory, domain/dashboard/advisory, services/trust/advisory, infra/providers/gemini-advisory, server/dashboard/queries/advisory) may not reach any authority writer (the sqlite repositories, the command kernel, terminal authorization, the write sequencer/recovery, the receipt writer, run-failure, the diagnostic/knowledge/notification services, the ledger, the command services, either composition root, or control), and no command-family module (domain/commands, core/command-kernel, server/dashboard/commands/**) may import an advisory module \u2014 so an advisory value cannot cross into a command payload from either direction. A type-only import of a record SHAPE is deliberately not a path to that record's writer. The ONE permitted durable neighbour is D112 provider admission, at the composition root only. DECLARED REDACTION \u2014 every leaf a maximal FailureRecord presents carries a declaration and every declaration is exercised by it (both directions), no declaration pairs a classification with a transform redaction.ts forbids, only `safe-diagnostic` may leave as a VALUE, and an undeclared leaf refuses BY NAME rather than being dropped. ADVICE SHAPE \u2014 the closed advice schema exposes exactly headline/explanation/checks/confidence and strictly refuses retryability, a remediation kind, a run reference or a command. ROUTE \u2014 the advisory is its own POST /api/v1/runs/:runId/advisory, is never a run-detail section (a section would spend a provider budget on panel open), and no command-service module reaches the advisory query. Every arm runs against a violating fixture as well as the real subject.",
@@ -211,7 +211,7 @@
     },
     {
       "name": "archive-invariants",
-      "file": "tests/unit/architecture/archive-invariants.test.ts",
+      "file": "tests/architecture/archive-invariants.test.ts",
       "status": "active",
       "owner": "ref dashboard-surfaces \u00a710.2 (D80/D179); ref frontend-backend-integration \u00a78 guard #11",
       "invariant": "T/P7 preserves original archive JSON, content digest and issued reference identities. Original archive content and the other archive tables remain immutable; schema40 permits one separately authenticated transaction-section enrichment in the same archive row. Subsequent section changes refuse. Archived reads cannot reach workflow code or source files; the transaction query names no file-write primitive, with the existing violating import-closure fixture retained. Existing generation/frozen-section binding and content-digest fixed-point controls remain. Unit proofs cover exact enrichment replay, divergent/corrupt sections, protected projections and historical same-row conversion without changing original bytes. Deciding evidence: /tmp/history-views-architecture-4.log (28 tests) and /tmp/history-views-repairs-1.log (99 tests); final independent acceptance remains 2.6.9. L retirement keeps the mirror-model SQL mutation assertions on an explicit released v48 fixture; schema49 immutability and report/file custody are proved by archive-transfer/retirement.test.ts.",
@@ -219,7 +219,7 @@
     },
     {
       "name": "artifact-effect-boundary",
-      "file": "tests/unit/architecture/artifact-effect-boundary.test.ts",
+      "file": "tests/architecture/artifact-effect-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/task-contract.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Artifact references expose stable UUID identity plus immutable digest/size/media type and no root or path; the real writer accepts only a non-symlinked rebuild-isolated artifact root, writes one metadata+payload object via temp\u2192file-fsync\u2192atomic-rename\u2192directory-fsync, recovers cleanly across injected boundaries, returns the same ref for byte-identical content, and keeps task/workflow implementations away from direct mutable filesystem primitives.",
@@ -227,7 +227,7 @@
     },
     {
       "name": "atomic-write-outbox",
-      "file": "tests/unit/architecture/atomic-write-outbox.test.ts",
+      "file": "tests/architecture/atomic-write-outbox.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md; docs/rebuild/reference/dashboard-surfaces.md",
       "invariant": "T/P1: one authority transaction settles the fenced operation, exact attempt, transaction checkpoint and confirmed SQLite event. No current operation outbox is written. Failure injection at every remaining storage step rolls back all rows and authority generation; proof, trace, subject and unscoped-binding disagreement refuse. Standalone attempt mutation remains private. The historical test identity is retained. Deciding evidence: /tmp/history-views-architecture-4.log, 28 assigned architecture tests passed on the T worktree; final independent acceptance remains 2.6.9.",
@@ -235,7 +235,7 @@
     },
     {
       "name": "authority-target-no-fallback",
-      "file": "tests/unit/architecture/authority-target-no-fallback.test.ts",
+      "file": "tests/architecture/authority-target-no-fallback.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md",
       "invariant": "RETIRED by D188 (2j, 2026-08-09): the invariant is held, and held harder, by `storage-recovery`. WHERE THE INVARIANT WENT: `AuthorityDatabase.open` refuses an existing-but-empty file by name rather than replacing it, `inspectExistingReadOnly` refuses a schema that is not exactly the supported version, and `storage-recovery` executes the whole family \u2014 corrupt, truncated, newer-schema, foreign-key-invalid, invariant-invalid and record-invalid files all open DEGRADED READ-ONLY with a named cause and zero bytes written. D181 added the restore half over a real-shaped copied database. A separate guard could only re-assert what those arms already execute against real SQLite files.",
@@ -245,7 +245,7 @@
     },
     {
       "name": "bounded-task-deadline",
-      "file": "tests/unit/architecture/bounded-task-deadline.test.ts",
+      "file": "tests/architecture/bounded-task-deadline.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "Every task invocation in the Phase-1 interpreter runs under a mandatory, immutable, scheduler-armed abortable deadline (ref execution-and-sessions \u00a75 item 5): taskDeadlineMs is a required dependency with no default, both invocation arms race the deadline controller, and a task that ignores its signal still lands terminal failed with the wedged session poison-closed.",
@@ -253,7 +253,7 @@
     },
     {
       "name": "canonical-input-snapshot",
-      "file": "tests/unit/architecture/canonical-input-snapshot.test.ts",
+      "file": "tests/architecture/canonical-input-snapshot.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "Every registered canonical-input schema is transform-free anywhere in its graph and round-trips its ingress samples; a corrupted snapshot fails loud instead of being re-derived from ingress; and a snapshot only crosses schema hashes through a checked-in, factory-sealed, acyclic migration chain.",
@@ -261,7 +261,7 @@
     },
     {
       "name": "capture-durability-and-scope",
-      "file": "tests/unit/architecture/capture-durability-and-scope.test.ts",
+      "file": "tests/architecture/capture-durability-and-scope.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md",
       "invariant": "RETIRED by D294 (2026-08-31): the mobile document-capture product, including its page, ingress routes, command family, session authority and configuration, was removed. Its retirement boundary is now held by `phone-capture-retired`; diagnostic bundle screenshots, run-detail captures and Archive resources remain separately supported evidence surfaces.",
@@ -271,7 +271,7 @@
     },
     {
       "name": "phone-capture-retired",
-      "file": "tests/unit/architecture/phone-capture-retired.test.ts",
+      "file": "tests/architecture/phone-capture-retired.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D294: no retired mobile document-capture page, phone module, /api/v1/capture route, capture command/wire, session repository, or capture configuration may return. The real tree and a violating fixture are checked; diagnostic bundle screenshots, run-detail captures and Archive resource verification remain required evidence surfaces.",
@@ -279,7 +279,7 @@
     },
     {
       "name": "commit-routes-through-mutation",
-      "file": "tests/unit/architecture/commit-routes-through-mutation.test.ts",
+      "file": "tests/architecture/commit-routes-through-mutation.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `task-driver-boundary`, which refuses a `commit` implementation outside a store driver owner that validates its capability AND refuses premature capability forgery, both against a checked-in violating fixture. WHERE THE INVARIANT WENT: the capability itself became runtime-unforgeable at D127 \u2014 a module-private WeakSet in `src/core/write-sequencer.ts` is the sole mint and drivers verify with `assertSequencerMintedMutationCapability` \u2014 so routing is enforced by construction and the guard only has to keep the allowlist honest.",
@@ -289,7 +289,7 @@
     },
     {
       "name": "control-command-single-path",
-      "file": "tests/unit/architecture/control-command-single-path.test.ts",
+      "file": "tests/architecture/control-command-single-path.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D113/D283/D336: runtime journal/audit mutation stays in the command kernel; the stopped migration adapter is the temporary conversion writer. Ordinary SQLite readback and strict historical backup/source verifiers authenticate exact command/audit results without mutating them. Typed family dispatch, authorization, CAS, replay, and generation assertions remain active. The operator-approved workflow-batch/set-batch-grouping arm is enumerated and dispatched through the same kernel journal. V (2.6.8) removes relaunch-archived-run from active registration while retaining its historical fixture and asserting typed refusal with no authority/journal effects; tests/unit/served-database-surfaces/retired-relaunch.test.ts also pins HTTP and direct producer refusal.",
@@ -297,7 +297,7 @@
     },
     {
       "name": "delegation-manifest",
-      "file": "tests/unit/architecture/delegation-manifest.test.ts",
+      "file": "tests/architecture/delegation-manifest.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "Delegation edge ids are unique per workflow; one D102 policy vocabulary spans builder, manifest, dependency row, and UI; the plan fingerprint covers edge, cardinality, join, policy, and every child id and input; a drifted replay fails loud; a join runs only over the complete outcome set; and a zero-child fan-out stays an explicit satisfied join with a writable durable manifest.",
@@ -305,7 +305,7 @@
     },
     {
       "name": "descriptor-coverage",
-      "file": "tests/unit/architecture/descriptor-coverage.test.ts",
+      "file": "tests/architecture/descriptor-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "Ref workflow-model \u00a71.4: one table-driven sweep over DESCRIPTORS \u2014 unique ids/codes/icons, the module tuple agreeing with every derived registry in both directions, contract placement and examples, the derived browser-system union, concretely typed child-run targets, the bundle-safe value-import closure of every descriptor module, a current build manifest, and descriptor-to-impl pairing tracked explicitly rather than implicitly. The manifest is current in BOTH senses: the parsed manifest equals a fresh recomputation, and the checked-in module text equals the generator's exact bytes \u2014 formatting/ordering drift that deepEqual is structurally blind to fails the gate, proven by a negative control that reformats the module and shows the parsed arm stays green. The byte arm is one shared function used by the guard and by `npm run build:manifest:check`, whose presence in package.json is pinned so the `--check` CLI can never again ship wired to nothing. D107's pending-impl bindings are audited in both directions with a live fixture per staleness arm: an entry no descriptor uses, and (D184) an entry a store now implements.",
@@ -313,7 +313,7 @@
     },
     {
       "name": "driver-lease-boundary",
-      "file": "tests/unit/architecture/driver-lease-boundary.test.ts",
+      "file": "tests/architecture/driver-lease-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "Drivers exist only inside WorkerSessionManager.withDriver's callback lease: withDriver is consumed only by the graph interpreter, the browser-session factory's open() is invoked only inside worker-sessions, and only the worker loop constructs a WorkerSessionManager ownership scope.",
@@ -321,7 +321,7 @@
     },
     {
       "name": "dry-run-composition-submit-free",
-      "file": "tests/unit/architecture/dry-run-composition-submit-free.test.ts",
+      "file": "tests/architecture/dry-run-composition-submit-free.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "RETIRED by D188 (2j, 2026-08-09): held by `write-safety-contract` plus the executable scenario `separations-kuali-finalization/dry-run-preview`, which runs the REAL write sequencer over a REAL authority database and asserts zero write-authority/output deltas \u2014 zero `write_intents`, zero `write_attempts`, and zero `durable_outbox` rows \u2014 rather than inspecting a composition for the absence of a call. Ordinary upstream task `run_checkpoints` still exist in a dry run and are required to reach the preview boundary; they are not write evidence. WHERE THE INVARIANT WENT: `executeDryRun` is a separate arm and `executeTransaction` with `dryRun` refuses loudly, so a submit-free dry run is a property of the kernel's shape, and the scenario is what proves it on rows.",
@@ -331,7 +331,7 @@
     },
     {
       "name": "edit-data-field-policy",
-      "file": "tests/unit/architecture/edit-data-field-policy.test.ts",
+      "file": "tests/architecture/edit-data-field-policy.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md \u00a76; docs/rebuild/reference/workflow-model.md \u00a75.6",
       "invariant": "D334 retires in-place checkpoint saves. Descriptor/source/version/provenance checks now protect copied values in a new source-bound start plan; rerun-prefill-boundary carries the surviving negative controls.",
@@ -341,7 +341,7 @@
     },
     {
       "name": "evidence-receipt",
-      "file": "tests/unit/architecture/evidence-receipt.test.ts",
+      "file": "tests/architecture/evidence-receipt.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "A terminal run's receipt is strict at every level and carries the graph/config/input fingerprints, a source and observation instant for every fact, a filed binding proof for every verified write, and one explicit confidence; `verified-done` is refused for non-verified confidence, an unresolved mandatory fact or obligation, any warning, or a failure id, each proven by a violating fixture. Redaction is DECLARED: every leaf of every registered canonical-input sample and every used contract's sealed example carries a classification whose transform its classification permits, an undeclared leaf fails loud rather than dropping, a declaration that disagrees with domain/secrets.ts fails, and no env key, cookie, storage-state, or raw-SSN canary reaches a built receipt. The diagnostic-bundle half of ref guards-and-tests \u00a73.10 activates with the bundle capture slice. D199 \u2014 a receipt is bound to the surfaces its derivation CONSUMES, never to the descriptor's source closure: `descriptorFingerprint` is the closure the RUN executed under, read from its own envelope, so a settled receipt re-derives byte-identically after any edit that leaves every consumed surface intact, and a receipt that took the current build's `contractFingerprint` stranded every already-settled run on the next unrelated edit. Resolvability is a named check table \u2014 `workflow-identity`, `descriptor-version`, `canonical-input`, `evidence-graph`, `terminal-dependency-set`, `declared-evidence` \u2014 printed in full with both fingerprints, `[held]`/`[MOVED]`/`[skip]` distinct and no waiver arm. `declared-evidence` is the one check whose baseline is the stored receipt row, because the declared redaction and obligation tables live OUTSIDE every descriptor closure and can move with `contractFingerprint` byte-identical; the immutable insert stays underneath as the backstop. D204 \u2014 a GATE's durable evidence is a `gate_results` row and never a checkpoint, so a resolved gate node emits its payload's leaves as facts sourced `gate-result` (carrying authority's own `resolvedBy`/`resolvedAt`, never a payload claim), ONE `kind: \"gate\"` decision naming the approver, the instant, the resolving command and the bound evidence digest, and a `verified` obligation in place of the `unknown` a checkpoint-only derivation reported. The outcome is DECLARED per `(workflow, gate)` in `src/domain/trust/gate-decisions.ts` and never sniffed from a field name: every gate node of every registered descriptor has a declaration whose decision and bound-evidence leaves classify under a `gate-result` redaction scope, an undeclared gate and an unlisted arm value both fail loud, an orphan declaration or gate-scoped classification fails, and a foreign run's gate row, a gate that left the graph and an undeclared arm are executed as negative controls against the REAL gated descriptor, and the UNDECLARED `(workflow, gate)` pair \u2014 unreachable through the builder precisely because every registered gate node is declared \u2014 is pinned directly on `gateDecisionFor`, which is the only route from a stored row to a `DecisionEvidence.outcome`. D270 \u2014 an orphan task-output classification is judged against the BUILD MANIFEST task set rather than only the descriptor-reachable one, because observed-log emission redacts by declaration for every task the executor runs and a composed fixture descriptor must borrow a manifest-known id. C updates only the unsettled/interrupted negative fixture to omit settled completion evidence; the original named refusal assertions and frozen receipt/redaction controls remain. Deciding evidence: focused C evidence-receipt guard.",
@@ -349,7 +349,7 @@
     },
     {
       "name": "fresh-session-boundary",
-      "file": "tests/unit/architecture/fresh-session-boundary.test.ts",
+      "file": "tests/architecture/fresh-session-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md; docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "A browser-session boundary is authored or identity-forced, never inferred: the `fresh-boundary` close reason exists only inside the session-ownership modules, every task/workflow `session:` need is a string literal rather than a computed value, repeated reuse-worker needs mint no boundary, and both an authored session:\"fresh\" need and a D116 (worker,system,resolvedInstance,configFingerprint) reuse-identity mismatch close the old resource with an accepted page/context proof BEFORE the replacement opens and authenticates. The descriptor-level node-execution ordering arm lands with the first workflow that authors a fresh-boundary node.",
@@ -357,7 +357,7 @@
     },
     {
       "name": "identity-gate-before-commit",
-      "file": "tests/unit/architecture/identity-gate-before-commit.test.ts",
+      "file": "tests/architecture/identity-gate-before-commit.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "Ref write-safety \u00a714.6 #2: in a separation-class descriptor BOTH sinks \u2014 every transaction node and the terminal result \u2014 are graph-reachable only through an operator gate. Every dependsOn ancestry path from a sink must reach the gate's own ancestry (the gate plus its transitive dependsOn closure) before a graph root; a node OUTSIDE that ancestry is data the operator never saw at the gate, and a side read feeding the sink is the violation. The terminal arm landed with separations chunk 3 because a read-only chunk produces an APPROVED SUBJECT a later composition binds a write's expected side to, so a terminal result reachable without the gate hands that composition an unconfirmed identity. The registered gate is additionally pinned to ref write-safety \u00a714.4's IdentityApprovalResult schema hash \u2014 the exact value executeResolveGate compares an incoming payload against \u2014 so \u00a714.6 risk 5 (a gate result becoming free-form control state) is structurally closed. Executed both ways against gated and ungated fixtures, including a synthesized side read.",
@@ -365,7 +365,7 @@
     },
     {
       "name": "knowledge-fix-integrity",
-      "file": "tests/unit/architecture/knowledge-fix-integrity.test.ts",
+      "file": "tests/architecture/knowledge-fix-integrity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "D139 (ref operator-trust \u00a74, \u00a79): knowledge records carry status/scope/evidence/validity and forward supersession refs, and admission is audited INSIDE the insert transaction because an insert-only table cannot retract a duplicate. Two active records may not claim the same scoped rule \u2014 same scope plus same normalized title or a shared regression scenario \u2014 without the successor explicitly superseding the predecessor; a supersedes ref that names nothing recorded, a self-reference, and a duplicate id are each refused with the conflict named. The generated per-system KNOWLEDGE.md is the active view alone: superseded, retired, and unverified records never reach it. A verified FixRecord requires a commit plus non-empty verification evidence and a regression scenario, a draft may claim neither, and a verified fix may not link knowledge that is missing or itself unverified. A raw chronological lesson append is not authority: triageLesson has exactly one arm and it returns the obligations still owed, never a record. F removes the runtime knowledge service/repositories; this guard retains frozen schema41 historical admission/projection proofs and verifies current-door absence. Nonempty retirement requires source-bound backup; foundation mixed-history supplies positive/negative preservation proof.",
@@ -373,7 +373,7 @@
     },
     {
       "name": "ledger-projector",
-      "file": "tests/unit/architecture/ledger-projector.test.ts",
+      "file": "tests/architecture/ledger-projector.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "T/P6/P8 replaces the current projector with confirmed SQLite history. Fresh schema and repository checks forbid operation_outbox, ledger_partitions, ledger_projections and their current consumers; injected read-through/repository aliases, appenders and cleanup paths fail the scanner. Historical source-copy cleanup admits only the exact reviewed preserveTimelineSources function digest and its temporary-directory removal; all prior ledger reference forms and deletion primitives remain covered. Negative controls include template paths, wrong owners, changed cleanup targets and appended deletion calls. Released separated line hashes and dense-sequence inspection remain enforced before conversion. Immutable source rows forbid update and require owner deletion. Populated historical unit controls cover pending/missing files, exact assignments, two database connections, torn/rewritten/gapped/duplicate lines and unrecorded files after restore. Deciding evidence: /tmp/history-views-architecture-4.log, all 28 assigned architecture tests passed; historical migration digests 1\u201339 unchanged. Final acceptance remains 2.6.9.",
@@ -381,7 +381,7 @@
     },
     {
       "name": "legacy-preservation",
-      "file": "tests/unit/architecture/legacy-preservation.test.ts",
+      "file": "tests/architecture/legacy-preservation.test.ts",
       "status": "retired",
       "retiredBy": "D93",
       "replacedBy": null,
@@ -391,7 +391,7 @@
     },
     {
       "name": "multi-worker-overlap",
-      "file": "tests/unit/architecture/multi-worker-overlap.test.ts",
+      "file": "tests/architecture/multi-worker-overlap.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "ACTIVATED BY D182 (ref execution-and-sessions \u00a77.1 rows C1-C4). More than one REAL `runWorkerLoop` instance, with distinct worker ids, races ONE workflow queue over ONE shared authority database, and the durable claim set is sampled at every span event and every driver call rather than read once at the end. Two facts hold at once and pull in opposite directions: no worker EVER owns two rows in `claimed|validating|running` (ref execution-and-sessions \u00a70.3, sampled live so a double claim released before the end could not hide), and the fleet genuinely overlaps -- the observed maximum of workers holding work simultaneously equals the worker count, which is ref execution-and-sessions \u00a77's 'parallelism silently serializes' risk stated as a measurement. Every enqueued run is executed exactly once, claimed by exactly one worker, and ends terminal `done` at claim generation 1 and attempt 1, so a second claim or a requeue is visible in authority rather than only in a report. A row held by a live loop is never served to a sibling `claimNext` and the holder's own second `claimNext` throws by name. A sweep interleaved with a live heartbeat requeues only the genuinely stale row -- the freshly renewed claim keeps its owner, generation and attempt -- and the requeued row is proved re-claimable by the same live loop. A zombie heartbeat whose row was swept and re-owned reports `lost` and abandons instead of stamping a heartbeat over the new owner.",
@@ -399,7 +399,7 @@
     },
     {
       "name": "no-lifecycle-sql-outside-the-adapter",
-      "file": "tests/unit/architecture/no-lifecycle-sql-outside-the-adapter.test.ts",
+      "file": "tests/architecture/no-lifecycle-sql-outside-the-adapter.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/dashboard-surfaces.md",
       "invariant": "D334/D335 lifecycle mutations stay inside the SQLite adapter and run service. Checked-in SQL, aliased mutator and runs_view reader violations prove the boundary; D332/D336 admits only the exact stopped ordinal UPDATE in settings-database-upgrade.ts, whose migration-only import closure is independently guarded. Tombstone rollback/trigger proofs and negative fixtures bind this exception; source-bound plans create fresh service-owned runs. SQL mutation fixtures cover workflow_runs, its historical tasks name, and workflow_workers. The worker-name integration negative control failed before adding the renamed worker table to the SQL matcher. The operation integration retains the complete AST/file scan and final selected-overload resolution, using normalized callable declarations only to skip unrelated call resolution. Negative controls include renamed-property, indexed, overloaded, optional, generic and union aliases, plus an allowed safe selected overload; each audit owns its own compiler and type cache. T/P7 admits only the exact guarded transaction-section UPDATE inside freezeConvertedArchiveTransactions in the stopped timeline converter. Full integration coverage exposed this missing exception; controls reject a different owner/function, removal of the NULL guard, and original archive-body mutation. Original archive JSON/digest and immutable-trigger proofs remain required. L combination verification also admits only the exact UPDATE in convertRunCompletions in completion-conversion.ts; the validated stopped conversion remains isolated by authority-upgrade-adapters-isolated. A positive control and wrong-path, wrong-function and changed-SQL negative controls bind this exception. D332.9 / 2.6.9 removes the obsolete stopped ordinal backfill exception with its deleted adapter; authority-upgrade-adapters-retired now guards the supported recovery boundary. All other lifecycle SQL/alias/callable and exact archive/completion conversion controls remain.",
@@ -408,7 +408,7 @@
     },
     {
       "name": "no-positional-identity",
-      "file": "tests/unit/architecture/no-positional-identity.test.ts",
+      "file": "tests/architecture/no-positional-identity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md",
       "invariant": "No durable identity is positional or borrowed: every run, worker, workflow, node, gate, actor, delegation-edge, and extracted-record id rejects an index, an ordinal, and a stringified number, and a UUID cannot be spelled as any slug-shaped id, so a run id can never stand in as a worker id.",
@@ -417,7 +417,7 @@
     },
     {
       "name": "notification-durability",
-      "file": "tests/unit/architecture/notification-durability.test.ts",
+      "file": "tests/architecture/notification-durability.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md; docs/rebuild/reference/operator-trust.md",
       "invariant": "D138 (ref dashboard-surfaces \u00a72.6/\u00a710.4 D79b; ref operator-trust \u00a76): a notification is a durable record FIRST and a desktop delivery second. `publish` settles create-or-fold in one authority transaction and only then attempts OS delivery, and the load-bearing arm injects a delivery that throws \u2014 the item must still be durably unread with its count and version untouched, because the operator who missed the toast has only the inbox left. No per-attempt delivery state is written. Each of ref dashboard-surfaces \u00a72.6's closed triggers commits an item and routes to its ratified D79b channel (failed/gate-waiting/write-parked/repeating/storage \u2192 ping, verified-done \u2192 inbox), each carries its own dedupe identity that excludes the occurrence, and a repeat FOLDS into the one (actorId, dedupeFingerprint) row \u2014 count up, lastSeenAt advanced, unread again \u2014 rather than minting a second. Snooze suppresses delivery only and never flips status; read state and snooze move independently; a stale version is refused. The trigger event union is ids, closed codes, and counts, so notification text has no free-text channel a captured value could enter through.",
@@ -425,7 +425,7 @@
     },
     {
       "name": "one-projection-counts",
-      "file": "tests/unit/architecture/one-projection-counts.test.ts",
+      "file": "tests/architecture/one-projection-counts.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md",
       "invariant": "D81 preserves one generic run/queue projection: exact producer-set guards and populated operation/member, failed, gated, terminal and archived fixtures bind workflow, status, queue and month totals. The separate transaction block is built only in src/domain/dashboard/activity.ts and src/infra/sqlite/transaction-history.ts, and queried only by that history module, the retained run/queue projection and the approved Q internal summary query port (src/server/dashboard/queries/activity-summaries.ts). Q01\u2013Q06 in database-modernization/decisions.md authorizes that consumer; the P1 repair evidence in 06-summary-evidence.md records exact-set and populated-fixture PASS. Exact sets in both directions reject additional counting paths. Two real SQLite confirmations with distinct prod/test owners change only the transaction block; generic totals remain byte-identical. T/P4 and P6 exclude explicitly deleted owners while preserving retry-shared evidence; no current ledger file is an authority. Deciding development evidence: /tmp/history-final-architecture.log; full independent acceptance remains 2.6.9. Task 3.1.12 guard-only amendment reconciles the integrated Calendar owner: exactly one monthCounts construction in src/infra/sqlite/run-summaries.ts; workflowCounts/statusCounts remain exclusive to the queue projection. Existing hostile-fixture and exact-set checks are preserved. Deciding evidence: final-guards.json in the 3.1.12 execution evidence directory.",
@@ -433,7 +433,7 @@
     },
     {
       "name": "one-time-import-offline",
-      "file": "tests/unit/architecture/one-time-import-offline.test.ts",
+      "file": "tests/architecture/one-time-import-offline.test.ts",
       "status": "planned",
       "owner": "docs/rebuild/05-cut-over.md",
       "invariant": "PLANNED, re-owned by D188 (2j, 2026-08-09) from the meaningless `phase-1-or-later` to the cutover gate. The invariant is that the one-time import of legacy operational data runs OFFLINE against a copy and never reaches a live system. It has no subject yet: no import path exists in this tree, and D150/D156 retired the legacy accounting that would have fed one. It activates in the commit that builds the cutover data migration (doc 05 \u00a7Exit criteria), not before.",
@@ -442,7 +442,7 @@
     },
     {
       "name": "permanent-key-dedupe",
-      "file": "tests/unit/architecture/permanent-key-dedupe.test.ts",
+      "file": "tests/architecture/permanent-key-dedupe.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "A strict system-scoped natural idempotency key and its derived digest identify one permanent SQLite intent across sequential and independent competing connections; committed and observed-present rows cannot be reopened, observed-present creates no attempt or native operation confirmation, and any key/digest mismatch fails loud. Deciding development evidence: /tmp/history-final-architecture.log; full independent acceptance remains 2.6.9.",
@@ -450,7 +450,7 @@
     },
     {
       "name": "ucpath-person-org-strict",
-      "file": "tests/unit/architecture/ucpath-person-org-strict.test.ts",
+      "file": "tests/architecture/ucpath-person-org-strict.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/task-contract.md; docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/operator-trust.md",
       "invariant": "The UCPath Person Organizational Summary runtime pins exact legacy provenance while rejecting body-name scans, observed-EID overwrite, extraction-error empty defaults, missing-grid not-found inference, swallowed clears, and drill-null fallbacks; search results expand before extraction and again after Return to Search, Employment Instances expand before assignment selection, enabled View All must transition to View N while disabled View All alone proves already-complete, contextual one-to-many selector ports remain closed and unique, every operation locator resolves through dual evidence, and both subject proofs fail loud. The locator-coverage arm is scoped to the two Person Org SCREENS in both directions (D130 added a second UCPath screen family), and the SS Smart HR receipt elements are asserted present and unreachable from this operation so the scoping can never go vacuous.",
@@ -458,7 +458,7 @@
     },
     {
       "name": "preflight-coverage",
-      "file": "tests/unit/architecture/preflight-coverage.test.ts",
+      "file": "tests/architecture/preflight-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "Executes all declared preflight fault manifests through createRuntimePreflightRunners and the strict report authority, expanding registry dependencies into every secret, endpoint route, and feature-provider alternative. Healthy controls, injected failures, explicit restoration, report digests, terminal/evidence/failure expectations, zero browser/process launches and external fetches, and unchanged authority bytes are checked. Missing/extra/duplicate executions, mismatched evidence, unknown scenarios, and false-healthy detectors fail. Admission effects are covered by the assigned production-consumer tests. Activated by 3.1.11.1; evidence: hr-automation-rebuild-evidence/3.1.11.1-setup-2026-09-19/implementation/g1-architecture-final.log.",
@@ -466,7 +466,7 @@
     },
     {
       "name": "provider-capability-boundary",
-      "file": "tests/unit/architecture/provider-capability-boundary.test.ts",
+      "file": "tests/architecture/provider-capability-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/task-contract.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Every capability maps exactly once to a strict immutable provider budget and reaches remote I/O only through the single durable admission kernel; whole-src and transitive task import scans confine raw network/vendor modules and adapters to infra/providers, forbid hidden ProviderClient construction, prove exhaustion makes zero adapter calls/non-sleep requeue, and keep the adapter surface deliberate: infra/providers holds the deterministic harness plus the reviewed production adapters (D161's gemini ocr.extract first), the run executor is the ONE production consumer (D162: per-invocation admitted clients over the run's retained config snapshot, ingredients composed by the worker root), and production pools stay absent until 2h-D. The same single-owner rule covers the frontend transport, ONE owner per browser bundle: src/dashboard/client/** for the operator bundle and the single file src/dashboard/phone/capture-client.ts for the phone bundle (2i-F/D175) \u2014 named as one file rather than a subtree, so a phone component that reached for fetch directly still fails. D184 adds the allowlist-hygiene half: every name in the three D162/D178 allowlists must resolve to a git-visible module (one dead entry, the admission module listed as its own importer, is deleted), and the D68 declared provider inventory is reconciled with the built adapter tree in both directions \u2014 every ProviderId has EITHER a reviewed adapter-module list that exists OR a reviewed declared-without-adapter reason, so the four key-only providers (groq/mistral/openrouter/sambanova) are a recorded state rather than a silent divergence.",
@@ -474,7 +474,7 @@
     },
     {
       "name": "rebuild-gates",
-      "file": "tests/unit/architecture/rebuild-gates.test.ts",
+      "file": "tests/architecture/rebuild-gates.test.ts",
       "status": "retired",
       "retiredBy": "D93",
       "replacedBy": "gate-coverage",
@@ -484,7 +484,7 @@
     },
     {
       "name": "recovery-negative-proof-settlement",
-      "file": "tests/unit/architecture/recovery-negative-proof-settlement.test.ts",
+      "file": "tests/architecture/recovery-negative-proof-settlement.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "Retry authority requires the exact configured number of schema-valid post-window observations at or beyond both injected-Clock timing boundaries, all bound to the fenced key and exact authoritative query/source/source-state; early, single, malformed, future, inconsistent, wrong-boundary, ambiguous, unknown, present, and operator-only evidence never becomes retryable.",
@@ -492,7 +492,7 @@
     },
     {
       "name": "runtime-isolation",
-      "file": "tests/unit/architecture/runtime-isolation.test.ts",
+      "file": "tests/architecture/runtime-isolation.test.ts",
       "status": "retired",
       "retiredBy": "D93",
       "replacedBy": "operational-isolation",
@@ -502,7 +502,7 @@
     },
     {
       "name": "scenario-coverage",
-      "file": "tests/unit/architecture/scenario-coverage.test.ts",
+      "file": "tests/architecture/scenario-coverage.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "Every branch arm, gate open/resolve, delegation size/replay/policy, and transaction outcome derived from the node tuple is claimed by a registered scenario, and every claim resolves to a path that still exists \u2014 so a renamed arm cannot keep a deleted path looking covered. D185 adds the corpus DIRECTORY, which the registered-set audits structurally cannot see: `tests/scenario/` holds exactly three declared kinds \u2014 a graph scenario (`*.scenario.test.ts`), an integration walk (`*.walk.test.ts`) and R10 \u00a710.9's T2 dashboard scenario (`dashboard/<feature>/<name>.scenario.test.ts`) \u2014 and every file on disk is exactly one of them, the three patterns being pairwise disjoint (GRAPH\u2227DASHBOARD over the live corpus directory, and all three pairs \u2014 GRAPH\u2227DASHBOARD, WALK\u2227DASHBOARD, GRAPH\u2227WALK \u2014 over a synthetic path table independent of what the corpus currently contains). An `it` title whose head parses as a ScenarioId is a CLAIM, so a typo stays a claim and fails rather than being reclassified as prose, and every claim must be a manifest row naming THAT file or a graph-claim corpus id; every manifest row must name a file the corpus contains and a test that file declares; a graph scenario that claims nothing, a walk or dashboard scenario that claims a graph path or carries a manifest row, and a file of no declared kind are each refused by name. `auditScenarioCorpusLayout` is pure over an injected listing, and every arm carries a negative control built by moving exactly one thing in the REAL corpus.",
@@ -510,7 +510,7 @@
     },
     {
       "name": "semantic-ui-registry",
-      "file": "tests/unit/architecture/semantic-ui-registry.test.ts",
+      "file": "tests/architecture/semantic-ui-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Every server-private semantic UI definition has a globally unique classified id, collision-free search intent, resolved same-system/same-screen acyclic dependencies, non-vacuous globally unique verification scenarios, exact dual sanitized evidence-to-screen/scenario/date/port-row bindings, and byte-fresh recipe-free generated catalogs; disjoint legacy candidate ids cannot enter any runtime catalog kind. The guarded projection set is DERIVED, never enumerated: it equals the set of stores shipping a `driver/ui-registry.ts` in both directions (no unguarded publisher, no orphan UI-CATALOG.md), so a newly added store's markdown cannot escape freshness enforcement the way `src/stores/kuali/UI-CATALOG.md` did. Every derived projection \u2014 the JSON and each per-system markdown \u2014 carries stale and missing negative controls through an injected reader.",
@@ -518,7 +518,7 @@
     },
     {
       "name": "single-flight-login",
-      "file": "tests/unit/architecture/single-flight-login.test.ts",
+      "file": "tests/architecture/single-flight-login.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "Session login is single-flight within one worker/system session creation (ref execution-and-sessions \u00a74): store.session.login is invoked only inside the worker session manager, and two concurrent leases for one system produce exactly one session open and one authentication.",
@@ -526,7 +526,7 @@
     },
     {
       "name": "sleep-budget",
-      "file": "tests/unit/architecture/sleep-budget.test.ts",
+      "file": "tests/architecture/sleep-budget.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "RETIRED by D188 (2j, 2026-08-09): ref execution-and-sessions \u00a77's row reads \"wait-for-timeout ratchet + span sleep budget\", and both halves are now enforced elsewhere. WHERE THE INVARIANT WENT: the `wait-for-timeout-allowlist` ratchet bans `waitForTimeout` outright, and every wait in the kernel goes through the injected `MonotonicDeadlineScheduler` with `bounded-task-deadline` holding the per-invocation bound \u2014 so there is no authored sleep for a budget to measure. D182's soak runs 3 workers x 30 runs with a manual clock and a manual scheduler and never advances a real timer, which is the same fact executed.",
@@ -536,7 +536,7 @@
     },
     {
       "name": "storage-recovery",
-      "file": "tests/unit/architecture/storage-recovery.test.ts",
+      "file": "tests/architecture/storage-recovery.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/dashboard-surfaces.md",
       "invariant": "Native online backups self-verify the completed copy, bind immutable manifests to final bytes, coalesce generation-follow-up work, fail closed into read-only degraded authority, keep doctor read-only, and permit only stopped-proof offline restore from an exact verified compatible backup without exposing DatabaseSync or using live-WAL copy/VACUUM fallbacks. T1 adds only the private timeline repository and stopped conversion modules to the explicit SQLite owner boundary; current doctor reads SQLite history, uses bounded no-follow span files only in the migration scanner, and separately reconciles quarantined SQLite as diagnostic restore-loss evidence without re-admitting runs. R1 repair evidence adds real-service three-generation retry retention, presentation-only gate-event suppression, and restore loss/corrupt-path/race/resource-bound tests; the eight-file repair batch passed 227 cases and the final recovery-command family passed all 20 cases. Deciding evidence: side/timeline-history-1 focused batch 5 on 2026-09-08 passed all 93 dynamic recovery cases; focused batch 6 passed the complete 94-case guard after the exact-module allowlist correction. The separate sqlite-authority-boundary guard also retains its public-connection/escape-hatch assertions and admits exactly those two private modules; the focused coverage-fix batch passed. R1c adds a production sequenced-commit/backup/restore/stale-claim-sweep regression: equal run versions and attempt IDs cannot clear missing confirmation evidence; an already-accounted confirmation stays healthy after a heartbeat. Full candidate gates and independent review remain required. C replaces duplicated terminal-authorization/outbox guards with immutable same-row completion field mutations for both outcomes, offline result-digest/failure-summary corruption refusals, and physical retired-table absence. Native SQLite ownership additionally admits only completion-conversion. Deciding evidence: C focused storage-recovery suite; supported backup/restore, read-only refusal and negative controls retained. Full acceptance remains 2.6.9. F extracts nine SQLite implementation files inside the existing native-storage boundary; retired current projections are checked absent while historical contracts, backup negatives and C completion integrity remain enforced. Evidence: foundation mixed-history, storage-recovery and knowledge-fix-integrity focused selectors. L registers archive-database, run-evidence-ownership and run-summaries as the named lifecycle SQLite boundaries. The complete native-handle inventory and no-copy/no-VACUUM checks remain enforced. L retirement also synchronizes the standalone sqlite-authority-boundary inventory to the same named private adapters, preserving its public connection/escape-hatch negative assertions. L retirement adds explicit schema48 read-only diagnostic fixtures, checks current root lookups omit retired SQL, and registers archive-upgrade-journal plus archive-compatibility as scoped SQLite boundaries. Deciding evidence: populated stopped conversion/old-backup restart tests and the complete focused storage-recovery suite. The exact native-handle owner inventory also includes relocation-restore-candidate, run-search-index, runtime-versions, transaction-selection, worker-control and stopped storage upgrade; unreviewed imports and file-copy or VACUUM fallbacks remain forbidden. Deciding current evidence: category-6/native-picker-integration/storage-architecture-final.log, 94/94 focused cases.",
@@ -544,7 +544,7 @@
     },
     {
       "name": "store-catalog-current",
-      "file": "tests/unit/architecture/store-catalog-current.test.ts",
+      "file": "tests/architecture/store-catalog-current.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/stores.md",
       "invariant": "D312/D329 (doc 03.2 Task 2): ref stores \u00a72 is GENERATED from `taskStoreRegistry` by `npm run stores:catalog`, never hand-written. Stale checked-in bytes between the `store-catalog:start`/`store-catalog:end` markers fail this guard, every registered store appears as its own `###` block in registry order and every registered task appears in exactly one row, and the renderer derives every input/output cell through zod's public shape API \u2014 an underivable shape, a non-object union arm, a read contract with no freshness policy, or a contract that is both registered and listed in config/pending-impl-bindings.json throws rather than rendering a placeholder, because a reuse index that silently guesses is what mints the duplicate task D194 exists to prevent.",
@@ -552,7 +552,7 @@
     },
     {
       "name": "subject-before-fence",
-      "file": "tests/unit/architecture/subject-before-fence.test.ts",
+      "file": "tests/architecture/subject-before-fence.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "Every transaction pairs compatible prepare/commit subject declarations observed after prepare in one system; the live sequencer orders prepare-end < fresh subject observation < fence-commit < mutation-call on one lease; mismatch/unknown/missing observation produces zero fence and zero click with a poisoned page; alternating EIDs through one pooled page bind distinct digests; every minted MutationCapability is bound to the exact fenced WriteBindingProof digest and is refused by the production Kuali driver when it was not sequencer-minted; unscoped commits require a reviewed allowlisted reason, fail-both-ways.",
@@ -560,7 +560,7 @@
     },
     {
       "name": "task-contract-sealing",
-      "file": "tests/unit/architecture/task-contract-sealing.test.ts",
+      "file": "tests/architecture/task-contract-sealing.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/task-contract.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "Read, prepare, and commit contracts are minted only by the validating deep-seal factory; the exact effect-discriminated runtime definition rejects unknown/effect-only fields, empty error-code lists, and non-memory prepare checkpoints; recursive schemas reject nested open/any/unknown/record escapes; parsed canonical examples and closed write-safety proofs agree; unscoped commits require reviewed reason ids; schema-owned paths/tiers/references fail loud; inferred error codes stay literal; and an AST plus transitive import graph protects every src/**/contracts/** module from runtime imports, forged seals, casts, and dynamic-import bypasses.",
@@ -568,7 +568,7 @@
     },
     {
       "name": "task-driver-boundary",
-      "file": "tests/unit/architecture/task-driver-boundary.test.ts",
+      "file": "tests/architecture/task-driver-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "AST and transitive import-graph audits confine static/dynamic Playwright access, raw browser types, locator/frame/getBy/newPage/evaluate/$ operations, and private driver/session ownership to the two raw-browser owner families \u2014 per-system driver/session modules and the `src/infra/browser/**` worker session factory that owns concrete browser creation; task/workflow code consumes typed semantic ids and proofs and may reach neither family transitively. MutationCapability may be conjured by `as`/`satisfies` nowhere outside `src/base/mutation-capability.ts`, `mintMutationCapability` has exactly one permitted caller (`src/core/write-sequencer.ts`), and a `commit` implementation is legal only inside a `src/stores/<system>/driver/**` owner that validates its capability before clicking (D122).",
@@ -576,7 +576,7 @@
     },
     {
       "name": "task-store-boundaries",
-      "file": "tests/unit/architecture/task-store-boundaries.test.ts",
+      "file": "tests/architecture/task-store-boundaries.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/task-contract.md; docs/rebuild/reference/execution-and-sessions.md; docs/rebuild/reference/guards-and-tests.md",
       "invariant": "All nine closed browser systems have exactly one declared store and fail-loud unwired session provider; driver/session/store systems match, OnBase alone is identity-exclusive, typed task bindings enforce effect/access/session/provider boundaries, and the registry exact-matches implementations to the contract corpus while resolving every scenario/probe/verifier reference.",
@@ -584,7 +584,7 @@
     },
     {
       "name": "transaction-pairing",
-      "file": "tests/unit/architecture/transaction-pairing.test.ts",
+      "file": "tests/architecture/transaction-pairing.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "A transaction pairs prepare and commit arms from one system under one lease, binds the commit key from workflow input and declared upstream outputs only, declares a positive probe-to-fence budget and a dry-run policy, carries a same-system read probe, and no commit contract is reachable as a standalone step anywhere in src/.",
@@ -592,7 +592,7 @@
     },
     {
       "name": "worker-teardown-soak",
-      "file": "tests/unit/architecture/worker-teardown-soak.test.ts",
+      "file": "tests/architecture/worker-teardown-soak.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "ACTIVATED BY D182 (ref execution-and-sessions \u00a77.1 rows C5-C8). Ref execution-and-sessions \u00a77's first mechanical-guard row -- 'worker-soak test asserts max active claims per worker is exactly 1' -- named a test that did not exist; this is it, plus the teardown half. The soak drains 30 queued runs across 3 real `runWorkerLoop` instances over ONE authority database on a manual clock and a manual scheduler (no real timer participates), then proves authority intact rather than merely counting outcomes: every run terminal `done` exactly once at claim generation 1 and attempt 1, no row left in `claimed|validating|running`, exactly one `run_terminal_outbox` row per run, zero unresolved write intents, zero confirmed transactions, and `AuthorityDatabase.inspectExistingReadOnly` re-reading the file so its ~30 named SQL invariants, quick_check and foreign-key scan all pass -- a soak that corrupted the claim index would still count 30 done runs. The shared database history query must return no transactions across the complete date range; current pending counts expose no retired outbox field. Teardown: a stop signal mid-run abandons rather than terminalizing over a claim it can no longer prove, the interrupted lease is closed as `poisoned` (never as a clean worker-stop), the row is LEFT under its now-stale claim, and ref execution-and-sessions \u00a73's recovery sweep -- not the dying loop -- is what requeues it for a successor that drains it to `done`; `closeAll(\"worker-stop\")` closes nothing while a driver callback is in flight, refuses a SECOND concurrent `closeAll` by name, and refuses every new lease once teardown began; and an operation failure whose poison-close cannot prove closure raises one AggregateError naming BOTH, retains the resource as poisoned, refuses reuse, and still names every failing system when worker-stop aggregates. Deciding development evidence: /tmp/history-final-architecture.log; full independent acceptance remains 2.6.9.",
@@ -600,7 +600,7 @@
     },
     {
       "name": "workflow-editor-compile-integrity",
-      "file": "tests/unit/architecture/workflow-editor-compile-integrity.test.ts",
+      "file": "tests/architecture/workflow-editor-compile-integrity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "ACTIVATED AT PHASE A (D176) AND PHASE B'S D283 SAFE SUBSET. Phase A round-trips the real WORKFLOW_MODULES descriptor/contract/UI/scenario registries in both directions, resolves every source link, forbids a parallel literal graph, retains GET-only graph/catalog reads and pins D79a's no-DSL/no-generated-descriptor boundary. Phase B parses a recursively strict draft bound to exact descriptor version, contract fingerprint and override revision; workflow label/icon/category are the complete applyable set and resolve through one exact descriptor-bound reader. Timeline presentation and notification preferences name their missing complete owners and cannot enter a draft. Operational policy without an allowlist and descriptor-allowlisted Edit Data changes produce reviewed code-change briefs. Presentation validation records exact builder/schema/graph/runtime-registry/scenario-source held attestations without claiming tests ran. Source briefs carry canonical JSON plus one-for-one closed TypeScript property replacements, full semantic diff and impacts, exact current identity, next version plus changed-fingerprint requirement, and all five source checks still required; mixed apply levels and no-op source drafts refuse. JavaScript, tasks, selectors, page state, matchers, mutation helpers, proof schemas, idempotency keys, secrets, arbitrary policy values and new workflows are rejected. Validation is read-only; apply exists only as the journaled command-kernel arm. Persistence binds command id/content fingerprint, commits revision CAS, values and command/audit in one SQLite transaction, requires strict exact readback, and rolls all effects back on audit failure. Migration 51 preserves released DDL and floor 46; stopped conversion refuses pending claims and unproved history, records source/backup identity, and rechecks source before commit. Current runtime ignores retired files. Deciding evidence: 3.1.9 A explorer-sqlite-authority, explorer-override-store and workflow-editor-compile-integrity focused suites. Every static arm includes a violating fixture or direct negative control.",
@@ -608,7 +608,7 @@
     },
     {
       "name": "explorer-prose-declared",
-      "file": "tests/unit/architecture/explorer-prose-declared.test.ts",
+      "file": "tests/architecture/explorer-prose-declared.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/operator-trust.md",
       "invariant": "D229 \u2014 every REGISTERED workflow serves the descriptor's own `summary` and every node its own `purpose`, asserted over the REAL composition root through `buildWorkflowExplorer`, with each served sentence compared byte-for-byte against the descriptor's declaration so the projection cannot compose one from a label or a contract title. The wire carries an `absent` arm rather than throwing \u2014 the explorer serves every workflow in ONE document, so refusing the whole surface over a missing sentence would take the operator's index of the system down for a piece of prose \u2014 and this guard is what makes that arm unreachable in the product. Three negative controls run through `defineWorkflowDescriptor` itself: a partial node-purpose list, a purpose naming an undeclared node, and a node named twice are each refused by name; a descriptor declaring nothing is accepted, which is the arm a fixture graph legitimately takes. A fixture descriptor is deliberately out of scope \u2014 it is not in the composition root, and prose about a graph nobody runs is prose nobody reads.",
@@ -616,7 +616,7 @@
     },
     {
       "name": "wire-connectivity",
-      "file": "tests/unit/architecture/wire-connectivity.test.ts",
+      "file": "tests/architecture/wire-connectivity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
       "invariant": "Ref frontend-backend-integration \u00a78.8 (\"every advertised section has a query\"), generalised to the whole wire and enforced in BOTH directions against config/pending-wire-bindings.json \u2014 D107's pending-impl-bindings pattern one layer up. FOUR joints: (1) every literal arm of RunDetailSectionResponseSchema, read by walking the zod union at RUNTIME rather than by regex, is either returnable by availableSections \u2014 proven by CALLING it over RunRecordSchema-parsed records covering every RunStateSchema member and every RunOutcomeSchema member, with and without the optional trust seam \u2014 or declared in the manifest; (2) every ActionCommandKeySchema verb is accepted by CommandRequestSchema, every kernel verb is either serveable as an action or named in a closed KERNEL_ONLY_COMMANDS table with the reason it targets something other than a run row, and \u2014 the third direction, added by D234 \u2014 every serveable verb is one some PRODUCER emits, read by CALLING queueRowActions over every QueueStatusSchema member in both member and non-member shapes and by scanning the comment-stripped descriptor literals of src/server/dashboard/queries/run-detail.ts, so a key the vocabulary names and nothing projects (unhide, for a whole phase) FAILS; (3) every /api or /events path referenced under src/dashboard/client/** and src/dashboard/phone/capture-client.ts resolves to a route app.<method>(\"\u2026\") registers in src/server/dashboard/routes/api.ts, with interpolations reduced to opaque segments and query/fragment dropped. The reverse arms are what keep the manifest honest (D184/D188): a declared arm that has become reachable, a declared arm the schema no longer carries, a declared route a client now calls, and a declared route nobody serves each FAIL. The lifecycle sweep asserts it covered every RunStateSchema member, so a new state fails here until somebody decides what it serves. Negative controls run through the same entry points: a synthesized orphan arm, a verb the kernel must never accept (force-done), a key named only in a comment (which must not count as projected), the retired unhide and the never-existing force-done both absent from the projected set, an unserved client path, and four route-matcher over-match cases. (4) Every WIRE MIRROR of a durable vocabulary is member-for-member identical to its original, compared through z.toJSONSchema rather than a hand-listed member set \u2014 src/domain/dashboard/run-detail.ts re-declares ref write-safety's parked-write codes and SubjectEvidenceSchema, and src/domain/dashboard/projection.ts re-declares RunPrioritySchema, because those originals reach node:crypto or the checkpoint closure and these modules are in the dashboard bundle's reach (ref frontend-backend-integration \u00a78.13). A mirror is the one joint with no import to keep it honest, so a member added to either side, a regex loosened on one, or a branded id swapped for a bare string has to fail here or nowhere. Batch presentation controls target a batch instead of a run row; workflow-batches parity proves their command envelope. V serves retained digest downloads through an observed native anchor from the real SavedArchiveReport and strict client; missing and foreign native-sink negative controls remain required. Evidence: wire-connectivity.test.ts and helpers/archive-browser-route-references.ts. Task 3.1.12 guard-only amendment preserves runtime behavior while binding the capture fixture to actual day rows and current shell/preflight requests, observing only native retained-attachment downloads, and removing the stale consumed rerun-values declaration. Historical retry/restart command keys remain explicitly unprojected behind actual Rerun navigation; the exact two-key classification fails if removed or directly projected. All native missing/foreign sink and orphan-route negative controls remain. Deciding evidence: final-guards.json.",
@@ -624,7 +624,7 @@
     },
     {
       "name": "write-safety-contract",
-      "file": "tests/unit/architecture/write-safety-contract.test.ts",
+      "file": "tests/architecture/write-safety-contract.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/write-safety.md",
       "invariant": "Every effect:commit contract declares complete write safety with no escape hatch: nontrivial proofSchema, normal-output/present-probe extractors, outputFromProof reconstruction, and a same-store read probe; the completion union admits receipt AND save-verify/upload-verify without a confirmation number; and ref write-safety SS4 recovery routes probe-first with present proof schema-validated before backfill, single early absence yielding zero retry authority, only D64/D69 stabilized evidence settling retryable, indeterminate arms parking, and the permanent key blocking every second fence.",
@@ -632,7 +632,7 @@
     },
     {
       "name": "authentication-proof-not-url",
-      "file": "tests/unit/architecture/authentication-proof-not-url.test.ts",
+      "file": "tests/architecture/authentication-proof-not-url.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
       "invariant": "Ref execution-and-sessions \u00a74: a browser session's authentication is never concluded from a URL. Every store login recipe is built by defineVerifiedLoginRecipe so its content-level proof runs on EVERY return path, no recipe produces a LoginResult outside that wrapper, every landed BrowserSystemBinding supplies a verifier rather than an isAuthenticatedUrl predicate, and the factory's neutral reset asserts through assertAuthenticatedApplication.",
@@ -640,7 +640,7 @@
     },
     {
       "name": "intake-canonical-field-registry",
-      "file": "tests/unit/architecture/intake-canonical-field-registry.test.ts",
+      "file": "tests/architecture/intake-canonical-field-registry.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md",
       "invariant": "Ref data-intake-and-edit-data \u00a71's canonical field vocabulary is frozen against the recorded D58/D68 scan in config/canonical-field-inventory.json, and the coverage is checked in BOTH directions: a canonical field no scanned source evidences is unevidenced vocabulary, and a scanned legacy field with no disposition is the silent omission ref data-intake-and-edit-data \u00a71 forbids. Every scanned field must still appear in its exact in-repo frozen legacy source with commit/blob provenance, so a corrupt fact fails loud without making an external checkout a gate dependency. Each registry entry must hold together: its declared (classification, redactTransform) pair is one ref clock-config-secrets permits, a deferred shape carries an auditNote and a resolved one does not, and no normalized header alias claims two fields \u2014 an ambiguous alias would make the \u00a72.5 scorer's top hit arbitrary. The definition factory additionally refuses any example its own coerce+parse rejects. Every arm runs against a violating fixture.",
@@ -648,7 +648,7 @@
     },
     {
       "name": "intake-mapping-boundary",
-      "file": "tests/unit/architecture/intake-mapping-boundary.test.ts",
+      "file": "tests/architecture/intake-mapping-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md",
       "invariant": "Ref data-intake-and-edit-data \u00a77 vectors #1/#3/#6/#13. The \u00a72.5 suggestion scorer proposes and structurally cannot bind: `suggestions.ts` may not name `confirmedAt` nor reach the binding schemas, and `ColumnBindingSchema.parse` appears in exactly one file \u2014 `confirmBinding` in src/domain/intake/mapping.ts, which additionally refuses a target the projection does not declare and a column not present in the file. A saved binding re-resolves by normalized header plus occurrence ONLY: a bound column that is absent reverts to unbound and loud, and the stored index \u2014 kept solely to report that a column moved \u2014 never rescues it. `defineIntakeProjection` requires each target path to resolve to the canonical field's exact schema OBJECT (a structurally identical copy is refused) while keeping two targets that share one canonical concept independently bindable. The whole src/domain/intake tree stays free of Node built-ins because the mapping grid is a browser surface (ref frontend-backend-integration \u00a78.13). Every static arm runs against a violating fixture, plus a comment-only fixture that must NOT fire.",
@@ -656,7 +656,7 @@
     },
     {
       "name": "ocr-producer-parity",
-      "file": "tests/unit/architecture/ocr-producer-parity.test.ts",
+      "file": "tests/architecture/ocr-producer-parity.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md",
       "invariant": "D151: every OCR producer \u2014 the provider pipeline, an AI the operator runs in their own terminal, or the operator \u2014 is held to the same rules structurally, not merely in tests. `admitOcrExtraction` may not BRANCH on `source` (no `source.kind ===`, no switch on it); copying the source onto the record is fine, testing it is not, because one `if` is all it takes for \"the provider path is trusted\" to creep in where no sample-input test would necessarily catch it. Only the gate may parse an `AdmittedExtraction`, so a transport cannot become a second unchecked admission path. The submitted-answer and submission shapes carry NO `.optional()` \u2014 an optional field is exactly a field a producer can skip in silence. The generated instruction covers every declared field in BOTH directions and marks every mandatory one, so a field added to the registry cannot go silently unasked and the copied skeleton cannot teach a producer about a field that no longer exists. Every static arm runs against a violating fixture, plus two fixtures that must NOT fire (the gate copying the source; a comment describing the rule).",
@@ -664,7 +664,7 @@
     },
     {
       "name": "redaction-surface-scan",
-      "file": "tests/unit/architecture/redaction-surface-scan.test.ts",
+      "file": "tests/architecture/redaction-surface-scan.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md; docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "D183/D283/D346 (ref guards-and-tests \u00a73.15): the sweep accounts for every classified value crossing a wire, durable row/file, notification or provider; D346 admits full retained values on the local operator surface while provider prompts and OS notifications keep their separate egress rules. The declaration audit walks each registered schema through z.toJSONSchema and demands an origin \u2014 repository-authored, operator-authored, declared-redacted, local-filesystem-name, captured-hr-value or external-text \u2014 for every free-text/open-JSON leaf, then holds it against the egress matrix. D331 P41 additionally names every settings-authority leaf added to a served contract and permits only closed-literal or identifier-free dispositions. Its deciding evidence is the exact current ProtectedSettingsNameSchema \u00d7 ProtectedSettingsPresenceSchema readback, FrontendBootstrapWireSchema protected schema hash, CommandResultSchema restart/revision fields, every SettingsRuntimeStatusSchema leaf, EditableSettingsPathSchema display defaultValue/effectiveValue pair, and SettingsApplyRefusalSchema plus every SettingsApplyRejectionCodeSchema literal; adding or omitting a named leaf, naming no current leaf, or changing its reviewed value class is red. Explorer validation, apply and durable override documents are explicit surfaces; their labels are operator-authored, never repository-authored-safe, and the strict label schema rejects every universal password/cookie/storage-state/private-key/credential-path/SSN/DOB canary before file persistence. Redacted subtrees are recognised structurally, new leaves/modules/wire schemas fail undispositioned, and `*Redacted` producer writes are scanned. The producer canary sweep still drives failure advisory, all notification triggers, strict historical ledger serialization (including an undeclared sensitive-field refusal), the real evidence receipt and diagnostic redaction, with negative controls for every mechanical arm. Deciding development evidence: /tmp/history-final-architecture.log; full independent acceptance remains 2.6.9. 3.1.9 A registers the SQLite Explorer override and stopped-import receipt as durable-authority surfaces, retaining historical source audit and operator-authored safe-label origins; focused redaction-surface-scan supplies positive and canary/undeclared-leaf negative evidence.",
@@ -672,7 +672,7 @@
     },
     {
       "name": "dashboard-refresh-boundary",
-      "file": "tests/unit/architecture/dashboard-refresh-boundary.test.ts",
+      "file": "tests/architecture/dashboard-refresh-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
       "invariant": "Ref frontend-backend-integration \u00a78.14: every src/dashboard/surfaces/*.tsx and src/dashboard/app/*.tsx module exports React components only (uppercase-named functions, classes, or memo/forwardRef/lazy wrappers; type exports are erased and legal). Hooks, pure folds, vocabularies and object/array constants live in a sibling <surface>-model.ts. @vitejs/plugin-react accepts a module as a Fast Refresh boundary only when every export is a component or is reference-equal across re-evaluation, so one exported helper makes every edit to the surface invalidate upward into dashboard-app.tsx and remount the whole app. Both arms run against checked-in fixtures: one violating in every way the rule can break (hook, helper, object constant, array constant, lowercase re-export), one clean (declared, memo'd, forwardRef'd, arrow and re-exported components plus types). src/dashboard/ds/** is out of scope by design \u2014 ui.tsx is the one mixed barrel.",
@@ -680,7 +680,7 @@
     },
     {
       "name": "dashboard-memo-prop-stability",
-      "file": "tests/unit/architecture/dashboard-memo-prop-stability.test.ts",
+      "file": "tests/architecture/dashboard-memo-prop-stability.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
       "invariant": "Track D row D4 (ref frontend-backend-integration \u00a77.4; audit finding P1): QueuePanel, TopBar and LogPanel are memo'd, and no prop slot of those three elements in src/dashboard/app/*.tsx may contain an object literal, an array literal, an arrow function, a function expression or a `new` \u2014 the five constructs that are provably a new reference on every evaluation. memo compares by Object.is, so ONE such slot makes the wrapper pure overhead: the panel re-renders exactly as often as before while every gate stays green and no surface looks wrong. Each of the five shipped in dashboard-app.tsx before D4 (an inline nav={{...}}, an inline handlers={{...}} of five closures, dayWire?.queueSurfaces ?? [], an inline onDay closure). A JSX spread is judged THROUGH rather than at, because its object literal is destructured away and never becomes a prop value. The guard deliberately says NOTHING about a call in a prop slot (workflowLabelOf(id)): a call is not provably unstable, and judging one would need either an allowlist that rots or a refusal of honest primitive-returning helpers. A second arm asserts the three components really are memo-wrapped, so the guard cannot end up protecting nothing. Both arms run against checked-in fixtures \u2014 one violating in all five ways, one clean \u2014 so a walker resolving nothing could not pass.",
@@ -688,25 +688,25 @@
     },
     {
       "name": "command-result-exhaustive",
-      "file": "tests/unit/architecture/command-result-exhaustive.test.ts",
+      "file": "tests/architecture/command-result-exhaustive.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/frontend-backend-integration.md",
-      "invariant": "D253 (ref frontend-backend-integration \u00a7\"D253\"): every module under src/dashboard/** settles a CommandResult through the ONE exhaustive fold (src/dashboard/app/command-result.ts), never by testing one refusal arm and letting the other fall through. CommandResultSchema has three arms and TWO are refusals \u2014 `conflict` (the CAS refusal, carrying the server's currentVersion) and `rejected` (a kernel refusal code). A surface reading `state === \"rejected\"` alone treats a conflict as success: the Context rail's Data save closed its editor, discarded the operator's drafts and reported a correction SAVED that the kernel had refused on a version check, and the notification bell swallowed a stale-revision refusal in silence. Neither wrote a fallback; an unhandled union arm IS the fallback, and a false \"submitted\" on the surface whose job is explaining what happened is the exact failure the fail-loud rule exists to prevent. The guard scans every .ts/.tsx under src/dashboard and fails any module that names one refusal arm without the other; naming both in one condition is legal and clean, since that is exhaustive. Exempt: the fold itself (it is the thing being enforced) and src/dashboard/client/commands.ts, whose job is to PARSE the union rather than act on it. A negative control runs the walker against tests/unit/architecture/fixtures/command-result-unhandled-conflict.ts \u2014 the exact shipped shape \u2014 and against a clean both-arms condition, so a scan that resolved nothing cannot report the tree clean. Track D row D3 (2026-08-21) added the SECOND arm: \"one arm without the other\" is trivially satisfied by a module that names NEITHER \u2014 it posts a command, ignores the answer entirely, and every refusal lands on the success path in silence. All nine command-issuing surfaces now call the fold, so a module under src/dashboard/** that calls .executeCommand( must IMPORT src/dashboard/app/command-result.js. The IMPORT is what is checked rather than a mention of the function name, because a comment explaining the fold would otherwise clear the very module that ignores it (that is the first thing this arm caught); an imported-but-uncalled binding is refused by eslint --max-warnings 0. Its own negative control is tests/unit/architecture/fixtures/command-result-unfolded-dispatch.ts, plus a posts-and-folds string and a posts-nothing string that must both read clean. Task 3.1.13 strengthens call-site settlement: only the first .then argument (fulfillment) can establish that a resolved CommandResult is folded. A negative control places settleCommandResult only in the rejection argument while fulfillment reports success; that dispatch must be flagged.",
+      "invariant": "D253 (ref frontend-backend-integration \u00a7\"D253\"): every module under src/dashboard/** settles a CommandResult through the ONE exhaustive fold (src/dashboard/app/command-result.ts), never by testing one refusal arm and letting the other fall through. CommandResultSchema has three arms and TWO are refusals \u2014 `conflict` (the CAS refusal, carrying the server's currentVersion) and `rejected` (a kernel refusal code). A surface reading `state === \"rejected\"` alone treats a conflict as success: the Context rail's Data save closed its editor, discarded the operator's drafts and reported a correction SAVED that the kernel had refused on a version check, and the notification bell swallowed a stale-revision refusal in silence. Neither wrote a fallback; an unhandled union arm IS the fallback, and a false \"submitted\" on the surface whose job is explaining what happened is the exact failure the fail-loud rule exists to prevent. The guard scans every .ts/.tsx under src/dashboard and fails any module that names one refusal arm without the other; naming both in one condition is legal and clean, since that is exhaustive. Exempt: the fold itself (it is the thing being enforced) and src/dashboard/client/commands.ts, whose job is to PARSE the union rather than act on it. A negative control runs the walker against tests/architecture/fixtures/command-result-unhandled-conflict.ts \u2014 the exact shipped shape \u2014 and against a clean both-arms condition, so a scan that resolved nothing cannot report the tree clean. Track D row D3 (2026-08-21) added the SECOND arm: \"one arm without the other\" is trivially satisfied by a module that names NEITHER \u2014 it posts a command, ignores the answer entirely, and every refusal lands on the success path in silence. All nine command-issuing surfaces now call the fold, so a module under src/dashboard/** that calls .executeCommand( must IMPORT src/dashboard/app/command-result.js. The IMPORT is what is checked rather than a mention of the function name, because a comment explaining the fold would otherwise clear the very module that ignores it (that is the first thing this arm caught); an imported-but-uncalled binding is refused by eslint --max-warnings 0. Its own negative control is tests/architecture/fixtures/command-result-unfolded-dispatch.ts, plus a posts-and-folds string and a posts-nothing string that must both read clean. Task 3.1.13 strengthens call-site settlement: only the first .then argument (fulfillment) can establish that a resolved CommandResult is folded. A negative control places settleCommandResult only in the rejection argument while fulfillment reports success; that dispatch must be flagged.",
       "milestone": "3-workflow-migration",
       "replacementRequired": true
     },
     {
       "name": "roadmap-doc-binding",
-      "file": "tests/unit/architecture/roadmap-doc-binding.test.ts",
+      "file": "tests/architecture/roadmap-doc-binding.test.ts",
       "status": "active",
       "owner": "docs/roadmap/roadmap.md",
-      "invariant": "D263/D326/D329 (roadmap \u00a7Governance; ref guards-and-tests): the plan's two forms are bound to each other BOTH ways, mechanically. The prose in docs/rebuild/** is normative and the tree in docs/roadmap/roadmap.md is its machine-readable form and the operator's tracking view, so a rename on either side must fail this gate instead of rotting into two plans that disagree. Six arms, all decided by ONE pure function of (planText, files) so the real tree and every fixture go through identical code. (a) Every doc: ref on every node resolves: a phase ref (3.2) names exactly one docs/rebuild/plans/phase-3/3.2-*/README.md, a subphase task/topic ref (1.6/task-1-land-the-schema-floor) first resolves the unique subphase README and names that exact file inside the same folder (a same-label orphan folder cannot supply the task), a reference ref (ref:write-safety) names docs/rebuild/reference/write-safety.md, and a \u00a7section matches a heading's NUMBER (\u00a75.4, \u00a75 for '## 5. \u2026'), its TEXT exactly (the phase docs number no headings, so \u00a7Phase summary is the only way to cite one) or, for a range (\u00a714.1\u201314.2), both endpoints as numbers; a refusal names the file, the section and the headings it nearly matched, because 'no such section' alone is a sentence nobody can act on (D261). Headings inside fenced code are not headings. (b) Every <!-- roadmap: id --> tag and every <!-- roadmap-status: id --> block in docs/rebuild/** (including migrations/; excluding history/, reviews/, findings/, and guides/) names a node the plan declares \u2014 asserted by CALLING the generator's own bindDocsToPlan rather than restating its rule, so the site and the gate can never refuse different things (D252), and by proving the guard's scan is byte-identical to scanDocs'. (c) Every non-phase node carries at least one doc: ref; a phase may omit one, because a phase is a container and its children carry the contracts. (d) Every node is described by at least one tagged doc section \u2014 a node no doc describes is a planning gap. (e) Every builds: line carries a layer tag; parsePlan refuses one that does not, and the arm is belt-and-braces over the parsed shape because a Feature may still be a bare string in the schema. (f) D342: Phase 3 is exactly 3.1 \u2192 3.2 \u2192 3.3 \u2192 optional 3.4 \u2192 3.5; required cooperation depends directly on 3.3, and no node outside the optional subtree may depend on its parent or feature nodes (live-tree mutation controls prove both refusals). Other parts require their predecessor, every immediate task uses consecutive chronological numbering, and same-number hyphenated tasks are a complete prior-wave-dependent parallel wave whose cards declare dedicated worktrees. Arms (c) and (d) ship as RATCHETS declared IN the test file: ALLOW_MISSING_DOC_REF and ALLOW_UNTAGGED are EMPTY and must stay so. A ratchet only shrinks: an allowlisted id whose gap has closed fails as stale, and one naming no node at all fails as a rename rather than a closed gap. Nine checked-in fixtures under tests/unit/architecture/fixtures/roadmap-binding/ are miniature repos with the same docs/ layout, read by the same collector as the repo: clean, dangling-phase-doc, dangling-section, unknown-reference-slug, tag-names-no-node, status-names-no-node, node-without-doc-ref, node-with-no-tag and builds-without-layer. D326 adds live-tree mutations that swap chronological tasks and remove a parallel task's worktree declaration. Every negative is asserted to fail with a message naming the ref, tag, id, task or part, and the clean tree is asserted non-empty in both directions \u2014 a walker that resolved nothing would otherwise report every arm green.",
+      "invariant": "D263/D326/D329 (roadmap \u00a7Governance; ref guards-and-tests): the plan's two forms are bound to each other BOTH ways, mechanically. The prose in docs/rebuild/** is normative and the tree in docs/roadmap/roadmap.md is its machine-readable form and the operator's tracking view, so a rename on either side must fail this gate instead of rotting into two plans that disagree. Six arms, all decided by ONE pure function of (planText, files) so the real tree and every fixture go through identical code. (a) Every doc: ref on every node resolves: a phase ref (3.2) names exactly one docs/rebuild/plans/phase-3/3.2-*/README.md, a subphase task/topic ref (1.6/task-1-land-the-schema-floor) first resolves the unique subphase README and names that exact file inside the same folder (a same-label orphan folder cannot supply the task), a reference ref (ref:write-safety) names docs/rebuild/reference/write-safety.md, and a \u00a7section matches a heading's NUMBER (\u00a75.4, \u00a75 for '## 5. \u2026'), its TEXT exactly (the phase docs number no headings, so \u00a7Phase summary is the only way to cite one) or, for a range (\u00a714.1\u201314.2), both endpoints as numbers; a refusal names the file, the section and the headings it nearly matched, because 'no such section' alone is a sentence nobody can act on (D261). Headings inside fenced code are not headings. (b) Every <!-- roadmap: id --> tag and every <!-- roadmap-status: id --> block in docs/rebuild/** (including migrations/; excluding history/, reviews/, findings/, and guides/) names a node the plan declares \u2014 asserted by CALLING the generator's own bindDocsToPlan rather than restating its rule, so the site and the gate can never refuse different things (D252), and by proving the guard's scan is byte-identical to scanDocs'. (c) Every non-phase node carries at least one doc: ref; a phase may omit one, because a phase is a container and its children carry the contracts. (d) Every node is described by at least one tagged doc section \u2014 a node no doc describes is a planning gap. (e) Every builds: line carries a layer tag; parsePlan refuses one that does not, and the arm is belt-and-braces over the parsed shape because a Feature may still be a bare string in the schema. (f) D342: Phase 3 is exactly 3.1 \u2192 3.2 \u2192 3.3 \u2192 optional 3.4 \u2192 3.5; required cooperation depends directly on 3.3, and no node outside the optional subtree may depend on its parent or feature nodes (live-tree mutation controls prove both refusals). Other parts require their predecessor, every immediate task uses consecutive chronological numbering, and same-number hyphenated tasks are a complete prior-wave-dependent parallel wave whose cards declare dedicated worktrees. Arms (c) and (d) ship as RATCHETS declared IN the test file: ALLOW_MISSING_DOC_REF and ALLOW_UNTAGGED are EMPTY and must stay so. A ratchet only shrinks: an allowlisted id whose gap has closed fails as stale, and one naming no node at all fails as a rename rather than a closed gap. Nine checked-in fixtures under tests/architecture/fixtures/roadmap-binding/ are miniature repos with the same docs/ layout, read by the same collector as the repo: clean, dangling-phase-doc, dangling-section, unknown-reference-slug, tag-names-no-node, status-names-no-node, node-without-doc-ref, node-with-no-tag and builds-without-layer. D326 adds live-tree mutations that swap chronological tasks and remove a parallel task's worktree declaration. Every negative is asserted to fail with a message naming the ref, tag, id, task or part, and the clean tree is asserted non-empty in both directions \u2014 a walker that resolved nothing would otherwise report every arm green.",
       "milestone": "3-workflow-migration",
       "replacementRequired": true
     },
     {
       "name": "workflow-layout",
-      "file": "tests/unit/architecture/workflow-layout.test.ts",
+      "file": "tests/architecture/workflow-layout.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "D265 (ref workflow-model \u00a71.2.2, 2026-08-21; arm (b) re-read under D312 \u00a71.6.1 item 5, 2026-09-02): the `src/workflows/` tree IS the rail and the timeline, and the served ROLE and the PATH are pinned to each other. Arms (a) and (b) are ONE pure function of (registered modules, one tree listing) \u2014 `auditWorkflowLayout` never touches the filesystem \u2014 so the real repository and every violating fixture go through identical code; `collectWorkflowLayoutTree` feeds it the repo's `src/workflows/` or a fixture's miniature one. (a) role \u2194 path: every registered module's derived folder (`workflowSourceFolder`, the one derivation) EXISTS and holds exactly ONE authored file, `workflow.ts` (D312/D317 \u2014 a `descriptor.ts`, `module.ts`, `nodes.ts`, `step.ts`, `node-ids.ts` or `omission.ts` beside it is refused BY NAME as the retired multi-file authoring path returning), and that file DECLARES the module's id \u2014 read with the build manifest's own exported `declaredWorkflowId`, since the manifest keys every fingerprint by that answer and two readers of one syntax are two opinions. Nothing else lives directly under `src/workflows/`: a top-level folder no registered workflow is addressed to is refused BY NAME, so is any file but `descriptor-registry.ts`, and so is anything nested below a step folder \u2014 the tree is exactly two levels deep. (b) step folders \u2286 declared groups, and each holds a harness: since D312 the composition's `steps` tuples own timeline membership and its one `workflow.ts` authors every step's identities, so a step folder exists only to hold the chunk harness that proves the step (\u00a71.2.2 rule 3). Every sub-folder of a workflow that DECLARED a D225 timeline must be one of its declared group keys (refused naming every key the workflow does declare) AND the address of a registered `chunk-harness` (refused as authored glue with no owner); a declared group with no harness (`job-summary`) has no folder and needs none; a workflow that declared none (D225's honest per-node default, `person-lookup`) has NO sub-folders. An unreadable `workflow.ts` is a violation naming the file, never silence. (c) the registry audit is WIRED: `auditWorkflowModuleRoles` runs over the real `WORKFLOW_MODULES` and must be silent, and it now also refuses two harnesses claiming one `(of, step)` \u2014 that pair is an ADDRESS (`src/workflows/<of>/<step>/`), so a collision is two modules claiming two files and arm (a) would otherwise blame whichever it visited first; the refusal names both ids, the composition, the step and the shared folder, and is proved here against two real harnesses forced onto one step (its own unit fixtures live in tests/unit/workflow-role-audit.test.ts). (d) one rule for path-from-role: `descriptor-coverage` and `workflow-editor-compile-integrity` are read as text and must import `src/domain/workflow/source-layout.js`, and neither may rebuild a `src/workflows/` path by interpolation \u2014 a second copy of the rule is refused, with a two-file violating fixture. Thirteen violating fixture trees, written to a temp root and read back by the same collector (a `.ts` fixture checked into tests/ would be part of this tree's own zero-debt typecheck/lint program, which a deliberately malformed tree cannot be): stray-top-level-folder, stray-top-level-file, missing-workflow-folder, folder-also-authors-descriptor, folder-missing-workflow-ts, harness-folder-authors-module-ts, step-identities-authored-beside-workflow-ts, workflow-ts-declares-another-id, unreadable-workflow-ts, nested-below-a-step-folder, step-folder-without-a-group, step-folder-without-a-harness, undeclared-timeline-with-a-step-folder; plus one positive fixture proving a declared group with no harness needs no folder. Every fixture run first asserts the CLEAN tree passes \u2014 a violating fixture proves nothing against an audit that refuses everything \u2014 and the real tree is asserted non-empty in two ways, since a collector that resolved nothing would report every arm green.",
@@ -714,25 +714,25 @@
     },
     {
       "name": "workflow-authoring-budget",
-      "file": "tests/unit/architecture/workflow-authoring-budget.test.ts",
+      "file": "tests/architecture/workflow-authoring-budget.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "milestone": "3-workflow-migration",
-      "invariant": "D312/D316/D317 (ref workflow-model \u00a7\u00a71.6, 1.6.1, 2026-09-02): the retired authoring path stays dead and the simplicity budget has no escape hatch. `workflow-layout` owns the FOLDER shape; this guard owns what an author WRITES. All four arms are ONE pure function `auditWorkflowAuthoringBudget(workflows, tree, three closed allowlists)` that never touches the filesystem, and `collectWorkflowAuthoringBudgetTree` feeds it the repository's tree or a fixture's miniature one through the SAME `gitVisibleFilesIn` lister \u2014 a fixture root is `git init`-ed rather than given a second walker, so \"a repository-visible file\" has one definition. (a) RETIRED NAMES: every `.ts`/`.tsx` under `src/`, `tests/` and `scripts/` \u2014 except this guard, whose fixtures must be able to spell the forbidden words, and `tests/unit/architecture/helpers/` \u2014 is refused by file and line for `WorkflowRecipe`, `defineWorkflowRecipe`, `compileWorkflowRecipe`, the `workflow-recipe` specifier/basename and `defineWorkflowStepNodeFactory`, and refused for being named `recipe.ts`. Those are token scans BY DESIGN (none of those names may appear even in prose in a source file); inside the authoring seam ONLY \u2014 `src/base/workflow-definition.ts`, `src/base/workflow.ts`, `src/control/workflow-registry.ts`, `src/workflows/`, `src/domain/workflow/` \u2014 the bare identifier `recipe` is refused from the TypeScript AST, identifiers never comment text, because `separations/kronos-timecard/workflow.ts` legitimately says \"login recipe\" in a comment and `defineVerifiedLoginRecipe` under `src/infra/browser/` is a different seam; both live negatives are asserted present in the scan so the check cannot quietly become a text scan. (b) HAND-AUTHORED PATH BESIDE `workflow.ts`: under `src/workflows/` any call to `defineWorkflowDescriptor`, `flow`, `defineWorkflowStepNodeFactory` or `composeWorkflowModule`, and any import from `src/base/flow.js`, is refused \u2014 the flow builder is compiler-internal since D311 and stores are composed only at the composition root `src/control/workflow-registry.ts`, which is deliberately outside this arm's root \u2014 and every `workflow.ts` under that root holds exactly ONE `defineWorkflow(` call, with `defineWorkflowStep(` and `defineStepEntries(` allowed beside it as D315's step identities. AST, never text, so a comment mentioning `flow(` passes. (c) WORKFLOW-KEYED GENERIC ADAPTER (D316): under `src/dashboard/`, `src/server/` and `src/services/` (tests excluded) any string literal EQUAL to a registered workflow id is refused, naming its syntactic context \u2014 an equality comparison, a case label, a dispatch-table key, a workflow-keyed call argument \u2014 unless it is one of nine reviewed exact `(file, workflow id)` pairs, each citing the decision the site's own comments name: `src/server/dry-run-scenario/compose.ts` and `src/server/dry-run-scenario/manifests.ts` \u00d7 (`separations`, `separations-kuali-finalization`, `person-lookup`) for D318 / ref guards-and-tests \u00a710.9's one T1b manifest-loader and target-resolver registration surface; `src/server/dashboard/compose.ts` / `separations` for D289's receipt-comparison registry sealed against the current separations descriptor; and `src/server/dashboard/projectors/run-queue-projection.ts` / `separations` plus `src/server/activity-person-pseudonym-backfill/service.ts` / `separations` for D288, whose Activity person-pseudonym evidence is current-Separations-only by decision. An entry whose reason cites no decision, and an entry the scan no longer matches, are both refused \u2014 staleness is this arm's negative control, since a scanner that resolved nothing would report every entry stale. (d) FIFTH AUTHORED ARTIFACT (D312 \u00a71.6.1): per registered workflow the authored surface is exactly its `workflowSourcePath` (taken from `src/domain/workflow/source-layout.ts`, the ONE path-from-role derivation \u2014 never rebuilt here by interpolation), at most one structural scenario, at most one `tests/scenario/workflows/<id>/dry-run.scenario.ts` and at most one `docs/rebuild/migrations/<id>.md`. Any other repository-visible file under `src/workflows/`, `tests/scenario/` or `docs/rebuild/migrations/` ATTRIBUTED to a registered workflow is refused by path, naming that workflow's own budget \u2014 an owner that failed to resolve throws rather than printing a plausible `its workflow.ts`. Attribution has TWO rules, because D265 rule 3 puts a harness INSIDE the step it proves and leaves the harness id out of the path entirely: under `src/workflows/` a file belongs to the registered FOLDER it sits in \u2014 `workflowSourceFolder`, from that same one derivation, longest folder prefix wins \u2014 so `src/workflows/separations/identity-check/module.ts` is `separations-identity-check`'s budget and never the composition's; everywhere else a whole directory segment or the basename stem that equals a registered id, or begins with one followed by `-`, `_` or `.`, attributes to the LONGEST such id, so `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to the harness while `tests/scenario/separations-extra/foo.ts` and `docs/rebuild/migrations/separations_extra.md` stay `separations`'s budget instead of suffixing their way out of the arm. Both rules, and the two `undefined` answers, are asserted directly. Two closed, staleness-checked exemptions \u2014 `docs/rebuild/migrations/separations-legacy-behavior.md` as the migration record's own overflow (D312) and `tests/scenario/dashboard/separations/` as ref guards-and-tests \u00a710.11/\u00a710.12 T2/T3 dashboard proofs, which \u00a71.6.1 admits because a genuinely new DASHBOARD capability is not reuse-only workflow authoring \u2014 and one closed pre-canonical structural-scenario allowlist for the four chunk harnesses still at `tests/scenario/<id>.scenario.test.ts` (D318 / \u00a710.4); a workflow carrying both a canonical and a pre-canonical structural scenario is refused as two. Twenty-four violating fixtures, each written to a temp root and read back by the same collector: retired-recipe-type-anywhere-in-the-program, retired-node-fragment-factory-in-a-test, retired-workflow-recipe-specifier, a-file-named-recipe-ts, bare-recipe-identifier-inside-the-authoring-seam, flow-builder-imported-and-called-beside-workflow-ts, flow-builder-imported-three-levels-up-from-a-step-folder, descriptor-hand-authored-under-src-workflows, stores-composed-inside-a-workflow-folder, two-defineWorkflow-calls-in-one-workflow-file, generic-server-branch-keyed-by-workflow-id, generic-dashboard-dispatch-table-keyed-by-workflow-id, allowlisted-file-branching-on-a-DIFFERENT-workflow-id, another-file-branching-on-an-allowlisted-workflow-id, stale-D316-allowlist-entry, uncited-D316-allowlist-entry, fifth-authored-artifact-for-a-workflow, fifth-artifact-under-tests-scenario, fifth-artifact-inside-a-harness-folder-belongs-to-the-harness, fifth-artifact-in-a-folder-suffixing-a-registered-id, fifth-artifact-whose-stem-suffixes-a-registered-id-with-an-underscore, two-structural-scenarios-for-one-workflow, stale-artifact-exemption, stale-pre-canonical-structural-scenario. Those two arm-(c) fixtures, plus a passing assertion for the reviewed pair itself, are the pair-EXACTNESS proof: ONE reviewed `(src/server/dashboard/compose.ts, solo)` entry held constant across three trees, which a file-keyed allowlist fails on the first and an id-keyed allowlist on the second. That `(file, workflow id)` key is built by one `pairKey` helper whose separator is written as the `\\u001f` ESCAPE and never as a raw control byte, so the guard's own source stays text to `grep -r` and to a reviewer. Every fixture run first asserts the CLEAN fixture passes \u2014 which also carries the tricky negatives: a comment-only \"login recipe\" inside the seam, an unrelated `defineVerifiedLoginRecipe` outside it, `composeWorkflowModule` at the composition root, a harness scenario whose stem starts with the composition's id, an exempted migration supplement and an exempted T2/T3 dashboard folder \u2014 because a violating fixture proves nothing against an audit that refuses everything. The real tree's source and artifact scans are both asserted non-empty, since a collector that resolved nothing would report every arm green, and arm (b) carries its own repository-level control: the `workflow.ts` files it entered must number at least two and must equal, exactly, the registered workflows' `workflowSourcePath` set.",
+      "invariant": "D312/D316/D317 (ref workflow-model \u00a7\u00a71.6, 1.6.1, 2026-09-02): the retired authoring path stays dead and the simplicity budget has no escape hatch. `workflow-layout` owns the FOLDER shape; this guard owns what an author WRITES. All four arms are ONE pure function `auditWorkflowAuthoringBudget(workflows, tree, three closed allowlists)` that never touches the filesystem, and `collectWorkflowAuthoringBudgetTree` feeds it the repository's tree or a fixture's miniature one through the SAME `gitVisibleFilesIn` lister \u2014 a fixture root is `git init`-ed rather than given a second walker, so \"a repository-visible file\" has one definition. (a) RETIRED NAMES: every `.ts`/`.tsx` under `src/`, `tests/` and `scripts/` \u2014 except this guard, whose fixtures must be able to spell the forbidden words, and `tests/architecture/helpers/` \u2014 is refused by file and line for `WorkflowRecipe`, `defineWorkflowRecipe`, `compileWorkflowRecipe`, the `workflow-recipe` specifier/basename and `defineWorkflowStepNodeFactory`, and refused for being named `recipe.ts`. Those are token scans BY DESIGN (none of those names may appear even in prose in a source file); inside the authoring seam ONLY \u2014 `src/base/workflow-definition.ts`, `src/base/workflow.ts`, `src/control/workflow-registry.ts`, `src/workflows/`, `src/domain/workflow/` \u2014 the bare identifier `recipe` is refused from the TypeScript AST, identifiers never comment text, because `separations/kronos-timecard/workflow.ts` legitimately says \"login recipe\" in a comment and `defineVerifiedLoginRecipe` under `src/infra/browser/` is a different seam; both live negatives are asserted present in the scan so the check cannot quietly become a text scan. (b) HAND-AUTHORED PATH BESIDE `workflow.ts`: under `src/workflows/` any call to `defineWorkflowDescriptor`, `flow`, `defineWorkflowStepNodeFactory` or `composeWorkflowModule`, and any import from `src/base/flow.js`, is refused \u2014 the flow builder is compiler-internal since D311 and stores are composed only at the composition root `src/control/workflow-registry.ts`, which is deliberately outside this arm's root \u2014 and every `workflow.ts` under that root holds exactly ONE `defineWorkflow(` call, with `defineWorkflowStep(` and `defineStepEntries(` allowed beside it as D315's step identities. AST, never text, so a comment mentioning `flow(` passes. (c) WORKFLOW-KEYED GENERIC ADAPTER (D316): under `src/dashboard/`, `src/server/` and `src/services/` (tests excluded) any string literal EQUAL to a registered workflow id is refused, naming its syntactic context \u2014 an equality comparison, a case label, a dispatch-table key, a workflow-keyed call argument \u2014 unless it is one of nine reviewed exact `(file, workflow id)` pairs, each citing the decision the site's own comments name: `src/server/dry-run-scenario/compose.ts` and `src/server/dry-run-scenario/manifests.ts` \u00d7 (`separations`, `separations-kuali-finalization`, `person-lookup`) for D318 / ref guards-and-tests \u00a710.9's one T1b manifest-loader and target-resolver registration surface; `src/server/dashboard/compose.ts` / `separations` for D289's receipt-comparison registry sealed against the current separations descriptor; and `src/server/dashboard/projectors/run-queue-projection.ts` / `separations` plus `src/server/activity-person-pseudonym-backfill/service.ts` / `separations` for D288, whose Activity person-pseudonym evidence is current-Separations-only by decision. An entry whose reason cites no decision, and an entry the scan no longer matches, are both refused \u2014 staleness is this arm's negative control, since a scanner that resolved nothing would report every entry stale. (d) FIFTH AUTHORED ARTIFACT (D312 \u00a71.6.1): per registered workflow the authored surface is exactly its `workflowSourcePath` (taken from `src/domain/workflow/source-layout.ts`, the ONE path-from-role derivation \u2014 never rebuilt here by interpolation), at most one structural scenario, at most one `tests/scenario/workflows/<id>/dry-run.scenario.ts` and at most one `docs/rebuild/migrations/<id>.md`. Any other repository-visible file under `src/workflows/`, `tests/scenario/` or `docs/rebuild/migrations/` ATTRIBUTED to a registered workflow is refused by path, naming that workflow's own budget \u2014 an owner that failed to resolve throws rather than printing a plausible `its workflow.ts`. Attribution has TWO rules, because D265 rule 3 puts a harness INSIDE the step it proves and leaves the harness id out of the path entirely: under `src/workflows/` a file belongs to the registered FOLDER it sits in \u2014 `workflowSourceFolder`, from that same one derivation, longest folder prefix wins \u2014 so `src/workflows/separations/identity-check/module.ts` is `separations-identity-check`'s budget and never the composition's; everywhere else a whole directory segment or the basename stem that equals a registered id, or begins with one followed by `-`, `_` or `.`, attributes to the LONGEST such id, so `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to the harness while `tests/scenario/separations-extra/foo.ts` and `docs/rebuild/migrations/separations_extra.md` stay `separations`'s budget instead of suffixing their way out of the arm. Both rules, and the two `undefined` answers, are asserted directly. Two closed, staleness-checked exemptions \u2014 `docs/rebuild/migrations/separations-legacy-behavior.md` as the migration record's own overflow (D312) and `tests/scenario/dashboard/separations/` as ref guards-and-tests \u00a710.11/\u00a710.12 T2/T3 dashboard proofs, which \u00a71.6.1 admits because a genuinely new DASHBOARD capability is not reuse-only workflow authoring \u2014 and one closed pre-canonical structural-scenario allowlist for the four chunk harnesses still at `tests/scenario/<id>.scenario.test.ts` (D318 / \u00a710.4); a workflow carrying both a canonical and a pre-canonical structural scenario is refused as two. Twenty-four violating fixtures, each written to a temp root and read back by the same collector: retired-recipe-type-anywhere-in-the-program, retired-node-fragment-factory-in-a-test, retired-workflow-recipe-specifier, a-file-named-recipe-ts, bare-recipe-identifier-inside-the-authoring-seam, flow-builder-imported-and-called-beside-workflow-ts, flow-builder-imported-three-levels-up-from-a-step-folder, descriptor-hand-authored-under-src-workflows, stores-composed-inside-a-workflow-folder, two-defineWorkflow-calls-in-one-workflow-file, generic-server-branch-keyed-by-workflow-id, generic-dashboard-dispatch-table-keyed-by-workflow-id, allowlisted-file-branching-on-a-DIFFERENT-workflow-id, another-file-branching-on-an-allowlisted-workflow-id, stale-D316-allowlist-entry, uncited-D316-allowlist-entry, fifth-authored-artifact-for-a-workflow, fifth-artifact-under-tests-scenario, fifth-artifact-inside-a-harness-folder-belongs-to-the-harness, fifth-artifact-in-a-folder-suffixing-a-registered-id, fifth-artifact-whose-stem-suffixes-a-registered-id-with-an-underscore, two-structural-scenarios-for-one-workflow, stale-artifact-exemption, stale-pre-canonical-structural-scenario. Those two arm-(c) fixtures, plus a passing assertion for the reviewed pair itself, are the pair-EXACTNESS proof: ONE reviewed `(src/server/dashboard/compose.ts, solo)` entry held constant across three trees, which a file-keyed allowlist fails on the first and an id-keyed allowlist on the second. That `(file, workflow id)` key is built by one `pairKey` helper whose separator is written as the `\\u001f` ESCAPE and never as a raw control byte, so the guard's own source stays text to `grep -r` and to a reviewer. Every fixture run first asserts the CLEAN fixture passes \u2014 which also carries the tricky negatives: a comment-only \"login recipe\" inside the seam, an unrelated `defineVerifiedLoginRecipe` outside it, `composeWorkflowModule` at the composition root, a harness scenario whose stem starts with the composition's id, an exempted migration supplement and an exempted T2/T3 dashboard folder \u2014 because a violating fixture proves nothing against an audit that refuses everything. The real tree's source and artifact scans are both asserted non-empty, since a collector that resolved nothing would report every arm green, and arm (b) carries its own repository-level control: the `workflow.ts` files it entered must number at least two and must equal, exactly, the registered workflows' `workflowSourcePath` set.",
       "replacementRequired": true
     },
     {
       "name": "duo-ceremony-lease",
-      "file": "tests/unit/architecture/duo-ceremony-lease.test.ts",
+      "file": "tests/architecture/duo-ceremony-lease.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/execution-and-sessions.md",
-      "invariant": "Ref execution-and-sessions \u00a710 (D267): no login path reaches the UCSD SSO form or the Duo WebAuthn assertion without presenting a DuoCeremonyLeaseToken, and one credential admits one Duo ceremony at a time. The token is minted and retired ONLY by the lease store (src/infra/sqlite/authority-database.ts, through src/base/duo-ceremony-lease.ts's module-private WeakSets); the brand is conjured by `as`/`satisfies` nowhere outside that module; defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts) is the ONE caller of the gate's withCeremony; every store login recipe is the wrapper's {navigate, ceremony} shape rather than a single flow, and every SSO-helper call in a store presents `token`. Duo's signature counter is per CREDENTIAL while Duo Autopilot's copy is per browser PROFILE, so two ceremonies in one second present the same floored counter and Duo reads the non-advancing one as a cloned key \u2014 which BURNS the profile (D243). Each arm runs against tests/unit/architecture/fixtures/duo-lease-recipe-violation.ts, the exact pre-lease recipe shape, so a walker that resolved nothing cannot report the tree clean.",
+      "invariant": "Ref execution-and-sessions \u00a710 (D267): no login path reaches the UCSD SSO form or the Duo WebAuthn assertion without presenting a DuoCeremonyLeaseToken, and one credential admits one Duo ceremony at a time. The token is minted and retired ONLY by the lease store (src/infra/sqlite/authority-database.ts, through src/base/duo-ceremony-lease.ts's module-private WeakSets); the brand is conjured by `as`/`satisfies` nowhere outside that module; defineVerifiedLoginRecipe (src/infra/browser/authenticated-application.ts) is the ONE caller of the gate's withCeremony; every store login recipe is the wrapper's {navigate, ceremony} shape rather than a single flow, and every SSO-helper call in a store presents `token`. Duo's signature counter is per CREDENTIAL while Duo Autopilot's copy is per browser PROFILE, so two ceremonies in one second present the same floored counter and Duo reads the non-advancing one as a cloned key \u2014 which BURNS the profile (D243). Each arm runs against tests/architecture/fixtures/duo-lease-recipe-violation.ts, the exact pre-lease recipe shape, so a walker that resolved nothing cannot report the tree clean.",
       "milestone": "3-workflow-migration",
       "replacementRequired": true
     },
     {
       "name": "step-omission-invariants",
-      "file": "tests/unit/architecture/step-omission-invariants.test.ts",
+      "file": "tests/architecture/step-omission-invariants.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/workflow-model.md",
       "invariant": "D307: an operator may omit a timeline step at start and type the facts it would have read; only a step folder's own declared `omission` may say what a TASK node of that step would have produced, gates and transactions are never substituted, and ALWAYS-GATE (D77) is a planner invariant, not a per-descriptor promise. The production registry declares three omissions, all on `separations` \u2014 `kronos-timecard`, `ucpath-transaction` and `kuali-finalization`, each authored in its own step folder's `omission.ts` and carried onto the descriptor by that folder's `nodes.category(..., { omission })` \u2014 and every sweep here pins those three BY NAME plus the one in-test fixture declaration, asserting at the end that it visited EXACTLY that set, so a deleted, renamed or unwired production declaration turns the sweep red instead of quietly shrinking it. The fixture (a read, the `identity-approval` operator gate, a post-gate task and a transaction, across `reading`/`identity-check`/`writing`) exists only for the arms the registry cannot reach: the definition-time refusals, which no registered descriptor may contain and still import, and the `blocked` cascade arm Separations has no instance of. (a) `defineWorkflowDescriptor` throws at DEFINITION TIME when an omission's `produces` names a gate or a transaction node of its own step \u2014 proved for both kinds, and separately for a form that declares a duplicate field key; (b) every production omittable step's `stepOmissionCascade` row equals its exact pinned row (Separations: three `{ state: \"omittable\", forces: [] }` rows), while the fixture keeps the `omittable`-or-`blocked` union assertion, since letting the real cascade run un-caught is what proves it never throws for any refusal but `dependency-omitted`; (c) every RAW step-folder declaration (`KRONOS_TIMECARD_OMISSION` and its two siblings, imported from the `omission.ts` modules themselves rather than read back off an already-parsed `spec.form`) parses through `StepOmissionFormSchema` with the exact pinned field keys, no duplicate key and exactly the pinned `produces` node ids, and the registry is reconciled against that pinned set in BOTH directions, so a folder that stops wiring its declaration through `nodes.category` is red too; (d) `planStepOmissions`, driven with the cascade's own exported placeholder facts (`stepOmissionPlaceholderFacts`), never classifies ANY gate node as `asserted` or `omitted` in three plan shapes per declaration \u2014 the step alone, the step together with its cascade `forces` set, and every omittable step of the descriptor at once \u2014 with Separations' `identity-approval` gate required to be present and to EXECUTE (classified neither way, under a refusal-free plan) in all three, and each production plan's node classification pinned: `dates` and `receipt` are the only asserted nodes, while `timecard-search`, `timecard`, `clear-pending`, `file-termination` and `finalize-kuali` are only ever omitted. There is no separate \"no separations omission produces identity-approval\" arm: a declaration naming the gate throws at import, so that assertion could not fail; the invariant lives in (c)'s exact `produces` pinning and (d)'s planner sweep.",
@@ -740,7 +740,7 @@
     },
     {
       "name": "worker-loop-writes-only-through-the-service",
-      "file": "tests/unit/architecture/worker-loop-writes-only-through-the-service.test.ts",
+      "file": "tests/architecture/worker-loop-writes-only-through-the-service.test.ts",
       "status": "active",
       "owner": "docs/rebuild/01-build-the-spine.md",
       "invariant": "Task 1.6.3: worker loop, executor, sequencer, compositions, recovery sweep and positive continuations cannot call or extract lifecycle repository mutators. Type-resolved scan includes all core helpers, with only Task-4 command/fan-out and negative-resolution paths excluded. Negative controls detect direct, aliased and relocated writes; worker capability excludes command-family transition.",
@@ -748,7 +748,7 @@
     },
     {
       "name": "rerun-prefill-boundary",
-      "file": "tests/unit/architecture/rerun-prefill-boundary.test.ts",
+      "file": "tests/architecture/rerun-prefill-boundary.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/data-intake-and-edit-data.md \u00a76; D334/D335",
       "invariant": "Descriptor schema, source version and copied-value coordinates are checked before a new source-bound plan can become work. The retired checkpoint-save command has no active or deferred arm; provenance never grants replay authority.",
@@ -756,7 +756,7 @@
     },
     {
       "name": "composition-reads-no-environment-leaf",
-      "file": "tests/unit/architecture/composition-reads-no-environment-leaf.test.ts",
+      "file": "tests/architecture/composition-reads-no-environment-leaf.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/clock-config-secrets.md",
       "invariant": "D331: config modules never read process.env; non-retired hostile noise cannot change config/provenance; each catalog-derived retired key refuses every dashboard/worker/dry-run composition before value reads or authority/browser/spawn work. Direct-runtime missing refusal was the intended red control in Task 1.6.5.5.",
@@ -764,7 +764,7 @@
     },
     {
       "name": "sqlite-settings-authority",
-      "file": "tests/unit/architecture/sqlite-settings-authority.test.ts",
+      "file": "tests/architecture/sqlite-settings-authority.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D336: SQLite v32 owns ordinary settings values and their current revision. The guard rejects retired runtime modules/APIs, settings.json authority paths and the protected singleton; schema/value and injected source violations are deciding evidence. F schema47 consolidates saved/active state into app_settings and retains settings_snapshots; historical v32 assertions remain. Evidence: sqlite-settings-authority and storage-upgrade focused selectors.",
@@ -772,7 +772,7 @@
     },
     {
       "name": "authority-upgrade-adapters-isolated",
-      "file": "tests/unit/architecture/authority-upgrade-adapters-isolated.test.ts",
+      "file": "tests/architecture/authority-upgrade-adapters-isolated.test.ts",
       "status": "retired",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "RETIRED by approved D332.9 separation in 2.6.9. Four obsolete settings adapters are absent. WHERE THE INVARIANT WENT: authority-upgrade-adapters-retired preserves the stopped supported-converter/CLI boundary and adds module/reference/API absence plus actual legacy-input non-adoption. Original F02 recovery proofs and final supported/refusal mapping are recorded in database-modernization/final-validation.md.",
@@ -781,10 +781,42 @@
     },
     {
       "name": "authority-upgrade-adapters-retired",
-      "file": "tests/unit/architecture/authority-upgrade-adapters-retired.test.ts",
+      "file": "tests/architecture/authority-upgrade-adapters-retired.test.ts",
       "status": "active",
       "owner": "docs/rebuild/reference/guards-and-tests.md",
       "invariant": "D332.9 / 2.6.9 deletes four obsolete settings adapters, preserving supported stopped database/archive recovery. AST module/reference/API canaries and actual fresh/supported/current legacy-input non-adoption controls detect restoration or relocation. Named below-floor upgrade/offline/historical restore refusal precedes replacement and credentials; successful supported 46\u201349 recovery is the positive control. Deciding evidence: F02 retained original recovery proofs and the final-validation.md assertion map; authority-upgrade-adapters-retired, storage-upgrade family and supported restore drill. Permanent strict historical backup readers and immutable journal/settings schemas remain.",
+      "replacementRequired": true
+    },
+    {
+      "name": "workflow-operation-display-boundary",
+      "file": "tests/architecture/workflow-operation-display-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "Workflow operation-display declarations and snapshots keep a browser-safe import closure: no Node builtins, store drivers or browser runtime modules. The guard checks both real entrypoints and violating source controls; Phase 1 registers this existing file so the recursive architecture inventory is complete.",
+      "replacementRequired": true
+    },
+    {
+      "name": "test-artifact-ownership",
+      "file": "tests/architecture/test-artifact-ownership.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "Generated test-results, coverage and parity scratch remain ignored and untracked; the existing owned test runner keeps scratch outside the checkout and accepted evidence has an external owner. The pure injected-listing policy test supplies tracked-output, missing-ignore and in-checkout negative controls.",
+      "replacementRequired": true
+    },
+    {
+      "name": "sqlite-authority-boundary",
+      "file": "tests/architecture/sqlite-authority-boundary.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "The public SQLite entrypoint never exposes a raw database connection or SQL escape hatch, and only the reviewed private adapters import node:sqlite. The test reads current source and checks a typed adapter boundary.",
+      "replacementRequired": true
+    },
+    {
+      "name": "start-plan-contract",
+      "file": "tests/architecture/start-plan-contract.test.ts",
+      "status": "active",
+      "owner": "docs/rebuild/reference/guards-and-tests.md",
+      "invariant": "The browser and server share one strict start-plan wire contract. The mixed schema/type/source test checks defaults, refusals and declaration ownership intact under architecture.",
       "replacementRequired": true
     }
   ],

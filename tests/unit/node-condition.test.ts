@@ -15,7 +15,7 @@ import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { EidSchema, FingerprintSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { FixtureReadReceipt } from "./architecture/helpers/descriptor-fixtures.js";
+import { FixtureReadReceipt } from "../fixtures/descriptor-fixtures.js";
 import type { NodeConditionSpec } from "../../src/domain/workflow/node-condition.js";
 import {
   describeNodeCondition,

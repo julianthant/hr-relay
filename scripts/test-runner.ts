@@ -15,6 +15,17 @@ export interface TestProcessOptions {
   readonly rootDirectory: string;
   readonly idleTimeoutMs?: number;
 }
+export function selectedTestArguments(
+  project: "unit" | "integration",
+  filters: readonly string[],
+): string[] {
+  for (const filter of filters) {
+    if (!filter || filter.startsWith("-") || filter.includes("\0")) {
+      throw new Error(`Invalid ${project} test filter: ${JSON.stringify(filter)}`);
+    }
+  }
+  return ["run", "--project", project, "--passWithNoTests=false", ...filters];
+}
 const Owner = z.object({ version: z.literal(1), id: z.string().uuid(), groupId: z.number().int().min(2).max(2147483647).nullable() }).strict();
 const FILE = "owner.json";
 
@@ -151,7 +162,10 @@ export async function runTestProcess(options: TestProcessOptions): Promise<TestP
 async function main(): Promise<void> {
   const args = process.argv.slice(2);
   if (args.length === 1 && args[0] === "--reap") { process.stdout.write(`${JSON.stringify(reapTestRuns(testRunsDirectory()))}\n`); return; }
-  const result = await runTestProcess({ command: process.execPath, args: [fileURLToPath(new URL("./vitest.mjs", import.meta.resolve("vitest/package.json"))), ...args], cwd: process.cwd(), env: process.env, rootDirectory: testRunsDirectory() });
+  const commandArgs = args[0] === "unit" || args[0] === "integration"
+    ? selectedTestArguments(args[0], args.slice(1))
+    : args;
+  const result = await runTestProcess({ command: process.execPath, args: [fileURLToPath(new URL("./vitest.mjs", import.meta.resolve("vitest/package.json"))), ...commandArgs], cwd: process.cwd(), env: process.env, rootDirectory: testRunsDirectory() });
   process.exitCode = result.code;
 }
 if (process.argv[1] !== undefined && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

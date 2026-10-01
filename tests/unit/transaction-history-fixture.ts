@@ -14,8 +14,8 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
-import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "./helpers/timeline-write-fixture.js";
-import { ledgerCommitFixture, fixtureUuid } from "./fixtures/ledger-projection-fixtures.js";
+import { atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
+import { ledgerCommitFixture, fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
 
 export const HISTORY_NOW = "2026-09-09T12:00:00.000Z";
 export const historyClock = manualClock(new Date(HISTORY_NOW));

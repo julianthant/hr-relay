@@ -38,7 +38,7 @@ import { separationsIdentityCheckDescriptor } from "../helpers/registered-workfl
 import {
   FixtureStage,
   fixtureDescriptor,
-} from "./architecture/helpers/descriptor-fixtures.js";
+} from "../fixtures/descriptor-fixtures.js";
 import { noSeparationWritePlan } from "../../src/domain/separations/write-plan.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";

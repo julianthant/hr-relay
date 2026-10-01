@@ -11,7 +11,7 @@ import {
   omissionBlockedDescriptor,
   omissionCascadingDescriptor,
   READING_FORM,
-} from "./fixtures/start-step-omission-fixtures.js";
+} from "../fixtures/start-step-omission-fixtures.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 
 describe("start step selection", () => {

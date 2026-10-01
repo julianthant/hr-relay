@@ -10,7 +10,7 @@ import { OperationSourceNavigation } from "../../../src/dashboard/surfaces/opera
 import { definitionActionAddress, operationAddress } from "../../../src/dashboard/surfaces/operation-structure-model.js";
 import { OperationActionObservationWireSchema } from "../../../src/domain/dashboard/operation-structure.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/domain/workflow/operation-display-snapshot.js";
-import { plan1Leaf } from "../fixtures/plan1-operation-workflows.js";
+import { plan1Leaf } from "../../fixtures/plan1-operation-workflows.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 let root: Root | undefined;

@@ -27,6 +27,8 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint src tests scripts vitest.config.ts vite.dashboard.config.ts playwright.parity.config.ts --max-warnings 0",
     "test": "tsx scripts/test-runner.ts run",
+    "test:unit": "tsx scripts/test-runner.ts unit",
+    "test:integration": "tsx scripts/test-runner.ts integration",
     "test:architecture": "tsx scripts/test-runner.ts run --project architecture --passWithNoTests=false",
     "test:coverage": "tsx scripts/test-runner.ts run --coverage && tsx scripts/suite-size.ts",
     "test:watch": "vitest",

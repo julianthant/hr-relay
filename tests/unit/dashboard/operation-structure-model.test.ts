@@ -8,7 +8,7 @@ import { OperationActionObservationWireSchema } from "../../../src/domain/dashbo
 import { appendLogPage } from "../../../src/dashboard/surfaces/run-detail/logs-model.js";
 import { NotePageSchema } from "../../../src/domain/dashboard/run-detail.js";
 import { operationObservationKey, definitionMutedPresentation, presentationAddress, definitionActionAddress, definitionMutedActions, definitionValueSources, operationFieldTemplate, operationAddress, operationGroupBreakIds, observedOperationOutcome, operationAction, operationSourceIdentities, operationValueText } from "../../../src/dashboard/surfaces/operation-structure-model.js";
-import { plan1Parent, plan1Leaf } from "../fixtures/plan1-operation-workflows.js";
+import { plan1Parent, plan1Leaf } from "../../fixtures/plan1-operation-workflows.js";
 
 const definition = freezeWorkflowOperationDisplaySnapshot({ display: plan1Leaf.descriptor.operationDisplay, workflowId: plan1Leaf.descriptor.id, definitionFingerprint: plan1Leaf.descriptor.contractFingerprint })!;
 const runId = "00000000-0000-4000-8000-000000000001";

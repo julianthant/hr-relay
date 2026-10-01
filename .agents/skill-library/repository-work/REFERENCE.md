@@ -78,7 +78,9 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
 ```bash
 npm run typecheck          # tsc --noEmit over src/, tests/, scripts/ — one program, no exclusions
 npm run lint               # eslint src tests scripts --max-warnings 0 — zero-debt, no manifest
-npm run test               # every vitest project (unit + architecture + scenario)
+npm run test               # every vitest project (unit + integration + architecture + scenario)
+npm run test:unit          # deterministic units only; positional file filters allowed
+npm run test:integration   # real-resource and composed workflow proofs; run deliberately
 npm run test:architecture  # the guard suite alone
 npm run test:coverage      # 60/80 lines/statements/functions floors + the suite-size report
 npm run test:watch
