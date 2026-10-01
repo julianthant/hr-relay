@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   ActiveStatusOutcomeSchema,
   ReadActiveStatus,
-} from "../../../domain/contracts/person-lookup/read-active-status.js";
-import { directIdentifierDisplay } from "../../../domain/redaction.js";
+} from "../../../../domain/contracts/person-lookup/read-active-status.js";
+import { directIdentifierDisplay } from "../../../../domain/redaction.js";
 
 export const readActiveStatusTask = defineTask(ReadActiveStatus, {
   sessions: [],

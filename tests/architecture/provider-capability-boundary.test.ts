@@ -35,6 +35,7 @@ function isNetworkOwner(path: string): boolean {
 
 function isProviderConsumer(path: string): boolean {
   return path.startsWith("src/stores/")
+    || path.startsWith("src/backend/workflow-tasks/")
     || (path.startsWith("src/backend/processing/") && !path.startsWith("src/backend/processing/providers/"))
     || path.startsWith("src/backend/systems/")
     || path.startsWith("src/workflows/");
@@ -312,6 +313,28 @@ describe("provider capability boundary", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("keeps workflow-task import graphs out of provider adapters", () => {
+    const root = resolve(tmpdir(), `hrauto-workflow-provider-transitive-${process.pid}-${Date.now()}`);
+    const taskPath = resolve(root, "src/backend/workflow-tasks/person-lookup/tasks/bad.ts");
+    const helperPath = resolve(root, "src/services/provider-helper.ts");
+    const adapterPath = resolve(root, "src/backend/processing/providers/bad-adapter.ts");
+    try {
+      mkdirSync(dirname(taskPath), { recursive: true });
+      mkdirSync(dirname(helperPath), { recursive: true });
+      mkdirSync(dirname(adapterPath), { recursive: true });
+      writeFileSync(taskPath, 'import { hidden } from "../../../../services/provider-helper.js";\nvoid hidden;\n');
+      writeFileSync(helperPath, 'import { adapter } from "../backend/processing/providers/bad-adapter.js";\nexport const hidden = adapter;\n');
+      writeFileSync(adapterPath, 'export const adapter = { capability: "ocr.extract" };\n');
+      assert.match(
+        auditProviderCapabilityBoundary(root).join("\n"),
+        /task import graph reaches processing provider adapter/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
 
   it("catches an aliased admission-client import hidden behind a helper", () => {
     const root = resolve(tmpdir(), `hrauto-provider-client-alias-${process.pid}-${Date.now()}`);

@@ -116,6 +116,26 @@ describe("task to system-driver boundary", () => {
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("keeps workflow-task implementations away from private browser owners transitively", () => {
+    const root = resolve(tmpdir(), `hrauto-workflow-task-driver-${String(process.pid)}-${String(Date.now())}`);
+    const task = resolve(root, "src/backend/workflow-tasks/person-lookup/tasks/bad.ts");
+    const helper = resolve(root, "src/backend/workflow-tasks/person-lookup/helper.ts");
+    const driver = resolve(root, "src/backend/systems/ucpath/driver/interpreter.ts");
+    try {
+      mkdirSync(dirname(task), { recursive: true });
+      mkdirSync(dirname(driver), { recursive: true });
+      writeFileSync(task, 'import { helper } from "../helper.js";\nexport const bad = helper;\n');
+      writeFileSync(helper, 'export { helper } from "../../systems/ucpath/driver/interpreter.js";\n');
+      writeFileSync(driver, "export const helper = true;\n");
+      assert.match(
+        auditTaskDriverBoundary(root).join("\n"),
+        /src\/backend\/workflow-tasks\/person-lookup\/tasks\/bad\.ts: import graph reaches private raw-browser owner src\/backend\/systems\/ucpath\/driver\/interpreter\.ts/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 it("parses JSX templates while retaining raw browser calls embedded in JSX", () => {

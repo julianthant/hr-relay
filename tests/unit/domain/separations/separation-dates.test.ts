@@ -15,7 +15,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { DateOnlySchema } from "../../src/domain/ids.js";
+import { DateOnlySchema } from "../../../../src/domain/ids.js";
 import {
   addSeparationDays,
   buildDateChangeComments,
@@ -32,9 +32,9 @@ import {
   reconcileSeparationDates,
   separationInitials,
   shiftMonths,
-} from "../../src/domain/separations/separation-dates.js";
-import type { SeparationPlan } from "../../src/domain/separations/separation-dates.js";
-import type { KualiDateField } from "../../src/domain/ui/kuali-separation-document.js";
+} from "../../../../src/domain/separations/separation-dates.js";
+import type { SeparationPlan } from "../../../../src/domain/separations/separation-dates.js";
+import type { KualiDateField } from "../../../../src/domain/ui/kuali-separation-document.js";
 
 const date = (raw: string): KualiDateField => ({
   state: "present",

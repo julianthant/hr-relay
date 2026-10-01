@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   SeparationsVerifyTerminationReceipt,
   VerifyTerminationReceiptOutputSchema,
-} from "../../../domain/contracts/separations/verify-termination-receipt.js";
-import { verifyTerminationReceipt } from "../../../domain/separations/termination-receipt.js";
+} from "../../../../domain/contracts/separations/verify-termination-receipt.js";
+import { verifyTerminationReceipt } from "../../../../domain/separations/termination-receipt.js";
 
 /**
  * D130's finding, executed at the one place it decides anything: between the

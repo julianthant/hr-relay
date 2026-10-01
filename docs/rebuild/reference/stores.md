@@ -35,7 +35,7 @@ at call time:
 - **Service stores** (`defineServiceStore(namespace, tasks)`) and **workflow mini-stores**
   (`defineWorkflowStore(workflowId, tasks)`) require every task to be a sessionless `effect: "read"`
   task (`sessions: []`); a mini-store task additionally may declare no `artifacts`/`providers`.
-- Every store lands in `src/stores/index.ts`'s `BROWSER_STORES` (the 9 browser systems) and
+- Every store lands in `src/backend/app/task-registry.ts`'s `BROWSER_STORES` (the 9 browser systems) and
   `TASK_STORES` (browser stores plus the service/workflow mini-stores), and `defineTaskStoreRegistry`
   cross-checks every registered task against the contract corpus in both directions — a store task
   with no corpus entry, or a corpus entry with no store task, fails to boot.
@@ -563,7 +563,7 @@ on those months later.
 
 ### `src/backend/processing/providers` — provider adapters (not a `TASK_STORES` entry)
 
-Provider adapters are not registered in `src/stores/index.ts`; they are composed directly into
+Provider adapters are not registered in `src/backend/app/task-registry.ts`; they are composed directly into
 `RunProviderWiring` at `src/backend/app/worker/run-resources.ts` and reached by tasks only through
 `ctx.providers[capability]`.
 

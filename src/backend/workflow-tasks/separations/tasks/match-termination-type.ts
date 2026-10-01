@@ -1,12 +1,12 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   MatchTerminationTypeOutputSchema,
   SeparationsMatchTerminationType,
-} from "../../../domain/contracts/separations/match-termination-type.js";
+} from "../../../../domain/contracts/separations/match-termination-type.js";
 import {
   auditTerminationTypeOptionList,
   resolveTerminationType,
-} from "../../../domain/separations/termination-type.js";
+} from "../../../../domain/separations/termination-type.js";
 
 /**
  * §4a's refusal, executed. Nothing here decides anything — the map does — and

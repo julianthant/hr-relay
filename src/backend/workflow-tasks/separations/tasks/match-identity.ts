@@ -1,12 +1,12 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   MatchIdentityOutputSchema,
   SeparationsMatchIdentity,
-} from "../../../domain/contracts/separations/match-identity.js";
+} from "../../../../domain/contracts/separations/match-identity.js";
 import {
   buildIdentityEvidencePacket,
   deriveIdentityEvidenceDigest,
-} from "../../../domain/separations/identity-evidence.js";
+} from "../../../../domain/separations/identity-evidence.js";
 
 /**
  * The decision packet, executed.

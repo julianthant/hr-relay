@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   ReadSeparationDatesOutputSchema,
   SeparationsReadSeparationDates,
-} from "../../../domain/contracts/separations/read-separation-dates.js";
-import { reconcileSeparationDates } from "../../../domain/separations/separation-dates.js";
+} from "../../../../domain/contracts/separations/read-separation-dates.js";
+import { reconcileSeparationDates } from "../../../../domain/separations/separation-dates.js";
 
 /**
  * The write's payload, executed. `no-punch-in-window` is the durable code §4b's

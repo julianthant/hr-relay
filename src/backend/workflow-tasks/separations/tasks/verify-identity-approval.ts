@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   SeparationsVerifyIdentityApproval,
   VerifyIdentityApprovalOutputSchema,
-} from "../../../domain/contracts/separations/verify-identity-approval.js";
-import { verifyIdentityApproval } from "../../../domain/separations/identity-approval.js";
+} from "../../../../domain/contracts/separations/verify-identity-approval.js";
+import { verifyIdentityApproval } from "../../../../domain/separations/identity-approval.js";
 
 /**
  * The identity-authority check, executed.

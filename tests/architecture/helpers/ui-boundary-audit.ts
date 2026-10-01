@@ -14,8 +14,7 @@ const RAW_BROWSER_MEMBERS = new Set([
  * page. Three closed families, each with one responsibility:
  *
  * - `src/backend/systems/<system>/driver/**` and `.../session.ts` own ONE
- *   system's page knowledge — its semantic driver and its login recipe. The
- *   service-store implementations remain under `src/stores/`.
+ *   system's page knowledge — its semantic driver and its login recipe.
  * - `src/backend/runtime/browser/**` owns browser CREATION itself: the persistent
  *   context, the Duo Autopilot extension, and the provable teardown behind
  *   `WorkerBrowserSessionFactory` (ref execution-and-sessions §4 — "concrete browser creation
@@ -24,6 +23,8 @@ const RAW_BROWSER_MEMBERS = new Set([
  * - `src/backend/systems/browser-shared/**` owns the reusable browser action
  *   and login adapters consumed by system sessions and drivers.
  *
+ * Workflow wrappers under `src/backend/workflow-tasks/<workflow>/tasks/**` are
+ * sessionless consumers; they remain outside the raw-browser owner set.
  * Membership is the whole enforcement — a task or workflow that reaches any
  * private browser family transitively is still a violation, checked below.
  */
@@ -39,6 +40,7 @@ function isRawBrowserOwner(path: string): boolean {
 function isTaskOrWorkflow(path: string): boolean {
   return /^src\/stores\/[a-z0-9-]+\/tasks\//u.test(path)
     || /^src\/backend\/processing\/[a-z0-9-]+\/tasks\//u.test(path)
+    || /^src\/backend\/workflow-tasks\/[a-z0-9-]+\/tasks\//u.test(path)
     || /^src\/backend\/systems\/[a-z0-9-]+\/tasks\//u.test(path)
     || /^src\/workflows\//u.test(path);
 }

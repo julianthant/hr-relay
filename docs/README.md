@@ -50,7 +50,7 @@ These path updates do not rerun or change the historical gate results.
 | Output | Source and command |
 | --- | --- |
 | [Roadmap site](roadmap/index.html) | [Roadmap source](roadmap/roadmap.md), tagged phase/reference/migration sections, and [renderer](../scripts/generate-roadmap.ts); `npm run roadmap`, then `npm run roadmap:check` |
-| [Store catalog, §2](rebuild/reference/stores.md) | Store declarations through [src/stores/index.ts](../src/stores/index.ts); `npm run stores:catalog`, then `npm run stores:catalog:check` |
+| [Store catalog, §2](rebuild/reference/stores.md) | Store declarations through [src/backend/app/task-registry.ts](../src/backend/app/task-registry.ts); `npm run stores:catalog`, then `npm run stores:catalog:check` |
 
 Edit generated content at its source. The remaining sections of the store reference are authored
 prose. [Roadmap notation](roadmap/notation.md) documents the plan bindings.

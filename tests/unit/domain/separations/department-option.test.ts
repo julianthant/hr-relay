@@ -13,8 +13,8 @@ import {
   kualiDepartmentOptionDescription,
   resolveKualiDepartmentOption,
   sameDepartmentCode,
-} from "../../src/domain/separations/department-option.js";
-import type { UcpathJobCell } from "../../src/domain/ui/ucpath-job-summary.js";
+} from "../../../../src/domain/separations/department-option.js";
+import type { UcpathJobCell } from "../../../../src/domain/ui/ucpath-job-summary.js";
 
 /** §9.3's S55 list, verbatim — `000719`'s double space included. */
 const LIVE_OPTIONS: readonly string[] = Object.freeze([

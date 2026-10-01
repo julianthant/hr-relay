@@ -53,7 +53,7 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
     },
   },
   "wait-for-timeout-allowlist": {
-    roots: ["src/stores", "src/backend/systems"],
+    roots: ["src/stores", "src/backend/workflow-tasks", "src/backend/systems"],
     fixture: {
       files: {
         "src/stores/ucpath/tasks/bad.ts": "export const bad = async (page: any) => page.waitForTimeout(25);\n",
@@ -86,7 +86,7 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
    * a table cannot make that claim without also showing the exceptions.
    */
   "inline-selectors-workflows": {
-    roots: ["src/stores", "src/backend/systems"],
+    roots: ["src/stores", "src/backend/workflow-tasks", "src/backend/systems"],
     select: (path) => path.includes("/tasks/"),
     fixture: {
       files: {
@@ -97,7 +97,7 @@ const SPECS: Readonly<Record<RebuildRatchetName, RebuildRatchetSpec>> = {
     },
   },
   "evaluate-named-fn": {
-    roots: ["src/stores", "src/backend/systems"],
+    roots: ["src/stores", "src/backend/workflow-tasks", "src/backend/systems"],
     fixture: {
       files: {
         "src/stores/ucpath/driver/bad.ts": "export const bad = (page: any) => page.evaluate(function named() { return true; });\n",

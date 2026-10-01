@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   MatchSeparationSubjectOutputSchema,
   SeparationsMatchSeparationSubject,
-} from "../../../domain/contracts/separations/match-separation-subject.js";
-import { resolveSeparationSubject } from "../../../domain/separations/separation-subject.js";
+} from "../../../../domain/contracts/separations/match-separation-subject.js";
+import { resolveSeparationSubject } from "../../../../domain/separations/separation-subject.js";
 
 /**
  * S18/S19's fork, executed. The refusals are the two states legacy resolves by

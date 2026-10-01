@@ -12,7 +12,7 @@ import {
   auditTerminationTypeMapCoverage,
   auditTerminationTypeOptionList,
   resolveTerminationType,
-} from "../../src/domain/separations/termination-type.js";
+} from "../../../../src/domain/separations/termination-type.js";
 
 describe("separations termination-type map (§4a)", () => {
   it("is exhaustive over the live 2026-08-12 capture, in both directions", () => {

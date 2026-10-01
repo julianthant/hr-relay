@@ -83,9 +83,9 @@ import type { KualiFakeWorld } from "../../../../src/backend/systems/kuali/drive
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { readJobSummaryTask } from "../../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
-import { matchDepartmentOptionTask } from "../../../../src/stores/separations/tasks/match-department-option.js";
+import { matchIdentityTask } from "../../../../src/backend/workflow-tasks/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/backend/workflow-tasks/separations/tasks/verify-identity-approval.js";
+import { matchDepartmentOptionTask } from "../../../../src/backend/workflow-tasks/separations/tasks/match-department-option.js";
 import { matchSeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/match-separation-finalization.js";
 import { saveSeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/save-separation-finalization.js";
 import { stageSeparationFinalizationTask } from "../../../../src/backend/systems/kuali/tasks/stage-separation-finalization.js";

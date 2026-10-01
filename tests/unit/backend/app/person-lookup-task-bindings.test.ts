@@ -18,7 +18,7 @@ import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/check
 import type { FactProvenance, RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import { readOnboardingDatesTask } from "../../../../src/backend/systems/crm/tasks/read-onboarding-dates.js";
 import { readOnboardingRecordTask } from "../../../../src/backend/systems/crm/tasks/read-onboarding-record.js";
-import { readActiveStatusTask } from "../../../../src/stores/person-lookup/tasks/read-active-status.js";
+import { readActiveStatusTask } from "../../../../src/backend/workflow-tasks/person-lookup/tasks/read-active-status.js";
 import { searchPersonOrgTask } from "../../../../src/backend/systems/ucpath/tasks/search-person-org.js";
 import { createDeterministicCrmOnboardingDriver } from "../../../../src/backend/systems/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";

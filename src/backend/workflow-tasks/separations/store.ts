@@ -1,4 +1,4 @@
-import { defineWorkflowStore } from "../../base/store.js";
+import { defineWorkflowStore } from "../../../base/store.js";
 import { matchDepartmentOptionTask } from "./tasks/match-department-option.js";
 import { matchIdentityTask } from "./tasks/match-identity.js";
 import { matchTerminationTypeTask } from "./tasks/match-termination-type.js";

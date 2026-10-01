@@ -337,7 +337,7 @@ A task is **two files**:
 **There is no contract barrel, and nothing needs one.** `src/domain/contracts/index.ts` re-exports
 `base.ts` and `write-safety.ts` and nothing else; each contract module is imported by name where it
 is used. The **contract corpus** — the closed `(id, effect)` list every reference resolves against
-— is projected from the REGISTERED STORES in `src/stores/index.ts` (`corpusFor`), so a contract
+— is projected from the REGISTERED STORES in `src/backend/app/task-registry.ts` (`corpusFor`), so a contract
 that no store binds is not in the corpus at all, and `defineTaskStoreRegistry` refuses both
 directions: a registered task absent from the corpus, and a corpus id with no implementation. This
 is the correction to a long-standing sentence in this doc: the barrel was the design, the store
@@ -1061,7 +1061,7 @@ names are load-bearing because the three enforce different things.
   namespace or task id, and then matches the store set against the **corpus** in BOTH directions: a
   registered task missing from the corpus fails, a corpus id with no implementation fails, an effect
   disagreement fails, and `assertTaskContractReferences` resolves every scenario id and every
-  commit's probe/verifier against that corpus. Two registries are composed in `src/stores/index.ts`
+commit's probe/verifier against that corpus. Two registries are composed in `src/backend/app/task-registry.ts`
   — `browserStoreRegistry` (the nine browser stores, the declaration view ref
   execution-and-sessions' coverage guard consumes) and `taskStoreRegistry` (all sixteen, the
   executable task index).

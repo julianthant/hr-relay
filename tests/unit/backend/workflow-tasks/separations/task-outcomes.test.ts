@@ -9,14 +9,14 @@ import type { UcpathTerminationProof } from "../../../../../src/domain/ui/ucpath
 import { noSeparationWritePlan } from "../../../../../src/domain/separations/write-plan.js";
 import { IdentityEvidencePacketSchema } from "../../../../../src/domain/separations/identity-evidence.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../../src/domain/separations/termination-type.js";
-import { matchActiveEmploymentTask } from "../../../../../src/stores/separations/tasks/match-active-employment.js";
-import { matchDepartmentOptionTask } from "../../../../../src/stores/separations/tasks/match-department-option.js";
-import { matchIdentityTask } from "../../../../../src/stores/separations/tasks/match-identity.js";
-import { matchSeparationSubjectTask } from "../../../../../src/stores/separations/tasks/match-separation-subject.js";
-import { matchTerminationTypeTask } from "../../../../../src/stores/separations/tasks/match-termination-type.js";
-import { readSeparationPlanTask } from "../../../../../src/stores/separations/tasks/read-separation-plan.js";
-import { verifyIdentityApprovalTask } from "../../../../../src/stores/separations/tasks/verify-identity-approval.js";
-import { verifyTerminationReceiptTask } from "../../../../../src/stores/separations/tasks/verify-termination-receipt.js";
+import { matchActiveEmploymentTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/match-active-employment.js";
+import { matchDepartmentOptionTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/match-department-option.js";
+import { matchIdentityTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/match-identity.js";
+import { matchSeparationSubjectTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/match-separation-subject.js";
+import { matchTerminationTypeTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/match-termination-type.js";
+import { readSeparationPlanTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/read-separation-plan.js";
+import { verifyIdentityApprovalTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/verify-identity-approval.js";
+import { verifyTerminationReceiptTask } from "../../../../../src/backend/workflow-tasks/separations/tasks/verify-termination-receipt.js";
 
 const DOCUMENT = "4444";
 const EID = EidSchema.parse("10800000");

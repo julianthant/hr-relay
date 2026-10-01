@@ -23,7 +23,7 @@ import { manualClock } from "../../../../src/domain/clock.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../../../src/backend/systems/kuali/driver/fake.js";
 import type { KualiFakeSeparationForm } from "../../../../src/backend/systems/kuali/driver/fake.js";
 import { readSeparationDocumentTask } from "../../../../src/backend/systems/kuali/tasks/read-separation-document.js";
-import { matchTerminationTypeTask } from "../../../../src/stores/separations/tasks/match-termination-type.js";
+import { matchTerminationTypeTask } from "../../../../src/backend/workflow-tasks/separations/tasks/match-termination-type.js";
 import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../src/domain/separations/termination-type.js";
 import { separationsKualiReadDescriptor } from "../../../helpers/registered-workflows.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";

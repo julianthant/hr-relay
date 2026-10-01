@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   MatchDepartmentOptionOutputSchema,
   SeparationsMatchDepartmentOption,
-} from "../../../domain/contracts/separations/match-department-option.js";
-import { resolveKualiDepartmentOption } from "../../../domain/separations/department-option.js";
+} from "../../../../domain/contracts/separations/match-department-option.js";
+import { resolveKualiDepartmentOption } from "../../../../domain/separations/department-option.js";
 
 /**
  * S55's upstream refusal, executed. Nothing here decides anything — the fold

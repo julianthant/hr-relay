@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   ReadSeparationPlanOutputSchema,
   SeparationsReadSeparationPlan,
-} from "../../../domain/contracts/separations/read-separation-plan.js";
-import { planSeparation } from "../../../domain/separations/separation-dates.js";
+} from "../../../../domain/contracts/separations/read-separation-plan.js";
+import { planSeparation } from "../../../../domain/separations/separation-dates.js";
 
 /**
  * The document's own facts, validated, executed. Nothing here decides anything

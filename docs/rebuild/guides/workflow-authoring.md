@@ -56,7 +56,7 @@ anywhere in `src`/`tests`/`scripts`.
 
 Open `docs/rebuild/reference/stores.md` §2 — the **generated task-store catalog** — and search it
 by system, capability, effect (`read` / `prepare` / `commit`), inputs and outputs. It is regenerated
-from `src/stores/index.ts` by `npm run stores:catalog`, and `npm run stores:catalog:check` fails on
+from `src/backend/app/task-registry.ts` by `npm run stores:catalog`, and `npm run stores:catalog:check` fails on
 stale bytes, so what it lists is what the registry binds today. Then classify each operation you
 need with doc 03.2's current task ownership and `ref workflow-model` §1.6.1 (the table is copied here so the decision is made before any file opens):
 
@@ -898,13 +898,13 @@ export const ReadActiveStatus = defineTaskContract({
 });
 ```
 
-**2. The implementation** — `src/stores/person-lookup/tasks/read-active-status.ts`: `defineTask(contract,
+**2. The implementation** — `src/backend/workflow-tasks/person-lookup/tasks/read-active-status.ts`: `defineTask(contract,
 impl)` with `sessions: []`, every output leaf recorded through `ctx.recordData` (a leaf the schema
 has but the implementation never records makes the real executor refuse before checkpointing), and
 a refusal through `ctx.fail` rather than a guessed default:
 
 ```ts
-// from src/stores/person-lookup/tasks/read-active-status.ts @ 16e7e63b
+// from src/backend/workflow-tasks/person-lookup/tasks/read-active-status.ts @ 16e7e63b
 export const readActiveStatusTask = defineTask(ReadActiveStatus, {
   sessions: [],
   async run({ input, ctx }) {
@@ -921,11 +921,11 @@ export const readActiveStatusTask = defineTask(ReadActiveStatus, {
     };
 ```
 
-**3. The store registration** — `src/stores/person-lookup/index.ts`, then the store in
-`src/stores/index.ts`'s `TASK_STORES` (already there for an existing mini-store):
+**3. The store registration** — `src/backend/workflow-tasks/person-lookup/store.ts`, then the store in
+`src/backend/app/task-registry.ts`'s `TASK_STORES` (already there for an existing mini-store):
 
 ```ts
-// from src/stores/person-lookup/index.ts @ 16e7e63b
+// from src/backend/workflow-tasks/person-lookup/store.ts @ 16e7e63b
 export const personLookupStore = defineWorkflowStore("person-lookup", {
   readActiveStatus: readActiveStatusTask,
 });

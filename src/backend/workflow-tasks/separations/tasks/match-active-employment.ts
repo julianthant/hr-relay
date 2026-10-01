@@ -1,9 +1,9 @@
-import { defineTask } from "../../../base/task.js";
+import { defineTask } from "../../../../base/task.js";
 import {
   MatchActiveEmploymentOutputSchema,
   SeparationsMatchActiveEmployment,
-} from "../../../domain/contracts/separations/match-active-employment.js";
-import { selectSeparationEmployment } from "../../../domain/separations/employment-selection.js";
+} from "../../../../domain/contracts/separations/match-active-employment.js";
+import { selectSeparationEmployment } from "../../../../domain/separations/employment-selection.js";
 
 /**
  * S23/S24's refusal, executed. The gate still shows the operator every row —

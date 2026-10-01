@@ -56,7 +56,8 @@ function resolveSourceFile(from: string, specifier: string): string | undefined 
 
 function forbiddenRuntimePath(file: string): string | undefined {
   const relative = repoRelative(file);
-  if (relative.startsWith("src/stores/") || relative.startsWith("src/backend/systems/")) {
+  if (relative.startsWith("src/stores/") || relative.startsWith("src/backend/systems/")
+    || relative.startsWith("src/backend/workflow-tasks/")) {
     return "store/driver implementation";
   }
   if (relative.startsWith("src/infra/browser/")) return "browser runtime implementation";
@@ -98,6 +99,10 @@ describe("workflow operation display browser boundary", () => {
       .toContain("src/backend/app/config/resolve.ts imports Node builtin node:crypto");
     expect(auditOperationDisplayImportClosure("src/backend/systems/ucpath/driver/person-org-operation.ts"))
       .toContain("src/backend/systems/ucpath/driver/person-org-operation.ts is a store/driver implementation");
+  });
+  it("treats workflow-task implementations as private store code", () => {
+    expect(auditOperationDisplayImportClosure("src/backend/workflow-tasks/separations/tasks/read-separation-plan.ts"))
+      .toContain("src/backend/workflow-tasks/separations/tasks/read-separation-plan.ts is a store/driver implementation");
   });
 });
 

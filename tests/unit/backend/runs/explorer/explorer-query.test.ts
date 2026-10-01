@@ -313,6 +313,32 @@ describe("Explorer presentation override readback", () => {
 });
 
 describe("the workflow explorer projection", () => {
+  it("links workflow mini-store implementations to their backend workflow-task homes", () => {
+    const expected = [
+      ["workflow:person-lookup/read-active-status", "person-lookup/tasks/read-active-status"],
+      ...[
+        "match-active-employment",
+        "match-department-option",
+        "match-identity",
+        "match-separation-subject",
+        "match-termination-type",
+        "read-separation-dates",
+        "read-separation-plan",
+        "verify-identity-approval",
+        "verify-termination-receipt",
+      ].map((task) => [`workflow:separations/${task}`, `separations/tasks/${task}`]),
+    ] as const;
+    const tasks = allTasks();
+    for (const [taskId, path] of expected) {
+      const task = tasks.find(({ taskId: candidate }) => String(candidate) === taskId);
+      assert.ok(task, `Explorer has no ${taskId} task`);
+      assert.deepEqual(task.implSource, {
+        state: "resolved",
+        path: `src/backend/workflow-tasks/${path}.ts`,
+      });
+    }
+  });
+
   it("serves startup session needs from each bound task implementation", () => {
     for (const projected of allTasks()) {
       if (projected.binding.state !== "bound") continue;

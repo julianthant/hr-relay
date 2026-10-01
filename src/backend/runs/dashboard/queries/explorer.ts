@@ -238,18 +238,17 @@ function contractSourceLink(
  * fingerprinted closure rather than guessed from its id.
  *
  * A task's closure contains exactly the files its fingerprint covers, so the
- * implementation is whichever of them sits under a system or service store's
- * `tasks/` directory.
+ * implementation is whichever of them sits under its system or workflow-task
+ * store `tasks/` directory.
  * Two matches would mean the convention no longer identifies one file, so the
  * link refuses rather than picking the first.
  */
 function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined): SourceLinkWire {
   const tail = taskPathTail(taskId);
   const namespace = tail.slice(0, tail.indexOf("/"));
-  const directories = [
-    `src/backend/systems/${namespace}/tasks`,
-    `src/stores/${namespace}/tasks`,
-  ];
+  const directories = taskId.startsWith("workflow:")
+    ? [`src/backend/workflow-tasks/${namespace}/tasks`, `src/stores/${namespace}/tasks`]
+    : [`src/backend/systems/${namespace}/tasks`, `src/stores/${namespace}/tasks`];
   if (closure === undefined) {
     return unresolved(directories[0] ?? "src/backend/systems", `the build manifest carries no task entry for ${taskId}`);
   }
@@ -263,7 +262,7 @@ function implSourceLink(taskId: string, closure: ReadonlySet<string> | undefined
   return unresolved(
     directory,
     matches.length === 0
-      ? "the task's fingerprinted closure contains no implementation in a system or service store directory"
+      ? "the task's fingerprinted closure contains no implementation in its system or workflow-task store directory"
       : `the task's closure contains ${String(matches.length)} implementations across system and service store directories`,
   );
 }

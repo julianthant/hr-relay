@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { EidSchema } from "../../../../../src/domain/ids.js";
-import { readActiveStatusTask } from "../../../../../src/stores/person-lookup/tasks/read-active-status.js";
+import { readActiveStatusTask } from "../../../../../src/backend/workflow-tasks/person-lookup/tasks/read-active-status.js";
 
 class TaskRefusal extends Error {
   constructor(readonly code: string, message: string) {

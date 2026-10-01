@@ -237,16 +237,24 @@ function taskEntries(
   repoRoot: string,
 ): readonly { readonly id: string; readonly entries: readonly string[] }[] {
   const entries: { id: string; entries: readonly string[] }[] = [];
-  for (const storesRoot of [join(repoRoot, "src/backend/systems"), join(repoRoot, "src/stores")]) {
+  for (const storesRoot of [
+    join(repoRoot, "src/backend/systems"),
+    join(repoRoot, "src/backend/processing"),
+    join(repoRoot, "src/backend/workflow-tasks"),
+    join(repoRoot, "src/stores"),
+  ]) {
     if (!existsSync(storesRoot)) continue;
     for (const storeDirectory of readdirSync(storesRoot)) {
       const storeRoot = join(storesRoot, storeDirectory);
       if (!statSync(storeRoot).isDirectory()) continue;
       const tasksRoot = join(storeRoot, "tasks");
       if (!existsSync(tasksRoot)) continue;
+      const registrationPath = join(storeRoot, "store.ts");
       const indexPath = join(storeRoot, "index.ts");
-      const indexSource = existsSync(indexPath) ? readFileSync(indexPath, "utf8") : "";
-      const workflowMatch = /defineWorkflowStore\(\s*["']([a-z0-9]+(?:-[a-z0-9]+)*)["']/u.exec(indexSource);
+      const registrationSource = existsSync(registrationPath)
+        ? readFileSync(registrationPath, "utf8")
+        : existsSync(indexPath) ? readFileSync(indexPath, "utf8") : "";
+      const workflowMatch = /defineWorkflowStore\(\s*["']([a-z0-9]+(?:-[a-z0-9]+)*)["']/u.exec(registrationSource);
       const namespace = workflowMatch === null ? storeDirectory : `workflow:${workflowMatch[1]}`;
       const driverEntry = join(storeRoot, "driver/interpreter.ts");
       for (const file of readdirSync(tasksRoot)) {

@@ -66,7 +66,7 @@ function sourceFiles(): readonly { path: string; content: string }[] {
 function computedSessionFields(): readonly string[] {
   const violations: string[] = [];
   for (const { path, content } of sourceFiles()) {
-    if (!/^src\/(?:stores\/[a-z0-9-]+\/tasks|workflows)\//u.test(path)) continue;
+    if (!/^src\/(?:stores\/[a-z0-9-]+\/tasks|backend\/workflow-tasks\/[a-z0-9-]+\/tasks|workflows)\//u.test(path)) continue;
     const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
     const visit = (node: ts.Node): void => {
       if (ts.isPropertyAssignment(node)

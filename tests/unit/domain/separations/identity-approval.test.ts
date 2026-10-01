@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { SeparationsMatchIdentity } from "../../src/domain/contracts/separations/match-identity.js";
-import { IdentityEvidencePacketSchema, deriveIdentityEvidenceDigest } from "../../src/domain/separations/identity-evidence.js";
-import { verifyIdentityApproval } from "../../src/domain/separations/identity-approval.js";
+import { SeparationsMatchIdentity } from "../../../../src/domain/contracts/separations/match-identity.js";
+import { IdentityEvidencePacketSchema, deriveIdentityEvidenceDigest } from "../../../../src/domain/separations/identity-evidence.js";
+import { verifyIdentityApproval } from "../../../../src/domain/separations/identity-approval.js";
 
 describe("supplied EID verification", () => {
   it("continues on exact supplied/read-back EID without inventing human approval", () => {

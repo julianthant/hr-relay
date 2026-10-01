@@ -32,8 +32,8 @@ import type { SearchPersonOrgOutput } from "../../../../src/domain/contracts/ucp
 import { createDeterministicUcpathPersonOrgDriver } from "../../../../src/backend/systems/ucpath/driver/fake.js";
 import { deriveJobRowFromCells } from "../../../../src/backend/systems/ucpath/driver/person-org-operation.js";
 import { readJobSummaryTask } from "../../../../src/backend/systems/ucpath/tasks/read-job-summary.js";
-import { matchIdentityTask } from "../../../../src/stores/separations/tasks/match-identity.js";
-import { verifyIdentityApprovalTask } from "../../../../src/stores/separations/tasks/verify-identity-approval.js";
+import { matchIdentityTask } from "../../../../src/backend/workflow-tasks/separations/tasks/match-identity.js";
+import { verifyIdentityApprovalTask } from "../../../../src/backend/workflow-tasks/separations/tasks/verify-identity-approval.js";
 import { separationsIdentityCheckDescriptor } from "../../../helpers/registered-workflows.js";
 import { SEPARATIONS_IDENTITY_CHECK_CLAIMS } from "../../coverage-claims.js";
 import { walkDescriptor } from "../../helpers/pure-walk.js";

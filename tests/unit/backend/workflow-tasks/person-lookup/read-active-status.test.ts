@@ -6,7 +6,7 @@ import { EidSchema } from "../../../../../src/domain/ids.js";
 import { directIdentifierDisplay } from "../../../../../src/domain/redaction.js";
 import { DataPointSchema } from "../../../../../src/domain/task-provenance.js";
 import type { DataPoint } from "../../../../../src/domain/task-provenance.js";
-import { readActiveStatusTask } from "../../../../../src/stores/person-lookup/tasks/read-active-status.js";
+import { readActiveStatusTask } from "../../../../../src/backend/workflow-tasks/person-lookup/tasks/read-active-status.js";
 
 const signal = new AbortController().signal;
 

@@ -26,6 +26,7 @@ function moduleText(node: ts.Expression | undefined): string | undefined {
 
 function isTaskImplementation(path: string): boolean {
   return /^src\/stores\/.+\/tasks\/.+\.ts$/u.test(path)
+    || /^src\/backend\/workflow-tasks\/.+\/tasks\/.+\.ts$/u.test(path)
     || /^src\/backend\/processing\/.+\/tasks\/.+\.ts$/u.test(path)
     || /^src\/workflows\/.+\.ts$/u.test(path);
 }
@@ -90,6 +91,21 @@ describe("content-addressed artifact boundary", () => {
   it("catches direct mutable filesystem writes in a task implementation", () => {
     const root = resolve(tmpdir(), `hrauto-artifact-boundary-${process.pid}-${Date.now()}`);
     const path = resolve(root, "src/backend/processing/extraction/tasks/bad.ts");
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(
+        path,
+        'import { writeFile } from "node:fs/promises";\nexport async function bad() { await writeFile("output.xlsx", "unsafe"); }\n',
+      );
+      assert.match(auditArtifactEffectBoundary(root).join("\n"), /mutable filesystem/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("catches direct mutable filesystem writes in a workflow-task implementation", () => {
+    const root = resolve(tmpdir(), `hrauto-workflow-task-artifact-boundary-${process.pid}-${Date.now()}`);
+    const path = resolve(root, "src/backend/workflow-tasks/person-lookup/tasks/bad.ts");
     try {
       mkdirSync(dirname(path), { recursive: true });
       writeFileSync(
