@@ -344,6 +344,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await workerCount.fill("7");
       await expect(dialog.getByRole("button", { name: "Add workers", exact: true })).toBeDisabled();
       await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("2");
+      await expect(dialog).toHaveCSS("opacity", "1");
+      await expect(dialog).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
       await test.info().attach(`sessions-add-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       await test.info().attach(`sessions-add-${theme.attribute}-${width}.a11y.yml`, { body: await dialog.ariaSnapshot(), contentType: "text/yaml" });
       await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
