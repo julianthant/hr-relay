@@ -266,9 +266,15 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(panel).not.toContainText("Worker 1");
       await expect(first).toContainText("Alex Morgan");
       const systems = first.getByRole("list", { name: "Worker 1 systems", exact: true });
-      expect(await systems.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(3);
+      expect(await systems.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(2);
+      expect((await systems.getByRole("listitem").first().boundingBox())!.height).toBeLessThanOrEqual(32);
       expect(Math.abs((await systems.boundingBox())!.y - (await second.getByRole("list", { name: "Worker 2 systems", exact: true }).boundingBox())!.y)).toBeLessThanOrEqual(1);
-      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "2");
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "11");
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuemax", "22");
+      await expect(first.getByRole("progressbar")).toHaveAttribute("aria-valuetext", "11 of 22 nodes complete");
+      await expect(first.locator("[data-session-node]")).toHaveCount(22);
+      await expect(second.locator("[data-session-node]")).toHaveCount(4);
+      expect((await first.boundingBox())!.height).toBeLessThan(250);
       const firstFooter = (await first.locator("footer").boundingBox())!;
       const secondFooter = (await second.locator("footer").boundingBox())!;
       expect(Math.abs(firstFooter.y - secondFooter.y)).toBeLessThanOrEqual(1);
@@ -279,6 +285,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await test.info().attach(sessionsEvidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
       await first.getByRole("button", { name: "Pause", exact: true }).click();
       await expect(first).toContainText("Paused");
+      await expect(first.locator('[data-session-node="separation-12"]')).toHaveAttribute("title", "Read the timecard · paused");
       await first.getByRole("button", { name: "Resume", exact: true }).click();
       await expect(first).toContainText("Running");
       await second.getByRole("button", { name: "Stop", exact: true }).click();
@@ -289,7 +296,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(panel).toContainText("Waiting");
       await second.getByRole("button", { name: "Retry", exact: true }).click();
       await expect(second).toContainText("Opening");
-      await expect(second).not.toContainText("The document session expired.");
+      await expect(second).not.toContainText("The UCPath session expired.");
+      await expect(second.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "0");
+      await expect(second.locator("[data-session-node]")).toHaveCount(4);
       await sample.selectOption("empty");
       await expect(panel.getByRole("heading", { name: "No workers yet", exact: true })).toBeVisible();
       const add = panel.getByRole("button", { name: "Add workers", exact: true });

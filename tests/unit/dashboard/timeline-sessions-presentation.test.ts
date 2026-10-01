@@ -4,7 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { SessionPanel } from "../../../src/dashboard/surfaces/session-panel.js";
 import { previewSessionAdd, previewSessionControl, sessionsSample } from "../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
-import { sessionProgressPercent, sessionTallies } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
+import { sessionTimelineSummary, sessionTallies } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
 import { previewScenarios } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
 import { visualLogSteps } from "../../../src/dashboard/surfaces/log-feed-model.js";
 
@@ -28,16 +28,18 @@ describe("frontend timeline and sessions", () => {
     const paused = previewSessionControl(data, first.id, "pause");
     if (paused.state !== "ready") throw new Error("ready result required");
     assert.equal(paused.workers[0].state, "paused");
+    assert.equal(paused.workers[0].timeline?.find(node => node.id === "separation-12")?.state, "paused");
     assert.equal(data.workers[0].state, "running");
     assert.equal(paused.workers[1], data.workers[1]);
     const resumed = previewSessionControl(paused, first.id, "resume");
     if (resumed.state !== "ready") throw new Error("ready result required");
     assert.equal(resumed.workers[0].state, "running");
+    assert.equal(resumed.workers[0].timeline?.find(node => node.id === "separation-12")?.state, "active");
     const stopped = previewSessionControl(resumed, first.id, "stop");
     if (stopped.state !== "ready") throw new Error("ready result required");
     assert.equal(stopped.workers[0].state, "idle");
     assert.equal(stopped.workers[0].subject, undefined);
-    assert.equal(stopped.workers[0].progress, undefined);
+    assert.equal(stopped.workers[0].timeline, undefined);
     assert.deepEqual(stopped.workers[0].browsers, []);
     assert.throws(() => previewSessionControl(data, first.id, "resume"), /sessions-preview-resume-invalid/);
     assert.throws(() => previewSessionControl(data, "missing", "stop"), /sessions-preview-worker-missing/);
@@ -52,6 +54,8 @@ describe("frontend timeline and sessions", () => {
     const current = retried.workers.find(worker => worker.id === failed.id)!;
     assert.equal(current.state, "starting");
     assert.equal(current.problem, undefined);
+    assert.deepEqual(sessionTimelineSummary(current.timeline!), { completed: 0, total: 4 });
+    assert.equal(current.timeline?.[0].state, "active");
     assert.ok(current.browsers.every(browser => browser.state === "starting"));
     assert.equal(data.workers.find(worker => worker.id === failed.id)?.state, "failed");
   });
@@ -70,9 +74,12 @@ describe("frontend timeline and sessions", () => {
     assert.deepEqual(sessionTallies(active.workers), [{ state: "running", count: 2 }, { state: "starting", count: 1 }, { state: "idle", count: 1 }]);
     assert.equal(sessionsSample("loading").state, "loading");
     assert.equal(sessionsSample("unavailable").state, "unavailable");
-    assert.equal(sessionProgressPercent({ completed: 0, total: 5 }), 0);
-    assert.equal(sessionProgressPercent({ completed: 2, total: 5 }), 40);
-    for (const progress of [{ completed: 0, total: 0 }, { completed: 6, total: 5 }, { completed: -1, total: 5 }]) assert.throws(() => sessionProgressPercent(progress), /session-progress-invalid/);
+    assert.deepEqual(sessionTimelineSummary(active.workers[0].timeline!), { completed: 11, total: 22 });
+    assert.deepEqual(sessionTimelineSummary(active.workers[1].timeline!), { completed: 3, total: 4 });
+    assert.throws(() => sessionTimelineSummary([]), /session-timeline-invalid/);
+    const node = active.workers[0].timeline![0];
+    assert.throws(() => sessionTimelineSummary([node, node]), /session-timeline-invalid/);
+    assert.deepEqual(sessionTimelineSummary([{ ...node, state: "pending" }]), { completed: 0, total: 1 });
   });
   it("renders the canonical Sessions host without any dashboard client provider", () => {
     const markup = renderToStaticMarkup(createElement(SessionPanel, { open: true, onOpenChange: () => {} }));
