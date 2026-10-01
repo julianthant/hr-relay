@@ -1,7 +1,7 @@
 # Dashboard theme tokens
 
 This guide records the reusable Tailwind v4 palette and type scale used by the Activity, Explorer,
-and Logs presentations. The canonical values and Tailwind theme mappings live in
+Logs, and Sessions presentations. The canonical values and Tailwind theme mappings live in
 `dashboard-theme.css`; use those definitions when changing tokens.
 
 ## Palette
@@ -47,12 +47,13 @@ utilities, so conditional size classes resolve by precedence instead of leaving 
 
 ## Current presentation seams
 
-The dashboard stylesheet imports this theme. Activity, Explorer, and Logs put `.ui-theme-scope` on
-their presentation roots and use the `ui-*`, typography, and `font-*` utilities. Consumers outside
-that scope keep their current styling; migrate other dashboard surfaces separately. Activity's
-`ActivityReport` host supplies `activity-fixture.ts` through the typed `ActivityViewState` seam.
-`WorkflowExplorer` supplies `explorer-fixture.ts` to `ExplorerTimeline`. The run panel's `LogSample`
-uses fictional `log-fixture.ts` data with `LogPanel` and `LogFeed`. These are local producers, not
+The dashboard stylesheet imports this theme. Activity, Explorer, Logs, and Sessions put
+`.ui-theme-scope` on their presentation roots and use the `ui-*`, typography, and `font-*` utilities.
+Consumers outside that scope keep their current styling; migrate other dashboard surfaces separately.
+Activity's `ActivityReport` host supplies `activity-fixture.ts` through the typed `ActivityViewState`
+seam. `WorkflowExplorer` supplies `explorer-fixture.ts` to `ExplorerTimeline`. The run panel's
+`LogSample` uses fictional `log-fixture.ts` data with `LogPanel` and `LogFeed`. `SessionPanel` supplies
+`sessions-fixture.ts` through `SessionsViewState` to `SessionsView`. These are local producers, not
 authoritative records; approved backend wiring replaces the producers while retaining the renderers,
 layouts, and interactions.
 
@@ -61,9 +62,12 @@ row: `text-page` values at 1024px and `text-workflow` values at wider desktop wi
 for labels, ordinary counts, and shared `RecordTable` values—including confirmed transactions,
 evidence coverage, and Run performance (12px / 18px, weight 400); `text-caption` for notes and
 metadata; and `text-section` for group headings. Keep metric values tabular; unavailable durations
-and evidence remain explicit. Explorer uses `text-workflow` for its title and `text-section` for
-major groups. Logs uses `text-heading` for step and panel titles, `text-body` for rows and supporting
-copy, and `text-caption` for timestamps and metadata.
+and evidence remain explicit. The Activity chart uses opaque bars. Explorer uses `text-workflow` for
+its title and `text-section` for major groups. Logs uses `text-heading` for step and panel titles,
+`text-body` for rows and supporting copy, and `text-caption` for timestamps, timeline labels and
+metadata. Its restored compact timeline uses equal-width 10px bars above the logs. Sessions uses
+`text-heading` for its panel label, `text-control` for workflow titles, `text-body` for current actions,
+and `text-caption` for state, subject, node count, system status and elapsed time.
 
 For Logs tables, use one opaque gray `ui-table` fill for each header and body. Leave tables open,
 keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed

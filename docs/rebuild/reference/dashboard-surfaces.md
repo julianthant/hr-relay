@@ -17,40 +17,50 @@ Verification details stay in a secondary disclosure; exact source jumps open it 
 An operator gate without a supported resolution packet remains held and names that unavailable
 ceremony. The shared renderer does not invent a generic approve command or decision payload.
 
-## Frontend-only Activity, Explorer and Logs amendment — 2026-10-01
+## Frontend-only Activity, Explorer, Logs and Sessions amendment — 2026-10-01
 
-The three canonical UI hosts use local fictional producers: `ActivityReport` feeds `ActivityView`
-through `ActivityViewState`; `WorkflowExplorer` feeds `ExplorerTimeline`; and the run panel mounts
-`LogSample` through `LogPanel` and `LogFeed`. No connected or duplicate presentation path remains;
-backend services and contracts remain. Queue, Activity, and Explorer share `ActionBar` and
-`ActionBarRow`. Explorer has no back control or `onBack` prop; shell navigation exits it.
+`ActivityReport` supplies fictional data to `ActivityView` through `ActivityViewState`; `WorkflowExplorer`
+supplies `ExplorerTimeline`; the run panel mounts `LogSample` through `LogPanel`, `LogFeed` and
+`LogTimeline`; and `SessionPanel` feeds `SessionsView` through `SessionsViewState`. Local fictional
+producers replace the connected presentation paths while backend services and contracts remain
+available. Queue, Activity and Explorer share `ActionBar`/`ActionBarRow`. Explorer has no back control
+or `onBack` prop; shell navigation exits it.
 
-Activity keeps four summary metrics in one row, with 20px values and reduced padding at 1024px and
-27px values at wider desktop widths. Its two report columns have equal width. The workflow table is
-framed; shared `RecordTable` renders confirmed transactions and evidence coverage, with evidence
-below transactions in the left column. Confirmed-transaction, evidence-coverage, and Run performance
-values share `text-body` styling (12px / 18px, weight 400). The adaptive chart and Run performance
-table occupy the right column. Chart bars use 75% of each interval; plot height adapts from 160px to
-224px with available width. Daily, hourly and long-range bins preserve interval semantics. Zero markers
-and empty states remain explicit. Geometry and axis labels respond to range, granularity and plot width. Tooltips
-anchor to and highlight active buckets, clamping within the plot. Pointer hover and keyboard focus
-are separate; Arrow, Home, End and Escape support bucket navigation.
+Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
+`RecordTable` renders confirmed transactions and evidence coverage beneath it in the left column, with
+shared `text-body` values (12px / 18px, weight 400). The adaptive chart and Run performance table sit
+on the right. Chart bars occupy 75% of each interval and are opaque; plot height adapts from 160px to
+224px. Range and granularity preserve interval semantics, explicit zero/empty states, responsive
+geometry and axis labels. Anchored, clamped tooltips and Arrow/Home/End/Escape bucket navigation remain.
+Loading shows skeletons and an accessible status without a visible caption. Performance rows are
+finished-run completion, longest measured run, total measured runtime and most common failure. Null
+duration/failure values remain unavailable; an empty failure list means “No failures”; an empty period
+has zero runtime and no finished-run rate.
 
-The performance rows are completion rate among finished runs, longest measured run, total measured
-runtime, and most common failure. Nullable duration and failure data remains unavailable; an empty
-failure list means “No failures,” and an empty period retains zero runtime without a finished-run
-rate. Logs retains its approved field tables/click rows, search/copy/latest controls, and end-of-step
-screenshots. Computations, connected identity/resolve/failure UI, run controls/status strip, tab band,
-capture gallery, and elapsed-time bar stay removed.
+Explorer retains workflow sources, branch previews and comments, with no registered-definition
+fallback or client request. Logs keeps its approved field tables, click rows, search/copy/latest controls
+and end-of-step screenshots. The compact timeline is directly above the logs: equal-width 10px bars,
+small state dots and labels, and explicit fictional durations. Completed, active and failed bars are
+solid, waiting is hatched and upcoming is outlined. A stage click clears search, scrolls to its
+confirmed-action heading and moves focus there. Computations, connected identity/resolve/failure UI,
+run controls/status strip, tab band, capture gallery, elapsed-time footer and timeline disclosures stay
+removed. Logs does not mount run-detail, section or capture requests.
 
-Activity export remains a visible placeholder. Explorer has no registered-definition fallback or
-client request; Logs does not mount run-detail, section, or capture requests. A separately scoped
-backend producer must validate authoritative projections, replace the local producers, and feed these
-same components while preserving the approved layouts and interactions. Activity query/export
-authority and Logs failure/resolve wiring remain deferred; migrate old connected-UI tests intentionally.
-Synthetic samples are never live authority. After the final table-typography update, four Activity
-browser journeys passed in both themes at 1024px and 1440px; scoped lint and build passed. The reusable
-palette and type scale are in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+Activity export remains a visible placeholder. A separately scoped backend producer must validate
+authoritative projections and feed these same components while preserving approved layouts and
+interactions. Activity query/export authority and Logs failure/resolve wiring remain deferred. Migrate
+old connected-UI tests intentionally; synthetic samples are never live authority. The reusable palette
+and type scale are in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+
+Sessions cards place the workflow/subject header first, the systems grid next, and the current action
+with its node timeline after that; elapsed time and controls finish the card. The grid has at most two
+columns of 32px tiles: one or an odd final system fills its row, while two systems share the row.
+Active cards stay below 250px tall. Each timeline segment represents a supplied node, and its
+completed/total count comes from that node array. The compact bar supports local scenarios and an Add
+workers preview dialog. Pause/resume/retry/stop controls change fixtures only; App no longer passes
+worker cards, pools, clock, connection/version or worker command dispatch to the UI. The former
+connected SessionPanel and timeline renderer are retired. Backend worker/browser authority remains a
+separate wiring task.
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that

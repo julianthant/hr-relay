@@ -603,3 +603,27 @@ complete. The [child's approved amendment](task-11-2-make-run-and-rerun-enqueue-
 owns the exact files, source/consent fences and proof. These exceptions supersede earlier blanket
 parent ownership of shared launch registration; accepted Sessions/preflight completion stands.
 Setup's allocation and preflight admission remain unchanged. No implementation is claimed here.
+
+### Frontend-only Sessions presentation amendment — 2026-10-01
+
+This amendment records the approved frontend replacement in deployment `activity-ui-20261001`; it
+does not revise the historical backend authority contracts or mark this phase task complete. The
+current `SessionPanel` supplies local fictional data through `SessionsViewState` to `SessionsView`.
+Its `SessionWorker.timeline` is an explicit `SessionNode[]` (`id`, `label`, `state`), rendered by
+`SessionTimeline` with one segment per node. The displayed completed/total count comes from that
+array and appears beside the worker's current action; the UI no longer guesses progress from
+completed/total stages.
+
+The Separations fixture uses the approved 22-node Explorer preview, with 11 complete at “Read the
+timecard”; the independent Person lookup preview has four nodes, with three complete. Pause/resume
+updates the active node state, retry resets the first node to active and the remainder to pending, and
+stop clears the timeline. All controls change fixtures only. The fixture imports the Explorer's local
+producer; Sessions makes no backend import or request.
+
+The card order is workflow/subject header, systems grid, divider with current action and node count,
+node segments, then elapsed-time/control footer. The grid has at most two columns of 32px tiles: one
+system or an odd final item fills its row, and two systems share a row. Active cards remain below 250px.
+App no longer passes worker cards, pools, clock, connection/version or worker command dispatch into
+this surface. The old connected SessionPanel and timeline renderer are retired; legacy/domain models
+and old connected-UI tests remain for deliberate future wiring and migration. The exact checks and
+retained limits are recorded in the [deployment evidence checkpoint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/activity-ui-2026-10-01/current-state.md).

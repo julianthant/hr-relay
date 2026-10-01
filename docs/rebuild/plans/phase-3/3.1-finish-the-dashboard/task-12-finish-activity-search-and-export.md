@@ -522,9 +522,10 @@ evidence sits below transactions in the left column. Four headline metrics stay 
 concise; the counting popover retains its terminal-run scope.
 
 The right column places an adaptive volume chart above a Run performance table. Bars use 75% of each
-interval; plot height adapts between 160px and 224px with available width, and the active bucket's
-highlighted tooltip anchors and clamps to the plot. Daily, hourly, long-range and empty states retain
-their interval semantics and keyboard access. The performance rows report finished-run completion,
+interval and are opaque; plot height adapts between 160px and 224px with available width, and the
+active bucket's highlighted tooltip anchors and clamps to the plot. Daily, hourly, long-range and
+empty states retain their interval semantics and keyboard access. Loading shows skeletons with an
+accessible status and no visible caption. The performance rows report finished-run completion,
 longest measured duration, total measured runtime and most common failure. Sample values are
 fictional (95%, 4m 41s, 1h 21m and Document read timeout in two runs).
 
