@@ -26,7 +26,7 @@ import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, SETTINGS_CATALOG } from "../../src/
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
 import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config/instance.js";
-import { CONFIG_ENV_BINDINGS, ConfigEnvBindingRegistrySchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
 import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 import { SettingsCurrentRecordSchema } from "../../src/domain/config/settings-current.js";
@@ -1556,11 +1556,9 @@ describe("strict config resolution", () => {
     assert.equal(config.annualDates.FY2027?.jobEndDate, "06/30/2027");
   });
 
-  it("P3 has no environment bindings and refuses any restored binding", () => {
-    assert.deepEqual(CONFIG_ENV_BINDINGS, []);
-    assert.equal(ConfigEnvBindingRegistrySchema.safeParse([{
-      env: "HRAUTO_DEFAULT_WORKERS", path: "concurrency.defaultWorkers", apply: (config: unknown) => config,
-    }]).success, false);
+  it("P3 refuses restored environment provenance in resolved settings", () => {
+    assert.equal(ConfigProvenanceSchema.safeParse("env").success, false);
+    assert.deepEqual(ConfigProvenanceSchema.options, ["settings", "default"]);
   });
 
   it("P4 ignores every migrated process environment key and rejects the old resolver signature", () => {

@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { DeletedRunRecordSchema } from "../../../src/domain/run/deleted-run.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
@@ -301,4 +301,19 @@ describe("same-item attempt history", () => {
     });
     assert.throws(() => query.read(run.envelope.runId, { limit: 25 }), /attempt-history-authority-collision/u);
   });
+});
+
+it("refuses malformed supplied cursors before reading authority or a run", () => {
+  const world = makeWorld(); cleanups.push(() => world.dispose());
+  const actualReader = sqliteRunReader(world.database, world.clock);
+  const read = vi.fn(actualReader.read); const reader = { ...actualReader, read };
+  const snapshot = vi.spyOn(world.database, "withAuthorityReadSnapshot");
+  const query = createItemAttemptHistoryQuery({ database: world.database, reader });
+  for (const json of ["{", "{}", "null"]) {
+    const result = query.read(uuidOf(890), { limit: 50, cursor: Buffer.from(json).toString("base64url") });
+    assert.equal(result.state, "refused"); if (result.state !== "refused") throw new Error("cursor not refused");
+    assert.equal(result.reason, "malformed-cursor");
+  }
+  assert.equal(snapshot.mock.calls.length, 0); assert.equal(read.mock.calls.length, 0);
+  snapshot.mockRestore();
 });

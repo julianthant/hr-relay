@@ -50,7 +50,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
   ...(boundary === "cli-json" ? [] : [
     { label: "nested-root", marker: "SYNTHETIC_SECRET_NEVER_REAL_10999999", event: "nested-root", field: "path component 1" },
   ]),
-  ])("withholds $label from $event / $field while naming the field", async (testCase) => {
+  ])("validates $label from $event / $field or refuses an unadmitted root before a doctor report", async (testCase) => {
     const { marker, event, field } = testCase;
     const repoRoot = mkdtempSync(join(tmpdir(), "hrauto-diagnostic-redaction-"));
     roots.push(repoRoot);
@@ -62,7 +62,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
     const stateRoot = join(repoRoot,
       event === "nested-root" ? join(marker, "state") : rebuildRuntimeIsolation.stateRoot);
     mkdirSync(stateRoot);
-    const authorityPath = join(stateRoot, "state.db");
+    const authorityPath = join(event === "nested-root" ? join(repoRoot, "owned", "state") : stateRoot, "state.db");
     const database = AuthorityDatabase.open({ path: authorityPath, busyTimeoutMs: 500, migrationOwner: "redaction-test" }, clock);
     database.authority.runs.enqueue(QUEUED_RUN);
     const e = QUEUED_RUN.envelope;
@@ -127,6 +127,22 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
       stateRootTrustAnchor: repoRoot, stateRoot, authorityPath,
       backupDirectory: join(stateRoot, "backups", "authority"), maxBackupAgeMs: 60_000, busyTimeoutMs: 500,
     };
+    if (event === "nested-root") {
+      const expected = boundary === "doctor"
+        ? "runtime-admission: storage doctor roots differ from active locator"
+        : "runtime-admission: unsafe synthetic fixture ancestor";
+      await assert.rejects(async () => boundary === "doctor"
+        ? doctorAuthorityStorage(doctorOptions, clock)
+        : buildStorageDoctor({ admission: syntheticStateRoot(doctorOptions.stateRoot), doctorOptions, clock,
+          serviceState: () => ({ state: "never-run", reason: "test has no backup service" }) }),
+      (error: unknown) => {
+        assert.ok(error instanceof Error);
+        assert.equal(error.message, expected);
+        assert.equal(error.message.includes(marker), false);
+        return true;
+      });
+      return;
+    }
     let output: string;
     if (boundary === "cli-json") {
       const result = await composeStorageCommand(rebuildRuntimeIsolation, ["doctor", "--json"], clock, repoRoot);
@@ -159,7 +175,7 @@ describe.each(["doctor", "browser-wire", "cli-json"] as const)("storage diagnost
       }
       assert.equal(diagnostic.includes(marker), false);
       assert.equal(diagnostic.includes(field), true);
-    } else if (event === "schema-key" || event === "schema-field" || event === "nested-root") {
+    } else if (event === "schema-key" || event === "schema-field") {
       assert.match(output, /span-stream-invalid/u);
       if (event === "schema-key" || event === "schema-field") assert.match(output, /timeline-record-invalid/u);
     } else assert.match(output, /span_stream/u);

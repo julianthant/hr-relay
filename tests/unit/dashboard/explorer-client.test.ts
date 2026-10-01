@@ -534,3 +534,8 @@ it("omits cleared optional Archive filters and cursor instead of serializing und
   assert.equal(calls[0]?.url, "http://bff.test/api/v1/archive/groups");
   assert.equal(calls[1]?.url, "http://bff.test/api/v1/archive/reports?limit=50");
 });
+
+it("marks malformed Archive JSON as invalid rather than a valid empty scope", () => {
+  const route = parseRoute(`?archive=&archiveBrowse=${encodeURIComponent("{")}`);
+  assert.equal(route.archiveBrowseInvalid, true); assert.equal(route.archiveBrowse, undefined);
+});

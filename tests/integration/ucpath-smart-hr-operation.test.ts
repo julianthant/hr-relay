@@ -341,7 +341,7 @@ describe("SS Smart HR transaction scan", () => {
     assert.doesNotMatch(scan.reason, /rendered neither a result row/u);
   });
 
-  it("redacts transaction ids when the keyed auto-drill reread resolves another transaction", async () => {
+  it("retains transaction ids in the refusal when the keyed auto-drill reread resolves another transaction", async () => {
     const requestedId = "T009000001";
     const renderedId = "T009000999";
     const scan = await scanTerminationTransactionsOnPage(
@@ -352,9 +352,9 @@ describe("SS Smart HR transaction scan", () => {
 
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
-    assert.match(scan.reason, /\[transaction identifier removed\]/u);
-    assert.doesNotMatch(scan.reason, new RegExp(requestedId, "u"));
-    assert.doesNotMatch(scan.reason, new RegExp(renderedId, "u"));
+    assert.match(scan.reason, /refusing to read one transaction as another/u);
+    assert.ok(scan.reason.includes(requestedId));
+    assert.ok(scan.reason.includes(renderedId));
   });
 
   it("refuses a co-present result row and auto-drilled detail as an ambiguous settlement", async () => {
@@ -752,7 +752,7 @@ describe("SS Smart HR transaction scan", () => {
 
   it("marks unreadable failures outside settlement as diagnostic capture not attempted", async () => {
     const page = {
-      goto: async () => { throw new Error("search page navigation failed"); },
+      goto: async () => { throw new Error(`search page navigation failed for ${EID}, suffix ${String(EID).slice(-4)}, transaction T1234567`); },
     } as unknown as Page;
 
     const scan = await scanTerminationTransactionsOnPage(page, { emplId: EID }, OBSERVED_AT);
@@ -760,6 +760,8 @@ describe("SS Smart HR transaction scan", () => {
     assert.equal(scan.state, "unreadable");
     if (scan.state !== "unreadable") return;
     assert.match(scan.reason, /search page navigation failed/u);
+    assert.ok(scan.reason.includes(String(EID)));
+    assert.ok(scan.reason.includes("transaction T1234567"));
     assert.deepEqual(scan.diagnostic, {
       state: "not-attempted",
       cause: "not-indeterminate-settlement",

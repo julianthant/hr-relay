@@ -9,10 +9,9 @@
  *    proof/failure refs, exclusions, and an explicit confidence. `done`
  *    requires all mandatory evidence and no unresolved write/subject/storage
  *    condition — proven by violating fixtures, not only by a happy path.
- * 2. **Redaction.** The receipt is built from declared classifications, and no
- *    env value, cookie, storage state, or raw SSN reaches it. Canaries are
- *    pushed through the real classification path, so a transform that started
- *    passing values through would fail here rather than in production.
+ * 2. **Classified values.** Current receipts retain complete supplied values
+ *    and their original declared classifications. Undeclared leaves and malformed
+ *    declarations refuse; values not supplied by evidence are never invented.
  *
  * The classification-coverage arm is what keeps half 2 honest as the program
  * grows: it walks EVERY registered descriptor's canonical-input samples and
@@ -318,14 +317,15 @@ describe("evidence receipt — strictness", () => {
       assert.equal(fact.source.resolvedAt, GATE_RESOLVED_AT);
     }
 
-    // The gate keeps the classified transform and the approved EID.
+    // The gate retains the complete approved EID and its classification.
     const eid = gateFacts.find((fact) => fact.field === "eid");
     assert.ok(eid !== undefined && eid.state === "satisfied");
-    assert.equal(eid.value.state, "transformed");
     const approvedEid = String(
       (evidence.gateResults[0] as { result: { value: { eid: string } } }).result.value.eid,
     );
-    assert.equal(eid.value.rawValue, approvedEid);
+    assert.deepEqual(eid.value, {
+      state: "allowed", key: "eid", classification: "direct-identifier", transform: "allow", value: approvedEid,
+    });
   });
 
   it("refuses a foreign gate row, an undeclared arm, and a gate that left the graph", () => {
@@ -456,38 +456,37 @@ const CANARIES = Object.freeze({
 });
 
 describe("evidence receipt — redaction", () => {
-  it("never lets a real receipt carry a secret, cookie, storage-state, or SSN value", () => {
+  it("never invents unsupplied secret, cookie, storage-state, or SSN values", () => {
     const serialized = JSON.stringify(kualiReceipt());
     for (const [name, canary] of Object.entries(CANARIES)) {
-      assert.ok(!serialized.includes(canary), `receipt leaked the ${name} canary`);
+      assert.ok(!serialized.includes(canary), `receipt invented the unsupplied ${name} canary`);
     }
   });
 
-  it("emits the original value alongside the declared transform", () => {
+  it("retains the complete supplied value and its original classification", () => {
     const scope = EvidenceValueScopeSchema.parse({ kind: "workflow-input", workflowId: "person-lookup" });
-    // `emplId` retains its direct-identifier/last4 classification.
     const redacted = redactEvidenceLeaf(scope, { path: "emplId", field: "emplId", value: CANARIES.ssn });
     assert.deepEqual(redacted, {
-      state: "transformed",
+      state: "allowed",
       key: "emplId",
       classification: "direct-identifier",
-      transform: "last4",
-      value: "6789",
-      rawValue: CANARIES.ssn,
+      transform: "allow",
+      value: CANARIES.ssn,
     });
     assert.ok(JSON.stringify(redacted).includes(CANARIES.ssn));
   });
 
-  it("refuses a transform the classification does not permit", () => {
+  it("admits complete values for every classification and refuses malformed declarations", () => {
     const scope = EvidenceValueScopeSchema.parse({ kind: "workflow-input", workflowId: "person-lookup" });
-    for (const classification of ["secret", "credential-file", "direct-identifier", "sensitive-hr"] as const) {
-      assert.equal(
-        EvidenceFieldClassificationSchema.safeParse({
-          scope, path: "leaked", classification, transform: "allow",
-        }).success,
-        false,
-        `${classification} was allowed to pass a value through untouched`,
-      );
+    for (const classification of ["secret", "credential-file", "direct-identifier", "sensitive-hr", "safe-diagnostic"] as const) {
+      const declaration = { scope, path: "supplied", classification, transform: "allow" };
+      assert.deepEqual(EvidenceFieldClassificationSchema.parse(declaration), declaration);
+      for (const invalid of [
+        { ...declaration, classification: "undeclared-classification" },
+        { ...declaration, transform: "undeclared-transform" },
+        { ...declaration, scope: { kind: "undeclared-scope", workflowId: "person-lookup" } },
+        { ...declaration, undeclared: true },
+      ]) assert.equal(EvidenceFieldClassificationSchema.safeParse(invalid).success, false);
     }
   });
 

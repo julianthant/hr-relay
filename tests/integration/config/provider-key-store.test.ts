@@ -299,3 +299,15 @@ store.apply(JSON.parse(json));
     assert.equal(f.store().read().state, "pending-after-rename");
   });
 });
+
+it("accepts only ENOENT for virgin optional metadata and refuses access failure", () => {
+  const f = fixture();
+  assert.equal(f.store().read().state, "virgin");
+  const original = fs.lstatSync;
+  vi.spyOn(fs, "lstatSync").mockImplementation(((path: unknown, options: unknown) => {
+    if (String(path) === `${f.envPath}.meta`) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return original(path as string, options as never);
+  }));
+  syncBuiltinESMExports();
+  refusal(() => f.store().read(), "metadata-unavailable");
+});

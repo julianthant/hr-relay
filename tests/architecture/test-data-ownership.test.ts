@@ -2,8 +2,8 @@
  * D341 — test inputs have one owner each and the private half never leaks.
  *
  * 1. Cross-tier code never imports unit-only fixtures or helpers.
- * 2. Shared fixtures and helpers import no private-input, credential, `.env`,
- *    database or browser seam, so importing one stays pure.
+ * 2. Shared imports have no private-input or runtime effects; recorded capabilities
+ *    remain deferred. Executable process fixtures are child entrypoints only.
  * 3. The tracked shared inputs are visible to git, the private file is ignored,
  *    the example carries placeholders only, and every declared shared file is a
  *    tracked file inside the repository.
@@ -14,6 +14,7 @@ import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync, realpathSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { describe, it } from "vitest";
+import ts from "typescript";
 import { TEST_DATA_CONFIG_PATH, TEST_DATA_LOCAL_CONFIG_PATH, TEST_DATA_LOCAL_EXAMPLE_PATH } from "../../src/domain/test-data.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -42,11 +43,11 @@ const RECORDED_PARITY_COMPAT_IMPORTS: readonly { importer: string; module: strin
 ];
 const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/fixtures/preflight/corpus.ts",
-  "tests/fixtures/worker-browser-control-cli.ts",
   "tests/helpers/synthetic-storage-admission.ts",
+  "tests/helpers/admission-fixture.ts",
 ]);
 const SHARED_ROOTS = ["tests/fixtures", "tests/helpers"];
-const CROSS_TIER_ROOTS = ["tests/scenario", "tests/integration", "tests/parity", "tests/fixtures", "tests/helpers", "scripts", "src"];
+const CROSS_TIER_ROOTS = ["tests/scenario", "tests/integration", "tests/parity", "tests/fixtures", "tests/helpers", "tests/process-fixtures", "scripts", "src"];
 /** Seams a shared fixture may never touch at import time. */
 const FORBIDDEN_SHARED_IMPORTS: readonly RegExp[] = [
   /src\/control\/test-data\.js$/u,
@@ -63,15 +64,133 @@ function sourceFiles(roots: readonly string[]): string[] {
   return gitVisibleFiles(roots).filter((path) => /\.(?:ts|tsx|mts|js|mjs)$/u.test(path) && !path.endsWith(".d.ts"));
 }
 
-function importsOf(path: string): { specifier: string; resolved: string }[] {
-  const text = readFileSync(join(REPO_ROOT, path), "utf8");
-  const found: { specifier: string; resolved: string }[] = [];
-  for (const match of text.matchAll(IMPORT_SPECIFIER)) {
+function importsFromText(path: string, text: string): { specifier: string; resolved: string }[] {
+  return [...text.matchAll(IMPORT_SPECIFIER)].map((match) => {
     const specifier = match[1] ?? "";
-    const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
-    found.push({ specifier, resolved });
-  }
+    return { specifier, resolved: specifier.startsWith(".")
+      ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier };
+  });
+}
+function importsOf(path: string) {
+  return importsFromText(path, readFileSync(join(REPO_ROOT, path), "utf8"));
+}
+
+const DEFERRED_CAPABILITIES = [
+  { importer: "tests/helpers/admission-fixture.ts", module: "src/infra/config/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/infra/config/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/infra/config/credential-test-data-migration.js", symbol: "migrateTestDataFromCredentials" },
+  { importer: "tests/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
+] as const;
+const PROCESS_ENTRYPOINTS = [
+  { file: "worker-browser-control-cli.ts", consumers: ["tests/parity/helpers/session-runtime.ts", "tests/integration/server/worker-browser-control-process.test.ts"] },
+  { file: "worker-stub-cli.ts", consumers: ["tests/integration/server/worker-pool-parallel-proof.test.ts"] },
+  { file: "runtime-lock-contender.ts", consumers: ["tests/integration/storage-restore-drill.test.ts"] },
+] as const;
+
+function parseSource(path: string, text: string) {
+  return ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+}
+function ancestors(node: ts.Node): ts.Node[] {
+  const found: ts.Node[] = [];
+  for (let parent = node.parent; parent !== undefined; parent = parent.parent) found.push(parent);
   return found;
+}
+function insideDeferredBody(node: ts.Node): boolean {
+  const parents = ancestors(node);
+  const functions = parents.filter(ts.isFunctionLike);
+  if (functions.length === 0) return false;
+  return !functions.some((fn) => {
+    // An inline callback/IIFE passed to an eager top-level call is still eager.
+    const outer = ancestors(fn);
+    return outer.some((parent) => ts.isCallExpression(parent) || ts.isNewExpression(parent))
+      && !outer.some(ts.isFunctionLike);
+  });
+}
+function capabilityViolations(path: string, text: string): string[] {
+  const source = parseSource(path, text);
+  const failures: string[] = [];
+  function rejectDynamicCapability(node: ts.Node) {
+    if (ts.isCallExpression(node) && node.expression.kind === ts.SyntaxKind.ImportKeyword
+      && node.arguments[0] !== undefined && ts.isStringLiteral(node.arguments[0])) {
+      const specifier = node.arguments[0].text;
+      const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
+      if (FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) failures.push(`${path}: dynamic capability import`);
+    }
+    ts.forEachChild(node, rejectDynamicCapability);
+  }
+  rejectDynamicCapability(source);
+  for (const declaration of source.statements) {
+    if (!(ts.isImportDeclaration(declaration) || ts.isExportDeclaration(declaration))
+      || declaration.moduleSpecifier === undefined || !ts.isStringLiteral(declaration.moduleSpecifier)) continue;
+    const specifier = declaration.moduleSpecifier.text;
+    const resolved = specifier.startsWith(".") ? relative(REPO_ROOT, resolve(REPO_ROOT, dirname(path), specifier)) : specifier;
+    if (!FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) continue;
+    if ((ts.isExportDeclaration(declaration) && declaration.isTypeOnly)
+      || (ts.isImportDeclaration(declaration) && declaration.importClause?.isTypeOnly)) continue;
+    const allowed = DEFERRED_CAPABILITIES.filter((entry) => entry.importer === path && entry.module === resolved);
+    if (allowed.length === 0) { failures.push(`${path} -> ${specifier}`); continue; }
+    if (ts.isExportDeclaration(declaration)) {
+      if (declaration.exportClause !== undefined || resolved === "playwright") failures.push(`${path}: unrecorded capability reexport`);
+      continue;
+    }
+    const clause = declaration.importClause;
+    if (clause?.name !== undefined || clause?.namedBindings === undefined || !ts.isNamedImports(clause.namedBindings)) {
+      failures.push(`${path}: capability must use exact named imports`); continue;
+    }
+    for (const binding of clause.namedBindings.elements) {
+      if (binding.isTypeOnly) continue;
+      const symbol = binding.propertyName?.text ?? binding.name.text;
+      if (!allowed.some((entry) => entry.symbol === symbol)) { failures.push(`${path}: unrecorded ${symbol}`); continue; }
+      const deferredOwners = new Set<string>();
+      function visit(node: ts.Node) {
+        if (ts.isIdentifier(node) && node.text === binding.name.text && node !== binding.name && node !== binding.propertyName
+          && !ancestors(node).some(ts.isTypeNode)) {
+          if (!insideDeferredBody(node)) failures.push(`${path}: eager ${symbol}`);
+          for (const parent of ancestors(node)) {
+            if (ts.isFunctionDeclaration(parent) && parent.name !== undefined) deferredOwners.add(parent.name.text);
+            if (ts.isVariableDeclaration(parent) && ts.isIdentifier(parent.name) && parent.initializer !== undefined
+              && (ts.isArrowFunction(parent.initializer) || ts.isFunctionExpression(parent.initializer))) deferredOwners.add(parent.name.text);
+          }
+          if (symbol === "chromium") {
+            const call = node.parent;
+            if (!ts.isCallExpression(call) || !ts.isPropertyAccessExpression(call.expression)
+              || call.expression.expression.getText(source) !== "vi" || call.expression.name.text !== "spyOn"
+              || call.arguments[0] !== node || call.arguments.length !== 2
+              || !ts.isStringLiteral(call.arguments[1]) || !["launch", "launchPersistentContext"].includes(call.arguments[1].text)) {
+              failures.push(`${path}: chromium must only install launch refusal spies`);
+            }
+          }
+        }
+        ts.forEachChild(node, visit);
+      }
+      visit(source);
+      let added = true;
+      while (added) {
+        added = false;
+        function checkEagerOwner(node: ts.Node) {
+          if (ts.isIdentifier(node) && deferredOwners.has(node.text)
+            && !ancestors(node).some((parent) => ts.isImportDeclaration(parent) || ts.isExportDeclaration(parent))
+            && !(ts.isFunctionDeclaration(node.parent) && node.parent.name === node)
+            && !(ts.isVariableDeclaration(node.parent) && node.parent.name === node)
+            && !ancestors(node).some(ts.isTypeNode)) {
+            if (!insideDeferredBody(node)) failures.push(`${path}: eager capability owner ${node.text}`);
+            for (const parent of ancestors(node)) {
+              if (ts.isFunctionDeclaration(parent) && parent.name !== undefined && !deferredOwners.has(parent.name.text)) {
+                deferredOwners.add(parent.name.text); added = true;
+              }
+            }
+          }
+          ts.forEachChild(node, checkEagerOwner);
+        }
+        checkEagerOwner(source);
+      }
+    }
+  }
+  return failures;
+}
+function processImportViolations(path: string, text: string): string[] {
+  return importsFromText(path, text).filter(({ resolved }) => resolved.startsWith("tests/process-fixtures/"))
+    .map(({ resolved }) => `${path} -> ${resolved}`);
 }
 
 function isIgnored(path: string): boolean {
@@ -121,12 +240,63 @@ describe("D341 test-data ownership", () => {
     }
   });
 
+  it("process fixtures are exactly recorded child entrypoints and cannot be imported", () => {
+    const files = sourceFiles(["tests", "scripts", "src"]);
+    assert.deepEqual(sourceFiles(["tests/process-fixtures"]).map((path) => path.split("/").at(-1)).toSorted(),
+      PROCESS_ENTRYPOINTS.map((entry) => entry.file).toSorted());
+    assert.deepEqual(files.filter((path) => path !== "tests/architecture/test-data-ownership.test.ts").flatMap((path) => processImportViolations(path, readFileSync(join(REPO_ROOT, path), "utf8"))), []);
+    for (const entry of PROCESS_ENTRYPOINTS) {
+      const consumers = files.filter((path) => path !== "tests/architecture/test-data-ownership.test.ts" && !path.startsWith("tests/process-fixtures/")
+        && readFileSync(join(REPO_ROOT, path), "utf8").includes(entry.file));
+      assert.deepEqual(consumers.toSorted(), [...entry.consumers].toSorted(), entry.file);
+      for (const path of consumers) assert.match(readFileSync(join(REPO_ROOT, path), "utf8"), /process-fixtures/u);
+    }
+    assert.equal(processImportViolations("tests/helpers/violation.ts", 'import "../process-fixtures/worker-stub-cli.js";').length, 1);
+  });
+
+  it("recorded credential capabilities are deferred producer functions", () => {
+    for (const entry of DEFERRED_CAPABILITIES) {
+      if (entry.module === "playwright") continue;
+      const path = entry.module.replace(/\.js$/u, ".ts");
+      const source = parseSource(path, readFileSync(join(REPO_ROOT, path), "utf8"));
+      const producer = source.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === entry.symbol);
+      assert.ok(producer !== undefined && ts.isFunctionDeclaration(producer) && producer.body !== undefined, `${path}:${entry.symbol}`);
+      const declarationName = producer.name;
+      function rejectEagerProducer(node: ts.Node) {
+        if (ts.isIdentifier(node) && node.text === entry.symbol && node !== declarationName
+          && !ancestors(node).some(ts.isTypeNode)) assert.ok(insideDeferredBody(node), `${path}: eager producer ${entry.symbol}`);
+        ts.forEachChild(node, rejectEagerProducer);
+      }
+      rejectEagerProducer(source);
+      assert.equal(capabilityViolations(entry.importer, readFileSync(join(REPO_ROOT, entry.importer), "utf8")).length, 0);
+    }
+  });
+
+  it("capability checks reject eager calls, aliases, namespaces, unlisted symbols and IIFEs", () => {
+    const path = "tests/helpers/admission-fixture.ts";
+    const prefix = 'import { createCredentialStore as factory } from "../../src/infra/config/credential-store.js";';
+    assert.deepEqual(capabilityViolations(path, `${prefix} export function fixture() { return factory({}); }`), []);
+    for (const suffix of ['factory({});', 'new factory({});', 'const alias = factory;', '(() => factory({}))();',
+      'function fixture() { return factory({}); } fixture();', '[1].map(() => factory({}));',
+      'const fixture = () => factory({}); fixture();',
+      'function inner() { return factory({}); } function outer() { return inner(); } outer();']) {
+      assert.ok(capabilityViolations(path, `${prefix} ${suffix}`).length > 0, suffix);
+    }
+    assert.ok(capabilityViolations(path, 'import * as credential from "../../src/infra/config/credential-store.js";').length > 0);
+    assert.ok(capabilityViolations(path, 'import { unlisted } from "../../src/infra/config/credential-store.js";').length > 0);
+    assert.ok(capabilityViolations(path, 'import("../../src/infra/config/credential-store.js");').length > 0);
+    const corpus = "tests/fixtures/preflight/corpus.ts";
+    assert.deepEqual(capabilityViolations(corpus, 'import { chromium } from "playwright"; function test() { vi.spyOn(chromium, "launch"); }'), []);
+    assert.ok(capabilityViolations(corpus, 'import { chromium } from "playwright"; function test() { chromium.launch(); }').length > 0);
+  });
+
   it("shared fixtures and helpers stay pure at import", () => {
     const files = sourceFiles(SHARED_ROOTS);
     assert.ok(files.length > 10, "shared fixtures exist");
     const violations: string[] = [];
     const observedResourceHarnesses = new Set<string>();
     for (const path of files) {
+      violations.push(...capabilityViolations(path, readFileSync(join(REPO_ROOT, path), "utf8")));
       for (const { specifier, resolved } of importsOf(path)) {
         if (FORBIDDEN_SHARED_IMPORTS.some((pattern) => pattern.test(resolved) || pattern.test(specifier))) {
           if (SHARED_RESOURCE_HARNESSES.has(path)) observedResourceHarnesses.add(path);

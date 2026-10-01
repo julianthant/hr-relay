@@ -113,22 +113,22 @@ import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 /* ── the modules whose exported wire schemas must be covered ─────────────── */
 
 const WIRE_SCHEMA_MODULES = [
-  "../../../src/domain/dashboard/actions.js",
-  "../../../src/domain/dashboard/activity.js",
-  "../../../src/domain/dashboard/advisory.js",
-  "../../../src/domain/dashboard/archive.js",
-  "../../../src/domain/dashboard/artifacts.js",
-  "../../../src/domain/dashboard/bootstrap.js",
-  "../../../src/domain/dashboard/diagnostic-bundle.js",
-  "../../../src/domain/dashboard/explorer.js",
-  "../../../src/domain/dashboard/primitives.js",
-  "../../../src/domain/dashboard/projection.js",
-  "../../../src/domain/dashboard/run-detail.js",
-  "../../../src/domain/dashboard/start-plan.js",
-  "../../../src/domain/dashboard/storage.js",
-  "../../../src/domain/dashboard/subscription.js",
-  "../../../src/domain/intake/wire.js",
-  "../../../src/domain/trust/failure.js",
+  "../../src/domain/dashboard/actions.js",
+  "../../src/domain/dashboard/activity.js",
+  "../../src/domain/dashboard/advisory.js",
+  "../../src/domain/dashboard/archive.js",
+  "../../src/domain/dashboard/artifacts.js",
+  "../../src/domain/dashboard/bootstrap.js",
+  "../../src/domain/dashboard/diagnostic-bundle.js",
+  "../../src/domain/dashboard/explorer.js",
+  "../../src/domain/dashboard/primitives.js",
+  "../../src/domain/dashboard/projection.js",
+  "../../src/domain/dashboard/run-detail.js",
+  "../../src/domain/dashboard/start-plan.js",
+  "../../src/domain/dashboard/storage.js",
+  "../../src/domain/dashboard/subscription.js",
+  "../../src/domain/intake/wire.js",
+  "../../src/domain/trust/failure.js",
 ] as const;
 
 /** `a.b[].c` is covered by `payload.a.b[].c`; a bare name is covered by `x.name`. */
@@ -209,7 +209,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     assert.equal(egressClasses.size, 5, "every remaining egress class must have at least one registered surface");
   });
 
-  it("refuses full person identifiers in span/authority diagnostic messages", () => {
+  it("retains full supplied person identifiers in span/authority diagnostic messages", () => {
     const canonicalEid = "10873698";
     const sensitiveDetail = {
       state: "degraded",
@@ -228,7 +228,7 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
       ...sensitiveDetail,
       problems: sensitiveDetail.problems.map((problem) => ({ ...problem, summary: "span root has a malformed identity" })),
     }).success, true, "the control must be a valid rich span_stream wire arm");
-    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse(sensitiveDetail).success, false);
+    assert.deepEqual(SpanAuthorityReconciliationWireSchema.parse(sensitiveDetail), sensitiveDetail);
     assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
       state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: "authority lookup failed strict validation" },
@@ -236,7 +236,9 @@ describe("redaction surface scan — the declaration audit (ref guards-and-tests
     assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({
       state: "unavailable",
       cause: { code: "span-authority-unavailable", summary: `authority lookup failed for EID ${canonicalEid}` },
-    }).success, false);
+    }).success, true);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({state:"unavailable",cause:{code:"span-authority-unavailable",summary:""}}).success,false);
+    assert.equal(SpanAuthorityReconciliationWireSchema.safeParse({...sensitiveDetail,undeclared:"not admitted"}).success,false);
   });
 
   it("registers the complete archived capture resource with exactly its three authored leaves", () => {

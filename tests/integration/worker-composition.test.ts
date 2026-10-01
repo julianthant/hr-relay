@@ -1,3 +1,4 @@
+import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
@@ -52,8 +53,8 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
-import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
+import { createCredentialStore } from "../helpers/admission-fixture.js";
+import { AuthorityDatabase } from "../helpers/admission-fixture.js";
 import { taskStoreRegistry } from "../../src/stores/index.js";
 import {
   observeProcessIdentity,
@@ -91,7 +92,11 @@ const openDatabases: AuthorityDatabase[] = [];
 
 afterEach(() => {
   for (const database of openDatabases.splice(0)) database.close();
-  for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
+  releaseAdmissionFixtures();
+  for (const root of roots.splice(0)) {
+    releaseAdmissionFixture(root);
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 const NOW = "2026-08-03T09:00:00.000Z";
@@ -111,7 +116,7 @@ function seedQueuedRun(
   stateRoot: string,
   clock: TestClock,
   run: Record<string, unknown>,
-  resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock),
+  resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }),
 ): void {
   const database = AuthorityDatabase.open(
     { path: join(stateRoot, "state.db"), busyTimeoutMs: 250, migrationOwner: "unit-test" },
@@ -171,7 +176,7 @@ function ensureBaselineRuntimeConfig(repoRoot: string, clock: TestClock): void {
   try {
     database.withAuthorityTransaction((repositories) => {
       if (repositories.runtimeConfig.get() !== undefined) return;
-      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock);
+      const resolved = resolveConfigWithProvenance({}, hostConfigFacts({}), clock, { stateRoot: join(repoRoot, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(repoRoot, rebuildRuntimeIsolation.artifactRoot) });
       const baseline = initialSettingsFileRecord();
       const configSnapshotId = "66666666-6666-4666-8666-666666666666";
       repositories.configSnapshots.insert({
@@ -227,7 +232,7 @@ function persistJournaledWorkerSettings(
   try {
     journalWorkerSettings(database, persisted, stateRoot);
     const record = readSettings(database.authority);
-    const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
+    const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
     database.withAuthorityTransaction((repositories) => {
       const configSnapshotId = "55555555-5555-4555-8555-555555555555";
       repositories.configSnapshots.insert({
@@ -259,7 +264,7 @@ function journalWorkerSettings(
 ): void {
   const clock = manualClock(new Date(NOW));
   const result = executeSettingsCommand({ authority: database, clock, ids: sequentialIdFactory("4"),
-    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), createCredentialStore({ stateRoot })) }, persisted.command);
+    settings: createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), createCredentialStore({ stateRoot })) }, persisted.command);
   assert.equal(result.state, "applied");
 }
 
@@ -420,6 +425,7 @@ function composeInput(options: Readonly<{
     env: {},
     clock: options.clock,
     ids: sequentialIdFactory("c"),
+    admission: fixtureAdmission(options.repoRoot),
     repoRoot: options.repoRoot,
     processId: options.processId ?? 4242,
     processIdentityObserver: fixtureProcessIdentityObserver,
@@ -672,7 +678,7 @@ describe("composed worker runtime", () => {
         stateRoot,
         clock,
         personLookupQueuedRun(),
-        resolveConfigWithProvenance({ browser: { headless: false } }, hostConfigFacts({}), clock),
+        resolveConfigWithProvenance({ browser: { headless: false } }, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }),
       );
 
       await assert.rejects(
@@ -703,7 +709,7 @@ describe("composed worker runtime", () => {
       stateRoot,
       clock,
       personLookupQueuedRun(),
-      resolveConfigWithProvenance({ timeouts: { sessionAcquireMs: 1 } }, hostConfigFacts({}), clock),
+      resolveConfigWithProvenance({ timeouts: { sessionAcquireMs: 1 } }, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }),
     );
     const neverOpeningSessions: SessionFactoryHarness = {
       ...happySessionHarness(),
@@ -1135,7 +1141,7 @@ describe("composed worker runtime", () => {
     const running = composeWorkerRuntime(composeInput({
       repoRoot, clock, sessions, stopSignal: stop.signal, poolIndex: POOL_INDEX_1,
     }));
-    await driverStarted;
+    await Promise.race([driverStarted, running.then(() => { throw new Error("worker settled before driver start"); })]);
     stop.abort(new Error("operator pressed Ctrl-C"));
     const report = await running;
 
@@ -1229,7 +1235,7 @@ describe("D331 settings apply during a production worker claim", () => {
     spans.emit(runQueuedSpanEvent({ run: queued, actorId: ActorIdSchema.parse("local-operator"), title: "Synthetic claim fixture" }));
     const credentials = createCredentialStore({ stateRoot });
     const { kernel } = kernelHarness({ database, clock, settings: createSettingsApplicationExecutor(
-      (settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock), credentials) });
+      (settings) => resolveConfigWithProvenance(settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") }), credentials) });
     const source = createCredentialSecretSource(credentials);
     const applyProtected = (value: string, revision: number) => kernel.execute({
       commandId: nextCommandId(), requestedAt: NOW, requestedBy: "local-operator", source: "settings-surface",
@@ -1539,7 +1545,7 @@ it("F composed dashboard reads active settings after boot through real HTTP", as
  const clock = manualClock(new Date(NOW));
  for (const name of ["package.json", "package-lock.json"])
   writeFileSync(join(repoRoot, name), readFileSync(join(process.cwd(), name)));
- const dashboard = await composeDashboardRuntime({ isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
+ const dashboard = await composeDashboardRuntime({ admission: installationAdmission(repoRoot), isolation: rebuildRuntimeIsolation, repoRoot, env: {}, clock,
   backendPortOverride: 0, frontendPortOverride: 0 });
  try {
   const database = reopen(stateRoot, clock);
@@ -1550,7 +1556,7 @@ it("F composed dashboard reads active settings after boot through real HTTP", as
   const settings = persistUnjournaledWorkerSettings(repoRoot, clock, { display: { screenWidth: 1980, screenHeight: 1080 } });
   journalWorkerSettings(database, settings, stateRoot);
   const record = readSettings(database.authority);
-  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
+  const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock, { stateRoot, artifactRoot: join(stateRoot, "artifacts") });
   database.authority.configSnapshots.insert({ configSnapshotId: UUID_7, revision: 1,
    fingerprint: resolved.fingerprint, config: resolved.config, provenance: resolved.provenance,
    capturedAt: NOW, capturedBy: "local-operator" });

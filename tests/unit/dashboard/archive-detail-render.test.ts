@@ -221,11 +221,12 @@ describe("the frozen log line (AR163)", () => {
   });
 });
 
+import { SavedArchiveReportWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { SavedArchiveReport } from "../../../src/dashboard/surfaces/archive-report.js";
 import { FIXTURE_SAVED_REPORT } from "../../parity/helpers/fixture-archive.js";
 it("renders every generic section without a current workflow and exposes no relaunch control", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...FIXTURE_SAVED_REPORT, files: [] } }));
-  for (const value of ["Saved facts", "Saved work", "Historical note", "No additional evidence was retained.", "Not recorded", "retired-synthetic-workflow"]) assert.ok(html.includes(value), value);
+  for (const value of ["Saved facts", "Saved work", "Historical note", "No additional evidence was retained.", "Not recorded", "Synthetic person", "Verified", "Null"]) assert.ok(html.includes(value), value);
   assert.doesNotMatch(html, /Relaunch|Retry|Restart/);
   assert.doesNotMatch(markup(), /Relaunch on v/);
 });
@@ -235,5 +236,69 @@ import { H_REPORT } from "../../parity/helpers/fixture-archive-report.js";
 it("renders captured resolution as text without a relaunch or resolution control", () => {
   const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...H_REPORT, files: [] } }));
   assert.match(html, /Captured approval/u);
-  assert.doesNotMatch(html, /<button|relaunch-archived-run|Restart|Retry/u);
+  assert.doesNotMatch(html, /relaunch-archived-run|Restart|Retry|Resolve|Approve/u);
+  assert.match(html, /aria-label="Workflow details"/u);
+});
+
+
+describe("lossless frozen report presentation", () => {
+  it("retains every section kind, field, order and scalar for an unregistered workflow", () => {
+    const report = SavedArchiveReportWireSchema.parse({ ...H_REPORT, files: [], sections: [
+      { kind: "values", title: "Unrecognized values", values: [
+        { label: "Credential supplied to the report", value: "synthetic-complete-credential" },
+        { label: "Employee ID", value: "10000023" },
+        { label: "False", value: false }, { label: "Zero", value: 0 }, { label: "Null", value: null },
+        { label: "Empty string", value: "" }, { label: "Empty list", value: [] }, { label: "Empty record", value: {} },
+        { label: "Nested values", value: { unknown: [false, 0, null, ""] } },
+      ] },
+      { kind: "table", title: "Unrecognized table", columns: ["Unrecognized column"], rows: [["Complete table value"]] },
+      { kind: "text", title: "Unrecognized note", text: "Complete note <script>unsafe()</script>" },
+      { kind: "unavailable", title: "Unrecognized absence", reason: "Original retained absence" },
+    ] });
+    const before = JSON.stringify(report);
+    const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report }));
+    for (const value of ["synthetic-complete-credential", "10000023", "No", ">0<", "Null", "&quot;&quot;", "Empty list", "Empty record", "Nested values", "Unrecognized column", "Complete table value", "Original retained absence", "&lt;script&gt;unsafe()&lt;/script&gt;"]) assert.ok(html.includes(value), value);
+    const positions = ["Unrecognized values", "Unrecognized table", "Unrecognized note", "Unrecognized absence"].map(value => html.indexOf(value));
+    assert.ok(positions.every((position, index) => index === 0 || position > positions[index - 1]));
+    assert.doesNotMatch(html, /<script>/u);
+    assert.equal(JSON.stringify(report), before, "presentation must not rewrite sealed report inputs");
+  });
+
+  it("renders retained logs through the Logs section without executing retained text", () => {
+    const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report: { ...H_REPORT, files: [] }, section: H_REPORT.sections.length + 8 }));
+    assert.match(html, /Review recorded/u);
+    assert.match(html, /No live resolution is available/u);
+    assert.match(html, /&lt;script&gt;unsafe\(\)&lt;\/script&gt;/u);
+    assert.doesNotMatch(html, /<script>/u);
+  });
+
+  it("preserves unknown input/settings rows and captured metadata alongside complete values", () => {
+    const report = SavedArchiveReportWireSchema.parse({ ...H_REPORT, files: [], sections: [
+      { kind: "values", title: "Inputs & settings", values: [
+        { label: "Submitted input", value: { eid: "10000023" } },
+        { label: "Unknown frozen field", value: "Complete unknown value" },
+        { label: "Parsed input", value: { eid: "10000023", missing: null } },
+        { label: "Captured settings", value: { config: { credential: "complete-synthetic-value" }, revision: 17, capture: "Original metadata" } },
+      ] },
+    ] });
+    const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report }));
+    for (const value of ["Submitted input", "Unknown frozen field", "Complete unknown value", "Parsed input", "10000023", "Null", "complete-synthetic-value", "revision", ">17<", "Original metadata"]) assert.ok(html.includes(value), value);
+  });
+
+  it("keeps legacy frozen fields outside the submitted/parsed inputs and unavailable settings metadata", () => {
+    const report = SavedArchiveReportWireSchema.parse({ ...H_REPORT, files: [], sections: [
+      { kind: "values", title: "Run and frozen inputs", values: [
+        { label: "input.raw.eid", value: "10000023" },
+        { label: "input.parsed.value.eid", value: "10000023" },
+        { label: "unknown.original.path", value: "Original retained value" },
+      ] },
+      { kind: "values", title: "Inputs & settings", values: [
+        { label: "Captured settings", value: { state: "unavailable", reason: "Original settings absence", extra: "Retained metadata", config: { supplied: "Retained despite unavailable state" } } },
+      ] },
+      { kind: "values", title: "Inputs & settings", values: [] },
+    ] });
+    const html = renderToStaticMarkup(createElement(SavedArchiveReport, { report }));
+    for (const value of ["10000023", "unknown.original.path", "Original retained value", "Original settings absence", "Retained metadata", "Retained despite unavailable state", "Inputs &amp; settings"]) assert.ok(html.includes(value), value);
+  });
+
 });

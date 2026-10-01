@@ -1,8 +1,10 @@
+import fs from "node:fs";
+import { syncBuiltinESMExports } from "node:module";
 import assert from "node:assert/strict";
 import { chmodSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
 import type { Config } from "../../../src/domain/config/schema.js";
@@ -12,7 +14,7 @@ import { selectActiveRunSettings } from "../../../src/core/run-settings.js";
 import { settingsFixture } from "../../unit/settings-activation/fixture.js";
 
 const cleanups: (() => void)[] = [];
-afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
 
 function fixture() {
   const root = mkdtempSync(join(realpathSync(tmpdir()), "ordinary-paths-"));
@@ -127,4 +129,15 @@ describe("ordinary browser paths", () => {
       message: "paths.duoCredential: private-file-unavailable" });
     assert.deepEqual(selectActiveRunSettings(f.database.authority), before);
   });
+});
+
+it("refuses a missing-profile probe with non-ENOENT failure", () => {
+  const f = fixture(); const profile = join(f.root, "new-profile");
+  validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: profile }), () => join(f.root, "default"));
+  const original = fs.lstatSync;
+  vi.spyOn(fs, "lstatSync").mockImplementation(((path: unknown, options: unknown) => {
+    if (String(path) === profile) throw Object.assign(new Error("denied"), { code: "EACCES" });
+    return original(path as string, options as never);
+  })); syncBuiltinESMExports();
+  refusal(() => validateOrdinaryPathChanges(f.previous, f.candidate({ browserProfileRoot: profile })), "paths.browserProfileRoot", "directory-unavailable");
 });

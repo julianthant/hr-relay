@@ -308,3 +308,14 @@ describe("typed Settings catalog controls", () => {
     assert.doesNotMatch(text, /0 saved keys/u);
   });
 });
+
+it("publishes failed reload, keeps its draft, and blocks new submissions", async () => {
+  const h = await setup();
+  await settingsAction(() => h.controller().update("actor.label", "Retained after reload"));
+  h.ports.read = () => { throw new Error("unavailable"); };
+  await settingsAction(() => h.controller().reload());
+  assert.match(h.controller().readProblem ?? "", /could not be read/u);
+  assert.match(h.host.textContent ?? "", /could not be read/u);
+  assert.deepEqual(h.controller().draft["actor.label"], { kind: "set", raw: "Retained after reload" });
+  await settingsAction(() => h.controller().submit()); assert.equal(h.commands.length, 0);
+});

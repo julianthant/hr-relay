@@ -59,6 +59,44 @@ describe("secure environment bootstrap", () => {
     } finally { process.stdout.write = original; }
   });
 
+  it("validates the exact production bundle before authority and provider admission", async () => {
+    const original = [...process.argv]; const events: string[] = [];
+    try {
+      await runSecureEnvironmentBootstrap(["cli", "dashboard", "--prod"], {
+        validateDashboardBundle: workspace => { assert.equal(workspace, REPO_ROOT); events.push("bundle"); },
+        acquireAdmission: () => { events.push("authority"); return syntheticAdmission(); },
+        assertEnvironment: () => { events.push("parent-environment"); },
+        admitEnvironmentFile: () => { events.push("provider-file"); },
+        runCli: async () => { events.push("runner"); },
+      });
+      assert.deepEqual(events, ["bundle", "authority", "parent-environment", "provider-file", "runner"]);
+    } finally { process.argv.splice(0, process.argv.length, ...original); }
+  });
+
+  it("refuses a production bundle failure before authority, credentials or runner effects", async () => {
+    const events: string[] = [];
+    await assert.rejects(runSecureEnvironmentBootstrap(["cli", "dashboard", "--prod"], {
+      validateDashboardBundle: () => { events.push("bundle"); throw new Error("dashboard bundle refused"); },
+      acquireAdmission: () => { throw new Error("must not acquire authority"); },
+      assertEnvironment: () => { throw new Error("must not read environment"); },
+      admitEnvironmentFile: () => { throw new Error("must not open provider file"); },
+      runCli: async () => { throw new Error("must not enter runner"); },
+    }), /dashboard bundle refused/u);
+    assert.deepEqual(events, ["bundle"]);
+  });
+
+  it.each([["cli", "dashboard"], ["cli", "dashboard", "--prod", "extra"], ["cli", "other", "--prod"]])(
+    "reserves bundle pre-admission for the exact production command %j", async (...args) => {
+      const original = [...process.argv];
+      try {
+        await runSecureEnvironmentBootstrap(args, {
+          validateDashboardBundle: () => { throw new Error("unexpected bundle validation"); },
+          acquireAdmission: syntheticAdmission, assertEnvironment: () => undefined,
+          admitEnvironmentFile: () => undefined, runCli: async () => undefined,
+        });
+      } finally { process.argv.splice(0, process.argv.length, ...original); }
+    });
+
   it("keeps signal listeners through the final dashboard admission release", async () => {
     const originalArgv = [...process.argv];
     const beforeInterrupt = process.listenerCount("SIGINT");

@@ -52,10 +52,10 @@ type Transform = typeof TRANSFORMS[number];
 
 /** Independent expected table — never derived from the production policy it verifies. */
 const EXPECTED_ALLOWED_TRANSFORMS = {
-  secret: new Set<Transform>(["drop", "digest"]),
-  "credential-file": new Set<Transform>(["drop", "digest"]),
-  "direct-identifier": new Set<Transform>(["drop", "digest", "last4"]),
-  "sensitive-hr": new Set<Transform>(["drop", "digest", "count"]),
+  secret: new Set<Transform>(["drop", "digest", "allow"]),
+  "credential-file": new Set<Transform>(["drop", "digest", "allow"]),
+  "direct-identifier": new Set<Transform>(["drop", "digest", "last4", "allow"]),
+  "sensitive-hr": new Set<Transform>(["drop", "digest", "count", "allow"]),
   "safe-diagnostic": new Set<Transform>(["allow", "count", "basename"]),
 } satisfies Record<Classification, ReadonlySet<Transform>>;
 
@@ -190,7 +190,7 @@ describe("span JSONL writer", () => {
     assert.equal(patched.length, 0);
   });
 
-  it("writes a data.observed line, and never one carrying an unredacted value (D270)", () => {
+  it("writes classified observations and refuses unclassified leaf shapes (D270)", () => {
     const root = stateRoot();
     const clock = manualClock(AT);
     const writer = createSpanJsonlWriter({ stateRoot: root, clock, pid: 1 });
@@ -220,8 +220,7 @@ describe("span JSONL writer", () => {
     assert.doesNotMatch(lines[0]?.text ?? "", /10456712/);
 
     // An unclassified value is refused BEFORE any byte reaches disk: the wire
-    // leaf has no arm for a bare `{key, value}`, which is what makes "redacted
-    // by declaration" a property of the stream rather than of the emitter.
+    // leaf has no arm for a bare `{key, value}` without a classification.
     assert.throws(() => writer.emit(observed([{ key: "selection.eid", value: "10456712" }])));
     const after = readEventStreamLines(root, "spans").filter((line) => line.text.includes("data.observed"));
     assert.equal(after.length, 2);
@@ -319,10 +318,27 @@ describe("span JSONL writer", () => {
     }
 
     const lines = readEventStreamLines(root, "spans");
-    assert.equal(allowedCount, 13);
-    assert.equal(forbiddenCount, 17);
+    assert.equal(allowedCount, 17);
+    assert.equal(forbiddenCount, 13);
     assert.equal(lines.length, allowedCount);
-    assert.equal(lines.some(({ text }) => text.includes("RAW_SECRET_CANARY")), false);
+    assert.equal(lines.some(({ text }) => text.includes("RAW_SECRET_CANARY")), true);
+    for (const classification of CLASSIFICATIONS) {
+      const expected = redactedPairValue(classification, "allow");
+      const retained = lines.map(({ text }) => SpanEventWireSchema.parse(JSON.parse(text)))
+        .find(event => event.t === "data.observed" && event.points.some(point => point.values.some(value => value.classification === classification && value.transform === "allow")));
+      assert.ok(retained?.t === "data.observed", `${classification} complete allowed value missing`);
+      assert.deepEqual(retained.points[0]?.values, [expected]);
+    }
+    for (const invalid of [
+      { key: "selection.value", state: "allowed", classification: "unknown", transform: "allow", value: "complete" },
+      { key: "selection.value", state: "allowed", classification: "secret", transform: "unknown", value: "complete" },
+      { key: "selection.value", state: "allowed", classification: "secret", transform: "allow", value: "complete", undeclared: true },
+    ]) {
+      assert.equal(RedactedFieldSchema.safeParse(invalid).success, false);
+      assert.equal(SpanEventWireSchema.safeParse({ ...observedPairEvent(invalid), pid: 1 }).success, false);
+      assert.throws(() => writer.emit(observedPairEvent(invalid)));
+      assert.equal(readEventStreamLines(root, "spans").length, allowedCount);
+    }
   });
 });
 

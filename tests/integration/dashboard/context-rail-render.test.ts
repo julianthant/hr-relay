@@ -126,7 +126,7 @@ function historyWire(input: Readonly<{
  * the exact shape C51 and C54 are about, parsed through the real wire schema so
  * the fixture cannot outlive its contract.
  */
-function dataSections(runId = RUN_ID, attempt = 1): ContextSections {
+function dataSections(runId = RUN_ID, attempt = 1, employeeId = "10••••23"): ContextSections {
   const checkpoint = {
     state: "present",
     runId,
@@ -151,7 +151,7 @@ function dataSections(runId = RUN_ID, attempt = 1): ContextSections {
       runId,
       state: "available",
       entries: [
-        entry("Employee id", "10••••23", "find-person", "employeeId",
+        entry("Employee id", employeeId, "find-person", "employeeId",
           { nodeId: "find-person", step: "Find person", dir: "read", system: "ucpath" }),
         entry("Department", "Neurosciences", "find-person", "department",
           { nodeId: "find-person", step: "Find person", dir: "read", system: "ucpath" }),
@@ -273,10 +273,20 @@ describe("the rail's words (C16 / C32, D273 item 5)", () => {
 });
 
 describe("D334 read-only source data", () => {
-  it("keeps redacted source values without offering a checkpoint mutation", () => {
+  it("keeps historical masked source values without reconstructing missing values or offering a checkpoint mutation", () => {
     const markup = renderRail(dataSections());
     for (const value of ["10••••23", "Neurosciences", "2026-09-30", "sep-4471"]) assert.ok(markup.includes(value));
-    assert.equal(markup.includes("10000023"), false, "the source rail carries no raw editable scalar");
+    assert.equal(markup.includes("10000023"), false, "historical missing complete value must not be reconstructed");
+    assert.equal(markup.includes("<input"), false);
+    assert.equal(markup.includes("Save"), false);
+    assert.equal(markup.includes("correction"), false);
+    assert.equal(occurrences(markup, "Recorded source values are read-only."), 4);
+  });
+
+  it("displays newly supplied complete identifiers without offering a checkpoint mutation", () => {
+    const markup = renderRail(dataSections(RUN_ID, 1, "10000023"));
+    assert.ok(markup.includes("10000023"));
+    assert.equal(markup.includes("10••••23"), false);
     assert.equal(markup.includes("<input"), false);
     assert.equal(markup.includes("Save"), false);
     assert.equal(markup.includes("correction"), false);

@@ -11,41 +11,9 @@ import {
 } from "./helpers/guard-files.js";
 
 /**
- * Guard (ref clock-config-secrets §5): a secret VALUE never reaches a diagnostic string.
- *
- * Ref clock-config-secrets pairs `secrets-single-source` (who may read a credential) with this
- * one (what may be said about it): a ratchet "flagging `log.*`/template-literal
- * interpolation of identifiers named `password`/`privateKey`/`credential`/
- * `secret` (case-insensitive) ... catching an accidental
- * ``log.info(`login as ${password}`)``".
- *
- * Why an interpolation and not a type check: ref clock-config-secrets's redaction contract only
- * protects values that travel as CLASSIFIED fields into
- * `redactDiagnosticFields`. The moment a credential is spliced into a string it
- * has become an opaque message body, the classification is gone, and every
- * downstream note/failure/screenshot-metadata/bundle/notification writer copies
- * it verbatim. That is unrecoverable — the value is already on disk before
- * anyone reads the line.
- *
- * Scope. Both halves of the doc's rule:
- *
- * - EVERY template-literal interpolation in `src/**`, because a template
- *   is how a value escapes classification regardless of who consumes it (a
- *   thrown `Error` message is as durable as a log line — see the
- *   `SecretMissingError` messages in `domain/secrets.ts`, which deliberately
- *   name only the KEY).
- * - EVERY argument to a `log.*` / `console.*` call, so a bare
- *   `log.info(password)` is caught even without a template.
- *
- * A name is sensitive when its normalized form (lowercased, separators
- * stripped) contains a credential-ish root. Name-shaped companions are
- * exempted by suffix — `secretName`, `secretNames`, `credentialPath`,
- * `tokenCount` describe a credential without being one; `secretValue` or
- * `passwordText` do not get that pass.
- *
- * This is a RATCHET with the standard shrink-only `Record<file,{count,reason}>`
- * allowlist, deliberately EMPTY today: no rebuild file interpolates a
- * credential-named binding, and new `src` code gets zero tolerance.
+ * Raw credential-named interpolation and diagnostic arguments require a classified boundary.
+ * D361 permits the exact local identifier-display export; imported ownership and lexical
+ * shadowing checks refuse lookalike helpers. D346 separately constrains provider and OS egress.
  */
 
 const SENSITIVE_ROOTS = [
@@ -170,8 +138,9 @@ function bindingName(expression: ts.Expression): string | undefined {
 }
 
 const CANONICAL_REDACTION_MODULE = "src/domain/redaction.ts";
-const CANONICAL_SANITIZER_EXPORTS = new Set([
+const CANONICAL_DIAGNOSTIC_EXPORTS = new Set([
   "directIdentifierDigestReference",
+  "directIdentifierDisplay",
   "redactedEvidenceId",
 ]);
 const CANONICAL_WORKFLOW_MODULE = "src/base/workflow.ts";
@@ -209,7 +178,7 @@ function importedCanonicalSanitizers(path: string, source: ts.SourceFile): Reado
     path,
     source,
     CANONICAL_REDACTION_MODULE,
-    CANONICAL_SANITIZER_EXPORTS,
+    CANONICAL_DIAGNOSTIC_EXPORTS,
   );
 }
 
@@ -1152,6 +1121,18 @@ describe("no secret values in logs", () => {
       readFileSync(join(REPO_ROOT, path), "utf8").includes("${"));
     assert.equal(templates.includes("src/domain/secrets.ts"), true);
     assert.equal(templates.length > 1, true);
+  });
+
+  it("recognizes the exact local display symbol while refusing impostors and shadowed callbacks", () => {
+    const path = "src/core/local-display.ts";
+    const source = [
+      'import { directIdentifierDisplay as display } from "../domain/redaction.js";',
+      'export function explain(eid: string) { throw new Error(`subject ${display(eid)}`); }',
+    ].join("\n");
+    assert.deepEqual(findSecretInterpolations(path, source), []);
+    assert.ok(findSecretInterpolations(path, source.replace("../domain/redaction.js", "../domain/impostor.js")).length > 0);
+    assert.ok(findSecretInterpolations(path, source.replace("explain(eid: string)", "explain(eid: string, display: (value: string) => string)")).length > 0);
+    assert.ok(findSecretInterpolations(path, 'export function explain(password: string) { throw new Error(`secret ${password}`); }').length > 0);
   });
 
   it("keeps every rebuild diagnostic free of credential-named interpolation", () => {

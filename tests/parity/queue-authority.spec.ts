@@ -80,8 +80,9 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     const terminalRow = page.locator(`[data-demo-row-id='${server.runIds.cancelledRun}']`).first();
     await expect(terminalRow).toBeVisible();
 
-    // Trigger delete action button on the cancelled row
-    const deleteButton = terminalRow.getByRole("button", { name: /Delete run/u }).first();
+    await terminalRow.focus();
+    await page.keyboard.press("Shift+F10");
+    const deleteButton = page.getByRole("menuitem", { name: "Permanently delete", exact: true });
     await deleteButton.focus();
     await page.keyboard.press("Enter");
 
@@ -94,7 +95,7 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     // Dismiss with Escape key -> focus returns to triggering button
     await page.keyboard.press("Escape");
     await expect(dialog).toHaveCount(0);
-    await expect(deleteButton).toBeFocused();
+    await expect(terminalRow).toBeFocused();
 
     expect(errors, "page errors during dialog keyboard interaction").toEqual([]);
   });
@@ -116,8 +117,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     expect(db.authority.deletedRuns.get(runId)).toBeUndefined();
 
     // Open Delete dialog
-    const deleteButton = terminalRow.getByRole("button", { name: /Delete run/u }).first();
-    await deleteButton.click();
+    await terminalRow.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
 
     const dialog = page.getByRole("dialog", { name: "Delete this run", exact: true });
     await expect(dialog).toBeVisible();
@@ -213,7 +214,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
       else await route.fulfill({ response });
     });
     const row = page.locator(`[data-demo-row-id='${runId}']`).first();
-    await row.getByRole("button", { name: /Delete run/u }).click();
+    await row.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
     await page.getByRole("dialog", { name: "Delete this run", exact: true })
       .getByRole("button", { name: "Delete", exact: true }).click();
     const recovery = page.getByRole("region", { name: "Commands awaiting recovery" });
@@ -222,8 +224,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     await expect(row).toHaveCount(0);
     const tombstone = server.authority().authority.deletedRuns.get(runId);
     expect(tombstone).toBeDefined();
-    await recovery.getByRole("button", { name: "Review Delete run (1 run)", exact: true }).click();
-    await page.getByRole("dialog", { name: "Recover previous Delete run", exact: true })
+    await recovery.getByRole("button", { name: "Review Permanently delete (1 run)", exact: true }).click();
+    await page.getByRole("dialog", { name: "Recover previous Permanently delete", exact: true })
       .getByRole("button", { name: "Resend original request", exact: true }).click();
     await expect(recovery).toHaveCount(0);
     expect(requests).toHaveLength(2);
@@ -287,7 +289,8 @@ test.describe("Queue authority, live commands, and desktop parity (P5)", () => {
     const survivor = page.locator(`[data-demo-row-id='${server.runIds.runningRun}']`).first();
     await root.getByRole("checkbox").check();
     await survivor.getByRole("checkbox").check();
-    await root.getByRole("button", { name: /Delete group/u }).click();
+    await root.click({ button: "right" });
+    await page.getByRole("menuitem", { name: "Permanently delete", exact: true }).click();
     const response = page.waitForResponse(reply => reply.url().endsWith("/api/v1/commands") && reply.request().method() === "POST");
     await page.getByRole("dialog", { name: "Delete this group", exact: true }).getByRole("button", { name: "Delete", exact: true }).click();
     const result: unknown = await (await response).json();

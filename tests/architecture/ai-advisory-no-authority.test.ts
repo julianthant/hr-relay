@@ -325,12 +325,22 @@ describe("ai-advisory-no-authority — the advice shape", () => {
 
 describe("ai-advisory-no-authority — the route", () => {
   const apiSource = readFileSync(join(REPO_ROOT, "src/server/dashboard/routes/api.ts"), "utf8");
+  const routeSource = readFileSync(join(REPO_ROOT, "src/server/dashboard/routes/run-detail.ts"), "utf8");
+  function advisoryRouteValid(composition: string, route: string): boolean {
+    return /registerRunDetailRoutes\(app, deps\)/u.test(composition)
+      && /app\.use\("\/api\/v1\/runs\/:runId\/advisory", operatorOpaqueIngressGuard\)/u.test(composition)
+      && /app\.post\("\/api\/v1\/runs\/:runId\/advisory"/u.test(route)
+      && /buildRunAdvisory\(deps\.advisory, c\.req\.param\("runId"\)\)/u.test(route)
+      && !/deps\.commands/u.test(route);
+  }
 
-  it("registers the advisory as its own POST, outside the command family", () => {
-    assert.match(apiSource, /app\.post\("\/api\/v1\/runs\/:runId\/advisory"/u);
-    // It is NOT a run-detail section: a section is fetched whenever the server
-    // advertises it, and this call spends a provider budget.
-    assert.equal(apiSource.includes('"advisory"'), false, "advisory must not appear as a section name");
+  it("registers the admitted advisory POST through its actual route owner outside commands", () => {
+    assert.equal(advisoryRouteValid(apiSource, routeSource), true);
+    assert.equal(routeSource.includes('"advisory"'), false, "advisory must not appear as a section name");
+    assert.equal(advisoryRouteValid(apiSource, routeSource.replace('/api/v1/runs/:runId/advisory', '/api/v1/commands/advisory')), false);
+    assert.equal(advisoryRouteValid(apiSource, routeSource.replace('buildRunAdvisory(deps.advisory', 'buildRunAdvisory(deps.commands')), false);
+    assert.equal(advisoryRouteValid(apiSource.replace('registerRunDetailRoutes(app, deps)', 'registerOtherRoutes(app, deps)'), routeSource), false);
+    assert.equal(advisoryRouteValid(apiSource.replace('app.use("/api/v1/runs/:runId/advisory", operatorOpaqueIngressGuard)', 'app.use("/api/v1/runs/:runId/advisory", unreviewedGuard)'), routeSource), false);
   });
 
   it("the command service never reaches the advisory query", () => {

@@ -144,7 +144,7 @@ describe("operator XLSX workbook", () => {
     );
   });
 
-  it("composes deterministic search bytes behind one exact redacted column contract", async () => {
+  it("composes deterministic search bytes behind one exact complete column contract", async () => {
     const wallClock = vi.spyOn(Date, "now").mockReturnValue(Date.parse("2026-08-28T16:00:00.000Z"));
     const first = await composeOperatorXlsxWorkbook(SEARCH_DOCUMENT);
     wallClock.mockReturnValue(Date.parse("2026-08-28T16:09:58.000Z"));
@@ -170,7 +170,8 @@ describe("operator XLSX workbook", () => {
       "Retry",
       "Match field",
       "Match strength",
-      "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic",
+      "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic", "Run id", "Trace id", "Subject", "Actor",
+      "Workflow id", "Registration state", "Registration reason", "Run number state", "Ended at state", "Retry state", "Subject state", "Actor state",
     ]);
     assert.deepEqual(first.bytes, second.bytes);
     assert.equal(first.bytes[0], 0x50);
@@ -185,6 +186,20 @@ describe("operator XLSX workbook", () => {
     const runs = workbook[1];
     assert.ok(runs !== undefined);
     assert.deepEqual(runs.data[0], OPERATOR_XLSX_SEARCH_COLUMNS);
+    const header = runs.data[0];
+    assert.ok(header);
+    for (const [index, result] of SEARCH_DOCUMENT.results.entries()) {
+      const row = runs.data[index + 1];
+      assert.ok(row);
+      assert.equal(row[header.indexOf("Workflow id")], result.workflowId);
+      assert.equal(row[header.indexOf("Workflow")], result.registration.label);
+      assert.equal(row[header.indexOf("Workflow code")], result.registration.code);
+      assert.equal(row[header.indexOf("Category")], result.registration.categoryId);
+      assert.equal(row[header.indexOf("Registration state")], result.registration.state);
+      assert.equal(row[header.indexOf("Run number state")], result.runNumber.state);
+      assert.equal(row[header.indexOf("Ended at state")], result.endedAt.state);
+      assert.equal(row[header.indexOf("Retry state")], result.retryOf.state);
+    }
     assert.deepEqual(runs.data.slice(1).map((row) => row[0]), [7, 8]);
     assert.deepEqual(runs.data.slice(1).map((row) => row[14]), ["run", "run"]);
     assert.deepEqual(runs.data.slice(1).map((row) => row[15]), ["exact", "contains"]);
@@ -194,12 +209,34 @@ describe("operator XLSX workbook", () => {
     assert.ok(runs.data[2]?.[4] instanceof Date);
     assert.ok(runs.data[2]?.[10] instanceof Date);
     assert.equal(runs.data[2]?.[11], null);
-    assert.equal(runs.data[2]?.[12], "Not terminal — parked-gate");
-    assert.equal(runs.data[2]?.[13], "Yes — source identifier omitted");
+    assert.equal(runs.data[2]?.[12], SEARCH_DOCUMENT.results[1]?.endedAt.reason);
+    assert.equal(runs.data[2]?.[13], SEARCH_DOCUMENT.results[1]?.retryOf.value);
     const text = allCellText(workbook);
-    for (const forbidden of [SEARCH_RUN_ID, SEARCH_TRACE_ID, SECOND_RUN_ID, SECOND_TRACE_ID]) {
-      assert.equal(text.includes(forbidden), false, `workbook must omit ${forbidden}`);
+    for (const supplied of [SEARCH_RUN_ID, SEARCH_TRACE_ID, SECOND_RUN_ID, SECOND_TRACE_ID]) {
+      assert.equal(text.includes(supplied), true, `workbook must retain ${supplied}`);
     }
+  });
+
+  it("retains supplied query, filters, subjects and actors as spreadsheet text", async () => {
+    const subject = "=HYPERLINK(\"https://example.invalid\") 10123456";
+    const document = {
+      ...SEARCH_DOCUMENT,
+      selection: {
+        ...SEARCH_DOCUMENT.selection,
+        query: { ...SEARCH_DOCUMENT.selection.query, q: subject, facets: { subject } },
+      },
+      results: SEARCH_DOCUMENT.results.map(result => ({
+        ...result,
+        metadata: { ...result.metadata, subject: { state: "available", value: subject }, actor: { state: "available", value: "local-operator" } },
+      })),
+    };
+    const workbook = await readXlsxFile((await composeOperatorXlsxWorkbook(document)).bytes);
+    const readMe = workbook[0];
+    const runs = workbook[1];
+    assert.equal(readMe?.data.find(row => row[0] === "Search query")?.[1], subject);
+    assert.equal(readMe?.data.find(row => row[0] === "Search filters")?.[1], JSON.stringify({ subject }));
+    assert.equal(runs?.data[1]?.[25], subject);
+    assert.equal(runs?.data[1]?.[26], "local-operator");
   });
 
   it("composes a caveat-first Activity workbook over the exact served report axes", async () => {
@@ -242,9 +279,9 @@ describe("operator XLSX workbook", () => {
       ["By Day", ["Day", "Runs"]],
       ["By Workflow", ["Workflow", "Code", "Category", "Runs", "Read back", "Warnings", "Warnings unread", "Failed", "Cancelled", "Partial", "Open", "Registration note"]],
       ["By Category", ["Category", "Runs", "Registration note"]],
-      ["By Status", ["Status", "Runs", "Sampled identifiers omitted"]],
+      ["By Status", ["Status", "Runs", "Sampled run identifiers"]],
       ["By Outcome", ["Outcome", "Runs"]],
-      ["Failures", ["Failure code", "Runs", "Transient", "Sampled identifiers omitted"]],
+      ["Failures", ["Failure code", "Runs", "Transient", "Sampled run identifiers"]],
       ["Ledger", ["System", "Entries", "Production", "Test"]],
     ]);
     for (const sheet of workbook) {
@@ -260,8 +297,11 @@ describe("operator XLSX workbook", () => {
     assert.ok(byDay.data[1]?.[0] instanceof Date);
     const text = allCellText(workbook);
     assert.equal(text.includes("Who column"), false);
-    for (const forbidden of [SEARCH_RUN_ID, SECOND_RUN_ID]) {
-      assert.equal(text.includes(forbidden), false, `Activity workbook must omit ${forbidden}`);
+    for (const supplied of [SEARCH_RUN_ID, SECOND_RUN_ID]) {
+      assert.equal(text.includes(supplied), true, `Activity workbook must retain ${supplied}`);
     }
+    assert.equal(workbook.find(sheet => sheet.sheet === "By Status")?.data[3]?.[2], SECOND_RUN_ID);
+    assert.equal(workbook.find(sheet => sheet.sheet === "Failures")?.data[1]?.[3], SEARCH_RUN_ID);
+    assert.equal(workbook.find(sheet => sheet.sheet === "Summary")?.data.find(row => row[0] === "Longest duration")?.[3], SEARCH_RUN_ID);
   });
 });

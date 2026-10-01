@@ -177,12 +177,41 @@ function exactBindingArgument(
     && ts.isIdentifier(member.initializer) && member.initializer.text === bindingName;
 }
 
+function hasExactAdmissionParameter(source: ts.SourceFile, runner: ts.FunctionDeclaration,
+  importerFile: string, admissionFile: string): boolean {
+  if (runner.parameters.length === 0) return true;
+  if (runner.parameters.length !== 1 || runner.body === undefined) return false;
+  const parameter = runner.parameters[0];
+  if (parameter === undefined || !ts.isIdentifier(parameter.name) || parameter.name.text !== "admission"
+    || parameter.initializer !== undefined || parameter.questionToken !== undefined
+    || parameter.dotDotDotToken !== undefined || parameter.modifiers !== undefined
+    || parameter.type === undefined || !ts.isTypeReferenceNode(parameter.type)
+    || !ts.isIdentifier(parameter.type.typeName) || parameter.type.typeName.text !== "RuntimeAdmission"
+    || parameter.type.typeArguments !== undefined) return false;
+  const importsAdmission = source.statements.some(statement => {
+    if (!ts.isImportDeclaration(statement) || statement.importClause?.isTypeOnly !== true
+      || !ts.isStringLiteral(statement.moduleSpecifier)
+      || !moduleResolvesTo(importerFile, statement.moduleSpecifier.text, admissionFile)) return false;
+    const bindings = statement.importClause.namedBindings;
+    return bindings !== undefined && ts.isNamedImports(bindings) && bindings.elements.some(element =>
+      element.name.text === "RuntimeAdmission" && element.propertyName === undefined);
+  });
+  const first = runner.body.statements[0];
+  if (first === undefined || !ts.isExpressionStatement(first) || !ts.isCallExpression(first.expression)) return false;
+  const call = first.expression;
+  return importsAdmission && call.arguments.length === 0 && ts.isPropertyAccessExpression(call.expression)
+    && ts.isIdentifier(call.expression.expression) && call.expression.expression.text === "admission"
+    && call.expression.name.text === "assertLive";
+}
+
 function hasExactExportedRunnerCompositionCall(
   source: ts.SourceFile,
   runnerExport: string,
   factory: string,
   bindingPath: string,
   bindingName: string,
+  importerFile: string,
+  admissionFile: string,
 ): boolean {
   const runners = source.statements.filter((statement): statement is ts.FunctionDeclaration =>
     ts.isFunctionDeclaration(statement)
@@ -191,7 +220,8 @@ function hasExactExportedRunnerCompositionCall(
     && statement.body !== undefined);
   if (runners.length !== 1) return false;
   const runner = runners[0];
-  if (runner === undefined || runner.parameters.length !== 0 || runner.body === undefined) return false;
+  if (runner === undefined || runner.body === undefined
+    || !hasExactAdmissionParameter(source, runner, importerFile, admissionFile)) return false;
   const matchingCalls = runner.body.statements.filter((statement) => {
     if (!ts.isExpressionStatement(statement)) return false;
     // `await startRebuildRuntime(...)` is the same one direct call: the runner
@@ -316,6 +346,8 @@ function executableRuntimeBinding(
       composition.factory,
       composition.bindingPath,
       config.exportName,
+      file,
+      resolve(repoRoot, "src/infra/runtime-control/admission.ts"),
     );
     if (!existsSync(compositionFactoryFile) || !importsBinding || !importsFactoryBinding
       || !isUnshadowed || !consumesBinding) {

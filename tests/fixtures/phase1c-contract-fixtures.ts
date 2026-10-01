@@ -73,7 +73,7 @@ export const COMMAND_FIXTURES: readonly unknown[] = [
   { ...BASE_COMMAND, family: "version-archive", type: "apply-runtime-version", target: { changeId: UUID_3, reviewFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "version-archive", type: "relaunch-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
   { ...BASE_COMMAND, family: "version-archive", type: "delete-archived-run", target: { archivedRunId: UUID_2, archiveFingerprint: HASH_A } },
-  ...["retry", "restart", "cancel", "bump", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
+  ...["retry", "restart", "cancel", "bump", "archive", "delete"].map((type) => ({ ...BASE_COMMAND, family: "run", type, target: RUN_TARGET })),
   { ...BASE_COMMAND, family: "run", type: "rename", target: RUN_TARGET, payload: { displayName: "Summer onboarding" } },
   { ...BASE_COMMAND, family: "run", type: "resolve-write-present", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1 }, payload: { proof: { schemaHash: HASH_A, value: "receipt-123" }, evidenceNote: "Confirmed in the target system" } },
   { ...BASE_COMMAND, family: "run", type: "resolve-write-absent", target: { ...RUN_TARGET, writeIntentId: UUID_4, intentGeneration: 1 }, payload: { evidenceNote: "Confirmed absent in the target system" } },

@@ -1,3 +1,6 @@
+import { readSettings } from "../../src/server/settings-runtime.js";
+import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures, AuthorityDatabase } from "../helpers/admission-fixture.js";
+import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -14,12 +17,11 @@ import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
 import { composeWorkerRuntime } from "../../src/server/worker/compose.js";
 import { composeDryRunScenarioCommand } from "../../src/server/dry-run-scenario/compose.js";
 import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
-import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { inventoryEnvironmentAccesses } from "./helpers/environment-read-audit.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const roots: string[] = [];
-afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+afterEach(() => { for (const root of roots.splice(0)) { releaseAdmissionFixture(root); rmSync(root, { recursive: true, force: true }); } releaseAdmissionFixtures(); });
 const clock = manualClock(new Date("2026-09-06T07:00:00.000Z"));
 function environment(key: string) {
   let reads = 0;
@@ -57,7 +59,7 @@ describe("composition-reads-no-environment-leaf (D331)", () => {
       const hostile = environment("UNRELATED_HOSTILE_NOISE");
       const env = noisy ? hostile.env : {};
       const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env, clock };
-      const dashboard = await composeDashboardRuntime({ ...common, backendPortOverride: 0, frontendPortOverride: 0 });
+      const dashboard = await composeDashboardRuntime({ ...common, admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners, backendPortOverride: 0, frontendPortOverride: 0 });
       await dashboard.stop();
       const path = join(root, rebuildRuntimeIsolation.stateRoot, "state.db");
       const readConfig = () => {
@@ -69,13 +71,25 @@ describe("composition-reads-no-environment-leaf (D331)", () => {
         } finally { database.close(); }
       };
       const before = readConfig();
-      const worker = await composeWorkerRuntime({ ...common, args: ["person-lookup", "--pool-index", "1", "--drain"],
+      const database = AuthorityDatabase.open({ path, busyTimeoutMs: 100, migrationOwner: "noise-resolution-proof" });
+      try {
+        const ordinary = readSettings(database.authority).settings;
+        const pair = { stateRoot: join(root, rebuildRuntimeIsolation.stateRoot), artifactRoot: join(root, rebuildRuntimeIsolation.artifactRoot) };
+        const clean = resolveConfigWithProvenance(ordinary, hostConfigFacts({}), clock, pair);
+        const noisyResolution = resolveConfigWithProvenance(ordinary, hostConfigFacts(hostile.env), clock, pair);
+        assert.deepEqual(noisyResolution, clean);
+        assert.deepEqual(before, clean);
+      } finally { database.close(); }
+      const worker = await composeWorkerRuntime({ ...common, admission: installationAdmission(root), preflightRunnerFactory: healthyRuntimePreflightRunners, args: ["person-lookup", "--pool-index", "1", "--drain"],
         duoCeremony: fixtureDuoCeremonyGates(clock),
         sessionFactory: { open: () => { throw new Error("no browser may open for idle proof"); } }, write: () => undefined });
       assert.deepEqual(worker.outcomes, []);
       assert.deepEqual(readConfig(), before);
       assert.equal(hostile.reads(), 0);
-      configs.push(before);
+      assert.equal(before.config.paths.stateRoot, join(root, rebuildRuntimeIsolation.stateRoot));
+      assert.equal(before.config.paths.artifactRoot, join(root, rebuildRuntimeIsolation.artifactRoot));
+      configs.push({ config: { ...before.config, paths: { ...before.config.paths,
+        stateRoot: "owned-state-root", artifactRoot: "owned-artifact-root" } }, provenance: before.provenance });
     }
     assert.deepEqual(configs[1], configs[0]);
   });
@@ -83,7 +97,7 @@ describe("composition-reads-no-environment-leaf (D331)", () => {
     const root = mkdtempSync(join(tmpdir(), "hr-env-refusal-")); roots.push(root);
     writeFileSync(join(root, "package.json"), '{"version":"0.1.0"}');
     const hostile = environment(key);
-    const common = { isolation: rebuildRuntimeIsolation, repoRoot: root, env: hostile.env, clock };
+    const common = { admission: fixtureAdmission(root), isolation: rebuildRuntimeIsolation, repoRoot: root, env: hostile.env, clock };
     // D341: the two retired canary keys are refused by name toward the private test-data file; every
     // other migrated key still points at Settings. Both refusals happen before any value is read.
     const expected = (RETIRED_TEST_TARGET_ENVIRONMENT_KEYS as readonly string[]).includes(key)

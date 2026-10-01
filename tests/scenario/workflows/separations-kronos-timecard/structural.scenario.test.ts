@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { EidSchema } from "../../../../src/domain/ids.js";
-import { directIdentifierDigestReference } from "../../../../src/domain/redaction.js";
+import { directIdentifierDisplay } from "../../../../src/domain/redaction.js";
 import { createDeterministicNewKronosTimecardDriver } from "../../../../src/stores/new-kronos/driver/fake.js";
 import { readSeparationTimecardTask } from "../../../../src/stores/new-kronos/tasks/read-separation-timecard.js";
 import { searchEmployeeTask } from "../../../../src/stores/new-kronos/tasks/search-employee.js";
@@ -233,7 +233,7 @@ describe("separations-kronos-timecard scenarios", () => {
         input: { emplId: EMPL_ID, rangeStart: "06/01/2026", rangeEnd: "08/12/2026" },
         ctx: { ...taskCtx, driver },
       }),
-      new RegExp(`subject-mismatch: .*${directIdentifierDigestReference("10800001")}`),
+      new RegExp(`subject-mismatch: .*${directIdentifierDisplay("10800001")}`),
     );
   });
 });

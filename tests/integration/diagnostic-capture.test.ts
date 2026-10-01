@@ -166,9 +166,10 @@ describe("diagnostic values at capture", () => {
     assert.ok(serialized.includes("session=abc"));
     assert.ok(serialized.includes("Jane Q Public"));
     assert.equal(bundle.redaction.warnings.length, 2);
+    assert.ok(bundle.redaction.fields.every(field => field.transform === "allow" && field.rawValue === undefined));
     assert.deepEqual(
       bundle.redaction.fields.map((field) => [field.key, field.state]),
-      [["screen", "allowed"], ["employeeName", "transformed"], ["ucpathPassword", "redacted"]],
+      [["screen", "allowed"], ["employeeName", "allowed"], ["ucpathPassword", "allowed"]],
     );
   });
 

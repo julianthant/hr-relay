@@ -159,3 +159,17 @@ describe("Credentials provider editor", () => {
     assert.equal(loaded.state === "loaded" && loaded.document.providerKeys.state, "available");
   });
 });
+
+for (const code of ["SCHEMA_INVALID", "REQUEST_IDENTITY_REFUSED", "UNEXPECTED_SERVER_ERROR"] as const) {
+  it(`distinguishes provider admission ${code} from unknown delivery`, async () => {
+    const h = await setup();
+    h.ports.response = () => new Response(JSON.stringify({ state: "error", code, message: "refused", retryable: false }), { status: 400 });
+    await settingsAction(() => h.controller().providerEditor.update("GEMINI_API_KEY", "synthetic-new-one"));
+    await settingsAction(() => h.controller().providerEditor.submit());
+    const editor = h.controller().providerEditor;
+    const unknown = code === "UNEXPECTED_SERVER_ERROR";
+    assert.equal(editor.save.state, unknown ? "unconfirmed" : "refused");
+    assert.equal(editor.hasExactAttempt, unknown); assert.equal(editor.locked, unknown);
+    assert.equal(editor.dirtyCount, 1);
+  });
+}

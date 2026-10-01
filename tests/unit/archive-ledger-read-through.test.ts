@@ -12,7 +12,7 @@ import {
 import { KualiSaveSeparationFinalization } from "../../src/domain/contracts/kuali/save-separation-finalization.js";
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { directIdentifierDigestReference } from "../../src/domain/redaction.js";
+import { directIdentifierDisplay } from "../../src/domain/redaction.js";
 import { UcpathPendingSweepProofSchema } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
@@ -130,7 +130,7 @@ describe("frozen archive transaction presentation", () => {
     if (resolved.state !== "resolved") return;
     assert.deepEqual({ ...resolved.action }, {
       state: "present",
-      value: `Termination for ${directIdentifierDigestReference("10800000")} effective 06/11/2026 (Pending)`,
+      value: `Termination for ${directIdentifierDisplay("10800000")} effective 06/11/2026 (Pending)`,
     });
     assert.deepEqual({ ...resolved.confirmation }, { state: "present", value: "T002209631" });
   });
@@ -160,7 +160,7 @@ describe("frozen archive transaction presentation", () => {
     if (resolved.state !== "resolved") return;
     assert.equal(
       resolved.action.state === "present" ? resolved.action.value : "",
-      `Cleared pending terminations for ${directIdentifierDigestReference("10800000")} (grid scanned 3 rows)`,
+      `Cleared pending terminations for ${directIdentifierDisplay("10800000")} (grid scanned 3 rows)`,
     );
     assert.equal(resolved.confirmation.state, "absent");
     const reason = resolved.confirmation.state === "absent" ? resolved.confirmation.reason : "";
