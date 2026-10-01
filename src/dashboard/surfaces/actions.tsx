@@ -26,9 +26,10 @@
  * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
  * rendering as bare banner pills, dropping the served `detail` on the floor.
  */
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
+  Archive,
   ArrowUpRight,
   Ban,
   CheckCircle2,
@@ -178,6 +179,7 @@ const ICONS: Record<ActionIconKey, ReactNode> = {
   retry: <RotateCcw aria-hidden className={dsIcon.md} />,
   cancel: <X aria-hidden className={dsIcon.md} />,
   bump: <ChevronsUp aria-hidden className={dsIcon.md} />,
+  archive: <Archive aria-hidden className={dsIcon.md} />,
   delete: <Trash2 aria-hidden className={dsIcon.md} />,
   review: <ClipboardList aria-hidden className={dsIcon.md} />,
   resolve: <PauseCircle aria-hidden className={dsIcon.md} />,
@@ -482,17 +484,19 @@ export function RowContextMenu({
   onAction?: DashboardActionHandler;
   children: ReactNode;
 }) {
+  const triggerRef = useRef<HTMLSpanElement>(null);
   const items = actionsAt(actions, "menu");
   if (items.length === 0) return <>{children}</>;
   const navigate = items.filter((a) => a.kind === "navigation");
-  const commands = items.filter((a) => a.kind === "command" && a.intent !== "destructive");
+  const commands = items.filter((a) => a.kind === "command" && a.intent !== "destructive" && a.command !== "archive");
+  const archive = items.filter((a) => a.kind === "command" && a.command === "archive");
   const destructive = items.filter((a) => a.kind === "command" && a.intent === "destructive");
-  const groups = [navigate, commands, destructive].filter((g) => g.length > 0);
+  const groups = [navigate, commands, archive, destructive].filter((g) => g.length > 0);
 
   return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent label={`Commands for ${rowLabel}`}>
+    <ContextMenu modal={false}>
+      <ContextMenuTrigger asChild ref={triggerRef}>{children}</ContextMenuTrigger>
+      <ContextMenuContent label={`Commands for ${rowLabel}`} variant="compact">
         {groups.map((group, i) => (
           <Fragment key={i}>
             {i > 0 && <ContextMenuSeparator className={cn("my-[var(--ds-space-tight)] h-px", dsBorder.subtle, "border-t")} />}
@@ -501,8 +505,11 @@ export function RowContextMenu({
                 key={a.key}
                 icon={ICONS[a.icon ?? "external"]}
                 tone={a.intent === "destructive" ? "destructive" : "neutral"}
-                hint={a.kind === "command" && a.confirm ? "asks first" : undefined}
-                onSelect={() => onAction(a, target)}
+                variant="compact"
+                onSelect={() => {
+                  triggerRef.current?.focus();
+                  onAction(a, target);
+                }}
               >
                 {a.label}
               </ContextMenuItem>

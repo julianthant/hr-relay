@@ -829,6 +829,7 @@ async function composeDashboardRuntimeStartup(
   const runDetailDeps = createOperatorRunDetail({ stateRoot, projection, database, runReader: lifecycle, canonical: { reader: lifecycle, database, descriptors: { resolve: (workflowId) => DESCRIPTORS.find((entry) => entry.id === workflowId) ?? historicalStepProofDescriptorOf(workflowId) } }, trust: trustReads.trust, captures: trustReads.captures });
 
   const archiveDeps = { ...createOperatorArchive({ clock, appVersion, database, ledger, reader: lifecycle }), storage: lifecycle.lifecycleStorage() };
+  database.recoverManualArchivePublications();
   const archiveSnapshots = createArchiveSnapshotSource(runDetailDeps);
   const runtimeVersionChanges = createRuntimeVersionChanges({ database, clock, ids, archiveSnapshots });
 

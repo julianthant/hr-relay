@@ -7742,3 +7742,29 @@ exact membership and verified bytes before image/lightbox/download availability.
 The single task owner binds production-service browser proof, interruption/restart/changed-identity
 controls, privacy and historical compatibility, focused gates and exact ownership. No migration,
 operator-state application, external HR transaction or advanced recovery interface is authorized.
+
+<a id="manual-terminal-archive-amendment-2026-09-29"></a>
+## Manual terminal archive — operator amendment, 2026-09-29
+
+Queue terminal roots expose a neutral **Archive** footer action and menu item. Archive is a generic
+run lifecycle operation, independent of workflow retry/delete policy. Delegated members use their
+root's door. The command rechecks the root revision and complete dependency tree in one authority
+transaction; active descendants, stale revisions and inconsistent membership refuse the operation.
+This adds a manual door to C0 saved-report transfer and supersedes the version-change-only restriction
+in §10.2/D330.8. It neither changes runtime versions nor creates deletion tombstones.
+
+Freeze generic reports and verified files before removing live sources. Transfer the full tree
+leaves-first atomically with the command journal/audit, retain permanent write protection and shared
+checkpoints, then publish the saved reports after authority commit. Pending captures bind the original
+actor, command fingerprint, root and exact member revisions. Owned source changes remain fenced.
+Exact replay repairs interrupted publication. After reload, a fresh Archive command may adopt those
+immutable captures only for the same actor, root, complete membership and revisions, with source
+verification; its own journal/audit records the adoption while original report provenance stays fixed.
+Startup and Archive reads recover post-commit publication from an applied command audit bound to
+the actor, root, exact member revisions and verified transfer identities. Missing audit bindings fail
+loud. No unpublished report is represented as an available archived result.
+
+Run menus retain Rerun and naming where served, with compact inset selection, icons and logical
+separators. Double-click opens the same menu as right-click and keyboard; single-click still selects
+the row. **Permanently delete** is menu-only, separated at the bottom, and retains the existing
+confirmation and explicit warning about released write protection. Archive retains that protection.

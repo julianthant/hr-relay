@@ -56,6 +56,8 @@ export interface RebuildRuntimeStart {
   readonly activityPersonPseudonyms?: ActivityPersonPseudonymComposer;
   /** Explicit seam override for tests; production subscribes to the real process signals. */
   readonly signals?: RuntimeShutdownSignals;
+  /** Publish readiness only after the dashboard owns shutdown. */
+  readonly dashboardReady?: () => void;
 }
 
 export const DashboardFrontendSchema = z.enum(["vite-dev", "built-bundle"]);
@@ -297,6 +299,7 @@ function processShutdownSignals(): RuntimeShutdownSignals {
 async function ownDashboardUntilShutdown(
   running: RunningDashboard,
   signals: RuntimeShutdownSignals,
+  ready?: () => void,
 ): Promise<void> {
   let requestShutdown: (() => void) | undefined;
   const shutdownRequested = new Promise<void>((resolve) => {
@@ -310,10 +313,10 @@ async function ownDashboardUntilShutdown(
     requestShutdown();
   });
   try {
+    ready?.();
     await shutdownRequested;
-    await running.stop();
   } finally {
-    dispose();
+    try { await running.stop(); } finally { dispose(); }
   }
 }
 
@@ -353,7 +356,8 @@ export async function startRebuildRuntime(input: RebuildRuntimeStart): Promise<v
     const options = parseDashboardCommandOptions(args.slice(1));
     const running = await compose(input.isolation, options);
     write(`dashboard BFF listening on 127.0.0.1:${String(running.port)}${options.frontend === "built-bundle" ? " serving dist/dashboard" : ""}`);
-    await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals());
+    await ownDashboardUntilShutdown(running, input.signals ?? processShutdownSignals(), input.dashboardReady
+      ?? (() => { process.send?.({ type: "hrauto-dashboard-ready" }); }));
     return;
   }
   if (command === "explain") {

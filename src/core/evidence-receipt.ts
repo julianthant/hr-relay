@@ -89,7 +89,7 @@ import { valueFreeProtectedInput } from "../domain/protected-input.js";
 import { z } from "zod";
 import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import {
-  directIdentifierDigestReference,
+  redactionDigest,
   idempotencyKeyDigestReference,
 } from "../domain/redaction.js";
 import {
@@ -117,6 +117,7 @@ import { sha256Hex } from "../domain/sha256.js";
 import {
   evidenceLeaves,
   redactEvidenceLeaf,
+  historicalReceiptEvidenceLeaf,
   type EvidenceLeaf,
   type EvidenceValueScope,
 } from "../domain/trust/evidence-classification.js";
@@ -342,8 +343,16 @@ function pickCheckpoint(
  * receipt at 1 and never upgrades it in place — the D199 stranding, refused
  * structurally rather than remembered.
  */
-export type ReceiptComposition = 1 | 2 | 3 | 4;
-export const LATEST_RECEIPT_COMPOSITION = 4 satisfies ReceiptComposition;
+export type ReceiptComposition = 1 | 2 | 3 | 4 | 5;
+export const LATEST_RECEIPT_COMPOSITION = 5 satisfies ReceiptComposition;
+
+function historicalDirectIdentifierReference(value: string): string {
+  return `identifier#${redactionDigest(value).slice(0, 12)}`;
+}
+
+function receiptEvidenceLeaf(scope: EvidenceValueScope, leaf: EvidenceLeaf, composition: ReceiptComposition) {
+  return composition < 5 ? historicalReceiptEvidenceLeaf(scope, leaf) : redactEvidenceLeaf(scope, leaf);
+}
 
 /** The one sentence a receipt says about each closed not-run reason; a new reason must be authored here, never inherited. */
 const NOT_RUN_SENTENCE: Record<TerminalNotRunReason, (id: string) => string> = {
@@ -385,6 +394,7 @@ export function deriveActionWriteProof(input: Readonly<{
   record: unknown;
   intent: WriteIntentRecord | undefined;
   protectedTransaction?: boolean;
+  composition?: ReceiptComposition;
 }>): ActionWriteProof {
   const { commitContract, intent } = input;
   const record = RunCheckpointRecordSchema.parse(input.record);
@@ -415,10 +425,10 @@ export function deriveActionWriteProof(input: Readonly<{
   const scope: EvidenceValueScope = { kind: "write-proof", taskId: commitContract.id };
   return ActionWriteProofSchema.parse({
     system: intent.system,
-    idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, input.protectedTransaction ?? false),
+    idempotencyKeyDigest: publicTransactionKeyDigest(intent.idempotencyKeyDigest, (input.composition ?? LATEST_RECEIPT_COMPOSITION) < 5 && (input.protectedTransaction ?? false)),
     completion: commitContract.writeSafety.completion.kind,
     proofSource: outcome.proofSource,
-    values: evidenceLeaves(outcome.proof.value).map((leaf) => redactEvidenceLeaf(scope, leaf)),
+    values: evidenceLeaves(outcome.proof.value).map((leaf) => receiptEvidenceLeaf(scope, leaf, input.composition ?? LATEST_RECEIPT_COMPOSITION)),
     recordedAt: outcome.disposition === "committed" ? outcome.confirmedAt : outcome.observedAt,
   });
 }
@@ -542,7 +552,7 @@ export function deriveRunEvidenceReceipt(
       mandatory: true,
       source: { kind: "input", inputFingerprint },
       state: "satisfied",
-      value: redactEvidenceLeaf(inputScope, leaf),
+      value: receiptEvidenceLeaf(inputScope, leaf, composition),
     });
   }
 
@@ -766,6 +776,7 @@ export function deriveRunEvidenceReceipt(
      */
     if (record.assertion !== undefined) {
       emitAssertedNodeEvidence({
+        composition,
         assertion: record.assertion,
         record,
         node,
@@ -802,6 +813,7 @@ export function deriveRunEvidenceReceipt(
       );
       const mandatory = declaredDetails.has(`${id}\u0000${leaf.path}`);
       observations.push(observationFact({
+        composition,
         factId,
         entryId,
         nodeId: id,
@@ -863,7 +875,8 @@ export function deriveRunEvidenceReceipt(
        */
       if (composition >= 2) {
         commitAction.proved = deriveActionWriteProof({
-          protectedTransaction: composition >= 4 && hasProtectedTransactionInput(run),
+          composition,
+          protectedTransaction: composition === 4 && hasProtectedTransactionInput(run),
           commitContract: node.commit.uses,
           record,
           intent: write?.intent,
@@ -888,7 +901,7 @@ export function deriveRunEvidenceReceipt(
           id: identityId,
           kind: "identity",
           outcome: "approved",
-          reason: subjectReason(write.intent, composition, composition >= 4 && hasProtectedTransactionInput(run)),
+          reason: subjectReason(write.intent, composition, composition === 4 && hasProtectedTransactionInput(run)),
           evidence: [evidenceEntryRef(commitAction.id)],
         });
       }
@@ -1020,7 +1033,7 @@ export function deriveRunEvidenceReceipt(
           evidence: [...derivedResultEvidence(result, byNode, terminalResultVerificationId)],
         },
         state: "satisfied",
-        value: redactEvidenceLeaf(resultScope, leaf),
+        value: receiptEvidenceLeaf(resultScope, leaf, composition),
       });
     }
     verification.push({
@@ -1043,7 +1056,7 @@ export function deriveRunEvidenceReceipt(
     warnings.push({
       id: entryId("warning", "failure"),
       code: failure.code,
-      summary: composition >= 3
+      summary: composition >= 3 && composition < 5
         ? `failure ${failure.code}; write state at failure: ${failure.writeState}. `
           + "Free diagnostic text remains in authority and is not copied into this receipt"
         : `${failure.summary} — write state at failure: ${failure.writeState}`,
@@ -1102,7 +1115,7 @@ export function deriveRunEvidenceReceipt(
         code: ErrorCodeSchema.parse("RESIDUAL_WRITE_INTENT"),
         summary: composition >= 3
           ? `write intent ${intent.writeIntentId} for ${intent.system} `
-            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, composition >= 4 && hasProtectedTransactionInput(run))} is still ${intent.status}; this run left an unsettled `
+            + `${idempotencyKeyDigestReference(intent.idempotencyKeyDigest, composition === 4 && hasProtectedTransactionInput(run))} is still ${intent.status}; this run left an unsettled `
             + "external write behind and only ref write-safety's typed operator resolutions may release it"
           : legacyAuthorityResidualWriteSummary(intent),
         loadBearing: true,
@@ -1391,7 +1404,7 @@ function emitGateEvidence(input: GateEvidenceInput): void {
       mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
       source,
       state: "satisfied",
-      value: redactEvidenceLeaf(scope, leaf),
+      value: receiptEvidenceLeaf(scope, leaf, input.composition),
     });
   }
 
@@ -1417,14 +1430,14 @@ function emitGateEvidence(input: GateEvidenceInput): void {
       + "must be a single comparable identity",
     );
   }
-  const bound: string | undefined = input.composition >= 4
+  const bound: string | undefined = input.composition === 4
     && (input.workflowId === "separations" || input.workflowId === "separations-kuali-finalization")
     ? undefined : typeof boundLeaf?.value === "string" ? boundLeaf.value : undefined;
-  const projectedBound = bound === undefined || input.composition < 3
+  const projectedBound = bound === undefined || input.composition < 3 || input.composition >= 5
     ? bound
     : FingerprintSchema.safeParse(bound).success
       ? `evidence digest ${bound}`
-      : directIdentifierDigestReference(bound);
+      : historicalDirectIdentifierReference(bound);
   const decisionId = entryId("decision", `gate.${nodeId}`);
   input.decisions.push({
     id: decisionId,
@@ -1469,6 +1482,7 @@ interface CitedAssertion {
 }
 
 interface AssertedEvidenceInput {
+  readonly composition: ReceiptComposition;
   readonly assertion: NonNullable<RunCheckpointRecord["assertion"]>;
   readonly record: RunCheckpointRecord;
   readonly node: RuntimeFlowNode;
@@ -1577,7 +1591,7 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
       mandatory: input.declaredDetails.has(`${nodeId}\u0000${leaf.path}`),
       source,
       state: "satisfied",
-      value: redactEvidenceLeaf(input.scope, leaf),
+      value: receiptEvidenceLeaf(input.scope, leaf, input.composition),
     });
   }
 
@@ -1615,6 +1629,7 @@ function emitAssertedNodeEvidence(input: AssertedEvidenceInput): void {
 /* ── fact construction ───────────────────────────────────────────────────── */
 
 interface ObservationFactInput {
+  readonly composition: ReceiptComposition;
   readonly factId: EvidenceEntryId;
   readonly entryId: (kind: Parameters<typeof deriveEvidenceEntryId>[1], key: string) => EvidenceEntryId;
   readonly nodeId: string;
@@ -1635,7 +1650,7 @@ function observationFact(input: ObservationFactInput): Fact {
   const {
     factId, entryId, nodeId, taskId, leaf, scope, provenance, replayed, checkpointFingerprint, writtenAt,
   } = input;
-  const value = redactEvidenceLeaf(scope, leaf);
+  const value = receiptEvidenceLeaf(scope, leaf, input.composition);
   const base = { id: factId, field: leaf.field, mandatory: input.mandatory, state: "satisfied" as const, value };
 
   if (provenance === undefined) {

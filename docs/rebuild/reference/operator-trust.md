@@ -20,6 +20,31 @@ with provenance into a repository that shares no module graph with legacy (§1.3
 minimal durable `FailureRecord` is Phase 1f's while automatic bundles, receipts and `explain` are
 Phase 2g's (§2).
 
+## D361 — Complete local operator evidence · 2026-10-01
+
+New authorized local diagnostic captures, observed facts and receipt composition 5 retain each
+complete supplied value with its original classification (`state: allowed`, `transform: allow`).
+Local display and exports preserve supplied identifiers, failure prose and every collected result
+field; CSV formula safety, typed XLSX cells, snapshot membership/order/limits and access rules remain.
+This includes secret or credential-file values already supplied to an authorized local capture;
+it does not authorize reading or discovering additional credentials. Missing original historical
+values stay explicitly unavailable: no digest, suffix, count or basename is reconstructed as a value.
+Historical records and receipt compositions 1–4 retain their exact derivations and stored bytes.
+Archives admit composition 5 alongside supported historical compositions 3 and 4.
+
+D346 provider and OS-notification egress remains separately classified. `redactValue` and the closed
+classification/transform policy still govern provider facts. Failure advisory prose and identifiers
+remain dropped; contact advice still excludes fields whose canonical transform forbids provider use.
+`retainLocalEvidenceValue` and local diagnostic/receipt capture do not bypass that policy. Provider
+prompt schemas reject nonpermitted complete local fields, and OS notifications retain their
+repository-authored-only origin rule. The startup proposal to disclose complete advisory values is
+deferred; this local amendment does not authorize it. Credential-reader and environment guards remain
+active, and the existing credential-named diagnostic interpolation guard is retained.
+
+Identity keys, checksums, request fingerprints, permanent-write digests and exact durable joins retain
+their byte derivations. Existing Host/Origin admission, loopback access, session ownership, storage
+permissions, external-write safety and artifact identity remain required.
+
 ## Ownership (D1)
 
 | This doc **OWNS** | Imports from the owning sibling |

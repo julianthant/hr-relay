@@ -70,6 +70,7 @@ import {
   verificationMark,
   writeActionBadgeTone,
   writeProofAbsence,
+  completeEvidenceText,
   writeProofConfirmation,
   writeProofReadBack,
   type FailureWriteStateTone,
@@ -95,10 +96,7 @@ type BundleDialogState =
 /* ── shared little pieces ────────────────────────────────────────────────── */
 
 function redactedText(value: FactValue): string {
-  if (value.rawValue !== undefined) return typeof value.rawValue === "string" ? value.rawValue : JSON.stringify(value.rawValue);
-  if (value.state === "redacted") return `redacted — ${value.classification}`;
-  if (value.transform === "count") return `${String(value.value)} (count)`;
-  return typeof value.value === "string" ? value.value : JSON.stringify(value.value);
+  return completeEvidenceText(value);
 }
 
 /**
@@ -670,9 +668,7 @@ function byteSizeLabel(byteSize: number): string {
 }
 
 function redactionList(bundle: DiagnosticBundleWire): string {
-  const facts = bundle.redaction.fields.map((field) => `${field.key}: ${field.rawValue === undefined
-    ? field.state === "redacted" ? "unavailable" : typeof field.value === "string" ? field.value : JSON.stringify(field.value)
-    : typeof field.rawValue === "string" ? field.rawValue : JSON.stringify(field.rawValue)}`);
+  const facts = bundle.redaction.fields.map((field) => `${field.key}: ${completeEvidenceText(field)}`);
   const warnings = bundle.redaction.warnings.map((warning) => `warning: ${warning}`);
   const list = [...facts, ...warnings];
   return list.length === 0 ? "No diagnostic fields recorded" : list.join(" · ");
@@ -696,7 +692,7 @@ function DiagnosticBundleDialog({
     throw new Error(`Diagnostic bundle ${bundleId} requires exact attachmentUrl and readBundle capabilities`);
   }
   const description = state.state === "ready"
-    ? `Captured ${fmtClock(state.bundle.capturedAt)} · ${byteSizeLabel(state.bundle.byteSize)} · content-addressed, capture-time redaction recorded`
+    ? `Captured ${fmtClock(state.bundle.capturedAt)} · ${byteSizeLabel(state.bundle.byteSize)} · content-addressed, captured values recorded`
     : "Reading the durable diagnostic bundle before it is shown.";
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>

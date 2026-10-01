@@ -1,3 +1,4 @@
+import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import writeXlsxFile, { type Cell, type Sheet } from "write-excel-file/node";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
@@ -30,7 +31,8 @@ export const OPERATOR_XLSX_SEARCH_COLUMNS = Object.freeze([
   "Retry",
   "Match field",
   "Match strength",
-  "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic",
+  "Version", "Failure code", "Subject coverage", "Actor coverage", "Receipt", "Failure", "Diagnostic", "Run id", "Trace id", "Subject", "Actor",
+  "Workflow id", "Registration state", "Registration reason", "Run number state", "Ended at state", "Retry state", "Subject state", "Actor state",
 ] as const);
 
 export const OPERATOR_XLSX_ACTIVITY_SHEETS = Object.freeze([
@@ -158,7 +160,10 @@ function searchReadMeSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> 
   const metadata: readonly (readonly [string, Cell])[] = [
     ["Workbook", cell("HR automation run search export")],
     ["Source", cell("Non-archived run authority")],
-    ["Selection", cell("Cross-date search (query text retained in export evidence, not workbook cells)")],
+    ["Selection", cell("Cross-date search")],
+    ["Search query", cell(document.selection.query.q)],
+    ["Search filters", cell(canonicalJsonStringify(document.selection.query.facets))],
+    ["Complete selection", cell(canonicalJsonStringify(document.selection))],
     ["Snapshot generated at", typedDate(document.selection.snapshot.generatedAt, "yyyy-mm-dd hh:mm:ss")],
     ["Authority generation", cell(document.selection.snapshot.authorityGeneration)],
     ["Authority order", cell(document.selection.snapshot.order)],
@@ -201,6 +206,8 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
       { width: 14 }, { width: 32 }, { width: 23 }, { width: 23 },
       { width: 42 }, { width: 34 }, { width: 14 }, { width: 16 },
       {width:10},{width:25},{width:30},{width:30},{width:12},{width:12},{width:12},
+      {width:40},{width:40},{width:40},{width:32},
+      ...Array.from({ length: 8 }, () => ({ width: 32 })),
     ],
     data: [
       headerRow(OPERATOR_XLSX_SEARCH_COLUMNS),
@@ -209,7 +216,7 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
           result.runNumber.state === "present" ? result.runNumber.value : result.runNumber.reason,
           result.runNumber.state === "absent" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
         ),
-        cell(result.registration.state==="registered"?result.registration.label:"Unavailable"),
+        cell(result.registration.state==="registered"?result.registration.label:""),
         cell(result.registration.state==="registered"?result.registration.code:""),
         cell(result.registration.state==="registered"?result.registration.categoryId:""),
         typedDate(`${result.partitionDay}T00:00:00.000Z`, "yyyy-mm-dd"),
@@ -222,22 +229,21 @@ function runsSheet(document: OperatorXlsxSearchDocument): Sheet<Buffer> {
         result.endedAt.state === "present"
           ? typedDate(result.endedAt.value, "yyyy-mm-dd hh:mm:ss")
           : cell(undefined),
-        // The served absence reason names the full run id. Preserve the fact,
-        // but derive its workbook-safe wording from the already-admitted
-        // lifecycle state rather than exporting that identifier-bearing text.
-        cell(result.endedAt.state === "absent" ? `Not terminal — ${result.state}` : ""),
-        cell(
-          result.retryOf.state === "present"
-            ? "Yes — source identifier omitted"
-            : `No — ${result.retryOf.reason}`,
-          result.retryOf.state === "present" ? TALL_WRAPPED_BODY_STYLE : BODY_STYLE,
-        ),
+        cell(result.endedAt.state === "absent" ? result.endedAt.reason : ""),
+        cell(result.retryOf.state === "present" ? result.retryOf.value : result.retryOf.reason),
         cell(result.match.field),
         cell(result.match.strength),
         cell(result.metadata.version),cell(result.metadata.failureCode??""),
-        cell(result.metadata.subject.state==="available"?"Available (value omitted)":result.metadata.subject.reason),
-        cell(result.metadata.actor.state==="available"?"Available (value omitted)":result.metadata.actor.reason),
+        cell(result.metadata.subject.state==="available"?"Available":result.metadata.subject.reason),
+        cell(result.metadata.actor.state==="available"?"Available":result.metadata.actor.reason),
         cell(result.metadata.evidence.receipt),cell(result.metadata.evidence.failure),cell(result.metadata.evidence.diagnostic),
+        cell(result.runId),cell(result.traceId),
+        cell(result.metadata.subject.state === "available" ? result.metadata.subject.value : `Unavailable: ${result.metadata.subject.reason}`),
+        cell(result.metadata.actor.state === "available" ? result.metadata.actor.value : `Unavailable: ${result.metadata.actor.reason}`),
+        cell(result.workflowId),cell(result.registration.state),
+        cell(result.registration.state === "unregistered" ? result.registration.reason : ""),
+        cell(result.runNumber.state),cell(result.endedAt.state),cell(result.retryOf.state),
+        cell(result.metadata.subject.state),cell(result.metadata.actor.state),
       ]),
     ],
   };
@@ -306,7 +312,7 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
       [cell("Measured durations"), numericCell(report.durations.measuredRuns), cell("runs"), cell("")],
       [cell("Unmeasured durations"), numericCell(report.durations.unmeasuredRuns), cell("runs"), cell("")],
       [cell("Median duration"), numericCell(median.state === "present" ? median.value : undefined), cell("milliseconds"), cell(median.state === "absent" ? median.reason : "")],
-      [cell("Longest duration"), numericCell(longest.state === "present" ? longest.value : undefined), cell("milliseconds"), cell(longest.state === "absent" ? longest.reason : "run identifier omitted")],
+      [cell("Longest duration"), numericCell(longest.state === "present" ? longest.value : undefined), cell("milliseconds"), cell(longest.state === "absent" ? longest.reason : longest.runId)],
       [cell("Total duration"), numericCell(report.durations.totalMs), cell("milliseconds"), cell("")],
     ],
   };
@@ -367,8 +373,8 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
     stickyRowsCount: 1,
     columns: [{ width: 24 }, { width: 14 }, { width: 24 }],
     data: [
-      headerRow(["Status", "Runs", "Sampled identifiers omitted"]),
-      ...report.statuses.map((entry) => [cell(entry.status), numericCell(entry.runs), numericCell(entry.sample.length)]),
+      headerRow(["Status", "Runs", "Sampled run identifiers"]),
+      ...report.statuses.map((entry) => [cell(entry.status), numericCell(entry.runs), cell(entry.sample.join("\n"))]),
     ],
   };
   const byOutcome: Sheet<Buffer> = {
@@ -387,9 +393,9 @@ function activitySheets(document: OperatorXlsxActivityDocument): readonly Sheet<
     stickyRowsCount: 1,
     columns: [{ width: 38 }, { width: 14 }, { width: 14 }, { width: 24 }],
     data: [
-      headerRow(["Failure code", "Runs", "Transient", "Sampled identifiers omitted"]),
+      headerRow(["Failure code", "Runs", "Transient", "Sampled run identifiers"]),
       ...report.failures.map((entry) => [
-        cell(entry.code), numericCell(entry.runs), numericCell(entry.transient), numericCell(entry.sample.length),
+        cell(entry.code), numericCell(entry.runs), numericCell(entry.transient), cell(entry.sample.join("\n")),
       ]),
     ],
   };

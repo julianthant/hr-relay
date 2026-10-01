@@ -1,6 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathReadPendingTerminationSet } from "../../../domain/contracts/ucpath/read-pending-termination-set.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import {
   firstDisagreeingName,
@@ -17,7 +17,7 @@ export const readPendingTerminationSetTask = defineTask(
       if (scan.state === "unreadable") {
         return ctx.fail(
           "unexpected-page-state",
-          `UCPath could not establish the pending transaction set for ${directIdentifierDigestReference(input.emplId)}: ${scan.reason}`,
+          `UCPath could not establish the pending transaction set for ${directIdentifierDisplay(input.emplId)}: ${scan.reason}`,
           { subject: input.emplId },
         );
       }
@@ -25,7 +25,7 @@ export const readPendingTerminationSetTask = defineTask(
       if (disagreeing !== undefined) {
         return ctx.fail(
           "subject-mismatch",
-          `UCPath returned a transaction for ${directIdentifierDigestReference(disagreeing)} while the run named ${directIdentifierDigestReference(input.expectedName)}`,
+          `UCPath returned a transaction for ${directIdentifierDisplay(disagreeing)} while the run named ${directIdentifierDisplay(input.expectedName)}`,
           { subject: input.emplId },
         );
       }

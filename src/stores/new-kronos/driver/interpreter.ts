@@ -96,7 +96,7 @@ import type {
   NewKronosTimecardRead,
 } from "../../../domain/ui/new-kronos-timecard.js";
 import type { ElementId } from "../../../domain/ids.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import {
   NEW_KRONOS_PORTAL_FRAME_SELECTOR,
   NEW_KRONOS_TIMECARD_ROUTE,
@@ -339,7 +339,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const read = await searchEmployee({ employeeId, searchTimeoutMs: PANEL_SEARCH_TIMEOUT_MS });
     if (read.state !== "resolved") {
       throw new NewKronosDriverError(
-        `could not select EID ${directIdentifierDigestReference(employeeId)} in the Employee Search panel before opening the timecard: `
+        `could not select EID ${directIdentifierDisplay(employeeId)} in the Employee Search panel before opening the timecard: `
         + `the search answered ${read.state} — this is a navigation failure, not an empty timecard`,
       );
     }
@@ -513,21 +513,21 @@ function createDriverInternals(page: Page, clock: Clock) {
     });
     if (enabled.value === null) {
       throw new NewKronosDriverError(
-        `Employee Search selected ${directIdentifierDigestReference(input.employeeId)} but the Go To control never became enabled within `
+        `Employee Search selected ${directIdentifierDisplay(input.employeeId)} but the Go To control never became enabled within `
         + `${String(SELECTION_TIMEOUT_MS)}ms — no slat is registered, so the timecard cannot be opened`,
       );
     }
     const afterSelect = await readCounters(resultRoot);
     if (afterSelect.selected === null) {
       throw new NewKronosDriverError(
-        `the Employee Search panel rendered no "Selected [N]" counter after checking ${directIdentifierDigestReference(input.employeeId)} — `
+        `the Employee Search panel rendered no "Selected [N]" counter after checking ${directIdentifierDisplay(input.employeeId)} — `
         + "the selection cannot be proved, and Go To being enabled alone is not the count",
       );
     }
     const selectedCount = afterSelect.selected;
     if (selectedCount < 1) {
       throw new NewKronosDriverError(
-        `Employee Search reports Selected [${String(selectedCount)}] after checking ${directIdentifierDigestReference(input.employeeId)} — `
+        `Employee Search reports Selected [${String(selectedCount)}] after checking ${directIdentifierDisplay(input.employeeId)} — `
         + "the selection did not register",
       );
     }
@@ -837,7 +837,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const goTo = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_BUTTON);
     if (!(await goTo.isEnabled())) {
       throw new NewKronosDriverError(
-        `the Go To control is disabled for EID ${directIdentifierDigestReference(input.employeeId)} — no employee is selected in the search `
+        `the Go To control is disabled for EID ${directIdentifierDisplay(input.employeeId)} — no employee is selected in the search `
         + "panel, so the timecard cannot be opened; this is a navigation failure, not an empty timecard",
       );
     }
@@ -849,7 +849,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     if (optionReady.value === null) {
       throw new NewKronosDriverError(
         `the Go To menu never rendered exactly one "Timecard" option within ${String(CONTROL_TIMEOUT_MS)}ms `
-        + `for EID ${directIdentifierDigestReference(input.employeeId)} — the timecard could not be opened`,
+        + `for EID ${directIdentifierDisplay(input.employeeId)} — the timecard could not be opened`,
       );
     }
     const option = await exactlyOne(clock, root, NEW_KRONOS_SEARCH_GO_TO_TIMECARD_OPTION);
@@ -863,7 +863,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     if (landed.value === null) {
       throw new NewKronosDriverError(
         `Go To -> Timecard did not reach ${NEW_KRONOS_TIMECARD_ROUTE} with an identifiable employee header `
-        + `within ${String(TIMECARD_NAVIGATION_TIMEOUT_MS)}ms for EID ${directIdentifierDigestReference(input.employeeId)} `
+        + `within ${String(TIMECARD_NAVIGATION_TIMEOUT_MS)}ms for EID ${directIdentifierDisplay(input.employeeId)} `
         + `(observed URL ${page.url()}) — refusing to read a page that is not a loaded timecard`,
       );
     }
@@ -881,7 +881,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     if (observedEmployeeId.length === 0) {
       throw new NewKronosDriverError(
         `the timecard's ${NEW_KRONOS_TIMECARD_DISPLAYED_EID} observation is empty for expected EID `
-        + `${directIdentifierDigestReference(input.employeeId)} — the header did not render, so the subject cannot be proved`,
+        + `${directIdentifierDisplay(input.employeeId)} — the header did not render, so the subject cannot be proved`,
       );
     }
     // The employee-name combobox is driver-internal: legacy has no selector key
@@ -892,7 +892,7 @@ function createDriverInternals(page: Page, clock: Clock) {
     const observedDisplayName = nameTitle === null ? "" : nameTitle.trim();
     if (observedDisplayName.length === 0) {
       throw new NewKronosDriverError(
-        `the timecard does not display an employee name beside EID ${directIdentifierDigestReference(observedEmployeeId)} — `
+        `the timecard does not display an employee name beside EID ${directIdentifierDisplay(observedEmployeeId)} — `
         + "refusing to report a subject whose name half could not be read",
       );
     }

@@ -430,11 +430,34 @@ function isLive(lease: z.infer<typeof LeaseSchema>): boolean {
   const observed = observeProcessIdentity(lease.pid);
   return observed.state === "alive" && observed.identity.platform === lease.processIdentity.platform && observed.identity.startToken === lease.processIdentity.startToken;
 }
+export class AdmissionMutexBusyError extends Error {
+  constructor() {
+    super("runtime-control: admission mutex remained busy after 5000ms");
+    this.name = "AdmissionMutexBusyError";
+  }
+}
+const mutexWait = new Int32Array(new SharedArrayBuffer(4));
+function filesystemCode(error: unknown): unknown {
+  return error instanceof Error && "code" in error ? error.code : undefined;
+}
 function mutex<T>(control: string, callback: () => T): T {
   privateDirectory(control);
   const path = join(control, "admission-mutex");
-  try { mkdirSync(path, { mode: 0o700 }); syncDir(control); }
-  catch { fail("admission mutex busy or abandoned; offline recovery required"); }
+  const deadline = systemClock.monotonicMs() + 5_000;
+  for (;;) {
+    try { mkdirSync(path, { mode: 0o700 }); break; }
+    catch (error) {
+      if (filesystemCode(error) !== "EEXIST") throw error;
+      try { privateDirectory(path); }
+      catch (inspectionError) {
+        if (filesystemCode(inspectionError) !== "ENOENT") throw inspectionError;
+      }
+      const remaining = deadline - systemClock.monotonicMs();
+      if (remaining <= 0) throw new AdmissionMutexBusyError();
+      Atomics.wait(mutexWait, 0, 0, Math.min(10, remaining));
+    }
+  }
+  syncDir(control);
   try {
     privateDirectory(path);
     atomicJson(join(path, "owner.json"), { schemaVersion: 1, acquisitionId: randomUUID(), phase: "admitting", pid: process.pid, processIdentity: identity() });
@@ -532,6 +555,31 @@ export function recoverAbandonedAdmissionMutex(workspacePath: string, restore: R
   syncDir(history);
   syncDir(control);
   return Object.freeze({ acquisitionId: owner.acquisitionId, pid: owner.pid, receiptPath });
+}
+
+/** This inspection authorizes no recovery; the offline proof rechecks exact owner custody. */
+export function admissionMutexOwnerProvenDead(workspacePath: string): boolean {
+  const workspace = realpathSync(workspacePath);
+  if (resolve(workspacePath) !== workspace) fail("recovery workspace must be canonical");
+  const control = join(workspace, CONTROL);
+  assertNoSymlinkComponents(control);
+  privateDirectory(control);
+  const mutexPath = join(control, "admission-mutex");
+  if (lstatMaybe(mutexPath) === undefined) return false;
+  privateDirectory(mutexPath);
+  const entries = readdirSync(mutexPath);
+  if (entries.length === 0) return false;
+  if (entries.length !== 1) fail("abandoned mutex has unexpected entries");
+  const name = entries[0];
+  if (name !== "owner.json") {
+    const match = /^\.([0-9a-f-]{36})\.tmp$/u.exec(name);
+    if (match === null || !z.uuid().safeParse(match[1]).success) fail("abandoned mutex owner shape invalid");
+  }
+  const owner = readStrict(join(mutexPath, name), MutexOwnerSchema);
+  const observed = observeProcessIdentity(owner.pid);
+  return observed.state === "gone" || observed.state === "alive"
+    && (observed.identity.platform !== owner.processIdentity.platform
+      || observed.identity.startToken !== owner.processIdentity.startToken);
 }
 
 /** Startup uses the offline proof only for an exact abandoned owner in a settled installation. */

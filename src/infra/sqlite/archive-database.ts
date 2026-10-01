@@ -166,6 +166,15 @@ export class ArchiveDatabase {
     if(c.runId!==runId||report.digest!==row.digest||c.transferId!==row.transfer_id||c.workflow!==row.workflow||c.title!==row.title||c.descriptorVersion!==row.descriptor_version||c.outcome!==row.outcome||c.completedAt!==row.completed_at||c.capturedAt!==row.captured_at)throw new Error("archive-report-index-mismatch");
     return report;
   }
+  pendingManualReports(): ArchiveReport[] {
+    return this.#database.prepare("SELECT run_id FROM archive_records WHERE state IN ('captured','verified') AND json_extract(report_json,'$.content.manualArchive') IS NOT NULL").all()
+      .map(raw => {
+        const runId = z.object({ run_id: z.string() }).parse(raw).run_id;
+        const report = this.read(runId);
+        if (report === undefined) throw new Error("manual-archive-report-missing");
+        return report;
+      });
+  }
   workflows() { return this.#database.prepare("SELECT DISTINCT workflow FROM archive_records WHERE state='published' ORDER BY workflow").all().map(row=>z.object({workflow:z.string()}).parse(row).workflow); }
   private queryConditions(q: ArchiveGroupQuery & { after?: ArchiveQuery["after"] }) {
     const clauses = ["state='published'"], values: (string | number)[] = [];

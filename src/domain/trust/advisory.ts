@@ -47,6 +47,7 @@
  * the unsafe half.
  */
 import { z } from "zod";
+import { refineEvidenceTransformPair } from "../redaction-policy.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../canonical-json.js";
 import { ContactAdviceSchema } from "../normalization/contact-rules.js";
 import {
@@ -173,7 +174,7 @@ export const AdvisoryPromptSchema = z.strictObject({
   answerSchema: JsonValueSchema,
   answerSchemaFingerprint: FingerprintSchema,
   /** Declared-redacted; a `redacted` arm carries no value by construction. */
-  facts: z.array(RedactedFieldSchema).min(1),
+  facts: z.array(RedactedFieldSchema.superRefine(refineEvidenceTransformPair)).min(1),
 });
 export type AdvisoryPrompt = z.infer<typeof AdvisoryPromptSchema>;
 

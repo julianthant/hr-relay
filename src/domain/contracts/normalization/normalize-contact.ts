@@ -81,7 +81,7 @@ export const RedactedContactValueSchema = z.discriminatedUnion("state", [
   }),
   z.strictObject({
     state: z.literal("allowed"),
-    classification: z.literal("safe-diagnostic"),
+    classification: DataClassificationSchema,
     transform: z.literal("allow"),
     value: z.string(),
   }),

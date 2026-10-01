@@ -6,7 +6,7 @@ import {
 import {
   CrmSubjectBindingSchema,
 } from "../../../domain/ui/crm-onboarding.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { crmDriver } from "../declaration.js";
 
 /** Ported semantic operation: legacy 793abe1, src/systems/crm/onboarding-records.ts. */
@@ -19,7 +19,7 @@ export const readOnboardingRecordTask = defineTask(crmDriver, CrmReadOnboardingR
     if (!parsedBinding.success) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding record returned an invalid subject binding for EID ${directIdentifierDigestReference(input.eid)}`,
+        `CRM onboarding record returned an invalid subject binding for EID ${directIdentifierDisplay(input.eid)}`,
         { subject: input.eid },
       );
     }
@@ -32,14 +32,14 @@ export const readOnboardingRecordTask = defineTask(crmDriver, CrmReadOnboardingR
       || (output.state === "found") !== (binding.state === "displayed-record")) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding record expected EID ${directIdentifierDigestReference(input.eid)} but bound ${directIdentifierDigestReference(bindingEid)} as ${binding.state}`,
+        `CRM onboarding record expected EID ${directIdentifierDisplay(input.eid)} but bound ${directIdentifierDisplay(bindingEid)} as ${binding.state}`,
         { subject: input.eid },
       );
     }
     if (outputEid !== input.eid) {
       return ctx.fail(
         "subject-mismatch",
-        `CRM onboarding record for EID ${directIdentifierDigestReference(input.eid)} returned output for ${directIdentifierDigestReference(outputEid)}`,
+        `CRM onboarding record for EID ${directIdentifierDisplay(input.eid)} returned output for ${directIdentifierDisplay(outputEid)}`,
         { subject: input.eid },
       );
     }

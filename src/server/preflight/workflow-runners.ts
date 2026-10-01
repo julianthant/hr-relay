@@ -1,6 +1,6 @@
 import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
-import { chromium } from "playwright";
+import { bundledChromiumExecutablePath } from "../../infra/browser/executable-path.js";
 import { requireAnnualDates } from "../../domain/config/fiscal-year.js";
 import { CONFIG_ROUTE_SCHEMAS } from "../../domain/config/schema.js";
 import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../domain/preflight.js";
@@ -22,7 +22,7 @@ export function createWorkflowPreflightRunners(input: RuntimePreflightRunnerInpu
     let inspect: (() => ReturnType<typeof result>) | undefined;
     if (check === "browser.assets") inspect = () => {
       try {
-        const executable = (input.browserExecutablePath ?? (() => chromium.executablePath()))();
+        const executable = (input.browserExecutablePath ?? bundledChromiumExecutablePath)();
         if (!statSync(executable).isFile()) return result(check, false, "Chromium executable is unavailable.");
         accessSync(executable, constants.R_OK | constants.X_OK);
       } catch {

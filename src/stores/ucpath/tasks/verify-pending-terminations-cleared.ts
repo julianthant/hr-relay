@@ -1,6 +1,6 @@
 import { defineTask } from "../../../base/task.js";
 import { UcpathVerifyPendingTerminationsCleared } from "../../../domain/contracts/ucpath/verify-pending-terminations-cleared.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 
@@ -22,8 +22,8 @@ export const verifyPendingTerminationsClearedTask = defineTask(
       if (disagreeing !== undefined) {
         return ctx.fail(
           "subject-mismatch",
-          `UCPath post-delete read-back returned a transaction for ${directIdentifierDigestReference(disagreeing)} `
-          + `while the run named ${directIdentifierDigestReference(input.expectedName)}`,
+          `UCPath post-delete read-back returned a transaction for ${directIdentifierDisplay(disagreeing)} `
+          + `while the run named ${directIdentifierDisplay(input.expectedName)}`,
           { subject: input.emplId },
         );
       }

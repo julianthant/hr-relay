@@ -29,7 +29,7 @@ import type { JsonValue } from "../canonical-json.js";
 import { CANONICAL_FIELDS } from "../fields/registry.js";
 import type { ArtifactRef } from "../artifacts.js";
 import type { IntakeTargetFieldId, ItemId } from "../ids.js";
-import { redactValue } from "../redaction.js";
+import { retainLocalEvidenceValue } from "../redaction.js";
 import {
   buildIntakeManifest,
   enqueueReadiness,
@@ -122,7 +122,7 @@ function originalCell(
   }
   const field = CANONICAL_FIELDS[target.canonicalFieldId];
   const raw = cells[column.currentIndex] ?? "";
-  return redactValue(field.classification, field.redactTransform, raw);
+  return retainLocalEvidenceValue(field.classification, field.redactTransform, raw);
 }
 
 export function deriveIntakeEnqueuePlan(input: IntakeEnqueuePlanInput): IntakeEnqueuePlan {

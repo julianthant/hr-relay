@@ -52,6 +52,7 @@ import {
   type TargetReference,
   type VersionChange,
 } from "./run-fan-out.js";
+import { prepareManualArchive, publishManualArchive } from "./archive-terminal-runs.js";
 import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
 import { executeArchiveCommand, runArchiveCommand } from "./archive-version-changes.js";
 import type { createRuntimeVersionChanges } from "./archive-runtime-version-changes.js";
@@ -143,6 +144,7 @@ const PHASE1_ACTIVE = {
     "cancel",
     "bump",
     "rename",
+    "archive",
     "delete",
     "resolve-write-present",
     "resolve-write-absent",
@@ -982,6 +984,19 @@ function executeCancel(
     });
   }
   return applied(request, affectedTargets, versionChanges, dependencyIds);
+}
+
+function executeManualArchive(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
+  request: Extract<RunCommand, { type: "archive" }>): CommandApplication {
+  const current = requireRun(repositories, request, request.target.runId);
+  if (current.version !== request.target.expectedVersion) conflict(request, current.version, "Run changed; refresh before archiving.");
+  if (current.lifecycle.state !== "terminal") reject(request, "invalid-state", "Only a terminal run can be archived; cancel it first.");
+  if (current.envelope.parent !== undefined) reject(request, "invalid-state", "Archive the group instead of an individual member.");
+  const order = deleteTreeOrder(repositories, request, current);
+  const storage = dependencies.lifecycle.lifecycleStorage();
+  const reports = prepareManualArchive(storage, dependencies.archiveSnapshots, request, order, dependencies.clock.now().toISOString());
+  return { ...applied(request, order.map(run => runTarget(run.envelope.runId)), []),
+    commit: () => publishManualArchive(storage, request, reports.map(report => report.content.runId)) };
 }
 
 /**
@@ -2839,6 +2854,7 @@ function dispatchActive(
           repositories.runtimeConfig.requireSettingsCurrent();
           return executeRetry(dependencies, repositories, request, now);
         case "cancel": return executeCancel(dependencies, repositories, request, now);
+        case "archive": return executeManualArchive(dependencies, repositories, request);
         case "delete": return executeDelete(dependencies, repositories, request, now);
         case "bump": return executeBump(dependencies, repositories, request, now);
         case "rename": return executePresentation(dependencies, repositories, request, now);
@@ -2866,7 +2882,7 @@ function dispatchActive(
 }
 
 function replay(
-  dependencies: Pick<CommandKernelDependencies, "settings">,
+  dependencies: Pick<CommandKernelDependencies, "settings"> & Partial<Pick<CommandKernelDependencies, "lifecycle">>,
   repositories: AuthorityRepositories,
   request: CommandRequest,
   now: string,
@@ -2882,6 +2898,11 @@ function replay(
     throw new Error(
       `command ${request.commandId} recorded outcome ${audit.result.state}; only applied commands are journaled`,
     );
+  }
+  if (request.family === "run" && request.type === "archive") {
+    const targets = audit.result.affectedTargets.filter(target => target.family === "run");
+    if (dependencies.lifecycle === undefined) throw new Error("manual-archive-replay-service-missing");
+    publishManualArchive(dependencies.lifecycle.lifecycleStorage(), request, targets.map(target => target.runId));
   }
   if (request.family === "start") {
     // D109: the recorded result is returned only after every binding has

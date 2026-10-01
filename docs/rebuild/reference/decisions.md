@@ -1,4 +1,4 @@
-# `reference/decisions.md` — the decision ledger (D1–D360, 2026-07-17 → 2026-09-30)
+# `reference/decisions.md` — the decision ledger (D1–D362, 2026-07-17 → 2026-10-01)
 
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**
 R1 shows identity evidence comparisons; F2 leads with write outcome and next steps. Concise code-based
@@ -24,6 +24,19 @@ observation times. Exact retained config feeds the same pure derive. Protected-d
 or withhold when protection cannot be proved; replay sources require exact canonical retained
 identity. Historical optional evidence is read forward, never reconstructed. Owner:
 [workflow-model §1.6.5](workflow-model.md#165-exact-child-and-derived-result-sources-d358-2026-09-29).
+**D362 — Bounded normal admission mutex contention (operator-approved, 2026-09-29):**
+Admission and release wait up to five monotonic seconds only for mkdir EEXIST contention, checking
+private directory shape and sleeping between attempts. Other filesystem failures propagate;
+exclusive lease conflicts remain immediate. Timeout is typed busy. D354 recovery requires strict
+proof of an exact dead or reused owner identity; live, unknown, empty, or malformed custody is never
+stolen or deleted.
+Owner: [clock-config-secrets §D362](clock-config-secrets.md#d362--bounded-normal-admission-mutex-contention--2026-09-29).
+
+**D361 — Complete local operator evidence (2026-10-01).** New authorized local captures,
+receipt composition 5, display and exports retain complete supplied classified values. Historical
+compositions remain exact; D346 provider and OS-notification egress policy remains separate.
+Owner: [operator-trust §D361](operator-trust.md#d361--complete-local-operator-evidence--2026-10-01).
+
 
 **D357 — Shared Explorer/Logs operation structure (approved Plan 1 P1.3, 2026-09-27):**
 Explorer serves the canonical redacted complete declaration that an enqueue would freeze. Logs
@@ -2778,3 +2791,10 @@ and [bounded ownership amendment](../plans/phase-3/3.1-finish-the-dashboard/task
 admit the necessary contracts, SQLite indexes/additive migrations, publication/rebuild and storage
 compatibility, wiring and proof in this assignment. A20/A21 and the Phase 3.1 focused-gate cadence
 remain unchanged. Requirements are approved; product implementation remains unstarted.
+
+### 2026-09-29 — Manual terminal Archive and compact run menu
+
+Operator-directed amendment: terminal Queue roots and complete terminal delegated groups can be
+archived manually through the C0 saved-report transfer; permanent deletion remains a separately
+confirmed menu command. Root revision, tree membership, interrupted adoption/publication and retained
+write-protection requirements belong to [dashboard-surfaces](dashboard-surfaces.md#manual-terminal-archive-amendment-2026-09-29).

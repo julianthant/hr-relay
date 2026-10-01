@@ -3,7 +3,7 @@ import {
   NewKronosSearchEmployee,
   SearchEmployeeOutputSchema,
 } from "../../../domain/contracts/new-kronos/search-employee.js";
-import { directIdentifierDigestReference } from "../../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../../domain/redaction.js";
 import { newKronosDriver } from "../declaration.js";
 
 /**
@@ -32,7 +32,7 @@ export const searchEmployeeTask = defineTask(newKronosDriver, NewKronosSearchEmp
     if (read.state === "no-signal") {
       return ctx.fail(
         "search-no-signal",
-        `New Kronos employee search for EID ${directIdentifierDigestReference(input.emplId)} produced neither a result row nor WFD's own `
+        `New Kronos employee search for EID ${directIdentifierDisplay(input.emplId)} produced neither a result row nor WFD's own `
         + `no-results sentinel within ${String(read.waitedMs)}ms (${read.reason}). The check could not run; `
         + "this is NOT evidence that the employee is absent from New Kronos.",
         { subject: input.emplId },
@@ -41,18 +41,18 @@ export const searchEmployeeTask = defineTask(newKronosDriver, NewKronosSearchEmp
     if (read.state === "no-results") {
       return ctx.fail(
         "employee-not-found",
-        `New Kronos employee search for EID ${directIdentifierDigestReference(input.emplId)} returned WFD's own sentinel `
+        `New Kronos employee search for EID ${directIdentifierDisplay(input.emplId)} returned WFD's own sentinel `
         + `${JSON.stringify(read.sentinel)} — expected one matching employee, observed none.`,
         { subject: input.emplId },
       );
     }
     if (read.state === "no-match") {
       const offered = read.candidates
-        .map(({ employeeId }) => directIdentifierDigestReference(employeeId))
+        .map(({ employeeId }) => directIdentifierDisplay(employeeId))
         .join(", ");
       return ctx.fail(
         "search-returned-no-match",
-        `New Kronos employee search for EID ${directIdentifierDigestReference(input.emplId)} rendered ${String(read.totalCount)} row(s), `
+        `New Kronos employee search for EID ${directIdentifierDisplay(input.emplId)} rendered ${String(read.totalCount)} row(s), `
         + `none of which is that employee — observed ids ${offered}.`,
         { subject: input.emplId },
       );
@@ -61,7 +61,7 @@ export const searchEmployeeTask = defineTask(newKronosDriver, NewKronosSearchEmp
     if (read.matched.employeeId !== input.emplId) {
       return ctx.fail(
         "unexpected-page-state",
-        `New Kronos employee search matched row ${directIdentifierDigestReference(read.matched.employeeId)} while resolving EID ${directIdentifierDigestReference(input.emplId)}`,
+        `New Kronos employee search matched row ${directIdentifierDisplay(read.matched.employeeId)} while resolving EID ${directIdentifierDisplay(input.emplId)}`,
         { subject: input.emplId },
       );
     }

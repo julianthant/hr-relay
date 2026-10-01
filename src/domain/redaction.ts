@@ -11,12 +11,20 @@ import { sha256Hex } from "./sha256.js";
 
 export { DataClassificationSchema, EvidenceTransformSchema, evidenceTransformAllowed } from "./redaction-policy.js";
 
+/** Local records may retain full supplied values; provider transforms remain closed. */
+function refineLocalEvidenceTransformPair(
+  field: Readonly<{ classification: z.infer<typeof DataClassificationSchema>; transform: z.infer<typeof EvidenceTransformSchema> }>,
+  context: z.RefinementCtx,
+): void {
+  if (field.transform !== "allow") refineEvidenceTransformPair(field, context);
+}
+
 export const ClassifiedDiagnosticValueSchema = z.strictObject({
   key: z.string().regex(/^[a-z][A-Za-z0-9]*$/),
   classification: DataClassificationSchema,
   transform: EvidenceTransformSchema,
   value: JsonValueSchema,
-}).superRefine(refineEvidenceTransformPair);
+}).superRefine(refineLocalEvidenceTransformPair);
 
 const RawValueField = { rawValue: JsonValueSchema.optional() } as const;
 const RedactedDropArm = z.strictObject({
@@ -78,7 +86,7 @@ export const RedactedValueSchema = z.discriminatedUnion("transform", [
   RedactedBasenameArm,
   RedactedCountArm,
   RedactedAllowedArm,
-]).superRefine(refineEvidenceTransformPair);
+]).superRefine(refineLocalEvidenceTransformPair);
 
 const KEYED = { key: z.string() } as const;
 export const RedactedFieldSchema = z.discriminatedUnion("transform", [
@@ -88,7 +96,7 @@ export const RedactedFieldSchema = z.discriminatedUnion("transform", [
   RedactedBasenameArm.extend(KEYED),
   RedactedCountArm.extend(KEYED),
   RedactedAllowedArm.extend(KEYED),
-]).superRefine(refineEvidenceTransformPair);
+]).superRefine(refineLocalEvidenceTransformPair);
 
 export const RedactionResultSchema = z.strictObject({
   fields: z.array(RedactedFieldSchema),
@@ -104,6 +112,9 @@ export function redactionDigest(value: z.infer<typeof JsonValueSchema>) {
 export function directIdentifierDigestReference(value: string): string {
   return `identifier#${redactionDigest(value).slice(0, 12)}`;
 }
+
+/** Display the identifier supplied by the authorized local caller. */
+export function directIdentifierDisplay(value: string): string { return value; }
 
 /** Operator-visible permanent-write identity, derived only from the authority digest. */
 export function idempotencyKeyDigestReference(digestInput: unknown, withheld = false): string {
@@ -186,8 +197,23 @@ export function redactValue(
   }
 }
 
+/** Reproduce immutable receipt compositions 1–4. */
+export const redactHistoricalValue = redactValue;
+
+/** Retain a complete classified value in local evidence, never provider payloads. */
+export function retainLocalEvidenceValue(
+  classification: z.infer<typeof DataClassificationSchema>,
+  transform: z.infer<typeof EvidenceTransformSchema>,
+  value: z.infer<typeof JsonValueSchema>,
+): z.infer<typeof RedactedValueSchema> {
+  if (transform !== "allow" && !evidenceTransformAllowed(classification, transform)) {
+    throw new Error(`redaction transform ${transform} is forbidden for ${classification}`);
+  }
+  return { state: "allowed", classification, transform: "allow", value };
+}
+
 function redact(field: z.infer<typeof ClassifiedDiagnosticValueSchema>): z.infer<typeof RedactedFieldSchema> {
-  return { key: field.key, ...redactValue(field.classification, field.transform, field.value), rawValue: field.value };
+  return { key: field.key, ...retainLocalEvidenceValue(field.classification, field.transform, field.value) };
 }
 
 export function redactDiagnosticFields(input: unknown): z.infer<typeof RedactionResultSchema> {

@@ -28,7 +28,7 @@
  */
 import { systemClock } from "../../domain/clock.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import { directIdentifierDigestReference } from "../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../domain/redaction.js";
 import type { ActionTarget } from "../surfaces/actions.js";
 import {
   identityCeremonyFor,
@@ -189,7 +189,7 @@ function composeGateResult(
   if (value === undefined) {
     return {
       state: "refused",
-      reason: `EID ${decided.decision === "approved" ? directIdentifierDigestReference(decided.eid) : "unavailable"} is not among the candidates `
+      reason: `EID ${decided.decision === "approved" ? directIdentifierDisplay(decided.eid) : "unavailable"} is not among the candidates `
         + "this packet served, so there is no `chosenFrom` label to record it under",
     };
   }
@@ -233,6 +233,7 @@ export function composeCommandRequest(
       return { state: "refused", reason: "Open Rerun to review steps and values before starting a new run." };
     case "cancel":
     case "bump":
+    case "archive":
     case "delete":
       /*
        * Four verbs whose whole payload is the target. `rename` is deliberately

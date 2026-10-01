@@ -445,7 +445,16 @@ read while still permitting replay-safe browser downloads.
   unions are exhaustive; unknown keys fail. AST guards reject exported persistence/wire interfaces
   with no schema, decision-bearing `Record<string,unknown|JsonValue>`, `any`, unchecked `as`, and
   catch/default parsing at these seams. Runtime corruption fixtures exercise JSONL, SQLite, HTTP,
-  SSE, and config reads.
+  SSE, and config reads. D355/D356's exact operation-display authoring/compiler symbols and
+  validated snapshot-identity argument are in-process APIs; their symbol-level classification
+  permits no additional export or unsafe source construct in either module.
+- **`workflow-operation-display-boundary.test.ts`.** D355/D356 declarations retain a browser-safe
+  runtime import closure with no Node builtin, browser runtime, or store/driver implementation.
+  Only compiler-produced complete displays freeze into recursively strict JSON snapshots. The
+  real reader refuses unknown nested fields, executable values, missing complete structure,
+  mismatched envelope identity and altered content digests. Import-closure and durable-boundary
+  negative controls accompany the valid compiler-produced round-trip; legacy capability remains
+  the explicit active result for definitions without complete declarations.
 - **`canonical-input-snapshot.test.ts`.** Ingress input applies defaults/coercions/transforms once;
   the stored canonical value round-trips through the descriptor's validation-only `canonicalInput`
   schema on every DB/resume read. A deliberately non-idempotent transform proves resume does not
@@ -1902,8 +1911,10 @@ arm. *Red-capable oracle, two halves.* Compile-time: the `env` parameter is FIRS
 `resolveConfig` (`src/domain/config/resolve.ts:415`) and `resolveConfigWithProvenance` (`:419`), so
 removing it is red at every one of the nine composition call sites — no silent widening is possible.
 Runtime: P4 resolves with a hostile `process.env` populated for every retired key and asserts
-byte-identical output and no `"env"` value anywhere; P3 asserts `CONFIG_ENV_BINDINGS` (`resolve.ts:241`)
-is empty and `runtime-environment.ts`'s `config` channel has zero members. Note for 1.6: `resolveConfig`
+byte-identical output and no `"env"` value anywhere. P3 directly asserts zero forbidden active exact
+environment channels and explicit refusal for every migrated key; restored-channel and removed-refusal
+negative controls exercise the runtime audit. Config modules are scanned for direct, aliased and
+computed environment access. No config binding schema/type or empty registry remains. Note for 1.6: `resolveConfig`
 has zero `src/` callers today but THIRTEEN files import it (ten under `tests/unit/**`, two under `tests/parity/helpers/**`, and `scripts/live-browser-login-smoke.ts:57`, inside the `typecheck` program — corrected 2026-09-04 by R04 from "five test files"), so its deletion is a test AND scripts edit too —
 §D331.11 P39's "changed deliberately in the same commit" rule covers exactly this.
 
@@ -2452,7 +2463,13 @@ answer from the same shared input under test. Preserve synthetic-subject ranges,
 clocks, dataset shapes/counts, case membership, isolation, timeouts and coverage floors.
 
 **Files and privacy.** Offline imports must succeed without private configuration, credentials,
-provider access, database startup or browsers. Tracked safe file paths resolve relative to their
+provider access, database startup or browsers. Exact credential factory capabilities may be imported
+by the recorded admission helpers only with deferred function-body references and deferred producer
+functions. The preflight corpus may reference Chromium only to install launch-refusal spies inside
+its explicit executor. Eager call/new/alias/namespace/unlisted-symbol/IIFE/callback controls enforce
+this boundary. Executable synthetic process fixtures live in `tests/process-fixtures`; their exact
+child-entrypoint consumers are recorded and module imports into that tier are forbidden. Tracked safe
+file paths resolve relative to their
 config and stay inside the checkout. Private paths resolve only when explicitly requested and never
 fall back to another worktree. Include a minimal synthetic PDF and a consumer proving actual readable
 bytes; no tracked real HR documents or fabricated private corpus. Missing/invalid selected files,

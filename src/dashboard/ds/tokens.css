@@ -655,6 +655,8 @@
      row it was opened on, and a menu that changes width per object reads as a
      different menu each time. */
   --ds-w-menu: 216px;
+  --ds-menu-selection: #185abc;
+  --ds-menu-selection-fg: #ffffff;
   --ds-w-session-card: 290px; /* one worker card in the Session Panel drawer */
   /* One cell of a wrapping CHIP ROW. Chips carry facts of wildly different
      lengths, so a plain `flex-wrap` leaves every line ending somewhere else and

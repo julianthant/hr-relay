@@ -24,7 +24,7 @@
  * be reporting that it had asked for a choice.
  */
 import type { RunDetailSectionResponse } from "../../domain/dashboard/run-detail.js";
-import { directIdentifierDigestReference } from "../../domain/redaction.js";
+import { directIdentifierDisplay } from "../../domain/redaction.js";
 
 /** The served `identity-gate` section, in every state the wire admits. */
 export type IdentityGatePayload =
@@ -178,14 +178,14 @@ export function identityDraftProblem(
       return draft.eid.length === 0
         ? "Pick which candidate the separation document means."
         : optionFor(ceremony.options, draft.eid) === undefined
-          ? `EID ${directIdentifierDigestReference(draft.eid)} is not one of the candidates this packet showed.`
+          ? `EID ${directIdentifierDisplay(draft.eid)} is not one of the candidates this packet showed.`
           : undefined;
     case "type-the-eid":
       if (!EID_PATTERN.test(draft.eid)) {
         return "Type the 8-digit employee ID this separation is about.";
       }
       return optionFor(ceremony.options, draft.eid) === undefined
-        ? `The packet never showed EID ${directIdentifierDigestReference(draft.eid)}. This run performed no live read of it, so `
+        ? `The packet never showed EID ${directIdentifierDisplay(draft.eid)}. This run performed no live read of it, so `
           + "approving it would file against a person nothing here looked at — which is what the "
           + "identity authority check refuses as `identity-approval-eid-not-shown`."
         : undefined;

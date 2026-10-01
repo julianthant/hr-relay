@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { CONFIG_ENV_BINDINGS } from "./config/resolve.js";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "./config/catalog.js";
 import { HOST_PRIMARY_DISPLAY_ENV } from "./config/host-display.js";
 import { deepFreeze } from "./immutability.js";
@@ -408,6 +407,7 @@ export const COMPUTED_ENVIRONMENT_READERS = deepFreeze(ComputedEnvironmentReader
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [...RETIRED_ENVIRONMENT_KEYS, HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "workerBootstrapEnvironment", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-process-mechanics", exact: WORKER_PROCESS_MECHANIC_KEYS } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "hostAwareResolutionEnvironment", accessKind: "bulk", occurrenceCount: 2, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [HOST_PRIMARY_DISPLAY_ENV], families: [] } }),
+  computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "activeProviderKeySlots", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "6877925c7fcc32f8a69cf84394d7a439b9e4ec91ef96b5e3a27b7c880f2a2fee", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "optionalSecretFamily", accessKind: "unresolved", occurrenceCount: 1, expressionFingerprint: "72b51583d255ce06b58a1fb09a91cfed0e89cd4cf7406fc6dea176093c81757c", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "requireSecretFamily", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
   computedReader({ path: "src/domain/secrets.ts", enclosingSymbol: "validateBootSecrets", accessKind: "bulk", occurrenceCount: 1, expressionFingerprint: "a7f05948ce91ea69218acec2e51b3c4f2783ab3c908b4330831213b1f2b7c007", classification: "target-accessor", targets: { kind: "closed-targets", exact: [], families: ACTIVE_PROVIDER_FAMILIES } }),
@@ -480,9 +480,6 @@ export function auditRuntimeEnvironmentInventory(input: unknown): readonly strin
     if (family.disposition === "active" && (family.owners.length !== 1 || family.owners[0] !== "src/domain/secrets.ts")) {
       violations.push(`active secret family ${family.prefix} must be owned solely by src/domain/secrets.ts`);
     }
-  }
-  if (CONFIG_ENV_BINDINGS.length !== 0) {
-    violations.push("CONFIG_ENV_BINDINGS must be empty after settings authority migration");
   }
   const migratedKeys = new Set(MIGRATED_SETTINGS_ENVIRONMENT_KEYS);
   for (const key of migratedKeys) {

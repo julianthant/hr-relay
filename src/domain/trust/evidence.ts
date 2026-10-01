@@ -208,7 +208,7 @@ export const RunEvidenceReceiptSchema = z.strictObject({
    * immutable and re-derives under ITS OWN composition (never upgraded in
    * place), so absence is a closed, documented state rather than a default.
    */
-  composition: z.union([z.literal(2), z.literal(3), z.literal(4)]).optional(),
+  composition: z.union([z.literal(2), z.literal(3), z.literal(4), z.literal(5)]).optional(),
   receiptId: EvidenceReceiptIdSchema,
   runId: RunIdSchema,
   traceId: TraceIdSchema,

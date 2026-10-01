@@ -47,7 +47,7 @@ import {
   GeocodeRequestSchema,
   type GeocodeOutcome,
 } from "../../../domain/normalization/geocode.js";
-import { RedactedFieldSchema, redactValue } from "../../../domain/redaction.js";
+import { RedactedFieldSchema, redactValue, retainLocalEvidenceValue } from "../../../domain/redaction.js";
 import {
   ADVISORY_PROMPT_SCHEMA_HASH,
   AdvisoryAnswerEnvelopeSchema,
@@ -75,8 +75,8 @@ const FIELD_CANONICAL = {
 
 function redactedBefore(field: ContactFieldId, raw: string) {
   const canonical = FIELD_CANONICAL[field];
-  // The ONE transform implementation, narrowed to the contract's boundary.
-  return RedactedContactValueSchema.parse(redactValue(canonical.classification, canonical.redactTransform, raw));
+  // This result stays local; provider facts use the closed egress transform.
+  return RedactedContactValueSchema.parse(retainLocalEvidenceValue(canonical.classification, canonical.redactTransform, raw));
 }
 
 export const readContactAdviceTask = defineTask(NormalizeContact, {

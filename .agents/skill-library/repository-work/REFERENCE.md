@@ -270,7 +270,9 @@ primary display (D324): `src/infra/host/primary-display.ts` probes it once per p
 fallback — never re-probe in a child, never guess on an unrecognized OS answer;
 `src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
 (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
-message — `no-secret-values-in-logs.test.ts` enforces that half.
+message — `no-secret-values-in-logs.test.ts` enforces that half. D361 permits complete
+classified local values already supplied to an authorized capture or presentation boundary;
+credential discovery/access and D346 provider/OS egress remain separately closed.
 
 Dry-run subjects resolve by label through the typed registry; workflow/kind must match the manifest.
 Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a

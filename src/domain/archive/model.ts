@@ -537,11 +537,11 @@ function refineDiagnosticSafetyGeneration(
   context: z.RefinementCtx,
 ): void {
   if (record.archiveSchemaGeneration < 6 || record.receipt.state !== "present") return;
-  if (record.receipt.value?.composition !== 3 && record.receipt.value?.composition !== 4) {
+  if (record.receipt.value?.composition !== 3 && record.receipt.value?.composition !== 4 && record.receipt.value?.composition !== 5) {
     context.addIssue({
       code: "custom",
       path: ["receipt"],
-      message: "an archive at generation 6 or later may present only diagnostic-safe receipt composition 3/4; "
+      message: "an archive at generation 6 or later may present only receipt composition 3/4/5; "
         + "immutable composition 1/2 evidence must be stored through the named absent arm",
     });
   }

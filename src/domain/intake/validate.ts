@@ -40,7 +40,7 @@ import {
   type ItemId,
   type RowRejectId,
 } from "../ids.js";
-import { redactValue } from "../redaction.js";
+import { retainLocalEvidenceValue } from "../redaction.js";
 import { CANONICAL_FIELDS } from "../fields/registry.js";
 import { isCellCoercionError, type CellLocation } from "../fields/cell-coercion.js";
 import {
@@ -256,7 +256,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
           kind: "cell-coercion",
           field: target.targetFieldId,
           column: columnRef,
-          raw: redactValue(field.classification, field.redactTransform, raw),
+          raw: retainLocalEvidenceValue(field.classification, field.redactTransform, raw),
           reason: `${attempt.reason} (${field.label})`,
         }));
         continue;
@@ -277,7 +277,7 @@ export function validateIntakeRows(input: IntakeValidationInput): IntakeValidati
           kind: "field-schema",
           field: target.targetFieldId,
           column: columnRef,
-          raw: redactValue(field.classification, field.redactTransform, raw),
+          raw: retainLocalEvidenceValue(field.classification, field.redactTransform, raw),
           issues: boundaryIssues(parsed.error),
           reason: `${field.label} did not satisfy its canonical schema`,
         }));

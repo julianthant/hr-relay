@@ -102,6 +102,7 @@ export const CommandActionSchema = z.enum([
   "cancel",
   "bump",
   "rename",
+  "archive",
   "delete",
   "resolve-write-present",
   "resolve-write-absent",
@@ -472,6 +473,7 @@ export const VersionArchiveCommandRequestSchema = z.discriminatedUnion("type", [
 export const RunCommandRequestSchema = z.discriminatedUnion("type", [
   /** D314 — `retry` is Resume from checkpoints and `restart` is Restart from start: both mint the item's next attempt. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.enum(["retry", "restart", "cancel", "bump"]), target: RunVersionTargetSchema }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("archive"), target: RunVersionTargetSchema }),
   /** D308 — delete means delete: a terminal queue run and every row it owns leave authority. */
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("delete"), target: RunVersionTargetSchema }),
   z.strictObject({ ...CommandEnvelopeFields, family: z.literal("run"), type: z.literal("rename"), target: RunVersionTargetSchema, payload: z.strictObject({ displayName: RunDisplayNameSchema }) }),
@@ -934,7 +936,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   settings: ["apply-settings", "apply-protected-settings", "apply-provider-keys"],
   "storage-relocation": ["plan-storage-relocation", "cancel-storage-relocation"],
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
-  run: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"],
+  run: ["retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
   notification: ["notification-read", "notification-unread", "notification-snooze"],
   explorer: ["apply-explorer-edit"],
@@ -967,7 +969,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "settings", actions: ["apply-settings", "apply-protected-settings", "apply-provider-keys"] },
   { family: "storage-relocation", actions: ["plan-storage-relocation", "cancel-storage-relocation"] },
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"] },
-  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "delete", "resolve-write-present", "resolve-write-absent"] },
+  { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
   { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },

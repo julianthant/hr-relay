@@ -1,3 +1,5 @@
+import { IsoInstantSchema } from "./ids.js";
+
 export interface Clock {
   now(): Date;
   nowMs(): number;
@@ -49,6 +51,21 @@ export const systemClock: Clock = Object.freeze({
     return at.getMonth() >= 6 ? at.getFullYear() + 1 : at.getFullYear();
   },
 });
+
+export function capturedInstantClock(instant: string, elapsed: Pick<Clock, "monotonicMs"> = systemClock): Clock {
+  const parsed = IsoInstantSchema.safeParse(instant);
+  const milliseconds = parsed.success ? Date.parse(parsed.data) : Number.NaN;
+  if (!Number.isFinite(milliseconds)) throw new RangeError("captured-instant-clock: invalid ISO instant");
+  const current = (): Date => new Date(milliseconds);
+  return Object.freeze({
+    now: current,
+    nowMs: () => milliseconds,
+    monotonicMs: () => elapsed.monotonicMs(),
+    todayLocal: () => localDatePart(current()),
+    timeOfDayCode: (at = current()) => formatTraceTimestamp(at),
+    fiscalYear: (at = current()) => at.getMonth() >= 6 ? at.getFullYear() + 1 : at.getFullYear(),
+  });
+}
 
 export function manualClock(at: Date, initialMonotonicMs = 0): TestClock {
   let wallMs = at.getTime();

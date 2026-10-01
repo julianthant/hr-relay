@@ -21,7 +21,7 @@ export function SearchExportControls({page,query}:{page:CrossDateSearchPage;quer
   return <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]" aria-label="Export selected search">
     {(["csv","xlsx","diagnostic"] as const).map(format=><Button key={format} size="sm" variant="secondary" disabled={state==="pending"||page.totalMatches>5000}
       onClick={()=>{void start(format);}}>{format==="diagnostic"?"Diagnostic metadata":format.toUpperCase()}</Button>)}
-    <span className={dsText.meta}>All {page.totalMatches} matches · values and raw evidence redacted</span>
+    <span className={dsText.meta}>All {page.totalMatches} matches · complete collected values; raw evidence not collected</span>
     {page.totalMatches>5000&&<span role="status">Narrow this selection to 5,000 matches before export.</span>}
     {state==="pending"&&<Button size="sm" variant="ghost" onClick={()=>{pending.current?.abort();pending.current=null;setState("cancelled");}}>Cancel download</Button>}
     {state==="started"&&<span role="status">Verified file handed to the browser.</span>}
