@@ -10,7 +10,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { resolve } from "node:path";
 import { Hono } from "hono";
-import { writeDashboardBuildIdentity } from "../../../src/server/dashboard/build-identity.js";
+import { writeDashboardBuildIdentity } from "../../../src/backend/app/dashboard/build-identity.js";
 import { afterEach, describe, it } from "vitest";
 import type { ActorId } from "../../../src/domain/ids.js";
 import {
@@ -18,7 +18,7 @@ import {
   openStaticBundle,
   staticBundleHandler,
   type StaticBundle,
-} from "../../../src/server/dashboard/static-bundle.js";
+} from "../../../src/backend/transports/dashboard/static-bundle.js";
 
 type TestDashboardEnv = { Variables: { requestActorId: ActorId } };
 

@@ -44,7 +44,7 @@
       {
         "path": "src/cli.ts",
         "factory": "startRebuildRuntime",
-        "factoryModule": "src/core/runtime-composition.ts",
+        "factoryModule": "src/backend/app/runtime-composition.ts",
         "factoryExport": "startRebuildRuntime",
         "bindingPath": "0.isolation",
         "runnerExport": "runCli"

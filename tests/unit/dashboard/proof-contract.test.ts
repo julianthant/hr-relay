@@ -21,7 +21,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import { describeProofShape, type ProofShapeField } from "../../../src/validation/proof-shape.js";
 import {
   composeProofValue,

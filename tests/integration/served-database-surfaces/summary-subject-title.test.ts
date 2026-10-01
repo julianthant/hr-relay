@@ -10,7 +10,7 @@ import { deriveSchemaHash } from '../../../src/domain/schema-bound-value.js';
 import { RunRecordService } from '../../../src/core/run-record-service.js';
 import { createTimelineEmitter } from '../../../src/infra/events/timeline-emitter.js';
 import { createTransactionHistory } from '../../../src/infra/sqlite/transaction-history.js';
-import { createOperatorProjection, createOperatorRunDetail } from '../../../src/server/dashboard/compose/operator.js';
+import { createOperatorProjection, createOperatorRunDetail } from '../../../src/backend/app/dashboard/compose/operator.js';
 import { queryQueueSummaries, queryActivitySummaries } from '../../../src/server/dashboard/queries/run-summaries.js';
 import { buildRunDetail } from '../../../src/server/dashboard/queries/run-detail.js';
 

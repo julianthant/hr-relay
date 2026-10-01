@@ -3,7 +3,7 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { GENERATED_BUILD_MANIFEST } from "../../src/domain/workflow/generated-build-manifest.js";
 import { TEST_DATA_INPUT_NAMES, TestDataInputValueSchemas } from "../../src/domain/test-data.js";
 import { RETIRED_TEST_TARGET_PROTECTED_NAMES } from "../../src/domain/config/protected-settings-legacy.js";
@@ -22,14 +22,14 @@ import {
   TestTargetWorkflowArmsSchema,
   type TestTargetManifestView,
   type TestTargetRegistryEntry,
-} from "../../src/control/test-target-registry.js";
+} from "../../src/backend/app/control/test-target-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import { evaluateT1bManifest } from "../helpers/t1b-manifests.js";
 import { testDataInputSource } from "../integration/helpers/test-data-source.js";
 
 const WORKFLOW_SCENARIO_ROOT = "tests/scenario/workflows";
 const MANIFEST_FILE = "dry-run.scenario.ts";
-const MANIFEST_REGISTRY_PATH = "src/server/dry-run-scenario/manifests.ts";
+const MANIFEST_REGISTRY_PATH = "src/backend/app/dry-run-scenario/manifests.ts";
 
 /**
  * Every T1b manifest in the layout (ref guards-and-tests §10.9), by workflow id
@@ -92,7 +92,7 @@ function nodeIdsNamedBy(manifest: DryRunScenarioManifest): readonly string[] {
 
 /**
  * The workflows the production manifest registry can actually load, read off
- * its own source. `src/server/dry-run-scenario/manifests.ts` is the ONE place
+ * its own source. `src/backend/app/dry-run-scenario/manifests.ts` is the ONE place
  * a workflow id is paired with its T1b loader — `src/cli.ts` only calls
  * `loadDryRunScenarioManifest`, so this is the composition root's real
  * registration surface. It is inspected as data rather than imported: the

@@ -47,6 +47,7 @@ import {
 
 const SECRET_OWNER = "src/domain/secrets.ts";
 const CONFIG_OWNER_PREFIX = "src/domain/config/";
+const APP_CONFIG_OWNER_PREFIX = "src/backend/app/config/";
 
 /** file (relative to repo root) -> { count, reason }; empty = no ported leaf owes an exception. */
 const ALLOWLIST: CountAllowlist = {};
@@ -88,7 +89,7 @@ export function auditSecretsSingleSource(
       }
       continue;
     }
-    if (!occurrence.path.startsWith(CONFIG_OWNER_PREFIX)) {
+    if (!occurrence.path.startsWith(CONFIG_OWNER_PREFIX) && !occurrence.path.startsWith(APP_CONFIG_OWNER_PREFIX)) {
       violations.push(
         `${where}: environment ${occurrence.operation} in ${occurrence.enclosingSymbol} — only ${SECRET_OWNER} and ${CONFIG_OWNER_PREFIX}** may touch process.env`,
       );
@@ -482,7 +483,7 @@ describe("secrets single source", () => {
   it("keeps the ported-leaf allowlist shrink-only and non-stale", () => {
     const counts = new Map<string, number>();
     for (const { path } of rebuildOccurrences()) {
-      if (path === SECRET_OWNER || path.startsWith(CONFIG_OWNER_PREFIX)) continue;
+      if (path === SECRET_OWNER || path.startsWith(CONFIG_OWNER_PREFIX) || path.startsWith(APP_CONFIG_OWNER_PREFIX)) continue;
       counts.set(path, (counts.get(path) ?? 0) + 1);
     }
     assert.deepEqual(
@@ -548,7 +549,7 @@ describe("secrets single source", () => {
   it("rejects credential and migrated setting keys read from the config owner", () => {
     const credential = auditSecretsSingleSource(
       inventoryEnvironmentAccesses(
-        "src/domain/config/resolve.ts",
+        "src/backend/app/config/resolve.ts",
         "export const leaked = process.env.UCPATH_PASSWORD;\nexport const pool = process.env.GEMINI_API_KEY2;\n",
       ),
     );
@@ -557,14 +558,14 @@ describe("secrets single source", () => {
 
     assert.equal(
       auditSecretsSingleSource(inventoryEnvironmentAccesses(
-        "src/domain/config/resolve.ts",
+        "src/backend/app/config/resolve.ts",
         "export const retries = process.env.HRAUTO_NAVIGATION_RETRIES;\n",
       )).some((violation) => violation.includes("config modules admit no environment leaf")),
       true,
     );
     assert.equal(
       auditSecretsSingleSource(inventoryEnvironmentAccesses(
-        "src/domain/config/resolve.ts",
+        "src/backend/app/config/resolve.ts",
         "export const unknownKey = process.env.HRAUTO_NOT_A_BINDING;\n",
       )).some((violation) => violation.includes("config modules admit no environment leaf")),
       true,

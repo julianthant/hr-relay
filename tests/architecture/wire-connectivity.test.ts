@@ -109,15 +109,15 @@ const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
  * cheap reading — and its three verbs are plain literals there.
  */
 const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail/gate-park.ts";
-const API_ROUTES_FILE = "src/server/dashboard/routes/api.ts";
+const API_ROUTES_FILE = "src/backend/transports/dashboard/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 
 const MANIFEST = readPendingWireBindings();
 
 const ARCHIVE_ROUTE = "/artifacts/v1/archive/:runId/:artifactId";
 const GENERIC_ROUTE = "/artifacts/v1/:artifactId";
-const ARCHIVE_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
-const GENERIC_ORPHAN = 'src/server/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+const ARCHIVE_ORPHAN = 'src/backend/transports/dashboard/routes/api.ts serves GET /artifacts/v1/archive/:runId/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/archive/:runId/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
+const GENERIC_ORPHAN = 'src/backend/transports/dashboard/routes/api.ts serves GET /artifacts/v1/:artifactId and no client under src/dashboard/client calls it. Either wire a caller or add {"binding": "route:GET /artifacts/v1/:artifactId", "direction": "served-unconsumed", …} to config/pending-wire-bindings.json naming the consumer that will';
 
 async function scannedAndSavedReferences() {
   return [...clientRouteReferences(CLIENT_ROOTS.map(root => join(REPO_ROOT, root))), ...await savedArchiveBrowserRouteReferences()];
@@ -856,7 +856,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const routes = servedRoutes(dashboardRouteSource());
     const result = await auditArchiveBrowser(archiveProbe(), { routes: routes.filter(({ path }) => path !== ARCHIVE_ROUTE) });
     assert.equal(result.observation.state, "observed");
-    const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/server/dashboard/routes/api.ts does not register";
+    const missing = "src/dashboard/surfaces/archive.tsx calls /artifacts/v1/archive/99999999-0009-4000-8000-999900000009/aa11bb22-000a-4000-8000-aa11bb22000a, which src/backend/transports/dashboard/routes/api.ts does not register";
     assert.deepEqual(result.problems, [missing, missing, GENERIC_ORPHAN]);
   });
 
@@ -879,7 +879,7 @@ describe("wire connectivity — declared arms, served arms, and the manifest bet
     const result = await auditArchiveBrowser(archiveProbe(), { pending });
     assert.equal(result.observation.state, "observed");
     assert.deepEqual(result.problems, [GENERIC_ORPHAN,
-      "config/pending-wire-bindings.json declares route:GET /api/v1/a8-deleted, which src/server/dashboard/routes/api.ts does not serve",
+      "config/pending-wire-bindings.json declares route:GET /api/v1/a8-deleted, which src/backend/transports/dashboard/routes/api.ts does not serve",
     ]);
   });
 

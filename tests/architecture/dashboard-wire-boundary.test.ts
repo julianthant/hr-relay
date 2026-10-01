@@ -34,7 +34,7 @@
  *     The fix direction this guard enforces is structural, not cosmetic: a
  *     browser-reachable module keeps the pure contract, and anything that needs
  *     a filesystem, a process, or a working directory moves to a server-only
- *     module the browser never reaches (here, `src/domain/config/runtime-paths.ts`).
+ *     module the browser never reaches (here, `src/backend/app/config/runtime-paths.ts`).
  *     Aliasing, polyfilling, or stubbing `node:path` in the browser would be
  *     strictly worse — a stubbed `resolve()` invents a plausible-but-wrong
  *     absolute path, which is exactly the silent-wrong-value failure this
@@ -316,10 +316,10 @@ describe("dashboard wire boundary (ref frontend-backend-integration §8)", () =>
     // The rule only means something because the walker catches a real breach:
     // the config RESOLVER is server-only and imports node:crypto, and the
     // server-only path defaults it pulls in import node:path.
-    const breach = nodeBuiltinReach("src/domain/config/resolve.ts");
+    const breach = nodeBuiltinReach("src/backend/app/config/resolve.ts");
     expect(breach.some((violation) => violation.includes('"node:crypto"'))).toBe(true);
     expect(breach.some((violation) =>
-      violation.includes("src/domain/config/runtime-paths.ts") && violation.includes('"node:path"'))).toBe(true);
+      violation.includes("src/backend/app/config/runtime-paths.ts") && violation.includes('"node:path"'))).toBe(true);
   });
 
   it("keeps executable preflight registry composition out of the bootstrap wire closure", () => {

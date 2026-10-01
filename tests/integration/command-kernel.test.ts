@@ -42,7 +42,7 @@ import {
   deriveSettingsCommandFingerprint,
   type CommandRequest,
 } from "../../src/domain/commands.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   SETTINGS_SCHEMA_HASH,
@@ -92,7 +92,7 @@ import {
 } from "../fixtures/operator-command-fixtures.js";
 import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 import { FixtureReadReceipt } from "../fixtures/descriptor-fixtures.js";
-import { separationsIdentityCheckModule } from "../../src/control/step-proof-modules.js";
+import { separationsIdentityCheckModule } from "../../src/backend/app/control/step-proof-modules.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
 import {
   UNWIRED_ARCHIVE_SNAPSHOTS,

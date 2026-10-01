@@ -80,7 +80,7 @@ export function healthyDashboardPreflightExecutor(clock: Clock) {
 }
 
 /** Controlled detector inputs for production admission composition; never a stubbed admission gate. */
-export const healthyRuntimePreflightRunners: import("../../src/server/preflight/runtime-runners.js").RuntimePreflightRunnerFactory = input =>
+export const healthyRuntimePreflightRunners: import("../../src/backend/app/preflight/runtime-runners.js").RuntimePreflightRunnerFactory = input =>
   requiredPreflightChecks(input.scope.requestedCapabilities).map(check => {
     const spec = PREFLIGHT_CHECKS.find(candidate => candidate.id === check);
     if (spec === undefined) throw new Error(`fixture cannot find registered check ${check}`);

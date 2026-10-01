@@ -34,7 +34,7 @@ import {
   type ReceiptWriteEvidence,
 } from "../../src/core/evidence-receipt.js";
 import { diffReceipts } from "../../src/core/receipt-derivation-binding.js";
-import { failureStatus } from "../../src/server/dashboard/routes/failure-status.js";
+import { failureStatus } from "../../src/backend/transports/dashboard/routes/failure-status.js";
 import { createReceiptService } from "../../src/server/trust/receipt-service.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../fixtures/receipt-run-fixtures.js";

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { workflowPlanning, workflowProjections } from "../../src/base/workflow.js";
-import { WORKFLOW_MODULES } from "../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
 import { StepOmissionsSchema, planStepOmissions } from "../../src/domain/workflow/step-omission.js";
 import { personLookupDescriptor, personLookupModule, separationsDescriptor, separationsModule } from "../helpers/registered-workflows.js";
 

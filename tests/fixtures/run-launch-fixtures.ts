@@ -11,10 +11,10 @@ import { createRunLaunchService } from "../../src/dashboard/app/run-launch-model
 import type { RunStartWorkflow } from "../../src/dashboard/surfaces/run-start.js";
 import { projectStartSteps, startStepWireControl } from "../../src/services/start/step-selection.js";
 import { readRerunValues } from "../../src/services/start/rerun-values.js";
-import { registerQueueRoutes } from "../../src/server/dashboard/routes/queue.js";
-import { operatorMutationIngressGuard } from "../../src/server/dashboard/routes/operator-mutation-ingress.js";
-import { failureStatus } from "../../src/server/dashboard/routes/failure-status.js";
-import type { DashboardApp } from "../../src/server/dashboard/routes/api-types.js";
+import { registerQueueRoutes } from "../../src/backend/transports/dashboard/routes/queue.js";
+import { operatorMutationIngressGuard } from "../../src/backend/transports/dashboard/routes/operator-mutation-ingress.js";
+import { failureStatus } from "../../src/backend/transports/dashboard/routes/failure-status.js";
+import type { DashboardApp } from "../../src/backend/transports/dashboard/routes/api-types.js";
 import { sourceBoundHarness } from "../integration/fixtures/source-bound-fixtures.js";
 import { sourceBoundReadContract, sourceBoundReadStores } from "./source-bound-read-fixtures.js";
 import { WriteFixturePrepare, WriteFixtureCommit, buildWriteFixtureRegistry, absentProbeEvidence } from "./write-sequencer-fixtures.js";

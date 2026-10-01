@@ -16,7 +16,7 @@ import { RunRecordService } from "../../../../src/core/run-record-service.js";
  * are joined, because the join is made by the composition — the descriptor
  * resolver the projection is handed, the checkpoint read the subject title
  * walks, the authority row the gate command CASes against. So this world is
- * `src/server/dashboard/compose.ts` minus exactly three things a test must own:
+ * `src/backend/app/dashboard/compose.ts` minus exactly three things a test must own:
  * the clock, the id factory, and the process edges (worker supervisor, write
  * sequencer, intake parser) that a dashboard feature never reaches. Each of
  * those three is wired to THROW rather than to no-op — a seam that quietly
@@ -62,7 +62,7 @@ import { createTransactionHistory } from "../../../../src/infra/sqlite/transacti
 import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
 import { createDashboardCommandService } from "../../../../src/server/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../../src/server/dashboard/commands/start-plan-service.js";
-import { descriptorSetHash } from "../../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../../src/backend/app/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../../src/server/dashboard/projectors/run-queue-projection.js";
 import type { RunDetailQueryDeps } from "../../../../src/server/dashboard/queries/run-detail.js";
 import { createReceiptService } from "../../../../src/server/trust/receipt-service.js";

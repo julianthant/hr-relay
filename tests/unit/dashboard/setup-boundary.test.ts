@@ -6,9 +6,9 @@ import { createPreflightAuthority, requiredPreflightChecks } from "../../../src/
 import { PREFLIGHT_CHECKS } from "../../../src/domain/runtime-dependencies.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema, ActorIdSchema } from "../../../src/domain/ids.js";
-import { registerSettingsPreflightRoutes } from "../../../src/server/dashboard/routes/settings-preflight.js";
+import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/dashboard/routes/settings-preflight.js";
 import { buildBootstrap } from "../../../src/server/dashboard/queries/bootstrap.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 
 it("independent Setup consumer reads production readiness and reruns/replays the real preflight authority", async () => {
   const clock = manualClock(new Date("2026-09-18T12:00:00.000Z")); const fingerprint = FingerprintSchema.parse("a".repeat(64));

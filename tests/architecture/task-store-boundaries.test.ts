@@ -3,7 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { describe, it } from "vitest";
 import { BrowserSystemIdSchema } from "../../src/domain/ids.js";
-import { browserStoreRegistry } from "../../src/stores/index.js";
+import { browserStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 
 interface BrowserDeclarationView {

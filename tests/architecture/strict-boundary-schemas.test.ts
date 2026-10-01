@@ -15,7 +15,7 @@ import {
   SeparationsKualiFinalizationTestTargetResolutionSchema,
   TEST_TARGET_REGISTRY,
   TestTargetRegistrySchema,
-} from "../../src/control/test-target-registry.js";
+} from "../../src/backend/app/control/test-target-registry.js";
 import { AUTHORITY_TABLE_REGISTRY, AuthorityTableRegistrySchema, TableSpecSchema } from "../../src/domain/authority.js";
 import { RebuildArtifactRootSchema } from "../../src/config/define-runtime-isolation.js";
 import { ArtifactPutMetadataSchema, ArtifactRefSchema } from "../../src/domain/artifacts.js";
@@ -44,8 +44,8 @@ import {
 import {
   ResolvedConfigSchema,
   resolveConfigWithProvenance,
-} from "../../src/domain/config/resolve.js";
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+} from "../../src/backend/app/config/resolve.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import {
   ConfigSchema,
   EditableSettingsOverrideSchema,
@@ -355,7 +355,7 @@ import { CURRENT_SEPARATIONS_RESULT } from "../integration/fixtures/activity-per
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 import {
   ActivityPersonPseudonymBackfillCommandOutcomeSchema,
-} from "../../src/server/activity-person-pseudonym-backfill/compose.js";
+} from "../../src/backend/app/activity-person-pseudonym-backfill-compose.js";
 
 const STABLE_RECORD_ID = `${"c".repeat(64)}#oath-signature#1`;
 const PREVIEW_RECORD = {
@@ -1506,15 +1506,15 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/dashboard/explorer-override.ts:ExplorerOverrideRepository",
   // In-process credential authority port: methods consume and return schema-derived data.
   "src/domain/config/credential-store.ts:CredentialStore",
-  "src/core/runtime-composition.ts:RebuildRuntimeStart",
+  "src/backend/app/runtime-composition.ts:RebuildRuntimeStart",
   // The dashboard composition seam handed to the CLI (1g): a process-lifetime
   // handle (port + stop), operational like RebuildRuntimeStart, not wire data.
-  "src/core/runtime-composition.ts:RunningDashboard",
+  "src/backend/app/runtime-composition.ts:RunningDashboard",
   // The dashboard's shutdown seam: one `subscribe` FUNCTION returning its
   // disposer, so like the clock it is an injected in-process dependency and no
   // schema can describe it. Nothing here is stored or served — the values that
   // cross are the OS signal names, already a closed literal union.
-  "src/core/runtime-composition.ts:RuntimeShutdownSignals",
+  "src/backend/app/runtime-composition.ts:RuntimeShutdownSignals",
   "src/domain/canonical-json.ts:JsonObject",
   "src/domain/clock.ts:Clock",
   "src/domain/clock.ts:TestClock",
@@ -1850,7 +1850,7 @@ describe("strict boundary schemas", () => {
   });
 
   it("keeps every current domain boundary source free of unsafe escape hatches", () => {
-    const violations = gitVisibleFiles(["src/domain", "src/core/runtime-composition.ts"])
+    const violations = gitVisibleFiles(["src/domain", "src/backend/app/runtime-composition.ts"])
       .filter((path) => path.endsWith(".ts"))
       .flatMap((path) => boundarySourceViolations(path, readFileSync(join(REPO_ROOT, path), "utf8")));
     assert.deepEqual(violations, []);

@@ -16,7 +16,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
-import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
 import {
   IsoInstantSchema,

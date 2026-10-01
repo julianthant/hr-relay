@@ -16,7 +16,7 @@ import {
   projectNotificationTrigger,
 } from "../../src/domain/notification-triggers.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { createDashboardStreamHub } from "../../src/server/dashboard/subscriptions/dashboard-stream.js";
+import { createDashboardStreamHub } from "../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
 import { createBackfillGapNotifier } from "../../src/services/notifications/backfill-gap.js";
 import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";

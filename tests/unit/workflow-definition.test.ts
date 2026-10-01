@@ -21,7 +21,7 @@ import { ItemIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { compileFixtureWorkflow, everyEntryKindWorkflow } from "../fixtures/workflow-definition-fixtures.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import type { RegisteredTaskStore } from "../../src/base/store.js";
 import {
   PersonLookupCanonicalInput,

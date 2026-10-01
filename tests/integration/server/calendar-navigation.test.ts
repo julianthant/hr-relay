@@ -9,9 +9,9 @@ import { foundationFixture, id } from "../../unit/database-foundation/fixtures.j
 import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { createCalendarQuery } from "../../../src/server/dashboard/queries/calendar.js";
-import { registerShellRoutes } from "../../../src/server/dashboard/routes/shell.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
-import type { ShellRouteDeps } from "../../../src/server/dashboard/routes/shell-types.js";
+import { registerShellRoutes } from "../../../src/backend/transports/dashboard/routes/shell.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
+import type { ShellRouteDeps } from "../../../src/backend/transports/dashboard/routes/shell-types.js";
 
 it("reads bounded real month counts and chronological bounds without whole-history readers or writes", () => {
   const f = summaryFixture();

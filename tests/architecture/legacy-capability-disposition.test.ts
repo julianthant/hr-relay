@@ -4,7 +4,7 @@ import { z } from "zod";
 import inventory from "../../config/legacy-capabilities.json" with { type: "json" };
 import packageJson from "../../package.json" with { type: "json" };
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { startRebuildRuntime } from "../../src/core/runtime-composition.js";
+import { startRebuildRuntime } from "../../src/backend/app/runtime-composition.js";
 import { gitVisibleFiles } from "./helpers/guard-files.js";
 import {
   FROZEN_LEGACY_ARCHITECTURE_PROVENANCE,
@@ -336,7 +336,7 @@ describe("D58 legacy capability disposition", () => {
     // record-keeping defect that must never become a gate on the program's own
     // progress, so the sweep is run AHEAD against every base work item through
     // 2j, the last of them. This is what makes advancing the marker in
-    // `src/core/runtime-composition.ts` a one-line change rather than an
+    // `src/backend/app/runtime-composition.ts` a one-line change rather than an
     // archaeology exercise.
     for (const completedThrough of MILESTONE_ORDER.slice(0, MILESTONE_ORDER.indexOf("2j") + 1)) {
       assert.deepEqual(
@@ -373,7 +373,7 @@ describe("D58 legacy capability disposition", () => {
         entryOf(draft, "legacy-route-hub").disposition = {
           kind: "native",
           milestone: "1g-spine",
-          targetIds: ["src/server/dashboard/subscriptions/dashboard-stream.ts", "src/server/dashboard/subscriptions/ghost.ts"],
+          targetIds: ["src/backend/transports/dashboard/subscriptions/dashboard-stream.ts", "src/server/dashboard/subscriptions/ghost.ts"],
         };
       });
       assert.ok(

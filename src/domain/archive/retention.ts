@@ -103,7 +103,7 @@ export type ArchiveRetentionWire = z.infer<typeof ArchiveRetentionWireSchema>;
  * the LOCAL day after that. The instant returned is the start of that local
  * day — the earliest moment the file becomes eligible, which is the honest
  * bound. It is a bound and not a promise: the sweep runs at dashboard boot
- * (`src/server/dashboard/compose.ts`), so the file survives until the next
+ * (`src/backend/app/dashboard/compose.ts`), so the file survives until the next
  * boot on or after it, and `basis` says so.
  */
 export function eventStreamPurgeInstant(localDate: string, retentionDays: number): string {

@@ -5,7 +5,7 @@ import { canonicalJsonStringify } from "../domain/canonical-json.js";
 import type { Clock } from "../domain/clock.js";
 import type { HostConfigFacts } from "../domain/config/host-display.js";
 import type { CredentialStore } from "../domain/config/credential-store.js";
-import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../domain/config/resolve.js";
+import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../backend/app/config/resolve.js";
 import {
   SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH,
   initialSettingsFileRecord, settingsRuntimeIdentity,

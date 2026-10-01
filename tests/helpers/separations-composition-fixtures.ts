@@ -67,7 +67,7 @@ import {
   createUcpathSmartHrFakeWorld,
   type UcpathSmartHrFakeWorld,
 } from "../../src/stores/ucpath/driver/smart-hr-fake.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { SeparationsCanonicalInput, SeparationsInput } from "../../src/workflows/separations/workflow.js";
 import { UUID_2, UUID_3, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import {

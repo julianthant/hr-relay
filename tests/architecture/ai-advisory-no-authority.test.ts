@@ -88,8 +88,8 @@ const AUTHORITY_WRITERS = [
   "src/services/notifications/",
   "src/infra/ledger/",
   "src/server/dashboard/commands/",
-  "src/server/dashboard/compose.ts",
-  "src/server/worker/compose.ts",
+  "src/backend/app/dashboard/compose.ts",
+  "src/backend/app/worker-compose.ts",
   "src/control/",
 ] as const;
 
@@ -324,8 +324,8 @@ describe("ai-advisory-no-authority — the advice shape", () => {
 /* ── 4. the advisory route is not a command route ────────────────────────── */
 
 describe("ai-advisory-no-authority — the route", () => {
-  const apiSource = readFileSync(join(REPO_ROOT, "src/server/dashboard/routes/api.ts"), "utf8");
-  const routeSource = readFileSync(join(REPO_ROOT, "src/server/dashboard/routes/run-detail.ts"), "utf8");
+  const apiSource = readFileSync(join(REPO_ROOT, "src/backend/transports/dashboard/routes/api.ts"), "utf8");
+  const routeSource = readFileSync(join(REPO_ROOT, "src/backend/transports/dashboard/routes/run-detail.ts"), "utf8");
   function advisoryRouteValid(composition: string, route: string): boolean {
     return /registerRunDetailRoutes\(app, deps\)/u.test(composition)
       && /app\.use\("\/api\/v1\/runs\/:runId\/advisory", operatorOpaqueIngressGuard\)/u.test(composition)

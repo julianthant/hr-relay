@@ -6,14 +6,14 @@ import { chromium } from "playwright";
 import { afterEach, describe, it, vi } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../src/domain/config/protected-settings.js";
 import { PreflightAdmissionScopeSchema } from "../../../src/domain/preflight-admission.js";
 import { createPreflightAuthority, executePreflightRunner } from "../../../src/domain/preflight.js";
 import { FEATURE_RUNTIME_SPECS, PROVIDER_ADAPTER_SPECS, PreflightCheckIdSchema, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } from "../../../src/domain/runtime-dependencies.js";
-import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/server/preflight/runtime-runners.js";
+import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/backend/app/preflight/runtime-runners.js";
 import { PreflightReportWireSchema } from "../../../src/domain/preflight-contract.js";
-import { createWorkflowPreflightRunners } from "../../../src/server/preflight/workflow-runners.js";
+import { createWorkflowPreflightRunners } from "../../../src/backend/app/preflight/workflow-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
 
 const roots: string[] = [];

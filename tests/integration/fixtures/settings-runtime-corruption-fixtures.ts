@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import type { Clock } from "../../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,

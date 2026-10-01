@@ -39,7 +39,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import {
   createCommandKernel,
   type CommandKernel,
@@ -56,7 +56,7 @@ import {
   composeDashboardRuntime,
   composeWorkerProcessControl,
   type DashboardRuntime,
-} from "../../../src/server/dashboard/compose.js";
+} from "../../../src/backend/app/dashboard/compose.js";
 import type {
   SpawnedWorkerHandle,
   WorkerProcessSpawnRequest,

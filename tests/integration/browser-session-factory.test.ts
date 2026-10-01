@@ -26,11 +26,11 @@ import {
 } from "../../src/infra/browser/browser-session-factory.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import type { Config } from "../../src/domain/config/schema.js";
 import { FingerprintSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";
 import type { BrowserSystemBindings } from "../../src/infra/browser/system-bindings.js";
 import type {

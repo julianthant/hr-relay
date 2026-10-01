@@ -84,7 +84,7 @@ import { createNotificationInbox } from "../../src/services/notifications/inbox.
 import { createDashboardCommandService } from "../../src/server/dashboard/commands/command-service.js";
 import { publicVersionReviewFingerprint } from "../../src/server/dashboard/commands/version-review-binding.js";
 import { createIntakeService } from "../../src/server/dashboard/commands/intake-service.js";
-import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
 import { createRunQueueProjection } from "../../src/server/dashboard/projectors/run-queue-projection.js";
 
 import { buildRunDetail } from "../../src/server/dashboard/queries/run-detail.js";

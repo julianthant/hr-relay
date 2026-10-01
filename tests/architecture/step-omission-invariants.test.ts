@@ -60,7 +60,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { EidSchema, FingerprintSchema, ScenarioIdSchema, TaskIdSchema } from "../../src/domain/ids.js";
 import {

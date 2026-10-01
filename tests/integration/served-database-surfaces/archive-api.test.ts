@@ -38,7 +38,7 @@ it.each(["canonical disposition", "saved report", "other retained attachment"] a
 );
 
 import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
+import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, ArchivedCaptureResourceWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { readArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
 

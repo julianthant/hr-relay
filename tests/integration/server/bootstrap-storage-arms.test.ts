@@ -26,7 +26,7 @@ import {
 } from "../../../src/domain/dashboard/bootstrap.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";
 

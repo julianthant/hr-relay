@@ -3,7 +3,7 @@ import {
   type TestDataInputName,
   type TestDataInputSource,
 } from "../../../src/domain/test-data.js";
-import { testDataInputSourceFrom } from "../../../src/control/test-data.js";
+import { testDataInputSourceFrom } from "../../../src/backend/app/control/test-data.js";
 
 const TEST_INSTANT = "2026-09-04T00:00:00.000Z";
 

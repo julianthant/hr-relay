@@ -30,7 +30,7 @@ import { readOnboardingDatesTask } from "../../src/stores/crm/tasks/read-onboard
 import { readOnboardingRecordTask } from "../../src/stores/crm/tasks/read-onboarding-record.js";
 import { readActiveStatusTask } from "../../src/stores/person-lookup/tasks/read-active-status.js";
 import { searchPersonOrgTask } from "../../src/stores/ucpath/tasks/search-person-org.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";

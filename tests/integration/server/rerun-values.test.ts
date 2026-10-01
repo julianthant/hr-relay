@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { Hono } from "hono";
 import { RerunValuesResponseSchema } from "../../../src/domain/dashboard/rerun-values.js";
-import { composeDataQueries } from "../../../src/server/dashboard/compose/data.js";
-import { registerDataRoutes } from "../../../src/server/dashboard/routes/data.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import { composeDataQueries } from "../../../src/backend/app/dashboard/compose/data.js";
+import { registerDataRoutes } from "../../../src/backend/transports/dashboard/routes/data.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { rerunValuesHarness } from "../../fixtures/rerun-values-fixtures.js";
 import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
 

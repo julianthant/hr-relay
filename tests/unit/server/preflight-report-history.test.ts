@@ -5,7 +5,7 @@ import { buildPreflightReport, requiredPreflightChecks } from "../../../src/doma
 import { PreflightAdmissionRefusal } from "../../../src/domain/preflight-admission.js";
 import { WorkflowIdSchema } from "../../../src/domain/ids.js";
 import { createPreflightReportService } from "../../../src/server/preflight/report-service.js";
-import type { RuntimePreflight } from "../../../src/server/preflight/runtime-admission.js";
+import type { RuntimePreflight } from "../../../src/backend/app/preflight/runtime-admission.js";
 import type { createPreflightAuthority } from "../../../src/domain/preflight.js";
 
 const clock = manualClock(new Date("2026-09-19T12:00:00Z"));

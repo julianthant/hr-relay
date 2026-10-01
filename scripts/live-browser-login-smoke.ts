@@ -56,7 +56,7 @@ import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { composeDuoCeremonyGateFactory } from "../src/core/duo-ceremony-gate.js";
 import { WorkerSessionManager } from "../src/core/worker-sessions.js";
 import { systemClock } from "../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../src/backend/app/config/resolve.js";
 import { RuntimeInstanceSchema } from "../src/domain/config/instance.js";
 import { assertNoMigratedEnvironmentKeys, hostAwareResolutionEnvironment } from "../src/domain/secrets.js";
 import {
@@ -71,11 +71,11 @@ import {
 } from "../src/infra/browser/browser-session-factory.js";
 import type { BrowserDeadlineScheduler } from "../src/infra/browser/browser-session-factory.js";
 import { createCredentialSecretSource, readSettings } from "../src/server/settings-runtime.js";
-import { probePrimaryDisplay } from "../src/infra/host/primary-display.js";
+import { probePrimaryDisplay } from "../src/backend/app/host/primary-display.js";
 import type { AuthenticatedApplicationEvidence } from "../src/infra/browser/login-contract.js";
 import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
 import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
-import { taskStoreRegistry } from "../src/stores/index.js";
+import { taskStoreRegistry } from "../src/backend/app/task-registry.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);
 
@@ -197,7 +197,7 @@ async function main(): Promise<void> {
 
   // Review finding 3 (ref execution-and-sessions §10): the `live-smoke` role lock, taken BEFORE the
   // database opens and released after it closes — the same acquire/open/…/close/release discipline
-  // `src/server/worker/compose.ts` and `src/server/dashboard/compose.ts` use for `workers`/`server`.
+  // `src/backend/app/worker-compose.ts` and `src/backend/app/dashboard/compose.ts` use for `workers`/`server`.
   // Without it this script could open (and migrate) the real authority database with no runtime-lock
   // record of itself at all, and a live smoke was invisible to `cli storage restore`'s stopped-system
   // proof. `acquireRuntimeProcessLock` refuses loudly if another live `live-smoke` process already

@@ -378,7 +378,15 @@ const LAYERS = new Map([
 ]);
 
 function layer(path: string): number | undefined {
-  const first = normalize(path).split("/")[0];
+  const parts = normalize(path).split("/");
+  const first = parts[0];
+  if (first === "backend") {
+    if (parts[1] === "app") return parts[2] === "config" || parts[2] === "host" ? 1 : 3;
+    if (parts[1] === "transports") return 3;
+    if (["runs", "runtime", "logs"].includes(parts[1] ?? "")) return 2;
+    if (["systems", "processing", "workflow-tasks", "storage"].includes(parts[1] ?? "")) return 1;
+    return undefined;
+  }
   return first ? LAYERS.get(first) : undefined;
 }
 
@@ -387,6 +395,9 @@ function auditLayering(files: readonly string[], root: string): string[] {
   for (const file of files) {
     const sourceRelative = normalize(relative(root, file));
     const sourceLayer = layer(sourceRelative);
+    if (sourceRelative.startsWith("backend/") && sourceLayer === undefined) {
+      violations.push(`${sourceRelative}: unclassified backend responsibility`);
+    }
     if (sourceLayer === undefined) continue;
     for (const specifier of moduleSpecifiers(file)) {
       const target = resolveModule(file, specifier);

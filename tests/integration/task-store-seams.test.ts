@@ -32,7 +32,7 @@ import type { UcpathPersonOrgDriver } from "../../src/domain/ui/ucpath-person-or
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";
-import { browserStoreRegistry } from "../../src/stores/index.js";
+import { browserStoreRegistry } from "../../src/backend/app/task-registry.js";
 
 const SCENARIO = ScenarioIdSchema.parse("ucpath/store-fixture-happy");
 const INPUT = z.strictObject({ value: z.string().min(1) });

@@ -48,7 +48,7 @@ import type {
 } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { isUcpathTerminationInProgress } from "../../src/domain/ui/ucpath-smart-hr-termination.js";
 import { ucpathPendingSweepIdempotencyKey } from "../../src/domain/contracts/ucpath/delete-pending-terminations.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {
   SeparationsUcpathTerminationCanonicalInput,
   SeparationsUcpathTerminationInput,

@@ -29,9 +29,9 @@ import {
 } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
 import type { AuthorityRepositories } from "../../../src/infra/sqlite/authority-database.js";
-import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
-import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api.js";
+import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import {
   ARCHIVED_RUN,
   ARCHIVED_RUN_WITH_SECTIONS,

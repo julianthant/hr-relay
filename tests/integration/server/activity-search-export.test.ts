@@ -18,11 +18,11 @@ import { ActivityReportSelectionSchema } from "../../../src/domain/dashboard/act
 import type { ActivityReportWire } from "../../../src/domain/dashboard/activity.js";
 import { createActivitySelectionService } from "../../../src/server/dashboard/queries/activity-selection.js";
 import { queryActivitySummaries } from "../../../src/server/dashboard/queries/activity-summaries.js";
-import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
-import { registerActivityRoutes } from "../../../src/server/dashboard/routes/activity.js";
-import { registerShellRoutes } from "../../../src/server/dashboard/routes/shell.js";
-import type { ShellRouteDeps } from "../../../src/server/dashboard/routes/shell-types.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
+import { registerActivityRoutes } from "../../../src/backend/transports/dashboard/routes/activity.js";
+import { registerShellRoutes } from "../../../src/backend/transports/dashboard/routes/shell.js";
+import type { ShellRouteDeps } from "../../../src/backend/transports/dashboard/routes/shell-types.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { collectSearchDocument, createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
 import { CrossDateSearchResultSchema } from "../../../src/domain/dashboard/search.js";

@@ -42,8 +42,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "ENOENT alone proves absent archive; all other errors propagate to unavailable custody."
   },
   {
-    "path": "src/server/dashboard/compose/notification-health.ts",
-    "sha256": "675ace61532eb186fb40f045fcd0aa698e2c9740f4dda43015cbe494454526ef",
+    "path": "src/backend/app/dashboard/compose/notification-health.ts",
+    "sha256": "2e6b2fb7ad4f1fa7a30448c5cd030eafb6580047814e2d7939cfe30bfb33114e",
     "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
   },
   {
@@ -88,12 +88,12 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/server/dashboard/commands/ordinary-path-validator.ts",
-    "sha256": "2c668f8490e2ff5919d5d0a8fa929997b53981f401fad6633fb33c3c164aeaf8",
+    "sha256": "48ced42f83619de6fcffaab58909f5e1af669a9eb0fbd0d29538e4ffa57aaeca",
     "reason": "Only an explicitly allowed missing directory with ENOENT returns false; safe parent validation follows, and other errors throw named refusal."
   },
   {
-    "path": "src/server/dashboard/native-path-picker.ts",
-    "sha256": "aad965c7e8ccde6756e238ef63835a9a307a68441393559c87783040ba343f6d",
+    "path": "src/backend/transports/dashboard/native-path-picker.ts",
+    "sha256": "007eb3ef33b948ddcb5a0d328ccae182400321699118a44023f635740774abb7",
     "reason": "Invalid or unavailable selected paths become explicit dialog-failed responses; cancellation has its own exact marker."
   },
   {

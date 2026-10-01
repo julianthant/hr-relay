@@ -19,7 +19,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { SeparationsVerifyIdentityApproval } from "../../src/domain/contracts/separations/verify-identity-approval.js";
 import { IdentityApprovalResultSchema } from "../../src/domain/separations/identity-approval.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";

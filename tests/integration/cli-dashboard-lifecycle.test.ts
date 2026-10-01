@@ -1,7 +1,7 @@
 /**
  * The `dashboard` command's REAL lifecycle, end to end, in a child process.
  *
- * `tests/unit/runtime-composition.test.ts` proves the seam logic against an
+ * `tests/unit/backend/app/runtime-composition.test.ts` proves the seam logic against an
  * injected composer, an injected signal seam, and the real `process` signal
  * registration. It cannot prove the half that actually broke: that the
  * production entrypoint — `scripts/secure-env-bootstrap.ts` → `runCli` →
@@ -32,7 +32,7 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { writeDashboardBuildIdentity } from "../../src/server/dashboard/build-identity.js";
+import { writeDashboardBuildIdentity } from "../../src/backend/app/dashboard/build-identity.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const BOOTSTRAP = join(REPO_ROOT, "scripts", "secure-env-bootstrap.ts");

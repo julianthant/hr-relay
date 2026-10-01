@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { createWriteRecoveryService } from "../../src/core/write-recovery.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
@@ -30,7 +30,7 @@ import {
 } from "../../src/domain/contracts/base.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { probeVerdictSchema } from "../../src/domain/write-safety.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 import { ManualScheduler, recordingLogger } from "../helpers/phase1f-executor-harness.js";

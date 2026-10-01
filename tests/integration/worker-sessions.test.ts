@@ -19,7 +19,7 @@ import type {
   WorkerSessionEvent,
 } from "../../src/core/worker-sessions.js";
 import type { RunBrowserScreenshotCapture } from "../../src/base/diagnostics.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { FIXTURE_SESSION_ACQUIRE_MS, ManualScheduler } from "../helpers/phase1f-executor-harness.js";
 
 const WORKER_ID = WorkerIdSchema.parse("worker-session-fixture");

@@ -3,11 +3,11 @@ import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js
 import { storageRecoveryFixture } from "../helpers/storage-recovery-fixture.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { createTrustNotifications } from "../../../src/server/dashboard/compose/notifications.js";
+import { createTrustNotifications } from "../../../src/backend/app/dashboard/compose/notifications.js";
 import { createNotificationObserver } from "../../../src/services/notifications/observation.js";
 import { mkdirSync, writeFileSync, readdirSync } from "node:fs";
 import { AuthorityBackupService } from "../../helpers/synthetic-storage-admission.js";
-import { createNotificationHealthObserver, readNotificationHealth } from "../../../src/server/dashboard/compose/notification-health.js";
+import { createNotificationHealthObserver, readNotificationHealth } from "../../../src/backend/app/dashboard/compose/notification-health.js";
 import { createNotificationInbox } from "../../../src/services/notifications/inbox.js";
 import { sequentialIdFactory, QUEUED_RUN, WORKER_START_REQUEST } from "../../fixtures/phase1f-run-fixtures.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
@@ -16,7 +16,7 @@ import { captureArchiveReport } from "../../../src/services/archive/report-captu
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { readNotificationSources } from "../../../src/server/dashboard/compose/notification-sources.js";
+import { readNotificationSources } from "../../../src/backend/app/dashboard/compose/notification-sources.js";
 
 const id = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 function seedRun(path: string, run: RunRecord) {

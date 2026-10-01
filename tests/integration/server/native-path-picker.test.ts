@@ -6,10 +6,10 @@ import { Hono } from "hono";
 import { afterEach, describe, it } from "vitest";
 import { NativePathPickerRequestSchema, NativePathPickerResponseSchema } from "../../../src/domain/dashboard/native-path-picker.js";
 import type { ActorId } from "../../../src/domain/ids.js";
-import { createNativePathPicker, InvalidNativePickerHintError, type NativePickerExecutor } from "../../../src/server/dashboard/native-path-picker.js";
-import { registerSettingsRoutes } from "../../../src/server/dashboard/routes/settings.js";
-import type { SettingsRouteDeps } from "../../../src/server/dashboard/routes/settings-types.js";
-import { operatorMutationIngressGuard } from "../../../src/server/dashboard/routes/operator-mutation-ingress.js";
+import { createNativePathPicker, InvalidNativePickerHintError, type NativePickerExecutor } from "../../../src/backend/transports/dashboard/native-path-picker.js";
+import { registerSettingsRoutes } from "../../../src/backend/transports/dashboard/routes/settings.js";
+import type { SettingsRouteDeps } from "../../../src/backend/transports/dashboard/routes/settings-types.js";
+import { operatorMutationIngressGuard } from "../../../src/backend/transports/dashboard/routes/operator-mutation-ingress.js";
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

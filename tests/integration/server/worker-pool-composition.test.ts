@@ -33,7 +33,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/bootstrap-admission.js";
-import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import {
   createCommandKernel,
   type CommandKernel,
@@ -54,7 +54,7 @@ import {
   composeDashboardRuntime,
   composeWorkerProcessControl,
   type DashboardRuntime,
-} from "../../../src/server/dashboard/compose.js";
+} from "../../../src/backend/app/dashboard/compose.js";
 import type {
   SpawnedWorkerHandle,
   WorkerProcessSpawnRequest,
@@ -235,7 +235,7 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
         throw new Error("unused in this suite");
       },
     },
-    // EXACTLY what src/server/dashboard/compose.ts adopts: the pool executor
+    // EXACTLY what src/backend/app/dashboard/compose.ts adopts: the pool executor
     // over the composed supervisor, behind the explicit adoption wrapper —
     // plus the test-only alias-breaking clock advance around the seam.
     workerRuntime: { pool },

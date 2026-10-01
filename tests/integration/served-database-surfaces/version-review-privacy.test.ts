@@ -8,7 +8,7 @@ import { createRunLifecycleStorage, lifecycleSourceDigest } from "../../../src/i
 import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
 import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
 import { SavedVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
-import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
+import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 
 it("keeps planned and applying HTTP review bindings independent of protected-only input rotations", async () => {

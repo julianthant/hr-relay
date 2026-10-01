@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { configLeafPaths } from "../../src/domain/config/resolve.js";
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { configLeafPaths } from "../../src/backend/app/config/resolve.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../src/domain/config/schema.js";
 import {
   CONFIG_SNAPSHOT_GENERATIONS,

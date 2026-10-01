@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../src/domain/config/schema.js";
 import {
   CURRENT_CONFIG_SNAPSHOT_GENERATION,

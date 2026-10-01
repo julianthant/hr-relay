@@ -10,7 +10,7 @@
 import {
   WORKFLOW_MODULES,
   readPendingImplBindings,
-} from "../../src/control/workflow-registry.js";
+} from "../../src/backend/app/control/workflow-registry.js";
 import type { Clock } from "../../src/domain/clock.js";
 import type { Fingerprint } from "../../src/domain/ids.js";
 import {

@@ -14,7 +14,8 @@
  * four-step graph would pass by having nothing to look at.
  */
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
@@ -34,8 +35,8 @@ import {
   readPendingImplBindings,
   workflowCodeRegistry,
   workflowRoleRegistry,
-} from "../../src/control/workflow-registry.js";
-import { STEP_PROOF_MODULES } from "../../src/control/step-proof-modules.js";
+} from "../../src/backend/app/control/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../src/backend/app/control/step-proof-modules.js";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, workflowProjections } from "../../src/base/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
@@ -65,7 +66,7 @@ import {
   fingerprintSourceSet,
   renderBuildManifestModule,
 } from "../../src/infra/build/workflow-build-manifest.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { FixtureReadReceipt, fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,
@@ -114,9 +115,9 @@ function valueImportSpecifiers(path: string, content: string): readonly string[]
   return specifiers;
 }
 
-function bundleViolations(entry: string): readonly string[] {
+function bundleViolations(entry: string, root = REPO_ROOT): readonly string[] {
   const violations: string[] = [];
-  for (const source of collectSourceClosure(REPO_ROOT, join(REPO_ROOT, entry))) {
+  for (const source of collectSourceClosure(root, join(root, entry))) {
     const isEntry = source.path === entry;
     const inBundleRoot = BUNDLE_SAFE_ROOTS.some((root) => source.path.startsWith(root));
     if (!isEntry && !inBundleRoot) {
@@ -124,7 +125,7 @@ function bundleViolations(entry: string): readonly string[] {
     }
     for (const specifier of valueImportSpecifiers(
       source.path,
-      readFileSync(join(REPO_ROOT, source.path), "utf8"),
+      readFileSync(join(root, source.path), "utf8"),
     )) {
       if (specifier.startsWith(".") || specifier === "zod") continue;
       violations.push(`${source.path}: value-imports "${specifier}" outside zod`);
@@ -401,8 +402,24 @@ describe("descriptor coverage", () => {
       assert.deepEqual(bundleViolations(entry), [], entry);
     }
     // The rule is only meaningful because the executable arm catches a breach.
-    const breach = bundleViolations("src/control/workflow-registry.ts");
+    const breach = bundleViolations("src/backend/app/control/workflow-registry.ts");
     assert.ok(breach.length > 0, "a module reaching outside the bundle-safe roots must be caught");
+  });
+
+  it("rejects a workflow value closure reaching backend runtime", () => {
+    const root = mkdtempSync(join(tmpdir(), "hrauto-backend-bundle-"));
+    try {
+      mkdirSync(join(root, "src/workflows/probe"), { recursive: true });
+      mkdirSync(join(root, "src/backend/runtime"), { recursive: true });
+      writeFileSync(join(root, "src/backend/runtime/engine.ts"), "export const engine = true;\n");
+      writeFileSync(join(root, "src/workflows/probe/workflow.ts"), 'import { engine } from "../../backend/runtime/engine.js"; export const value = engine;\n');
+      assert.match(
+        bundleViolations("src/workflows/probe/workflow.ts", root).join("\n"),
+        /reaches src\/backend\/runtime\/engine\.ts, which is outside the bundle-safe roots/u,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("keeps the checked-in build manifest current", () => {

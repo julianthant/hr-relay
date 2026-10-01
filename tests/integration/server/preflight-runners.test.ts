@@ -12,10 +12,10 @@ import {
   requiredPreflightChecks,
 } from "../../../src/domain/preflight.js";
 import { createPreflightAuthority } from "../../../src/domain/preflight.js";
-import { createDashboardPreflightRunners as composeRunners, type DashboardPreflightRunnerInput } from "../../../src/server/preflight/dashboard-runners.js";
-import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/server/dashboard/frontend-owner.js";
+import { createDashboardPreflightRunners as composeRunners, type DashboardPreflightRunnerInput } from "../../../src/backend/app/preflight/dashboard-runners.js";
+import { DASHBOARD_FRONTEND_OWNER_PATH } from "../../../src/backend/transports/dashboard/frontend-owner.js";
 import { probeOwnedViteServer } from "../../../src/infra/providers/local-vite-probe.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
 
 const roots: string[] = [];

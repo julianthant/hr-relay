@@ -34,7 +34,7 @@ import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
 import {
   createRunQueueProjection,
   type RunQueueProjection,

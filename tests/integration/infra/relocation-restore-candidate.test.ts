@@ -11,7 +11,7 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { ConfigSnapshotWriteSchema } from "../../../src/domain/config/snapshot.js";
 import { FingerprintSchema, NonNegativeIntSchema } from "../../../src/domain/ids.js";
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";

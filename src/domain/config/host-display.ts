@@ -4,7 +4,7 @@
  *
  * Precedence is `settings > default`; the environment is not a resolver input.
  * A composition establishes the host's primary
- * display once, through an injected probe (`src/infra/host/primary-display.ts`
+ * display once, through an injected probe (`src/backend/app/host/primary-display.ts`
  * in production), and publishes it as ONE runtime-owned environment value so
  * every child process the dashboard spawns (browser workers, launched with the
  * parent environment) resolves the identical default and therefore the

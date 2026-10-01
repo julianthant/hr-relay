@@ -21,7 +21,7 @@ import { projectStorageRelocationPlanHistory } from "../../../src/core/storage-r
 import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { ConfigSnapshotWriteSchema } from "../../../src/domain/config/snapshot.js";
 
 const workspaces: string[] = [];

@@ -1,7 +1,7 @@
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync, readdirSync } from "node:fs";
 import { dirname, isAbsolute, join, resolve, sep } from "node:path";
 import type { Config } from "../../../domain/config/schema.js";
-import { defaultBrowserProfileRoot } from "../../../domain/config/runtime-paths.js";
+import { defaultBrowserProfileRoot } from "../../../backend/app/config/runtime-paths.js";
 import { resolveSecretFileIdentity } from "../../../domain/secrets.js";
 
 type PathKey = "paths.browserProfileRoot" | "paths.duoCredential" | "paths.duoExtensionDir";

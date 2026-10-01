@@ -43,7 +43,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import type { TestClock } from "../../src/domain/clock.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_EID,

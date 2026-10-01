@@ -59,7 +59,7 @@ import {
   createUcpathSmartHrFakeWorld,
 } from "../../src/stores/ucpath/driver/smart-hr-fake.js";
 import type { KualiFinalizationFieldName } from "../../src/domain/ui/kuali-separation-finalization.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {
   SeparationsKualiFinalizationCanonicalInput,
   SeparationsKualiFinalizationInput,

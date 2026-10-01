@@ -14,7 +14,7 @@ import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { compileWorkflow, composeWorkflowModule } from "../../../src/base/workflow-definition.js";
-import { WORKFLOW_MODULES } from "../../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES } from "../../../src/backend/app/control/workflow-registry.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   DelegationEdgeIdSchema,
@@ -44,7 +44,7 @@ import {
   readCommittedUiCatalog,
 } from "../../../src/server/dashboard/queries/ui-catalog.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
-import { taskStoreRegistry } from "../../../src/stores/index.js";
+import { taskStoreRegistry } from "../../../src/backend/app/task-registry.js";
 import { separationsKualiReadWorkflow } from "../../../src/workflows/separations/kuali-extraction/workflow.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));

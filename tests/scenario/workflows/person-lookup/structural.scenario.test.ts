@@ -65,7 +65,7 @@ import type {
 } from "../../../../src/stores/ucpath/driver/person-org-operation.js";
 import { executeClaimedRun } from "../../../../src/core/run-executor.js";
 import type { RunExecutorDependencies } from "../../../../src/core/run-executor.js";
-import { taskStoreRegistry } from "../../../../src/stores/index.js";
+import { taskStoreRegistry } from "../../../../src/backend/app/task-registry.js";
 import { UUID_5 } from "../../../fixtures/phase1c-contract-fixtures.js";
 import {
   RUN_ID,

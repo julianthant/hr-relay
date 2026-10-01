@@ -16,14 +16,14 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1f",
-        "replacement": "src/server/worker/compose.ts",
+        "replacement": "src/backend/app/worker-compose.ts",
         "differencesAccepted": "Legacy's detached per-workflow daemon — spawned by daemon-registry, owning its own HTTP control surface, lockfile, session and claim loop — is replaced by a FOREGROUND `cli worker <workflow-id> --pool-index <positive-int> [--drain]` process. Control moves off HTTP onto the one idempotent actor-stamped command family plus the authority's own claim leases. Each worker start owns a durable process record under .tracker/locks/workers; D181 strictly aggregates those records into one restore-safety observation while identity collision remains the authority lease's job. There is no per-daemon stdout log file: a worker's events reach the operator only through the ONE projection."
       },
       "ownerMilestone": "1f",
       "verificationEvidence": [
         "legacy-source-present:src/cli-daemon.ts",
-        "src/server/worker/compose.ts",
-        "src/core/runtime-composition.ts",
+        "src/backend/app/worker-compose.ts",
+        "src/backend/app/runtime-composition.ts",
         "src/infra/sqlite/runtime-process-locks.ts",
         "npm run cli"
       ],
@@ -41,12 +41,12 @@
       "disposition": {
         "kind": "open",
         "milestone": "workflow-admission-backlog",
-        "reason": "The rebuild CLI covers help/phase/dashboard/worker/explain/ocr/storage (src/core/runtime-composition.ts) and the operator surface is the dashboard BFF, not the CLI. Legacy's per-workflow subcommands and system probes close one at a time as each workflow migrates, and ref workflow-model §1.6.3 requires behavioural CLI fixtures plus help output for the whole family before cutover."
+        "reason": "The rebuild CLI covers help/phase/dashboard/worker/explain/ocr/storage (src/backend/app/runtime-composition.ts) and the operator surface is the dashboard BFF, not the CLI. Legacy's per-workflow subcommands and system probes close one at a time as each workflow migrates, and ref workflow-model §1.6.3 requires behavioural CLI fixtures plus help output for the whole family before cutover."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/cli.ts",
-        "src/core/runtime-composition.ts",
+        "src/backend/app/runtime-composition.ts",
         "npm run cli"
       ],
       "status": "open"
@@ -653,7 +653,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/entries-payload.ts",
         "src/server/dashboard/projectors/run-queue-projection.ts",
-        "src/server/dashboard/subscriptions/dashboard-stream.ts"
+        "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts"
       ],
       "status": "implemented"
     },
@@ -692,14 +692,14 @@
         "kind": "native",
         "milestone": "1g-spine",
         "targetIds": [
-          "src/server/dashboard/subscriptions/dashboard-stream.ts",
-          "src/server/dashboard/routes/api.ts"
+          "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts",
+          "src/backend/transports/dashboard/routes/api.ts"
         ]
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/hub.ts",
-        "src/server/dashboard/subscriptions/dashboard-stream.ts",
+        "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts",
         "src/dashboard/client/subscription.ts"
       ],
       "status": "implemented"
@@ -781,7 +781,7 @@
         "milestone": "1g-spine",
         "targetIds": [
           "src/server/dashboard/projectors/run-queue-projection.ts",
-          "src/server/dashboard/routes/api.ts"
+          "src/backend/transports/dashboard/routes/api.ts"
         ]
       },
       "ownerMilestone": "1g-spine",
@@ -890,14 +890,14 @@
         "kind": "native",
         "milestone": "workflow-admission-backlog",
         "targetIds": [
-          "src/server/dashboard/static-bundle.ts"
+          "src/backend/transports/dashboard/static-bundle.ts"
         ]
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/static.ts",
-        "src/server/dashboard/static-bundle.ts",
-        "src/server/dashboard/compose.ts",
+        "src/backend/transports/dashboard/static-bundle.ts",
+        "src/backend/app/dashboard/compose.ts",
         "npm run dashboard:prod",
         "tests/unit/server/static-bundle.test.ts"
       ],
@@ -1327,13 +1327,13 @@
       "disposition": {
         "kind": "open",
         "milestone": "workflow-admission-backlog",
-        "reason": "No first-run setup script and no `npm run setup` exists; a fresh checkout is configured by copying .env.example and letting src/domain/config/resolve.ts apply env > settings.json > default. Ref workflow-model §1.6.3 groups setup with the CLI/maintenance family that needs behavioural fixtures and help output before cutover."
+        "reason": "No first-run setup script and no `npm run setup` exists; a fresh checkout is configured by copying .env.example and letting src/backend/app/config/resolve.ts apply env > settings.json > default. Ref workflow-model §1.6.3 groups setup with the CLI/maintenance family that needs behavioural fixtures and help output before cutover."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/setup.ts",
         ".env.example",
-        "src/domain/config/resolve.ts"
+        "src/backend/app/config/resolve.ts"
       ],
       "status": "open"
     },

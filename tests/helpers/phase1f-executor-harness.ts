@@ -47,7 +47,7 @@ import { ReadOnboardingRecordOutputSchema } from "../../src/domain/contracts/crm
 import { AuthorityDatabase } from "./synthetic-database-admission.js";
 import { createDeterministicCrmOnboardingDriver } from "../../src/stores/crm/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "./registered-workflows.js";

@@ -68,11 +68,11 @@ function seedValidRuntime(root: string): void {
     "});",
     "",
   ].join("\n"));
-  write(root, "src/core/runtime-composition.ts",
+  write(root, "src/backend/app/runtime-composition.ts",
     "export function startRebuildRuntime(_input: { isolation: unknown }): void {}\n");
   write(root, "src/cli.ts", [
     `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-    'import { startRebuildRuntime } from "./core/runtime-composition.js";',
+    'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
     `export function runCli(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
     "",
   ].join("\n"));
@@ -172,7 +172,7 @@ describe("operational isolation", () => {
       // Mention without invocation.
       write(root, "src/cli.ts", [
         `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "./core/runtime-composition.js";',
+        'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
         `export const unused = [${config.exportName}, startRebuildRuntime];`,
         "",
       ].join("\n"));
@@ -182,7 +182,7 @@ describe("operational isolation", () => {
       // A call hidden inside the wrong exported function is not the declared runner.
       write(root, "src/cli.ts", [
         `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "./core/runtime-composition.js";',
+        'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
         `export function main(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));
@@ -192,7 +192,7 @@ describe("operational isolation", () => {
       // The wrong binding argument path.
       write(root, "src/cli.ts", [
         `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "./core/runtime-composition.js";',
+        'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
         `export function runCli(): void { startRebuildRuntime({ notIsolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));

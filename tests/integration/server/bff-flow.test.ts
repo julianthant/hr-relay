@@ -10,7 +10,7 @@ import { CommandResultSchema, markSettingsCommand } from "../../../src/domain/co
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
-import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
+import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
@@ -95,26 +95,26 @@ import { providerMarkedFingerprint } from "../../../src/server/dashboard/command
 import { activeProviderKeySlots, admitLocalEnvironmentFile } from "../../../src/domain/secrets.js";
 import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../../../src/domain/config/provider-keys.js";
 import { createStartPlanService, type StartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import {
   startDashboardHttpServer,
   type DashboardHttpServer,
-} from "../../../src/server/dashboard/http-server.js";
+} from "../../../src/backend/transports/dashboard/http-server.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
+import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
 import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
 import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
 import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
-import type { RequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
+import type { RequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { RequestIdentityRefusedError } from "../../../src/server/failures.js";
 import type { ArtifactBytesQueryDeps } from "../../../src/server/dashboard/queries/artifact-bytes.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
+import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import {
   ACTIVITY_PERSON_PSEUDONYM_KEY_HEX,
@@ -132,7 +132,7 @@ import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js
 import { AT, DAY, traceOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
 import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";

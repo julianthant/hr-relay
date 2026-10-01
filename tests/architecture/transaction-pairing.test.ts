@@ -19,7 +19,7 @@ import { join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { flow } from "../../src/base/flow.js";
 import { deriveGraphCoveragePoints } from "../../src/domain/workflow/scenario-coverage.js";

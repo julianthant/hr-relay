@@ -11,7 +11,7 @@
  */
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { DelegationEdgeIdSchema, FailureIdSchema, ItemIdSchema, RunIdSchema } from "../../src/domain/ids.js";
 import type { ItemId } from "../../src/domain/ids.js";

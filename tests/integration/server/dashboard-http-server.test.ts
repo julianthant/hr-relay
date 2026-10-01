@@ -20,9 +20,9 @@ import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts
 import {
   startDashboardHttpServer,
   type DashboardHttpServer,
-} from "../../../src/server/dashboard/http-server.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api.js";
-import { verifiedByteResponse } from "../../../src/server/dashboard/routes/verified-byte-response.js";
+} from "../../../src/backend/transports/dashboard/http-server.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api.js";
+import { verifiedByteResponse } from "../../../src/backend/transports/dashboard/routes/verified-byte-response.js";
 
 type TestDashboardEnv = { Variables: { requestActorId: ActorId } };
 

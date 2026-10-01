@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { it } from "vitest";
 import { StartPlanWireSchema } from "../../../src/domain/dashboard/start-plan.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { servedPreflightRuntime } from "../../fixtures/preflight/served-runtime.js";
 import { installRunOperationsRoutes } from "../../fixtures/run-operations.js";
 

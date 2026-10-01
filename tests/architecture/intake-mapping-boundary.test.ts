@@ -103,11 +103,11 @@ describe("ref data-intake-and-edit-data §7 intake mapping boundary", () => {
     it("catches a second place minting a binding", () => {
       assert.deepEqual(
         intakeBoundaryViolations([{
-          path: "src/server/dashboard/routes/intake.ts",
+          path: "src/backend/transports/dashboard/routes/intake.ts",
           source: "return ColumnBindingSchema.parse(body);",
         }]),
         [
-          "src/server/dashboard/routes/intake.ts: parses a ColumnBinding; "
+          "src/backend/transports/dashboard/routes/intake.ts: parses a ColumnBinding; "
           + "confirmBinding in src/domain/intake/mapping.ts is the only mint",
         ],
       );

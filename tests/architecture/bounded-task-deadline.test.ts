@@ -20,7 +20,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun } from "../../src/core/run-executor.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
   healthyCrmDriver,

@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import type { Config } from "../../../src/domain/config/schema.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "../../../src/server/dashboard/commands/ordinary-path-validator.js";

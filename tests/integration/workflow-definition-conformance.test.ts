@@ -2,20 +2,20 @@ import { existsSync, readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import { describe, expect, it } from "vitest";
 import { composeWorkflowModule, workflowDefinitionOf, workflowEntryKinds } from "../../src/base/workflow-definition.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { compileFixtureWorkflow, everyEntryKindWorkflow, fixtureBuildManifest } from "../fixtures/workflow-definition-fixtures.js";
 import { workflowProjections } from "../../src/base/workflow.js";
 import {
   WORKFLOW_MODULES,
   WORKFLOW_DEFINITIONS,
   workflowDefinitionRegistry,
-} from "../../src/control/workflow-registry.js";
+} from "../../src/backend/app/control/workflow-registry.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { buildBootstrap } from "../../src/server/dashboard/queries/bootstrap.js";
 import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";
 import { buildRunDetail } from "../../src/server/dashboard/queries/run-detail.js";
-import { descriptorSetHash } from "../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
 import { projectStartSteps } from "../../src/services/start/step-selection.js";
 import { WorkflowBootstrapPrimitiveSchema } from "../../src/domain/dashboard/bootstrap.js";
 import { healthyDashboardPreflightReport } from "../fixtures/preflight-seams.js";

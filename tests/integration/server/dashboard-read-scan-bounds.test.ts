@@ -36,8 +36,8 @@ import {
   type RunDetailQueryDeps,
   type RunNoteScanEntry,
 } from "../../../src/server/dashboard/queries/run-detail.js";
-import { separationsKualiFinalizationModule } from "../../../src/control/step-proof-modules.js";
-import { dataOriginViewsOf } from "../../../src/server/dashboard/compose.js";
+import { separationsKualiFinalizationModule } from "../../../src/backend/app/control/step-proof-modules.js";
+import { dataOriginViewsOf } from "../../../src/backend/app/dashboard/compose.js";
 import {
   AT,
   claimEventOf,

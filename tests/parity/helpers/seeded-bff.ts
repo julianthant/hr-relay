@@ -1,4 +1,4 @@
-import type { DashboardAppDeps } from "../../../src/server/dashboard/routes/api-types.js";
+import type { DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import type { Clock } from "../../../src/domain/clock.js";
 import { dateNavigationReader, seedDateNavigation } from "./date-navigation-server.js";
 import { mkdirSync, mkdtempSync, realpathSync, rmSync } from "node:fs";
@@ -11,9 +11,9 @@ import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writ
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { type DashboardApp } from "../../../src/server/dashboard/routes/api.js";
+import { type DashboardApp } from "../../../src/backend/transports/dashboard/routes/api.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

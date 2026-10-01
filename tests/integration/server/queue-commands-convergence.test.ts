@@ -22,7 +22,7 @@ import type { DashboardStreamEnvelope } from "../../../src/domain/dashboard/subs
 import {
   createDashboardStreamHub,
   type DashboardStreamHub,
-} from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
+} from "../../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
 import { BackfillGapObservationSchema } from "../../../src/services/notifications/backfill-gap.js";
 import {
   claimEventOf,

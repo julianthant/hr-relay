@@ -14,7 +14,7 @@ import { sealArchiveReport } from "../../../../src/domain/archive/report.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../../src/domain/commands.js";
 import { hostConfigFacts } from "../../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../../src/domain/config/protected-settings.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID, NonNegativeIntSchema } from "../../../../src/domain/ids.js";

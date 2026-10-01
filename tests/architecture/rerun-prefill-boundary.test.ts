@@ -20,7 +20,7 @@ import {
   EditDataPolicySchema,
   STANDARD_WORKFLOW_ACTIONS,
 } from "../../src/domain/workflow/presentation.js";
-import { WORKFLOW_MODULES } from "../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
 import { FixtureReadReceipt } from "../fixtures/descriptor-fixtures.js";
 
 const PolicyInput = z.strictObject({ eid: EidSchema });

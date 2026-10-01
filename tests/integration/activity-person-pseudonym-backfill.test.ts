@@ -15,7 +15,7 @@ import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { createActivityPersonPseudonymDomain } from "../../src/domain/trust/activity-person-pseudonym.js";
 import { createActivityPersonPseudonymBackfillService } from "../../src/server/activity-person-pseudonym-backfill/service.js";
-import { composeActivityPersonPseudonymBackfillCommand } from "../../src/server/activity-person-pseudonym-backfill/compose.js";
+import { composeActivityPersonPseudonymBackfillCommand } from "../../src/backend/app/activity-person-pseudonym-backfill-compose.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { SeparationsResultSchema } from "../../src/workflows/separations/workflow.js";
 import {

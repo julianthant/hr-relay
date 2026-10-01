@@ -14,11 +14,11 @@ import { createContentAddressedArtifactWriter } from "../../../src/infra/artifac
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createIntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
 import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
-import { registerIntakeRoutes } from "../../../src/server/dashboard/routes/intake.js";
-import { registerCommandsRoutes } from "../../../src/server/dashboard/routes/commands.js";
-import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "../../../src/server/dashboard/routes/operator-mutation-ingress.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import { registerIntakeRoutes } from "../../../src/backend/transports/dashboard/routes/intake.js";
+import { registerCommandsRoutes } from "../../../src/backend/transports/dashboard/routes/commands.js";
+import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "../../../src/backend/transports/dashboard/routes/operator-mutation-ingress.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import type { DashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../fixtures/phase1c-contract-fixtures.js";

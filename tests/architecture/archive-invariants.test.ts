@@ -107,7 +107,7 @@ function closureOf(entry: string): ReadonlySet<string> {
 /** Modules whose whole purpose is to resolve or interpret a descriptor. */
 const REGISTRY_MODULES = Object.freeze([
   "src/base/workflow.ts",
-  "src/control/workflow-registry.ts",
+  "src/backend/app/control/workflow-registry.ts",
   "src/domain/workflow/generated-build-manifest.ts",
 ]);
 

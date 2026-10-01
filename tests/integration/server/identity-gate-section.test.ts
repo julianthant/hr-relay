@@ -34,7 +34,7 @@ import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../src/domain/
 import { deriveStableUuid } from "../../../src/domain/identifiers.js";
 import { timelineCheckpointReference } from "../../../src/events/timeline.js";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
-import { separationsIdentityCheckModule } from "../../../src/control/step-proof-modules.js";
+import { separationsIdentityCheckModule } from "../../../src/backend/app/control/step-proof-modules.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { deriveJobRowFromCells } from "../../../src/stores/ucpath/driver/person-org-operation.js";
 import {

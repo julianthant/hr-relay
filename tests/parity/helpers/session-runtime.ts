@@ -6,7 +6,7 @@ import { cpSync, copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync,
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
-import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
 import { systemClock } from "../../../src/domain/clock.js";

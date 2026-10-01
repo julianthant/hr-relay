@@ -20,7 +20,7 @@ import {
 import { tmpdir } from "node:os";
 import { basename, dirname, join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import {
   PROTECTED_SETTINGS_SET_MARKER,
   markProtectedSettingsPatch,

@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { Hono } from "hono";
 import { describe, it } from "vitest";
-import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { ActivityReportSelectionSchema } from "../../../src/domain/dashboard/activity-selection.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { composeActivity } from "../../../src/server/dashboard/compose/activity.js";
-import { composeQueueSummaries } from "../../../src/server/dashboard/compose/queue-summaries.js";
-import { registerActivityRoutes } from "../../../src/server/dashboard/routes/activity.js";
-import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
+import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
+import { composeQueueSummaries } from "../../../src/backend/app/dashboard/compose/queue-summaries.js";
+import { registerActivityRoutes } from "../../../src/backend/transports/dashboard/routes/activity.js";
+import { failureStatus } from "../../../src/backend/transports/dashboard/routes/failure-status.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { foundationFixture, id, NOW } from "../../unit/database-foundation/fixtures.js";
 
 /** Real SQLite summary consumers through their independently composed HTTP/read ports. */

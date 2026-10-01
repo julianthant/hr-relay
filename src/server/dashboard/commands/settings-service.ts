@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import { sha256Hex } from "../../../domain/sha256.js";
 import type { SettingsApplicationExecutor, SettingsCommand } from "../../../core/command-kernel.js";
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../domain/commands.js";
-import { ResolvedConfigSchema, type ResolvedConfig } from "../../../domain/config/resolve.js";
+import { ResolvedConfigSchema, type ResolvedConfig } from "../../../backend/app/config/resolve.js";
 import type { CredentialStore } from "../../../domain/config/credential-store.js";
 import { ProtectedSettingsApplyInputSchema, protectedSettingsReadback } from "../../../domain/config/protected-settings.js";
 import {

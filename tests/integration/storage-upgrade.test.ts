@@ -8,7 +8,7 @@ import { readLatestDatabaseUpgrade as readLatestSettingsUpgrade } from "../helpe
 import { databaseStateTable, NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST, RUN_SESSION } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
+import { composeDashboardRuntime } from "../../src/backend/app/dashboard/compose.js";
 import { CONFIG_SNAPSHOT } from "../fixtures/phase1c-contract-fixtures.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
 import { EditableSettingsOverrideSchema } from "../../src/domain/config/settings-v29-schema.js";

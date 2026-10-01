@@ -24,7 +24,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
-import { auditWorkflowModuleRoles, type WorkflowRoleView } from "../../src/control/workflow-registry.js";
+import { auditWorkflowModuleRoles, type WorkflowRoleView } from "../../src/backend/app/control/workflow-registry.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { ScenarioIdSchema, taskId } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";

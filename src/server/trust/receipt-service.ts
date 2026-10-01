@@ -1,4 +1,4 @@
-import { composeFailureResolution } from "../dashboard/compose/failure-resolution.js";
+import { composeFailureResolution } from "../../backend/app/dashboard/compose/failure-resolution.js";
 import type { RunRecordService } from "../../core/run-record-service.js";
 /**
  * The ONE authority-backed receipt path (D141).

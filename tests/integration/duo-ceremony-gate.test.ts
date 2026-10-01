@@ -31,7 +31,7 @@ import type { DuoCeremonyGateFactory } from "../../src/core/duo-ceremony-gate.js
 import { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock } from "../../src/domain/clock.js";
 import type { TestClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import {
   BrowserSessionIdSchema,
   FingerprintSchema,
@@ -43,7 +43,7 @@ import { defineVerifiedLoginRecipe } from "../../src/infra/browser/authenticated
 import { DuoTerminalRefusalError } from "../../src/infra/browser/login-contract.js";
 import type { SystemLoginContext } from "../../src/infra/browser/login-contract.js";
 import type { AuthorityDatabase, DuoCeremonyLeaseRepository } from "../helpers/synthetic-storage-admission.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {
   duoCeremonyGatesOver,
   FIXTURE_DUO_CREDENTIAL_KEY,

@@ -3,10 +3,10 @@ import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.j
 import { WorkerIdSchema } from "../../../src/domain/ids.js";
 import * as geminiOcr from "../../../src/infra/providers/gemini-ocr-extract.js";
 import { runWorkerLoop } from "../../../src/core/worker-loop.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { WorkflowIdSchema } from "../../../src/domain/ids.js";
-import { taskStoreRegistry } from "../../../src/stores/index.js";
+import { taskStoreRegistry } from "../../../src/backend/app/task-registry.js";
 import { testWorkerPorts } from "../../fixtures/run-lifecycle-fixtures.js";
 import { fixtureDuoCeremonyGates } from "../../helpers/duo-ceremony-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

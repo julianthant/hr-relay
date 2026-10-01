@@ -49,7 +49,7 @@ import {
   sessionFactoryHarness,
   sessionManagerFor,
 } from "../helpers/phase1f-executor-harness.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 const disposers: (() => void)[] = [];

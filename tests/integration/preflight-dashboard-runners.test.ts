@@ -7,13 +7,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import {
   executePreflightRunner,
   requiredPreflightChecks,
   type PreflightDeadlineScheduler,
 } from "../../src/domain/preflight.js";
-import { createDashboardPreflightRunners } from "../../src/server/preflight/dashboard-runners.js";
+import { createDashboardPreflightRunners } from "../../src/backend/app/preflight/dashboard-runners.js";
 import type { probeOwnedViteServer } from "../../src/infra/providers/local-vite-probe.js";
 import { PreflightCheckIdSchema } from "../../src/domain/runtime-dependencies.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";

@@ -62,9 +62,9 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES, auditWorkflowModuleRoles } from "../../src/control/workflow-registry.js";
-import { STEP_PROOF_MODULES } from "../../src/control/step-proof-modules.js";
-import type { WorkflowRoleView } from "../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES, auditWorkflowModuleRoles } from "../../src/backend/app/control/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../src/backend/app/control/step-proof-modules.js";
+import type { WorkflowRoleView } from "../../src/backend/app/control/workflow-registry.js";
 import { defineWorkflowRole, type WorkflowModuleRole } from "../../src/domain/workflow/module-role.js";
 import { workflowSourceFolder, workflowSourcePath } from "../../src/domain/workflow/source-layout.js";
 import { declaredWorkflowId } from "../../src/infra/build/workflow-build-manifest.js";

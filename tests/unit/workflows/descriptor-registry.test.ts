@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { DESCRIPTORS, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../src/control/workflow-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../src/control/step-proof-modules.js";
+import { DESCRIPTORS, SERVER_REGISTRY, WORKFLOW_MODULES, workflowModuleOf } from "../../../src/backend/app/control/workflow-registry.js";
+import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../../src/backend/app/control/step-proof-modules.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 
 /**

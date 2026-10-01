@@ -12,7 +12,7 @@ import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/bootstrap-admission.js";
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { composeDashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import { composeDashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
 
 it("plans, reads, retries, conflicts, and cancels through a real admitted dashboard", async () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-bff-")));

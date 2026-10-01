@@ -16,7 +16,7 @@ import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-
 import { GeneratedSourceManifestSchema } from "../../../src/infra/sqlite/generated-conversion.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
-import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { ProviderAdmissionRecordSchema,ProviderBudgetCounterSchema } from "../../../src/domain/provider-admission.js";

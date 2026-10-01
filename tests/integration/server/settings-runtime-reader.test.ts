@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock, type Clock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, settingsRuntimeIdentity, type SettingsFileRecord, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema, ProtectedSettingsReadbackSchema } from "../../../src/domain/config/protected-settings.js";
 import { ProtectedSettingsCommandRequestSchema, deriveSettingsCommandFingerprint } from "../../../src/domain/commands.js";

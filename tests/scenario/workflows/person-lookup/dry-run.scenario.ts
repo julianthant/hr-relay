@@ -24,7 +24,7 @@
  * **Subjects are LABELS.** No person's identifier appears in this file and
  * none may: `config/test-data.json` (subjects) commits only the closed reference
  * (`personLookupCanaryEid`), and the EID itself is read from ignored
- * `config/test-data.local.json` through `src/control/test-data.ts` (D341),
+ * `config/test-data.local.json` through `src/backend/app/control/test-data.ts` (D341),
  * judged by the same `EidSchema` the start box applies, then fed through the
  * descriptor's OWN `inputRun` parser so
  * `keepNonHdh` and `includeCrmDates` come from the parser's declared constants.

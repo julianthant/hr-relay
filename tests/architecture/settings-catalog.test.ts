@@ -249,10 +249,10 @@ describe("D331 settings catalog", () => {
     assert.deepEqual(readerInventoryViolations(SETTINGS_CATALOG, readers), []);
 
     const dropped = SETTINGS_CATALOG.map((row) => row.key === "actor.label"
-      ? { ...row, consumers: row.consumers.filter(({ module }) => module !== "src/domain/config/resolve.ts") }
+      ? { ...row, consumers: row.consumers.filter(({ module }) => module !== "src/backend/app/config/resolve.ts") }
       : row);
     assert.deepEqual(readerInventoryViolations(dropped, readers), [
-      "actor.label: source reader src/domain/config/resolve.ts is missing from consumers",
+      "actor.label: source reader src/backend/app/config/resolve.ts is missing from consumers",
     ]);
   });
 

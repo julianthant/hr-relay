@@ -28,7 +28,7 @@
  *       and for being named `recipe.ts`. Those are token scans BY DESIGN: none
  *       of them may appear even in prose in a source file. Inside the authoring
  *       seam only (`src/base/workflow-definition.ts`, `src/base/workflow.ts`,
- *       `src/control/workflow-registry.ts`, `src/workflows/**`,
+ *       `src/backend/app/control/workflow-registry.ts`, `src/workflows/**`,
  *       `src/domain/workflow/**`) the bare identifier `recipe` is refused from
  *       the TypeScript AST — identifiers, never comment text, because
  *       `separations/kronos-timecard/workflow.ts` legitimately says "login
@@ -38,7 +38,7 @@
  *       call to `defineWorkflowDescriptor`, `flow`, `defineWorkflowStepNodeFactory`
  *       or `composeWorkflowModule`, and any import from `src/base/flow.js`, is
  *       refused: the flow builder is compiler-internal and stores are composed
- *       only at the composition root (`src/control/workflow-registry.ts`, which
+ *       only at the composition root (`src/backend/app/control/workflow-registry.ts`, which
  *       is deliberately OUTSIDE this arm's root). And every
  *       `src/workflows/<folder>/workflow.ts` holds exactly ONE `defineWorkflow(` call
  *       — `defineWorkflowStep(` and `defineStepEntries(` are D315's step
@@ -95,8 +95,8 @@ import { dirname, join } from "node:path";
 import ts from "typescript";
 import { describe, it } from "vitest";
 
-import { WORKFLOW_MODULES } from "../../src/control/workflow-registry.js";
-import { STEP_PROOF_MODULES } from "../../src/control/step-proof-modules.js";
+import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
+import { STEP_PROOF_MODULES } from "../../src/backend/app/control/step-proof-modules.js";
 import { workflowSourceFolder, workflowSourcePath } from "../../src/domain/workflow/source-layout.js";
 import { gitVisibleFilesIn, REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -119,14 +119,14 @@ const GUARD_HELPERS = "tests/architecture/helpers/";
 const SEAM_FILES = [
   "src/base/workflow-definition.ts",
   "src/base/workflow.ts",
-  "src/control/workflow-registry.ts",
+  "src/backend/app/control/workflow-registry.ts",
 ] as const;
 const SEAM_PREFIXES = ["src/workflows/", "src/domain/workflow/"] as const;
 
 /** Arm (b)'s root: the authored workflow files themselves. */
 const WORKFLOWS_ROOT = "src/workflows/";
 /** Arm (c)'s roots: the generic surfaces D316 forbids branching by workflow id. */
-const GENERIC_ROOTS = ["src/dashboard/", "src/server/", "src/services/"] as const;
+const GENERIC_ROOTS = ["src/dashboard/", "src/server/", "src/services/", "src/backend/app/"] as const;
 
 const RETIRED_NAMES = [
   { token: "WorkflowRecipe", rule: "D317 — the authored value is a WorkflowDefinition" },
@@ -141,7 +141,7 @@ const HAND_AUTHORED_CALLS: ReadonlyMap<string, string> = new Map([
   ["defineWorkflowDescriptor", "a descriptor is COMPILED from workflow.ts, never authored (D312/D317)"],
   ["flow", "the flow builder is compiler-internal since D311 (§1.6 item 4)"],
   ["defineWorkflowStepNodeFactory", "the node-fragment API is deleted (D312)"],
-  ["composeWorkflowModule", "stores are composed only at src/control/workflow-registry.ts (D311)"],
+  ["composeWorkflowModule", "stores are composed only at src/backend/app/control/workflow-registry.ts (D311)"],
 ]);
 
 const COMPARISON_OPERATORS: ReadonlySet<ts.SyntaxKind> = new Set([
@@ -563,12 +563,18 @@ const DRY_RUN_TARGET_REASON =
   + "workflow fails loud by name here instead of resolving to something plausible.";
 
 const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] = [
-  { file: "src/server/dry-run-scenario/compose.ts", workflowId: "separations", reason: DRY_RUN_TARGET_REASON },
-  { file: "src/server/dry-run-scenario/compose.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
-  { file: "src/server/dry-run-scenario/compose.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
-  { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "separations", reason: DRY_RUN_TARGET_REASON },
-  { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
-  { file: "src/server/dry-run-scenario/manifests.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/backend/app/control/test-target-registry.ts", workflowId: "separations",
+    reason: "D341 — the committed public test-target registry names the exact supported workflow, without dispatching production behavior." },
+  { file: "src/backend/app/control/test-target-registry.ts", workflowId: "separations-kuali-finalization",
+    reason: "D341 — the committed public test-target registry names the exact supported workflow, without dispatching production behavior." },
+  { file: "src/backend/app/control/test-target-registry.ts", workflowId: "person-lookup",
+    reason: "D341 — the committed public test-target registry names the exact supported workflow, without dispatching production behavior." },
+  { file: "src/backend/app/dry-run-scenario/compose.ts", workflowId: "separations", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/backend/app/dry-run-scenario/compose.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/backend/app/dry-run-scenario/compose.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/backend/app/dry-run-scenario/manifests.ts", workflowId: "separations", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/backend/app/dry-run-scenario/manifests.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
+  { file: "src/backend/app/dry-run-scenario/manifests.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
   { file: "src/server/dashboard/projectors/run-queue-projection.ts", workflowId: "separations",
     reason: "D288/Q — retained projection callers use the same current-Separations-only canonical identity corpus as indexed Activity." },
   {
@@ -669,13 +675,13 @@ function cleanFixtureFiles(): Record<string, string> {
     "src/workflows/combo/step-one/workflow.ts":
       "// The step this harness proves brings a login recipe into existence.\n"
       + fixtureWorkflowFile("combo-harness"),
-    "src/control/workflow-registry.ts":
+    "src/backend/app/control/workflow-registry.ts":
       "import { composeWorkflowModule } from \"../base/workflow-definition.js\";\n"
       + "export const soloModule = composeWorkflowModule(soloWorkflow, stores);\n",
     "src/infra/browser/authenticated-application.ts":
       "// A login recipe returns only after observing an authenticated application.\n"
       + "export function defineVerifiedLoginRecipe(input) { return input.flow; }\n",
-    "src/server/dashboard/compose.ts":
+    "src/backend/app/dashboard/compose.ts":
       "export function compose(descriptors) {\n"
       + "  return descriptors.find((descriptor) => descriptor.id === registeredId);\n"
       + "}\n",
@@ -731,7 +737,7 @@ function withFiles(mutate: (files: Record<string, string>) => void): Record<stri
  * that same file, and refuse `"solo"` in a different file.
  */
 const PAIR_EXACT_ENTRY: GenericWorkflowIdAllowlistEntry = {
-  file: "src/server/dashboard/compose.ts",
+  file: "src/backend/app/dashboard/compose.ts",
   workflowId: "solo",
   reason: "D316 — the one reviewed pair these three fixtures hold constant.",
 };
@@ -818,7 +824,7 @@ const FIXTURES: readonly BudgetFixture[] = [
       files["src/workflows/solo/workflow.ts"] =
         fixtureWorkflowFile("solo", "const composed = composeWorkflowModule(soloWorkflow, stores);\n");
     }),
-    expected: /calls composeWorkflowModule\(\): stores are composed only at src\/control\/workflow-registry\.ts/,
+    expected: /calls composeWorkflowModule\(\): stores are composed only at src\/backend\/app\/control\/workflow-registry\.ts/,
   },
   {
     name: "two-defineWorkflow-calls-in-one-workflow-file",
@@ -859,7 +865,7 @@ const FIXTURES: readonly BudgetFixture[] = [
     arm: "c",
     files: withFiles((files) => { files[PAIR_EXACT_ENTRY.file] = SOLO_BRANCH + COMBO_BRANCH; }),
     genericIdAllowlist: [PAIR_EXACT_ENTRY],
-    expected: /src\/server\/dashboard\/compose\.ts:2 names workflow "combo" as an equality comparison in a generic surface/,
+    expected: /src\/backend\/app\/dashboard\/compose\.ts:2 names workflow "combo" as an equality comparison in a generic surface/,
   },
   {
     // Pair-exactness, half two: the allowlisted workflow id, a different file.
@@ -878,7 +884,7 @@ const FIXTURES: readonly BudgetFixture[] = [
     arm: "c",
     files: cleanFixtureFiles(),
     genericIdAllowlist: [{
-      file: "src/server/dashboard/compose.ts",
+      file: "src/backend/app/dashboard/compose.ts",
       workflowId: "combo",
       reason: "D316 — a branch that no longer exists.",
     }],
@@ -888,11 +894,11 @@ const FIXTURES: readonly BudgetFixture[] = [
     name: "uncited-D316-allowlist-entry",
     arm: "c",
     files: withFiles((files) => {
-      files["src/server/dashboard/compose.ts"] =
+      files["src/backend/app/dashboard/compose.ts"] =
         "export const isCombo = (id) => id === \"combo\";\n";
     }),
     genericIdAllowlist: [{
-      file: "src/server/dashboard/compose.ts",
+      file: "src/backend/app/dashboard/compose.ts",
       workflowId: "combo",
       reason: "it has always been like this",
     }],

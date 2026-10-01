@@ -3,7 +3,7 @@ import type { Clock } from "../../domain/clock.js";
 import { PreflightAdmissionRefusal } from "../../domain/preflight-admission.js";
 import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../domain/preflight-contract.js";
 import type { createPreflightAuthority } from "../../domain/preflight.js";
-import type { RuntimePreflight } from "./runtime-admission.js";
+import type { RuntimePreflight } from "../../backend/app/preflight/runtime-admission.js";
 import type { z } from "zod";
 
 type Result = z.infer<typeof PreflightRerunCommandResultWireSchema>;

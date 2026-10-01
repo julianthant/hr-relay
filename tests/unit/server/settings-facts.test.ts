@@ -16,7 +16,7 @@ import { z } from "zod";
 import { flow } from "../../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../../src/base/workflow.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { listSystemEntryHosts, resolveSystemEntryUrl } from "../../../src/domain/config/instance.js";
 import { SettingsFactsWireSchema } from "../../../src/domain/dashboard/settings.js";
 import { BrowserSystemIdSchema, FingerprintSchema } from "../../../src/domain/ids.js";

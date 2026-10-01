@@ -33,7 +33,7 @@ import { createContentAddressedArtifactWriter } from "../../../src/infra/artifac
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import {
   INTAKE_UPLOAD_MAX_BYTES,

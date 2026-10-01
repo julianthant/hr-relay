@@ -43,7 +43,7 @@ import { ledgerCommitFixture } from "../../fixtures/ledger-projection-fixtures.j
 import { atomicWriteCheckpoint } from "../../helpers/timeline-write-fixture.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { createOperatorProjection } from "../../../src/server/dashboard/compose/operator.js";
+import { createOperatorProjection } from "../../../src/backend/app/dashboard/compose/operator.js";
 import { queryQueueSummaries, queryActivitySummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
 import { composeOperatorXlsxWorkbook } from "../../../src/server/dashboard/exports/operator-xlsx-workbook.js";
 import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";

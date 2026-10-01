@@ -9,7 +9,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { storageRelocationDesiredDigest } from "../../src/domain/commands.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { ConfigSnapshotWriteSchema } from "../../src/domain/config/snapshot.js";
 import { NonNegativeIntSchema } from "../../src/domain/ids.js";
 import { ArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";

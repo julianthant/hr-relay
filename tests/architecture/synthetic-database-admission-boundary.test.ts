@@ -7,10 +7,10 @@ import { REPO_ROOT, repoRelative } from "./helpers/guard-files.js";
 
 const narrowHelper = "tests/helpers/synthetic-database-admission.ts";
 const forbiddenModules = new Set([
-  "src/control/test-data.ts",
-  "src/control/test-target-registry.ts",
-  "src/server/test-data/compose.ts",
-  "src/server/storage/compose.ts",
+  "src/backend/app/control/test-data.ts",
+  "src/backend/app/control/test-target-registry.ts",
+  "src/backend/app/test-data/compose.ts",
+  "src/backend/app/storage-compose.ts",
 ]);
 
 function valueSpecifiers(source: ts.SourceFile): string[] {
@@ -86,9 +86,9 @@ describe("synthetic database fixture admission import boundary", () => {
   it("detects the broad fixture's real side-effect closure and a reintroduced value reexport", () => {
     assert.deepEqual(forbiddenReach(valueClosure("tests/helpers/synthetic-storage-admission.ts")), [...forbiddenModules].sort());
     const source = readFileSync(resolve(REPO_ROOT, narrowHelper), "utf8");
-    const reach = forbiddenReach(valueClosure(narrowHelper, `${source}\nexport * from "../../src/server/test-data/compose.js";\n`));
-    assert.ok(reach.includes("src/server/test-data/compose.ts"));
-    assert.ok(reach.includes("src/control/test-data.ts"));
-    assert.ok(reach.includes("src/control/test-target-registry.ts"));
+    const reach = forbiddenReach(valueClosure(narrowHelper, `${source}\nexport * from "../../src/backend/app/test-data/compose.js";\n`));
+    assert.ok(reach.includes("src/backend/app/test-data/compose.ts"));
+    assert.ok(reach.includes("src/backend/app/control/test-data.ts"));
+    assert.ok(reach.includes("src/backend/app/control/test-target-registry.ts"));
   });
 });

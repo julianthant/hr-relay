@@ -55,7 +55,7 @@ import {
   createProductionDryRunScenarioRuntime,
   LIVE_READ_ADMITTED_NODE_KINDS,
   liveReadGraphRefusal,
-} from "../../src/server/dry-run-scenario/runtime.js";
+} from "../../src/backend/app/dry-run-scenario/runtime.js";
 import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 
 // The checked-in declarations, evaluated without importing them: a collected

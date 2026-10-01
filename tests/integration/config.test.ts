@@ -26,8 +26,8 @@ import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, SETTINGS_CATALOG } from "../../src/
 import { manualClock } from "../../src/domain/clock.js";
 import { assertNotPast, requireAnnualDates } from "../../src/domain/config/fiscal-year.js";
 import { resolveInstances, resolveSystemEntryUrl } from "../../src/domain/config/instance.js";
-import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 import { SettingsCurrentRecordSchema } from "../../src/domain/config/settings-current.js";
 import { settingsRootAuthority } from "../../src/infra/compat/d331-settings-root.js";

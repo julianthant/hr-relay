@@ -1,5 +1,5 @@
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { executeSettingsCommand } from "../../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
@@ -15,7 +15,7 @@ import { launchHarness } from "../../unit/fixtures/run-launch-fixtures.js";
 import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { FrontendBootstrapWireSchema } from "../../../src/domain/dashboard/bootstrap.js";
 import { DashboardStreamEnvelopeSchema } from "../../../src/domain/dashboard/subscription.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";

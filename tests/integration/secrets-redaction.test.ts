@@ -30,7 +30,7 @@ import {
   retiredTestTargetEnvironmentRefusal,
   validateDescriptorSecrets,
 } from "../../src/domain/secrets.js";
-import { TestTargetRegistryDefectError } from "../../src/control/test-target-registry.js";
+import { TestTargetRegistryDefectError } from "../../src/backend/app/control/test-target-registry.js";
 import {
   ClassifiedDiagnosticValueSchema,
   directIdentifierDigestReference,
@@ -39,7 +39,7 @@ import {
   RedactionResultSchema,
 } from "../../src/domain/redaction.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { runTestTargetDocumentNumberSmoke } from "../../scripts/smoke-test-target-document-number.js";

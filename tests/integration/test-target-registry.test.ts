@@ -16,9 +16,9 @@ import {
   FINALIZATION_WORKFLOW,
   PERSON_LOOKUP_WORKFLOW,
   type TestTargetRegistryInput,
-} from "../../src/control/test-target-registry.js";
+} from "../../src/backend/app/control/test-target-registry.js";
 import type { TestDataInputSource } from "../../src/domain/test-data.js";
-import { createTestDataInputSource, testDataLocalPath } from "../../src/control/test-data.js";
+import { createTestDataInputSource, testDataLocalPath } from "../../src/backend/app/control/test-data.js";
 import { testDataInputSource } from "./helpers/test-data-source.js";
 
 type TestTargetEntryInput = TestTargetRegistryInput["targets"][number];

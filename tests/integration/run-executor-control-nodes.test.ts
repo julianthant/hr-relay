@@ -32,7 +32,7 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { GateResultRecord } from "../../src/domain/gates.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

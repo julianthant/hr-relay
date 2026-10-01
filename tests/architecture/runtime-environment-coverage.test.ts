@@ -204,7 +204,7 @@ describe("runtime environment inventory coverage", () => {
       const restored = { ...RUNTIME_ENVIRONMENT_REGISTRY, exact: [
         ...RUNTIME_ENVIRONMENT_REGISTRY.exact,
         { key: "HRAUTO_RESTORED_SETTING", classification: "non-secret-config", disposition: "active",
-          channel, owner: "src/domain/config/resolve.ts", documented: false },
+          channel, owner: "src/backend/app/config/resolve.ts", documented: false },
       ] };
       assert.match(auditRuntimeEnvironmentInventory(restored).join("\n"), new RegExp(`forbidden active ${channel} environment ownership`, "u"));
     }

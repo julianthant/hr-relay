@@ -13,17 +13,17 @@ import {
   registerTestDataComposer,
   registerWorkerComposer,
   startRebuildRuntime,
-} from "./core/runtime-composition.js";
-import { composeDashboardRuntime } from "./server/dashboard/compose.js";
-import { composeDryRunScenarioCommand } from "./server/dry-run-scenario/compose.js";
-import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./server/dry-run-scenario/manifests.js";
+} from "./backend/app/runtime-composition.js";
+import { composeDashboardRuntime } from "./backend/app/dashboard/compose.js";
+import { composeDryRunScenarioCommand } from "./backend/app/dry-run-scenario/compose.js";
+import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./backend/app/dry-run-scenario/manifests.js";
 import { parseDryRunScenarioManifest } from "./domain/trust/dry-run-scenario.js";
-import { composeTestDataCommand } from "./server/test-data/compose.js";
-import { createProductionDryRunScenarioRuntime } from "./server/dry-run-scenario/runtime.js";
-import { composeExplainRuntime } from "./server/explain/compose.js";
+import { composeTestDataCommand } from "./backend/app/test-data/compose.js";
+import { createProductionDryRunScenarioRuntime } from "./backend/app/dry-run-scenario/runtime.js";
+import { composeExplainRuntime } from "./backend/app/explain-compose.js";
 import { composeOcrCommand } from "./server/ocr/compose.js";
-import { composeStorageCommand } from "./server/storage/compose.js";
-import { composeWorkerRuntime } from "./server/worker/compose.js";
+import { composeStorageCommand } from "./backend/app/storage-compose.js";
+import { composeWorkerRuntime } from "./backend/app/worker-compose.js";
 import type { RuntimeAdmission } from "./infra/runtime-control/admission.js";
 
 /**

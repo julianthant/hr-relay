@@ -18,7 +18,7 @@ import {
   RETIRED_TEST_TARGET_PROTECTED_NAMES,
   type LegacyProtectedSettingsApplyInput,
 } from "../../../src/domain/config/protected-settings-legacy.js";
-import { readTestDataLocalConfig, testDataLocalPath } from "../../../src/control/test-data.js";
+import { readTestDataLocalConfig, testDataLocalPath } from "../../../src/backend/app/control/test-data.js";
 import {
   CredentialStoreMigrationRequiredError,
   createCredentialStore,

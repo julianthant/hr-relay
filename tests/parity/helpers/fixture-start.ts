@@ -7,11 +7,11 @@ DashboardDayWireSchema,
 type DashboardDayWire
 } from "../../../src/domain/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
 import {
 WORKFLOW_MODULES,
-} from "../../../src/control/workflow-registry.js";
+} from "../../../src/backend/app/control/workflow-registry.js";
 import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 import { FIXTURE_BOOTSTRAP } from "./fixture-bootstrap.js";
 import { CONFIG_FINGERPRINT,CONTRACT_FINGERPRINT,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";

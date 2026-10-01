@@ -12,7 +12,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { UUID_5 } from "../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

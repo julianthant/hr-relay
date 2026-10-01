@@ -13,12 +13,12 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { resolve } from "node:path";
-import { writeDashboardBuildIdentity } from "./src/server/dashboard/build-identity.js";
+import { writeDashboardBuildIdentity } from "./src/backend/app/dashboard/build-identity.js";
 import {
   DASHBOARD_FRONTEND_OWNER_PATH,
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
-} from "./src/server/dashboard/frontend-owner.js";
+} from "./src/backend/transports/dashboard/frontend-owner.js";
 
 const BACKEND = "http://127.0.0.1:3938";
 const ownerNonceInput = process.env[DASHBOARD_LAUNCH_NONCE_ENV];

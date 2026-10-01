@@ -9,14 +9,14 @@
 import {
   personLookupModule,
   separationsModule,
-} from "../../src/control/workflow-registry.js";
+} from "../../src/backend/app/control/workflow-registry.js";
 import {
   separationsIdentityCheckModule,
   separationsKronosTimecardModule,
   separationsKualiFinalizationModule,
   separationsKualiReadModule,
   separationsUcpathTerminationModule,
-} from "../../src/control/step-proof-modules.js";
+} from "../../src/backend/app/control/step-proof-modules.js";
 
 export {
   personLookupModule,

@@ -4,7 +4,7 @@ import { SETTINGS_CATALOG } from "../../../src/domain/config/catalog.js";
 import { EditableSettingsWireSchema } from "../../../src/domain/dashboard/settings-editor.js";
 import { SETTINGS_SCHEMA_HASH, initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { initialProtectedStoreRecord } from "../../../src/domain/config/protected-settings.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";

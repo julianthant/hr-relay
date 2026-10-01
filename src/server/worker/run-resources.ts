@@ -1,5 +1,5 @@
-import { preflightSessionFactory } from "../preflight/worker-admission.js";
-import type { RuntimePreflight } from "../preflight/runtime-admission.js";
+import { preflightSessionFactory } from "../../backend/app/preflight/worker-admission.js";
+import type { RuntimePreflight } from "../../backend/app/preflight/runtime-admission.js";
 import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
 import type { Clock } from "../../domain/clock.js";
 import type { IdFactory } from "../../domain/identifiers.js";

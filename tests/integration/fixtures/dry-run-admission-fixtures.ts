@@ -12,7 +12,7 @@ import { DatabaseSync } from "node:sqlite";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import type { TestClock } from "../../../src/domain/clock.js";
 import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";

@@ -43,7 +43,7 @@ import {
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import {
   FIXTURE_SESSION_ACQUIRE_MS,

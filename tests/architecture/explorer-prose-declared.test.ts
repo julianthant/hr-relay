@@ -20,7 +20,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import { WORKFLOW_MODULES } from "../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { EidSchema, FingerprintSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";

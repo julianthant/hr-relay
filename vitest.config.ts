@@ -104,6 +104,7 @@ export default defineConfig({
         statements: REBUILD_COVERAGE_FLOORS.global.statements,
         functions: REBUILD_COVERAGE_FLOORS.global.functions,
         "src/core/**": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/app/runtime-composition.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/stores/common/mutation*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*write-sequencer*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*subject-binding*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

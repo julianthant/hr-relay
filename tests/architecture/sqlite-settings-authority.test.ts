@@ -291,12 +291,12 @@ describe("sqlite-settings-authority", () => {
 
   it("catches a retired module import, API, pathname construction, and protected singleton", () => {
     const root = resolve(tmpdir(), `hrauto-sqlite-settings-guard-${String(process.pid)}-${String(Date.now())}`);
-    const file = resolve(root, "src/server/dashboard/compose.ts");
+    const file = resolve(root, "src/backend/app/dashboard/compose.ts");
     try {
       mkdirSync(dirname(file), { recursive: true });
       writeFileSync(file, [
         'import { join } from "node:path";',
-        'import { createSettingsFileAuthority as legacy } from "../../infra/config/settings-file.js";',
+        'import { createSettingsFileAuthority as legacy } from "../../../infra/config/settings-file.js";',
         'export const authorityPath = join(stateRoot, "settings.json");',
         'export const createProtectedSettingsFileAuthority = legacy;',
         'export interface Repositories { protectedSettingsCurrent: unknown }',

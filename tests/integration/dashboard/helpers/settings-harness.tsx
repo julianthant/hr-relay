@@ -10,7 +10,7 @@ import { act, createElement } from "react";
 import { createRoot } from "react-dom/client";
 import { manualClock } from "../../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../../src/domain/config/settings.js";
 import { ProviderKeysRetryIntentSchema } from "../../../../src/domain/commands.js";
 import { admitLocalEnvironmentFile } from "../../../../src/domain/secrets.js";
@@ -24,7 +24,7 @@ import { AuthorityDatabase } from "../../../../src/infra/sqlite/authority-databa
 import { createCredentialStore } from "../../../../src/infra/config/credential-store.js";
 import { RuntimeAdmission } from "../../../../src/infra/runtime-control/admission.js";
 import { activeSettingsRuntimeIdentity, readSettings } from "../../../../src/server/settings-runtime.js";
-import { composeSettings } from "../../../../src/server/dashboard/compose/settings.js";
+import { composeSettings } from "../../../../src/backend/app/dashboard/compose/settings.js";
 import { buildSettingsEditor } from "../../../../src/server/dashboard/queries/settings-editor.js";
 import { createDashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";

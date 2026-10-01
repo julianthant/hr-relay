@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { startDashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
+import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { SavedArchiveDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { lifecycleCommandId } from "../../../src/domain/identifiers.js";

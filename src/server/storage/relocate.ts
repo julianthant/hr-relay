@@ -8,7 +8,7 @@ import { ConfigSnapshotWriteSchema } from "../../domain/config/snapshot.js";
 import type { StorageRelocationPlanView } from "../../domain/commands.js";
 import { capturedInstantClock, systemClock, type Clock } from "../../domain/clock.js";
 import { hostConfigFacts, type HostConfigFacts } from "../../domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../backend/app/config/resolve.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../domain/ids.js";
 import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
 import { inspectAuthorityBackupReadOnly } from "../../infra/compat/backup-inspection.js";
@@ -22,7 +22,7 @@ import { acquireRuntimeRestoreAdmission, observeRuntimeLockSnapshot } from "../.
 import { acquireRecoveryRuntimeRelocation, type RuntimeAdmission, type RuntimeRelocationOperation } from "../../infra/runtime-control/admission.js";
 import { inspectPendingRelocationRecovery, type RelocationPlanBinding, type VerifiedRelocationActivationIntent,
   type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../infra/runtime-control/installation.js";
-import { probePrimaryDisplay } from "../../infra/host/primary-display.js";
+import { probePrimaryDisplay } from "../../backend/app/host/primary-display.js";
 import { projectStorageRelocationPlanHistory } from "../../core/storage-relocation-plans.js";
 import { readSettings } from "../settings-runtime.js";
 import { backupStoppedAuthority, upgradeRelocationCapabilityV56 } from "./upgrade.js";

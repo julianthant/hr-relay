@@ -23,7 +23,7 @@ import type { BrowserSystemId } from "../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { BrowserLoginError } from "../../src/infra/browser/login-contract.js";
 import type {
   AuthenticatedApplicationEvidence,

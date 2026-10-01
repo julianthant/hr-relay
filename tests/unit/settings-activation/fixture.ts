@@ -8,7 +8,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";

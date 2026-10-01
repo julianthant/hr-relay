@@ -12,13 +12,13 @@ import { Hono } from "hono";
 import { afterEach, describe, it } from "vitest";
 import type { ActorId } from "../../../src/domain/ids.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
-import { startDashboardHttpServer, type DashboardHttpServer } from "../../../src/server/dashboard/http-server.js";
+import { startDashboardHttpServer, type DashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import {
   createDashboardStreamHub,
   type DashboardStreamConnection,
   type DashboardStreamHub,
-} from "../../../src/server/dashboard/subscriptions/dashboard-stream.js";
-import { dashboardEventStreamBody } from "../../../src/server/dashboard/subscriptions/sse-response.js";
+} from "../../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
+import { dashboardEventStreamBody } from "../../../src/backend/transports/dashboard/subscriptions/sse-response.js";
 import { BackfillGapObservationSchema } from "../../../src/services/notifications/backfill-gap.js";
 import { claimEventOf, DAY, makeWorld, queuedEventOf, taskEventsOf, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";
 

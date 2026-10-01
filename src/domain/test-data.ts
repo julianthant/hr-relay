@@ -14,7 +14,7 @@ import { KualiDocumentNumberSchema } from "./ui/kuali-document-identity.js";
  *   never read by the settings authority.
  *
  * This module owns the strict shapes only. Loading, path resolution and the
- * once-per-start capture live in `src/control/test-data.ts`.
+ * once-per-start capture live in `src/backend/app/control/test-data.ts`.
  */
 export const TEST_DATA_CONFIG_PATH = "config/test-data.json";
 export const TEST_DATA_LOCAL_CONFIG_PATH = "config/test-data.local.json";
@@ -94,7 +94,7 @@ export type TestDataSamples = z.infer<typeof TestDataSamplesSchema>;
 
 /**
  * The tracked document. `subjects` is the public subject registry whose exact
- * shape belongs to `src/control/test-target-registry.ts`; this layer only
+ * shape belongs to `src/backend/app/control/test-target-registry.ts`; this layer only
  * insists it is present as an object, and the control reader parses it.
  */
 export const TestDataSharedConfigSchema = z.strictObject({

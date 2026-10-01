@@ -10,7 +10,7 @@ import { spawnSync } from "node:child_process";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { CommandIdentityConflictError } from "../../src/domain/commands.js";
 import { afterEach, describe, it } from "vitest";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { createCommandKernel, executeSettingsCommand, type CommandAuthority } from "../../src/core/command-kernel.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
@@ -27,7 +27,7 @@ import { providerCommandFromStore, providerMarkedFingerprint } from "../../src/s
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../src/domain/config/provider-keys.js";
 
 import { RunRecordService } from "../../src/core/run-record-service.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../fixtures/intake-kernel-seams.js";
@@ -230,7 +230,7 @@ try {
       import { randomUUID } from 'node:crypto';
       import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
       import { manualClock } from './src/domain/clock.ts';
-      import { resolveConfigWithProvenance } from './src/domain/config/resolve.ts';
+      import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
       import { executeSettingsCommand } from './src/core/command-kernel.ts';
       import { createCredentialStore } from '../helpers/synthetic-storage-admission.js';
       import { createSettingsApplicationExecutor } from './src/server/dashboard/commands/settings-service.ts';

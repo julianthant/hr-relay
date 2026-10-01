@@ -21,7 +21,7 @@ import {
  * D341 — the private half of test data: the ignored `config/test-data.local.json`.
  * Reader, capture-once input source, presence, merge planner and the ONE
  * atomic private writer live here in infra so the credential migration can use
- * them without a layer inversion; `src/control/test-data.ts` re-exports them
+ * them without a layer inversion; `src/backend/app/control/test-data.ts` re-exports them
  * beside the shared reader. Errors name the file and the offending key only.
  */
 

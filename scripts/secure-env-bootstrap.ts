@@ -10,7 +10,7 @@ import { acquireRuntimeRestoreAdmission } from "../src/infra/sqlite/runtime-proc
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { join } from "node:path";
 import type { RuntimeAdmission } from "../src/infra/runtime-control/admission.js";
-import { assertDashboardBuildCurrent } from "../src/server/dashboard/build-identity.js";
+import { assertDashboardBuildCurrent } from "../src/backend/app/dashboard/build-identity.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
 

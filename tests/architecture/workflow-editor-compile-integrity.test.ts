@@ -28,7 +28,7 @@ import {
   descriptorRuntimeNodes,
   workflowProjections,
 } from "../../src/base/workflow.js";
-import { WORKFLOW_MODULES } from "../../src/control/workflow-registry.js";
+import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
 import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";

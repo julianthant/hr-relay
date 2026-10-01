@@ -31,14 +31,14 @@ import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { DESCRIPTORS } from "../../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import {
   createDashboardClient,
   type DashboardClient,
   type SubscriptionState,
 } from "../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
@@ -66,8 +66,8 @@ import {
   productionWorkerLaunch,
   type DashboardComposeInput,
   type DashboardRuntime,
-} from "../../../src/server/dashboard/compose.js";
-import { writeDashboardBuildIdentity } from "../../../src/server/dashboard/build-identity.js";
+} from "../../../src/backend/app/dashboard/compose.js";
+import { writeDashboardBuildIdentity } from "../../../src/backend/app/dashboard/build-identity.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import {
   SETTINGS_RUNTIME_IDENTITY_CORRUPTIONS,
@@ -543,9 +543,9 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     await withAuthorityBuildVariant("current-29", async () => {
       const build = await import("../../../src/infra/sqlite/migrations.js");
       assert.equal(build.CURRENT_AUTHORITY_SCHEMA_VERSION, 29);
-      const resolver = await import("../../../src/domain/config/resolve.js");
+      const resolver = await import("../../../src/backend/app/config/resolve.js");
       const resolveSpy = vi.spyOn(resolver, "resolveConfigWithProvenance");
-      const { composeDashboardRuntime: composeOlderBuild } = await import("../../../src/server/dashboard/compose.js");
+      const { composeDashboardRuntime: composeOlderBuild } = await import("../../../src/backend/app/dashboard/compose.js");
       vi.mocked(readFileSync).mockClear();
       vi.mocked(openSync).mockClear();
       vi.mocked(mkdirSync).mockClear();

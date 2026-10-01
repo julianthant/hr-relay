@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { dirname, relative, resolve } from "node:path";
 import { describe, it } from "vitest";
 import ts from "typescript";
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema, PROVIDER_CAPABILITY_CONFIG_KEYS, providerBudget } from "../../src/domain/config/schema.js";
 import { ProviderCapabilityIdSchema } from "../../src/domain/ids.js";
 import { PROVIDER_ADAPTER_SPECS, ProviderIdSchema } from "../../src/domain/runtime-dependencies.js";
@@ -27,7 +27,7 @@ function isNetworkOwner(path: string): boolean {
   if (path.startsWith("src/dashboard/client/")) return true;
   // Ref frontend-backend-integration §0: the in-process BFF binds loopback node:http; exactly one host
   // module owns that listener.
-  return path === "src/server/dashboard/http-server.ts";
+  return path === "src/backend/transports/dashboard/http-server.ts";
 }
 
 function isProviderConsumer(path: string): boolean {
@@ -65,14 +65,14 @@ const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
 // exceptions, which is the only thing an allowlist is for.
 const ADMISSION_MODULE_IMPORTERS: ReadonlySet<string> = new Set([
   "src/core/run-executor.ts",
-  "src/server/worker/compose.ts",
+  "src/backend/app/worker-compose.ts",
   // D178. The dashboard process became a second admitted-provider consumer
   // when ref operator-trust §4.4's on-demand advisory landed: it composes the pool and
   // mints the client through the kernel's `createAdvisoryProviderClient`,
   // exactly as the worker root does for a run. A composition root is the ONE
   // place this may happen — the query it hands the closure to names no
   // provider type at all.
-  "src/server/dashboard/compose.ts",
+  "src/backend/app/dashboard/compose.ts",
 ]);
 
 export function auditProviderCapabilityBoundary(root: string): readonly string[] {

@@ -1,4 +1,4 @@
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 

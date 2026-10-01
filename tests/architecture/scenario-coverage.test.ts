@@ -35,8 +35,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, it } from "vitest";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
-import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../src/control/step-proof-modules.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
+import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/control/step-proof-modules.js";
 import { workflowProjections } from "../../src/base/workflow.js";
 import { ScenarioIdSchema } from "../../src/domain/ids.js";
 import {
@@ -56,7 +56,7 @@ import {
   claimedScenarioId,
 } from "../../src/domain/workflow/scenario-execution.js";
 import type { ScenarioCorpusFile } from "../../src/domain/workflow/scenario-execution.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 import { SCENARIO_COVERAGE_CLAIMS } from "../scenario/coverage-claims.js";

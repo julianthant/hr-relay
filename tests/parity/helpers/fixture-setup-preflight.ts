@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { createServer, request as httpRequest } from "node:http";
 import { Hono } from "hono";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
-import { failureStatus } from "../../../src/server/dashboard/routes/failure-status.js";
-import type { DashboardApp } from "../../../src/server/dashboard/routes/api-types.js";
-import { registerSettingsPreflightRoutes } from "../../../src/server/dashboard/routes/settings-preflight.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
+import { failureStatus } from "../../../src/backend/transports/dashboard/routes/failure-status.js";
+import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
+import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/dashboard/routes/settings-preflight.js";
 import { createFixtureBff, startFixtureServer } from "./fixture-bff.js";
 import { PARITY_DIST_DIR, assertParityBundleIsCurrent, readBundleStamp } from "./bundle.js";
 import { servedPreflightRuntime, type SetupScene } from "../../fixtures/preflight/served-runtime.js";

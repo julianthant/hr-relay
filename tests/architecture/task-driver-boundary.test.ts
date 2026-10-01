@@ -5,11 +5,25 @@ import { dirname, resolve } from "node:path";
 import { describe, it } from "vitest";
 import { auditTaskDriverBoundary } from "./helpers/ui-boundary-audit.js";
 
-const REPO_ROOT = resolve(import.meta.dirname, "../../..");
+const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 describe("task to system-driver boundary", () => {
   it("keeps Playwright and raw locator operations inside driver/session owners", () => {
     assert.deepEqual(auditTaskDriverBoundary(REPO_ROOT), []);
+  });
+
+  it("rejects raw browser control from a backend transport", () => {
+    const root = resolve(tmpdir(), `hrauto-backend-driver-${String(process.pid)}-${String(Date.now())}`);
+    const path = resolve(root, "src/backend/transports/dashboard/routes/bad.ts");
+    try {
+      mkdirSync(dirname(path), { recursive: true });
+      writeFileSync(path, 'import { chromium } from "playwright"; export async function bad(page: { newPage(): unknown }) { return [chromium, page.newPage()]; }\n');
+      const issues = auditTaskDriverBoundary(root).join("\n");
+      assert.match(issues, /Playwright import/u);
+      assert.match(issues, /newPage/u);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("catches dynamic imports, newPage/$ bypasses, and an indirect private-driver import", () => {

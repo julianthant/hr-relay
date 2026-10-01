@@ -8,7 +8,7 @@ import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
 import { AppSettingsSchema } from "../../../src/domain/config/app-settings.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
 import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";

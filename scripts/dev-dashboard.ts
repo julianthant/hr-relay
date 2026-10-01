@@ -6,7 +6,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import {
   DASHBOARD_LAUNCH_NONCE_ENV,
   DashboardLaunchNonceSchema,
-} from "../src/server/dashboard/frontend-owner.js";
+} from "../src/backend/transports/dashboard/frontend-owner.js";
 
 const launchNonce = DashboardLaunchNonceSchema.parse(randomBytes(32).toString("hex"));
 const childEnvironment = { ...process.env, [DASHBOARD_LAUNCH_NONCE_ENV]: launchNonce };

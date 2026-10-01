@@ -1,7 +1,7 @@
 import { resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { TestTargetRegistryDefectError } from "../src/control/test-target-registry.js";
-import { createTestDataInputSource, testDataLocalPath } from "../src/control/test-data.js";
+import { TestTargetRegistryDefectError } from "../src/backend/app/control/test-target-registry.js";
+import { createTestDataInputSource, testDataLocalPath } from "../src/backend/app/control/test-data.js";
 import { assertNoMigratedEnvironmentKeys } from "../src/domain/secrets.js";
 import {
   TestDataInputReferenceSchema,
@@ -28,7 +28,7 @@ const CANARY_LABEL = "finalization-canary";
 
 async function committedReference(): Promise<TestDataInputReference> {
   const { SEPARATIONS_WORKFLOW, TEST_TARGET_REGISTRY } = await import(
-    "../src/control/test-target-registry.js"
+    "../src/backend/app/control/test-target-registry.js"
   );
   const target = TEST_TARGET_REGISTRY.targets.find(({ label }) => label === CANARY_LABEL);
   const document = target?.workflows[SEPARATIONS_WORKFLOW]?.publicInput.document;
@@ -51,7 +51,7 @@ function checkoutTestInputs(): TestDataInputSource {
 
 async function resolveCommittedSubject(source: TestDataInputSource): Promise<ResolutionState> {
   const { resolveSeparationsTestTarget, TEST_TARGET_REGISTRY } = await import(
-    "../src/control/test-target-registry.js"
+    "../src/backend/app/control/test-target-registry.js"
   );
   return resolveSeparationsTestTarget(TEST_TARGET_REGISTRY, CANARY_LABEL, source).state;
 }

@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
-import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";

@@ -7,16 +7,16 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { MIGRATED_SETTINGS_ENVIRONMENT_KEYS, RETIRED_TEST_TARGET_ENVIRONMENT_KEYS } from "../../src/domain/config/catalog.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { fixtureDuoCeremonyGates } from "../helpers/duo-ceremony-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
-import { composeWorkerRuntime } from "../../src/server/worker/compose.js";
-import { composeDryRunScenarioCommand } from "../../src/server/dry-run-scenario/compose.js";
-import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
+import { composeDashboardRuntime } from "../../src/backend/app/dashboard/compose.js";
+import { composeWorkerRuntime } from "../../src/backend/app/worker-compose.js";
+import { composeDryRunScenarioCommand } from "../../src/backend/app/dry-run-scenario/compose.js";
+import { createProductionDryRunScenarioRuntime } from "../../src/backend/app/dry-run-scenario/runtime.js";
 import { inventoryEnvironmentAccesses } from "./helpers/environment-read-audit.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
@@ -35,11 +35,11 @@ function resolverViolations(path: string, source: string): readonly string[] {
 
 describe("composition-reads-no-environment-leaf (D331)", () => {
   it("walks every config module and rejects direct, aliased and computed process environment access", () => {
-    const paths = gitVisibleFiles(["src/domain/config"]).filter((path) => path.endsWith(".ts"));
-    assert.ok(paths.includes("src/domain/config/resolve.ts"));
+    const paths = gitVisibleFiles(["src/domain/config", "src/backend/app/config"]).filter((path) => path.endsWith(".ts"));
+    assert.ok(paths.includes("src/backend/app/config/resolve.ts"));
     assert.deepEqual(paths.flatMap((path) => resolverViolations(path, readFileSync(join(REPO_ROOT, path), "utf8"))), []);
     for (const source of ["const value = process.env.HRAUTO_DEFAULT_WORKERS;", "const env = process.env; const value = env[key];", "delete process.env.UCPATH_PASSWORD;"])
-      assert.ok(resolverViolations("src/domain/config/resolve.ts", source).length > 0, source);
+      assert.ok(resolverViolations("src/backend/app/config/resolve.ts", source).length > 0, source);
   });
   it("keeps non-retired hostile noise outside config and provenance with zero accessor reads", () => {
     const noise = environment("UNRELATED_HOSTILE_NOISE");

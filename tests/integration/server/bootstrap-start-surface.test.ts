@@ -31,9 +31,9 @@ import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js"
 import { defineCanonicalInput } from "../../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../../src/domain/workflow/presentation.js";
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/server/dashboard/queries/bootstrap.js";
-import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
+import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { projectStartSteps } from "../../../src/services/start/step-selection.js";
-import { INTAKE_PROJECTIONS } from "../../../src/control/workflow-registry.js";
+import { INTAKE_PROJECTIONS } from "../../../src/backend/app/control/workflow-registry.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../../fixtures/descriptor-fixtures.js";
 import { AT, makeWorld, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";

@@ -5,7 +5,7 @@ import { REPO_ROOT } from "./guard-files.js";
 
 /** Expand imported route registrations at their call sites, preserving middleware order. */
 export function dashboardRouteSource(
-  entry = resolve(REPO_ROOT, "src/server/dashboard/routes/api.ts"),
+  entry = resolve(REPO_ROOT, "src/backend/transports/dashboard/routes/api.ts"),
   read: (file: string) => string = file => readFileSync(file, "utf8"),
 ): string {
   const active = new Set<string>();

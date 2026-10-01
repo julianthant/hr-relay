@@ -2,7 +2,7 @@ import { copyFileSync, cpSync, mkdtempSync, mkdirSync, realpathSync, rmSync } fr
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
-import { composeDashboardRuntime } from "../../../src/server/dashboard/compose.js";
+import { composeDashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { PARITY_DIST_DIR, PARITY_REPO_ROOT, assertServedBundle } from "./bundle.js";
 

@@ -4,7 +4,7 @@ import { sha256Hex } from "../../../domain/sha256.js";
 /** One ordinary snapshot plus explicitly independent auxiliary authority reads. */
 import { SETTINGS_CATALOG } from "../../../domain/config/catalog.js";
 import { hostConfigFacts } from "../../../domain/config/host-display.js";
-import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../domain/config/resolve.js";
+import { resolveConfigWithProvenance, type ResolvedConfig } from "../../../backend/app/config/resolve.js";
 import { derivePersistedSettingsFingerprint, SettingsRuntimeStatusSchema } from "../../../domain/config/settings.js";
 import type { StoredConfig } from "../../../domain/config/snapshot-generations.js";
 import type { SettingsOverride } from "../../../domain/config/schema.js";

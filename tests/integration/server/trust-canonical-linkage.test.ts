@@ -7,8 +7,8 @@ import { buildTrustSection, buildRunGate } from "../../../src/server/dashboard/q
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
 import { createNotificationInbox } from "../../../src/services/notifications/inbox.js";
-import { readGateParks } from "../../../src/server/dashboard/compose/trust.js";
-import { explainRunFrom } from "../../../src/server/explain/compose.js";
+import { readGateParks } from "../../../src/backend/app/dashboard/compose/trust.js";
+import { explainRunFrom } from "../../../src/backend/app/explain-compose.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
 import { seedPersonLookupExitRun } from "../../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

@@ -12,7 +12,7 @@ import {
   readDashboardBuildIdentity,
   writeDashboardBuildIdentity,
   type DashboardBuildIdentity,
-} from "../../../src/server/dashboard/build-identity.js";
+} from "../../../src/backend/app/dashboard/build-identity.js";
 
 export const PARITY_REPO_ROOT = resolve(import.meta.dirname, "../../..");
 export const PARITY_DIST_DIR = join(PARITY_REPO_ROOT, "dist", "dashboard");

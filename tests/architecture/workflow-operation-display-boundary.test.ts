@@ -92,8 +92,8 @@ describe("workflow operation display browser boundary", () => {
   });
 
   it("detects both classes of forbidden runtime reach", () => {
-    expect(auditOperationDisplayImportClosure("src/domain/config/resolve.ts"))
-      .toContain("src/domain/config/resolve.ts imports Node builtin node:crypto");
+    expect(auditOperationDisplayImportClosure("src/backend/app/config/resolve.ts"))
+      .toContain("src/backend/app/config/resolve.ts imports Node builtin node:crypto");
     expect(auditOperationDisplayImportClosure("src/stores/ucpath/driver/person-org-operation.ts"))
       .toContain("src/stores/ucpath/driver/person-org-operation.ts is a store/driver implementation");
   });

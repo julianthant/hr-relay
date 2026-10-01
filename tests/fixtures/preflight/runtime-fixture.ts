@@ -3,13 +3,13 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { resolveConfigWithProvenance } from "../../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../src/domain/config/protected-settings.js";
 import { PreflightAdmissionScopeSchema } from "../../../src/domain/preflight-admission.js";
 import { createPreflightAuthority, type PreflightRunner } from "../../../src/domain/preflight.js";
 import { PROVIDER_ADAPTER_SPECS, SYSTEM_RUNTIME_SPECS, type RuntimeCapability } from "../../../src/domain/runtime-dependencies.js";
 import { AuthorityDatabase, AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
-import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/server/preflight/runtime-runners.js";
+import { createRuntimePreflightRunners, type RuntimePreflightRunnerInput } from "../../../src/backend/app/preflight/runtime-runners.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/server/scheduling/timeout-deadline-scheduler.js";
 
 export function populatedProtectedRecord(omitted?: string) {

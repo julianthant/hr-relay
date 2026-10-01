@@ -21,7 +21,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
-import { DESCRIPTORS } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import type { WriteSequencerContext } from "../../src/core/run-executor.js";
 import {
   assertSequencerMintedMutationCapability,

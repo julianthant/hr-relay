@@ -57,8 +57,8 @@ export function resolutionReadDeps(f: ReturnType<typeof resolutionFixture>) {
   return { runReader: reader, trust } as unknown as RunDetailQueryDeps;
 }
 
-import { createDashboardApp, type DashboardAppDeps } from "../../../src/server/dashboard/routes/api.js";
-import { createSoloRequestIdentityCheckpoint } from "../../../src/server/dashboard/request-identity.js";
+import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api.js";
+import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
@@ -70,7 +70,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
-import { defaultRuntimePaths } from "../../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../../src/backend/app/config/runtime-paths.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";

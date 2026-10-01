@@ -17,7 +17,7 @@
  * may — and since D300 no document NUMBER does either: the label's value lives
  * outside git entirely. `config/test-data.json` (subjects) commits only the closed
  * reference, and the number itself is read from ignored
- * `config/test-data.local.json` through `src/control/test-data.ts` (D341,
+ * `config/test-data.local.json` through `src/backend/app/control/test-data.ts` (D341,
  * §10.5), judged by the same 3-8 digit schema the
  * start box applies. The EID is derived live from that document; none is
  * committed here. Since D284

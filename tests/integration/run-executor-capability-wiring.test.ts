@@ -29,7 +29,7 @@ import {
   type RunExecutorDependencies,
   type RunProviderWiring,
 } from "../../src/core/run-executor.js";
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../src/domain/config/schema.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import {

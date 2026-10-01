@@ -44,7 +44,7 @@ import {
   testDataSamples,
   writeTestDataLocalConfig,
   type TestDataLocalWriteAccess,
-} from "../../src/control/test-data.js";
+} from "../../src/backend/app/control/test-data.js";
 import {
   DeclaredPrivatePathSchema,
   DeclaredRelativePathSchema,
@@ -58,7 +58,7 @@ import {
   TestDataLocalConfigSchema,
   TestDataSharedConfigSchema,
 } from "../../src/domain/test-data.js";
-import { TEST_TARGET_REGISTRY } from "../../src/control/test-target-registry.js";
+import { TEST_TARGET_REGISTRY } from "../../src/backend/app/control/test-target-registry.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { KualiDocumentNumberSchema } from "../../src/domain/ui/kuali-document-identity.js";
 import { pathToFileURL } from "node:url";

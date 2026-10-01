@@ -14,14 +14,14 @@ import { selectedSettingsFixture as sharedSettingsFixture, startEffects } from "
 import { UcpathJobSummaryReadSchema } from "../../src/domain/ui/ucpath-job-summary.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { WorkflowIdSchema } from "../../src/domain/ids.js";
-import { parseTestTargetRegistry, TEST_TARGET_REGISTRY } from "../../src/control/test-target-registry.js";
+import { parseTestTargetRegistry, TEST_TARGET_REGISTRY } from "../../src/backend/app/control/test-target-registry.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   composeDryRunScenarioCommand,
   resolveDryRunScenarioTarget,
-} from "../../src/server/dry-run-scenario/compose.js";
-import { loadDryRunScenarioManifest } from "../../src/server/dry-run-scenario/manifests.js";
-import { createProductionDryRunScenarioRuntime } from "../../src/server/dry-run-scenario/runtime.js";
+} from "../../src/backend/app/dry-run-scenario/compose.js";
+import { loadDryRunScenarioManifest } from "../../src/backend/app/dry-run-scenario/manifests.js";
+import { createProductionDryRunScenarioRuntime } from "../../src/backend/app/dry-run-scenario/runtime.js";
 import { createDeterministicKualiDriver, createKualiFakeWorld } from "../../src/stores/kuali/driver/fake.js";
 import { createDeterministicUcpathPersonOrgDriver } from "../../src/stores/ucpath/driver/fake.js";
 import {

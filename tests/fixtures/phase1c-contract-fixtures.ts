@@ -1,4 +1,4 @@
-import { defaultRuntimePaths } from "../../src/domain/config/runtime-paths.js";
+import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../src/domain/config/schema.js";
 import { sourceColumnId } from "../../src/domain/intake/mapping.js";
 import {

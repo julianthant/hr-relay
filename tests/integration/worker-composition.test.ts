@@ -8,7 +8,7 @@ import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.j
 import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema, GateIdSchema, RunIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
-import { composeDashboardRuntime } from "../../src/server/dashboard/compose.js";
+import { composeDashboardRuntime } from "../../src/backend/app/dashboard/compose.js";
 import { createCredentialSecretSource, readSettings } from "../../src/server/settings-runtime.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import { RuntimeConfigClaimTokenSchema } from "../../src/domain/config/runtime-generation.js";
@@ -16,7 +16,7 @@ import { RunRecordService } from "../../src/core/run-record-service.js";
 import { testRunService, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 import { hostConfigFacts } from "../../src/domain/config/host-display.js";
 /**
- * The Phase-1f worker composition (`src/server/worker/compose.ts`) and the
+ * The Phase-1f worker composition (`src/backend/app/worker-compose.ts`) and the
  * command kernel's worker-browser arms as the DASHBOARD process composes them.
  *
  * Everything real is real: a temp-file `AuthorityDatabase` under the isolation
@@ -33,12 +33,12 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { DESCRIPTORS, personLookupModule } from "../../src/control/workflow-registry.js";
+import { DESCRIPTORS, personLookupModule } from "../../src/backend/app/control/workflow-registry.js";
 import { createCommandKernel, executeSettingsCommand, type CommandKernel } from "../../src/core/command-kernel.js";
 import { createPhase1WorkerRuntimeExecutor, phase1WorkerId, poolWorkerId, runWorkerLoop } from "../../src/core/worker-loop.js";
 import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope, type GateSourcePort } from "../../src/core/gate-source-runtime.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
-import { resolveConfigWithProvenance } from "../../src/domain/config/resolve.js";
+import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import {
   SETTINGS_SCHEMA_HASH,
   deriveSettingsPatchFingerprint,
@@ -55,7 +55,7 @@ import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createCredentialStore } from "../helpers/admission-fixture.js";
 import { AuthorityDatabase } from "../helpers/admission-fixture.js";
-import { taskStoreRegistry } from "../../src/stores/index.js";
+import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
@@ -66,7 +66,7 @@ import {
   createTimeoutDeadlineScheduler,
   lineTaskLogger,
   parseWorkerArguments,
-} from "../../src/server/worker/compose.js";
+} from "../../src/backend/app/worker-compose.js";
 import { UUID_7, WRITE_ATTEMPT, WRITE_INTENT_ATTEMPTING } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   EXECUTOR_WORKER_ID,

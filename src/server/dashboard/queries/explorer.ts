@@ -75,7 +75,7 @@ import {
   workflowSourcePath,
 } from "../../../domain/workflow/source-layout.js";
 import type { IntakeProjection } from "../../../domain/intake/projection.js";
-import type { PendingImplBindings } from "../../../control/workflow-registry.js";
+import type { PendingImplBindings } from "../../../backend/app/control/workflow-registry.js";
 
 /** One registered workflow module, as this query needs to see it. */
 export interface ExplorerModuleView {
