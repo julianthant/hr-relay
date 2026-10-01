@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 /**
  * D314 — the command kernel's two ordinary recovery choices.
  *
@@ -21,13 +21,13 @@ import {
   type CommandKernel,
   type WorkerRuntimeExecutor,
   type WriteResolutionExecutor,
-} from "../../src/core/command-kernel.js";
+} from "../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../helpers/synthetic-storage-admission.js";
-import { planStart } from "../../src/services/start/plan.js";
+import { planStart } from "../../src/backend/runs/start/plan.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";

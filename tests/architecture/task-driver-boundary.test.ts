@@ -135,7 +135,7 @@ it("allows only the declared durable archive callback and rejects browser, any, 
   const path = resolve(root, "src/core/kernel.ts");
   try {
     mkdirSync(dirname(path), { recursive: true });
-    writeFileSync(resolve(root, "src/core/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
+    writeFileSync(resolve(root, "src/backend/runs/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
     writeFileSync(resolve(root, "src/core/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
     const imports = 'import type { CommandApplication } from "./command-application.js"; import { publishManualArchive } from "./archive-terminal-runs.js";';
     writeFileSync(path, imports + 'export function prepare(): CommandApplication { return { commit: () => publishManualArchive("verified") }; }');

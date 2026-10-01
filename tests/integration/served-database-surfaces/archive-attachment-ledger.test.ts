@@ -8,10 +8,10 @@ import { id, NOW } from '../../unit/database-foundation/fixtures.js';
 import { ledgerCommitFixture } from '../../fixtures/ledger-projection-fixtures.js';
 import { atomicWriteCheckpoint } from '../../helpers/timeline-write-fixture.js';
 import { createTransactionHistory } from '../../../src/infra/sqlite/transaction-history.js';
-import { RunRecordService } from '../../../src/core/run-record-service.js';
+import { RunRecordService } from '../../../src/backend/runs/run-record-service.js';
 import { createRunLifecycleStorage } from '../../../src/core/run-lifecycle-storage.js';
-import { projectArchiveReport } from '../../../src/server/dashboard/queries/archive-reports.js';
-import { queryActivitySummaries } from '../../../src/server/dashboard/queries/run-summaries.js';
+import { projectArchiveReport } from '../../../src/backend/runs/dashboard/queries/archive-reports.js';
+import { queryActivitySummaries } from '../../../src/backend/runs/dashboard/queries/run-summaries.js';
 
 const hash = (value: unknown) => createHash('sha256').update(JSON.stringify(value)).digest('hex');
 it("keeps authenticated transaction and Activity facts available when unrelated diagnostic bytes are missing", () => {

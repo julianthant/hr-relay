@@ -5,8 +5,8 @@ import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.j
 import { NOW, id } from "../../unit/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { createRunLifecycleStorage, lifecycleSourceDigest } from "../../../src/infra/sqlite/lifecycle-storage.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
-import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
+import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { SavedVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";

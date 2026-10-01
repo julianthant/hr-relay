@@ -2,7 +2,7 @@ import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { RunResultRecordSchema } from "../../../src/domain/run/result.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { deriveRunSummary, deriveCanonicalPerson } from "../../../src/core/run-summary.js";
+import { deriveRunSummary, deriveCanonicalPerson } from "../../../src/backend/runs/run-summary.js";
 import { TERMINAL_SEPARATIONS_RUN, TERMINAL_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import { foundationFixture } from "../../unit/database-foundation/fixtures.js";
 

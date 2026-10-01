@@ -1,7 +1,7 @@
-import { nodeIdOfTaskSpanPath } from "../../../../server/dashboard/support.js";
-import { readRerunValues } from "../../../../services/start/rerun-values.js";
-import { createDataQueries } from "../../../../server/dashboard/queries/data.js";
-import type { RunDetailQueryDeps } from "../../../../server/dashboard/queries/run-detail-types.js";
+import { nodeIdOfTaskSpanPath } from "../../../runs/support.js";
+import { readRerunValues } from "../../../runs/start/rerun-values.js";
+import { createDataQueries } from "../../../runs/dashboard/queries/data.js";
+import type { RunDetailQueryDeps } from "../../../runs/dashboard/queries/run-detail-types.js";
 
 /** Each composition supplies its own explicit query backing. */
 export function composeDataQueries(deps: RunDetailQueryDeps) {

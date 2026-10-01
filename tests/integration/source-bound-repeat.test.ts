@@ -2,7 +2,7 @@ import { defineTaskStoreRegistry } from "../../src/base/store.js";
 import { buildWriteFixtureRegistry } from "../fixtures/write-sequencer-fixtures.js";
 import { PlannedRunSchema, StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../src/domain/run/start-plan.js";
 import { sourceBoundReadDescriptor, sourceBoundReadStores } from "../fixtures/source-bound-read-fixtures.js";
-import { CreateRunRequestSchema } from "../../src/core/run-record-service.js";
+import { CreateRunRequestSchema } from "../../src/backend/runs/run-record-service.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { WriteFixtureProofSchema, writeFixtureOmittableDescriptor, writeFixtureDescriptor, writeFixtureParallelDescriptor, writeFixtureMemoDescriptor, writeFixtureDocumentDescriptor } from "../fixtures/write-sequencer-fixtures.js";
 import { WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";

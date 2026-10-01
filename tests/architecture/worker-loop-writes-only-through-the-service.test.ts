@@ -31,7 +31,7 @@ function repositoryMutator(declaration: ts.Declaration | undefined): boolean {
 function audit(extraSource?: string): readonly string[] {
   // Scan every core helper: moving a forbidden call into another core module cannot hide it.
   const roots = gitVisibleFiles(["src/core", "src/server/worker"])
-    .filter((file) => file.endsWith(".ts") && !["src/core/command-kernel.ts", "src/core/run-fan-out.ts"].includes(file));
+    .filter((file) => file.endsWith(".ts") && !["src/backend/runs/command-kernel.ts", "src/backend/runs/run-fan-out.ts"].includes(file));
   roots.push("src/backend/app/dashboard/compose.ts");
   const fixture = resolve(REPO_ROOT, "src/core/worker-mutator-proof.ts");
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
@@ -49,7 +49,7 @@ function audit(extraSource?: string): readonly string[] {
     assert.ok(source, `guard source missing: ${file}`);
     const visit = (node: ts.Node): void => {
       // The canonical service owns its repository mutations, but its exported port/sweep helpers do not.
-      if (file === "src/core/run-record-service.ts" && ts.isClassDeclaration(node)
+      if (file === "src/backend/runs/run-record-service.ts" && ts.isClassDeclaration(node)
         && node.name?.text === "RunRecordService") return;
       // Task 4 retains the two negative-resolution paths; positive recovery/present remain scanned.
       if (file === "src/core/write-recovery.ts"
@@ -98,7 +98,7 @@ describe("worker-loop-writes-only-through-the-service", () => {
   });
 
   it("keeps the worker capability closed to its five admitted operations", () => {
-    const source = readFileSync(resolve(REPO_ROOT, "src/core/run-record-service.ts"), "utf8");
+    const source = readFileSync(resolve(REPO_ROOT, "src/backend/runs/run-record-service.ts"), "utf8");
     const port = source.slice(source.indexOf("export type WorkerRunLifecyclePort"), source.indexOf("export interface RunContinuationPort"));
     assert.deepEqual([...port.matchAll(/"([a-zA-Z]+)"/gu)].map((match) => match[1]).sort(),
       ["claimNext", "renewClaim", "workerTransition", "terminalize", "requeue"].sort());

@@ -21,7 +21,7 @@
  */
 import { z } from "zod";
 import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
-import type { IntakeParser } from "../../core/command-kernel.js";
+import type { IntakeParser } from "../../backend/runs/command-kernel.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../domain/artifacts.js";
 import { canonicalJsonStringify } from "../../domain/canonical-json.js";
 import { CANONICAL_FIELDS } from "../../domain/fields/registry.js";

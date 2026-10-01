@@ -15,7 +15,7 @@ import { it, vi } from "vitest";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { runRecordOf } from "../unit/server/helpers/dashboard-harness.js";
-import { createCrossDateSearchService } from "../../src/server/dashboard/queries/search.js";
+import { createCrossDateSearchService } from "../../src/backend/runs/dashboard/queries/search.js";
 
 function fixture() {
   const root = mkdtempSync(join(tmpdir(), "search-index-"));

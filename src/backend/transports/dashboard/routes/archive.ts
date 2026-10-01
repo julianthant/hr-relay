@@ -7,8 +7,8 @@ import {
   buildArchivedCaptureResource,
   buildArchivedRunDetail,
   prepareArchivedCaptureLease,
-} from "../../../../server/dashboard/queries/archive.js";
-import { SectionUnavailableError } from "../../../../server/failures.js";
+} from "../../../runs/dashboard/queries/archive.js";
+import { SectionUnavailableError } from "../../../runs/refusals.js";
 
 import { verifiedByteResponse } from "./verified-byte-response.js";
 

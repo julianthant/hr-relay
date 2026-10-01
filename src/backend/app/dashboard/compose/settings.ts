@@ -1,5 +1,5 @@
 import { DESCRIPTORS } from "../../control/workflow-registry.js";
-import { selectActiveRunSettings } from "../../../../core/run-settings.js";
+import { selectActiveRunSettings } from "../../../runs/run-settings.js";
 import { resolveConfigWithProvenance } from "../../config/resolve.js";
 import type { createCredentialStore } from "../../../../infra/config/credential-store.js";
 import type { createProviderKeyStore } from "../../../../infra/config/provider-key-store.js";
@@ -7,7 +7,7 @@ import type { ProviderBootProvenance } from "../../../../domain/config/provider-
 import { ProviderKeySlotSchema } from "../../../../domain/config/provider-keys.js";
 import { activeProviderKeySlots } from "../../../../domain/secrets.js";
 import { activeSettingsConfig, createProtectedSettingsRuntimeReader, createSettingsRuntimeReader } from "../../../../server/settings-runtime.js";
-import { createSettingsApplicationExecutor } from "../../../../server/dashboard/commands/settings-service.js";
+import { createSettingsApplicationExecutor } from "../../../runs/dashboard/commands/settings-service.js";
 import type { SettingsRouteDeps } from "../../../transports/dashboard/routes/settings-types.js";
 import type { StorageRelocationPlanReader } from "../../../../core/storage-relocation-plans.js";
 import { createNativePathPicker } from "../../../transports/dashboard/native-path-picker.js";

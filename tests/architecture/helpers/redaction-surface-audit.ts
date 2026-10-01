@@ -407,7 +407,7 @@ export const REDACTED_NAME_WAIVERS: readonly RedactedNameWaiver[] = Object.freez
       field: "valueRedacted",
       reason:
         "D183 finding: `ContextSectionSchema`/`ContextDataSectionSchema` name their scalar "
-        + "`valueRedacted`, and src/server/dashboard/queries/run-detail.ts serves the RAW recorded "
+        + "`valueRedacted`, and src/backend/runs/dashboard/queries/run-detail.ts serves the RAW recorded "
         + "value — the descriptor-declared detail patch, the stored checkpoint scalar, or a count. "
         + "That is ref dashboard-surfaces §1.1(c)'s Data rail working as designed: the operator's own loopback "
         + "surface is entitled to the values their run touched, and a digest there would answer "
@@ -1983,7 +1983,7 @@ export const SURFACE_LEAF_ORIGINS: readonly SurfaceLeafOrigin[] = Object.freeze(
   { surface: "durable/evidence-receipt", path: "observations[].reason", origin: "repository-authored" },
   { surface: "durable/evidence-receipt", path: "output[].reason", origin: "repository-authored" },
   { surface: "durable/evidence-receipt", path: "warnings[].summary", origin: "external-text",
-    exception: "src/core/evidence-receipt.ts copies `failure.summary` into the uncertainty warning; the receipt inherits the failure record's exception, not a second one." },
+    exception: "src/backend/runs/evidence-receipt.ts copies `failure.summary` into the uncertainty warning; the receipt inherits the failure record's exception, not a second one." },
 
   { surface: "durable/notification-record", path: "summary", origin: "repository-authored" },
   { surface: "durable/notification-record", path: "title", origin: "repository-authored" },

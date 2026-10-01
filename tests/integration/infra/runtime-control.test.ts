@@ -18,7 +18,7 @@ import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/b
 import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
 import { projectStorageRelocationPlanHistory } from "../../../src/core/storage-relocation-plans.js";
-import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
+import { executeStorageRelocationCommand } from "../../../src/backend/runs/command-kernel.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";

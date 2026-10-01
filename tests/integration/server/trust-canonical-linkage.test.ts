@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 
-import { buildTrustSection, buildRunGate } from "../../../src/server/dashboard/queries/run-trust.js";
+import { buildTrustSection, buildRunGate } from "../../../src/backend/runs/dashboard/queries/run-trust.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
-import { createNotificationInbox } from "../../../src/services/notifications/inbox.js";
+import { createNotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
 import { readGateParks } from "../../../src/backend/app/dashboard/compose/trust.js";
 import { explainRunFrom } from "../../../src/backend/app/explain-compose.js";
-import { SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
+import { SectionUnavailableError, TargetNotFoundError } from "../../../src/backend/runs/refusals.js";
 import { seedPersonLookupExitRun } from "../../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { uuidOf } from "../../unit/server/helpers/dashboard-harness.js";

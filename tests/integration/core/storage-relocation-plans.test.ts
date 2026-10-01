@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
-import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
+import { executeStorageRelocationCommand } from "../../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
   StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,

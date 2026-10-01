@@ -8,18 +8,18 @@ import type { IntakeRouteDeps } from "./intake-types.js";
 import type { RunDetailRouteDeps } from "./run-detail-types.js";
 import type { composeDataQueries } from "../../../app/dashboard/compose/data.js";
 import type { Hono } from "hono";
-import type { DashboardCommandService } from "../../../../server/dashboard/commands/command-service.js";
-import type { BulkCommandAcceptanceAuthority } from "../../../../server/dashboard/commands/operator-command-ingress.js";
+import type { DashboardCommandService } from "../../../runs/dashboard/commands/command-service.js";
+import type { BulkCommandAcceptanceAuthority } from "../../../runs/dashboard/commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../../domain/commands.js";
 import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../../infra/config/provider-key-store.js";
-import type { StartPlanService } from "../../../../server/dashboard/commands/start-plan-service.js";
-import type { RunQueueProjection } from "../../../../server/dashboard/projectors/run-queue-projection.js";
+import type { StartPlanService } from "../../../runs/dashboard/commands/start-plan-service.js";
+import type { RunQueueProjection } from "../../../runs/dashboard/projectors/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";
 import type { RequestIdentityCheckpoint } from "../request-identity.js";
 
 /** Shared wiring plus leaf-owned contracts. Existing composed fixtures remain valid. */
 export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, SettingsRouteDeps, StorageRouteDeps, ExplorerRouteDeps, ArchiveRouteDeps, IntakeRouteDeps, RunDetailRouteDeps {
-  readonly notifications?: { snapshot(actor: string): readonly import("../../../../domain/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../../../../server/dashboard/queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../../services/notifications/observation.js").NotificationObservationStatus };
+  readonly notifications?: { snapshot(actor: string): readonly import("../../../../domain/dashboard/projection.js").NotificationWire[]; target: ReturnType<typeof import("../../../runs/dashboard/queries/notifications.js").createNotificationTargetQuery>; status(): import("../../../runs/notifications/observation.js").NotificationObservationStatus };
   readonly requestIdentity: RequestIdentityCheckpoint;
   readonly preflight: import("./settings-preflight-types.js").SettingsPreflightRouteDeps["preflight"];
   readonly projection: RunQueueProjection;

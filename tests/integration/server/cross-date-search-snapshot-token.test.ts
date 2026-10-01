@@ -8,7 +8,7 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import {
   createCrossDateSearchService,
   type CrossDateSearchQueryService,
-} from "../../../src/server/dashboard/queries/search.js";
+} from "../../../src/backend/runs/dashboard/queries/search.js";
 import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
 
 const CLOCK = manualClock(new Date("2026-08-28T16:00:00.000Z"));

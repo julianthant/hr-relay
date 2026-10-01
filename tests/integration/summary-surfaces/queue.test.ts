@@ -5,7 +5,7 @@ import { createRoot } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it, vi } from "vitest";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { queryQueueSummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
+import { queryQueueSummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
 import { id } from "../../unit/database-foundation/fixtures.js";
 import {

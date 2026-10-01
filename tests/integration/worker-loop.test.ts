@@ -16,7 +16,7 @@ import {
   runWorkerLoop,
   type WorkerLoopDependencies,
 } from "../../src/core/worker-loop.js";
-import type { WorkerRuntimeExecutor } from "../../src/core/command-kernel.js";
+import type { WorkerRuntimeExecutor } from "../../src/backend/runs/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";

@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { z } from "zod";
-import { createTaskProvenanceCollector } from "../../src/core/task-provenance.js";
-import type { RecordedDataBatch } from "../../src/core/task-provenance.js";
+import { createTaskProvenanceCollector } from "../../src/backend/runs/task-provenance.js";
+import type { RecordedDataBatch } from "../../src/backend/runs/task-provenance.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {

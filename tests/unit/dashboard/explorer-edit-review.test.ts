@@ -18,7 +18,7 @@ import { ExplorerProposedWorkflowOverrideSchema, ExplorerWorkflowWireSchema } fr
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 
 const CLOCK = manualClock(new Date("2026-08-28T18:00:00.000Z"));

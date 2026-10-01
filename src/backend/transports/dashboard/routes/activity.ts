@@ -1,7 +1,7 @@
 import { z } from "zod";
-import { selectionDownload } from "../../../../server/dashboard/exports/selection-download.js";
+import { selectionDownload } from "../../../runs/exports/selection-download.js";
 import { ActivitySnapshotTokenSchema } from "../../../../domain/dashboard/activity-selection.js";
-import { activityReportCsv, activityReportCsvFileName } from "../../../../server/dashboard/queries/activity-export.js";
+import { activityReportCsv, activityReportCsvFileName } from "../../../runs/dashboard/queries/activity-export.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { ActivityRouteDeps } from "./activity-types.js";

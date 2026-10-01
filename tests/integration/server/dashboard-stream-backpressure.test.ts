@@ -19,7 +19,7 @@ import {
   type DashboardStreamHub,
 } from "../../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
 import { dashboardEventStreamBody } from "../../../src/backend/transports/dashboard/subscriptions/sse-response.js";
-import { BackfillGapObservationSchema } from "../../../src/services/notifications/backfill-gap.js";
+import { BackfillGapObservationSchema } from "../../../src/backend/runs/notifications/backfill-gap.js";
 import { claimEventOf, DAY, makeWorld, queuedEventOf, taskEventsOf, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";
 
 type TestDashboardEnv = { Variables: { requestActorId: ActorId } };

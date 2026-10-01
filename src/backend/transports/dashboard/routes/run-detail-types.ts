@@ -1,5 +1,5 @@
-import type { RunDetailQueryDeps } from "../../../../server/dashboard/queries/run-detail.js";
-import type { AdvisoryQueryDeps } from "../../../../server/dashboard/queries/advisory.js";
+import type { RunDetailQueryDeps } from "../../../runs/dashboard/queries/run-detail.js";
+import type { AdvisoryQueryDeps } from "../../../runs/dashboard/queries/advisory.js";
 
 export interface RunDetailRouteDeps {
   readonly runDetail: RunDetailQueryDeps;

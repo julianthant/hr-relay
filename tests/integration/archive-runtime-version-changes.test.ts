@@ -9,9 +9,9 @@ import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-stor
 import { foundationFixture, id, NOW } from "../unit/database-foundation/fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../fixtures/archive-fixtures.js";
-import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
-import { queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
-import { savedArchiveRuntimeVersions } from "../../src/server/dashboard/queries/archive.js";
+import type { ArchiveRunSnapshot } from "../../src/backend/runs/archive/archive-service.js";
+import { queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";
+import { savedArchiveRuntimeVersions } from "../../src/backend/runs/dashboard/queries/archive.js";
 import { archiveFixture } from "../unit/archive-transfer/fixtures.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 

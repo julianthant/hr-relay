@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "./helpers/guard-files.js";
 
-const ALLOWLIST = ["src/infra/sqlite/authority-database.ts", "src/core/run-record-service.ts"];
+const ALLOWLIST = ["src/infra/sqlite/authority-database.ts", "src/backend/runs/run-record-service.ts"];
 const RUN_MUTATORS = new Set(["enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
   "sweepExpiredClaims", "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
   "delete", "terminalizeFailure", "terminalizeSuccess"]);
@@ -96,7 +96,7 @@ function audit(fixtures = false): string[] {
     }
     visit(source);
   }
-  assert.ok(visited > 1000 && roots.includes("src/core/command-kernel.ts"), "walker must inspect production commands");
+  assert.ok(visited > 1000 && roots.includes("src/backend/runs/command-kernel.ts"), "walker must inspect production commands");
   return violations;
 }
 describe("no-lifecycle-sql-outside-the-adapter", () => {

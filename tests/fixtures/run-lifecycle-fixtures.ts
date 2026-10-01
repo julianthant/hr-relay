@@ -1,4 +1,4 @@
-import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../src/core/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort, runContinuationPort } from "../../src/backend/runs/run-record-service.js";
 import type { Clock } from "../../src/domain/clock.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT, HASH_A, HASH_B, UUID_4, NOW } from "./phase1c-contract-fixtures.js";

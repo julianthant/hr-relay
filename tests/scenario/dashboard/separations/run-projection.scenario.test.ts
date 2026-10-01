@@ -16,7 +16,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { localDatePart } from "../../../../src/domain/clock.js";
-import { buildRunDetail } from "../../../../src/server/dashboard/queries/run-detail.js";
+import { buildRunDetail } from "../../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { SeparationsCanonicalInput } from "../../../../src/workflows/separations/workflow.js";
 import {
   FIXTURE_DOCUMENT_NUMBER,

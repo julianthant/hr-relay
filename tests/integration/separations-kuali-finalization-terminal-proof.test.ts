@@ -1,4 +1,4 @@
-import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
+import { createTrustRunReader } from "../../src/backend/runs/trust/canonical-reader.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D144's current end-to-end proof.
@@ -14,8 +14,8 @@ import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { workflowTerminalResultExecution } from "../../src/base/workflow.js";
-import { deriveGateResultCheckpointFingerprint } from "../../src/core/command-kernel.js";
-import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
+import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
+import { buildRunEvidenceReceipt } from "../../src/backend/runs/evidence-receipt.js";
 import {
   executeClaimedRun,
   type RunExecutionAuthority,
@@ -38,7 +38,7 @@ import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
 } from "../../src/domain/workflow/build-manifest.js";
-import { createReceiptService } from "../../src/server/trust/receipt-service.js";
+import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { SeparationsKualiFinalizationResultSchema } from "../../src/workflows/separations/kuali-finalization/workflow.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";

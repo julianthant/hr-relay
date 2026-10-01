@@ -8,9 +8,9 @@ import { runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
-import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
-import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
-import { exportSearchMetadata } from "../../../src/server/dashboard/exports/search-metadata-export.js";
+import { createCrossDateSearchService } from "../../../src/backend/runs/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/backend/runs/exports/operator-xlsx-export-service.js";
+import { exportSearchMetadata } from "../../../src/backend/runs/exports/search-metadata-export.js";
 import type { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
 
 /** Disposable SQL authority plus production query/export services and the source-bound bundle. */

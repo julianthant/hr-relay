@@ -59,12 +59,12 @@ import {
 } from "../../src/domain/dashboard/run-detail.js";
 import { QueuePrioritySchema, QueueStatusSchema } from "../../src/domain/dashboard/projection.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { queueRowActions } from "../../src/server/dashboard/projectors/queue-row-actions.js";
+import { queueRowActions } from "../../src/backend/runs/dashboard/projectors/queue-row-actions.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { RunPrioritySchema } from "../../src/domain/run/envelope.js";
 import { RunOutcomeSchema, RunRecordSchema, RunStateSchema, type RunRecord } from "../../src/domain/run/record.js";
 import { SubjectEvidenceSchema, WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
-import { availableSections, readRunDetail, readRunSection } from "../../src/server/dashboard/queries/run-detail.js";
+import { availableSections, readRunDetail, readRunSection } from "../../src/backend/runs/dashboard/queries/run-detail.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
@@ -108,7 +108,7 @@ const SECTION_SCHEMA_NAME = "RunDetailSectionResponseSchema";
  * whole run-detail build, so a scan of the literals it can emit is the honest
  * cheap reading — and its three verbs are plain literals there.
  */
-const SECTION_DESCRIPTOR_PRODUCER = "src/server/dashboard/queries/run-detail/gate-park.ts";
+const SECTION_DESCRIPTOR_PRODUCER = "src/backend/runs/dashboard/queries/run-detail/gate-park.ts";
 const API_ROUTES_FILE = "src/backend/transports/dashboard/routes/api.ts";
 const CLIENT_ROOTS = ["src/dashboard/client"];
 

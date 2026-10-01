@@ -118,7 +118,7 @@ import { evaluateNodeCondition } from "../domain/workflow/node-condition.js";
 import { deriveSchemaHash } from "../domain/schema-bound-value.js";
 import { planStepOmissions } from "../domain/workflow/step-omission.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../domain/workflow/operation-display-snapshot.js";
-import { jsonLeafPaths } from "./task-provenance.js";
+import { jsonLeafPaths } from "../backend/runs/task-provenance.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { RunClaimTokenSchema, type RunClaimToken } from "../infra/sqlite/run-store-contracts.js";
 import {
@@ -131,12 +131,12 @@ import {
   type ProviderAdapterRegistry,
   type ProviderAdmissionClientDependencies,
   type ProviderAdmissionIdFactory,
-} from "./provider-admission.js";
+} from "../backend/runs/provider-admission.js";
 import {
   buildEntryValidationFailureRecord,
   buildNodeFailureRecord,
 } from "./run-failure.js";
-import { buildRunPreviewResult, buildRunResult } from "./run-result.js";
+import { buildRunPreviewResult, buildRunResult } from "../backend/runs/run-result.js";
 import {
   ExecutorSpanEventSchema,
   runSpanPath,
@@ -144,11 +144,11 @@ import {
   type SpanEmitter,
 } from "./span-emitter.js";
 import { redactObservedDataPoints } from "./observed-data.js";
-import { createTaskProvenanceCollector } from "./task-provenance.js";
+import { createTaskProvenanceCollector } from "../backend/runs/task-provenance.js";
 import { RunResultRecordSchema } from "../domain/run/result.js";
 import { createDeclaredActionBinder } from "./operation-action-binding.js";
-import { buildTerminalAuthorization } from "./terminal-authorization.js";
-import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "./run-record-service.js";
+import { buildTerminalAuthorization } from "../backend/runs/terminal-authorization.js";
+import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type WorkerRunLifecyclePort } from "../backend/runs/run-record-service.js";
 import type { WorkerSessionManager } from "./worker-sessions.js";
 
 /* ── injected seams ──────────────────────────────────────────────────────── */

@@ -43,7 +43,7 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/app/dashboard/compose/notification-health.ts",
-    "sha256": "2e6b2fb7ad4f1fa7a30448c5cd030eafb6580047814e2d7939cfe30bfb33114e",
+    "sha256": "e46f08feb28c745d5774b42d998812fdd305556e495bbf6a4fb6b63f2e6b235a",
     "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
   },
   {
@@ -87,8 +87,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
-    "path": "src/server/dashboard/commands/ordinary-path-validator.ts",
-    "sha256": "48ced42f83619de6fcffaab58909f5e1af669a9eb0fbd0d29538e4ffa57aaeca",
+    "path": "src/backend/runs/dashboard/commands/ordinary-path-validator.ts",
+    "sha256": "7ff254da9813cc19716c099793d8cbfe8219c68c4fe679bdf7ea1236e1328c59",
     "reason": "Only an explicitly allowed missing directory with ENOENT returns false; safe parent validation follows, and other errors throw named refusal."
   },
   {
@@ -97,8 +97,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Invalid or unavailable selected paths become explicit dialog-failed responses; cancellation has its own exact marker."
   },
   {
-    "path": "src/server/dashboard/queries/item-attempt-history.ts",
-    "sha256": "9d30441f20ce1d2e1aa93adb46efd3043f5ba75099af1a6490d05cc458f45521",
+    "path": "src/backend/runs/dashboard/queries/item-attempt-history.ts",
+    "sha256": "9750fddde138429f2aaca0b80d40f9f2e8de778c3fd3342ddc03f3e31c78c797",
     "reason": "Malformed supplied cursors become explicit refusal before authority reads; omitted cursors remain distinct valid first-page requests."
   },
   {

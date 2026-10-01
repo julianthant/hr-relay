@@ -2,13 +2,13 @@ import {
   DESCRIPTORS,
 } from "../../control/workflow-registry.js";
 
-import { RunRecordService } from "../../../../core/run-record-service.js";
+import { RunRecordService } from "../../../runs/run-record-service.js";
 
 import {
   AuthorityDatabase,
 } from "../../../../infra/sqlite/index.js";
 
-import { type ArchiveQueryDeps } from "../../../../server/dashboard/queries/archive.js";
+import { type ArchiveQueryDeps } from "../../../runs/dashboard/queries/archive.js";
 
 export function createOperatorArchive(input: Omit<ArchiveQueryDeps, "authority" | "descriptors"> & { database: AuthorityDatabase; reader: Pick<RunRecordService, "read" | "list"> }): ArchiveQueryDeps {
   const { clock, appVersion, database, ledger } = input;

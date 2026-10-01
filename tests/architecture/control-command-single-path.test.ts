@@ -1,5 +1,5 @@
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { createRuntimeVersionChanges } from "../../src/core/archive-runtime-version-changes.js";
 /**
  * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
@@ -38,7 +38,7 @@ import {
   PHASE1_ACTIVE_COMMAND_ARMS,
   PHASE1_DEFERRED_COMMAND_ARMS,
   type CommandKernel,
-} from "../../src/core/command-kernel.js";
+} from "../../src/backend/runs/command-kernel.js";
 import {
   CommandRequestSchema,
   CommandResultSchema,
@@ -46,7 +46,7 @@ import {
 } from "../../src/domain/commands.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../helpers/synthetic-storage-admission.js";
-import { planStart } from "../../src/services/start/plan.js";
+import { planStart } from "../../src/backend/runs/start/plan.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 import {
@@ -312,14 +312,14 @@ describe("control-command-single-path", () => {
 
   it("keeps the command journal, audit, and start-plan consumption on exactly one executing path", () => {
     const allowed = new Set([
-      "src/core/command-kernel.ts",
+      "src/backend/runs/command-kernel.ts",
       "src/infra/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
       ["src/server/settings-runtime.ts", 1],
       ["src/core/storage-relocation-plans.ts", 1],
-      ["src/server/dashboard/commands/provider-key-journal.ts", 3],
+      ["src/backend/runs/dashboard/commands/provider-key-journal.ts", 3],
       ["src/infra/compat/d331-protected-journal.ts", 1],
       ["src/infra/sqlite/backup-service.ts", 0],
     ]);
@@ -350,7 +350,7 @@ describe("control-command-single-path", () => {
     assert.equal(kernelDefinitions, 1, "exactly one module may define the command kernel");
 
     // The kernel itself holds no raw storage escape hatch and no UI Delete.
-    const kernelSource = readFileSync(join(REPO_ROOT, "src/core/command-kernel.ts"), "utf8");
+    const kernelSource = readFileSync(join(REPO_ROOT, "src/backend/runs/command-kernel.ts"), "utf8");
     assert.ok(!/\bDatabaseSync\b/.test(kernelSource), "the kernel may not hold a raw database handle");
     assert.ok(!/\bDELETE\s+FROM\b/i.test(kernelSource), "the kernel may not physically delete authority rows");
     assert.ok(!/"Delete"/.test(kernelSource), "the UI label is Hide, never Delete");

@@ -1,4 +1,4 @@
-import { TargetNotFoundError } from "../../src/server/failures.js";
+import { TargetNotFoundError } from "../../src/backend/runs/refusals.js";
 /**
  * `explain run` against the real authority database (ref operator-trust §2.5, D143).
  *
@@ -16,7 +16,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { explainRunFrom } from "../../src/backend/app/explain-compose.js";
-import { renderExplainRun } from "../../src/server/explain/explain-run.js";
+import { renderExplainRun } from "../../src/backend/runs/explain/explain-run.js";
 import {
   EXIT_RUN_ID,
   EXIT_TRACE_ID,

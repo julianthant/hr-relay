@@ -16,7 +16,7 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
 import { id } from "../../unit/database-foundation/fixtures.js";
-import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
+import { activityReportCsv } from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import {
   activityPeopleEvidenceItems,
   activityPeriodOf,

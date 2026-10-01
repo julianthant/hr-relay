@@ -2,7 +2,7 @@ import {
   LocalOperatorActorSchema,
   type ActorId,
 } from "../../../domain/ids.js";
-import { RequestIdentityRefusedError } from "../../../server/failures.js";
+import { RequestIdentityRefusedError } from "../../runs/refusals.js";
 
 /** The one BFF admission seam that turns a request into server-owned actor authority. */
 export interface RequestIdentityCheckpoint {

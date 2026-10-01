@@ -11,7 +11,7 @@ import { projectReceiptForOperator } from "../../src/domain/trust/evidence.js";
 import { ArchivedRunContentSchema } from "../../src/domain/archive/model.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../fixtures/archive-fixtures.js";
 import { describe, it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt } from "../../src/backend/runs/evidence-receipt.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { kualiReceiptEvidence } from "../fixtures/receipt-run-fixtures.js";

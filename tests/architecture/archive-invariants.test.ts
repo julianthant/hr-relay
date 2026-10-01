@@ -113,7 +113,7 @@ const REGISTRY_MODULES = Object.freeze([
 
 describe("archive invariants", () => {
   it("keeps the archived-run read path free of the workflow registry, and catches a violation", () => {
-    const entry = join(REPO_ROOT, "src/server/dashboard/queries/archive.ts");
+    const entry = join(REPO_ROOT, "src/backend/runs/dashboard/queries/archive.ts");
     const closure = [...closureOf(entry)].map((file) => relative(REPO_ROOT, file).replaceAll("\\", "/"));
     const reached = REGISTRY_MODULES.filter((module) => closure.includes(module));
     assert.deepEqual(
@@ -158,8 +158,8 @@ describe("archive invariants", () => {
     ]);
     const files = [
       "src/domain/archive/model.ts",
-      "src/services/archive/archive-service.ts",
-      "src/server/dashboard/queries/archive.ts",
+      "src/backend/runs/archive/archive-service.ts",
+      "src/backend/runs/dashboard/queries/archive.ts",
     ];
     for (const file of files) {
       // Comments are stripped first: the word MUST appear in the prose — the

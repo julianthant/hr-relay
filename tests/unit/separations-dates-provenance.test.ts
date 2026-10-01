@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import type { AnyTaskContract } from "../../src/domain/contracts/base.js";
 import { redactObservedDataPoints } from "../../src/core/observed-data.js";
-import { createTaskProvenanceCollector, jsonLeafPaths } from "../../src/core/task-provenance.js";
+import { createTaskProvenanceCollector, jsonLeafPaths } from "../../src/backend/runs/task-provenance.js";
 import type { ObservedDataPoint } from "../../src/core/span-emitter.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";

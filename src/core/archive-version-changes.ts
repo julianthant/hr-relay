@@ -6,10 +6,10 @@ import { lifecycleSourceDigest } from "../infra/sqlite/lifecycle-storage.js";
 import type { Clock } from "../domain/clock.js";
 import type { IdFactory } from "../domain/identifiers.js";
 import type { AnyWorkflowDescriptor } from "../base/workflow.js";
-import type { RunRecordService } from "./run-record-service.js";
-import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
+import type { RunRecordService } from "../backend/runs/run-record-service.js";
+import type { ArchiveSnapshotSource } from "../backend/runs/archive/archive-service.js";
 import type { createRuntimeVersionChanges } from "./archive-runtime-version-changes.js";
-import type { TargetReference, VersionChange as RunVersionChange } from "./run-fan-out.js";
+import type { TargetReference, VersionChange as RunVersionChange } from "../backend/runs/run-fan-out.js";
 interface ArchiveCommandDependencies {
   authority: { withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
     readRuntimeVersionAdoption?(runId: string): { dashboard: { major: number; minor: number }; workflow: { major: number; minor: number } } | undefined };
@@ -24,16 +24,16 @@ interface ArchiveCommandDependencies {
 export interface ArchiveCommandTools {
   applied(request: CommandRequest, targets: readonly TargetReference[], changes: readonly RunVersionChange[]): CommandApplication;
 }
-import type { CommandApplication } from "./command-application.js";
+import type { CommandApplication } from "../backend/runs/command-application.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 import { CommandIdentityConflictError, VersionScopeSchema, type CommandRequest, type CommandResult } from "../domain/commands.js";
 import { JsonValueSchema, canonicalJsonStringify } from "../domain/canonical-json.js";
 import { sha256Hex } from "../domain/sha256.js";
 import { deriveStableUuid, lifecycleCommandId } from "../domain/identifiers.js";
-import { runTarget } from "./run-fan-out.js";
-import { assessVersionBump, resolveBumpEffect, describeBlocker } from "../services/archive/archive-service.js";
+import { runTarget } from "../backend/runs/run-fan-out.js";
+import { assessVersionBump, resolveBumpEffect, describeBlocker } from "../backend/runs/archive/archive-service.js";
 import { VersionChangeSchema, versionChangeReviewFingerprint, archiveVersionChange, type VersionChange } from "../domain/archive/change-record.js";
-import { captureArchiveReport, genericArchiveSection } from "../services/archive/report-capture.js";
+import { captureArchiveReport, genericArchiveSection } from "../backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../services/archive/archive-transfer.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../infra/sqlite/storage-records.js";
 import { projectArchiveReport } from "../infra/sqlite/archive-records.js";

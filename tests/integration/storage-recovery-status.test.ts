@@ -14,7 +14,7 @@ import { archiveFixture, attachFile } from "../unit/archive-transfer/fixtures.js
 import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority } from "../helpers/synthetic-storage-admission.js";
-import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
+import { buildStorageDoctor } from "../../src/backend/runs/dashboard/queries/storage.js";
 
 // Preserve every byte except SQLite's documented shared reader marks (existing doctor proof).
 function snapshot(root: string) {

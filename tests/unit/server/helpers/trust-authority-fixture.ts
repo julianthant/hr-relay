@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { join } from "node:path";
-import { RunRecordService } from "../../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../../src/backend/runs/run-record-service.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../../src/domain/config/runtime-generation.js";
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
 import { ArchivedRunContentSchema, ArchivedRunRecordSchema, archivedRunContentDigest } from "../../../../src/domain/archive/model.js";
 import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
-import { createReceiptService } from "../../../../src/server/trust/receipt-service.js";
-import { createTrustRunReader } from "../../../../src/server/trust/canonical-reader.js";
-import { type RunDetailQueryDeps } from "../../../../src/server/dashboard/queries/run-detail-types.js";
+import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
+import { createTrustRunReader } from "../../../../src/backend/runs/trust/canonical-reader.js";
+import { type RunDetailQueryDeps } from "../../../../src/backend/runs/dashboard/queries/run-detail-types.js";
 import { CONFIG_SNAPSHOT, HASH_A } from "../../../fixtures/phase1c-contract-fixtures.js";
 import { ARCHIVED_RUN } from "../../../fixtures/archive-fixtures.js";
 import { personLookupDescriptor } from "../../../helpers/registered-workflows.js";

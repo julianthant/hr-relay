@@ -1,4 +1,4 @@
-import { selectActiveRunSettings } from "../core/run-settings.js";
+import { selectActiveRunSettings } from "../backend/runs/run-settings.js";
 import { executionConfigFromStored } from "../domain/config/snapshot-generations.js";
 import { sha256Hex } from "../domain/sha256.js";
 import { canonicalJsonStringify } from "../domain/canonical-json.js";
@@ -12,7 +12,7 @@ import {
   type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus,
 } from "../domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../domain/config/protected-settings.js";
-import type { CommandAuthority } from "../core/command-kernel.js";
+import type { CommandAuthority } from "../backend/runs/command-kernel.js";
 import type { AuthorityRepositories } from "../infra/sqlite/authority-database.js";
 
 /** SQLite is the sole ordinary authority. Revision one is the absent singleton. */

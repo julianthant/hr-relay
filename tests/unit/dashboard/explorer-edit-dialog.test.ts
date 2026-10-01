@@ -14,8 +14,8 @@ import { ExplorerEditValidationResultSchema, type ExplorerEditDraft, type Explor
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
-import { createExplorerEditService, buildExplorerCompileAttestation } from "../../../src/server/dashboard/commands/explorer-edit-service.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/dashboard/queries/explorer.js";
+import { createExplorerEditService, buildExplorerCompileAttestation } from "../../../src/backend/runs/dashboard/commands/explorer-edit-service.js";
 import { ExplorerEditDialog, WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { explorerPresentationChange, explorerPresentationDraft } from "../../../src/dashboard/surfaces/explorer-model.js";
 import { FIXTURE_BOOTSTRAP } from "../../parity/helpers/fixture-day.js";

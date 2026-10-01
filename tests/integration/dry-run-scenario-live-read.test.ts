@@ -28,7 +28,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { workflowDryRunSupport } from "../../src/base/workflow.js";
-import { DryRunScenarioEvidenceSchema, evaluateDryRunScenarioEvidence } from "../../src/core/dry-run-scenario-runner.js";
+import { DryRunScenarioEvidenceSchema, evaluateDryRunScenarioEvidence } from "../../src/backend/runs/dry-run-scenario-runner.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { parseDryRunScenarioManifest } from "../../src/domain/trust/dry-run-scenario.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";

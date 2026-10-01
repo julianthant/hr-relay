@@ -6,7 +6,7 @@ import { deriveSchemaHash } from "../../../../domain/schema-bound-value.js";
 import type {
   RunDetailDataOriginView,
   RunDetailWriteContractView,
-} from "../../../../server/dashboard/queries/run-detail.js";
+} from "../../../runs/dashboard/queries/run-detail.js";
 import { describeProofShape } from "../../../../validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../../../base/store.js";
 

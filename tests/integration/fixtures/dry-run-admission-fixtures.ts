@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The dry-run admission fixture every T1b composition proof shares: a selected
@@ -11,11 +11,11 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import type { TestClock } from "../../../src/domain/clock.js";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
-import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
+import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";

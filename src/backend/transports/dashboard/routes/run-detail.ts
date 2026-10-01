@@ -1,7 +1,7 @@
-import { resolveOperationSource } from "../../../../server/dashboard/queries/operation-source.js";
-import { readRunDetail } from "../../../../server/dashboard/queries/run-detail.js";
-import { buildRunAdvisory } from "../../../../server/dashboard/queries/advisory.js";
-import { SectionUnavailableError } from "../../../../server/failures.js";
+import { resolveOperationSource } from "../../../runs/dashboard/queries/operation-source.js";
+import { readRunDetail } from "../../../runs/dashboard/queries/run-detail.js";
+import { buildRunAdvisory } from "../../../runs/dashboard/queries/advisory.js";
+import { SectionUnavailableError } from "../../../runs/refusals.js";
 import { ItemAttemptHistoryRequestSchema } from "../../../../domain/dashboard/item-attempt-history.js";
 
 import type { DashboardApp } from "./api-types.js";

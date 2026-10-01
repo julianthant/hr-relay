@@ -1,7 +1,7 @@
-import { createNotificationObserver } from "../../../../services/notifications/observation.js";
+import { createNotificationObserver } from "../../../runs/notifications/observation.js";
 import { readNotificationSources } from "./notification-sources.js";
 import { createNotificationHealthObserver, readNotificationHealth } from "./notification-health.js";
-import { RunRecordService } from "../../../../core/run-record-service.js";
+import { RunRecordService } from "../../../runs/run-record-service.js";
 import type { Clock } from "../../../../domain/clock.js";
 import { type IdFactory } from "../../../../domain/identifiers.js";
 import {
@@ -11,17 +11,17 @@ import {
 import {
   AuthorityDatabase,
 } from "../../../../infra/sqlite/index.js";
-import { createNotificationInbox } from "../../../../services/notifications/inbox.js";
-import { createBackfillGapNotifier } from "../../../../services/notifications/backfill-gap.js";
+import { createNotificationInbox } from "../../../runs/notifications/inbox.js";
+import { createBackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import {
   GateParkObservationSchema,
   createGateParkNotifier,
   type GateParkObservation,
-} from "../../../../services/notifications/gate-park.js";
+} from "../../../runs/notifications/gate-park.js";
 
-import { createTrustRunReader } from "../../../../server/trust/canonical-reader.js";
+import { createTrustRunReader } from "../../../runs/trust/canonical-reader.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../../infra/runtime-control/admission.js";
-import { listLiveTrustRuns, type TrustRunReader } from "../../../../server/trust/run-reader.js";
+import { listLiveTrustRuns, type TrustRunReader } from "../../../runs/trust/run-reader.js";
 
 /** Retained gate-watch adapter; production observation also includes canonical occurrence identity. */
 export function readGateParks(database: AuthorityDatabase, reader: TrustRunReader = createTrustRunReader(database)): readonly GateParkObservation[] {

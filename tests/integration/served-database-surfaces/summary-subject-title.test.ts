@@ -7,12 +7,12 @@ import { RunRecordSchema } from '../../../src/domain/run/record.js';
 import { RunCheckpointRecordSchema } from '../../../src/domain/workflow/checkpoint.js';
 import { SearchPersonOrgOutputSchema } from '../../../src/domain/contracts/ucpath/search-person-org.js';
 import { deriveSchemaHash } from '../../../src/domain/schema-bound-value.js';
-import { RunRecordService } from '../../../src/core/run-record-service.js';
+import { RunRecordService } from '../../../src/backend/runs/run-record-service.js';
 import { createTimelineEmitter } from '../../../src/infra/events/timeline-emitter.js';
 import { createTransactionHistory } from '../../../src/infra/sqlite/transaction-history.js';
 import { createOperatorProjection, createOperatorRunDetail } from '../../../src/backend/app/dashboard/compose/operator.js';
-import { queryQueueSummaries, queryActivitySummaries } from '../../../src/server/dashboard/queries/run-summaries.js';
-import { buildRunDetail } from '../../../src/server/dashboard/queries/run-detail.js';
+import { queryQueueSummaries, queryActivitySummaries } from '../../../src/backend/runs/dashboard/queries/run-summaries.js';
+import { buildRunDetail } from '../../../src/backend/runs/dashboard/queries/run-detail.js';
 
 it("keeps the resolved subject and operator label distinct in the summary-backed day", () => {
 const f = foundationFixture();

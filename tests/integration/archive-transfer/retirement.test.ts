@@ -13,7 +13,7 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { HistoricalVersionChangeSchema } from "../../../src/infra/sqlite/storage-records.js";
 import { ARCHIVE_RELAUNCH } from "../../fixtures/archive-fixtures.js";
-import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
+import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 
 for(const step of ["captured","verified","cleaned","published","retired","committed"] as const) it(`stopped populated retirement resumes after ${step} without transfer deletion`,async()=>{
   const f=historicalFixture();

@@ -11,7 +11,7 @@ import type { RunRecord } from "../domain/run/record.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../base/workflow.js";
 import type { RuntimeFlowNode } from "../domain/workflow/graph.js";
 import type { AuthorityDatabase } from "../infra/sqlite/authority-database.js";
-import { requireLifecycleApplied, type RunRecordService } from "./run-record-service.js";
+import { requireLifecycleApplied, type RunRecordService } from "../backend/runs/run-record-service.js";
 import { z } from "zod";
 
 type GateNode = Extract<RuntimeFlowNode, { kind: "gate" }>;

@@ -9,8 +9,8 @@ import { STANDARD_WORKFLOW_ACTIONS, type EnqueuePolicy } from "../../src/domain/
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
 import { createRunLaunchService } from "../../src/dashboard/app/run-launch-model.js";
 import type { RunStartWorkflow } from "../../src/dashboard/surfaces/run-start.js";
-import { projectStartSteps, startStepWireControl } from "../../src/services/start/step-selection.js";
-import { readRerunValues } from "../../src/services/start/rerun-values.js";
+import { projectStartSteps, startStepWireControl } from "../../src/backend/runs/start/step-selection.js";
+import { readRerunValues } from "../../src/backend/runs/start/rerun-values.js";
 import { registerQueueRoutes } from "../../src/backend/transports/dashboard/routes/queue.js";
 import { operatorMutationIngressGuard } from "../../src/backend/transports/dashboard/routes/operator-mutation-ingress.js";
 import { failureStatus } from "../../src/backend/transports/dashboard/routes/failure-status.js";

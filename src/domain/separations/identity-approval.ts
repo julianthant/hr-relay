@@ -10,7 +10,7 @@
  * STRONGER for it.** The command kernel writes a `GateResultRecord` whose
  * `resolvedBy` is `request.requestedBy` and whose `resolvedAt` is the kernel's
  * own `now`, in the same transaction that stores the result and resumes the run
- * (`src/core/command-kernel.ts`, `executeResolveGate`). A caller-supplied
+ * (`src/backend/runs/command-kernel.ts`, `executeResolveGate`). A caller-supplied
  * `approvedBy` would be a CLAIM sitting next to that authority — schema-valid,
  * unverifiable, and free to disagree with it. D110/D114 settled this shape
  * already: "a schema-valid caller-built result is not authority." §14.6 risk 6

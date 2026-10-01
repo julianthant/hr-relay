@@ -1,5 +1,5 @@
 import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D221 — a RETRY of a failed item re-executes its `always-rerun` nodes without
@@ -45,7 +45,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
-import { createCommandKernel } from "../../src/core/command-kernel.js";
+import { createCommandKernel } from "../../src/backend/runs/command-kernel.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
 import { taskSpanPath } from "../../src/core/span-emitter.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";

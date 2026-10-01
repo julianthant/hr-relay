@@ -1,4 +1,4 @@
-import type { BackfillGapNotifier } from "../../src/services/notifications/backfill-gap.js";
+import type { BackfillGapNotifier } from "../../src/backend/runs/notifications/backfill-gap.js";
 
 /**
  * A harness that never exercises cursor recovery owes an explicit refusing

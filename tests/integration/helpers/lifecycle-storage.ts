@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../../src/domain/clock.js";
 export function createRunLifecycleStorage(database: AuthorityDatabase) {

@@ -44,7 +44,7 @@ import type {
   WorkerRuntimeAcknowledgementSchema,
   WorkerRuntimeContext,
   WorkerRuntimeExecutor,
-} from "./command-kernel.js";
+} from "../backend/runs/command-kernel.js";
 import type { ContentAddressedArtifactWriter } from "../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../base/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../base/diagnostics.js";
@@ -75,7 +75,7 @@ import {
 } from "./worker-sessions.js";
 import type { DuoCeremonyGateFactory } from "./duo-ceremony-gate.js";
 
-import { lifecycleCommandId, requireLifecycleApplied, type WorkerRunLifecyclePort, type RunMutationOutcome } from "./run-record-service.js";
+import { lifecycleCommandId, requireLifecycleApplied, type WorkerRunLifecyclePort, type RunMutationOutcome } from "../backend/runs/run-record-service.js";
 
 type WorkerClaimRequest = Readonly<{
   commandId: string;

@@ -3,7 +3,7 @@ DashboardDayWireSchema,
 type DashboardDayWire,
 type QueueSurfaceWire,
 } from "../../../src/domain/dashboard/projection.js";
-import { queueRowActions } from "../../../src/server/dashboard/projectors/queue-row-actions.js";
+import { queueRowActions } from "../../../src/backend/runs/dashboard/projectors/queue-row-actions.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { at,CONFIG_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH,traceOf,uuidOf,WORKFLOW_ID } from "./fixture-identity.js";
 import { FIXTURE_BACKFILL_NOTIFICATIONS,FIXTURE_NOTIFICATIONS } from "./fixture-notifications.js";
@@ -316,7 +316,7 @@ const rawSurfaces: Record<string, unknown>[] = [
 
 /**
  * D81 count semantics, mirrored from the real projection
- * (src/server/dashboard/projectors/run-queue-projection.ts): delegated
+ * (src/backend/runs/dashboard/projectors/run-queue-projection.ts): delegated
  * members are contained in their operation's rollup and EXCLUDED from
  * workflowCounts, statusCounts, and the day total.
  */

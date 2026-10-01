@@ -5,7 +5,7 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt } from "../../src/backend/runs/evidence-receipt.js";
 import {
   LedgerLinePointerSchema,
   resolveLedgerLine,
@@ -17,8 +17,8 @@ import { RunEvidenceReceiptSchema } from "../../src/domain/trust/evidence.js";
 import {
   buildExplainRunView,
   renderExplainRun,
-} from "../../src/server/explain/explain-run.js";
-import { buildRunSection } from "../../src/server/dashboard/queries/run-detail.js";
+} from "../../src/backend/runs/explain/explain-run.js";
+import { buildRunSection } from "../../src/backend/runs/dashboard/queries/run-detail.js";
 import {
   KUALI_EID,
   kualiReceiptEvidence,

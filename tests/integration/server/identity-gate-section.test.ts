@@ -42,7 +42,7 @@ import {
   buildRunDetail,
   buildRunSection,
   type RunDetailQueryDeps,
-} from "../../../src/server/dashboard/queries/run-detail.js";
+} from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import {
   makeWorld,
   queuedEventOf,

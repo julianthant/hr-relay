@@ -22,7 +22,7 @@
  * FALSE and was corrected by the R8 audit
  * (`docs/plans/2026-08-13-detail-fidelity-audit.md`, finding 1): the
  * `parked-write` section projects both resolutions with their `detail`
- * sentences (`src/server/dashboard/queries/run-detail.ts:516-551`) and they
+ * sentences (`src/backend/runs/dashboard/queries/run-detail.ts:516-551`) and they
  * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
  * rendering as bare banner pills, dropping the served `detail` on the floor.
  */

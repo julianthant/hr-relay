@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createNotificationTargetQuery } from "../../../src/server/dashboard/queries/notifications.js";
+import { createNotificationTargetQuery } from "../../../src/backend/runs/dashboard/queries/notifications.js";
 import { notificationRecordOf, runRecordOf, failureRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
 
 describe("notification destinations", () => {

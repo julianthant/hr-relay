@@ -1,15 +1,15 @@
-import type { RunRecordService } from "../../../../core/run-record-service.js";
+import type { RunRecordService } from "../../../runs/run-record-service.js";
 import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
 import type { RunRecord } from "../../../../domain/run/record.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../domain/trust/failure.js";
 import { RunEvidenceReceiptSchema } from "../../../../domain/trust/evidence.js";
-import type { NotificationObservation, NotificationSourceRead } from "../../../../services/notifications/observation.js";
+import type { NotificationObservation, NotificationSourceRead } from "../../../runs/notifications/observation.js";
 import { z } from "zod";
 import { NotificationTriggerEventSchema } from "../../../../domain/notification-triggers.js";
 import { FailureResolutionSchema } from "../../../../domain/trust/failure-resolution.js";
 import { sha256Hex } from "../../../../domain/sha256.js";
 import { canonicalJsonStringify } from "../../../../domain/canonical-json.js";
-import { listCanonicalRuns } from "../../../../server/dashboard/queries/canonical-runs.js";
+import { listCanonicalRuns } from "../../../runs/dashboard/queries/canonical-runs.js";
 
 function observation(event: z.input<typeof NotificationTriggerEventSchema>, identity: string, occurredAt: string): NotificationObservation {
   return { event: NotificationTriggerEventSchema.parse(event), source: { identity: sha256Hex(`notification-occurrence:${event.kind}:${identity}`), occurredAt } };

@@ -195,7 +195,7 @@ describe("P concurrency and historical conversion",()=>{
 });
 
 import { LifecycleSourceSnapshotSchema } from "../../../src/core/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 it("captures an archive without adding usage; archive deletion accounts pending uncertainty exactly once",()=>{
  const f=foundationFixture();const raw=new DatabaseSync(f.path);try{

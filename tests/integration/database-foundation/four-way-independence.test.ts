@@ -8,19 +8,19 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { describe,it } from "vitest";
-import { createAdmittedProviderClient } from "../../../src/core/provider-admission.js";
+import { createAdmittedProviderClient } from "../../../src/backend/runs/provider-admission.js";
 import { createDeterministicProviderHarness } from "../../../src/infra/providers/deterministic-provider.js";
 import { ProviderAdmissionIdSchema, IsoInstantSchema, FingerprintSchema } from "../../../src/domain/ids.js";
 import { composeFailureResolution } from "../../../src/backend/app/dashboard/compose/failure-resolution.js";
-import { bindFailureCapture } from "../../../src/core/failure-resolution.js";
+import { bindFailureCapture } from "../../../src/backend/runs/failure-resolution.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { createRunDiagnosticCapture } from "../../../src/services/trust/run-diagnostic-capture.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createArtifactSinkProjector } from "../../../src/infra/artifacts/artifact-sink-projector.js";
 import { createXlsxRetentionSink } from "../../../src/infra/artifacts/xlsx-retention-sink.js";
 import { projectGeneratedUpdates } from "../../../src/core/generated-artifact-projection.js";
-import { selectRunRuntime,selectNewRunIdentity } from "../../../src/core/run-settings.js";
-import { runRuntimeMatches } from "../../../src/core/run-claim-admission.js";
+import { selectRunRuntime,selectNewRunIdentity } from "../../../src/backend/runs/run-settings.js";
+import { runRuntimeMatches } from "../../../src/backend/runs/run-claim-admission.js";
 import { createRunResourcesFactory } from "../../../src/server/worker/run-resources.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
@@ -85,7 +85,7 @@ describe("F actual four-way baseline independence",()=>{
   }finally{f.dispose();}
  });
  it("freezes four distinct existing source sets with no cross-owner mutable imports",()=>{
-  const scopes:Record<string,string[]>={P:["src/infra/sqlite/provider-accounting.ts","src/core/provider-admission.ts"],D:["src/core/failure-resolution.ts","src/infra/sqlite/failure-resolution.ts","src/server/dashboard/queries/failure-resolution.ts","src/server/dashboard/commands/failure-resolution.ts","src/backend/app/dashboard/compose/failure-resolution.ts","src/server/dashboard/queries/run-trust.ts","src/dashboard/surfaces/trust.tsx","src/dashboard/surfaces/trust-model.ts"],G:["src/core/generated-artifact-projection.ts","src/infra/sqlite/generated-artifacts.ts","src/infra/artifacts/artifact-sink-projector.ts","src/infra/artifacts/xlsx-retention-sink.ts","src/server/dashboard/exports/operator-xlsx-export-service.ts","src/backend/app/dashboard/compose/generated-exports.ts"],S:["src/core/run-settings.ts","src/core/run-claim-admission.ts","src/infra/sqlite/settings-activation.ts","src/server/worker/run-resources.ts","src/server/settings-runtime.ts","src/server/dashboard/commands/settings-service.ts","src/server/dashboard/commands/start-plan-service.ts","src/server/dashboard/queries/settings.ts","src/server/dashboard/queries/settings-editor.ts","src/dashboard/surfaces/settings.tsx","src/dashboard/surfaces/settings-model.ts"]};
+  const scopes:Record<string,string[]>={P:["src/infra/sqlite/provider-accounting.ts","src/backend/runs/provider-admission.ts"],D:["src/backend/runs/failure-resolution.ts","src/infra/sqlite/failure-resolution.ts","src/backend/runs/dashboard/queries/failure-resolution.ts","src/backend/runs/dashboard/commands/failure-resolution.ts","src/backend/app/dashboard/compose/failure-resolution.ts","src/backend/runs/dashboard/queries/run-trust.ts","src/dashboard/surfaces/trust.tsx","src/dashboard/surfaces/trust-model.ts"],G:["src/core/generated-artifact-projection.ts","src/infra/sqlite/generated-artifacts.ts","src/infra/artifacts/artifact-sink-projector.ts","src/infra/artifacts/xlsx-retention-sink.ts","src/backend/runs/exports/operator-xlsx-export-service.ts","src/backend/app/dashboard/compose/generated-exports.ts"],S:["src/backend/runs/run-settings.ts","src/backend/runs/run-claim-admission.ts","src/infra/sqlite/settings-activation.ts","src/server/worker/run-resources.ts","src/server/settings-runtime.ts","src/backend/runs/dashboard/commands/settings-service.ts","src/backend/runs/dashboard/commands/start-plan-service.ts","src/backend/runs/dashboard/queries/settings.ts","src/backend/runs/dashboard/queries/settings-editor.ts","src/dashboard/surfaces/settings.tsx","src/dashboard/surfaces/settings-model.ts"]};
   const all=Object.values(scopes).flat();assert.equal(new Set(all).size,all.length);for(const path of all)assert.ok(existsSync(path),path);
   for(const [owner,files] of Object.entries(scopes))for(const file of files)for(const [peer,others] of Object.entries(scopes))if(owner!==peer)for(const other of others){const name=other.split("/").at(-1)?.replace(/\.tsx?$/u,"");assert.ok(name);assert.equal(readFileSync(file,"utf8").includes(`/${name}.js"`),false,`${owner} imports mutable ${peer}: ${file}`);}
  });

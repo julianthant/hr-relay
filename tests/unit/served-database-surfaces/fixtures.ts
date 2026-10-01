@@ -1,10 +1,10 @@
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { foundationFixture, id, HASH } from "../database-foundation/fixtures.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { createOperatorProjection } from "../../../src/backend/app/dashboard/compose/operator.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { queryQueueSummaries, queryActivitySummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
-import type { ServedSummaryQueries } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { queryQueueSummaries, queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
+import type { ServedSummaryQueries } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 
 export function summaryFixture() {
   const f = foundationFixture();
@@ -27,7 +27,7 @@ import { archiveFixture } from "../archive-transfer/fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import { createDashboardCommandService } from "../../../src/backend/runs/dashboard/commands/command-service.js";
 /** Real HTTP composition with deliberately absent current workflow/detail providers. */
 export function savedHttpFixture(options: Parameters<typeof archiveFixture>[0] = {}) {
   const f = archiveFixture(options);

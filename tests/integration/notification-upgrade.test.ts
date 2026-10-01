@@ -5,7 +5,7 @@ import { storageRecoveryFixture } from "./helpers/storage-recovery-fixture.js";
 import { AuthorityDatabase, OfflineAuthorityRestoreService, RecoveryStopProofStore } from "../helpers/synthetic-storage-admission.js";
 import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
 import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
-import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
+import { createNotificationInbox } from "../../src/backend/runs/notifications/inbox.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { NOTIFICATION } from "../fixtures/phase1c-contract-fixtures.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";

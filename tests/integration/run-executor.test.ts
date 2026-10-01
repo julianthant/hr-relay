@@ -6,7 +6,7 @@ import { RunResultRecordSchema } from "../../src/domain/run/result.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { Hono } from "hono";
 import { registerRunDetailRoutes } from "../../src/backend/transports/dashboard/routes/run-detail.js";
-import { resolveOperationSource } from "../../src/server/dashboard/queries/operation-source.js";
+import { resolveOperationSource } from "../../src/backend/runs/dashboard/queries/operation-source.js";
 import { DatabaseSync } from "node:sqlite";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
@@ -46,9 +46,9 @@ import {
   OPERATION_DISPLAY_FORMAT_VERSION,
   type WorkflowOperationDisplayDeclaration,
 } from "../../src/domain/workflow/operation-display.js";
-import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
-import { buildRunLogsSection } from "../../src/server/dashboard/queries/run-logs.js";
-import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail-types.js";
+import { buildQueuedRun } from "../../src/backend/runs/enqueue.js";
+import { buildRunLogsSection } from "../../src/backend/runs/dashboard/queries/run-logs.js";
+import type { RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail-types.js";
 import { ObservedOperationStructureWireSchema } from "../../src/domain/dashboard/operation-structure.js";
 import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../helpers/synthetic-storage-admission.js";

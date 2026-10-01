@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §6 (D166): the Edit Data core, in three layers.
@@ -26,7 +26,7 @@ import { defineServiceStore, defineTaskStoreRegistry } from "../../src/base/stor
 import { defineTask } from "../../src/base/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { applyCheckpointPatches } from "../../src/core/checkpoint-patch.js";
-import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
+import { createCommandKernel, type CommandKernel } from "../../src/backend/runs/command-kernel.js";
 import {
   executeClaimedRun,
   type RunExecutorDependencies,

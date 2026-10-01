@@ -1,8 +1,8 @@
 import { sqliteRunReader } from "../../../helpers/canonical-run-reader.js";
 import { protectedSecretSource } from "../../../helpers/protected-secret-source.js";
-import { runQueuedSpanEvent } from "../../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../../src/domain/ids.js";
-import { RunRecordService } from "../../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../../src/backend/runs/run-record-service.js";
 /**
  * The T2 world for the `separations` dashboard feature (ref guards-and-tests
  * §10.12): the REAL run/queue projection and the REAL dashboard command service
@@ -41,7 +41,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { AnyWorkflowDescriptor } from "../../../../src/base/workflow.js";
 import { descriptorRuntimeNodes } from "../../../../src/base/workflow.js";
-import { createCommandKernel } from "../../../../src/core/command-kernel.js";
+import { createCommandKernel } from "../../../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../../../src/domain/clock.js";
 import { MatchIdentityOutputSchema } from "../../../../src/domain/contracts/separations/match-identity.js";
 import { UcpathReadJobSummary } from "../../../../src/domain/contracts/ucpath/read-job-summary.js";
@@ -60,13 +60,13 @@ import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workf
 import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
-import { createDashboardCommandService } from "../../../../src/server/dashboard/commands/command-service.js";
-import { createStartPlanService } from "../../../../src/server/dashboard/commands/start-plan-service.js";
+import { createDashboardCommandService } from "../../../../src/backend/runs/dashboard/commands/command-service.js";
+import { createStartPlanService } from "../../../../src/backend/runs/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../../src/backend/app/dashboard/compose.js";
-import { createRunQueueProjection } from "../../../../src/server/dashboard/projectors/run-queue-projection.js";
-import type { RunDetailQueryDeps } from "../../../../src/server/dashboard/queries/run-detail.js";
-import { createReceiptService } from "../../../../src/server/trust/receipt-service.js";
-import { createNotificationInbox } from "../../../../src/services/notifications/inbox.js";
+import { createRunQueueProjection } from "../../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
+import type { RunDetailQueryDeps } from "../../../../src/backend/runs/dashboard/queries/run-detail.js";
+import { createReceiptService } from "../../../../src/backend/runs/trust/receipt-service.js";
+import { createNotificationInbox } from "../../../../src/backend/runs/notifications/inbox.js";
 import { archiveSnapshots } from "../../../fixtures/archive-seams.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../../fixtures/intake-kernel-seams.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../../fixtures/phase1c-contract-fixtures.js";

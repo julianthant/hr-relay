@@ -9,7 +9,7 @@ import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { deriveTraceId } from "../../../src/domain/identifiers.js";
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../src/domain/config/settings.js";

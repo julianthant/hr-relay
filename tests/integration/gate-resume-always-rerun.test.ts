@@ -31,7 +31,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
-import { deriveGateResultCheckpointFingerprint } from "../../src/core/command-kernel.js";
+import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/core/run-executor.js";
 import { taskSpanPath } from "../../src/core/span-emitter.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";

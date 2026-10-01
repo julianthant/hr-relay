@@ -23,7 +23,7 @@
  *
  * ## The leaf rule is the one the provenance collector already uses
  *
- * `src/core/task-provenance.ts` defines an output leaf as: an ARRAY is a leaf,
+ * `src/backend/runs/task-provenance.ts` defines an output leaf as: an ARRAY is a leaf,
  * an empty object is a leaf, a populated object recurses, and everything else
  * is a leaf. This module uses exactly that rule so a receipt fact and the
  * `FactProvenance` row that dates it share one path vocabulary. Inventing a

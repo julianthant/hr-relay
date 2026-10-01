@@ -17,7 +17,7 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
-import { createAdvisoryProviderClient } from "../../src/core/provider-admission.js";
+import { createAdvisoryProviderClient } from "../../src/backend/runs/provider-admission.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { ADVISORY_ANSWER_SCHEMA_HASH } from "../../src/domain/trust/advisory.js";
 import { createDeterministicProviderHarness } from "../../src/infra/providers/deterministic-provider.js";

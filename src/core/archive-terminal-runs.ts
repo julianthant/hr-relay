@@ -6,8 +6,8 @@ import { canonicalJsonStringify, JsonValueSchema } from "../domain/canonical-jso
 import { sha256Hex } from "../domain/sha256.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../infra/sqlite/storage-records.js";
 import type { createRunLifecycleStorage } from "../infra/sqlite/lifecycle-storage.js";
-import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
-import { captureArchiveReport, genericArchiveSection } from "../services/archive/report-capture.js";
+import type { ArchiveSnapshotSource } from "../backend/runs/archive/archive-service.js";
+import { captureArchiveReport, genericArchiveSection } from "../backend/storage/archive/report-capture.js";
 
 type Storage = ReturnType<typeof createRunLifecycleStorage>;
 type Request = Extract<CommandRequest, { type: "archive" }>;

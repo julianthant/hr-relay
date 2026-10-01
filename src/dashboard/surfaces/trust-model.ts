@@ -256,7 +256,7 @@ type ReceiptFact = RunEvidenceReceiptWire["input"][number];
  * The Input section's ONE input-fingerprint footer.
  *
  * `inputFingerprint` is a fact about the RUN (`canonicalInputFingerprint`,
- * `src/core/evidence-receipt.ts`), not about any one field — every fact in
+ * `src/backend/runs/evidence-receipt.ts`), not about any one field — every fact in
  * `receipt.input` whose source is `kind: "input"` carries the identical
  * value. `trust.tsx` used to draw it as `evidenceSourceMeta`'s per-row meta,
  * which printed the same hash on every row (cut to `shortHash`'s 8 chars,

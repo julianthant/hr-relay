@@ -21,7 +21,7 @@ import { afterEach, describe, it } from "vitest";
 import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { deterministicUuid } from "../../../src/server/dashboard/support.js";
+import { deterministicUuid } from "../../../src/backend/runs/support.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import {
   assertNoteWithinRunScope,
@@ -35,7 +35,7 @@ import {
   runNotePartitionScope,
   type RunDetailQueryDeps,
   type RunNoteScanEntry,
-} from "../../../src/server/dashboard/queries/run-detail.js";
+} from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { separationsKualiFinalizationModule } from "../../../src/backend/app/control/step-proof-modules.js";
 import { dataOriginViewsOf } from "../../../src/backend/app/dashboard/compose.js";
 import {

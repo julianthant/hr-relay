@@ -1,5 +1,5 @@
 import type { StorageDoctorWire, StorageDoctorLatestWire } from "../../../../domain/dashboard/storage.js";
-import { buildStorageDoctor } from "../../../../server/dashboard/queries/storage.js";
+import { buildStorageDoctor } from "../../../runs/dashboard/queries/storage.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { StorageRouteDeps } from "./storage-types.js";

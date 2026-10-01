@@ -2,17 +2,17 @@ import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
-import {captureArchiveReport} from "../../../src/services/archive/report-capture.js";
+import {captureArchiveReport} from "../../../src/backend/storage/archive/report-capture.js";
 import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
 import { RunIdSchema } from "../../../src/domain/ids.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { CommandResultSchema, markSettingsCommand } from "../../../src/domain/commands.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The BFF spine end-to-end over REAL machinery: the D109 planner + a real
@@ -69,7 +69,7 @@ import { createActivityPersonPseudonymDomain } from "../../../src/domain/trust/a
 import { createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { PreflightRerunCommandResultSchema } from "../../../src/domain/preflight.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../helpers/synthetic-storage-admission.js";
@@ -85,35 +85,35 @@ import { readTimelineRecords, timelineSpanLocation } from "../../../src/infra/ev
 import {
   createDashboardCommandService,
   deriveBulkChildCommandId,
-} from "../../../src/server/dashboard/commands/command-service.js";
-import type { IntakeService } from "../../../src/server/dashboard/commands/intake-service.js";
-import type { AdvisoryQueryDeps } from "../../../src/server/dashboard/queries/advisory.js";
-import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
+} from "../../../src/backend/runs/dashboard/commands/command-service.js";
+import type { IntakeService } from "../../../src/backend/runs/dashboard/commands/intake-service.js";
+import type { AdvisoryQueryDeps } from "../../../src/backend/runs/dashboard/queries/advisory.js";
+import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
 import { createProviderKeyStore, type ProviderKeyStoreHooks } from "../../helpers/synthetic-storage-admission.js";
-import { createProviderKeyJournal } from "../../../src/server/dashboard/commands/provider-key-journal.js";
-import { providerMarkedFingerprint } from "../../../src/server/dashboard/commands/provider-key-projection.js";
+import { createProviderKeyJournal } from "../../../src/backend/runs/dashboard/commands/provider-key-journal.js";
+import { providerMarkedFingerprint } from "../../../src/backend/runs/dashboard/commands/provider-key-projection.js";
 import { activeProviderKeySlots, admitLocalEnvironmentFile } from "../../../src/domain/secrets.js";
 import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../../../src/domain/config/provider-keys.js";
-import { createStartPlanService, type StartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
+import { createStartPlanService, type StartPlanService } from "../../../src/backend/runs/dashboard/commands/start-plan-service.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import {
   startDashboardHttpServer,
   type DashboardHttpServer,
 } from "../../../src/backend/transports/dashboard/http-server.js";
-import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api.js";
 import { DashboardStreamEnvelopeSchema, type DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
-import type { DiagnosticBundleQueryDeps } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
-import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
-import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
+import type { DiagnosticBundleQueryDeps } from "../../../src/backend/runs/dashboard/queries/diagnostic-bundle.js";
+import { createCrossDateSearchService } from "../../../src/backend/runs/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import type { RequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
-import { RequestIdentityRefusedError } from "../../../src/server/failures.js";
-import type { ArtifactBytesQueryDeps } from "../../../src/server/dashboard/queries/artifact-bytes.js";
+import { RequestIdentityRefusedError } from "../../../src/backend/runs/refusals.js";
+import type { ArtifactBytesQueryDeps } from "../../../src/backend/runs/dashboard/queries/artifact-bytes.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
-import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
+import { activityReportCsv } from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
 import {

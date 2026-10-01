@@ -5,7 +5,7 @@ import { PreflightAdmissionRefusal } from "../../../domain/preflight-admission.j
 import { createWorkerBrowserChannel } from "../../../server/dashboard/worker-browser-channel.js";
 import { WorkerControlRefusal } from "../../../domain/worker-control.js";
 import { notificationWireOf } from "../../../domain/dashboard/projection.js";
-import { createNotificationTargetQuery } from "../../../server/dashboard/queries/notifications.js";
+import { createNotificationTargetQuery } from "../../runs/dashboard/queries/notifications.js";
 import { composeShell } from "./compose/shell.js";
 import { composeActivity } from "./compose/activity.js";
 import { composeQueueSummaries } from "./compose/queue-summaries.js";
@@ -13,7 +13,7 @@ import { composeExplorer } from "./compose/explorer.js";
 import { composeSettings } from "./compose/settings.js";
 import { composeStorage } from "./compose/storage.js";
 import { composeIntake } from "./compose/intake.js";
-import type { ServedSummaryQueries } from "../../../server/dashboard/projectors/run-queue-projection.js";
+import type { ServedSummaryQueries } from "../../runs/dashboard/projectors/run-queue-projection.js";
 import { composeFailureResolution } from "./compose/failure-resolution.js";
 import { localDatePart, runtimeTimeZone } from "../../../domain/clock.js";
 import { EVENT_STREAM_RETENTION_DAYS } from "../../../domain/archive/retention.js";
@@ -28,8 +28,8 @@ export { readGateParks } from "./compose/notifications.js";
 import { createCredentialStore } from "../../../infra/config/credential-store.js";
 import { createProviderKeyStore } from "../../../infra/config/provider-key-store.js";
 import { normalizeProviderBootProvenance, providerBootProvenance, type ProviderBootProvenance } from "../../../domain/config/provider-boot-provenance.js";
-import { createProviderKeyJournal } from "../../../server/dashboard/commands/provider-key-journal.js";
-import { providerMarkedFingerprint } from "../../../server/dashboard/commands/provider-key-projection.js";
+import { createProviderKeyJournal } from "../../runs/dashboard/commands/provider-key-journal.js";
+import { providerMarkedFingerprint } from "../../runs/dashboard/commands/provider-key-projection.js";
 import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
 import { ActorIdSchema } from "../../../domain/ids.js";
 import { hostConfigFacts } from "../../../domain/config/host-display.js";
@@ -90,7 +90,7 @@ import {
   createCommandKernel,
   type WorkerPoolRuntimeAdoption,
   type WriteResolutionExecutor,
-} from "../../../core/command-kernel.js";
+} from "../../runs/command-kernel.js";
 import { createWorkerPoolRuntimeExecutor } from "../../../core/worker-loop.js";
 import type { MonotonicDeadlineScheduler } from "../../../core/deadline-scheduler.js";
 import { isLiveWorker } from "../../../domain/run/worker.js";
@@ -100,7 +100,7 @@ import {
   type WorkerCliLaunchSpec,
   type WorkerProcessSpawner,
 } from "../../../server/dashboard/worker-supervisor.js";
-import { RunRecordService, runContinuationPort } from "../../../core/run-record-service.js";
+import { RunRecordService, runContinuationPort } from "../../runs/run-record-service.js";
 import { createRuntimeVersionChanges } from "../../../core/archive-runtime-version-changes.js";
 import { createStorageRelocationPlanReader } from "../../../core/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../../core/write-recovery.js";
@@ -143,22 +143,22 @@ import { createServerVerifiedArtifactReader } from "../../../infra/artifacts/ser
 
 import { createIntakeParser } from "../../../server/intake/intake-parser.js";
 import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../../../server/settings-runtime.js";
-import { createDashboardCommandService } from "../../../server/dashboard/commands/command-service.js";
-import { createRunWorkerCapacity } from "../../../server/dashboard/commands/run-worker-capacity.js";
-import { runQueuedSpanEvent } from "../../../server/dashboard/commands/run-queued-span.js";
-import { createStartPlanService } from "../../../server/dashboard/commands/start-plan-service.js";
+import { createDashboardCommandService } from "../../runs/dashboard/commands/command-service.js";
+import { createRunWorkerCapacity } from "../../runs/dashboard/commands/run-worker-capacity.js";
+import { runQueuedSpanEvent } from "../../runs/dashboard/commands/run-queued-span.js";
+import { createStartPlanService } from "../../runs/dashboard/commands/start-plan-service.js";
 import { createDashboardApp } from "../../transports/dashboard/routes/api.js";
 import { createSoloRequestIdentityCheckpoint } from "../../transports/dashboard/request-identity.js";
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../transports/dashboard/frontend-owner.js";
 import { startDashboardHttpServer, type DashboardHttpServer } from "../../transports/dashboard/http-server.js";
-import { createAdvisoryProviderClient } from "../../../core/provider-admission.js";
+import { createAdvisoryProviderClient } from "../../runs/provider-admission.js";
 import { produceFailureTriageAdvisory } from "../../../services/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../../infra/providers/gemini-advisory.js";
 import { createProviderPool } from "../../../infra/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../../../server/scheduling/timeout-deadline-scheduler.js";
 import { optionalSecretFamily, providerModelChain } from "../../../domain/secrets.js";
-import type { AdvisoryQueryDeps } from "../../../server/dashboard/queries/advisory.js";
-import { createArchiveSnapshotSource } from "../../../server/dashboard/queries/archive-snapshot.js";
+import type { AdvisoryQueryDeps } from "../../runs/dashboard/queries/advisory.js";
+import { createArchiveSnapshotSource } from "../../runs/dashboard/queries/archive-snapshot.js";
 
 import { createDashboardPreflightRunners } from "../preflight/dashboard-runners.js";
 

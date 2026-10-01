@@ -25,7 +25,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it, vi } from "vitest";
-import { buildRunResult } from "../../src/core/run-result.js";
+import { buildRunResult } from "../../src/backend/runs/run-result.js";
 import type { MonotonicDeadlineScheduler } from "../../src/core/deadline-scheduler.js";
 import { executePreflightRunner } from "../../src/domain/preflight.js";
 import {

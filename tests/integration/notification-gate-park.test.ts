@@ -1,4 +1,4 @@
-import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
+import { createTrustRunReader } from "../../src/backend/runs/trust/canonical-reader.js";
 import { personLookupQueuedRun } from "../helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 /**
@@ -20,8 +20,8 @@ import { manualClock } from "../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { notificationWireOf } from "../../src/domain/dashboard/projection.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { createNotificationInbox, type NotificationPublishReport } from "../../src/services/notifications/inbox.js";
-import { createGateParkNotifier } from "../../src/services/notifications/gate-park.js";
+import { createNotificationInbox, type NotificationPublishReport } from "../../src/backend/runs/notifications/inbox.js";
+import { createGateParkNotifier } from "../../src/backend/runs/notifications/gate-park.js";
 import { NOW, UUID_1, UUID_2 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 

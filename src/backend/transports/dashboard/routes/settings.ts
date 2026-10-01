@@ -1,5 +1,5 @@
-import { buildSettingsFacts } from "../../../../server/dashboard/queries/settings.js";
-import { buildSettingsEditor } from "../../../../server/dashboard/queries/settings-editor.js";
+import { buildSettingsFacts } from "../../../runs/dashboard/queries/settings.js";
+import { buildSettingsEditor } from "../../../runs/dashboard/queries/settings-editor.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { SettingsRouteDeps } from "./settings-types.js";

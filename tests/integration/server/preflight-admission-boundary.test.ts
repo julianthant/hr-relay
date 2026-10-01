@@ -17,10 +17,10 @@ import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.j
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { composeRuntimePreflight } from "../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/backend/app/preflight/runtime-runners.js";
-import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
-import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { selectRunRuntime } from "../../../src/core/run-settings.js";
+import { createStartPlanService } from "../../../src/backend/runs/dashboard/commands/start-plan-service.js";
+import { createCommandKernel, type CommandKernelDependencies } from "../../../src/backend/runs/command-kernel.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
+import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { claimWithPreflight, preflightSessionFactory } from "../../../src/backend/app/preflight/worker-admission.js";
 import { createPreflightReportService } from "../../../src/server/preflight/report-service.js";
 import { PreflightAdmissionRefusal } from "../../../src/domain/preflight-admission.js";
@@ -31,7 +31,7 @@ import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 import { NO_INTAKE_PROJECTIONS, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import type { RuntimeCapability } from "../../../src/domain/preflight-contract.js";
-import { workflowPreflightScope } from "../../../src/services/start/preflight-scope.js";
+import { workflowPreflightScope } from "../../../src/backend/runs/start/preflight-scope.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 
 const cleanup: (() => void)[] = [];

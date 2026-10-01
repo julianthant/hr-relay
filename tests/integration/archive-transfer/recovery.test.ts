@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 
 it.each([false, true])("transfers a frozen terminal parent/child tree; dependency evidence=%s", (withDependency) => {
@@ -172,8 +172,8 @@ it("fences production annotations during an applying transfer and preserves exac
   } finally { f.dispose(); }
 });
 
-import { versionApplyResumeRequest } from "../../../src/server/dashboard/queries/archive.js";
-import { bindVersionApplyRequest } from "../../../src/server/dashboard/commands/version-review-binding.js";
+import { versionApplyResumeRequest } from "../../../src/backend/runs/dashboard/queries/archive.js";
+import { bindVersionApplyRequest } from "../../../src/backend/runs/dashboard/commands/version-review-binding.js";
 it("authenticates exact dashboard apply recovery from the durable claim after reopening", () => {
   const f = archiveFixture();
   try {

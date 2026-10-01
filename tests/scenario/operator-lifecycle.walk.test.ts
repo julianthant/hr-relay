@@ -1,13 +1,13 @@
 import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
-import { genericArchiveSection } from "../../src/services/archive/report-capture.js";
+import { genericArchiveSection } from "../../src/backend/storage/archive/report-capture.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { LifecycleSourceSnapshotSchema } from "../../src/domain/archive/lifecycle-source.js";
-import { projectArchiveReport, queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
-import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { projectArchiveReport, queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";
+import { runQueuedSpanEvent } from "../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../src/domain/ids.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 /**
  * The operator lifecycle, walked ACROSS the 2h/2i slices (2j, D185).
  *
@@ -69,8 +69,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import type { AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import { createCommandKernel } from "../../src/core/command-kernel.js";
-import { buildRunResult } from "../../src/core/run-result.js";
+import { createCommandKernel } from "../../src/backend/runs/command-kernel.js";
+import { buildRunResult } from "../../src/backend/runs/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { CommandResultSchema } from "../../src/domain/commands.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
@@ -80,17 +80,17 @@ import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.
 import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
-import { createDashboardCommandService } from "../../src/server/dashboard/commands/command-service.js";
-import { publicVersionReviewFingerprint } from "../../src/server/dashboard/commands/version-review-binding.js";
-import { createIntakeService } from "../../src/server/dashboard/commands/intake-service.js";
+import { createNotificationInbox } from "../../src/backend/runs/notifications/inbox.js";
+import { createDashboardCommandService } from "../../src/backend/runs/dashboard/commands/command-service.js";
+import { publicVersionReviewFingerprint } from "../../src/backend/runs/dashboard/commands/version-review-binding.js";
+import { createIntakeService } from "../../src/backend/runs/dashboard/commands/intake-service.js";
 import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
-import { createRunQueueProjection } from "../../src/server/dashboard/projectors/run-queue-projection.js";
+import { createRunQueueProjection } from "../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 
-import { buildRunDetail } from "../../src/server/dashboard/queries/run-detail.js";
-import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
+import { buildRunDetail } from "../../src/backend/runs/dashboard/queries/run-detail.js";
+import type { RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail.js";
 import { createIntakeParser } from "../../src/server/intake/intake-parser.js";
-import { createReceiptService } from "../../src/server/trust/receipt-service.js";
+import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { archiveSnapshots } from "../fixtures/archive-seams.js";
 import {
   INTAKE_FIXTURE_WORKFLOW_ID,

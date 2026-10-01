@@ -36,11 +36,11 @@ import type { ActionTarget } from "../../../src/dashboard/surfaces/actions.js";
 import {
   createCommandKernel,
   type CommandKernel,
-} from "../../../src/core/command-kernel.js";
+} from "../../../src/backend/runs/command-kernel.js";
 import {
   lifecycleCommandId,
   RunRecordService,
-} from "../../../src/core/run-record-service.js";
+} from "../../../src/backend/runs/run-record-service.js";
 import { deriveItemId } from "../../../src/domain/identifiers.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {

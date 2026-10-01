@@ -17,9 +17,9 @@ import type {
   IntakeParser,
   IntakeProjectionResolver,
   RunConfigIdentity,
-} from "../../src/core/command-kernel.js";
+} from "../../src/backend/runs/command-kernel.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
-import type { IntakeService } from "../../src/server/dashboard/commands/intake-service.js";
+import type { IntakeService } from "../../src/backend/runs/dashboard/commands/intake-service.js";
 
 /**
  * The D171 config identity for a kernel that enqueues no intake manifest.

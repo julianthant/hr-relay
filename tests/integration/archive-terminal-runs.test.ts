@@ -6,7 +6,7 @@ import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../fixtures/phase1c-contract-fixtures.js";
-import { queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
+import { queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";
 
 function request(f: ReturnType<typeof archiveFixture>, over: Record<string, unknown> = {}) {
   const run = f.database.authority.runs.get(f.base.run.envelope.runId);

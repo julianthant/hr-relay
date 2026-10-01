@@ -7,7 +7,7 @@ import { defineTaskStoreRegistry } from "../../src/base/store.js";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import type { RerunValueMappingSpec } from "../../src/domain/workflow/rerun-values.js";
-import type { RerunValuesDependencies } from "../../src/services/start/rerun-values.js";
+import type { RerunValuesDependencies } from "../../src/backend/runs/start/rerun-values.js";
 import { sourceBoundHarness } from "../integration/fixtures/source-bound-fixtures.js";
 import { sourceBoundReadContract as contract, sourceBoundReadDescriptor as original, sourceBoundReadStores } from "./source-bound-read-fixtures.js";
 

@@ -1,11 +1,11 @@
 import type { WorkerLeaseRecord } from "../../../../domain/run/worker.js";
-import { RunRecordService } from "../../../../core/run-record-service.js";
+import { RunRecordService } from "../../../runs/run-record-service.js";
 
 import {
   AuthorityDatabase,
 } from "../../../../infra/sqlite/index.js";
 
-import { createRunQueueProjection } from "../../../../server/dashboard/projectors/run-queue-projection.js";
+import { createRunQueueProjection } from "../../../runs/dashboard/projectors/run-queue-projection.js";
 
 export function createOperatorProjection(input: Omit<Parameters<typeof createRunQueueProjection>[0], "authority" | "timeline"> & { database: AuthorityDatabase; ownsWorker?: (lease: WorkerLeaseRecord) => boolean; reader: Pick<RunRecordService, "read" | "list"> }) {
   const { stateRoot, clock, appVersion, descriptorSetHash, ledger, database, descriptors } = input;

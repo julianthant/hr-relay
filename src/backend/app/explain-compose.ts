@@ -19,14 +19,14 @@ import { descriptorRuntimeNodes } from "../../base/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../domain/ids.js";
 import { AuthorityDatabase } from "../../infra/sqlite/index.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
-import { createTrustRunReader } from "../../server/trust/canonical-reader.js";
-import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from "../../server/trust/run-reader.js";
-import { createReceiptService } from "../../server/trust/receipt-service.js";
+import { createTrustRunReader } from "../runs/trust/canonical-reader.js";
+import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from "../runs/trust/run-reader.js";
+import { createReceiptService } from "../runs/trust/receipt-service.js";
 import {
   buildExplainRunView,
   renderExplainRun,
   type ExplainRunEvidence,
-} from "../../server/explain/explain-run.js";
+} from "../runs/explain/explain-run.js";
 
 export interface ExplainComposeInput {
   readonly admission?: RuntimeAdmission;

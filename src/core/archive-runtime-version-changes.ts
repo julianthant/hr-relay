@@ -13,8 +13,8 @@ import type { CommandRequest } from "../domain/commands.js";
 import type { AuthorityDatabase } from "../infra/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../infra/sqlite/storage-records.js";
 import { createRunLifecycleStorage } from "../infra/sqlite/lifecycle-storage.js";
-import type { ArchiveSnapshotSource } from "../services/archive/archive-service.js";
-import { captureArchiveReport, genericArchiveSection } from "../services/archive/report-capture.js";
+import type { ArchiveSnapshotSource } from "../backend/runs/archive/archive-service.js";
+import { captureArchiveReport, genericArchiveSection } from "../backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../services/archive/archive-transfer.js";
 
 export function createRuntimeVersionChanges(deps: Readonly<{

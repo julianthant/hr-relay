@@ -2,7 +2,7 @@ import { FingerprintSchema, PositiveIntSchema } from "../../../src/domain/ids.js
 import { manualClock } from "../../../src/domain/clock.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
-import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
+import { buildSettingsEditor } from "../../../src/backend/runs/dashboard/queries/settings-editor.js";
 import { SETTINGS_SCHEMA_HASH, derivePersistedSettingsFingerprint, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { ConfigSchema, type SettingsOverride } from "../../../src/domain/config/schema.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
@@ -12,7 +12,7 @@ import { createProtectedSettingsRuntimeReader } from "../../../src/server/settin
 import {
 type SettingsFactsWire
 } from "../../../src/domain/dashboard/settings.js";
-import { buildSettingsFacts } from "../../../src/server/dashboard/queries/settings.js";
+import { buildSettingsFacts } from "../../../src/backend/runs/dashboard/queries/settings.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { FIXTURE_NOW } from "./fixture-identity.js";
 

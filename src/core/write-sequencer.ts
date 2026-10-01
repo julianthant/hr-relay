@@ -278,7 +278,7 @@ export interface WriteSequencerHooks {
   afterSequencedStep?(step: SequencedWriteCommitStep): void;
 }
 
-import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunContinuationPort, type WorkerRunLifecyclePort } from "./run-record-service.js";
+import { lifecycleCommandId, requireLifecycleApplied, RunLifecycleRefusedError, type RunContinuationPort, type WorkerRunLifecyclePort } from "../backend/runs/run-record-service.js";
 
 export interface WriteSequencerDependencies {
   readonly lifecycle: Pick<WorkerRunLifecyclePort, "workerTransition">;

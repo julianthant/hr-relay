@@ -1,7 +1,7 @@
 import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
 import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspection.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../infra/sqlite/lifecycle-storage.js";
-import { RunRecordService } from "../../core/run-record-service.js";
+import { RunRecordService } from "../runs/run-record-service.js";
 /**
  * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
  * §2.5).
@@ -56,7 +56,7 @@ import type {
 import {
   descriptorSetHash,
 } from "./dashboard/compose.js";
-import { createRunQueueProjection } from "../../server/dashboard/projectors/run-queue-projection.js";
+import { createRunQueueProjection } from "../runs/dashboard/projectors/run-queue-projection.js";
 import { createTransactionHistory } from "../../infra/sqlite/transaction-history.js";
 import {
   OfflineSpanRootRepairService,

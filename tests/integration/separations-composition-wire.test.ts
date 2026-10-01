@@ -38,8 +38,8 @@ import { SeparationWritePlanSchema } from "../../src/domain/separations/write-pl
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { parseInputRunText, toRawSubmission } from "../../src/domain/workflow/ingress.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { buildRunSection, type RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
-import { planStart } from "../../src/services/start/plan.js";
+import { buildRunSection, type RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail.js";
+import { planStart } from "../../src/backend/runs/start/plan.js";
 import { deriveJobRowFromCells } from "../../src/stores/ucpath/driver/person-org-operation.js";
 import { HASH_A, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";

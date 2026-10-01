@@ -1,7 +1,7 @@
-import { createActivitySelectionService } from "../../../../server/dashboard/queries/activity-selection.js";
+import { createActivitySelectionService } from "../../../runs/dashboard/queries/activity-selection.js";
 import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
 import { runtimeTimeZone, type Clock } from "../../../../domain/clock.js";
-import { queryActivitySummaries } from "../../../../server/dashboard/queries/activity-summaries.js";
+import { queryActivitySummaries } from "../../../runs/dashboard/queries/activity-summaries.js";
 import type { ActivityRouteDeps } from "../../../transports/dashboard/routes/activity-types.js";
 
 type ActivitySummaryDeps = Omit<Parameters<typeof queryActivitySummaries>[2], "timeZone">;

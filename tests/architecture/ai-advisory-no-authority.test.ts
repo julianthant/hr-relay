@@ -70,7 +70,7 @@ const ADVISORY_ROOTS = [
   "src/domain/dashboard/advisory.ts",
   "src/services/trust/advisory.ts",
   "src/infra/providers/gemini-advisory.ts",
-  "src/server/dashboard/queries/advisory.ts",
+  "src/backend/runs/dashboard/queries/advisory.ts",
 ] as const;
 
 /** Anything that can move durable authority. Prefix match. */
@@ -78,11 +78,11 @@ const AUTHORITY_WRITERS = [
   "src/infra/sqlite/",
   "src/core/run-executor.ts",
   "src/core/worker-loop.ts",
-  "src/core/command-kernel.ts",
-  "src/core/terminal-authorization.ts",
+  "src/backend/runs/command-kernel.ts",
+  "src/backend/runs/terminal-authorization.ts",
   "src/core/write-sequencer.ts",
   "src/core/write-recovery.ts",
-  "src/core/evidence-receipt.ts",
+  "src/backend/runs/evidence-receipt.ts",
   "src/core/run-failure.ts",
   "src/services/trust/diagnostic-capture.ts",
   "src/services/notifications/",
@@ -96,7 +96,7 @@ const AUTHORITY_WRITERS = [
 /** The command family, which may never import an advisory module. */
 const COMMAND_FAMILY = [
   "src/domain/commands.ts",
-  "src/core/command-kernel.ts",
+  "src/backend/runs/command-kernel.ts",
   "src/server/dashboard/commands/",
 ] as const;
 

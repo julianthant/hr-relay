@@ -11,7 +11,7 @@ import {
 } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { AuthorityUpgradeRecordSchema } from "../../src/domain/authority.js";
-import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
+import { buildStorageDoctor } from "../../src/backend/runs/dashboard/queries/storage.js";
 import { systemClock } from "../../src/domain/clock.js";
 import { tmpdir } from "node:os";
 import { join } from "node:path";

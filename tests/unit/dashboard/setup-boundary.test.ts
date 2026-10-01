@@ -7,7 +7,7 @@ import { PREFLIGHT_CHECKS } from "../../../src/domain/runtime-dependencies.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema, ActorIdSchema } from "../../../src/domain/ids.js";
 import { registerSettingsPreflightRoutes } from "../../../src/backend/transports/dashboard/routes/settings-preflight.js";
-import { buildBootstrap } from "../../../src/server/dashboard/queries/bootstrap.js";
+import { buildBootstrap } from "../../../src/backend/runs/dashboard/queries/bootstrap.js";
 import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 
 it("independent Setup consumer reads production readiness and reruns/replays the real preflight authority", async () => {

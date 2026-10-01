@@ -2,7 +2,7 @@ import { composeRuntimePreflight, type RuntimePreflight } from "../preflight/run
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { createCredentialStore } from "../../../infra/config/credential-store.js";
 import { assertNoMigratedEnvironmentKeys } from "../../../domain/secrets.js";
-import { RunRecordService, type RunRecordServiceDependencies } from "../../../core/run-record-service.js";
+import { RunRecordService, type RunRecordServiceDependencies } from "../../runs/run-record-service.js";
 import { hostConfigFacts } from "../../../domain/config/host-display.js";
 /** Real-service runtime behind `cli dry-run-scenario`. */
 import { readFileSync } from "node:fs";
@@ -17,12 +17,12 @@ import { separationsKualiFinalizationModule } from "../control/step-proof-module
 import {
   createCommandKernel,
   type CommandKernel,
-} from "../../../core/command-kernel.js";
+} from "../../runs/command-kernel.js";
 import type { DuoCeremonyGateFactory } from "../../../core/duo-ceremony-gate.js";
 import type {
   DryRunScenarioRuntime,
   DryRunScenarioStarted,
-} from "../../../core/dry-run-scenario-runner.js";
+} from "../../runs/dry-run-scenario-runner.js";
 import type { Clock } from "../../../domain/clock.js";
 import { resolveConfigWithProvenance } from "../config/resolve.js";
 import { MatchIdentityOutputSchema } from "../../../domain/contracts/separations/match-identity.js";
@@ -38,12 +38,12 @@ import { createTimelineEmitter } from "../../../infra/events/timeline-emitter.js
 import { AuthorityDatabase } from "../../../infra/sqlite/index.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
 import type { ProcessIdentityObserver } from "../../../infra/sqlite/runtime-process-locks.js";
-import { createStartPlanService } from "../../../server/dashboard/commands/start-plan-service.js";
-import { runQueuedSpanEvent } from "../../../server/dashboard/commands/run-queued-span.js";
+import { createStartPlanService } from "../../runs/dashboard/commands/start-plan-service.js";
+import { runQueuedSpanEvent } from "../../runs/dashboard/commands/run-queued-span.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../../../server/settings-runtime.js";
-import { createTrustRunReader } from "../../../server/trust/canonical-reader.js";
-import { requireTrustRun, assertTrustEvidenceIdentity } from "../../../server/trust/run-reader.js";
-import { createReceiptService } from "../../../server/trust/receipt-service.js";
+import { createTrustRunReader } from "../../runs/trust/canonical-reader.js";
+import { requireTrustRun, assertTrustEvidenceIdentity } from "../../runs/trust/run-reader.js";
+import { createReceiptService } from "../../runs/trust/receipt-service.js";
 import { composeWorkerRuntime } from "../worker-compose.js";
 
 const PackageVersionSchema = z.strictObject({ version: z.string().min(1) }).loose();

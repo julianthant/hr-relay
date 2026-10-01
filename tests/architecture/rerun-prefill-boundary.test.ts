@@ -1,6 +1,6 @@
 import { sourceBoundHarness } from "../integration/fixtures/source-bound-fixtures.js";
 import { absentProbeEvidence, WRITE_FIXTURE_EID } from "../fixtures/write-sequencer-fixtures.js";
-import { buildRerunPlan } from "../../src/services/start/rerun.js";
+import { buildRerunPlan } from "../../src/backend/runs/start/rerun.js";
 import { RerunSourceSchema } from "../../src/domain/run/rerun.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 /** D334 retains descriptor field-shape controls and replaces the save boundary
@@ -13,7 +13,7 @@ import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import {
   PHASE1_ACTIVE_COMMAND_ARMS,
   PHASE1_DEFERRED_COMMAND_ARMS,
-} from "../../src/core/command-kernel.js";
+} from "../../src/backend/runs/command-kernel.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import {

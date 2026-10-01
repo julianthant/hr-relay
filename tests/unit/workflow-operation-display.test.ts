@@ -43,9 +43,9 @@ import type {
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { buildQueuedRun } from "../../src/services/runs/enqueue.js";
+import { buildQueuedRun } from "../../src/backend/runs/enqueue.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
-import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";
+import { buildWorkflowExplorer } from "../../src/backend/runs/dashboard/queries/explorer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 import { fixtureBuildManifest } from "../fixtures/workflow-definition-fixtures.js";

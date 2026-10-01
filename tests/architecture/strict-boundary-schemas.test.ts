@@ -20,7 +20,7 @@ import { AUTHORITY_TABLE_REGISTRY, AuthorityTableRegistrySchema, TableSpecSchema
 import { RebuildArtifactRootSchema } from "../../src/config/define-runtime-isolation.js";
 import { ArtifactPutMetadataSchema, ArtifactRefSchema } from "../../src/domain/artifacts.js";
 import { BoundaryFailureSchema } from "../../src/domain/boundary-failure.js";
-import { TerminalDependencyEvidenceSchema } from "../../src/core/run-result.js";
+import { TerminalDependencyEvidenceSchema } from "../../src/backend/runs/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   BulkRunCommandRequestSchema,
@@ -92,7 +92,7 @@ import {
 import {
   ProviderDenialDispositionSchema,
   ProviderDenialRunContextSchema,
-} from "../../src/core/provider-admission.js";
+} from "../../src/backend/runs/provider-admission.js";
 import {
   buildPreflightReport,
   PreflightObservationSchema,

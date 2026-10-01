@@ -20,7 +20,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
-import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt, type ReceiptBuildInput } from "../../src/backend/runs/evidence-receipt.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   RunCheckpointRecordSchema,
@@ -35,7 +35,7 @@ import {
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import type { RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
 import { evidenceEntryRef } from "../../src/domain/trust/evidence-identity.js";
-import { buildExplainRunView, renderExplainRun } from "../../src/server/explain/explain-run.js";
+import { buildExplainRunView, renderExplainRun } from "../../src/backend/runs/explain/explain-run.js";
 import { EXIT_RUN_ID, seedPersonLookupExitRun } from "../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 

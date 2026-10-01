@@ -1,16 +1,16 @@
 import type { TrustRouteDeps } from "./trust-types.js";
 
-import { readRunSection } from "../../../../server/dashboard/queries/run-detail.js";
+import { readRunSection } from "../../../runs/dashboard/queries/run-detail.js";
 import {
   readDiagnosticBundle,
   readDiagnosticBundleAttachment,
   prepareLiveDiagnosticArtifactLease,
-} from "../../../../server/dashboard/queries/diagnostic-bundle.js";
+} from "../../../runs/dashboard/queries/diagnostic-bundle.js";
 import {
   IndexedArtifactBytesMissingError,
-} from "../../../../server/dashboard/queries/artifact-bytes.js";
+} from "../../../runs/dashboard/queries/artifact-bytes.js";
 
-import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../../../server/failures.js";
+import { DiagnosticBundleBytesMissingError, SectionUnavailableError } from "../../../runs/refusals.js";
 
 import { verifiedByteResponse } from "./verified-byte-response.js";
 import type { DashboardApp } from "./api-types.js";

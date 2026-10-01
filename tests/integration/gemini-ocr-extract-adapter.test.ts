@@ -26,7 +26,7 @@ import { createGeminiOcrExtractAdapter } from "../../src/infra/providers/gemini-
 import {
   createAdmittedProviderClient,
   type MonotonicDeadlineScheduler,
-} from "../../src/core/provider-admission.js";
+} from "../../src/backend/runs/provider-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema } from "../../src/domain/config/schema.js";

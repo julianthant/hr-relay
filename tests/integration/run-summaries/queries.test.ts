@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { foundationFixture,id,NOW } from "../../unit/database-foundation/fixtures.js";
-import { queryQueueSummaries,queryActivitySummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
+import { queryQueueSummaries,queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
 import { runtimeTimeZone } from "../../../src/domain/clock.js";

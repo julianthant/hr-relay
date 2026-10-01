@@ -16,7 +16,7 @@ import { JsonValueSchema, canonicalJsonStringify } from "../../domain/canonical-
 import { sha256Hex } from "../../domain/sha256.js";
 import { deriveStableUuid } from "../../domain/identifiers.js";
 import { archivedRunReferenceFingerprint } from "../../domain/archive/model.js";
-import { captureArchiveReport, genericArchiveSection } from "./report-capture.js";
+import { captureArchiveReport, genericArchiveSection } from "../../backend/storage/archive/report-capture.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../infra/sqlite/storage-records.js";
 
 type Storage = ReturnType<typeof createRunLifecycleStorage>;

@@ -27,7 +27,7 @@ import { IdentityApprovalResultSchema } from "../../../src/domain/separations/id
 import {
   buildRunDetail,
   type RunDetailQueryDeps,
-} from "../../../src/server/dashboard/queries/run-detail.js";
+} from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { terminalOutcomeText } from "../../../src/dashboard/surfaces/log-panel-model.js";
 import {
   makeWorld,

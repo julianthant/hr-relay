@@ -5,7 +5,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
 import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { activityReportCsv } from "../../../src/server/dashboard/queries/activity-export.js";
+import { activityReportCsv } from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { id, NOW } from "../../unit/database-foundation/fixtures.js";
 
@@ -42,11 +42,11 @@ import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
 import { ledgerCommitFixture } from "../../fixtures/ledger-projection-fixtures.js";
 import { atomicWriteCheckpoint } from "../../helpers/timeline-write-fixture.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { createOperatorProjection } from "../../../src/backend/app/dashboard/compose/operator.js";
-import { queryQueueSummaries, queryActivitySummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
-import { composeOperatorXlsxWorkbook } from "../../../src/server/dashboard/exports/operator-xlsx-workbook.js";
-import { projectArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
+import { queryQueueSummaries, queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
+import { composeOperatorXlsxWorkbook } from "../../../src/backend/runs/exports/operator-xlsx-workbook.js";
+import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import readXlsxFile from "read-excel-file/node";
 

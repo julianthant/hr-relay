@@ -1,6 +1,6 @@
 import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
@@ -10,7 +10,7 @@ import { describe, it } from "vitest";
 import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
-import { projectArchiveReport, readArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
+import { projectArchiveReport, readArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 
 describe("L independent baseline capabilities", () => {
@@ -73,7 +73,7 @@ describe("L composed transfer and summary independence", () => {
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { DatabaseSync } from "node:sqlite";
 
 describe("L retained retry ownership",()=>{

@@ -18,7 +18,7 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { WriteIntentRecordSchema } from "../../src/domain/write-safety.js";
-import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt } from "../../src/backend/runs/evidence-receipt.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { protectedInputBindings } from "../../src/domain/protected-input.js";
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";

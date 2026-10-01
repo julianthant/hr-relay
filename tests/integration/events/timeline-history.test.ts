@@ -1,5 +1,5 @@
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, UUID_5, UUID_6, LEDGER_PAYLOAD, SPAN_OUTBOX_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
 import { reconstructConfirmedOperation } from "../../../src/events/confirmed-operation.js";

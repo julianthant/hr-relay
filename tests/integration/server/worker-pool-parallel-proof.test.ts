@@ -1,6 +1,6 @@
 import { installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../helpers/admission-fixture.js";
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 /**
  * W5 (ref execution-and-sessions §7.1 / §11, D271): the automated two-child
  * PARALLEL proof for the dashboard worker supervisor — §7.1's standing rule
@@ -45,7 +45,7 @@ import {
   type CommandKernel,
   type CommandKernelDependencies,
   type WorkerPoolRuntimeSeam,
-} from "../../../src/core/command-kernel.js";
+} from "../../../src/backend/runs/command-kernel.js";
 import { poolWorkerId, type WorkerPoolMember } from "../../../src/core/worker-loop.js";
 import { manualClock, systemClock, type Clock, type TestClock } from "../../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";

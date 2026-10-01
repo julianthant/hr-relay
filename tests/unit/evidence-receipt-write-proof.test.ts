@@ -21,7 +21,7 @@ import {
   ensureRunEvidenceReceipt,
   type EvidenceReceiptStore,
   type ReceiptWriteEvidence,
-} from "../../src/core/evidence-receipt.js";
+} from "../../src/backend/runs/evidence-receipt.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { RunEvidenceReceiptSchema, type RunEvidenceReceipt } from "../../src/domain/trust/evidence.js";
 import { sha256Hex } from "../../src/domain/sha256.js";

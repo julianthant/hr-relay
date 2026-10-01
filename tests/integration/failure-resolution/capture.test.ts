@@ -2,9 +2,9 @@ import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
-import { projectFailureResolution } from "../../../src/server/dashboard/queries/failure-resolution.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
+import { buildTrustSection } from "../../../src/backend/runs/dashboard/queries/run-trust.js";
+import { projectFailureResolution } from "../../../src/backend/runs/dashboard/queries/failure-resolution.js";
 import { resolutionFixture, resolutionCommand, resolutionReadDeps } from "../../unit/failure-resolution/fixtures.js";
 
 describe("D capture identity and served resolution", () => {
@@ -69,7 +69,7 @@ it("corrupt protected annotation JSON fails by name without echoing private text
 });
 
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { projectArchiveReport } from "../../../src/infra/sqlite/archive-records.js";
 import { NOW } from "../../unit/database-foundation/fixtures.js";
 

@@ -29,8 +29,8 @@ import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
 } from "../../../../domain/dashboard/subscription.js";
-import type { RunQueueProjection, RunQueueProjectionChange } from "../../../../server/dashboard/projectors/run-queue-projection.js";
-import type { BackfillGapNotifier } from "../../../../services/notifications/backfill-gap.js";
+import type { RunQueueProjection, RunQueueProjectionChange } from "../../../runs/dashboard/projectors/run-queue-projection.js";
+import type { BackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 
 const CURSOR_PATTERN = /^pc:([1-9]\d*)$/;
 

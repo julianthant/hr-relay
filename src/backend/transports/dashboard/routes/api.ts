@@ -30,7 +30,7 @@ import { Hono } from "hono";
 
 import {
   ArchivedCaptureReadError,
-} from "../../../../server/dashboard/queries/archive.js";
+} from "../../../runs/dashboard/queries/archive.js";
 import { staticBundleHandler } from "../static-bundle.js";
 import { operatorMutationIngressGuard, operatorOpaqueIngressGuard } from "./operator-mutation-ingress.js";
 import {

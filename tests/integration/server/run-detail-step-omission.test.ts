@@ -11,8 +11,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
-import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
-import type { RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail.js";
+import { buildRunDetail } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
+import type { RunDetailDescriptorView } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import {
   ARCHIVED_NOT_RUN_NOTE,

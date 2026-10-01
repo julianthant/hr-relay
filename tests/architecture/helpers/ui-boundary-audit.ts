@@ -107,11 +107,11 @@ function durableArchiveCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
   if (!ts.isObjectLiteralExpression(object)) return false;
   const contextual = checker.getContextualType(object);
   if (contextual === undefined || contextual.getSymbol()?.name !== "CommandApplication"
-    || contextual.getSymbol()?.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith("/src/core/command-application.ts")) !== true) return false;
+    || contextual.getSymbol()?.declarations?.some(declaration => declaration.getSourceFile().fileName.replaceAll("\\", "/").endsWith("/src/backend/runs/command-application.ts")) !== true) return false;
   let enclosing: ts.Node = object;
   while (!ts.isFunctionLike(enclosing) && enclosing.parent !== undefined) enclosing = enclosing.parent;
   if (!ts.isFunctionDeclaration(enclosing) || enclosing.type === undefined || !ts.isTypeReferenceNode(enclosing.type)
-    || !declaredSymbol(checker, enclosing.type.typeName, "CommandApplication", "src/core/command-application.ts")) return false;
+    || !declaredSymbol(checker, enclosing.type.typeName, "CommandApplication", "src/backend/runs/command-application.ts")) return false;
   const inspectedTypes = new Set<ts.Type>();
   function browserDescendant(type: ts.Type, location: ts.Node): boolean {
     if (inspectedTypes.has(type)) return false;

@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, expect, it } from "vitest";
-import { executeStorageRelocationCommand } from "../../../src/core/command-kernel.js";
+import { executeStorageRelocationCommand } from "../../../src/backend/runs/command-kernel.js";
 import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { manualClock } from "../../../src/domain/clock.js";

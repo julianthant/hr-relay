@@ -6,7 +6,7 @@ import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { id } from "../../unit/database-foundation/fixtures.js";
 
 it.each(["canonical disposition", "saved report", "other retained attachment"] as const)(
@@ -40,7 +40,7 @@ it.each(["canonical disposition", "saved report", "other retained attachment"] a
 import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
 import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, ArchivedCaptureResourceWireSchema } from "../../../src/domain/dashboard/archive.js";
-import { readArchiveReport } from "../../../src/server/dashboard/queries/archive-reports.js";
+import { readArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 
 it("serves standalone saved reports and exact retained bytes after transfer and restart; refuses foreign, corrupt, missing and deleted attachments", async () => {
   const f = savedHttpFixture();

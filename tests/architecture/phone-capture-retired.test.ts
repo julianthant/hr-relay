@@ -86,7 +86,7 @@ describe("D294 phone capture retirement", () => {
   it("keeps mobile document capture absent while diagnostic and Archive captures remain", () => {
     assert.deepEqual(phoneCaptureRetirementViolations(REPO_ROOT), []);
     assert.ok(existsSync(join(REPO_ROOT, "src/dashboard/surfaces/run-captures.tsx")));
-    assert.ok(existsSync(join(REPO_ROOT, "src/server/dashboard/queries/archive.ts")));
+    assert.ok(existsSync(join(REPO_ROOT, "src/backend/runs/dashboard/queries/archive.ts")));
   });
 
   it("fails on a returning page, route, command, config, or repository", () => {

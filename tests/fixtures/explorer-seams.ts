@@ -17,11 +17,11 @@ import {
   EXPLORER_SOURCE_ROOT,
   readScenarioSources,
   type ExplorerQueryDeps,
-} from "../../src/server/dashboard/queries/explorer.js";
+} from "../../src/backend/runs/dashboard/queries/explorer.js";
 import {
   readCommittedUiCatalog,
   type UiCatalogQueryDeps,
-} from "../../src/server/dashboard/queries/ui-catalog.js";
+} from "../../src/backend/runs/dashboard/queries/ui-catalog.js";
 import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
 
 /** The same anchor production uses, so a harness cannot read a different tree. */

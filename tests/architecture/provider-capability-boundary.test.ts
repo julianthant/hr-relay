@@ -44,7 +44,7 @@ function isProviderConsumer(path: string): boolean {
  */
 const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/base/providers.ts",
-  "src/core/provider-admission.ts",
+  "src/backend/runs/provider-admission.ts",
   "src/core/run-executor.ts",
   // D178. Ref operator-trust §4.4's advisory is the first provider consumer OUTSIDE a run
   // task: a task receives its clients through `ctx.providers` and never names
@@ -55,7 +55,7 @@ const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   "src/services/trust/advisory.ts",
 ]);
 const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
-  "src/core/provider-admission.ts",
+  "src/backend/runs/provider-admission.ts",
   "src/core/run-executor.ts",
 ]);
 // D184: the admission module itself was listed here and could never suppress
@@ -110,7 +110,7 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
       if (((ts.isTypeReferenceNode(node) && node.typeName.getText(source) === "ProviderAdapter")
           || (ts.isExpressionWithTypeArguments(node) && node.expression.getText(source) === "ProviderAdapter"))
         && path !== "src/base/providers.ts"
-        && path !== "src/core/provider-admission.ts"
+        && path !== "src/backend/runs/provider-admission.ts"
         && !path.startsWith("src/infra/providers/")) {
         issues.push(`${path}: ProviderAdapter implementations are confined to infra/providers`);
       }
@@ -138,7 +138,7 @@ export function auditProviderCapabilityBoundary(root: string): readonly string[]
   }
   for (const [path, specifiers] of imports) {
     for (const specifier of specifiers) {
-      if (resolveLocal(path, specifier) === "src/core/provider-admission.ts"
+      if (resolveLocal(path, specifier) === "src/backend/runs/provider-admission.ts"
         && !ADMISSION_MODULE_IMPORTERS.has(path)) {
         issues.push(`${path}: admission client imports are confined to the run executor and the worker composition root (D162)`);
       }
@@ -305,7 +305,7 @@ describe("provider capability boundary", () => {
   it("catches an aliased admission-client import hidden behind a helper", () => {
     const root = resolve(tmpdir(), `hrauto-provider-client-alias-${process.pid}-${Date.now()}`);
     const helperPath = resolve(root, "src/services/provider-helper.ts");
-    const kernelPath = resolve(root, "src/core/provider-admission.ts");
+    const kernelPath = resolve(root, "src/backend/runs/provider-admission.ts");
     try {
       mkdirSync(dirname(helperPath), { recursive: true });
       mkdirSync(dirname(kernelPath), { recursive: true });

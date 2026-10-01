@@ -65,15 +65,15 @@ import {
 } from "../../src/domain/notification-triggers.js";
 import { buildFailureTriagePrompt } from "../../src/domain/trust/advisory.js";
 import { FailureRecordSchema } from "../../src/domain/trust/failure.js";
-import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt } from "../../src/backend/runs/evidence-receipt.js";
 import { LedgerEntrySchema } from "../../src/domain/ledger.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   VerifiedArtifactSourceMissingError,
   type ServerVerifiedArtifactReader,
 } from "../../src/infra/artifacts/server-verified-artifact-reader.js";
-import { buildArchivedCaptureResource } from "../../src/server/dashboard/queries/archive.js";
-import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../src/server/dashboard/queries/artifact-bytes.js";
+import { buildArchivedCaptureResource } from "../../src/backend/runs/dashboard/queries/archive.js";
+import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../src/backend/runs/dashboard/queries/artifact-bytes.js";
 import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";
 import { personLookupQueuedRun } from "../helpers/phase1f-executor-harness.js";
 import {

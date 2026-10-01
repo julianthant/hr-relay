@@ -8,7 +8,7 @@ type DashboardDayWire
 } from "../../../src/domain/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
-import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
+import { projectStartSteps,startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
 import {
 WORKFLOW_MODULES,
 } from "../../../src/backend/app/control/workflow-registry.js";

@@ -1,7 +1,7 @@
 import { reviewedIntakeFixture } from "../fixtures/intake-kernel-seams.js";
 import { insertImportedArtifact } from "../../src/infra/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../src/domain/intake/imported-artifact.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 /**
  * D170 — the five non-enqueue intake arms, driven through the REAL kernel over
  * the REAL authority database.
@@ -34,7 +34,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
-import { createCommandKernel, type IntakeParser } from "../../src/core/command-kernel.js";
+import { createCommandKernel, type IntakeParser } from "../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { ItemIdSchema } from "../../src/domain/ids.js";

@@ -1,12 +1,12 @@
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import {captureArchiveReport,genericArchiveSection} from "../../../src/services/archive/report-capture.js";
+import {captureArchiveReport,genericArchiveSection} from "../../../src/backend/storage/archive/report-capture.js";
 import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
 
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
-import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
-import { readDiagnosticBundleAttachment, prepareLiveDiagnosticArtifactLease } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import { buildTrustSection } from "../../../src/backend/runs/dashboard/queries/run-trust.js";
+import { readDiagnosticBundleAttachment, prepareLiveDiagnosticArtifactLease } from "../../../src/backend/runs/dashboard/queries/diagnostic-bundle.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA3 cases retained by intent from 7a85bbd596f00ba4052ce1dddd13cd40c8a897ac;
  * D292 uses real SQLite bundle/index authority and the public live queries. */
@@ -24,13 +24,13 @@ import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnos
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { FingerprintSchema, DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { DiagnosticBundleCorruptError, SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
+import { DiagnosticBundleCorruptError, SectionUnavailableError, TargetNotFoundError } from "../../../src/backend/runs/refusals.js";
 import {
   buildRunDetail,
   readRunDetail,
   readRunSection,
   type RunDetailQueryDeps,
-} from "../../../src/server/dashboard/queries/run-detail.js";
+} from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RGBA_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
 import { makeWorld, queuedEventOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";

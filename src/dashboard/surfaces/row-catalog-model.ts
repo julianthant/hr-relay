@@ -77,7 +77,7 @@ export interface RowSurfaceSpec {
 /**
  * A `Record` rather than an array, so the compiler — not a reviewer — is what
  * notices a new `surfaceKind`. `surfaceKindOf` in
- * `src/server/dashboard/projectors/run-queue-projection.ts` folds the run's own
+ * `src/backend/runs/dashboard/projectors/run-queue-projection.ts` folds the run's own
  * `shape` into exactly these four.
  */
 const ROW_SURFACE: Record<RowSurfaceKind, RowSurfaceSpec> = {

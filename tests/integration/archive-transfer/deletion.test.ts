@@ -5,8 +5,8 @@ import { existsSync, writeFileSync, unlinkSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
 import { NOW, id } from "../../unit/database-foundation/fixtures.js";
-import { projectArchiveReport, queryArchiveReports } from "../../../src/server/dashboard/queries/archive-reports.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { projectArchiveReport, queryArchiveReports } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 
 it("authenticates public references, resumes a failed final audit after reopening, and never resurrects a deleted transfer", () => {

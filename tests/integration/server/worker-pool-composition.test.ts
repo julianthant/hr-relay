@@ -1,14 +1,14 @@
 import { healthyRuntimePreflightRunners } from "../../fixtures/preflight-seams.js";
 import { deriveBulkChildCommandId } from "../../../src/domain/command-groups.js";
-import { createOperatorCommandIngress } from "../../../src/server/dashboard/commands/operator-command-ingress.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
-import { createRunWorkerCapacity, runCapacityCommandId } from "../../../src/server/dashboard/commands/run-worker-capacity.js";
-import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
+import { createOperatorCommandIngress } from "../../../src/backend/runs/dashboard/commands/operator-command-ingress.js";
+import { createDashboardCommandService } from "../../../src/backend/runs/dashboard/commands/command-service.js";
+import { createRunWorkerCapacity, runCapacityCommandId } from "../../../src/backend/runs/dashboard/commands/run-worker-capacity.js";
+import { createStartPlanService } from "../../../src/backend/runs/dashboard/commands/start-plan-service.js";
 import { StartPlanWireSchema } from "../../../src/domain/dashboard/start-plan.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { WorkerControlRefusal } from "../../../src/domain/worker-control.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 /**
  * W3 (ref execution-and-sessions §11, D271): the dashboard's REAL worker
  * process control, composed exactly as production composes it —
@@ -39,7 +39,7 @@ import {
   type CommandKernel,
   type WorkerPoolRuntimeSeam,
   type WorkerRuntimeContext,
-} from "../../../src/core/command-kernel.js";
+} from "../../../src/backend/runs/command-kernel.js";
 import { poolWorkerId } from "../../../src/core/worker-loop.js";
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import {

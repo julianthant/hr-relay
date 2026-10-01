@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { it } from "vitest";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
-import { createStartPlanService } from "../../../src/server/dashboard/commands/start-plan-service.js";
+import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";
+import { createStartPlanService } from "../../../src/backend/runs/dashboard/commands/start-plan-service.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";

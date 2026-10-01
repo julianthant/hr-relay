@@ -1,7 +1,7 @@
 import { RunIdSchema, FailureIdSchema } from "../../../src/domain/ids.js";
 import { randomUUID } from "node:crypto";
-import { createCommandKernel, type CommandKernelDependencies } from "../../../src/core/command-kernel.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { createCommandKernel, type CommandKernelDependencies } from "../../../src/backend/runs/command-kernel.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { FailureResolutionCommandSchema } from "../../../src/domain/commands.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
@@ -61,8 +61,8 @@ import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/
 import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
-import type { RunDetailQueryDeps } from "../../../src/server/dashboard/queries/run-detail-types.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
+import type { RunDetailQueryDeps } from "../../../src/backend/runs/dashboard/queries/run-detail-types.js";
 
 import assert from "node:assert/strict";
 import { mkdtempSync, realpathSync, rmSync } from "node:fs";

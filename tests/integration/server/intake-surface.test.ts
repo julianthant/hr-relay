@@ -1,8 +1,8 @@
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
-import { RunRecordService } from "../../../src/core/run-record-service.js";
+import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 /**
  * D170 — the intake upload route, the parser seam, and the session wire, over
  * the REAL content-addressed artifact writer, the REAL shared grid edge and
@@ -25,22 +25,22 @@ import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { createCommandKernel } from "../../../src/core/command-kernel.js";
+import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createDashboardCommandService } from "../../../src/server/dashboard/commands/command-service.js";
+import { createDashboardCommandService } from "../../../src/backend/runs/dashboard/commands/command-service.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 import {
   INTAKE_UPLOAD_MAX_BYTES,
   createIntakeService,
   type IntakeService,
   type IntakeServiceDependencies,
-} from "../../../src/server/dashboard/commands/intake-service.js";
+} from "../../../src/backend/runs/dashboard/commands/intake-service.js";
 import { createIntakeParser } from "../../../src/server/intake/intake-parser.js";
 import { CONFIG_SNAPSHOT, NOW, UUID_1 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";

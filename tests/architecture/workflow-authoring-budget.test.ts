@@ -126,7 +126,16 @@ const SEAM_PREFIXES = ["src/workflows/", "src/domain/workflow/"] as const;
 /** Arm (b)'s root: the authored workflow files themselves. */
 const WORKFLOWS_ROOT = "src/workflows/";
 /** Arm (c)'s roots: the generic surfaces D316 forbids branching by workflow id. */
-const GENERIC_ROOTS = ["src/dashboard/", "src/server/", "src/services/", "src/backend/app/"] as const;
+const GENERIC_ROOTS = [
+  "src/dashboard/", "src/server/", "src/services/", "src/backend/app/", "src/backend/transports/",
+  "src/backend/runs/dashboard/", "src/backend/runs/activity-person-pseudonym-backfill/",
+  "src/backend/runs/exports/", "src/backend/runs/trust/", "src/backend/runs/start/",
+  "src/backend/runs/archive/", "src/backend/runs/notifications/", "src/backend/runs/explain/",
+] as const;
+const GENERIC_RUN_FILES = new Set([
+  "src/backend/runs/enqueue.ts", "src/backend/runs/refusals.ts",
+  "src/backend/runs/run-status.ts", "src/backend/runs/support.ts",
+]);
 
 const RETIRED_NAMES = [
   { token: "WorkflowRecipe", rule: "D317 — the authored value is a WorkflowDefinition" },
@@ -449,7 +458,7 @@ export function auditWorkflowAuthoringBudget(
   );
   const usedPairs = new Set<string>();
   for (const [path, text] of inputs.tree.sources) {
-    if (!GENERIC_ROOTS.some((prefix) => path.startsWith(prefix))) continue;
+    if (!GENERIC_ROOTS.some((prefix) => path.startsWith(prefix)) && !GENERIC_RUN_FILES.has(path)) continue;
     if (isTestSource(path)) continue;
     if (!ids.some((id) => text.includes(id))) continue;
     const source = sourceOf(path, text);
@@ -575,17 +584,17 @@ const GENERIC_WORKFLOW_ID_ALLOWLIST: readonly GenericWorkflowIdAllowlistEntry[] 
   { file: "src/backend/app/dry-run-scenario/manifests.ts", workflowId: "separations", reason: DRY_RUN_TARGET_REASON },
   { file: "src/backend/app/dry-run-scenario/manifests.ts", workflowId: "separations-kuali-finalization", reason: DRY_RUN_TARGET_REASON },
   { file: "src/backend/app/dry-run-scenario/manifests.ts", workflowId: "person-lookup", reason: DRY_RUN_TARGET_REASON },
-  { file: "src/server/dashboard/projectors/run-queue-projection.ts", workflowId: "separations",
+  { file: "src/backend/runs/dashboard/projectors/run-queue-projection.ts", workflowId: "separations",
     reason: "D288/Q — retained projection callers use the same current-Separations-only canonical identity corpus as indexed Activity." },
   {
-    file: "src/server/dashboard/queries/activity-summaries.ts",
+    file: "src/backend/runs/dashboard/queries/activity-summaries.ts",
     workflowId: "separations",
     reason:
       "D288/Q — the Activity distinct-person fold is current-Separations-only BY DECISION: its validated identity is derived "
       + "from a done Separations run's terminal result, so a foreign workflow's evidence row is counted foreign.",
   },
   {
-    file: "src/server/activity-person-pseudonym-backfill/service.ts",
+    file: "src/backend/runs/activity-person-pseudonym-backfill/service.ts",
     workflowId: "separations",
     reason:
       "D288 — the reviewed backfill's `current-separations` scope is the decision's own named scope; it may inspect "
@@ -839,7 +848,7 @@ const FIXTURES: readonly BudgetFixture[] = [
     name: "generic-server-branch-keyed-by-workflow-id",
     arm: "c",
     files: withFiles((files) => {
-      files["src/server/dashboard/projectors/run-queue-projection.ts"] =
+      files["src/backend/runs/dashboard/projectors/run-queue-projection.ts"] =
         "export function fold(record) {\n"
         + "  if (record.workflowId !== \"combo\") return undefined;\n"
         + "  return record;\n"

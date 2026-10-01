@@ -13,8 +13,8 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createOperatorXlsxExportService } from "../../../src/server/dashboard/exports/operator-xlsx-export-service.js";
-import { createCrossDateSearchService } from "../../../src/server/dashboard/queries/search.js";
+import { createOperatorXlsxExportService } from "../../../src/backend/runs/exports/operator-xlsx-export-service.js";
+import { createCrossDateSearchService } from "../../../src/backend/runs/dashboard/queries/search.js";
 import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
 
 const EXPORT_ID = "00020002-0002-4002-8002-000200020002";

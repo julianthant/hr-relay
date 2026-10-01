@@ -1,12 +1,12 @@
 import { explorerEditCommandFingerprint } from "../../src/domain/dashboard/explorer-override.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
 import { projectArchiveReport } from "../../src/infra/sqlite/archive-records.js";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../fixtures/phase1c-contract-fixtures.js";
-import { RunRecordService, lifecycleCommandId } from "../../src/core/run-record-service.js";
+import { RunRecordService, lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";
 /**
  * D113 command-kernel semantics (ref dashboard-surfaces §Phase-1f authority, §2.4).
  *
@@ -34,7 +34,7 @@ import {
   type ExplorerEditExecutor,
   type WorkerRuntimeExecutor,
   type WriteResolutionExecutor,
-} from "../../src/core/command-kernel.js";
+} from "../../src/backend/runs/command-kernel.js";
 import {
   CommandRequestSchema,
   COMMAND_FAMILY_REGISTRY,
@@ -70,8 +70,8 @@ import { UcpathReadJobSummary } from "../../src/domain/contracts/ucpath/read-job
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
-import { planStart } from "../../src/services/start/plan.js";
-import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
+import { planStart } from "../../src/backend/runs/start/plan.js";
+import { createSettingsApplicationExecutor } from "../../src/backend/runs/dashboard/commands/settings-service.js";
 import { readSettings } from "../../src/server/settings-runtime.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import {
@@ -97,7 +97,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER 
 import {
   UNWIRED_ARCHIVE_SNAPSHOTS,
 } from "../fixtures/archive-fixtures.js";
-import { createExplorerEditService } from "../../src/server/dashboard/commands/explorer-edit-service.js";
+import { createExplorerEditService } from "../../src/backend/runs/dashboard/commands/explorer-edit-service.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
 
 const roots: string[] = [];
@@ -270,7 +270,7 @@ type AuthorityTransactionWrap = <Result>(
 ) => Result;
 
 interface HarnessOptions {
-  readonly failureResolution?: import("../../src/core/command-kernel.js").CommandKernelDependencies["failureResolution"];
+  readonly failureResolution?: import("../../src/backend/runs/command-kernel.js").CommandKernelDependencies["failureResolution"];
   readonly explorerEdits?: ExplorerEditExecutor;
   readonly afterAuthorityCommit?: () => void;
   readonly descriptors?: readonly AnyWorkflowDescriptor[];

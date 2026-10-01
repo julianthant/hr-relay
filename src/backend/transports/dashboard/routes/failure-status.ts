@@ -1,5 +1,5 @@
 import { PreflightAdmissionRefusal } from "../../../../domain/preflight-admission.js";
-import { RerunRefusedError } from "../../../../services/start/rerun.js";
+import { RerunRefusedError } from "../../../runs/start/rerun.js";
 /**
  * The ONE place a throw becomes an HTTP status and a `WireError` body
  * (Track D row D2, audit C3).
@@ -19,10 +19,10 @@ import {
   RequestIdentityRefusedError,
   SectionUnavailableError,
   TargetNotFoundError,
-} from "../../../../server/failures.js";
-import { StartStepOmissionRefusedError } from "../../../../services/start/step-selection.js";
-import { errorText } from "../../../../server/dashboard/support.js";
-import { ProviderAuditUncertainError } from "../../../../core/command-kernel.js";
+} from "../../../runs/refusals.js";
+import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
+import { errorText } from "../../../runs/support.js";
+import { ProviderAuditUncertainError } from "../../../runs/command-kernel.js";
 import { ProviderKeyStoreUnknownError } from "../../../../infra/config/provider-key-store.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
@@ -33,7 +33,7 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
 
 /**
  * The status a throw leaves as, decided by the error's KIND
- * (`src/server/failures.ts`) and never by reading its words.
+ * (`src/backend/runs/refusals.ts`) and never by reading its words.
  *
  * Until Track D row D2 this classified by substring — four phrases
  * (`"is not registered"`, `"does not exist"`, `"has no span fold"`,

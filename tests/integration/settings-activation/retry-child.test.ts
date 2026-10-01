@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
 import { afterEach, it } from "vitest";
-import { requireLifecycleApplied } from "../../../src/core/run-record-service.js";
-import { selectRunRuntime } from "../../../src/core/run-settings.js";
+import { requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
+import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { settingsFixture } from "../../unit/settings-activation/fixture.js";
 const cleanups: (() => void)[] = [];

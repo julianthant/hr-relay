@@ -7,8 +7,8 @@ import { ActorIdSchema, DiagnosticBundleIdSchema, FailureIdSchema } from "../../
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
-import { buildReceiptFailureSection } from "../../../src/server/dashboard/queries/run-detail/receipts-failures.js";
-import { DiagnosticBundleCorruptError } from "../../../src/server/failures.js";
+import { buildReceiptFailureSection } from "../../../src/backend/runs/dashboard/queries/run-detail/receipts-failures.js";
+import { DiagnosticBundleCorruptError } from "../../../src/backend/runs/refusals.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { trustWorld } from "../../unit/server/helpers/trust-authority-fixture.js";
 

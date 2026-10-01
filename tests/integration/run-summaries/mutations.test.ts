@@ -24,7 +24,7 @@ it("publishes creation and presentation atomically, excluding heartbeats and rol
 });
 
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { queryQueueSummaries,queryActivitySummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
+import { queryQueueSummaries,queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 import { RUN_SESSION } from "../../fixtures/phase1f-run-fixtures.js";
 it("maintains parent rollups and dependencies while batch grouping stays a bounded current relation",()=>{
   const f=foundationFixture();try{

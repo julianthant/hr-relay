@@ -2,9 +2,9 @@ import { composeRuntimePreflight } from "./preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "./preflight/runtime-runners.js";
 import { claimWithPreflight } from "./preflight/worker-admission.js";
 import { createWorkerBrowserControl } from "../../server/worker/worker-browser-control.js";
-import { selectRunRuntime } from "../../core/run-settings.js";
+import { selectRunRuntime } from "../runs/run-settings.js";
 import { createRunResourcesFactory } from "../../server/worker/run-resources.js";
-import { bindFailureCapture } from "../../core/failure-resolution.js";
+import { bindFailureCapture } from "../runs/failure-resolution.js";
 import { createCredentialStore } from "../../infra/config/credential-store.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
@@ -49,7 +49,7 @@ import { hostConfigFacts } from "../../domain/config/host-display.js";
  *   state and reports it; the typed §4.1 operator resolutions (command kernel)
  *   remain the only release paths in this process.
  */
-import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../../core/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort, requireLifecycleApplied, sweepWorkerClaims, type WorkerRunLifecyclePort } from "../runs/run-record-service.js";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import type { TaskLogger } from "../../base/task.js";

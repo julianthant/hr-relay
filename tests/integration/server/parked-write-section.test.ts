@@ -29,7 +29,7 @@ import {
   buildRunSection,
   type RunDetailQueryDeps,
   type RunDetailWriteContractView,
-} from "../../../src/server/dashboard/queries/run-detail.js";
+} from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import {
   IDEMPOTENCY_KEY,
   IDEMPOTENCY_KEY_DIGEST,

@@ -3,10 +3,10 @@ import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboar
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../fixtures/phase1c-contract-fixtures.js";
-import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../../src/domain/ids.js";
 import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
-import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../src/core/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../src/backend/runs/run-record-service.js";
 import { randomUUID } from "node:crypto";
 import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";

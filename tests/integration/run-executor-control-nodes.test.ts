@@ -10,7 +10,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import { deriveGateResultCheckpointFingerprint } from "../../src/core/command-kernel.js";
+import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
 import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope } from "../../src/core/gate-source-runtime.js";
 import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
 import {

@@ -12,7 +12,7 @@ import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings-legacy.js";
-import { TEST_DATA_USAGE } from "../../src/core/test-data-usage.js";
+import { TEST_DATA_USAGE } from "../../src/backend/runs/test-data-usage.js";
 import { readTestDataLocalConfig, testDataLocalPath } from "../../src/backend/app/control/test-data.js";
 import { composeTestDataCommand, type TestDataComposeDependencies } from "../helpers/synthetic-storage-admission.js";
 

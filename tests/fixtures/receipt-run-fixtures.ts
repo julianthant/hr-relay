@@ -34,8 +34,8 @@ import {
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
 } from "../../src/domain/write-safety.js";
-import { buildRunResult } from "../../src/core/run-result.js";
-import type { ReceiptWriteEvidence } from "../../src/core/evidence-receipt.js";
+import { buildRunResult } from "../../src/backend/runs/run-result.js";
+import type { ReceiptWriteEvidence } from "../../src/backend/runs/evidence-receipt.js";
 import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import {

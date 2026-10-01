@@ -1,7 +1,7 @@
 import { Hono } from "hono";
-import { createCommandKernel } from "../../src/core/command-kernel.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
-import { createStartPlanService } from "../../src/server/dashboard/commands/start-plan-service.js";
+import { createCommandKernel } from "../../src/backend/runs/command-kernel.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
+import { createStartPlanService } from "../../src/backend/runs/dashboard/commands/start-plan-service.js";
 import { registerQueueRoutes } from "../../src/backend/transports/dashboard/routes/queue.js";
 import { operatorMutationIngressGuard } from "../../src/backend/transports/dashboard/routes/operator-mutation-ingress.js";
 import { failureStatus } from "../../src/backend/transports/dashboard/routes/failure-status.js";

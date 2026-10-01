@@ -1,5 +1,5 @@
 import { RunIdSchema, FingerprintSchema } from "../../../src/domain/ids.js";
-import { deriveCanonicalPerson } from "../../../src/core/run-summary.js";
+import { deriveCanonicalPerson } from "../../../src/backend/runs/run-summary.js";
 import { activityPersonPseudonymResultRecord, CURRENT_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import type { RunResultRecord } from "../../../src/domain/run/result.js";
 import { RunRecordSchema, RunLifecycleSchema } from "../../../src/domain/run/record.js";

@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { RunExistenceSchema } from "../../src/domain/authority.js";
 import type { Clock } from "../../src/domain/clock.js";
 import { RunIdSchema } from "../../src/domain/ids.js";

@@ -9,8 +9,8 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import type { Config } from "../../../src/domain/config/schema.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "../../../src/server/dashboard/commands/ordinary-path-validator.js";
-import { selectActiveRunSettings } from "../../../src/core/run-settings.js";
+import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "../../../src/backend/runs/dashboard/commands/ordinary-path-validator.js";
+import { selectActiveRunSettings } from "../../../src/backend/runs/run-settings.js";
 import { settingsFixture } from "../../unit/settings-activation/fixture.js";
 
 const cleanups: (() => void)[] = [];

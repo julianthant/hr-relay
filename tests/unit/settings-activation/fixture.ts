@@ -12,13 +12,13 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint, type SettingsPatch } from "../../../src/domain/config/settings.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
-import { executeSettingsCommand, type CommandAuthority } from "../../../src/core/command-kernel.js";
-import { RunRecordService, type CreateRunRequest, requireLifecycleApplied } from "../../../src/core/run-record-service.js";
-import { selectRunRuntime } from "../../../src/core/run-settings.js";
-import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
+import { executeSettingsCommand, type CommandAuthority } from "../../../src/backend/runs/command-kernel.js";
+import { RunRecordService, type CreateRunRequest, requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
+import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
+import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
 import { readSettings } from "../../../src/server/settings-runtime.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

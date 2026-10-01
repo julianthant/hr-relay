@@ -1,8 +1,8 @@
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
 /**
- * D307 — `fanOutQueuedRuns` (src/core/run-fan-out.ts) is the ONE place N
+ * D307 — `fanOutQueuedRuns` (src/backend/runs/run-fan-out.ts) is the ONE place N
  * queued runs are inserted; every start/retry/relaunch door funnels through
  * it. Its `FanOutEnvelope.stepOmissions` must ride onto every fanned-out run's
  * envelope byte for byte, the same way `captureBrowserScreenshots` already
@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { fanOutQueuedRuns } from "../../src/core/run-fan-out.js";
+import { fanOutQueuedRuns } from "../../src/backend/runs/run-fan-out.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { deriveItemId } from "../../src/domain/identifiers.js";
 import { ActorIdSchema, StartPlanIdSchema } from "../../src/domain/ids.js";

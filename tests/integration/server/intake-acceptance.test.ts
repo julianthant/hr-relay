@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { readArtifactBytes } from "../../../src/stores/common/spreadsheet-grid.js";

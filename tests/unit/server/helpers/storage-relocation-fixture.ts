@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:f
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { executeSettingsCommand, executeStorageRelocationCommand } from "../../../../src/core/command-kernel.js";
+import { executeSettingsCommand, executeStorageRelocationCommand } from "../../../../src/backend/runs/command-kernel.js";
 import { createStorageRelocationPlanReader } from "../../../../src/core/storage-relocation-plans.js";
 import { rebuildRuntimeIsolation } from "../../../../src/config/runtime-isolation.js";
 import { canonicalJsonStringify } from "../../../../src/domain/canonical-json.js";
@@ -25,7 +25,7 @@ import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../../src/inf
 import { createRunSearchIndex } from "../../../../src/infra/sqlite/run-search-index.js";
 import { createCredentialStore } from "../../../../src/infra/config/credential-store.js";
 import { acquireExclusiveRuntimeAdmission, acquireInitialRuntimeAdmission, acquireSharedRuntimeAdmission } from "../../../../src/infra/runtime-control/admission.js";
-import { createSettingsApplicationExecutor } from "../../../../src/server/dashboard/commands/settings-service.js";
+import { createSettingsApplicationExecutor } from "../../../../src/backend/runs/dashboard/commands/settings-service.js";
 import { readSettings } from "../../../../src/server/settings-runtime.js";
 import { runOfflineStorageRelocation, StorageRelocationIncompleteError } from "../../../../src/server/storage/relocate.js";
 

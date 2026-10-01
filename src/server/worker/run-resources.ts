@@ -22,7 +22,7 @@ import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../.
 import type { MonotonicDeadlineScheduler } from "../../core/deadline-scheduler.js";
 import type { WorkerBrowserSessionFactory } from "../../core/worker-sessions.js";
 import type { WorkerRunResources } from "../../core/worker-loop.js";
-import { selectRunSettings } from "../../core/run-settings.js";
+import { selectRunSettings } from "../../backend/runs/run-settings.js";
 
 export function createRunResourcesFactory(input:Readonly<{
  preflight?:RuntimePreflight;

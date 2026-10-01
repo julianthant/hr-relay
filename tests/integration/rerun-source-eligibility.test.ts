@@ -1,7 +1,7 @@
 import {archiveCurrentRun} from "./helpers/archive-current-run.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { requireLifecycleApplied } from "../../src/core/run-record-service.js";
+import { requireLifecycleApplied } from "../../src/backend/runs/run-record-service.js";
 
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { StartPlanWireSchema } from "../../src/domain/dashboard/start-plan.js";
@@ -9,7 +9,7 @@ import type { RunRecord } from "../../src/domain/run/record.js";
 import { RerunPlanSchema } from "../../src/domain/run/rerun.js";
 import { StartPlanRecordSchema, derivePlannedInputFingerprint } from "../../src/domain/run/start-plan.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
-import { RerunRefusedError } from "../../src/services/start/rerun.js";
+import { RerunRefusedError } from "../../src/backend/runs/start/rerun.js";
 import { sourceBoundHarness } from "./fixtures/source-bound-fixtures.js";
 import { sourceBoundReadDescriptor, sourceBoundReadStores } from "../fixtures/source-bound-read-fixtures.js";
 

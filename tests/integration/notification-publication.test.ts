@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
-import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
+import { createNotificationInbox } from "../../src/backend/runs/notifications/inbox.js";
 
 const roots: string[] = [];
 afterEach(() => roots.splice(0).forEach(root => rmSync(root, { recursive: true, force: true })));
@@ -25,7 +25,7 @@ describe("durable notification publication", () => {
     const script = `
       import { AuthorityDatabase } from "./src/infra/sqlite/authority-database.ts";
       import { manualClock } from "./src/domain/clock.ts";
-      import { createNotificationInbox } from "./src/services/notifications/inbox.ts";
+      import { createNotificationInbox } from "./src/backend/runs/notifications/inbox.ts";
       const clock = manualClock(new Date("2026-09-14T12:00:00Z"));
       const db = AuthorityDatabase.open({path:process.argv[1],busyTimeoutMs:250,migrationOwner:"crash-proof"},clock);
       const inbox = createNotificationInbox({authority:db,clock,ids:{uuid:()=>"00000000-0000-4000-8000-000000000991"},actorId:"local-operator"});

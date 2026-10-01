@@ -17,8 +17,8 @@ import {
 } from "../../src/domain/notification-triggers.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { createDashboardStreamHub } from "../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
-import { createBackfillGapNotifier } from "../../src/services/notifications/backfill-gap.js";
-import { createNotificationInbox } from "../../src/services/notifications/inbox.js";
+import { createBackfillGapNotifier } from "../../src/backend/runs/notifications/backfill-gap.js";
+import { createNotificationInbox } from "../../src/backend/runs/notifications/inbox.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

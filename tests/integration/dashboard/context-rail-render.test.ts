@@ -21,8 +21,8 @@ import { ActionDescriptorWireSchema } from "../../../src/domain/dashboard/action
 import type { DashboardClient } from "../../../src/dashboard/client/index.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { registerRunDetailRoutes } from "../../../src/backend/transports/dashboard/routes/run-detail.js";
-import { createItemAttemptHistoryQuery } from "../../../src/server/dashboard/queries/item-attempt-history.js";
-import type { RunDetailQueryDeps } from "../../../src/server/dashboard/queries/run-detail-types.js";
+import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/dashboard/queries/item-attempt-history.js";
+import type { RunDetailQueryDeps } from "../../../src/backend/runs/dashboard/queries/run-detail-types.js";
 import type { RequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { makeWorld, runRecordOf, uuidOf, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";

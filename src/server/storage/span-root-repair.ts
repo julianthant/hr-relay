@@ -18,7 +18,7 @@ import {
   observeRuntimeLockSnapshot,
   type RestoreAdmissionHandle,
 } from "../../infra/sqlite/runtime-process-locks.js";
-import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../backend/runs/dashboard/commands/run-queued-span.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 

@@ -1,11 +1,11 @@
-import { readCommittedUiCatalog } from "../../../../server/dashboard/queries/ui-catalog.js";
+import { readCommittedUiCatalog } from "../../../runs/dashboard/queries/ui-catalog.js";
 import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
 import type { Clock } from "../../../../domain/clock.js";
 import type { Fingerprint } from "../../../../domain/ids.js";
 import { WORKFLOW_MODULES, readPendingImplBindings } from "../../control/workflow-registry.js";
 import { buildSafeUiCatalog } from "../../../../stores/ucpath/driver/catalog.js";
-import { createExplorerEditService } from "../../../../server/dashboard/commands/explorer-edit-service.js";
-import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "../../../../server/dashboard/queries/explorer.js";
+import { createExplorerEditService } from "../../../runs/dashboard/commands/explorer-edit-service.js";
+import { EXPLORER_SOURCE_ROOT, readScenarioSources } from "../../../runs/dashboard/queries/explorer.js";
 import type { ExplorerRouteDeps } from "../../../transports/dashboard/routes/explorer-types.js";
 
 /** Graph and validation share one captured SQLite view; the kernel supplies writes. */

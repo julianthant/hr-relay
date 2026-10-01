@@ -14,7 +14,7 @@ import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { buildSettingsEditor } from "../../../src/server/dashboard/queries/settings-editor.js";
+import { buildSettingsEditor } from "../../../src/backend/runs/dashboard/queries/settings-editor.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/server/settings-runtime.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

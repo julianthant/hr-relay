@@ -43,7 +43,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { mintMutationCapability } from "../../../../src/base/mutation-capability.js";
 import { workflowTerminalResultExecution } from "../../../../src/base/workflow.js";
-import { buildRunPreviewResult } from "../../../../src/core/run-result.js";
+import { buildRunPreviewResult } from "../../../../src/backend/runs/run-result.js";
 import { WriteParkedError } from "../../../../src/core/write-sequencer.js";
 import { manualClock } from "../../../../src/domain/clock.js";
 import type { RunRecord } from "../../../../src/domain/run/record.js";

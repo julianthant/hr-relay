@@ -30,7 +30,7 @@ import {
   type IdentityGateDetail,
 } from "../../../../src/dashboard/app/identity-ceremony.js";
 import { FingerprintSchema } from "../../../../src/domain/ids.js";
-import { buildRunSection } from "../../../../src/server/dashboard/queries/run-detail.js";
+import { buildRunSection } from "../../../../src/backend/runs/dashboard/queries/run-detail.js";
 import {
   FIXTURE_DOCUMENT_NUMBER,
   GATE_ID,

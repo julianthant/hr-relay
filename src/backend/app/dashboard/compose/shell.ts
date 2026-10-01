@@ -1,12 +1,12 @@
-import { exportSearchMetadata } from "../../../../server/dashboard/exports/search-metadata-export.js";
-import { createCalendarQuery } from "../../../../server/dashboard/queries/calendar.js";
+import { exportSearchMetadata } from "../../../runs/exports/search-metadata-export.js";
+import { createCalendarQuery } from "../../../runs/dashboard/queries/calendar.js";
 import { randomBytes } from "node:crypto";
 import { WORKFLOW_MODULES } from "../../control/workflow-registry.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../domain/config/settings.js";
 import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
-import type { BootstrapQueryDeps } from "../../../../server/dashboard/queries/bootstrap.js";
-import { createCrossDateSearchService } from "../../../../server/dashboard/queries/search.js";
-import type { OperatorXlsxExportServiceDependencies } from "../../../../server/dashboard/exports/operator-xlsx-export-service.js";
+import type { BootstrapQueryDeps } from "../../../runs/dashboard/queries/bootstrap.js";
+import { createCrossDateSearchService } from "../../../runs/dashboard/queries/search.js";
+import type { OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";
 import { createDashboardStreamHub, type DashboardStreamHubDeps } from "../../../transports/dashboard/subscriptions/dashboard-stream.js";
 import type { ShellRouteDeps } from "../../../transports/dashboard/routes/shell-types.js";
 import { composeGeneratedExports } from "./generated-exports.js";
@@ -16,7 +16,7 @@ export function composeShell(input: Pick<BootstrapQueryDeps,
   "appVersion" | "clock" | "timeZone" | "descriptorSetHash" | "preflightReport" | "advisoryAvailability" | "backupSummary">
   & Pick<OperatorXlsxExportServiceDependencies, "ids" | "artifacts">
   & DashboardStreamHubDeps
-  & { activity: import("../../../../server/dashboard/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
+  & { activity: import("../../../runs/dashboard/queries/activity-selection.js").ActivitySelectionService; database: AuthorityDatabase; descriptors: Parameters<typeof createCrossDateSearchService>[0]["descriptors"] }
 ): ShellRouteDeps {
   const { database, projection, clock, ids, artifacts, descriptors } = input;
   database.registerRunSearchDeclarations(WORKFLOW_MODULES.map(({ descriptor }) => ({

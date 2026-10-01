@@ -3,7 +3,7 @@ import { storageTree } from "./helpers/storage-recovery-fixture.js";
 import { readAppSettings } from "../../src/infra/sqlite/settings-storage.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { runQueuedSpanEvent } from "../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { readLatestDatabaseUpgrade as readLatestSettingsUpgrade } from "../helpers/synthetic-storage-admission.js";
 import { databaseStateTable, NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
 import { QUEUED_RUN, START_PLAN, WORKER_START_REQUEST, RUN_SESSION } from "../fixtures/phase1f-run-fixtures.js";

@@ -40,7 +40,7 @@ describe("L archive report/file interruption", () => {
 
 import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
 import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";

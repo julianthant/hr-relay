@@ -82,7 +82,7 @@ for (const published of [false,true]) it(`supports an admitted older claim with 
 });
 
 import { foundationFixture, id, NOW, HASH } from "../../unit/database-foundation/fixtures.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";

@@ -47,7 +47,7 @@ import {
 import { EVIDENCE_OBLIGATIONS } from "../../src/domain/trust/evidence-obligations.js";
 import { RunEvidenceReceiptSchema } from "../../src/domain/trust/evidence.js";
 import { SECRET_SPECS } from "../../src/domain/secrets.js";
-import { buildRunEvidenceReceipt } from "../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt } from "../../src/backend/runs/evidence-receipt.js";
 import { WORKFLOW_DESCRIPTORS } from "../../src/workflows/descriptor-registry.js";
 import { HISTORICAL_STEP_PROOF_DESCRIPTORS } from "../../src/backend/app/control/step-proof-modules.js";
 

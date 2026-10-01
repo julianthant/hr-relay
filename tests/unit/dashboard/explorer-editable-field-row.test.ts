@@ -27,7 +27,7 @@ import {
   ExplorerWorkflowWireSchema,
   type ExplorerWorkflowWire,
 } from "../../../src/domain/dashboard/explorer.js";
-import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/dashboard/queries/explorer.js";
 import { explorerQueryDeps } from "../../fixtures/explorer-seams.js";
 import { ExplorerPresentationFields, NodeDetail } from "../../../src/dashboard/surfaces/explorer.js";
 

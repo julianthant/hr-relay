@@ -1,5 +1,5 @@
 // @vitest-environment jsdom
-import { requireLifecycleApplied } from "../../../src/core/run-record-service.js";
+import { requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";

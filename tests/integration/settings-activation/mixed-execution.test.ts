@@ -19,8 +19,8 @@ import { createRunResourcesFactory } from "../../../src/server/worker/run-resour
 import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { afterEach, it, vi } from "vitest";
-import { requireLifecycleApplied } from "../../../src/core/run-record-service.js";
-import { selectRunRuntime } from "../../../src/core/run-settings.js";
+import { requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
+import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { settingsFixture } from "../../unit/settings-activation/fixture.js";
 const cleanups: (() => void)[] = [];

@@ -1,4 +1,4 @@
-import type { IntakeService } from "../../../../server/dashboard/commands/intake-service.js";
+import type { IntakeService } from "../../../runs/dashboard/commands/intake-service.js";
 
 export interface IntakeRouteDeps {
   readonly intake: IntakeService;

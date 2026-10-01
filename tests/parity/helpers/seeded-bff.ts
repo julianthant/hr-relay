@@ -12,7 +12,7 @@ import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitte
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 import { type DashboardApp } from "../../../src/backend/transports/dashboard/routes/api.js";
 import { seedSyntheticRuntimeConfig } from "../../fixtures/operator-command-fixtures.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";

@@ -58,7 +58,7 @@ import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const COUNT_FIELDS = new Set(["monthCounts", "workflowCounts", "statusCounts"]);
 const CALENDAR_SUMMARY = "src/infra/sqlite/run-summaries.ts";
-const THE_PROJECTION = "src/server/dashboard/projectors/run-queue-projection.ts";
+const THE_PROJECTION = "src/backend/runs/dashboard/projectors/run-queue-projection.ts";
 
 /**
  * D236's exemption, bounded by file name.
@@ -77,7 +77,7 @@ const LEDGER_BLOCK_BUILDERS = [
 const LEDGER_BLOCK_CONSUMERS = [
   "src/infra/sqlite/transaction-history.ts",
   THE_PROJECTION,
-  "src/server/dashboard/queries/activity-summaries.ts",
+  "src/backend/runs/dashboard/queries/activity-summaries.ts",
 ];
 
 function identifiers(filePath: string): ReadonlySet<string> {

@@ -2,7 +2,7 @@ import { reconstructConfirmedOperation } from "../../src/events/confirmed-operat
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
-import { lifecycleCommandId } from "../../src/core/run-record-service.js";
+import { lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";
 import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref write-safety §3 beats ①–⑦ over the REAL authority database, worker session

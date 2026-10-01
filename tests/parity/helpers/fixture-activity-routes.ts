@@ -1,11 +1,11 @@
 import { createHash } from "node:crypto";
-import { selectionDownload } from "../../../src/server/dashboard/exports/selection-download.js";
+import { selectionDownload } from "../../../src/backend/runs/exports/selection-download.js";
 import { wireError } from "./fixture-wire-error.js";
 import { Hono } from "hono";
 import {
 activityReportCsv,
 activityReportCsvFileName,
-} from "../../../src/server/dashboard/queries/activity-export.js";
+} from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import {
 FIXTURE_ACTIVITY_REPORT,
 FIXTURE_ACTIVITY_UNAVAILABLE_RANGE,

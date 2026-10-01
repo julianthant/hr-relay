@@ -1,5 +1,5 @@
 import { BulkRunCommandRequestSchema, CommandRequestSchema, ProviderKeysRetryIntentSchema } from "../../../../domain/commands.js";
-import { createOperatorCommandIngress } from "../../../../server/dashboard/commands/operator-command-ingress.js";
+import { createOperatorCommandIngress } from "../../../runs/dashboard/commands/operator-command-ingress.js";
 import { assertRequestActor } from "../request-identity.js";
 
 import type { DashboardApp } from "./api-types.js";

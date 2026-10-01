@@ -1,6 +1,6 @@
-import { buildUiCatalogWire } from "../../../../server/dashboard/queries/ui-catalog.js";
-import { buildWorkflowExplorer } from "../../../../server/dashboard/queries/explorer.js";
-import { SectionUnavailableError } from "../../../../server/failures.js";
+import { buildUiCatalogWire } from "../../../runs/dashboard/queries/ui-catalog.js";
+import { buildWorkflowExplorer } from "../../../runs/dashboard/queries/explorer.js";
+import { SectionUnavailableError } from "../../../runs/refusals.js";
 
 import type { DashboardApp } from "./api-types.js";
 import type { ExplorerRouteDeps } from "./explorer-types.js";

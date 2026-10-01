@@ -68,12 +68,12 @@ import {
   BUILD_MANIFEST,
   resolveTaskImplFingerprint,
 } from "../domain/workflow/build-manifest.js";
-import { rejectCommandRequest } from "./command-kernel.js";
+import { rejectCommandRequest } from "../backend/runs/command-kernel.js";
 import type {
   WriteResolutionContext,
   WriteResolutionExecutor,
   WorkflowDescriptorResolver,
-} from "./command-kernel.js";
+} from "../backend/runs/command-kernel.js";
 import {
   buildCommittedSettlement,
   executeIdempotencyProbe,
@@ -120,7 +120,7 @@ export const WriteRecoveryDecisionSchema = z.discriminatedUnion("state", [
 ]);
 export type WriteRecoveryDecision = z.infer<typeof WriteRecoveryDecisionSchema>;
 
-import { lifecycleCommandId, type RunContinuationPort } from "./run-record-service.js";
+import { lifecycleCommandId, type RunContinuationPort } from "../backend/runs/run-record-service.js";
 
 export type WriteRecoveryAuthority = Omit<WriteSequencerAuthority, "authority" | "withAuthorityTransaction"> & {
   readonly authority: AuthorityRepositories;

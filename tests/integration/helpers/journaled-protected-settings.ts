@@ -5,8 +5,8 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../../src/domain/config/prote
 import type { CredentialStore } from "../../../src/domain/config/credential-store.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { executeSettingsCommand } from "../../../src/core/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../../src/server/dashboard/commands/settings-service.js";
+import { executeSettingsCommand } from "../../../src/backend/runs/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../../src/backend/runs/dashboard/commands/settings-service.js";
 
 /** Publish synthetic credentials through the real independent store and marked audit door. */
 export function journalProtectedSettings(

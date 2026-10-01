@@ -12,8 +12,8 @@ import { CommandIdentityConflictError } from "../../src/domain/commands.js";
 import { afterEach, describe, it } from "vitest";
 import { resolveConfigWithProvenance } from "../../src/backend/app/config/resolve.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { createCommandKernel, executeSettingsCommand, type CommandAuthority } from "../../src/core/command-kernel.js";
-import { createSettingsApplicationExecutor } from "../../src/server/dashboard/commands/settings-service.js";
+import { createCommandKernel, executeSettingsCommand, type CommandAuthority } from "../../src/backend/runs/command-kernel.js";
+import { createSettingsApplicationExecutor } from "../../src/backend/runs/dashboard/commands/settings-service.js";
 import { createCredentialStore, type CredentialStoreHooks } from "../helpers/synthetic-storage-admission.js";
 import { readSettings, createCredentialSecretSource } from "../../src/server/settings-runtime.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
@@ -22,11 +22,11 @@ import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protecte
 import { requireSecret } from "../../src/domain/secrets.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import { createProviderKeyStore } from "../helpers/synthetic-storage-admission.js";
-import { createProviderKeyJournal } from "../../src/server/dashboard/commands/provider-key-journal.js";
-import { providerCommandFromStore, providerMarkedFingerprint } from "../../src/server/dashboard/commands/provider-key-projection.js";
+import { createProviderKeyJournal } from "../../src/backend/runs/dashboard/commands/provider-key-journal.js";
+import { providerCommandFromStore, providerMarkedFingerprint } from "../../src/backend/runs/dashboard/commands/provider-key-projection.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../src/domain/config/provider-keys.js";
 
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { DESCRIPTORS } from "../../src/backend/app/control/workflow-registry.js";
 import { seedSyntheticRuntimeConfig } from "../fixtures/operator-command-fixtures.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";
@@ -82,10 +82,10 @@ describe("D336 SQLite settings authority", () => {
 import { randomUUID } from 'node:crypto';
 import { join } from 'node:path';
 import { AuthorityDatabase, createProviderKeyStore, createCredentialStore } from ${moduleUrl("tests/helpers/synthetic-storage-admission.ts")};
-import { createProviderKeyJournal } from ${moduleUrl("src/server/dashboard/commands/provider-key-journal.ts")};
-import { providerMarkedFingerprint } from ${moduleUrl("src/server/dashboard/commands/provider-key-projection.ts")};
-import { createSettingsApplicationExecutor } from ${moduleUrl("src/server/dashboard/commands/settings-service.ts")};
-import { executeSettingsCommand } from ${moduleUrl("src/core/command-kernel.ts")};
+import { createProviderKeyJournal } from ${moduleUrl("src/backend/runs/dashboard/commands/provider-key-journal.ts")};
+import { providerMarkedFingerprint } from ${moduleUrl("src/backend/runs/dashboard/commands/provider-key-projection.ts")};
+import { createSettingsApplicationExecutor } from ${moduleUrl("src/backend/runs/dashboard/commands/settings-service.ts")};
+import { executeSettingsCommand } from ${moduleUrl("src/backend/runs/command-kernel.ts")};
 import { manualClock } from ${moduleUrl("src/domain/clock.ts")};
 const [root, raw] = process.argv.slice(2);
 const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
@@ -231,9 +231,9 @@ try {
       import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
       import { manualClock } from './src/domain/clock.ts';
       import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
-      import { executeSettingsCommand } from './src/core/command-kernel.ts';
+      import { executeSettingsCommand } from './src/backend/runs/command-kernel.ts';
       import { createCredentialStore } from '../helpers/synthetic-storage-admission.js';
-      import { createSettingsApplicationExecutor } from './src/server/dashboard/commands/settings-service.ts';
+      import { createSettingsApplicationExecutor } from './src/backend/runs/dashboard/commands/settings-service.ts';
       const clock = manualClock(new Date('2026-09-06T12:00:00Z'));
       const db = AuthorityDatabase.open({ path: ${JSON.stringify(f.path)}, busyTimeoutMs: 50, migrationOwner: 'r9-child' }, clock);
       try {

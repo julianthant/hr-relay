@@ -1,5 +1,5 @@
 import { testRunService, testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
-import { sweepWorkerClaims } from "../../src/core/run-record-service.js";
+import { sweepWorkerClaims } from "../../src/backend/runs/run-record-service.js";
 /**
  * D118 (ref execution-and-sessions §3): an expired claim is not ordinary requeue authority. An
  * unfinished `attempting` write intent on the run's logical item routes the

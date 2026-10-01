@@ -24,7 +24,7 @@ import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildRunResult } from "../../src/core/run-result.js";
+import { buildRunResult } from "../../src/backend/runs/run-result.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
@@ -38,11 +38,11 @@ import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
 import {
   createRunQueueProjection,
   type RunQueueProjection,
-} from "../../src/server/dashboard/projectors/run-queue-projection.js";
-import type { ArchiveQueryDeps } from "../../src/server/dashboard/queries/archive.js";
-import { createArchiveSnapshotSource } from "../../src/server/dashboard/queries/archive-snapshot.js";
-import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
-import { createReceiptService } from "../../src/server/trust/receipt-service.js";
+} from "../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
+import type { ArchiveQueryDeps } from "../../src/backend/runs/dashboard/queries/archive.js";
+import { createArchiveSnapshotSource } from "../../src/backend/runs/dashboard/queries/archive-snapshot.js";
+import type { RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail.js";
+import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 

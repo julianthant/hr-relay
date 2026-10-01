@@ -1,13 +1,13 @@
 import { historicalArchiveAuthority } from "./helpers/historical-archive-authority.js";
 import { VersionChangeStorageSchema } from "../../src/domain/archive/change-record.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
-import { projectArchiveReport, queryArchiveReports } from "../../src/server/dashboard/queries/archive-reports.js";
+import { projectArchiveReport, queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { ArchiveReportSchema } from "../../src/domain/archive/report.js";
 import { DatabaseSync } from "node:sqlite";
 import { atomicWriteCheckpoint } from "../helpers/timeline-write-fixture.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 /**
@@ -35,7 +35,7 @@ import { afterEach, describe, it } from "vitest";
 import { z } from "zod";
 import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
-import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
+import { createCommandKernel, type CommandKernel } from "../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { CommandResultSchema, type CommandResult } from "../../src/domain/commands.js";
 import { QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
@@ -44,7 +44,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { FixtureReadReceipt } from "../fixtures/descriptor-fixtures.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/server/dashboard/queries/archive.js";
+import { buildArchiveIndex, buildArchivedRunDetail } from "../../src/backend/runs/dashboard/queries/archive.js";
 import {
   archivedRunContentDigest,
   ArchivedRunContentSchema,
@@ -58,8 +58,8 @@ import { createTransactionHistory } from "../../src/infra/sqlite/transaction-his
 
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import type { ArchiveRunSnapshot } from "../../src/services/archive/archive-service.js";
-import { planStart } from "../../src/services/start/plan.js";
+import type { ArchiveRunSnapshot } from "../../src/backend/runs/archive/archive-service.js";
+import { planStart } from "../../src/backend/runs/start/plan.js";
 import { HASH_A, HASH_B, NOW, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";

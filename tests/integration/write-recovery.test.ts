@@ -1,5 +1,5 @@
 import { reconstructConfirmedOperation } from "../../src/events/confirmed-operation.js";
-import { lifecycleCommandId } from "../../src/core/run-record-service.js";
+import { lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { PositiveIntSchema } from "../../src/domain/ids.js";
 import { testRunContinuation } from "../fixtures/run-lifecycle-fixtures.js";
@@ -19,7 +19,7 @@ import {
   createWriteResolutionExecutor,
   type WriteRecoveryService,
 } from "../../src/core/write-recovery.js";
-import type { WriteResolutionContext } from "../../src/core/command-kernel.js";
+import type { WriteResolutionContext } from "../../src/backend/runs/command-kernel.js";
 import type { WorkerSessionManager } from "../../src/core/worker-sessions.js";
 import { manualClock, type TestClock } from "../../src/domain/clock.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";

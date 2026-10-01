@@ -1,4 +1,4 @@
-import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
+import { createTrustRunReader } from "../../src/backend/runs/trust/canonical-reader.js";
 /**
  * D199 — a settled run's receipt is bound to the semantic surfaces its
  * derivation consumes, not to the descriptor's whole source closure.
@@ -32,10 +32,10 @@ import {
   type EvidenceReceiptStore,
   type ReceiptBuildInput,
   type ReceiptWriteEvidence,
-} from "../../src/core/evidence-receipt.js";
+} from "../../src/backend/runs/evidence-receipt.js";
 import { diffReceipts } from "../../src/core/receipt-derivation-binding.js";
 import { failureStatus } from "../../src/backend/transports/dashboard/routes/failure-status.js";
-import { createReceiptService } from "../../src/server/trust/receipt-service.js";
+import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { separationsKualiFinalizationDescriptor } from "../helpers/registered-workflows.js";
 import { kualiReceiptEvidence, seedPersonLookupExitRun } from "../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";

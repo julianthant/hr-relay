@@ -6,7 +6,7 @@ import {
   SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../../src/domain/dashboard/settings.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
-import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
+import { projectStartSteps,startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
 import { personLookupDescriptor,personLookupModule } from "../../helpers/registered-workflows.js";
 import { at,CONTRACT_FINGERPRINT,FIXTURE_APP_VERSION,FIXTURE_DESCRIPTOR_HASH,FIXTURE_NOW,WORKFLOW_ID } from "./fixture-identity.js";
 

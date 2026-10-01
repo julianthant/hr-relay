@@ -14,7 +14,7 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
+import { buildRunDetail } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { timelineEventDuration } from "../../../src/domain/dashboard/run-detail.js";
 import {
   DAY,

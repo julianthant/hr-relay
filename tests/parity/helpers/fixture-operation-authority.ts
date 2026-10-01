@@ -1,5 +1,5 @@
 import { plan1SeparationWorkflow, plan1SeparationStores, fictionalSeparationDrivers } from "../../unit/fixtures/plan1-separation-operation.js";
-import { createReceiptService } from "../../../src/server/trust/receipt-service.js";
+import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
 import { readScopedEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../src/domain/run/note-scope.js";
 import { NoteWireSchema } from "../../../src/events/types.js";
@@ -11,15 +11,15 @@ import type { FictionalFormDriver } from "../../unit/fixtures/plan1-browser-oper
 import { plan1BrowserStores, plan1BrowserWorkflow, fictionalFormDriver } from "../../unit/fixtures/plan1-browser-operation.js";
 import { registerTrustRoutes } from "../../../src/backend/transports/dashboard/routes/trust.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
-import { projectStartSteps, startStepWireControl } from "../../../src/services/start/step-selection.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
+import { projectStartSteps, startStepWireControl } from "../../../src/backend/runs/start/step-selection.js";
 import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../src/base/workflow-definition.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../src/core/run-executor.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
 import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
 import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { buildQueuedRun } from "../../../src/services/runs/enqueue.js";
+import { buildQueuedRun } from "../../../src/backend/runs/enqueue.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";

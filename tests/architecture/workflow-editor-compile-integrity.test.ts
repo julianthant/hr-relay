@@ -31,7 +31,7 @@ import {
 import { WORKFLOW_MODULES } from "../../src/backend/app/control/workflow-registry.js";
 import { buildSafeUiCatalog } from "../../src/stores/ucpath/driver/catalog.js";
 import { explorerQueryDeps } from "../fixtures/explorer-seams.js";
-import { buildWorkflowExplorer } from "../../src/server/dashboard/queries/explorer.js";
+import { buildWorkflowExplorer } from "../../src/backend/runs/dashboard/queries/explorer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { FingerprintSchema } from "../../src/domain/ids.js";
 import {
@@ -39,11 +39,11 @@ import {
   ExplorerEditDraftSchema,
 } from "../../src/domain/dashboard/explorer.js";
 import type { DashboardClient } from "../../src/dashboard/client/index.js";
-import { buildExplorerCompileAttestation } from "../../src/server/dashboard/commands/explorer-edit-service.js";
+import { buildExplorerCompileAttestation } from "../../src/backend/runs/dashboard/commands/explorer-edit-service.js";
 import { REPO_ROOT, gitVisibleFiles, repoRelative, walkFiles } from "./helpers/guard-files.js";
 import { workflowSourcePath } from "../../src/domain/workflow/source-layout.js";
 
-const PROJECTION_FILE = "src/server/dashboard/queries/explorer.ts";
+const PROJECTION_FILE = "src/backend/runs/dashboard/queries/explorer.ts";
 const WIRE_FILE = "src/domain/dashboard/explorer.ts";
 const SURFACE_FILES = [
   "src/dashboard/surfaces/explorer.tsx",
@@ -361,7 +361,7 @@ describe("the explorer surface keeps Phase A reads separate from the Phase B saf
   });
 
   it("serves the COMMITTED catalog and never regenerates it", () => {
-    const query = read("src/server/dashboard/queries/ui-catalog.ts");
+    const query = read("src/backend/runs/dashboard/queries/ui-catalog.ts");
     assert.ok(query.includes("assertSafeUiCatalogFresh"), "the served catalog must be freshness-asserted");
     for (const writer of ["writeFileSync", "writeFile(", "publishArtifact", "uiCatalogProjections"]) {
       assert.ok(
@@ -431,8 +431,8 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
   it("keeps override writes inside the command transaction with strict SQL readback and audit binding", () => {
     const repository = read("src/infra/sqlite/explorer-overrides.ts");
     const database = read("src/infra/sqlite/authority-database.ts");
-    const kernel = read("src/core/command-kernel.ts");
-    const service = read("src/server/dashboard/commands/explorer-edit-service.ts");
+    const kernel = read("src/backend/runs/command-kernel.ts");
+    const service = read("src/backend/runs/dashboard/commands/explorer-edit-service.ts");
     const violations = (source: string): string[] => [
       "REFERENCES commands(record_key)", "ExplorerWorkflowOverrideSchema.parse", "assertExplorerOverrideEvidence",
       "explorer-override-command-transaction-required", "Explorer override readback differs",
@@ -454,7 +454,7 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
     assert.ok(!routes.includes('/api/v1/explorer/apply'));
     const commands = read("src/domain/commands.ts");
     const explorer = read("src/domain/dashboard/explorer.ts");
-    const kernel = read("src/core/command-kernel.ts");
+    const kernel = read("src/backend/runs/command-kernel.ts");
     assert.ok(explorer.includes('type: z.literal("apply-explorer-edit")'));
     assert.ok(commands.includes("ExplorerCommandRequestSchema = ExplorerEditApplyRequestSchema"));
     assert.ok(kernel.includes('case "explorer"'));

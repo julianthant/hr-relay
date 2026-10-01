@@ -8,11 +8,11 @@ import { ContextDataSectionSchema, RunDetailSectionResponseSchema } from "../../
 import { DeletedRunRecordSchema } from "../../../src/domain/run/deleted-run.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";
-import { buildRunSection } from "../../../src/server/dashboard/queries/run-detail.js";
+import { buildRunSection } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { composeDataQueries } from "../../../src/backend/app/dashboard/compose/data.js";
 import { registerDataRoutes } from "../../../src/backend/transports/dashboard/routes/data.js";
 import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
-import type { RunDetailQueryDeps, RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail-types.js";
+import type { RunDetailQueryDeps, RunDetailDescriptorView } from "../../../src/backend/runs/dashboard/queries/run-detail-types.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import {

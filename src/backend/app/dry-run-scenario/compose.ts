@@ -16,7 +16,7 @@ import {
   runDryRunScenario,
   type DryRunScenarioRuntime,
   type DryRunScenarioTargetResolution,
-} from "../../../core/dry-run-scenario-runner.js";
+} from "../../runs/dry-run-scenario-runner.js";
 import {
   readTestTargetRegistry,
   resolvePersonLookupTestTarget,

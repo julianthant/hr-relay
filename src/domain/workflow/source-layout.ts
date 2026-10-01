@@ -13,7 +13,7 @@
  *
  * This is the ONE derivation, and it is here rather than in a guard helper
  * because three readers need the same answer: the Explorer's source links
- * (`src/server/dashboard/queries/explorer.ts`), `descriptor-coverage`'s
+ * (`src/backend/runs/dashboard/queries/explorer.ts`), `descriptor-coverage`'s
  * bundle-closure walk, and `workflow-editor-compile-integrity`'s
  * source-authored arm. Three copies of the same path literal were free to
  * disagree the moment a folder moved, and one of them printed a link an

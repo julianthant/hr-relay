@@ -1,4 +1,4 @@
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 /**
  * 2i-B: the notification lifecycle arms and the day-wire mapping.
  *
@@ -13,7 +13,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
+import { createCommandKernel, type CommandKernel } from "../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { NotificationWireSchema, notificationWireOf } from "../../src/domain/dashboard/projection.js";
 import { NotificationRecordSchema } from "../../src/domain/notifications.js";

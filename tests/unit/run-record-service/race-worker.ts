@@ -2,7 +2,7 @@ import { CanonicalFailureTerminalizeRequestSchema } from "../../../src/infra/sql
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { parentPort, workerData } from "node:worker_threads";
 import { z } from "zod";
-import { RunRecordService, CreateRunRequestSchema } from "../../../src/core/run-record-service.js";
+import { RunRecordService, CreateRunRequestSchema } from "../../../src/backend/runs/run-record-service.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { RuntimeConfigClaimTokenSchema } from "../../../src/domain/config/runtime-generation.js";
 import { CommandIdSchema, RunIdSchema, WorkerIdSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";

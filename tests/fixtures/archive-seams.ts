@@ -1,4 +1,4 @@
-import { createArchiveSnapshotSource } from "../../src/server/dashboard/queries/archive-snapshot.js";
+import { createArchiveSnapshotSource } from "../../src/backend/runs/dashboard/queries/archive-snapshot.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 /**
  * The archive dependency blocks, built ONCE and shared by every harness that
@@ -12,8 +12,8 @@ import { createTransactionHistory } from "../../src/infra/sqlite/transaction-his
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   type ArchiveQueryDeps,
-} from "../../src/server/dashboard/queries/archive.js";
-import type { RunDetailQueryDeps } from "../../src/server/dashboard/queries/run-detail.js";
+} from "../../src/backend/runs/dashboard/queries/archive.js";
+import type { RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail.js";
 
 export interface ArchiveSeamDescriptor {
   readonly id: string;

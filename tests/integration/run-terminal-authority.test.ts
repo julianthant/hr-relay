@@ -1,5 +1,5 @@
 import { TerminalAuthorizationRecordSchema } from "../../src/domain/run/terminal-authorization.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { completionFromAuthorization } from "../../src/domain/run/completion.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, rmSync } from "node:fs";
@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
-import { buildRunResult } from "../../src/core/run-result.js";
+import { buildRunResult } from "../../src/backend/runs/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { ReadOnboardingDatesOutputSchema } from "../../src/domain/contracts/crm/read-onboarding-dates.js";

@@ -3,9 +3,9 @@ import { sha256Hex } from "../../../../domain/sha256.js";
 import { CalendarQuerySchema } from "../../../../domain/dashboard/calendar.js";
 import { z } from "zod";
 import { PositiveIntSchema, ProjectionCursorSchema } from "../../../../domain/ids.js";
-import { buildBootstrap } from "../../../../server/dashboard/queries/bootstrap.js";
+import { buildBootstrap } from "../../../runs/dashboard/queries/bootstrap.js";
 import { parseCrossDateSearchRouteQuery } from "./search-schema.js";
-import { SectionUnavailableError } from "../../../../server/failures.js";
+import { SectionUnavailableError } from "../../../runs/refusals.js";
 import { dashboardEventStreamBody } from "../subscriptions/sse-response.js";
 const TOPICS_PATTERN = /^dashboard-day:(\d{4}-\d{2}-\d{2})$/;
 const StreamResumeSchema = z.strictObject({

@@ -1,10 +1,10 @@
 import { RunResultRecordSchema } from "../../../src/domain/run/result.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { deriveCanonicalPerson } from "../../../src/core/run-summary.js";
+import { deriveCanonicalPerson } from "../../../src/backend/runs/run-summary.js";
 import { TERMINAL_SEPARATIONS_RUN,TERMINAL_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
 import { foundationFixture } from "../../unit/database-foundation/fixtures.js";
-import { queryQueueSummaries,queryActivitySummaries } from "../../../src/server/dashboard/queries/run-summaries.js";
+import { queryQueueSummaries,queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 
 it("refuses each canonical identity mismatch with a sanitized error",()=>{
   for(const patch of [{attempt:2},{workflowId:"other"},{configSnapshotId:"00000000-0000-4000-8000-000000009999"},{contractFingerprint:TERMINAL_SEPARATIONS_RESULT.contractFingerprint==="b".repeat(64)?"c".repeat(64):"b".repeat(64)},{descriptorVersion:99},{configFingerprint:TERMINAL_SEPARATIONS_RESULT.configFingerprint==="b".repeat(64)?"c".repeat(64):"b".repeat(64)}]) {

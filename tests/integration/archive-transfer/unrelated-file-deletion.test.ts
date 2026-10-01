@@ -5,7 +5,7 @@ import { join } from 'node:path';
 import { archiveFixture, attachFile } from '../../unit/archive-transfer/fixtures.js';
 import { id, NOW } from '../../unit/database-foundation/fixtures.js';
 import { createRunLifecycleStorage } from '../../../src/core/run-lifecycle-storage.js';
-import { projectArchiveReport } from '../../../src/server/dashboard/queries/archive-reports.js';
+import { projectArchiveReport } from '../../../src/backend/runs/dashboard/queries/archive-reports.js';
 
 function runCase(missing: 'none' | 'target' | 'unrelated') {
   const f = archiveFixture();

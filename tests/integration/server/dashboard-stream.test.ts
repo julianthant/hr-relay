@@ -11,7 +11,7 @@ import type { DashboardDayWire } from "../../../src/domain/dashboard/projection.
 import type { DashboardStreamEnvelope } from "../../../src/domain/dashboard/subscription.js";
 import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
 import { createDashboardStreamHub, type DashboardStreamHub } from "../../../src/backend/transports/dashboard/subscriptions/dashboard-stream.js";
-import { BackfillGapObservationSchema } from "../../../src/services/notifications/backfill-gap.js";
+import { BackfillGapObservationSchema } from "../../../src/backend/runs/notifications/backfill-gap.js";
 import {
   claimEventOf,
   DAY,

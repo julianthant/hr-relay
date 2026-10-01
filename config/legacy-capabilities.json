@@ -333,7 +333,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/dashboard/components/settings",
         "src/dashboard/surfaces/settings.tsx",
-        "src/server/dashboard/queries/storage.ts"
+        "src/backend/runs/dashboard/queries/storage.ts"
       ],
       "status": "open"
     },
@@ -512,7 +512,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/ai-assist.ts",
-        "src/server/dashboard/queries/advisory.ts",
+        "src/backend/runs/dashboard/queries/advisory.ts",
         "src/domain/trust/advisory.ts"
       ],
       "status": "open"
@@ -534,8 +534,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/base.ts",
-        "src/server/dashboard/queries/bootstrap.ts",
-        "src/server/dashboard/queries/run-detail.ts"
+        "src/backend/runs/dashboard/queries/bootstrap.ts",
+        "src/backend/runs/dashboard/queries/run-detail.ts"
       ],
       "status": "open"
     },
@@ -578,13 +578,13 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2i",
-        "replacement": "src/server/dashboard/commands/command-service.ts",
+        "replacement": "src/backend/runs/dashboard/commands/command-service.ts",
         "differencesAccepted": "Legacy's dedicated POST /api/daemon/stop is replaced by the ONE idempotent actor-stamped command endpoint (POST /api/v1/commands) carrying the `worker-browser` family's stop-worker type, so every product mutation is validated by the same authority-transactional kernel instead of by a per-action route with its own ad-hoc checks."
       },
       "ownerMilestone": "2i",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/daemon-stop.ts",
-        "src/server/dashboard/commands/command-service.ts",
+        "src/backend/runs/dashboard/commands/command-service.ts",
         "src/domain/commands.ts"
       ],
       "status": "implemented"
@@ -622,15 +622,15 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1g-spine",
-        "replacement": "src/server/dashboard/commands/start-plan-service.ts",
+        "replacement": "src/backend/runs/dashboard/commands/start-plan-service.ts",
         "differencesAccepted": "Enqueue is TWO steps, not one: POST /api/v1/start-plans mints a confirmable plan that retains the exact raw JSON ingress beside the schema-bound canonical snapshot and binds both schema hashes plus the canonical digest (D109), and POST /api/v1/commands then consumes that plan under the `start` family inside its own authority transaction (D113). A single fire-and-forget enqueue cannot bind the confirmation revision the terminal authority later requires."
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/enqueue.ts",
-        "src/server/dashboard/commands/start-plan-service.ts",
-        "src/services/start/plan.ts",
-        "src/server/dashboard/commands/command-service.ts"
+        "src/backend/runs/dashboard/commands/start-plan-service.ts",
+        "src/backend/runs/start/plan.ts",
+        "src/backend/runs/dashboard/commands/command-service.ts"
       ],
       "status": "implemented"
     },
@@ -646,13 +646,13 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "1g-spine",
-        "replacement": "src/server/dashboard/projectors/run-queue-projection.ts",
+        "replacement": "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
         "differencesAccepted": "This legacy module registers no route: it assembles the dashboard row payload for the entries SSE topic inside the route layer, and caches cross-workflow counts beside it. The rebuild builds every row and every total INSIDE the one projection (D81, and D180 for the range aggregates), so there is no second assembly path and no separate count cache that could disagree with the day it summarises."
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/entries-payload.ts",
-        "src/server/dashboard/projectors/run-queue-projection.ts",
+        "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
         "src/backend/transports/dashboard/subscriptions/dashboard-stream.ts"
       ],
       "status": "implemented"
@@ -763,7 +763,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/ops.ts",
         "src/domain/commands.ts",
-        "src/server/dashboard/commands/command-service.ts"
+        "src/backend/runs/dashboard/commands/command-service.ts"
       ],
       "status": "open"
     },
@@ -780,15 +780,15 @@
         "kind": "native",
         "milestone": "1g-spine",
         "targetIds": [
-          "src/server/dashboard/projectors/run-queue-projection.ts",
+          "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
           "src/backend/transports/dashboard/routes/api.ts"
         ]
       },
       "ownerMilestone": "1g-spine",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/projection.ts",
-        "src/server/dashboard/projectors/run-queue-projection.ts",
-        "src/server/dashboard/queries/storage.ts"
+        "src/backend/runs/dashboard/projectors/run-queue-projection.ts",
+        "src/backend/runs/dashboard/queries/storage.ts"
       ],
       "status": "implemented"
     },
@@ -830,8 +830,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/search.ts",
-        "src/server/dashboard/queries/ui-catalog.ts",
-        "src/server/dashboard/queries/run-detail.ts"
+        "src/backend/runs/dashboard/queries/ui-catalog.ts",
+        "src/backend/runs/dashboard/queries/run-detail.ts"
       ],
       "status": "open"
     },
@@ -852,7 +852,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/settings.ts",
-        "src/server/dashboard/queries/storage.ts",
+        "src/backend/runs/dashboard/queries/storage.ts",
         "src/domain/commands.ts"
       ],
       "status": "open"
@@ -915,13 +915,13 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2i",
-        "replacement": "src/server/dashboard/queries/explorer.ts",
+        "replacement": "src/backend/runs/dashboard/queries/explorer.ts",
         "differencesAccepted": "Legacy's /api/task-dependencies computed a dependency graph inside the route. The rebuild derives task, contract, delegation and scenario facts from the composition root plus each descriptor's factory-sealed projections and the fingerprinted build manifest at GET /api/v1/explorer (D176) — no literal node list, no per-workflow switch — so there is no second answer that could disagree with the descriptor, and a source link that does not resolve reports `unresolved` with the path it tried instead of interpolating a plausible one."
       },
       "ownerMilestone": "2i",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/tasks.ts",
-        "src/server/dashboard/queries/explorer.ts",
+        "src/backend/runs/dashboard/queries/explorer.ts",
         "src/domain/dashboard/explorer.ts",
         "tests/unit/architecture/workflow-editor-compile-integrity.test.ts"
       ],
@@ -944,7 +944,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/workflow-design.ts",
-        "src/server/dashboard/queries/explorer.ts"
+        "src/backend/runs/dashboard/queries/explorer.ts"
       ],
       "status": "open"
     },
@@ -965,8 +965,8 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/workflow-presentation.ts",
-        "src/server/dashboard/queries/bootstrap.ts",
-        "src/server/dashboard/queries/explorer.ts"
+        "src/backend/runs/dashboard/queries/bootstrap.ts",
+        "src/backend/runs/dashboard/queries/explorer.ts"
       ],
       "status": "open"
     },
@@ -1351,16 +1351,16 @@
         "milestone": "workflow-admission-backlog",
         "evidence": [
           "legacy-source-present:src/scripts/ops/summarize-run.ts",
-          "src/core/evidence-receipt.ts",
-          "src/server/explain/explain-run.ts"
+          "src/backend/runs/evidence-receipt.ts",
+          "src/backend/runs/explain/explain-run.ts"
         ],
         "reason": "D192 (operator, 2026-08-12): retired rather than built. `RunEvidenceReceipt` (D141/D144) is already the run's structured, byte-reproducible, per-field-redaction-declared summary, derived from authority and served by both `cli explain run <traceId|runId>` and the run-detail receipt section — an LLM digest over the same facts would duplicate it and reintroduce paraphrase risk on the exact surface D141 built to eliminate. AdvisorySurfaceIdSchema stays closed at its D178 two-value shape; no surface arm is added."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/summarize-run.ts",
-        "src/core/evidence-receipt.ts",
-        "src/server/explain/explain-run.ts",
+        "src/backend/runs/evidence-receipt.ts",
+        "src/backend/runs/explain/explain-run.ts",
         "npm run cli"
       ],
       "status": "retired"
@@ -1384,7 +1384,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/triage-failure.ts",
         "src/services/trust/advisory.ts",
-        "src/server/dashboard/queries/advisory.ts",
+        "src/backend/runs/dashboard/queries/advisory.ts",
         "src/dashboard/surfaces/advisory.tsx",
         "tests/unit/architecture/ai-advisory-no-authority.test.ts"
       ],
@@ -1477,7 +1477,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/workflow-design/build-data-bank.ts",
-        "src/server/dashboard/queries/explorer.ts"
+        "src/backend/runs/dashboard/queries/explorer.ts"
       ],
       "status": "open"
     },

@@ -17,7 +17,7 @@ import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { deriveTraceId } from "../../../src/domain/identifiers.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./bundle.js";
 

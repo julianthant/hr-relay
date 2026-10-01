@@ -20,7 +20,7 @@
  * supplied EID never creates this section under the current contract.
  *
  * The two `resolve-gate` descriptors are the SERVER's, word for word
- * (`identityGateActions` in `src/server/dashboard/queries/run-detail.ts`), for
+ * (`identityGateActions` in `src/backend/runs/dashboard/queries/run-detail.ts`), for
  * the same reason `FIXTURE_PARKED_WRITE` copies its pair: that function is not
  * exported and takes an authority `RunRecord` this adapter has none of. The
  * copy is PINNED to the server's by

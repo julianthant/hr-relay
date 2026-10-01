@@ -19,8 +19,8 @@ import { manualClock } from "../../../src/domain/clock.js";
 import {
 buildWorkflowExplorer,
 type ExplorerQueryDeps,
-} from "../../../src/server/dashboard/queries/explorer.js";
-import { buildUiCatalogWire } from "../../../src/server/dashboard/queries/ui-catalog.js";
+} from "../../../src/backend/runs/dashboard/queries/explorer.js";
+import { buildUiCatalogWire } from "../../../src/backend/runs/dashboard/queries/ui-catalog.js";
 import { explorerQueryDeps,uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { FIXTURE_DAY,FIXTURE_DESCRIPTOR_HASH } from "./fixture-identity.js";
 

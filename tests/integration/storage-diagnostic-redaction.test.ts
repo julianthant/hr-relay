@@ -13,7 +13,7 @@ import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { doctorAuthorityStorage, inspectSpanAuthorityCorpusReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { buildStorageDoctor } from "../../src/server/dashboard/queries/storage.js";
+import { buildStorageDoctor } from "../../src/backend/runs/dashboard/queries/storage.js";
 import { composeStorageCommand } from "../helpers/synthetic-storage-admission.js";
 import { NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";

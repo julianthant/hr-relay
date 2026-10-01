@@ -4,10 +4,10 @@ import type { Clock } from "../../../../domain/clock.js";
 import { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
 import { verifyBackupManifestAtPath } from "../../../../infra/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../domain/sha256.js";
-import type { NotificationInbox } from "../../../../services/notifications/inbox.js";
+import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
 import { StorageHealthConcernSchema } from "../../../../domain/notification-triggers.js";
-import { listCanonicalRuns } from "../../../../server/dashboard/queries/canonical-runs.js";
-import type { RunRecordService } from "../../../../core/run-record-service.js";
+import { listCanonicalRuns } from "../../../runs/dashboard/queries/canonical-runs.js";
+import type { RunRecordService } from "../../../runs/run-record-service.js";
 import type { RuntimeAdmission } from "../../../../infra/runtime-control/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }

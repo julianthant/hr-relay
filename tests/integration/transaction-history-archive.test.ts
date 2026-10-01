@@ -8,7 +8,7 @@ import { exportTransactions } from "../../src/server/storage/transaction-export.
 import { describe, it, vi } from "vitest";
 import { historyWorld, historicalWorld, HISTORY_NOW } from "../unit/transaction-history-fixture.js";
 import { fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
-import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
 
 const range = { from: "2026-07-01", to: "2026-09-09" };

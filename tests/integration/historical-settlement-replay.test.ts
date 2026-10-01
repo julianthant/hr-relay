@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { z } from "zod";
-import { RunRecordService, workerRunLifecyclePort } from "../../src/core/run-record-service.js";
+import { RunRecordService, workerRunLifecyclePort } from "../../src/backend/runs/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../src/core/write-sequencer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";

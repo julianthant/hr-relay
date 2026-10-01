@@ -1,7 +1,7 @@
 import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
 import { explorerAuthorityFixture } from "../fixtures/explorer-authority.js";
 import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
-import { captureArchiveReport } from "../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../src/backend/storage/archive/report-capture.js";
 import { versionChangeReviewFingerprint } from "../../src/domain/archive/change-record.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { historicalWorld } from "../unit/transaction-history-fixture.js";
@@ -14,7 +14,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
 import { AUTHORITY_TABLE_REGISTRY, type AuthorityTableName } from "../../src/domain/authority.js";
-import { buildRunResult } from "../../src/core/run-result.js";
+import { buildRunResult } from "../../src/backend/runs/run-result.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   CommandRequestSchema,

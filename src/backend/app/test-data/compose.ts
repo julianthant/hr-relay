@@ -43,7 +43,7 @@ import {
   type TestDataInputSource,
 } from "../../../domain/test-data.js";
 import { realpathSync, statSync, openSync, readSync, closeSync } from "node:fs";
-import { TEST_DATA_USAGE } from "../../../core/test-data-usage.js";
+import { TEST_DATA_USAGE } from "../../runs/test-data-usage.js";
 import {
   migrateTestDataFromCredentials,
   type CredentialTestDataMigrationReport,
@@ -60,7 +60,7 @@ export interface TestDataComposeDependencies {
   readonly now?: () => Date;
 }
 
-export { TEST_DATA_USAGE } from "../../../core/test-data-usage.js";
+export { TEST_DATA_USAGE } from "../../runs/test-data-usage.js";
 
 type SubjectState = "ready" | "blocked" | "defect";
 interface SubjectReport {

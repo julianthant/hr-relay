@@ -19,9 +19,9 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import type { SpanOutcomeWire } from "../../../src/events/types.js";
-import { deriveRunStatus, taskStateOf } from "../../../src/server/dashboard/run-status.js";
-import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
-import type { RunDetailDescriptorView } from "../../../src/server/dashboard/queries/run-detail.js";
+import { deriveRunStatus, taskStateOf } from "../../../src/backend/runs/run-status.js";
+import { buildRunDetail } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
+import type { RunDetailDescriptorView } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import {
   claimEventOf,
   instantOffsetOf,

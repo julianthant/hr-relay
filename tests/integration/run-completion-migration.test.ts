@@ -16,7 +16,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { ArchivedRunRecordSchema, archivedRunReferenceFingerprint } from "../../src/domain/archive/model.js";
 import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../src/domain/run/record.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { OfflineAuthorityRestoreService } from "../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";

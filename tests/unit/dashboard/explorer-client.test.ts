@@ -31,8 +31,8 @@ import type { ExplorerWorkflowWire } from "../../../src/domain/dashboard/explore
 import type { UiCatalogEntry } from "../../../src/domain/ui/contracts.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { buildWorkflowExplorer } from "../../../src/server/dashboard/queries/explorer.js";
-import { buildUiCatalogWire } from "../../../src/server/dashboard/queries/ui-catalog.js";
+import { buildWorkflowExplorer } from "../../../src/backend/runs/dashboard/queries/explorer.js";
+import { buildUiCatalogWire } from "../../../src/backend/runs/dashboard/queries/ui-catalog.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 
 const CLOCK = manualClock(new Date("2026-08-09T12:00:00.000Z"));

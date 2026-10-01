@@ -1,4 +1,4 @@
-import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
+import { createTrustRunReader } from "../../src/backend/runs/trust/canonical-reader.js";
 import { personLookupQueuedRun } from "../helpers/phase1f-executor-harness.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 /**
@@ -34,7 +34,7 @@ import {
   createNotificationInbox,
   type NotificationInbox,
   type OsNotificationDelivery,
-} from "../../src/services/notifications/inbox.js";
+} from "../../src/backend/runs/notifications/inbox.js";
 import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_2, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const NEXT = "2026-07-31T17:05:00.000Z";

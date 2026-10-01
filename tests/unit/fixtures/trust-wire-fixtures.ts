@@ -6,7 +6,7 @@
  * the builder's shape moved, and a wire test that asserts against a stale hand
  * copy proves nothing about what the server serves.
  */
-import { buildRunEvidenceReceipt } from "../../../src/core/evidence-receipt.js";
+import { buildRunEvidenceReceipt } from "../../../src/backend/runs/evidence-receipt.js";
 import { FailureDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import type { RunEvidenceReceipt } from "../../../src/domain/trust/evidence.js";
 import { separationsKualiFinalizationDescriptor } from "../../helpers/registered-workflows.js";

@@ -31,7 +31,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { planStepOmissions, type StepOmissionDeclaration } from "../../src/domain/workflow/step-omission.js";
-import { StartStepOmissionRefusedError, resolveStartStepOmissions, stepOmissionGraphView } from "../../src/services/start/step-selection.js";
+import { StartStepOmissionRefusedError, resolveStartStepOmissions, stepOmissionGraphView } from "../../src/backend/runs/start/step-selection.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

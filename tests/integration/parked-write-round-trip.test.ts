@@ -1,10 +1,10 @@
-import { createTrustRunReader } from "../../src/server/trust/canonical-reader.js";
-import { buildTrustSection } from "../../src/server/dashboard/queries/run-trust.js";
+import { createTrustRunReader } from "../../src/backend/runs/trust/canonical-reader.js";
+import { buildTrustSection } from "../../src/backend/runs/dashboard/queries/run-trust.js";
 import { makeWorld } from "../unit/server/helpers/dashboard-harness.js";
 import { foldTrustGate } from "../unit/server/helpers/trust-authority-fixture.js";
-import { SectionUnavailableError } from "../../src/server/failures.js";
-import { RunRecordService } from "../../src/core/run-record-service.js";
-import { lifecycleCommandId } from "../../src/core/run-record-service.js";
+import { SectionUnavailableError } from "../../src/backend/runs/refusals.js";
+import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
+import { lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";
 import { testRunContinuation, testRunLifecycle, testWorkerPorts } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * The full parked-write round trip across every landed seam, with nothing
@@ -28,7 +28,7 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { createCommandKernel, type CommandKernel } from "../../src/core/command-kernel.js";
+import { createCommandKernel, type CommandKernel } from "../../src/backend/runs/command-kernel.js";
 import { runWorkerLoop, type WorkerLoopReport } from "../../src/core/worker-loop.js";
 import { createWriteResolutionExecutor } from "../../src/core/write-recovery.js";
 import { createWriteSequencer, type WriteSequencerHooks } from "../../src/core/write-sequencer.js";

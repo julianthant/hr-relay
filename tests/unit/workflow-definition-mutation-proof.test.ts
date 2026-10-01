@@ -22,7 +22,7 @@ import { EidSchema } from "../../src/domain/ids.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { defineWorkflowRole } from "../../src/domain/workflow/module-role.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { projectStartSteps } from "../../src/services/start/step-selection.js";
+import { projectStartSteps } from "../../src/backend/runs/start/step-selection.js";
 import { compileFixtureWorkflow } from "../fixtures/workflow-definition-fixtures.js";
 
 const Input = z.strictObject({ emplId: EidSchema, expectedName: CANONICAL_FIELDS.fullName.schema });

@@ -9,9 +9,9 @@ import {
 
 import type {
   RunDetailQueryDeps,
-} from "../../../../server/dashboard/queries/run-detail.js";
+} from "../../../runs/dashboard/queries/run-detail.js";
 import { gateNodeViewsOf, writeContractViewsOf, dataOriginViewsOf } from "./run-detail-descriptors.js";
-import { createItemAttemptHistoryQuery } from "../../../../server/dashboard/queries/item-attempt-history.js";
+import { createItemAttemptHistoryQuery } from "../../../runs/dashboard/queries/item-attempt-history.js";
 
 export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRoot" | "projection" | "trust" | "captures" | "canonical" | "runReader"> & { database: AuthorityDatabase }): RunDetailQueryDeps {
   const { stateRoot, projection, database, trust, captures, canonical, runReader } = input;

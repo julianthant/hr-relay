@@ -1,10 +1,10 @@
 import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { CanonicalRelaunchRequestSchema } from "../../../src/infra/sqlite/run-store-contracts.js";
-import { selectRunRuntime } from "../../../src/core/run-settings.js";
+import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { runQueuedSpanEvent } from "../../../src/server/dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -15,7 +15,7 @@ import { DatabaseSync } from "node:sqlite";
 import ts from "typescript";
 import { z } from "zod";
 import { afterEach, describe, it } from "vitest";
-import { CreateRunRequestSchema, RunRecordService, lifecycleCommandId, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied, type CreateRunRequest } from "../../../src/core/run-record-service.js";
+import { CreateRunRequestSchema, RunRecordService, lifecycleCommandId, workerRunLifecyclePort, runContinuationPort, requireLifecycleApplied, type CreateRunRequest } from "../../../src/backend/runs/run-record-service.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { planRuntimeVersionTransition } from "../../../src/domain/archive/runtime-version.js";
 import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../src/domain/protected-input.js";
@@ -2128,7 +2128,7 @@ describe("canonical run-record service", () => {
     }));
     assert.deepEqual(purged, { state: "purged", evidenceClass: "diagnostic-bundle", purged: 0 });
 
-    const sourceText = readFileSync(join(process.cwd(), "src/core/run-record-service.ts"), "utf8");
+    const sourceText = readFileSync(join(process.cwd(), "src/backend/runs/run-record-service.ts"), "utf8");
     const sourceFile = ts.createSourceFile("run-record-service.ts", sourceText, ts.ScriptTarget.Latest, true);
     const serviceClass = sourceFile.statements.find((statement): statement is ts.ClassDeclaration =>
       ts.isClassDeclaration(statement) && statement.name?.text === "RunRecordService");

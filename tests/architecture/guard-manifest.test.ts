@@ -380,6 +380,19 @@ describe("reviewed architecture guard manifest", () => {
     assert.equal(REBUILD_COVERAGE_FLOORS.branches.phase1ReportOnly, true);
     assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2Global >= 50);
     assert.ok(REBUILD_COVERAGE_FLOORS.branches.phase2SafetyCritical >= 70);
+
+    const movedCoreFiles = [
+      "command-application", "command-kernel", "command-refusal", "dry-run-scenario-runner",
+      "evidence-receipt", "failure-resolution", "provider-admission", "run-claim-admission",
+      "run-fan-out", "run-record-service", "run-result", "run-settings", "run-summary",
+      "task-provenance", "terminal-authorization", "test-data-usage",
+    ].map((name) => `src/backend/runs/${name}.ts`);
+    const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
+    assert.ok(thresholds);
+    const missingFloors = (candidate: Record<string, unknown>): string[] => movedCoreFiles.filter((path) =>
+      candidate[path] !== REBUILD_COVERAGE_FLOORS.safetyCritical);
+    assert.deepEqual(missingFloors(thresholds), []);
+    assert.deepEqual(missingFloors({ ...thresholds, [movedCoreFiles[0] ?? ""]: undefined }), [movedCoreFiles[0]]);
   });
 
   it("executes every required rebuild ratchet arm and proves its violating fixture is caught", () => {

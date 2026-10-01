@@ -1,5 +1,5 @@
 import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { createTrustRunReader } from "../../../src/server/trust/canonical-reader.js";
+import { createTrustRunReader } from "../../../src/backend/runs/trust/canonical-reader.js";
 /** E29/D291: durable D137 bundle readback through request-local verified-byte passes and leases. */
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -25,13 +25,13 @@ import {
   createArtifactVerificationPass,
   IndexedArtifactBytesMissingError,
   prepareDiagnosticArtifactLease,
-} from "../../../src/server/dashboard/queries/artifact-bytes.js";
-import { readDiagnosticBundle } from "../../../src/server/dashboard/queries/diagnostic-bundle.js";
+} from "../../../src/backend/runs/dashboard/queries/artifact-bytes.js";
+import { readDiagnosticBundle } from "../../../src/backend/runs/dashboard/queries/diagnostic-bundle.js";
 import {
   DiagnosticBundleBytesMissingError,
   DiagnosticBundleCorruptError,
   TargetNotFoundError,
-} from "../../../src/server/failures.js";
+} from "../../../src/backend/runs/refusals.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";

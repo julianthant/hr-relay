@@ -16,8 +16,8 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { WorkerLeaseRecordSchema } from "../../../src/domain/run/worker.js";
-import { workerCardOf } from "../../../src/server/dashboard/projectors/worker-cards.js";
-import { browserSessionOfSpanPath } from "../../../src/server/dashboard/support.js";
+import { workerCardOf } from "../../../src/backend/runs/dashboard/projectors/worker-cards.js";
+import { browserSessionOfSpanPath } from "../../../src/backend/runs/support.js";
 import {
   WORKER_STOP_REASON_LABEL,
   WORKER_TONE,

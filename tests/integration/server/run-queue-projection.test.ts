@@ -18,9 +18,9 @@ import { appendFileSync, mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { buildRunDetail } from "../../../src/server/dashboard/queries/run-detail.js";
-import { createRunQueueProjection } from "../../../src/server/dashboard/projectors/run-queue-projection.js";
-import { ProjectionDegradedError } from "../../../src/server/failures.js";
+import { buildRunDetail } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
+import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
+import { ProjectionDegradedError } from "../../../src/backend/runs/refusals.js";
 import { RunEvidenceReceiptSchema } from "../../../src/domain/trust/evidence.js";
 import { HASH_A, HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import {

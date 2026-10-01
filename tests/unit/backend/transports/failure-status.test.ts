@@ -18,8 +18,8 @@ import {
   ProjectionDegradedError,
   SectionUnavailableError,
   TargetNotFoundError,
-} from "../../../../src/server/failures.js";
-import { StartStepOmissionRefusedError } from "../../../../src/services/start/step-selection.js";
+} from "../../../../src/backend/runs/refusals.js";
+import { StartStepOmissionRefusedError } from "../../../../src/backend/runs/start/step-selection.js";
 
 /** Every phrase the retired `NOT_FOUND_MARKERS` table and its two siblings keyed on. */
 const RETIRED_MARKERS = [

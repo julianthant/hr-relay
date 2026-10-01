@@ -71,7 +71,7 @@ it("reads a consistent publication across an independent writer and refuses a co
 });
 
 import { versionChangeReviewFingerprint } from "../../../src/domain/archive/change-record.js";
-import { queryRunSummarySource } from "../../../src/server/dashboard/queries/run-summaries.js";
+import { queryRunSummarySource } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 it("keeps unrelated summaries unchanged, rolls nested notifications back, and pages through the real indexed port",()=>{
   const f=foundationFixture();
   try {

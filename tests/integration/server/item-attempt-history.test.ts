@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it, vi } from "vitest";
 import { DeletedRunRecordSchema } from "../../../src/domain/run/deleted-run.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { captureArchiveReport } from "../../../src/services/archive/report-capture.js";
+import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
 import { createRunLifecycleStorage } from "../../../src/infra/sqlite/lifecycle-storage.js";
-import { createItemAttemptHistoryQuery } from "../../../src/server/dashboard/queries/item-attempt-history.js";
+import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/dashboard/queries/item-attempt-history.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { makeWorld, runRecordOf, traceOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
 

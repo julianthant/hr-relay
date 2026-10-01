@@ -1,14 +1,14 @@
 import {archiveCurrentRun} from "../helpers/archive-current-run.js";
-import {genericArchiveSection} from "../../../src/services/archive/report-capture.js";
+import {genericArchiveSection} from "../../../src/backend/storage/archive/report-capture.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 
 import { FailureTriageOutcomeSchema } from "../../../src/domain/trust/advisory.js";
 import { FailureRecordSchema } from "../../../src/domain/trust/failure.js";
-import { buildRunAdvisory, type AdvisoryQueryDeps } from "../../../src/server/dashboard/queries/advisory.js";
-import { buildTrustSection } from "../../../src/server/dashboard/queries/run-trust.js";
-import { SectionUnavailableError, TargetNotFoundError } from "../../../src/server/failures.js";
+import { buildRunAdvisory, type AdvisoryQueryDeps } from "../../../src/backend/runs/dashboard/queries/advisory.js";
+import { buildTrustSection } from "../../../src/backend/runs/dashboard/queries/run-trust.js";
+import { SectionUnavailableError, TargetNotFoundError } from "../../../src/backend/runs/refusals.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { VALID_TRIAGE_ADVICE } from "../fixtures/advisory-fixtures.js";
 import { uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
