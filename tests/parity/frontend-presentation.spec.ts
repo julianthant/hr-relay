@@ -160,7 +160,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("0s");
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("No failures");
       await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("loading");
-      await expect(surface.getByRole("status", { name: "Loading activity report" })).toBeVisible();
+      const loading = surface.getByRole("status", { name: "Loading activity report" });
+      await expect(loading).toBeVisible();
+      await expect(loading).toHaveText("");
       await expect(surface.getByRole("button", { name: "Export report", exact: true })).toBeDisabled();
       await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("unavailable");
       await expect(surface.getByRole("alert")).toContainText("Activity unavailable");
