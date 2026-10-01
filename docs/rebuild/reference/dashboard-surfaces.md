@@ -28,10 +28,11 @@ backend services and contracts remain. Queue, Activity, and Explorer share `Acti
 Activity keeps four summary metrics in one row, with 20px values and reduced padding at 1024px and
 27px values at wider desktop widths. Its two report columns have equal width. The workflow table is
 framed; shared `RecordTable` renders confirmed transactions and evidence coverage, with evidence
-below transactions in the left column. The adaptive chart and Run performance table occupy the right
-column. Chart bars use 75% of each interval, plot height adapts from 160px to 224px with available
-width. Daily, hourly and long-range bins preserve interval semantics; zero markers and empty states
-remain explicit. Geometry and axis labels respond to range, granularity and plot width. Tooltips
+below transactions in the left column. Confirmed-transaction, evidence-coverage, and Run performance
+values share `text-body` styling (12px / 18px, weight 400). The adaptive chart and Run performance
+table occupy the right column. Chart bars use 75% of each interval; plot height adapts from 160px to
+224px with available width. Daily, hourly and long-range bins preserve interval semantics. Zero markers
+and empty states remain explicit. Geometry and axis labels respond to range, granularity and plot width. Tooltips
 anchor to and highlight active buckets, clamping within the plot. Pointer hover and keyboard focus
 are separate; Arrow, Home, End and Escape support bucket navigation.
 
@@ -39,16 +40,17 @@ The performance rows are completion rate among finished runs, longest measured r
 runtime, and most common failure. Nullable duration and failure data remains unavailable; an empty
 failure list means “No failures,” and an empty period retains zero runtime without a finished-run
 rate. Logs retains its approved field tables/click rows, search/copy/latest controls, and end-of-step
-screenshots; computations, connected identity/resolve/failure UI, run controls/status strip, tab band,
+screenshots. Computations, connected identity/resolve/failure UI, run controls/status strip, tab band,
 capture gallery, and elapsed-time bar stay removed.
 
 Activity export remains a visible placeholder. Explorer has no registered-definition fallback or
 client request; Logs does not mount run-detail, section, or capture requests. A separately scoped
 backend producer must validate authoritative projections, replace the local producers, and feed these
 same components while preserving the approved layouts and interactions. Activity query/export
-authority and Logs failure/resolve wiring remain deferred; migrate old connected-UI tests
-intentionally. Synthetic samples are never live authority. The reusable palette and type scale are
-in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+authority and Logs failure/resolve wiring remain deferred; migrate old connected-UI tests intentionally.
+Synthetic samples are never live authority. After the final table-typography update, four Activity
+browser journeys passed in both themes at 1024px and 1440px; scoped lint and build passed. The reusable
+palette and type scale are in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that

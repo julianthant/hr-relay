@@ -58,14 +58,15 @@ layouts, and interactions.
 
 Queue, Activity, and Explorer share `ActionBar`/`ActionBarRow`. Activity keeps four metrics in one
 row: `text-page` values at 1024px and `text-workflow` values at wider desktop widths. Use `text-body`
-for labels and ordinary counts, `text-caption` for notes and metadata, and `text-section` for groups
-and transaction counts. Keep metric values tabular; unavailable durations and evidence remain
-explicit. Explorer uses `text-workflow` for its title and `text-section` for major groups. Logs uses
-`text-heading` for step and panel titles, `text-body` for rows and supporting copy, and `text-caption`
-for timestamps and metadata.
+for labels, ordinary counts, and shared `RecordTable` values—including confirmed transactions,
+evidence coverage, and Run performance (12px / 18px, weight 400); `text-caption` for notes and
+metadata; and `text-section` for group headings. Keep metric values tabular; unavailable durations
+and evidence remain explicit. Explorer uses `text-workflow` for its title and `text-section` for
+major groups. Logs uses `text-heading` for step and panel titles, `text-body` for rows and supporting
+copy, and `text-caption` for timestamps and metadata.
 
-For Logs tables, use one opaque gray `ui-table` fill for each header and body. Leave tables open, keep
-16px between a heading and its table, and put timestamps before action icons. Balance displayed
+For Logs tables, use one opaque gray `ui-table` fill for each header and body. Leave tables open,
+keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed
 values while keeping identifiers unsplit. Filled values use plain blue text without an input-like
 border. Logs shows reads, fills, and clicks; internal computations are omitted. Screenshots appear at
 the end of their associated step.
