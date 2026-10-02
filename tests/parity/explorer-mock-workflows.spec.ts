@@ -24,6 +24,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "Onboarding", exact: true })).toBeVisible();
       await expect(surface.getByText("Mock data", { exact: true })).toBeVisible();
       await expect(surface.locator("li[data-step-number]")).toHaveCount(10);
+      await expect(surface.locator("#explorer-step-1")).toContainText("Open browser sessions");
+      await expect(surface.locator("#explorer-step-1")).toContainText("CRM");
+      await expect(surface.locator("#explorer-step-1")).toContainText("UCPath");
+      await expect(surface.locator("#explorer-step-1")).toContainText("I-9");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await test.info().attach(`onboarding-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       await surface.getByRole("button", { name: "Preview paths", exact: true }).click();
@@ -49,6 +53,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await workflows.getByRole("button", { name: "Emergency Contact 11", exact: true }).click();
       await expect(surface.getByRole("heading", { name: "Emergency Contact", exact: true })).toBeVisible();
       await expect(surface.locator("li[data-step-number]")).toHaveCount(11);
+      await expect(surface.locator("#explorer-step-1")).toContainText("Open browser sessions");
+      await expect(surface.locator("#explorer-step-1")).toContainText("UCPath");
+      await expect(surface.locator("#explorer-step-1")).toContainText("Authentication waits until the contact packet is reviewed.");
+      await expect(surface.locator("#explorer-step-2")).toContainText("Extract the contact packet");
       await test.info().attach(`emergency-contact-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
@@ -57,7 +65,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const review = surface.getByRole("combobox", { name: "Contact review preview" });
       await expect(review).toBeFocused();
       await review.selectOption("pending");
-      await expect(surface.locator("#explorer-step-3")).toBeHidden();
+      await expect(surface.locator("#explorer-step-4")).toBeHidden();
+      await expect(surface.locator("#explorer-step-5")).toBeHidden();
       await review.selectOption("approved");
       const identity = surface.getByRole("combobox", { name: "Contact identity preview" });
       await identity.selectOption("mismatch");

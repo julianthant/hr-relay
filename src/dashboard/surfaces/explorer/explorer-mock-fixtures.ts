@@ -117,17 +117,17 @@ export function buildEmergencyContactMock(scenario: MockScenario): MockFlow {
   return {
     summary: "Scanned packet → contact review → UCPath contact",
     completion: duplicate ? "Exact-name duplicate path skips fill and save" : dry ? "Dry-run path skips primary demotion and Save" : "Contact save and per-person readback illustrated",
-    path: { step: 2, control: "preview-fixture-contact-review" },
-    stopAfter: review !== "approved" ? 2 : mismatch ? 5 : undefined,
+    path: { step: 3, control: "preview-fixture-contact-review" },
+    stopAfter: review !== "approved" ? 3 : mismatch ? 5 : undefined,
     steps: [
-      step(1, "Extract the contact packet", "OCR", action("Delegate the scanned packet to OCR review", "read"), form("contact-record", "Emergency Contact Form", "Read only", rows("read", [
+      step(1, "Open browser sessions", undefined, { kind: "sessions", systems: ["UCPath"] }, note("Authentication waits until the contact packet is reviewed.")),
+      step(2, "Extract the contact packet", "OCR", action("Delegate the scanned packet to OCR review", "read"), form("contact-record", "Emergency Contact Form", "Read only", rows("read", [
         ["page", "Source page", "Page carrying this contact block"], ["employee", "Employee ID · name", "Scanned form"], ["contact", "Contact name", "Scanned form"],
         ["relationship", "Relationship", "Scanned form"], ["phone", "Cell · home · work phone", "Scanned form"], ["address", "Contact address · employee address", "Scanned form"],
       ])), action("Exclude pages without a contact block; flag uncertain fields")),
-      step(2, "Review the extracted contacts", "You", choice("fixture-contact-review", "Contact review", scenario), review === "approved" ? action("Use only the approved contact records") : stop(review === "pending" ? "Waiting for contact review. No person fill is enqueued." : "Contact review rejected. No person fill is enqueued.")),
-      step(3, "Fan out approved people", "Local", action("Enqueue one per-person fill for each approved record", "compute"), note("Each person keeps a separate outcome. The packet waits for all people to become terminal.")),
-      step(4, "Authenticate the per-person session", "UCPath", { kind: "sessions", systems: ["UCPath"] }, action("Authenticate after the packet review")),
-      step(5, "Open the employee contact page", "UCPath", form("employee-search", "Emergency Contacts · employee", "Fill form", rows("fill", [["employee", "Employee ID", "Approved employee record", "contact-employee"]])),
+      step(3, "Review the extracted contacts", "You", choice("fixture-contact-review", "Contact review", scenario), review === "approved" ? action("Use only the approved contact records") : stop(review === "pending" ? "Waiting for contact review. No person fill is enqueued." : "Contact review rejected. No person fill is enqueued.")),
+      step(4, "Fan out approved people", "Local", action("Enqueue one per-person fill for each approved record", "compute"), note("Each person keeps a separate outcome. The packet waits for all people to become terminal.")),
+      step(5, "Open the employee contact page", "UCPath", action("Authenticate the per-person session after packet review"), form("employee-search", "Emergency Contacts · employee", "Fill form", rows("fill", [["employee", "Employee ID", "Approved employee record", "contact-employee"]])),
         action("Open the employee’s emergency-contact editor", "click"), form("employee-header", "Employee header", "Read only", rows("read", [["person-id", "Person ID · employee name", "Current UCPath editor"]])),
         choice("fixture-contact-identity", "Contact identity", scenario), mismatch ? stop("Displayed employee ID does not match. Stop before contact changes.") : action("Verify the displayed Person ID against the approved record")),
       step(6, "Check existing contacts", "UCPath", form("existing-contacts", "Saved contacts", "Read only", rows("read", [["names", "Contact names · primary flags", "Every saved contact row"]])),
@@ -150,7 +150,7 @@ export function buildEmergencyContactMock(scenario: MockScenario): MockFlow {
 }
 
 const crm = (field: string, fieldId: string): FieldSource => ({ reads: [{ system: "CRM", page: "UCPath Entry Sheet", field, step: 2, fieldId }] });
-const contact = (field: string, fieldId: string): FieldSource => ({ reads: [{ system: "OCR", page: "Emergency Contact Form", field, step: 1, fieldId }], chain: [{ step: 2, title: "Approve the contact record", detail: "Use only the fields approved during packet review." }] });
+const contact = (field: string, fieldId: string): FieldSource => ({ reads: [{ system: "OCR", page: "Emergency Contact Form", field, step: 2, fieldId }], chain: [{ step: 3, title: "Approve the contact record", detail: "Use only the fields approved during packet review." }] });
 const MOCK_SOURCES: Readonly<Record<string, FieldSource>> = {
   "hire-name": crm("Legal name", "name"), "hire-identity": crm("Protected identity data", "birth"), "hire-email": crm("Email", "email"), "hire-address": crm("Address · phone · email", "address"),
   "hire-effective": crm("Effective date", "effective"), "hire-position": crm("Position number · appointment", "position"), "hire-wage": crm("Wage", "wage"),
@@ -160,7 +160,7 @@ const MOCK_SOURCES: Readonly<Record<string, FieldSource>> = {
   "hire-template": { origin: "Hire type", detail: "New hire uses UC_FULL_HIRE and Hire - No Prior UC Affiliation. Concurrent hire uses UC_CONC_HIRE and Concurrent Hire - Non Dual Emp." },
   "contact-employee": contact("Employee ID · name", "employee"), "contact-name": contact("Contact name", "contact"), "contact-phone": contact("Cell · home · work phone", "phone"),
   "contact-address": contact("Contact address · employee address", "address"),
-  "contact-relationship": { ...contact("Relationship", "relationship"), chain: [{ step: 2, title: "Approve the contact record", detail: "Approve the relationship transcribed from the form." }, { step: 8, title: "Map the relationship", detail: "Resolve the approved relationship to its UCPath dropdown option." }] },
+  "contact-relationship": { ...contact("Relationship", "relationship"), chain: [{ step: 3, title: "Approve the contact record", detail: "Approve the relationship transcribed from the form." }, { step: 8, title: "Map the relationship", detail: "Resolve the approved relationship to its UCPath dropdown option." }] },
   "contact-primary": { origin: "Contact form convention", detail: "The single approved emergency contact is marked primary. A fuzzy-name existing primary is demoted only on the filing path." },
 };
 export function mockFieldSource(key: string): FieldSource | undefined { return MOCK_SOURCES[key]; }

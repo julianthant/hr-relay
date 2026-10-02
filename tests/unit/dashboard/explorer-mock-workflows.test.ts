@@ -43,6 +43,19 @@ function hidden(number: number): boolean {
 }
 
 describe("frontend-only Explorer mock workflows", () => {
+  it("lists launched systems first and defers contact authentication until review", () => {
+    const onboarding = buildOnboardingMock(DEFAULT_MOCK_SCENARIO);
+    assert.equal(onboarding.steps[0]?.title, "Open browser sessions");
+    assert.deepEqual(onboarding.steps[0]?.parts[0], { kind: "sessions", systems: ["CRM", "UCPath", "I-9"] });
+    const contact = buildEmergencyContactMock(DEFAULT_MOCK_SCENARIO);
+    assert.equal(contact.steps[0]?.title, "Open browser sessions");
+    assert.deepEqual(contact.steps[0]?.parts[0], { kind: "sessions", systems: ["UCPath"] });
+    assert.equal(contact.steps[1]?.title, "Extract the contact packet");
+    assert.equal(contact.path.step, 3);
+    const held = buildEmergencyContactMock({ ...DEFAULT_MOCK_SCENARIO, "fixture-contact-review": "pending" });
+    assert.equal(held.stopAfter, 3);
+    assert.ok(held.steps.find((step) => step.number === 5)?.parts.some((part) => part.kind === "action" && part.text === "Authenticate the per-person session after packet review"));
+  });
   it("keeps fixture identifiers, unique field addresses and reachable sources on alternate paths", () => {
     assert.equal(EXPLORER_MOCK_WORKFLOWS.length, 3);
     assert.ok(EXPLORER_MOCK_WORKFLOWS.every((workflow) => workflow.id.startsWith("fixture-")));
@@ -95,7 +108,7 @@ describe("frontend-only Explorer mock workflows", () => {
   });
   it("holds contact writes on review/identity, skips exact duplicates and keeps rollup after dry run", async () => {
     await render(); await click("Emergency Contact11");
-    await choose("Contact review", "pending"); assert.equal(hidden(3), true);
+    await choose("Contact review", "pending"); assert.equal(hidden(4), true); assert.equal(hidden(5), true);
     await choose("Contact review", "rejected"); assert.equal(hidden(10), true);
     await choose("Contact review", "approved"); await choose("Contact identity", "mismatch"); assert.equal(hidden(6), true);
     await choose("Contact identity", "verified"); await choose("Existing contact", "exact");
