@@ -4,9 +4,10 @@
  * payload). Selection and section are client UI state; everything they fetch
  * is a finished server read model.
  */
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/index.js";
+import { protocolError } from "../client/errors.js";
 import { failed, IDLE, loaded, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";
 
@@ -107,14 +108,19 @@ export function useRunDetail(
    * for a run the open day does not hold: nothing to follow.
    */
   servedRowRevision?: number,
+  /** The selected day is part of the request incarnation, even for the same run ID. */
+  selectionDay?: string,
 ): AsyncResource<RunDetailWire> {
   const client = useDashboardClient();
-  const [resource, setResource] = useState<AsyncResource<RunDetailWire>>(IDLE);
   const followedRevision = useSettledRevision(runId, servedRowRevision);
+  // Selection identity is an object, so A → B → A cannot reuse A's result.
+  const selection = useMemo(() => ({ client, runId, selectionDay }), [client, runId, selectionDay]);
+  const request = useMemo(() => ({ selection, reloadNonce, followedRevision }), [selection, reloadNonce, followedRevision]);
+  const [result, setResult] = useState<{ request: typeof request; value: AsyncResource<RunDetailWire> }>();
 
   useEffect(() => {
     if (runId === undefined) {
-      setResource(IDLE);
+      setResult({ request, value: IDLE });
       return;
     }
     let live = true;
@@ -123,17 +129,20 @@ export function useRunDetail(
     // a node would be unreadable for exactly the runs worth watching. Opening
     // a different run still loads, because the panel beside a run it is not
     // about is the wrong answer, not a stale one.
-    setResource((current) => (
-      current.state === "loaded" && String(current.value.runId) === runId ? current : LOADING
-    ));
+    setResult((current) => ({ request, value:
+      current?.request.selection === selection && current.value.state === "loaded"
+        ? current.value : LOADING,
+    }));
     client.runDetail(runId).then(
       (value) => {
-        if (live) setResource(loaded(value));
+        if (!live) return;
+        setResult({ request, value: String(value.runId) === runId
+          ? loaded(value) : failed(protocolError("run-detail-request-identity-mismatch")) });
       },
       (error: unknown) => {
         if (!live) return;
         if (error instanceof DashboardClientError) {
-          setResource(failed(error));
+          setResult({ request, value: failed(error) });
           return;
         }
         throw error;
@@ -142,7 +151,9 @@ export function useRunDetail(
     return () => {
       live = false;
     };
-  }, [client, runId, reloadNonce, followedRevision]);
+  }, [client, runId, reloadNonce, followedRevision, selection, request]);
 
-  return resource;
+  if (result?.request === request) return result.value;
+  if (result?.request.selection === selection && result.value.state === "loaded") return result.value;
+  return runId === undefined ? IDLE : LOADING;
 }
