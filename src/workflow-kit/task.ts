@@ -18,7 +18,8 @@ import type {
 import { RetryPolicySchema, SessionNeedSchema } from "../models/sessions/session.js";
 import type { RetryPolicy, SessionNeed } from "../models/sessions/session.js";
 import type { MutationCapability } from "../models/ui/driver.js";
-import type { DataPoint, DeclaredActionOccurrence } from "../rules/workflow/task-provenance.js";
+import type { DataPoint } from "../rules/workflow/task-provenance.js";
+import type { DeclaredStepResult } from "../models/events/confirmed-action.js";
 import type { JsonValue } from "../rules/validation/canonical-json.js";
 import type { WorkflowOperationDisplaySnapshot } from "../models/workflow/operation-display-snapshot.js";
 import { TaskError } from "./errors.js";
@@ -119,8 +120,7 @@ export interface ConfirmedTaskActions {
   keypress(action: ConfirmedActionRef, perform: () => Promise<unknown>, verification: ConfirmedVerification): Promise<void>;
   verify(verification: ConfirmedVerification & Readonly<{ purpose: "read-validation" }>): Promise<JsonValue>;
   confirmOutcome(reference: ConfirmedOutcomeReference, verification: ConfirmedOutcomeVerification): Promise<ConfirmedOutcomeObservation>;
-  result(): Readonly<{ version: 1; state: "selected"; stepOccurrence: string; caseId: string; label: string; source: DeclaredActionOccurrence }>
-    | Readonly<{ version: 1; state: "unavailable" | "ambiguous" | "no-match"; stepOccurrence: string }>;
+  result(): DeclaredStepResult;
 }
 
 export interface TaskCtxCommon<Codes extends readonly string[]> {

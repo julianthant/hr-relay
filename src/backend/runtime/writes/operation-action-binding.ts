@@ -260,7 +260,8 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
     } else if (observed.confirmation !== undefined) throw new Error("declared-action-confirmation-state-mismatch");
 
     let value: unknown;
-    let redactActionValue = false;
+    let redactActionValue = observed.value !== undefined
+      && !(input.allowPublishedValue?.(observed.targetId, observed.value) ?? true);
     if (declared.valueSlot !== undefined && (observed.state === undefined || observed.state === "completed" || observed.state === "confirmed")) {
       const slot = slots.get(OperationValueIdSchema.parse(declared.valueSlot));
       if (slot === undefined) throw new Error(`declared action ${declared.id} references missing value slot ${declared.valueSlot}`);
@@ -297,7 +298,7 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
           return input.snapshot.transforms.find((candidate) => candidate.id === reference.transformId)?.inputs.map((source) => referenceProtected(source.value)).find((binding) => binding !== undefined);
         };
         const protectedBinding = protectedBindingFor(slot.source.path, input.protectedBindings) ?? referenceProtected(bound);
-        redactActionValue = !classified || protectedBinding !== undefined || !protectionResolved(bound);
+        redactActionValue ||= !classified || protectedBinding !== undefined || !protectionResolved(bound);
         value = {
           slot: slot.id,
           fieldPath: slot.source.path,
@@ -309,7 +310,7 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
       } else {
         const protectedBinding = input.protectedBindings[0];
         const resolved = [...bindings.values()].every((reference) => protectionResolved(reference));
-        redactActionValue = !classified || protectedBinding !== undefined || !resolved;
+        redactActionValue ||= !classified || protectedBinding !== undefined || !resolved;
         value = {
           slot: slot.id,
           fieldPath: slot.source.path,

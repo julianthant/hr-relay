@@ -15,7 +15,7 @@ export const GENERATED_BUILD_MANIFEST = {
   },
   "workflows": [
     {
-      "fingerprint": "9ddeedbb3207eb3be5d8678a950b1f327e1af82289631e0c66ae0da90538b880",
+      "fingerprint": "013c26e02d5d78c98d9b754ac33614d36401c1cc74abacd08776d49379d20355",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -32,6 +32,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -255,7 +259,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -285,7 +289,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "person-lookup"
     },
     {
-      "fingerprint": "800610066798775b0c26bca0570a848939be39bfe3d455d095ed865f8647b89c",
+      "fingerprint": "3dd61a1035e65af1c78f82b7fc318f11d27dceebb020dc4a957aba4cb8ad694e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -302,6 +306,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -697,7 +705,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -727,7 +735,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations"
     },
     {
-      "fingerprint": "001f9fd78fb15b2e42aeb70cdbec16b3c999305b4b07095f9251290c833709e3",
+      "fingerprint": "ed50b6b943c31ea4a7033047b20a6a903345157cf4a94fe8b0c547f243a91a2c",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -744,6 +752,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -1139,7 +1151,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -1173,7 +1185,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-identity-check"
     },
     {
-      "fingerprint": "b957ca9409dd8894cf1a95881ebfcc320e5223f3b3729009d6b41e8b50e8a960",
+      "fingerprint": "510d149d7e53dbdacd143779c04b047952cad2352d03bc9bd1923fdacb6d7ba6",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1190,6 +1202,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -1585,7 +1601,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -1619,7 +1635,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kronos-timecard"
     },
     {
-      "fingerprint": "8af811a4b71b5a6e076d5b699416631ab161778b67a646c20ddba04781861200",
+      "fingerprint": "1955a8dab73ebcbdaf48b8f1263c929a426edadbc4a3ef50ba71969344e9039d",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -1636,6 +1652,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -2031,7 +2051,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -2065,7 +2085,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-finalization"
     },
     {
-      "fingerprint": "b2d6c987119d272384543c7f595fb1cb9c9deb977f6201287541fc3dd189fb8b",
+      "fingerprint": "0a3a323fc1f1ca9b1d729da290b8d25745f71fb949a92f4122b80fc9b9ea04f7",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2082,6 +2102,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -2477,7 +2501,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -2511,7 +2535,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "separations-kuali-read"
     },
     {
-      "fingerprint": "9202710e5ef6d54524656288e5465a6354b7729ee9606597b440a80fae60c404",
+      "fingerprint": "20c3a997779165e98f2a198f9ef7d7807b3222aeed6af8b94d105e84bd1773d9",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -2528,6 +2552,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -2923,7 +2951,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflow-kit/validation/build-manifest.ts",
@@ -2959,7 +2987,7 @@ export const GENERATED_BUILD_MANIFEST = {
   ],
   "tasks": [
     {
-      "fingerprint": "7976bea834ffc92a9474f1746d04b33f822f86f62de666f896950fef358fcd0a",
+      "fingerprint": "f887dc03a4f33f3c39b8d7b8c2d49bbcd4ec112cbc551d699c1f433b78015a1f",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -2998,6 +3026,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
         },
         {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
           "path": "src/models/providers/providers.ts",
           "sha256": "fb4decc3cc73b8c6db0d0fce45b746f1524fc0a05f8de8857125a7c5dd8742ad"
         },
@@ -3179,13 +3211,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "crm/read-onboarding-dates"
     },
     {
-      "fingerprint": "7aa07eed7a836fca189c9059d68a783da6badc299d1d9e15b6f62afb77c7eda9",
+      "fingerprint": "0fc103b91f167304b0d628db19b1537026cb101270538b911d020165bc5db096",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -3224,6 +3256,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
         },
         {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
           "path": "src/models/providers/providers.ts",
           "sha256": "fb4decc3cc73b8c6db0d0fce45b746f1524fc0a05f8de8857125a7c5dd8742ad"
         },
@@ -3405,13 +3441,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "crm/read-onboarding-record"
     },
     {
-      "fingerprint": "0a5c7aeff89b46d2083800a0f917da10251696b9181a82f566fa286c600d3f19",
+      "fingerprint": "2d212decbba1c9727d3d9537e4aba52f2337b674b75c56787a3b4ab895c24a3f",
       "sources": [
         {
           "path": "src/backend/processing/extraction/tasks/extract-pdf-pages.ts",
@@ -3432,6 +3468,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/processing/extraction/extract-pdf-pages.ts",
@@ -3551,13 +3591,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "extraction/extract-pdf-pages"
     },
     {
-      "fingerprint": "2bab4d0886bef67675f4c6d01ccfc15e31a9bd94de7ce7ff176b1ca1ecfdf778",
+      "fingerprint": "e85d86e1b049e1e1cc603d85d4f122e9ea5ce87bca1aa35148897ffc5c3773d0",
       "sources": [
         {
           "path": "src/backend/processing/extraction/tasks/extract-spreadsheet.ts",
@@ -3582,6 +3622,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -3733,13 +3777,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "extraction/extract-spreadsheet"
     },
     {
-      "fingerprint": "d13227e9b83243ce2d4ab6d5850ad8bbd10725ef890a765aea045202e1ee5f14",
+      "fingerprint": "d05842773d1694de753cfde62a83359bb30644c7d2e577fe5926d7ceaba14c45",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -3780,6 +3824,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -3983,13 +4031,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "kuali/match-separation-finalization"
     },
     {
-      "fingerprint": "2c2fb722f1f89622e0bcc5c61abba31b3bfb8c2eec68ced453a405a6fdc565e0",
+      "fingerprint": "7d2ec85b6d437677428ff36e51d30845dc9eb2a91fa37276ce32fe1eddd1f000",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4026,6 +4074,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -4217,13 +4269,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "kuali/read-separation-document"
     },
     {
-      "fingerprint": "a77bf360e176394aab34fbe93bbbe466f54de621af762898599ab1033f19d892",
+      "fingerprint": "6c7036eafd93b333b5dd2411259c990d8dc67eedb7b00235b7c90d12773ee441",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4260,6 +4312,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -4455,13 +4511,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "kuali/save-separation-finalization"
     },
     {
-      "fingerprint": "10c4dbbef92b6bf35c9beb2eb06f2c78e948aa55ff34672d1d0d5d296f117f22",
+      "fingerprint": "4d9b723d3db2dca007e78f6a1c54de4704bf172e0af5d0719ac83f20647963c3",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4498,6 +4554,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -4689,13 +4749,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "kuali/search-separation-action"
     },
     {
-      "fingerprint": "6fb43082e6f142b874bb2bbc32b6ce41326ef7553237ffb88ec76ddfb88a25af",
+      "fingerprint": "b54cd8e0cfd00c813b5b576deaee5dfcce84efe70cf686f58871967015859df8",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4732,6 +4792,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -4927,13 +4991,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "kuali/stage-separation-finalization"
     },
     {
-      "fingerprint": "5d12daa1bd2d7f90b05829e7cd86e6558272e21e363f7ca434f7ebf4a78b594c",
+      "fingerprint": "a6e8dbd57d24935e4442d8d3300f235899bc611237d76fc57d5f825175b9bdb7",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -4974,6 +5038,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -5181,13 +5249,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "kuali/verify-separation-finalization"
     },
     {
-      "fingerprint": "7b7402639773b1e17abd44252b62764423280ddf5a6d14feb23c95cb4eb46ad8",
+      "fingerprint": "9f3553705eb377908b0ec1afaa9d2027601e4fc62772e1e827a18ded353f9dc0",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5232,6 +5300,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -5419,13 +5491,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "new-kronos/read-separation-timecard"
     },
     {
-      "fingerprint": "9bc8249d2b6610295c7f948dd7454417457c59634f4ea2550e30ceb1d491876f",
+      "fingerprint": "07b33dd1558950d0c87652b4b6334bae65d0b88e19048d440755eda47a35d089",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -5470,6 +5542,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -5657,13 +5733,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "new-kronos/search-employee"
     },
     {
-      "fingerprint": "9ce7b7adb994878fd504cc8f21d03e3d1982bf970b1e5560a20595c8eadc5495",
+      "fingerprint": "80723183e5ef4da066e0fe2123adb9e6c8b103758a6d6260d6a2ecc909218110",
       "sources": [
         {
           "path": "src/backend/processing/normalization/tasks/read-contact-advice.ts",
@@ -5684,6 +5760,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -5843,13 +5923,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "normalization/read-contact-advice"
     },
     {
-      "fingerprint": "39361cccebcc7a41e92ffece09d3cfeab61ca9e97692558cc80795af9d810193",
+      "fingerprint": "e7cfc77e795110aa69928aa1ddb4c900e208981c7703167bba64075f4f9fc2c7",
       "sources": [
         {
           "path": "src/backend/processing/ocr/tasks/extract-form-page.ts",
@@ -5870,6 +5950,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -6017,13 +6101,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ocr/extract-form-page"
     },
     {
-      "fingerprint": "656f3eb6c1c3ac735eb393c8a3eacc99c7171d09cd7db70acd622aba777e1ff5",
+      "fingerprint": "9692116ea9cfcac566bda738fe8327d714e8a4ea9866c8cee1710e5d278990ea",
       "sources": [
         {
           "path": "src/backend/processing/roster/tasks/match-spreadsheet.ts",
@@ -6048,6 +6132,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/fields/cell-coercion.ts",
@@ -6211,13 +6299,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "roster/match-spreadsheet"
     },
     {
-      "fingerprint": "c853eb550d7355fe0c3213cbd4f85e2dde2d8b3caf40b90f1adf75a581dae4b1",
+      "fingerprint": "71eda089b7879b9d469b326107d0b92949ae75e65562f0ee6eae400cbc0d83e5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6272,6 +6360,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
         },
         {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
           "path": "src/models/providers/providers.ts",
           "sha256": "fb4decc3cc73b8c6db0d0fce45b746f1524fc0a05f8de8857125a7c5dd8742ad"
         },
@@ -6509,13 +6601,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/create-termination"
     },
     {
-      "fingerprint": "ac68f4fe7d6f31f11d70adc6a6ecc70305faa1e6f5f64c1b281e487a9eecfe09",
+      "fingerprint": "90ae97f8e1b401addc939057a92ce14140f3bf525b39227029e75f28aa28ec56",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6570,6 +6662,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
         },
         {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
           "path": "src/models/providers/providers.ts",
           "sha256": "fb4decc3cc73b8c6db0d0fce45b746f1524fc0a05f8de8857125a7c5dd8742ad"
         },
@@ -6807,13 +6903,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/delete-pending-terminations"
     },
     {
-      "fingerprint": "b61f73f3e9d485c43fa5af4f1d7bb49ded8c43cccd7ec033e6a26d9a2597002e",
+      "fingerprint": "37e178fbb250b97b25fca47c4498e6fb28f2db46b3e22d8eef017235a9f5718f",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -6868,6 +6964,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
         },
         {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
           "path": "src/models/providers/providers.ts",
           "sha256": "fb4decc3cc73b8c6db0d0fce45b746f1524fc0a05f8de8857125a7c5dd8742ad"
         },
@@ -7105,13 +7205,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/match-existing-termination"
     },
     {
-      "fingerprint": "619fe5df0ca79b074fc9016bab6df589c3382e060c728b2d63d11f70ea3606f3",
+      "fingerprint": "65452a1543e8bcbc60e9af80486e66a4500bfec6f801124d8bee2b4c02201e01",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7166,6 +7266,10 @@ export const GENERATED_BUILD_MANIFEST = {
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
         },
         {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
+        },
+        {
           "path": "src/models/providers/providers.ts",
           "sha256": "fb4decc3cc73b8c6db0d0fce45b746f1524fc0a05f8de8857125a7c5dd8742ad"
         },
@@ -7403,13 +7507,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/match-pending-terminations"
     },
     {
-      "fingerprint": "a9ddbe917e828aba09cc8babe945ca5c18ce7f13e0c908d5ae3464201d246e18",
+      "fingerprint": "c223e5bed7100ff2f798bc64ab167abc8718972630d9a7fe1ff9bfa7a280f805",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7462,6 +7566,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -7705,13 +7813,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/read-job-summary"
     },
     {
-      "fingerprint": "8535f4fbb649c1c0d27036d69b264a040e8f07fb0d691b2385830c740b2ca23e",
+      "fingerprint": "eb7ed15486e195114f57a25d60cabb5086de7c03f1d5072c572d31eb62be92bc",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -7764,6 +7872,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -8007,13 +8119,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/read-pending-termination-set"
     },
     {
-      "fingerprint": "53b4751f396882e74f992baa07466539fb36209dd507b9d85b4f1bcfe384c9a6",
+      "fingerprint": "9326fbd3404d4e7289afabd0627ec4e477b7c144d9f2f268c525e064e243d8c4",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8066,6 +8178,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -8305,13 +8421,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/search-person-org"
     },
     {
-      "fingerprint": "cdab5d40f9d7303f3b24268802373a291c88c12461dfbc75750dd41983eeb3f3",
+      "fingerprint": "b810b11c52f6461a5ad2bd5ee9850aa2e2004bab3ee6c8971cf10c082669fa3a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8364,6 +8480,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -8607,13 +8727,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/stage-pending-termination-sweep"
     },
     {
-      "fingerprint": "bb109fbfb92436b18c1e8dec4a20f3ab0cda04ce7250cb7cf9b609af956a0a8a",
+      "fingerprint": "aaaa5c13fd0bc03f93190b0567f830bc28cad78835c82876183c5e0934e03600",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8666,6 +8786,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -8909,13 +9033,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/stage-termination"
     },
     {
-      "fingerprint": "a240c6a1e9aa22629a31731953a3dcd0893b46ac3fe5a04b4b5900479d2a745e",
+      "fingerprint": "a89bc274c7a71d0e4d6120c7bd4b6ba4742342e41f2b5cc48d9eeb80f8f4da98",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -8968,6 +9092,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -9211,13 +9339,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/verify-pending-terminations-cleared"
     },
     {
-      "fingerprint": "62bf53cc8b4fc665b1dd3ccb969ff68cce506827478fa33d68d025fe81632c2a",
+      "fingerprint": "b19ad69171e91ce6f8fb2c623676223fe89228722b093082abb12944f298b9e5",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9270,6 +9398,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -9513,13 +9645,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/verify-termination"
     },
     {
-      "fingerprint": "3911720806dd97e4b845bc20b1d9f31a04be3796838e5c744f71b972ef5bbe7b",
+      "fingerprint": "b42f65fc0994c49e873a47db4a72d73d748df2c9393f8b51bda0f617263a061a",
       "sources": [
         {
           "path": "src/backend/systems/browser-shared/action-notes.ts",
@@ -9572,6 +9704,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -9815,13 +9951,13 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         }
       ],
       "id": "ucpath/verify-termination-filing-present"
     },
     {
-      "fingerprint": "89c4601d649c656897325fc96a15e58428130f6c9311ef399662e725a3c073f8",
+      "fingerprint": "4526fa87d431a57976d26db568e8ee95f0ce64ced06b30b3758f33ea5db777be",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -9838,6 +9974,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -9981,7 +10121,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/person-lookup/tasks/read-active-status.ts",
@@ -9991,7 +10131,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:person-lookup/read-active-status"
     },
     {
-      "fingerprint": "321c80f25e29456138ad2931f6cafc8516f2fc9a759dbbfd2dea83f987dc5a9b",
+      "fingerprint": "e1098037bf2e8c9ceb361d340a2bf67eb71ccc4ffd01fbd6c314123a19e6f5df",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10008,6 +10148,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -10151,7 +10295,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/match-active-employment.ts",
@@ -10161,7 +10305,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-active-employment"
     },
     {
-      "fingerprint": "2588f801ee2cec0c6bc00562a04e30b05e0b2bb387598585f49647f6c610ea77",
+      "fingerprint": "a9f8effad7c00407919fdbdd1fb44420aeb9e063c23a1c38818711d570937412",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10178,6 +10322,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -10317,7 +10465,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/match-department-option.ts",
@@ -10327,7 +10475,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-department-option"
     },
     {
-      "fingerprint": "dd02581c22aa63bb04d50c4db10688613b71b0b9253f633574e7e9c89d4da184",
+      "fingerprint": "7f2163cc92e82d7461629da199435e02baab141d7c9449dabd7fccc75fa2728d",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10344,6 +10492,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -10511,7 +10663,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/match-identity.ts",
@@ -10521,7 +10673,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-identity"
     },
     {
-      "fingerprint": "dbc299aa05daa86317a5f3f95c46c010fb9377853d87502f98bca4f72801d466",
+      "fingerprint": "7a21b5de229026a81029caa11c3eb3f80d78ce4c5ed2333135e87ce6ba975009",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10538,6 +10690,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -10709,7 +10865,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/match-separation-subject.ts",
@@ -10719,7 +10875,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-separation-subject"
     },
     {
-      "fingerprint": "88dc79030a10e863138221deb6248686e6e25e067c574771ff2d78da3cc61398",
+      "fingerprint": "e203b675c4d7ed80393d9fa182631d21f9e9dd2ef88f8ca39b9b9dc01e1e9cd9",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10736,6 +10892,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -10867,7 +11027,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/match-termination-type.ts",
@@ -10877,7 +11037,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/match-termination-type"
     },
     {
-      "fingerprint": "c30c7987a2771f84f90516a44ccfde6856864151c939f9f5c2cc37432a841497",
+      "fingerprint": "8b5c696d3088e628c3833ab888f8f5d378f742ff7f2e3cc167b76c5c6cc2f083",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -10894,6 +11054,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -11037,7 +11201,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/read-separation-dates.ts",
@@ -11047,7 +11211,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/read-separation-dates"
     },
     {
-      "fingerprint": "4415a56f138375c05b5a1262f735c3971d136b46da3f9b588dba706772c08092",
+      "fingerprint": "6f486bdfb7b0aed8835d3a9f8c624eb36c4e34f25823257904f2ce9a44c4fa98",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11064,6 +11228,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -11195,7 +11363,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/read-separation-plan.ts",
@@ -11205,7 +11373,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/read-separation-plan"
     },
     {
-      "fingerprint": "b581128c2bab45389a1e97ea9ad91c84a289831075395d6c926721f3df83da7c",
+      "fingerprint": "bd27a49d429f1be926c6454ed593d0b95a5e014261d1e9dfb1d9ff6c39a00609",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11222,6 +11390,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -11385,7 +11557,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/verify-identity-approval.ts",
@@ -11395,7 +11567,7 @@ export const GENERATED_BUILD_MANIFEST = {
       "id": "workflow:separations/verify-identity-approval"
     },
     {
-      "fingerprint": "045412a4b0abf62ae08a25d3bfb480038d8b0cbdd8e2be6885dbac2045536bc7",
+      "fingerprint": "b3ec0c38676ebecfe7ca90753d8e0fb2bd2a4fb9b11c7c00c0d3aa2a4c4d3e4e",
       "sources": [
         {
           "path": "src/models/artifacts/artifacts.ts",
@@ -11412,6 +11584,10 @@ export const GENERATED_BUILD_MANIFEST = {
         {
           "path": "src/models/config/secret-names.ts",
           "sha256": "9995675f85f506f40cab870013d393ffaeef8ff6df5ff4b672de5a7d867c02ae"
+        },
+        {
+          "path": "src/models/events/confirmed-action.ts",
+          "sha256": "f4e6ac0bd065411d711c0c3c162af2b37f4e36926ec654e2fb8a62bfb8b074d4"
         },
         {
           "path": "src/models/providers/providers.ts",
@@ -11563,7 +11739,7 @@ export const GENERATED_BUILD_MANIFEST = {
         },
         {
           "path": "src/workflow-kit/task.ts",
-          "sha256": "91a0e57e5f94aa055c222ab75cf04b80aa452017741f9cd5e24fe2ae9dd42591"
+          "sha256": "a8bf293cbfc10062a27d445634bc89b46307a82eca370434e708dde02968ffce"
         },
         {
           "path": "src/workflows/separations/tasks/verify-termination-receipt.ts",

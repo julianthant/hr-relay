@@ -8,10 +8,12 @@ import { createConfirmedTaskActions } from "../../../../src/backend/logs/confirm
 import { freezeWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotSchema } from "../../../../src/models/workflow/operation-display-snapshot.js";
 import { defineTask } from "../../../../src/workflow-kit/task.js";
 import type { ConfirmedTaskActions } from "../../../../src/workflow-kit/task.js";
-import { withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
+import { recordBrowserAction, withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import type { BrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { KUALI_ACTION_LIST_SEARCH_INPUT } from "../../../../src/models/ui/kuali-action-list.js";
+import { UCPATH_PERSON_ORG_EID_INPUT } from "../../../../src/models/ui/ucpath-person-org.js";
+import { UCPATH_SMART_HR_DETAILS_EID_INPUT } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
 import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { plan1Contract, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
@@ -269,6 +271,36 @@ describe("confirmed action production invocation API", () => {
     assert.ok(notes.some(note => note.operation?.value?.consumed.state === "observed"
       && note.operation.value.consumed.value === input.text));
     assert.equal(events.filter(event => event.kind === "fact" && event.meaning === "fill").length, 1);
+  });
+
+  it("classifies raw driver values even when a frozen action has no value slot", async () => {
+    const cases = [
+      { name: "restricted", system: "ucpath" as const, target: UCPATH_SMART_HR_DETAILS_EID_INPUT, visible: false },
+      { name: "hr", system: "ucpath" as const, target: UCPATH_PERSON_ORG_EID_INPUT, visible: false },
+      { name: "unclassified", system: "ucpath" as const, target: "fixture.unclassified", visible: false },
+      { name: "public", system: "kuali" as const, target: KUALI_ACTION_LIST_SEARCH_INPUT, visible: true },
+    ];
+    for (const testCase of cases) {
+      const marker = `fixture-${testCase.name}-raw-value`;
+      const frozen = WorkflowOperationDisplaySnapshotSchema.parse({ ...snapshot,
+        invocations: snapshot.invocations.map(invocation => invocation.entryId === "first"
+          ? { ...invocation, operation: { ...invocation.operation, system: testCase.system,
+            session: { kind: "browser", id: "fixture-session", system: testCase.system },
+            actions: [{ id: "no-slot", kind: "fill-field", target: testCase.target }] } } : invocation) });
+      const clock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
+      const invocation = createConfirmedInvocation({ binding: { snapshot: frozen, runId, attempt: 2,
+        claimGeneration: 3, taskAttempt: 4, nodeId: "first", taskId: plan1Contract.id,
+        contractRole: "task", parsedInput: input, protectedBindings: [] }, clock,
+        registeredDriverSystem: testCase.system, traceId: "fpo-120000-0002" });
+      const notes: BrowserAction[] = [];
+      await invocation.withNotes(() => withBrowserActionSession(browserSession, () => invocation.bind(async () => {
+        recordBrowserAction("typed", testCase.target, marker);
+      })), emitted => { notes.push(...emitted); });
+      assert.equal(notes.length, 1, testCase.name);
+      assert.equal(notes[0].value === marker, testCase.visible, testCase.name);
+      assert.equal(JSON.stringify(notes).includes(marker), testCase.visible, testCase.name);
+      assert.equal(notes[0].operation?.logicalActionId, "no-slot", testCase.name);
+    }
   });
 
   it("rejects verifier purpose misuse before its observation callback", async () => {
