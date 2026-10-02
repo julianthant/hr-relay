@@ -17,7 +17,7 @@ Verification details stay in a secondary disclosure; exact source jumps open it 
 An operator gate without a supported resolution packet remains held and names that unavailable
 ceremony. The shared renderer does not invent a generic approve command or decision payload.
 
-## Frontend-only Activity, Explorer, Logs and Sessions amendment — 2026-10-01
+## Frontend-only dashboard presentation amendment — 2026-10-01
 
 `ActivityReport` supplies fictional data to `ActivityView` through `ActivityViewState`; `WorkflowExplorer`
 supplies `ExplorerTimeline`; the run panel mounts `LogSample` through `LogPanel`, `LogFeed` and
@@ -72,7 +72,8 @@ UI. The former connected SessionPanel and timeline renderer are retired. Backend
 authority remains a separate wiring task.
 
 The approved Compact rail and popover design uses a 54px navbar with the text brand **RRSS HR** and no
-logo. It retains history, four views, search, date navigation, notifications, theme and Settings; preflight
+logo. A divider separates the brand from the paired history arrows. It retains all four views, search,
+date navigation, notifications, theme and Settings; preflight
 is removed. `TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
 `NotificationsState` to `NotificationsView`. The connected search/date renderers are retired. Search,
 date and notification examples use local fixtures: navigation and delivery placeholders invoke no API,
@@ -85,6 +86,24 @@ the active filter. Empty, loading, unavailable and ping examples remain distinct
 palette is authored in `src/dashboard/ds/dashboard-theme.css`; DS, body, Settings and shadcn neutral
 aliases resolve through `src/dashboard/ds/tokens.css`. Current values and presentation seams are in the
 [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+
+The approved mixed queue presentation retains the existing system title font and monospaced gray
+footer band, with 14px top padding. Regular rows have no leading status or information icon. Bulk
+selectors sit outside the card. The footer's `#N` opens the exact logical item's attempt menu; selecting
+an attempt opens that run without adding another row. Served mode, warning and completion labels
+remain. Running puts its blue spinner and text inside the label. Review uses a blue label and message;
+Failed uses the compact danger label and message; Write parked retains yellow. Running progress has
+one segment per supplied pipeline step, with the action label and completed/total **steps** below it.
+Tooltips retain supplied state, duration and execution count. Terminal duration is omitted when no end
+instant was retained; measured zero remains visible.
+
+Operation rows show a boxed finished/total counter beside their status and an aligned Name/Status
+member table. Member status icons, attention ordering, exact run selection and local checked marks
+remain. The compact table fits five complete rows and expands to twenty; unloaded members remain a
+distinct state. Workflow-batch items render separately even when the served session prefers grouping;
+no grouping control or grouping command is offered. Logical retry identity remains item-scoped, and
+keyboard traversal follows the visible status bands. Bands retain uppercase labels, circular counts and
+horizontal rules. This presentation changes neither served status/actions nor backend publication.
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that

@@ -4,6 +4,17 @@ Read before changing a listed deviation or judging reference parity. These are o
 exceptions, moved from the instruction pair on 2026-09-04; relocation does not revoke them.
 The current owning contracts supersede dated claims. `DESIGN.md` remains the visual authority.
 
+## Approved mixed queue presentation (2026-10-01)
+
+The operator-approved queue and navbar presentation is owned by the
+[dashboard presentation amendment](../../docs/rebuild/reference/dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
+It supersedes the demo's leading row/info icons, inline attempt chip, grouped workflow-batch UI and
+tiny header progress marks. Preserve the gray provenance footer, current fonts and status bands;
+place bulk selection outside the card, attempts in the footer dropdown, pipeline labels below the
+segmented bar, and operation members in Name/Status columns with a boxed finished/total count.
+Review messages are blue; Write parked remains yellow. Existing reference screenshots have not been
+refrozen. Focused presentation and interaction specs verify this approved change in both themes.
+
 ## Ruled deviations from the rebuild-demo
 
 One shell affordance has no demo counterpart and STAYS, ruled by **D272 item 3**

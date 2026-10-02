@@ -1,5 +1,13 @@
 # `reference/decisions.md` — the decision ledger (D1–D360, 2026-07-17 → 2026-09-30)
 
+**Frontend presentation amendment — 2026-10-01:**
+The approved mixed queue keeps the gray footer, current fonts and status bands, removes regular-row
+leading/info icons, puts attempts in a footer dropdown and bulk selection outside, and uses segmented
+step progress plus an operation member table with a boxed finished/total count. Workflow-batch items
+render separately without changing publication. Review text is blue; Write parked remains yellow.
+The RRSS HR navbar retains every view and separates its paired history arrows with a divider.
+Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
+
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**
 R1 shows identity evidence comparisons; F2 leads with write outcome and next steps. Concise code-based
 classification is separate from the retained full error. Diagnostics, follow-up and advisory move to
