@@ -19,11 +19,11 @@ ceremony. The shared renderer does not invent a generic approve command or decis
 
 ## Frontend-first Logs amendment — 2026-09-30
 
-The current Logs work is a frontend projection using the shared `LogFeed` and isolated `logs.html`
-mock preview. For observed operation records, it projects only existing confirmed read, fill,
-click, and keypress data; internal computation rows and steps are omitted from presentation.
-Legacy rows retain neutral activity and observed facts through the
-existing read. It adds no backend transport or runtime behavior. Driver, source, template disclosures,
+The September 30 frontend-first Logs scope is a projection using the shared `LogFeed` and isolated
+`logs.html` mock preview. For observed operation records, it projects only existing confirmed read,
+fill, click, and keypress data; internal computation rows and steps are omitted from presentation.
+Legacy rows retain neutral activity and observed facts through the existing read. That scope adds
+no backend transport or runtime behavior; D364 below records the later v1 runtime contract. Driver, source, template disclosures,
 and the Attempts dropdown are removed from this surface. A panel with only Logs omits the redundant
 tab strip; panels with multiple advertised tabs retain navigation. Under the operator's explicit scope,
 existing identity, resolve, and failure blocks plus related backend and test work stay deferred, not
@@ -74,7 +74,7 @@ baseline and owns its final desktop/zoom matrix; it does not repeat mobile clean
 
 | | Concept | Where |
 |---|---|---|
-| **This doc OWNS** | the span/notes wire schema and its identities (D10), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + major-bump archival (D80/D274)**, **run display names (D83)** | §1–§5, §9 |
+| **This doc OWNS** | the span/notes and D364 confirmed-action/fact wire schemas and identities (D10/D364), the state-root layout, the SQLite authority/projection split and the recovery contract, enqueue/action/queue command semantics (D67/D95), durable notifications, local artifact outboxes/projectors, the SSE surface payloads, the completion union, the cross-repo runtime boundary (D88/D89/D93), the ratified delegation/presentation decisions, **the ONE run/queue projection (D81)**, **run versioning + major-bump archival (D80/D274)**, **run display names (D83)** | §1–§5, §9 |
 | **Imports from `ref task-contract`** | the task contract and `defineTask`, the task-id grammar (`<system>/<verb-object>`, D2), the closed `SystemId` union, the error taxonomy | referenced, never redefined |
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
@@ -245,6 +245,62 @@ older envelope records without a Plan 1 capability stamp remain explicit legacy.
 stamp `complete` or `legacy`, so a missing complete snapshot cannot silently downgrade. The
 normal note row continues to omit raw browser action payloads; any field value is read from the
 already-redacted provenance arm.
+
+### D364 — Confirmed action/fact v1 and step result (2026-10-02)
+
+The strict `version: 1` event is a separate, proof-bearing contract beside the existing raw
+browser-action notes. Its envelope carries `eventId` (= `workerStreamId/sequence`), `workerId`, `workerStreamId`,
+positive per-stream `sequence`, optional `runSessionId`, `traceId`, `stepOccurrence`, the exact
+`action`, `source`,
+`occurredAt` and publisher-stamped `recordedAt`. The action identity binds run, definition fingerprint,
+node/task, optional child invocation, attempt, claim generation, task attempt, frozen invocation/path,
+logical action occurrence and logical session, plus physical browser-session identity when present.
+An occurrence may carry its state and D359's confirmation link (verifier action id, occurrence ordinal
+and `verifiedAt`). `source` names the registered browser `system`, or `headless: service|workflow`; log prose is not a
+source. Ordinary step occurrence is
+`runId/attempt/claimGeneration/taskAttempt/occurrencePath`; submit occurrence is
+`runId/attempt/claimGeneration/nodeId/transaction`.
+
+Ordinary lifecycle traces publish as actions start, complete, fail or are not run. Successful facts
+publish only after verification, while the enclosing task may remain blocked on later work.
+Protected-commit lifecycle attempts remain
+in the existing raw-note path after sequencer settlement; this stream does not promise a trace for
+every protected attempt. The registered sensitivity/scalar binder withholds restricted, HR,
+unclassified, object and headless values before both confirmed publication and raw-note draining;
+allowed public scalars and protected-source provenance remain.
+
+A `trace` records `started`, `completed`, `failed` or `not-run`, with an optional reason; its state
+must equal the action occurrence state. A `fact` records `read`, `fill`, `interaction`, `verification` or `submit`; purpose is `read-validation`
+for read/verification, `readback` for fill, `interaction-effect` for interaction, and `saved-effect`
+for submit. Every fact carries the completed verifier occurrence, `verdict: matched`, a 64-character
+lowercase SHA-256 observation digest and `confirmedAt`. For ordinary facts the digest hashes
+(`hrauto:confirmed-observation:v1`), a NUL byte, and canonical observed JSON; submit reuses the
+durable write-proof digest. The proof carries the exact verifier identity, matched verdict and digest,
+not arbitrary observed JSON. Only submit
+may carry `disposition: committed` and durable proof
+(`writeIntentId`, checkpoint node and proof digest). `occurredAt` records the action or transaction
+time, `confirmedAt` the successful verification or durable settlement time, and `recordedAt` event
+construction time.
+
+`DeclaredStepResult` is a separate v1 task result, not a fabricated event or client-side inference.
+It is bound to one frozen task invocation and step occurrence. Exactly one confirmed declared case
+returns `selected` with frozen `caseId`, label and source; missing proof returns `unavailable`,
+duplicate evidence or multiple matching cases returns `ambiguous`, and no matching case returns
+`no-match`.
+
+The worker-local publisher stamps worker/stream identity and sequence and uses a bounded queue
+(capacity 256 in the worker loop). `delivered` means the append completed; `queued` means pending,
+not durable; refusal reports `saturated`, `closed` or `unconnected`. Append and health-report errors
+remain publisher-health diagnostics (`healthy`, `saturated`, `closed`, `append-failed`,
+`unconnected`, `proof-unavailable`, `program-error`); a throwing health callback sets
+`diagnosticFailure`. Raw browser-note draining is a separate post-settlement path:
+it attempts every note, reports append/program/warning failures, and does not replace the settled task
+or external-write result. Neither logging failure nor saturation says whether a remote HR action
+landed; only the write-safety settlement owns that outcome.
+
+Persisted ordered worker streaming and its read/replay adapters remain Phase 4. The frontend Logs
+connection, step-result display and capture association remain Phase 5; no screenshot artifact is
+included in this v1 event.
 
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 

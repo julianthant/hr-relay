@@ -41,6 +41,7 @@ Conforms to `reference/charter.md` and the decision ledger `reference/decisions.
 | Strict runtime-schema rules, branded domain scalar/id policy, absence semantics, and the task-side subject-binding declaration (D46/D47) |
 | The **read-extraction width** convention — one task per page visit, one fixed strict output, consumers project downstream (§2.8, D194), plus the as-built rules the first store BUILT (§2.9, D196), the first store CUSTOMIZED (§2.10, D197), the first store to split judgment out of a read (§2.11, D201) and the first store to gain a WRITE family beside a read family (§2.12, D206) settled |
 | Retry policy |
+| Task-facing confirmed action and declared-result API (`ctx.confirmed` signatures and verifier-purpose rules, D364) |
 | Decoration (`decorateTask`, hook semantics, error-propagation rule) — **designed, not built**; §4 states the absence |
 | Task stores — browser, service, and pure workflow mini-stores (D4/D42), session providers + the single login signature, shared leaf-code homes (`stores/common/`) |
 | The task **boundary** statement — tasks are bounded; what is NOT a task (D5's task side) |
@@ -1257,16 +1258,17 @@ reuse cannot create a runtime module cycle.
 <!-- roadmap-status: phase-1 -->
 - [-] `decorateTask`, `TaskHooks` and `HookCtx` are DESIGNED and not built: there is no `src/base/decorate.ts`, no builder `.decorate()` / `.instrument()`, and no per-task hook of any kind in `src/`. Nothing in Phase 1 needed one, and no descriptor asks for one today
 - [-] the automatic end-of-step and error SCREENSHOTS §4.2 promised to re-home as kernel span hooks do not exist either — the rebuild captures no screenshots at all; the only diagnostic capture is failure-time and redacted (`src/base/diagnostics.ts`, D137)
-- [x] the ONE instrumentation layer that does exist is the kernel's: the executor emits task spans keyed by `(runId, attempt, spanPath)` with the claim generation folded in (D123/D214), which is what every timeline, duration and verdict reads
-> 2026-08-21 | docs-cohesion 5.1 task-contract | verified by absence — no `decorateTask`, `TaskHooks`, `HookCtx`, `.decorate(` or `.instrument(` anywhere in src/, and no screenshot producer; §4.1–§4.3 keep the contract for whoever builds it, marked as the contract rather than as behaviour
+- [x] kernel instrumentation emits task spans keyed by `(runId, attempt, spanPath)` with claim generation folded in (D123/D214)
+- [x] D364 provides a runtime-owned `ctx.confirmed` action/result API for complete frozen operation invocations; protected submit proof remains sequencer-owned (ref write-safety §3)
+> 2026-08-21 | docs-cohesion 5.1 task-contract | verified decorator absence and no automatic end-of-step/error screenshots.
+> 2026-10-02 | D364 | `ctx.confirmed` signatures verified against `src/workflow-kit/task.ts`; behavior against `src/backend/logs/`.
 <!-- /roadmap-status -->
 
-**This section is a contract for a mechanism that does not exist yet.** It is kept normative — a
-decoration model that gets invented ad hoc per workflow is exactly the fork this doc was written to
-prevent — but nothing below describes shipped behaviour, and §4.2's "today's automatic screenshots"
-sentence described the LEGACY system, not this one. What to do when a workflow genuinely needs a
-pre/post side action today: put it in the driver operation (where the page is), or make it its own
-node (where the graph can see it). Do not invent a hook.
+**The decorator model below is a contract for a mechanism that does not exist yet.** D364's
+`ctx.confirmed` API is a separate, as-built task boundary and does not add hooks, screenshots, or
+mutable task-output decoration. §4.2's old "today's automatic screenshots" sentence described the
+LEGACY system, not this one. A workflow that needs a side action still puts it in the driver
+operation or makes it a graph node; it does not invent a decorator.
 
 ### 4.1 The invariant
 
@@ -1311,8 +1313,39 @@ export function decorateTask<T extends AnyTask>(
 | Every step of one workflow | `.instrument(hooks)` on ref workflow-model's builder | per-step audit screenshot policy | **no** |
 | Every task everywhere | kernel-level span hooks (ref dashboard-surfaces) | step timing, task/browser/run span kinds | **yes** — the executor's span emission |
 
-The point of the three layers is that per-workflow instrumentation code is not the answer to any of
-them; when the first two are built, they attach at the task boundary rather than inside a handler.
+The table describes decorator hooks; D364's runtime-owned task API is a separate, as-built
+mechanism. `TaskCtxCommon.confirmed` is optional and carries `ConfirmedTaskActions` only for a
+complete frozen operation display; legacy invocations have no structured action proof.
+
+    export interface ConfirmedTaskActions {
+      read<T extends JsonValue>(action: ConfirmedActionRef, perform: () => Promise<T>,
+        verification: ConfirmedVerification): Promise<T>;
+      fill(action: ConfirmedActionRef, expected: JsonValue, perform: () => Promise<unknown>,
+        readback: ConfirmedVerification): Promise<void>;
+      click(action: ConfirmedActionRef, perform: () => Promise<unknown>,
+        verification: ConfirmedVerification): Promise<void>;
+      keypress(action: ConfirmedActionRef, perform: () => Promise<unknown>,
+        verification: ConfirmedVerification): Promise<void>;
+      verify(verification: ConfirmedVerification & Readonly<{ purpose: "read-validation" }>): Promise<JsonValue>;
+      confirmOutcome(reference: ConfirmedOutcomeReference,
+        verification: ConfirmedOutcomeVerification): Promise<ConfirmedOutcomeObservation>;
+      result(): DeclaredStepResult;
+    }
+
+`ConfirmedActionRef` is the frozen action's `{ id, targetId }` pair. `ConfirmedVerification` carries
+its verifier reference, purpose (`read-validation`, `readback`, `interaction-effect` or
+`saved-effect`), async JSON observation and matcher; `ConfirmedOutcomeReference` is a frozen outcome
+value, and its verifier uses `read-validation`. Outcome observations distinguish `value`, `empty` and
+`unavailable`; unavailable is refused for confirmation.
+
+The runtime requires `read-validation` for reads and verification, `readback` for fills, and
+`interaction-effect` for clicks and keypresses; fill also compares the expected JSON value with its
+readback. Click and keypress reject undeclared or `external-commit` targets. `confirmOutcome`
+accepts only a value declared by the frozen invocation. `result()` selects from exact confirmed
+evidence and returns the declared-result union; the frozen identities and selection rules live in ref
+workflow-model, and its wire event and timestamp contract lives in ref dashboard-surfaces. A task
+cannot publish a successful submit through these methods: the protected transaction path owns
+saved-effect proof (ref write-safety §3).
 
 ### 4.3 Why adding a task cannot break neighbors
 

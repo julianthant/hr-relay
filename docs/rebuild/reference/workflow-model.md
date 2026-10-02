@@ -65,6 +65,7 @@ evidence. Their directory names are superseded by the current map; they are not 
 | Run-state machine incl. gate nodes and parks (D5) | |
 | Checkpoint/resume model: store, freshness (D8), scope (D9), task-authoring rule | |
 | Span-id path grammar + attempt semantics (what the engine brackets) | |
+| Frozen action occurrence identity and D364 declared step-result selection | Ref dashboard-surfaces: action/fact event wire schema and timestamps |
 | Workflow terminal result schema and child-run result typing | Ref dashboard-surfaces: command/action/enqueue policy semantics and durable dependency/command storage |
 | | Ref operator-trust: semantic UI registry, scenarios, evidence receipt, explorer/editor projections |
 
@@ -1405,6 +1406,24 @@ Logs may display successful structured actions only with this evidence. Started 
 gestures remain neutral driver diagnostics. Verification failures propagate through the existing
 executor/write authority; confirmation does not create write proof, change fences or enable retries
 of unknown writes. Buffered note drain remains outside the operation's write window.
+
+#### D364 — Confirmed task facts and declared step results (2026-10-02)
+
+On a complete frozen operation invocation, `ctx.confirmed` accepts only references found in that
+invocation's frozen action tree. Its occurrence identity binds the definition fingerprint, run,
+node/task, attempt, claim generation, task attempt, invocation id and path, logical action/session,
+and the browser session incarnation when present. The ordinary step occurrence is
+`runId/attempt/claimGeneration/taskAttempt/occurrencePath`; a protected submit uses
+`runId/attempt/claimGeneration/nodeId/transaction`.
+
+`confirmOutcome` accepts only a frozen declared outcome reference and a completed
+`read-validation` verifier. `result()` uses confirmed evidence from that exact invocation and
+session: one matching declared case yields its frozen `caseId`, label and source; missing or invalid
+evidence yields `unavailable`, duplicate evidence or multiple matches yields `ambiguous`, and no
+matching declared case yields `no-match`. These states stay distinct; no missing observation
+becomes an empty result. The exact method signatures live in ref task-contract §4.2; the v1 event and
+time fields live in ref dashboard-surfaces D364. Protected submit confirmation remains owned by ref
+write-safety §3.
 
 #### 1.6.5 Exact child and derived-result sources (D358, 2026-09-29)
 

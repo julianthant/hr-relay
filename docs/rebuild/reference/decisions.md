@@ -1,9 +1,22 @@
-# `reference/decisions.md` — the decision ledger (D1–D363, 2026-07-17 → 2026-10-02)
+# `reference/decisions.md` — the decision ledger (D1–D364, 2026-07-17 → 2026-10-02)
 
-The numbered decision history through D362 remains unchanged. D363 is recorded in the current
-operator amendments below; no earlier number is reused.
+The numbered decision history through D362 remains unchanged. D363 and D364 are recorded in the
+current operator amendments below; no earlier number is reused.
 
 ## Operator amendments
+
+**D364 — Confirmed action and declared step-result v1 (approved Phase 3, 2026-10-02):**
+complete frozen task invocations expose the exact `ctx.confirmed` API; published facts bind exact
+action, verifier, purpose, proof and timestamps; step results select only declared outcomes from
+confirmed evidence. Submit facts require the write sequencer's durable saved-effect proof. Queue
+saturation and append failures remain logging health, separate from external outcome. Persisted worker
+streaming remains Phase 4; frontend connection and capture association remain Phase 5. Owners:
+[task-contract §4.2](task-contract.md#42-where-instrumentation-attaches),
+[workflow-model](workflow-model.md#d364--confirmed-task-facts-and-declared-step-results-2026-10-02),
+[dashboard-surfaces](dashboard-surfaces.md#d364--confirmed-actionfact-v1-and-step-result-2026-10-02),
+[write-safety](write-safety.md#d364--confirmed-submit-fact-follows-durable-settlement-2026-10-02),
+[execution-and-sessions](execution-and-sessions.md#d364--worker-local-confirmed-action-publisher-2026-10-02),
+and the [current code map](codebase-structure.md).
 
 **UI catalog retirement (2026-10-01).** The generated UI catalog feature and its catalog-specific
 navigation, route, projection, generator, search command and generated documents are retired.

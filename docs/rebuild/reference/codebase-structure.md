@@ -52,15 +52,15 @@ owns `steps/<role>/step.ts` for its five retained chunk harnesses.
 | --- | --- |
 | `src/cli.ts` | Thin CLI command entry point. |
 | `src/backend/app/` | `bootstrap/`, `composition/`, `config/`, `dry-run/`, `host/`, `preflight/`, `registries/` and `test-data/` compose application entrypoints. `config/runtime-isolation.ts` owns the existing frozen values; `registries/` owns task/workflow/test-target registration and retained step-proof modules. |
-| `src/backend/logs/` | `diagnostics/` and `trust/` plus root modules for span emission, observed data and generated-artifact projection. `trust/advisory.ts` remains. This contains no Logs API. |
+| `src/backend/logs/` | `diagnostics/` and `trust/` plus root modules for span emission, observed data, generated-artifact projection, confirmed action/fact publication and declared step results (`confirmed-actions.ts`, `confirmed-invocation.ts`, `confirmed-action-publisher.ts`, `confirmed-submit.ts`, `declared-step-result.ts`), and post-settlement raw-note draining (`browser-action-drain.ts`). Persisted worker-stream transport remains Phase 4. |
 | `src/backend/processing/` | `extraction/`, `normalization/`, `ocr/`, `providers/`, `roster/` and `spreadsheet/`; task families register through `task-registry.ts`. |
 | `src/backend/runs/` | `archive/`, `commands/`, `explain/`, `exports/`, `lifecycle/`, `notifications/`, `projections/`, `provenance/`, `queries/`, `recovery/`, `settings/`, `start/` and `trust/`; `activity-person-pseudonym-backfill/` remains a dedicated owner. |
-| `src/backend/runtime/` | `browser/`, `checkpoints/`, `execution/`, `gates/`, `policies/`, `preflight/`, `scheduling/`, `settings/`, `workers/` and `writes/` own runtime execution and safety. |
+| `src/backend/runtime/` | `browser/`, `checkpoints/`, `execution/`, `gates/`, `policies/`, `preflight/`, `scheduling/`, `settings/`, `workers/` and `writes/` own runtime execution and safety; `workers/` composes the confirmed-action publisher lifetime. |
 | `src/backend/storage/` | `admission/`, `archive/`, `artifacts/`, `compatibility/`, `configuration/`, `events/`, `maintenance/` and `sqlite/` own database and persistence adapters. |
 | `src/backend/systems/` | Browser-system drivers, semantic registries and task implementations. `ui-task-links.ts` (`buildUiTaskLinks`) derives Explorer task attribution from retained registries. |
 | `src/backend/transports/` | CLI and dashboard HTTP/SSE transports and route schemas. |
 | `src/dashboard/` | Renderer app, client, state, design system, shared UI kit and product surfaces. It does not import backend task implementations. `logs-preview/` is a frontend preview, not an API. |
-| `src/models/` | Shared schemas and model shapes, including task contracts, UI vocabulary, workflow data, runtime/API models and schema-bound validation; `config/define-runtime-isolation.ts` owns the pure isolation shape/type, and `fields/` owns the canonical field inventory and registry. There is no `models/logs/` package. |
+| `src/models/` | Shared schemas and model shapes, including task contracts, UI vocabulary, workflow data, runtime/API models and schema-bound validation; `events/confirmed-action.ts` owns the v1 confirmed-event and declared-step-result schemas. `config/define-runtime-isolation.ts` owns the pure isolation shape/type, and `fields/` owns the canonical field inventory and registry. There is no `models/logs/` package. |
 | `src/rules/` | Reusable pure decisions and validation rules; `runs/` contains the four ledger modules: ledger primitives, ledger projection, ledger and summary derivation. |
 | `src/workflow-kit/` | Root-level TypeScript modules provide browser-safe workflow/task authoring, compilation and factories; `validation/` contains validation and path derivation. `compileWorkflow` lives in `workflow-definition.ts`; there is no separate `execution-context/` or `compilation/` folder. `validation/source-layout.ts` derives workflow and potential scenario paths from role. The generated workflow manifest lives at `validation/generated-build-manifest.ts`. |
 | `src/workflows/<id>/workflow.ts` | Browser-safe operator workflow definition and composition entry. Its value-import closure must not reach backend implementations. |
@@ -120,12 +120,14 @@ ignored `config/test-data.local.json` remains private local test input.
 
 ## Deferred work and evidence
 
-The approved Logs interface retains its visual layout and interaction treatment, but no Logs API or
-`models/logs/` package was added. Target examples such as `backend/logs/{actions,steps,results,screenshots,streams}.ts`
-remain future Phase 3–5 work; existing log and diagnostic modules stay in their current owners.
-A desktop/Electron shell remains future work and has no placeholder folder.
+Phase 3 added the confirmed action/step v1 API, strict event and result schemas, and a worker-local
+bounded publisher in their existing `backend/logs/`, `models/events/` and worker owners. Persisted
+ordered worker streaming and its read/replay adapters remain Phase 4. The frontend Logs connection,
+step-result presentation and capture association remain Phase 5; the v1 event carries no screenshot
+artifact. There is no `models/logs/` package. A desktop/Electron shell remains future work and has no
+placeholder folder.
 
-The candidate freeze hash is `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`.
+The accepted layout-polish candidate freeze hash is `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`.
 Implementation maps are pinned to entry `7e237bd7c3d0a45952e38c49f6d9be75057d08ef` under
 [`implementation/`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/).
 [`source-map.json`](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/source-map.json)

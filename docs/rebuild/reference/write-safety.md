@@ -39,6 +39,7 @@ the kernel does with it, and what may never be substituted for proof.
 |---|
 | The **write-safety contract** — the required `WriteSafety` field on a commit task, typed proof schema for every completion kind, idempotency probe/key, and fail-closed verdict protocol (§2) |
 | The **kernel write sequence** — resolve/probe → prepare → subject bind → fence → external commit → proof → durable commit, and its ordering invariant (§3) |
+| D364 confirmed-submit facts as a projection after durable settlement; logging is never write-outcome authority (§3) |
 | Fresh write-binding enforcement at the write seam, and the subject-match/unscoped proof retained with the intent and the ledger (§2.1, §3 beat ③) |
 | The **crash-window fence** (`write_intents`) and the **crash-recovery replay** — positive proof or stabilized negative proof (§4) |
 | Typed, intent-generation-locked operator resolution for parked writes — confirmed present / confirmed absent, and no generic Done/Retry (§4.1) |
@@ -946,6 +947,22 @@ command that released generation 1, with the same evidence-note requirement.
    rows rather than inventing values. Owner: ref clock-config-secrets.
 
 ---
+
+### D364 — confirmed submit fact follows durable settlement (2026-10-02)
+
+A confirmed submit fact is emitted only after the sequencer settles the transaction and the executor
+reads back the exact durable checkpoint. It must bind one frozen external-commit action and one
+completed saved-effect verifier to the same run, attempt, claim generation, node and physical session;
+the durable write-intent proof digest must equal the checkpoint proof digest and the verified proof
+digest. Missing, duplicate or mismatched evidence reports `proof-unavailable` and emits no successful
+submit fact. Already-present and recovery/operator-attested settlements do not manufacture a new
+submit occurrence.
+
+This event reports a settled transaction; it does not perform or authorize one. Queue saturation,
+append failure, or diagnostic reporting failure stays separate from the durable `TransactionOutcome`
+and ledger entry. Raw action-note drain also follows task/transaction settlement and cannot turn a
+committed external write into a failed one. See ref dashboard-surfaces D364 for the event envelope and
+ref execution-and-sessions §3 for worker publisher lifetime.
 
 ## 4. Crash-window recovery (positive proof or stabilized negative proof)
 <!-- roadmap: def-propagation -->

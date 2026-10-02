@@ -2,7 +2,7 @@
 
 Status: Phase 1, its startup reconciliation prerequisite and Phase 2 are accepted locally on
 2026-10-01; the operator-approved layout polish is accepted locally on 2026-10-02.
-Phases 3–5 remain proposed. This descriptive
+Phase 3 is accepted locally on 2026-10-02; Phases 4–5 remain proposed. This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -189,15 +189,17 @@ retirement remain for later operator discussion. Extracting a pure case does not
 a retained complex proof. Parity and scenario suites are the operator-approved retirement exception.
 These complex suites are not in the development phase gates below.
 
-## Shared logging contract to implement
+## Shared logging contract
 
 Tasks call a small runtime-owned logger/action API through their execution context. System helpers
 and semantic drivers bind the real store/session. No arbitrary workflow webhook or frontend URL.
 The backend validates and classifies facts, chooses concise results and serves display-ready data.
 The frontend handles presentation, search, copy, paging and subscription state.
 
-The API names below are proposed public meanings; Phase 3 finalizes signatures against the existing
-task and frozen operation declarations.
+Phase 3 finalizes the v1 action/result contract and `ctx.confirmed` API against the existing task
+and frozen operation declarations. D364 and the [task contract](../../reference/task-contract.md)
+own the exact signatures. The table below describes the intended action meanings across this
+initiative; capture and frontend connection remain Phase 5.
 
 | Operation | Confirmation and meaning | Display fact |
 | --- | --- | --- |
@@ -431,6 +433,14 @@ uses the existing docs/evidence framework instead of creating absent `agent_docs
 
 ## Phase 3 — Implement the shared confirmed action and step API
 
+**Status:** accepted locally on 2026-10-02, under the operator's authorization. Accepted entry:
+`8fdc4705bed269e6859c98a14e53203c12e5b96c`, branch `codex/logs-backend`, in the assigned
+continuation worktree. Deployment ID: `confirmed-action-api-20261002`. Scope is this phase only;
+worker streaming and frontend connection remain Phases 4–5. Evidence belongs under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase3/`.
+Accepted source candidate: `0dff920a102186b3218dbf549b79003b9f3e458e`; the acceptance record below
+binds the focused checks and the approved shared contract to this source commit.
+
 **Deliverable:** one versioned contract and execution-context API used by system helpers and a
 synthetic task through the production injection seam.
 
@@ -527,7 +537,7 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 | 1 — Test ownership and unit execution | Accepted locally | `a46d792273af908dd9bfd29d6f5eb19b874a319e`; focused checks and independent preservation verification below; broad checks deferred |
 | 2 — Backend modules and reviewed units | Accepted locally | Code candidate `2a1bad93b14b9b17bbccb7e69dc7974dfcf0e3f7`; exact mappings, focused checks and independent combined-candidate preservation verification below |
 | Layout polish — Approved final source/test homes | Accepted locally | `3e3a0a5c310905aa52d29616d26c6dee1e981605`; frozen code SHA-256 `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`; entry `7e237bd7` |
-| 3 — Confirmed action/step API | Proposed | Requires Phase 2 and layout polish |
+| 3 — Confirmed action/step API | Accepted locally | Source `0dff920a102186b3218dbf549b79003b9f3e458e`; shared contract D364, focused checks and explicit proof limits below |
 | 4 — Ordered worker streams | Proposed | Requires Phase 3 |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
 
@@ -1151,6 +1161,63 @@ scenario requests fail before environment admission or browser launch. Synthetic
 do not provide production evidence. Integration, persistence, process, sockets, browsers, full
 coverage and future scenario design remain unrun. Phase 3 is ready for a separate operator-launched
 chat; this acceptance does not start it or grant production/Electron acceptance.
+
+### Phase 3 acceptance — 2026-10-02
+
+Accepted source candidate: `0dff920a102186b3218dbf549b79003b9f3e458e`, branch
+`codex/logs-backend`, in the assigned continuation worktree. Entry
+`8fdc4705bed269e6859c98a14e53203c12e5b96c` remains an ancestor; newer peer isolation commit
+`80108a1b76fae390c12160a16619e9619528f4a8` is preserved. This acceptance covers only the
+supporting plan's Phase 3, with deployment ID `confirmed-action-api-20261002`.
+
+The shared v1 action/result models and production invocation factory now own strict identity,
+verification purposes, safe values and exact step occurrences. Tasks receive confirmed read,
+fill/readback, interaction, verification and declared-result helpers through their context.
+Ordinary facts publish after confirmation while remaining task work can still be blocked.
+Submit facts require the existing sequencer's saved-effect proof, durable settlement and exact
+checkpoint readback. Uninstrumented verifier paths remain explicitly proof unavailable.
+Only confirmed outcome evidence can select a declared result; unreadable or missing observations
+remain unavailable and multiple matches remain ambiguous.
+
+The publisher defines bounded delivery, append failure, saturation, unconnected and closed
+states separately from transaction outcome. Publication or health-reporting failure cannot
+request another external submit. Registered sensitivity and scalar checks withhold restricted,
+HR, unclassified, object and headless values before both confirmed publication and raw-note
+drain; declared public scalars and protected-source provenance remain intact. Protected commit
+lifecycle traces remain in the existing raw-note path, drained after sequencing returns, with
+no confirmed publisher or health callback in the fence-to-submit interval. Raw-note append,
+warning and health-report failures cannot override a settled protected-write result; every
+note is attempted, and delivery health remains separate from the remote outcome.
+
+Independent focused checks passed on this exact source commit: six focused files, 42 tests passed;
+`npm run lint`, `npm run build:manifest:check` and `npm run stores:catalog:check` passed. The
+focused suite includes the confirmed API, protected-submit policy, action binding, raw notes,
+drain policy and span events. Controlled promises and a manual clock prove publication timing,
+verifier refusal, readback mismatch, source/attempt/session binding, safe-value handling,
+submit-proof refusal and preservation of a committed result under combined diagnostic failures.
+The exact focused unit command was:
+
+```sh
+npm run test:unit -- \
+  tests/unit/backend/logs/browser-action-drain.test.ts \
+  tests/unit/backend/logs/confirmed-action-api.test.ts \
+  tests/unit/backend/logs/confirmed-submit.test.ts \
+  tests/unit/backend/runtime/writes/operation-action-binding/operation-action-binding.test.ts \
+  tests/unit/backend/systems/browser-shared/action-notes/browser-action-notes.test.ts \
+  tests/unit/backend/logs/span-emitter/span-events.test.ts
+```
+
+Exact commands, logs and the commit-bound verdict are in the
+[final verification report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase3/verification/final-0dff920-verdict.md).
+`npm run typecheck` still exits 2 with 72 diagnostics matching the recorded accepted baseline;
+this is unchanged-input evidence, not a passing typecheck.
+
+The approved shared v1 contract is D364 at the existing task, workflow, execution, write-safety
+and dashboard reference owners and the decision index. Actual persisted worker streaming remains
+Phase 4; frontend and capture connection remain Phase 5. No live/browser, persistence, SQLite
+durability, integration, complex, full coverage, parity or scenario proof was run or claimed.
+No push, merge, peer cleanup or next-phase launch is authorized by this acceptance. The peer's
+untracked `dashboard-surface-wiring.md` remains outside this task's ownership.
 
 ## Prompts for fresh chats
 
