@@ -3,8 +3,10 @@ import type { LogStep } from "../log-feed-model.js";
 import { queueRowTitle, type QueueSurfaceWire } from "../queue-model.js";
 import { PROPOSED_STATUS, dsStatusOf } from "../status-model.js";
 import type { LogTimelineStage, LogTimelineState } from "./log-timeline-model.js";
+import { selectedLogMock } from "./log-selected-fixture.js";
 
 export type LogSelection = Readonly<{ row: QueueSurfaceWire; workflowLabel: string }>;
+export const selectedLogSample = selectedLogMock;
 const PIPELINE_STATE: Record<QueueSurfaceWire["pipeline"][number]["state"], LogTimelineState> = {
   done: "completed", active: "active", blocked: "waiting", failed: "failed", pending: "pending", skipped: "skipped", cancelled: "cancelled",
 };

@@ -44,12 +44,13 @@ function FieldValue({ value }: { value: string }) {
 }
 
 /** Shared presentation for the operator stream and the isolated design preview. */
-export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, onDecision, loading = false }: {
+export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, onDecision, initialStepId, loading = false }: {
   steps: readonly LogStep[];
   onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void;
   label?: string;
   embedded?: boolean;
   loading?: boolean;
+  initialStepId?: string;
   beforeContent?: ReactNode;
   afterStep?: (id: string) => ReactNode;
   trailingContent?: ReactNode;
@@ -63,6 +64,16 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
   const end = useRef<HTMLDivElement>(null);
   const headings = useRef(new Map<string, HTMLHeadingElement>());
   const jumpFrame = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!initialStepId) return;
+    const heading = headings.current.get(initialStepId);
+    const section = heading?.closest("section");
+    const viewport = scroller.current;
+    if (!section || !viewport) throw new Error("log-initial-step-missing");
+    const style = getComputedStyle(viewport);
+    if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom))}px`;
+    viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop);
+  }, [initialStepId]);
   useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
   const jump = (stepId: string) => {
     if (!visualLogSteps(steps).some(step => step.id === stepId)) throw new Error("log-timeline-step-missing");
@@ -71,7 +82,9 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
     jumpFrame.current = requestAnimationFrame(() => {
       const heading = headings.current.get(stepId);
       if (!heading) throw new Error("log-timeline-heading-missing");
-      heading.scrollIntoView({ block: "start", behavior: "instant" });
+      const section = heading.closest("section");
+      if (!section) throw new Error("log-timeline-section-missing");
+      section.scrollIntoView({ block: "start", behavior: "instant" });
       heading.focus({ preventScroll: true });
       jumpFrame.current = undefined;
     });
