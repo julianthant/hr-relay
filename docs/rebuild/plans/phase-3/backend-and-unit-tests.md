@@ -1,7 +1,7 @@
 # Backend, unit tests and confirmed Logs connection
 
-Status: Phase 1 and its startup reconciliation prerequisite accepted locally on 2026-10-01;
-Phases 2–5 remain proposed. This descriptive
+Status: Phase 1, its startup reconciliation prerequisite and Phase 2 are accepted locally on
+2026-10-01; Phases 3–5 remain proposed. This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -443,7 +443,7 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 | Phase | State | Accepted candidate and evidence |
 | --- | --- | --- |
 | 1 — Test ownership and unit execution | Accepted locally | `a46d792273af908dd9bfd29d6f5eb19b874a319e`; focused checks and independent preservation verification below; broad checks deferred |
-| 2 — Backend modules and reviewed units | Proposed | Requires accepted Phase 1 and continuation reconciliation |
+| 2 — Backend modules and reviewed units | Accepted locally | Code candidate `2a1bad93b14b9b17bbccb7e69dc7974dfcf0e3f7`; exact mappings, focused checks and independent combined-candidate preservation verification below |
 | 3 — Confirmed action/step API | Proposed | Requires Phase 2 |
 | 4 — Ordered worker streams | Proposed | Requires Phase 3 |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
@@ -510,6 +510,527 @@ cleanup or next-phase launch occurred. The peer-owned untracked
 `docs/rebuild/plans/phase-3/backend-continuation-reconciliation.md` was left untouched.
 Phase 2 may consume this accepted local candidate only after the operator launches that work;
 integration and complex-test review remain separate choices.
+
+### Phase 2 execution — 2026-10-01
+
+Deployment ID: `logs-backend-phase2-20261001`. The operator authorized only Phase 2 in the
+existing `codex/logs-backend` worktree. Entry was clean at
+`4b2f3232f8e41b849084c7b745a09ac61070b55f`. Independent source and test ownership reads verified
+that accepted Phase 1 `a46d792273af908dd9bfd29d6f5eb19b874a319e`, reconciliation
+`dd585d2e7815bc892474f31ebb49c4b905c50735`, and approved Logs UI
+`1211a24b81547ec2b7c6e27837c4d57c081d259e` remain ancestors. The two commits after the
+reconciliation candidate change only its two plan records.
+
+The accepted pre-mutation [layout map](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/layout/report.md)
+and its [refinement](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/layout/refinement.md)
+account for 982 source files, 248 units and 47 support files with baseline byte hashes and no
+target collisions. Exact ledgers are
+[source](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/layout/source-map.json),
+[unit](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/layout/unit-map.json),
+[support](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/layout/support-map.json), and
+[static dependency edges](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/layout/dependency-edges.json).
+These are intended destinations, not completed moves or quality verdicts. Each package records
+actual deviations, case triage and surviving coverage separately. The Node config resolver moves
+with its path defaults after the shared leaf-path rule is extracted to domain provenance;
+settings journal/runtime readers remain runtime-owned. Storage relocation history keeps its
+existing transaction ownership at storage. All 40 former core modules retain their 80% floor.
+
+Module case triage, focused checks, logical commits and final preservation evidence will be
+recorded here as completed. Evidence is retained under
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/`.
+Complex-suite execution, redesign and retirement remain deferred; this execution does not
+authorize integration, push, worktree cleanup or a later phase.
+
+Operator cadence amendment on 2026-10-01: batch each remaining related relocation set as one
+major package. Keep focused units, import/static checks and lint during the package, then run
+expensive combined typecheck/build once at package completion. Reuse fresh evidence and rerun it
+only when a failure or later repair changes its inputs.
+
+The [immutable baseline report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/baseline/report.md)
+records an explicit 248-file unit run: 234 files and 2,379 cases pass; 14 files and 59 cases fail.
+The exact failed titles and outputs remain retained. Scoped lint over 276 test/support paths
+passes with zero warnings. Selected driver/layout/registry/data-ownership architecture checks
+have 48 passing cases and two existing registry failures: the finalization manifest names a
+workflow with no built descriptor. Manifest and store catalog freshness pass. The nonexecuting
+complete collection lists 622 unique files (248 unit, 271 integration, 86 architecture,
+17 scenario). These failures remain red; later package checks compare attributable deltas.
+
+Prerequisite policy extraction: `ce0ca0d75` moves the unchanged leaf traversal from the Node
+resolver to domain provenance and repoints snapshot consumers. The new unit covers nested
+objects, arrays/null leaves, object order, frozen output and empty/scalar roots. No existing
+unit is retired. [Exact unit and lint receipts](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/app-transports/config-extraction-checks/receipt.json)
+record two files/seven cases and zero-warning scoped lint passing before mechanical moves.
+
+The [runtime case triage](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runtime-triage/runtime-triage.md)
+pins original cases and called harnesses to entry source. Existing checkpoint, terminal,
+action-binding and negative-settlement units survive. Selected narrow extraction candidates
+are worker idle disposition, transient retry eligibility and durable intent classification;
+their repository, lease, fence, cancellation and settlement effects stay in the runtime.
+All original mixed-suite persistence/reopen/order proofs remain collected and unrun.
+No runtime case retirement is justified by this triage.
+
+App/transports verification exposed a stale stopped-command guard after its incorrect repository
+root was repaired: secure bootstrap reaches the supported converter through the existing
+`storage relocate` branch. D352 requires this stopped, verified-backup v56 upgrade. The correction
+must authenticate that exact dynamic dispatch boundary and reject eager/widened imports; it does
+not exempt ordinary runtime roots. No guard is retired.
+
+Verification scope deviation: the affected `authority-upgrade-adapters-retired` architecture
+file was initially executed whole, including its SQLite-backed recovery cases. Their exact
+executions and receipts remain retained. Further runs select only static path/negative-control
+cases. This record does not claim that every complex proof remained unexecuted or grant broader
+complex-test admission.
+
+The [runs preparation](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runs/prep-triage.md)
+and [exact proposed map](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runs/prep-map.json)
+cover 98 source files and 24 units. Eight policy-only unit files follow their domain owners;
+all existing cases survive. The queued-run service target is `backend/runs/enqueue.ts`.
+Before those mechanical moves, parameter-only workflow audits move to validation, the pending
+implementation binding schema moves to domain, and the receipt service constructs its failure
+query directly. Actual registry reading and composition stay in app. The sealed placement and
+mechanical commit receipts below supersede these proposed destinations where ownership changed.
+
+The [store triage](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/store-triage/report.md)
+accounts for nine browser stores, four processing stores and two workflow task stores. Existing
+browser/domain policy cases survive; processing, Kuali and Separations wrapper gaps require
+focused injected-port outcome/refusal checks. The exact unused `fake-kuali-page.ts` support
+candidate may be removed only after a final consumer check. The three self-contained
+registration/session/provider-declaration cases in `task-store-seams.test.ts` are authorized
+for extraction to app units; all resource/fault/recovery cases stay at their complex tier.
+
+Processing preparation corrects ownership by actual behavior: the intake, OCR admission/stack,
+normalization and roster policy units follow their existing domain modules. The Vite ownership
+probe follows app host resources, and the OCR command adapter follows CLI transports. The
+spreadsheet intake adapter follows processing; its unchanged synchronous parser port moves from
+the command kernel to browser-safe base so processing does not import runtime. That interface
+placement precedes mechanical moves and does not move or alter the kernel's transaction.
+
+The [public-unit ownership audit](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/public-units/report.md)
+records 173 unit bodies, 38 module groups and 31 body-based destination corrections. Its
+[effective map with the timecard split](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/public-units/effective-unit-map-with-split.json)
+resolves the 248 original unit files to 249 named targets, including 130 dashboard targets.
+The [case-level timecard proposal](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/public-units/timecard-split-proposal.json)
+preserves 25 domain period cases and eight asynchronous driver cases with their actual owners.
+These public moves remain pending. The missed app readiness unit has moved with its three
+unchanged cases; its exact unit, zero-warning lint, collection and path checks pass. The
+[independent delta recheck](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/phase2/app-verification/readiness-move-recheck.json)
+confirms all 424 refreshed package paths and unchanged case bodies.
+
+The [independent app verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/phase2/app-verification/verification-report.md)
+confirms source/test move hashes, original test membership and assertions, instruction twins,
+unchanged renderer source, effective runtime-composition coverage ownership and fresh D352
+negative controls. Immutable-baseline and fresh candidate typecheck outputs are byte-identical
+(72 diagnostics); the earlier differing candidate typecheck receipt is stale. The four red
+static selectors are reproduced at baseline: open `Record` boundary, missing legacy evidence,
+missing finalization descriptor and wire-connectivity import-time configuration access.
+The existing storage relocation layer inversion remains a later storage-package obligation.
+These checks remain red, rather than being waived or described as passing.
+
+App/transports is committed as `13a20166398ed396062582a472705f17e40b6669`: 87 source and
+14 unit moves, 1,048 import specifiers across 281 importer files, and 45 literal-path files.
+Exact moves, unit dispositions and the accepted path hashes remain in
+[the package evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/app-transports/).
+The affected unit receipt records 269 passing cases and one unchanged descriptor-equivalence
+failure; the subsequent readiness move has a separate three-case passing receipt. Scoped lint,
+manifest/catalog freshness, production bundle and roadmap freshness pass. The final guard
+controls preserve the exact D352 stopped-command boundary and classify backend responsibilities,
+including refusal of unknown backend owners and type-only layer inversions. No test or guard is
+retired. The separate Runs placement and mechanical categories below preserve this committed base.
+
+Runs policy placement is committed as `aaf977ffa5d1093296a63e66ac267520012c7b97`.
+The [13-path candidate receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runs/policy-placement-candidate.json)
+records unchanged parameter-only audit bodies, the unchanged strict pending-binding schema,
+direct lower consumers and direct receipt-query construction. The app tuple, filesystem reader,
+query/command composer and transaction code remain with their existing owners. Existing focused
+checks passed before extraction; the new schema unit passed before placement and covers valid
+facts, unknown fields, blank provenance and malformed identifiers. Candidate units pass four
+files/35 cases; six selected static cases, scoped zero-warning lint, manifest freshness and the
+61-file browser-safe audit closure pass. Base and validation now share domain's tier zero;
+fresh controls reject base value imports and validation type-only imports into higher backend
+layers. Real-tree layering still reports only the known storage inversion. Fresh typecheck
+remains byte-identical to the 72-diagnostic baseline. The subsequent mechanical Runs and runtime
+receipts below record the completed follow-on categories.
+
+The mechanical Runs candidate exposed a shared capture adapter: both run capture and historical
+archive conversion use the same terminal snapshot/report projection. Its whole unchanged body
+belongs at `backend/storage/archive/report-capture.ts`, where both owners can import downward.
+No unit directly imports that adapter; the two affected archive query/projection units keep
+their Runs homes. The conversion still owns save, verify, transfer, publish and
+read ordering. No layer exemption is authorized. Three transitional edges from Runs to the old
+intake parser and settings runtime remain pending until those processing/runtime modules move.
+An intermediate mechanical commit does not accept these introduced diagnostics; fresh static
+checks must close them before Phase 2 acceptance. The existing restore-plan inversion remains a
+storage obligation.
+
+Runs mechanics is committed as `07ce2ec6e6008468e521f7694068cae277780efc`, with final acceptance
+still pending the dependency repairs above. The [sealed mechanical report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runs/mechanical-report.md)
+links 98 source moves (97 Runs and one shared Storage adapter), 26 whole unit moves, one fixture,
+and the exact 568-path candidate hashes. All 26 unit bodies remain unchanged; 97 source bodies
+remain unchanged after import normalization, and the Explorer root-depth constant is adjusted
+for its new location. Focused units have 275 passing cases and one identical baseline failure.
+Scoped lint, manifest/catalog freshness, web build and diff checks pass. Typecheck retains the
+same 72 diagnostic headers. Fresh layering records the three pending moves and the original
+restore inversion. The unchanged `control-command-single-path` false positive was reproduced
+at the preceding committed HEAD and remains recorded rather than weakened. No additional
+complex suite was executed.
+
+The parser port is committed as `180f9997f2d8109b5f0b94af2b2c028d9e5495ab`.
+The [five-path receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/intake-port/report.md)
+proves unchanged interface text and import-only changes to the kernel and three direct type
+consumers. Scoped lint, focused browser-safe/layer refusal selectors and manifest freshness pass.
+No behavior test was added for this type-only placement. Typecheck retains the same 72 diagnostic
+headers, and layering retains the same four pending edges. Runtime mechanics is now released.
+Its body audit places the pure step-omission and write-safety units with domain; provider-pool
+belongs with processing, system-login-recipes and its fake-login-page support with systems, and
+the vendored Duo unit with its own public module. All existing cases remain retained.
+
+Runtime's real dependency audit further corrects four reusable browser adapters from runtime
+to `backend/systems/browser-shared`: action notes, authenticated-application observations,
+the login contract and UCSD SSO. System drivers already consume these lower adapters; placing
+them at runtime would introduce lower-to-higher imports. Their bodies remain whole and unchanged,
+and the direct action-note unit follows the shared browser owner. The runtime session factory
+and declared-action binder retain runtime ownership. The whole run-resource factory follows
+`backend/app/worker/run-resources.ts`, because it composes authority, providers, session resources,
+environment and preflight. This corrects composition ownership without extracting the
+app-owned preflight return type or widening layer rules. Final maps and fresh checks remain
+required before accepting the mechanical runtime candidate.
+
+Runtime mechanics is committed as `5ce5072dc0f6e2b8fe3be37d645c2c884fea043f`.
+The [sealed runtime report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runtime/mechanical-report.md)
+records 28 source and four whole-unit moves, exact 207-path hashes, and AST-equivalent bodies
+for all 32 moved files. Nine affected unit files pass 108 cases; scoped lint, manifest/catalog,
+web build and diff checks pass. Fifteen runtime safety floors follow their new paths, and the
+negative coverage control checks all 31 already-moved former-core modules. Typecheck retains
+the same 72 diagnostic headers. The settings dependency edges are closed; only the assigned
+Processing intake and Storage restore edges remain. Driver-lease, bounded-deadline and command
+static findings are proven against original entry conditions and remain red with their assertions
+intact. Selected deterministic runtime decision coverage and extraction is released separately;
+runtime final acceptance still requires the remaining moves and fresh phase-owned checks.
+
+Runtime policy extraction is committed separately as `7d9cd1e490db8e9d15b7175946e19899a1bde90d`.
+The [policy report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runtime-policy/candidate-report.md)
+records tests established before caller changes, exact 11-path hashes, nine new deterministic
+decision cases and the existing terminal factory's added positive identity case. Initial affected
+units passed four files/14 cases; the subsequent durable identity refinement passes its five-case
+file, so the combined count was not rerun after that assertion-only addition. The refinement
+proves complete record metadata and reference identity survive every returning decision. Idle
+wait effects, retry session/span/terminal effects, durable lookup, original refusal messages and
+probe/fence/submit/verify/settlement stay in the callers. Byte evidence preserves the sequencer's
+live-probe-through-EOF tail, executor post-retry tail and bounded-wait function. Extracted files
+keep 80% floors. Scoped lint, affected static controls, manifest/catalog and web build pass;
+typecheck remains at the same 72 normalized diagnostics, and the two selected entry guard
+failures remain red. No resource-backed proof was executed. Systems focused gap tests are now
+released; their subsequent mechanical moves require a separate category and fresh checks.
+
+Person Lookup's mixed unit is split only at whole-case boundaries. The original UCPath/CRM
+task/checkpoint case and active-status/provenance/refusal case stay intact under app task-binding
+composition. Registry inventory follows app registration, the CRM subject/output mismatch follows
+CRM, and the unresolved/inactive and absent-CRM-EID cases follow the workflow wrapper. This
+preserves the distinct composition proofs rather than replacing them with isolated assertion
+slices. New focused wrapper checks cover missing success facts and named refusals; none replace
+the six original cases or real persistence evidence.
+
+The external Systems preparation now accounts for 11 existing unit files and 117 direct case
+bodies, including 32 login-recipe cases and the whole-case Person Lookup split. Source hashes
+for all 86 proposed moves match the committed preparation base. These are preparation and
+preservation inventories, not executed test results. The Processing ledger's 155 entries are
+TypeScript AST counts of direct literal-title `it(...)` declarations with callback bodies across
+eight files; each has a body hash and retained disposition. The corrected app commit reference
+is `13a20166398ed396062582a472705f17e40b6669`. Module mutation and gate acceptance remain pending
+their sequential release and fresh combined-candidate checks.
+
+Storage preparation projects ten layer inversions from five over-broad adapter assignments.
+Actual ownership resolves them without exemptions: the three archive command/runtime-version
+services follow `backend/runs/archive`, and stopped span-root reconstruction follows
+`backend/runs/recovery/span-root-repair.ts`. The stopped relocation operation follows
+`backend/app/storage/relocate.ts` because it binds host configuration, settings and exclusive
+application admission. These files remain whole to preserve transaction and activation order;
+native/SQLite relocation adapters, historical archive transfer and the complete relocation-plan
+reader/projector remain storage-owned. The external map must be refreshed and reprojected before
+release. The prepared pure relocation-history unit may add deterministic sequence/digest/audit
+refusal coverage; its real SQLite integration proof remains unchanged and unexecuted. No storage
+case or support retirement is justified by preparation.
+
+The refreshed [Storage preparation](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/storage/README.md)
+uses committed `7d9cd1e` and projects zero layer inversions after those five whole-owner
+corrections. Its 84-source inventory includes 79 Storage owners and the five Runs/Application
+services, with exact direct consumer/import obligations. All 468 recorded case-title groups and
+five support mappings remain retained; these are static inventories, not runner results. The
+path ledger preserves D352's exact lazy bootstrap dispatch and stopped verified-backup v56
+admission. Storage mutation remains unreleased until the preceding packages complete.
+
+Storage's additive projection coverage is committed as
+`8810f0b7ccc9a2c148bdaae342c127a118d73562` before its source moves. The
+[receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/storage/projection-unit/receipt.md)
+records one file/four passing cases and zero-warning lint. The unit covers empty and exact
+plan/cancel history, revision gaps, independent request-fingerprint and destination-digest drift,
+and audit revision mismatch through narrow history ports. It proves pure projection only; the
+existing real SQLite history, verified-backup and recovery proofs remain unchanged and unrun.
+The follow-up fixture typing repair is committed as
+`ee9474e213c105ef08909e348c394c6809909dcf`: revisions and fingerprints use their production
+schemas, with no casts or case/oracle changes. The four cases and scoped lint pass. Combined
+compiler confirmation remains with Systems.
+The remaining widened command-union fixture is repaired in
+`2916c1f8eff55b57adf111e0cbf5edc4402c6fe4` by parsing the changed request before repository
+injection. The same four cases and lint pass; no cast or production edit is introduced. Systems
+must still produce the current combined compiler comparison.
+
+Systems mechanics is committed as `40cac461b56994188fa90577a7e13e3b19e96293`.
+The [sealed manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/systems/systems-candidate-sealed.json)
+records 86 source moves, 272 exact changed paths, 117 moved direct case bodies and their surviving
+homes. All 33 timecard cases split at whole-case ownership boundaries, the three pure registration
+cases move to app, eight resource/fault/recovery cases remain in the unchanged integration suite,
+and all six Person Lookup cases survive whole at app, CRM or workflow-task owners. The 32-case
+login suite and its fixture follow browser-shared. The removed fake Kuali page has no remaining
+consumer; the semantic fake and complex proofs remain.
+
+Affected Systems units report 237 passes and two unchanged dashboard global-key failures. The
+six Kuali wrappers retain 19 passing focused cases. Scoped lint passes 152 paths; catalog and build
+manifest checks, 118-entry UI catalog generation and the web build pass, with the existing Vite
+large-chunk warning. Selected static checks report 15 passes and the known guard-manifest ratchet
+failure for two recorded control-layer inversions. Current typecheck has exactly the same 72
+normalized diagnostic headers in the same order as entry, with zero additions/removals. Twelve
+parity reference groups (36 files) remain byte-identical and unexecuted; their stale store labels
+are recorded for later whole-triple reconciliation. No complex integration or parity suite ran.
+
+The [remaining module preparation](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/remaining-modules/report.md)
+assigns 17 residual source paths, 176 public/corrected units and 46 mapped live support paths to
+explicit module owners. Logs retains current facts/emission/diagnostics only; pure wire/event
+and schema validation modules remain browser-safe in domain. Trust units retain their mixed
+structural/refusal proofs, receipt composition and its immutable JSON fixture follow Runs evidence,
+and vendored Duo coverage follows tooling. The residual preflight report service needs a narrow
+consumer-owned domain-type port before its runtime move. The existing server instruction pair
+and ledger move only after its last source module, with current root/module pointers updated and
+all existing twins kept byte-identical. These maps are preparation, not completed moves; final
+renderer preservation must account for import-only changes rather than reuse older byte hashes.
+
+The [independent Runs/runtime review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/runtime-independent/report.md)
+is pinned to `7d9cd1e`. It verifies category commit hashes, moved source/test bodies, complete
+durable-record identity, original refusal text, idle clock/cadence evaluation, retry and
+probe/fence/submit/verify/settle boundaries, 31 moved former-core floors plus the three new policy
+floors, and instruction twins. It finds no new behavior or preservation defect within that scope.
+This is bounded intermediate acceptance, not final Phase 2 acceptance: the unchanged unit failure,
+72 typecheck diagnostics, recorded static failures and two pending dependency moves stay open.
+The newer Kuali category and subsequent Systems candidate are outside that review's freshness.
+
+The two-file preflight prerequisite is committed as `200c987833c33d91b88232a21ada9f4d27728c1c`.
+Its [receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/preflight-port/report.md)
+defines a consumer-owned port from existing domain types and updates only the unit fixture's type.
+The public history/refusal case passes before and after, and exact two-file lint passes. Source
+branches, timing, replay behavior and assertions remain unchanged. The application composition
+is structurally compatible; full compiler validation remains with the affected combined candidate.
+Disjoint ownership excluded Systems paths from this commit and preserved all peer edits.
+
+Kuali's focused coverage is committed before Systems moves as
+`ef6863f695d941cadf50e5d6e9fd166492ee65a5`.
+The [test-only receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/systems/kuali-wrapper-test-receipt.json)
+records 19 passing cases across all six wrappers and zero-warning scoped lint. Independent expected
+facts, named refusals, exact semantic arguments, no extra operations, unchanged save-capability
+identity, and distinct absent/unknown read-back outcomes are checked. No Kuali production source
+changed and no durable-write evidence is claimed by injected semantic ports. Existing finalization
+field policy coverage is reused. The separate Systems mechanical category is now released;
+processing, workflow tasks, storage and final module moves remain pending their sequential gates.
+
+Processing and workflow gap-test categories are released on disjoint new unit paths while
+Systems owns source moves. They may run only their exact units and scoped lint; source, old-case,
+support, generator and guard edits remain locked until their sequential mechanical releases.
+Peer paths stay outside each candidate, and unfinished peer compiler findings cannot be waived
+as entry baseline. The Person Lookup draft's proposed value-free mismatch message was an incorrect
+new assumption: the current local-record redaction owner deliberately displays supplied
+identifiers. That unexecuted constraint is withdrawn on contract evidence, with no production
+redaction change or existing case deletion. The new named-refusal/no-output case and original
+composed mismatch explanation survive.
+
+Workflow wrapper coverage is committed before its mechanical moves as
+`9c3f51133c0e3cfaa3be7f3c6c462ae46d43a80a`. The two new units cover eight Separations
+wrapper outcomes/refusals and one Person Lookup named refusal. Independent expected fields,
+the sealed packet and its fixed digest, refusal count and absent output are asserted against
+unchanged production sources. The exact two-file receipt records nine passing cases and
+zero-warning lint. Existing mixed composition and domain cases remain retained. The initial
+fixture expectation for a job title was corrected to the supplied `STDT 2` value; production
+behavior was not changed to satisfy the test. Systems and Processing peer edits remain outside
+this category; workflow mechanical mutation is still gated on Processing's committed moves.
+
+Processing focused coverage is committed separately as
+`ee65304f53a8b8690155fdedbee701e9a068a55e` before its source moves. The
+[six-file receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/processing/six-unit-test-receipt.json)
+records 27 passing cases and exact scoped zero-warning lint at the preceding committed HEAD.
+Spreadsheet byte signatures, typed cells, named selection and shape refusals; intake cache,
+synchronous re-derivation and eight-grid retention; extraction/OCR outputs and refusals;
+normalization advice; and roster match/refusal facts are checked. PDF rendering observes actual
+PNG bytes through an in-memory artifact port and makes no persistence claim. Initial CSV fixture
+shape and expected unknown-sheet message errors were corrected in tests, then both checks were
+rerun successfully. No production source or existing case changed. Systems owns the current
+mechanical category; Processing's production and old-unit moves remain locked until it commits.
+
+Systems' combined compiler check exposed 47 new diagnostics in those additive test categories
+(43 Processing and four workflow), in addition to the 72 entry diagnostics. Their focused unit
+and lint passes do not establish compiler acceptance. The owners must repair the test typing
+without weakening cases or changing production behavior, and Systems must rerun the combined
+compiler before sealing. These findings are candidate failures, not unrelated baseline failures.
+
+Workflow's test-only typing repair is committed as
+`ea85f764a7e97724ce2b8253e6de7fa2a080f9c1`: copy the readonly options at two mutable input
+boundaries and parse the existing timestamp through `IsoInstantSchema`. All nine cases and their
+assertions survive. The [repair receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/workflow-tasks/type-repair-receipt.md)
+retains fresh exact two-file unit/lint logs; combined compiler confirmation remains pending.
+The [earlier category receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/workflow-tasks/test-check-receipt-9c3f511.md)
+records its original executed commands from retained output, without claiming a new rerun.
+
+Processing's test-only typing repair is committed as
+`a585142212f26017227cb9ce9919733882ba315e`. Five files change; the grid unit remains byte-identical.
+Contract-derived output types and explicit result discriminants replace ambiguous optional
+properties; equivalent fail-fast outcome checks preserve the former membership assertions.
+Schema validation strengthens injected observations, the partial OCR fixture omits its answer
+without an unsafe cast, and XLSX fixture cells use the library's accepted null shape. All 27 cases
+and outcome/refusal/effect oracles survive. The refreshed six-file receipt records 27 passing
+cases and zero-warning lint. Systems owns the combined post-commit compiler confirmation.
+
+The combined recheck at `a58514221` retains all 72 identical entry diagnostic headers and finds
+five remaining Processing test errors, with no Systems or workflow additions. The test helper
+output annotations still disagree with implementation-return branding. These five findings
+remain candidate failures; the Processing owner must repair lawful boundary typing/validation
+before another combined compiler check. No floor, assertion or compiler rule is relaxed.
+
+The second Processing typing repair is committed as
+`2800b708ecac9e06163693d0f00bdef3910ffb0d`. Four task units now parse successful implementation
+results through their production output schemas, establishing the published branded identities
+without casts. All 27 cases and their prior outcome/refusal/effect oracles pass; scoped six-file
+lint passes. Systems must still confirm that the combined compiler returns exactly the 72 entry
+diagnostics before its mechanical category can seal.
+
+Processing mechanics is committed as `f3646d882d0d80551e524f6fa128864108928cc7`.
+The [candidate report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/processing/candidate-report.md)
+and [manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/processing/candidate-manifest.json)
+record 19 source moves, nine existing unit moves and 108 exact candidate paths. All 159 mapped
+existing static callback bodies retain their hashes. Fifteen focused unit files pass 186 cases,
+including the 27 additive Processing cases. Scoped lint passes 72 paths; diff check, generated
+manifest and store catalog checks pass. Typecheck retains the same 72 normalized entry headers,
+with zero additions/removals.
+
+The selected architecture run passes 79 cases and retains the existing infra/SQLite relocation-plan
+layer inversion; the prior Runs-to-intake edge is closed. The legacy capability disposition file
+retains three failures for stale evidence paths outside this package. Both remain red and recorded;
+no assertion or guard is weakened. No complex, scenario, parity or live suite ran.
+
+Workflow-task mechanics is committed as `40ec7fa6d5e504d3d72253af5ce15d8b521e4c68`.
+The [candidate report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/workflow-tasks/candidate-report.md)
+and [manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/workflow-tasks/candidate-manifest.json)
+record 12 source moves and five unit moves with 59 exact changed paths. The two whole Person
+Lookup cases from the mixed original survive at their workflow owner. Source/import-normalized
+preservation matches 12 moved sources and 14 unit/scenario files; all 140 recorded callback bodies
+match, and 61 mapped whole-case targets resolve.
+
+Ten focused unit files pass 95 cases. Scoped lint, manifest/catalog checks and web build pass.
+The final typecheck retains the same 72 normalized diagnostic headers with zero additions/removals;
+the selected architecture run retains only the existing infra/SQLite relocation-plan inversion.
+Live authoring, task-contract, store-reference and docs-index paths now point at
+`backend/workflow-tasks` and `backend/app/task-registry`; superseded history remains unchanged.
+An exploratory task-contract selection exposed its unchanged above-worktree root calculation and
+is recorded separately, without changing the final affected gate. No complex suite ran.
+
+Storage mechanics is committed as `082b20b917185916bee891b7892f1b176b75bcc9`.
+The [validation receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/storage/mechanics/validation-receipt.json)
+and [sealed manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/storage/mechanics/sealed-manifest.json)
+record 84 source moves, five support moves, one existing unit move and 489 exact dirty paths before
+Git recognized them as 401 changed files. Seventy-nine sources retain Storage ownership; the three
+archive services, span-root repair and stopped relocation operation follow their accepted Runs,
+Runs recovery and Application owners. Root reconciliation matched all 489 manifest paths and
+working-tree hashes exactly before the commit.
+
+All 468 mapped existing test-title groups survive and the four additive relocation-history cases
+remain. Four focused units pass 46 cases; scoped lint passes 397 files with zero warnings. The
+focused Storage guards pass seven cases, test-data ownership passes eight cases, layer and catch
+scans cover 947 files with zero findings, unit collection lists 2,516 titles, and build-manifest
+generation/check plus store-catalog check pass. Typecheck retains 72 diagnostics with no additions
+or removals after normalizing the authority-database diagnostic to its new path. The former
+restore-plan layer inversion is closed, and all five re-owned former-core modules retain the 80%
+floor.
+
+The aggregate guard remains red on the untouched dashboard log-feed image-loading finding; the
+SQLite public-surface scanner retains the existing `classifyRelocationActivation` construction;
+legacy-capability closure retains 12 stale external evidence paths. Broad all-project collection
+stops before execution when an unrelated registry mock resolves `TEST_DATA_CONFIG_PATH` as
+undefined. Actual coverage, web build and real SQLite/history/backup/recovery proofs were not run;
+the affected backend/static/generated checks above provide this package's assigned evidence.
+
+The final residual layout is committed as `cf71514fc65bbb8b5ea94ca2abfe19de791b2b8f`.
+The [candidate report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/remaining-modules/candidate-report.md)
+and [exact manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/remaining-modules/candidate-manifest.json)
+record 17 source moves, all 176 mapped public/corrected unit homes and all 45 surviving mapped
+supports. One hundred seventy-five mapped units move in this package; the mapped timecard-period
+unit was already at its target, and the later separation-timecard unit follows it to the Kronos
+domain home with all 22 cases. Of 46 prepared support rows, 39 move here, five were already at
+their targets, the fake login page had already moved with Systems and the proven-unused fake Kuali
+page had already been removed. Root reconciliation matched all 683 manifest paths and hashes before
+Git recorded 448 changed files.
+
+All 1,461 mapped literal case titles and 5,158 assertion calls survive, all 130 translated source
+dependency edges match, and 3,863 relative imports resolve. The flat unit root and `src/server/`
+are gone. The server instruction pair and ledger now live under `src/backend/`; both root and
+backend instruction twins are byte-identical. Seven current fact/emission/diagnostic sources live
+under Logs, pure event and validation sources remain browser-safe under domain, and the residual
+preflight report service consumes its committed runtime port. No new Logs API or source policy was
+implemented.
+
+The full unit run reports 254 passing files and 2,457 passing cases plus the same 14 files and 59
+baseline-red cases; no failure was deleted or assertion weakened. Full/scoped lint, layer checks,
+affected guards, manifest generation/check, store catalog check, web build and `git diff --check`
+pass. Typecheck retains 72 diagnostics with no missing-module or missing-symbol diagnostic. The
+approved domain move required exact strict-boundary classifications for seven in-process types,
+four named Zod-introspection implementations and proof-shape's schema-walk record. A new unlisted
+validation-file control still refuses interfaces/types, assertions, open records, `any`, open
+schemas and parse fallback. The focused strict suite retains only the pre-existing workflow-graph
+open-Record finding.
+
+Full architecture remains red with existing source/evidence/fingerprint findings and an unrelated
+registry mock whose `TEST_DATA_CONFIG_PATH` resolves undefined. Integration, scenario, parity,
+live, full coverage and real persistence proofs remain unexecuted as assigned.
+
+Systems also identified old store owner/implementation labels in reviewed parity accessibility
+references. Those triples stay unchanged: `ref frontend-backend-integration` §7 requires pixel,
+semantic and provenance refresh together, while this initiative defers parity execution. Exact
+stale path mappings belong in the Systems obligation ledger for later operator-reviewed parity
+reconciliation; no manual accessibility-only refresh or fresh parity pass is claimed.
+
+#### Phase 2 acceptance — 2026-10-01
+
+Accepted code candidate: `2a1bad93b14b9b17bbccb7e69dc7974dfcf0e3f7`, branch
+`codex/logs-backend`, in the assigned continuation worktree. The final repair commit removes only
+one trailing blank EOF line from three files; the [repair receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/remaining-modules/whitespace-repair-receipt.json)
+and fresh base-to-candidate `git diff --check` pass. Accepted Phase 1, reconciliation and approved
+Logs UI commits remain ancestors.
+
+The [independent acceptance report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/final-verification/verification-report.md)
+and [machine-readable summary](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/logs-backend-phase2/final-verification/verification-summary.json)
+bind the verdict to that SHA. All 2,438 expanded entry unit cases collect exactly once; 78 focused
+additions are accounted. All 2,246 original literal registrations and ordered assertion expressions
+survive. The final unit tree has 268 physical and 268 uniquely collected files with no direct flat
+unit file. The full-unit receipt retains the exact entry failure set: 254 files and 2,457 cases pass;
+14 files and 59 titles fail. No failing test was removed or weakened.
+
+The combined source-owner maps resolve 996 paths. A 1,886-file import audit finds 13,040 relative
+edges and zero unresolved imports. All 40 former-core 80% floors and three extracted runtime-policy
+floors remain. Nine instruction pairs are byte-identical; `src/server` is absent. Renderer code AST
+matches entry after import-specifier normalization. Five transaction/write-critical blocks,
+effect-anchor order and the live-probe-through-EOF tail remain unchanged. Manifest/catalog checks,
+lint, the backend layer guard, affected static checks and the web build have passing current package
+receipts. Typecheck retains the same 72 baseline diagnostics and no missing-module or missing-symbol
+diagnostic.
+
+The sole support retirement is the exact unreferenced fake Kuali page; all other 46 original
+supports are mapped and present. Existing persistence, recovery, process, browser, scenario and
+parity proofs remain retained. Four earlier guard runs accidentally executed the SQLite-backed
+schema 0/46/49 recovery cases in `authority-upgrade-adapters-retired.test.ts`. This is a disclosed
+process deviation: later selections excluded them, no further complex proof ran, and it does not
+change the independently verified code/layout/preservation result.
+
+Known reds remain red: the 14-file/59-title unit baseline, 72 typecheck diagnostics, the existing
+workflow-graph open-`Record` strict-boundary finding, stale evidence/fingerprint architecture
+findings and the unrelated registry mock collection failure. No check was weakened to accept them.
+Complex-suite redesign, retirement and execution review; real persistence/process/browser/parity
+acceptance; full coverage; push, merge, worktree cleanup and Phases 3–5 remain deferred to explicit
+operator direction. This acceptance launches none of them.
 
 ## Prompts for fresh chats
 
