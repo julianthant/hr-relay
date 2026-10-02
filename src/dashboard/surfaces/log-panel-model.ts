@@ -1,8 +1,8 @@
 /** Tab and terminal copy for the run-detail composition. */
 import type { z } from "zod";
 import { fmtClock } from "./format.js";
-import type { RunDetailWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { RunDetailSectionSchema } from "../../domain/dashboard/primitives.js";
+import type { RunDetailWireSchema } from "../../models/dashboard/run-detail.js";
+import type { RunDetailSectionSchema } from "../../models/dashboard/primitives.js";
 
 type RunDetailWire = z.infer<typeof RunDetailWireSchema>;
 type RunDetailSection = z.infer<typeof RunDetailSectionSchema>;

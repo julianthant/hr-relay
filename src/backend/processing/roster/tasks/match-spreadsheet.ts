@@ -19,22 +19,22 @@
  *   can never emit an EID;
  * - every other throw propagates untouched.
  */
-import { defineTask } from "../../../../base/task.js";
-import { MatchSpreadsheet } from "../../../../domain/contracts/roster/match-spreadsheet.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { MatchSpreadsheet } from "../../../../models/processing/roster/match-spreadsheet.js";
 import {
   isCellCoercionError,
   type CellLocation,
-} from "../../../../domain/fields/cell-coercion.js";
-import { CANONICAL_FIELDS } from "../../../../domain/fields/registry.js";
-import { EidSchema } from "../../../../domain/ids.js";
-import type { ColumnBinding, DetectedColumn } from "../../../../domain/intake/mapping.js";
-import { detectColumns, headerFingerprint } from "../../../../domain/intake/mapping.js";
+} from "../../../../models/fields/cell-coercion.js";
+import { CANONICAL_FIELDS } from "../../../../models/fields/registry.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
+import type { ColumnBinding, DetectedColumn } from "../../../../models/intake/mapping.js";
+import { detectColumns, headerFingerprint } from "../../../../models/intake/mapping.js";
 import {
   matchRosterSubjects,
   RosterMatchSubjectSchema,
   RosterRowFactsSchema,
   type RosterRowFacts,
-} from "../../../../domain/matching/roster-match.js";
+} from "../../../../rules/matching/roster-match.js";
 import {
   parseSpreadsheetGrid,
   readArtifactBytes,

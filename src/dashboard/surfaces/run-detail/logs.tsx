@@ -1,9 +1,9 @@
 import { Fragment, useCallback, useMemo } from "react";
 import type { z } from "zod";
 import type { PanelSections } from "./sections.js";
-import type { ActionDescriptorWire } from "../../../domain/dashboard/actions.js";
-import type { CapabilityAvailabilitySchema } from "../../../domain/absence.js";
-import type { LogRowWire, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
+import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
+import type { CapabilityAvailabilitySchema } from "../../../rules/validation/absence.js";
+import type { LogRowWire, NotePageSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import { Button } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { useDashboardClient } from "../../state/client-context.js";

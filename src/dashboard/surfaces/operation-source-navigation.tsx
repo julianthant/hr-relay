@@ -1,5 +1,5 @@
 import { useEffect, useState, type ReactNode } from "react";
-import type { OperationActionObservationWire } from "../../domain/dashboard/operation-structure.js";
+import type { OperationActionObservationWire } from "../../models/dashboard/operation-structure.js";
 import { Button } from "../ds/ui.js";
 import { operationAddress } from "./operation-structure-model.js";
 import { OperationSourceContext } from "./operation-source-navigation-model.js";

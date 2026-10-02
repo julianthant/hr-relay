@@ -18,12 +18,12 @@
  * second admission path and not a second scheduler — it holds no budget, no
  * throttle, and no retry loop.
  */
-import type { ProviderAdapter, ProviderCallOptions } from "../../../base/providers.js";
-import type { ProviderCapabilityId } from "../../../domain/ids.js";
+import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
+import type { ProviderCapabilityId } from "../../../rules/identity/ids.js";
 import {
   ProviderAdapterOutcomeSchema,
   type ProviderRequestEnvelope,
-} from "../../../domain/providers.js";
+} from "../../../models/providers/providers.js";
 
 /** The exhaustion family — the codes that advance the rotation cursor. */
 const ROTATING_CODES = new Set([

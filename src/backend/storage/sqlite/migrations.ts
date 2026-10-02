@@ -12,9 +12,9 @@ import { APP_SETTINGS_DDL } from "./settings-storage.js";
 import { PROVIDER_REQUEST_DDL, PROVIDER_USAGE_DDL, PROVIDER_STORAGE_CONSTRAINTS } from "./provider-storage.js";
 import { IMPORTED_ARTIFACT_DDL, IMPORTED_ARTIFACT_TRIGGERS } from "./imported-artifacts.js";
 import { TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "./timeline-repository.js";
-import { deepFreeze } from "../../../domain/immutability.js";
-import type { TableName, TableSpec } from "../../../domain/authority.js";
-import { AUTHORITY_TABLE_REGISTRY } from "../../../domain/authority.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import type { TableName, TableSpec } from "../../../models/config/authority.js";
+import { AUTHORITY_TABLE_REGISTRY } from "../../../models/config/authority.js";
 
 export const AUTHORITY_APPLICATION_ID = 1_217_249_861;
 export const UPGRADE_FLOOR_SCHEMA_VERSION = 46;

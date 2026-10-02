@@ -1,9 +1,9 @@
-import type { RunRecord } from "../../../domain/run/record.js";
-import type { CommandRequest } from "../../../domain/commands.js";
-import { FingerprintSchema } from "../../../domain/ids.js";
-import { deriveStableUuid } from "../../../domain/identifiers.js";
-import { canonicalJsonStringify, JsonValueSchema } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../storage/sqlite/storage-records.js";
 import type { createRunLifecycleStorage } from "../../storage/sqlite/lifecycle-storage.js";
 import type { ArchiveSnapshotSource } from "./archive-service.js";

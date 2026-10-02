@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { LegacyProviderRequestSchema, ProviderRequestStorageSchema, ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../../domain/provider-accounting.js";
-import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../../domain/provider-admission.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { LegacyProviderRequestSchema, ProviderRequestStorageSchema, ProviderUsageStorageSchema, type ProviderRequestStorage, type ProviderUsageStorage } from "../../../rules/providers/provider-accounting.js";
+import { ProviderAdmissionRecordSchema, ProviderBudgetCounterSchema } from "../../../rules/providers/provider-admission.js";
 export const PROVIDER_REQUEST_DDL = `CREATE TABLE provider_requests (
  record_key TEXT PRIMARY KEY, run_id TEXT NOT NULL REFERENCES workflow_runs(record_key) ON DELETE RESTRICT,
  capability TEXT NOT NULL, config_snapshot_id TEXT NOT NULL REFERENCES settings_snapshots(record_key) ON DELETE RESTRICT,

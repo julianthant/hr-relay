@@ -1,6 +1,6 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathStagePendingTerminationSweep } from "../../../../domain/contracts/ucpath/stage-pending-termination-sweep.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathStagePendingTerminationSweep } from "../../../../models/systems/ucpath/stage-pending-termination-sweep.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /**

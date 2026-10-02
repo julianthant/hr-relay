@@ -1,6 +1,6 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathMatchExistingTermination } from "../../../../domain/contracts/ucpath/match-existing-termination.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathMatchExistingTermination } from "../../../../models/systems/ucpath/match-existing-termination.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 

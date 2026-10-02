@@ -1,14 +1,14 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { searchPartitionDay } from "../../../domain/dashboard/search-calendar.js";
-import { TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
-import { ActorIdSchema } from "../../../domain/ids.js";
-import { RunRecordSchema, type RunRecord } from "../../../domain/run/record.js";
-import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";
-import { FailureRecordSchema } from "../../../domain/trust/failure.js";
-import { CROSS_DATE_SEARCH_MATCH_ORDER, SearchMetadataSchema } from "../../../domain/dashboard/search.js";
-import { RunSearchDeclarationSchema, RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchReadRequestSchema, RunSearchRebuildRequestSchema } from "../../../domain/dashboard/search-index.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { searchPartitionDay } from "../../../models/dashboard/search-calendar.js";
+import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { ActorIdSchema } from "../../../rules/identity/ids.js";
+import { RunRecordSchema, type RunRecord } from "../../../models/run/record.js";
+import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
+import { FailureRecordSchema } from "../../../models/trust/failure.js";
+import { CROSS_DATE_SEARCH_MATCH_ORDER, SearchMetadataSchema } from "../../../models/dashboard/search.js";
+import { RunSearchDeclarationSchema, RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchReadRequestSchema, RunSearchRebuildRequestSchema } from "../../../models/dashboard/search-index.js";
 import { unarchivedRunSql } from "./archive-compatibility.js";
 
 export const RUN_SEARCH_INDEX_DDL = `CREATE TABLE run_search_index (

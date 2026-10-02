@@ -18,41 +18,41 @@
  * whose `T#` could not be read as no match at all (**S46**), both of which
  * authorize a duplicate termination on a real person.
  */
-import { FingerprintSchema } from "../../../domain/ids.js";
-import { redactedEvidenceId } from "../../../domain/redaction.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { redactedEvidenceId } from "../../../rules/redaction/redaction.js";
 import {
   ucpathPendingSweepIdempotencyKey,
   ucpathPendingTransactionSetDigest,
-} from "../../../domain/contracts/ucpath/delete-pending-terminations.js";
-import { ucpathTerminationIdempotencyKey } from "../../../domain/contracts/ucpath/create-termination.js";
-import { UcpathPendingSweepVerdictSchema } from "../../../domain/contracts/ucpath/match-pending-terminations.js";
-import type { UcpathPendingSweepVerdict } from "../../../domain/contracts/ucpath/match-pending-terminations.js";
-import { UcpathTerminationVerdictSchema } from "../../../domain/contracts/ucpath/match-existing-termination.js";
-import type { UcpathTerminationVerdict } from "../../../domain/contracts/ucpath/match-existing-termination.js";
-import { sha256Hex } from "../../../domain/sha256.js";
+} from "../../../models/systems/ucpath/delete-pending-terminations.js";
+import { ucpathTerminationIdempotencyKey } from "../../../models/systems/ucpath/create-termination.js";
+import { UcpathPendingSweepVerdictSchema } from "../../../models/systems/ucpath/match-pending-terminations.js";
+import type { UcpathPendingSweepVerdict } from "../../../models/systems/ucpath/match-pending-terminations.js";
+import { UcpathTerminationVerdictSchema } from "../../../models/systems/ucpath/match-existing-termination.js";
+import type { UcpathTerminationVerdict } from "../../../models/systems/ucpath/match-existing-termination.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import {
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,
   UcpathPendingTransactionSetSchema,
   isUcpathTerminationAction,
   isUcpathTerminationInProgress,
   ucpathPendingTransactionIdList,
-} from "../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../models/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathPendingTransactionSet,
   UcpathPendingSweepTarget,
   UcpathTransactionRow,
   UcpathTerminationTarget,
   UcpathTransactionScan,
-} from "../../../domain/ui/ucpath-smart-hr-termination.js";
-import { deriveIdempotencyKeyDigest } from "../../../domain/write-safety.js";
+} from "../../../models/ui/ucpath-smart-hr-termination.js";
+import { deriveIdempotencyKeyDigest } from "../../../rules/write-safety/write-safety.js";
 import {
   TERMINATION_RECEIPT_ACCEPTED_STATUSES,
   type TerminationReceipt,
-} from "../../../domain/separations/termination-receipt.js";
+} from "../../../rules/separations/termination-receipt.js";
 import {
   UcpathTerminationFilingPresenceProofSchema,
   type UcpathTerminationFilingPresenceProof,
-} from "../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../models/ui/ucpath-smart-hr-termination.js";
 
 const SOURCE_STATE = "ucpath.ss-smart-hr.transaction-ready";
 

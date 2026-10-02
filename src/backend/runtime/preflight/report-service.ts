@@ -1,9 +1,9 @@
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { PreflightAdmissionRefusal, type PreflightAdmission, type PreflightAdmissionScope } from "../../../domain/preflight-admission.js";
-import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../domain/preflight-contract.js";
-import type { createPreflightAuthority } from "../../../domain/preflight.js";
-import type { InstanceSelection } from "../../../domain/run/envelope.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { PreflightAdmissionRefusal, type PreflightAdmission, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { PreflightRerunCommandRequestSchema, PreflightRerunCommandResultWireSchema, PreflightSelectionSchema, type PreflightReadinessWire, type PreflightSelection } from "../../../models/preflight/preflight-contract.js";
+import type { createPreflightAuthority } from "../../../models/preflight/preflight.js";
+import type { InstanceSelection } from "../../../models/run/envelope.js";
 import type { z } from "zod";
 
 type Result = z.infer<typeof PreflightRerunCommandResultWireSchema>;

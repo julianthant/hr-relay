@@ -1,9 +1,9 @@
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import { localDatePart } from "../../../domain/clock.js";
-import { SpanEventWireSchema } from "../../../domain/events/types.js";
-import type { TimelineRepository } from "../../../domain/events/timeline.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { localDatePart } from "../../../rules/time/clock.js";
+import { SpanEventWireSchema } from "../../../models/events/types.js";
+import type { TimelineRepository } from "../../../models/events/timeline.js";
 
 export interface TimelineEmitter { emit(event: unknown): void; }
 

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import type { CrossDateSearchPage, CrossDateSearchQuery } from "../../domain/dashboard/search.js";
+import type { CrossDateSearchPage, CrossDateSearchQuery } from "../../models/dashboard/search.js";
 import { Button, Refusal, dsText } from "../ds/ui.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { saveDownload } from "../lib/save-download.js";

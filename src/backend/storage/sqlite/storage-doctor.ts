@@ -2,9 +2,9 @@ import { inspectRestoreEligibility, inspectStorageRecovery } from "./storage-rec
 import { verifyBackupLocationEvidence } from "./backup-location-evidence.js";
 import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
-import { ProtectedSettingsNameSchema } from "../../../domain/config/protected-settings.js";
+import { ProtectedSettingsNameSchema } from "../../../models/config/protected-settings.js";
 import { TimelineRecordError } from "./timeline-repository.js";
-import { createCredentialStore } from "../config/credential-store.js";
+import { createCredentialStore } from "../configuration/credential-store.js";
 import { ProtectedSettingsInspectionSchema } from "./recovery-contracts.js";
 import { createHash } from "node:crypto";
 import {
@@ -23,13 +23,13 @@ import {
 import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import { constants as systemConstants } from "node:os";
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import {
   SpanEventWireSchema,
   type RunQueuedWire,
   type SpanEventWire,
-} from "../../../domain/events/types.js";
+} from "../../../models/events/types.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";

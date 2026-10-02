@@ -21,25 +21,25 @@
  * constant. One invocation is ONE model call; rotation across keys and models
  * is the pool's job above this adapter.
  */
-import { deepFreeze } from "../../../domain/immutability.js";
-import { AiModelIdSchema, AiProviderIdSchema } from "../../../domain/ids.js";
-import type { AiProviderId } from "../../../domain/ids.js";
-import type { Clock } from "../../../domain/clock.js";
-import type { ProviderAdapter, ProviderCallOptions } from "../../../base/providers.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { AiModelIdSchema, AiProviderIdSchema } from "../../../rules/identity/ids.js";
+import type { AiProviderId } from "../../../rules/identity/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
 import {
   ProviderCostEstimateSchema,
   ProviderUnavailableReasonSchema,
-} from "../../../domain/provider-admission.js";
+} from "../../../rules/providers/provider-admission.js";
 import {
   ProviderAdapterOutcomeSchema,
   ProviderRequestEnvelopeSchema,
   type ProviderAdapterOutcome,
   type ProviderRequestEnvelope,
-} from "../../../domain/providers.js";
+} from "../../../models/providers/providers.js";
 import {
   ADVISORY_ANSWER_SCHEMA_HASH,
   AdvisoryPromptSchema,
-} from "../../../domain/trust/advisory.js";
+} from "../../../models/trust/advisory.js";
 import {
   GeminiResponseBodySchema,
   geminiAnswerText,

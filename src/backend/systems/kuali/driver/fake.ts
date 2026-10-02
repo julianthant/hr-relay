@@ -19,30 +19,30 @@
  * Every call is appended to `events`, which is what the dry-run proof asserts
  * against: a preview may prepare and read but never `commit`.
  */
-import type { Clock } from "../../../../domain/clock.js";
-import { EidSchema, IsoInstantSchema } from "../../../../domain/ids.js";
-import type { ElementId, ObservationId } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
-import { assertMintedMutationCapability } from "../../../../base/mutation-capability.js";
+import type { Clock } from "../../../../rules/time/clock.js";
+import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_MATCHED_NUMBER,
   KUALI_ACTION_LIST_READY,
   KualiActionListObservationSchema,
-} from "../../../../domain/ui/kuali-action-list.js";
+} from "../../../../models/ui/kuali-action-list.js";
 import type {
   KualiActionListLink,
   KualiActionListObservation,
-} from "../../../../domain/ui/kuali-action-list.js";
-import type { MutationCapability, UiActionProof } from "../../../../domain/ui/driver.js";
-import { UiActionProofSchema } from "../../../../domain/ui/driver.js";
+} from "../../../../models/ui/kuali-action-list.js";
+import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
+import { UiActionProofSchema } from "../../../../models/ui/driver.js";
 import {
   KUALI_RRSS_DISPLAYED_EID,
   KUALI_RRSS_SAVE_BUTTON,
   KualiRrssDocumentDriverSchema,
-} from "../../../../domain/ui/kuali-rrss-document.js";
+} from "../../../../models/ui/kuali-rrss-document.js";
 import type {
   KualiRrssDocumentDriver,
-} from "../../../../domain/ui/kuali-rrss-document.js";
+} from "../../../../models/ui/kuali-rrss-document.js";
 import {
   KUALI_BLANK_OPTION_TEXT,
   KUALI_RRSS_SEPARATION_READY,
@@ -51,7 +51,7 @@ import {
   KualiSeparationDocumentSchema,
   KualiTransactionNumberSchema,
   parseKualiFormDate,
-} from "../../../../domain/ui/kuali-separation-document.js";
+} from "../../../../models/ui/kuali-separation-document.js";
 import type {
   KualiDateField,
   KualiFinalPayChoice,
@@ -59,7 +59,7 @@ import type {
   KualiSeparationDocumentRead,
   KualiTextField,
   KualiTransactionNumberField,
-} from "../../../../domain/ui/kuali-separation-document.js";
+} from "../../../../models/ui/kuali-separation-document.js";
 import {
   KUALI_RRSS_FINALIZATION_STAGED,
   KualiCommentsChangedError,
@@ -71,15 +71,15 @@ import {
   KualiObservedFinalizationFieldsSchema,
   compareKualiFinalizationFields,
   kualiFinalizationFields,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
 import type {
   KualiFinalizationFieldName,
   KualiFinalizationReadBack,
   KualiFinalizationStaging,
   KualiFinalizationTarget,
   KualiObservedFinalizationFields,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
-import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../domain/separations/termination-type.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
+import { KUALI_TERMINATION_TYPE_OPTIONS } from "../../../../rules/separations/termination-type.js";
 
 /**
  * A document nobody has finalized: every finalization control blank, the

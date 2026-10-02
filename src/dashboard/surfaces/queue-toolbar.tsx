@@ -47,7 +47,7 @@
 import { useMemo, type ReactNode } from "react";
 import { AlertTriangle, ArrowUpDown, Ban, CheckCircle2, CheckSquare, RotateCcw, Square, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
-import type { BulkRunCommandOutcome } from "../../domain/commands.js";
+import type { BulkRunCommandOutcome } from "../../rules/commands/commands.js";
 import {
   BareButton,
   Button,

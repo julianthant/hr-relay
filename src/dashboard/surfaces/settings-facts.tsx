@@ -1,7 +1,7 @@
 import { type ReactNode } from "react";
 import {
 type SettingsFactsWire
-} from "../../domain/dashboard/settings.js";
+} from "../../models/dashboard/settings.js";
 import { Banner,dsText,Spinner } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useSettingsFacts } from "./settings-facts-model.js";

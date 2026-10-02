@@ -1,6 +1,6 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { FailureResolutionSchema, FailureResolutionCaptureSchema } from "../../../domain/trust/failure-resolution.js";
+import { FailureResolutionSchema, FailureResolutionCaptureSchema } from "../../../models/trust/failure-resolution.js";
 interface FailureResolutionPorts {
  database: DatabaseSync;
  mutate<T>(work:()=>Readonly<{result:T;changes:number}>):T;

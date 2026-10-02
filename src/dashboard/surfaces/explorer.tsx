@@ -58,7 +58,7 @@ Workflow,
 } from "lucide-react";
 import type { ReactElement,ReactNode } from "react";
 import { useEffect,useId,useMemo,useRef,useState } from "react";
-import { systemClock } from "../../domain/clock.js";
+import { systemClock } from "../../rules/time/clock.js";
 import type {
 ExplorerContractFieldWire,
 ExplorerEditValidationResult,
@@ -68,8 +68,8 @@ ExplorerTaskWire,
 ExplorerWorkflowWire,
 SourceLinkWire,
 WorkflowExplorerWire,
-} from "../../domain/dashboard/explorer.js";
-import { describeNodeCondition } from "../../domain/workflow/node-condition.js";
+} from "../../models/dashboard/explorer.js";
+import { describeNodeCondition } from "../../models/workflow/node-condition.js";
 import { settleCommandResult } from "../app/command-result.js";
 import {
 BareButton,

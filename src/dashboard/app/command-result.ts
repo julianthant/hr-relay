@@ -44,7 +44,7 @@
  * Reading a fact off the settlement is the point. Re-deriving the VERDICT from
  * `result.state` is what `command-result-exhaustive.test.ts` refuses.
  */
-import type { CommandResult } from "../../domain/commands.js";
+import type { CommandResult } from "../../rules/commands/commands.js";
 
 /** The kernel's own rejection vocabulary, taken from the wire union rather than restated. */
 type CommandRejectionCode = Extract<CommandResult, { state: "rejected" }>["code"];

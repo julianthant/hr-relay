@@ -1,13 +1,13 @@
 /** Strict inputs and reports for D110/D114's composite terminal mutations. */
 import { z } from "zod";
-import { RunRecordSchema } from "../../../domain/run/record.js";
-import { RunResultRecordSchema } from "../../../domain/run/result.js";
+import { RunRecordSchema } from "../../../models/run/record.js";
+import { RunResultRecordSchema } from "../../../models/run/result.js";
 import {
   FailureTerminalAuthorizationRecordSchema,
   SuccessTerminalAuthorizationRecordSchema,
-} from "../../../domain/run/terminal-authorization.js";
-import { HistoricalTerminalOutboxRecordSchema, HistoricalSuccessAuthorizationSchema } from "../../../domain/run/completion-history.js";
-import { FailureRecordSchema } from "../../../domain/trust/failure.js";
+} from "../../../models/run/terminal-authorization.js";
+import { HistoricalTerminalOutboxRecordSchema, HistoricalSuccessAuthorizationSchema } from "../../../models/run/completion-history.js";
+import { FailureRecordSchema } from "../../../models/trust/failure.js";
 
 export const FailureTerminalizationRequestSchema = z.strictObject({
   failure: FailureRecordSchema,

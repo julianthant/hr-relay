@@ -1,10 +1,10 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathDeletePendingTerminations } from "../../../../domain/contracts/ucpath/delete-pending-terminations.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathDeletePendingTerminations } from "../../../../models/systems/ucpath/delete-pending-terminations.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
   UCPATH_SMART_HR_DELETE_SELECTED_BUTTON,
   UcpathCommitRefusedError,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 

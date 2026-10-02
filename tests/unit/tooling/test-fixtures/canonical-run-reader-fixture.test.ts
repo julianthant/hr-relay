@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { DeletedRunRecordSchema } from "../../../../src/domain/run/deleted-run.js";
-import { inMemoryRunReaderFake } from "../../../helpers/canonical-run-reader.js";
-import { NOW } from "../../../fixtures/phase1c-contract-fixtures.js";
-import { runRecordOf, uuidOf } from "../../../helpers/backend/dashboard-harness.js";
+import { DeletedRunRecordSchema } from "../../../../src/models/run/deleted-run.js";
+import { inMemoryRunReaderFake } from "../../../support/helpers/canonical-run-reader.js";
+import { NOW } from "../../../support/fixtures/phase1c-contract-fixtures.js";
+import { runRecordOf, uuidOf } from "../../../support/helpers/backend/dashboard-harness.js";
 
 describe("canonical reader fixture contract", () => {
   it("distinguishes absent, live, archived and deleted, and refuses contradictory authority", () => {

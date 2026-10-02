@@ -12,12 +12,12 @@
  * only legal not-run arm is `step-omitted`.
  */
 import { z } from "zod";
-import { flow } from "../../../../../../src/base/flow.js";
-import { defineWorkflowDescriptor } from "../../../../../../src/base/workflow.js";
-import { FixtureReadReceipt } from "../../../../../fixtures/descriptor-fixtures.js";
-import { STANDARD_WORKFLOW_ACTIONS } from "../../../../../../src/domain/workflow/presentation.js";
-import { defineCanonicalInput } from "../../../../../../src/domain/workflow/canonical-input.js";
-import { EidSchema } from "../../../../../../src/domain/ids.js";
+import { flow } from "../../../../../../src/workflow-kit/flow.js";
+import { defineWorkflowDescriptor } from "../../../../../../src/workflow-kit/workflow.js";
+import { FixtureReadReceipt } from "../../../../../support/fixtures/descriptor-fixtures.js";
+import { STANDARD_WORKFLOW_ACTIONS } from "../../../../../../src/models/workflow/presentation.js";
+import { defineCanonicalInput } from "../../../../../../src/models/workflow/canonical-input.js";
+import { EidSchema } from "../../../../../../src/rules/identity/ids.js";
 
 const FixtureInput = z.strictObject({ eid: EidSchema });
 export const FixtureCanonicalInput = defineCanonicalInput(

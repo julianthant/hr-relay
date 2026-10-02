@@ -1,11 +1,11 @@
 import { accessSync, constants, statSync } from "node:fs";
 import { join } from "node:path";
 import { bundledChromiumExecutablePath } from "../../runtime/browser/executable-path.js";
-import { requireAnnualDates } from "../../../domain/config/fiscal-year.js";
-import { CONFIG_ROUTE_SCHEMAS } from "../../../domain/config/schema.js";
-import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../domain/preflight.js";
-import { PREFLIGHT_CHECKS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../domain/runtime-dependencies.js";
-import { inspectSecret, requireSecretFile } from "../../../domain/secrets.js";
+import { requireAnnualDates } from "../../../models/config/fiscal-year.js";
+import { CONFIG_ROUTE_SCHEMAS } from "../../../models/config/schema.js";
+import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../models/preflight/preflight.js";
+import { PREFLIGHT_CHECKS, RUNTIME_DEPENDENCIES, SYSTEM_RUNTIME_SPECS } from "../../../models/runtime/runtime-dependencies.js";
+import { inspectSecret, requireSecretFile } from "../../../models/config/secrets.js";
 import type { RuntimePreflightRunnerInput } from "./runtime-runners.js";
 
 function result(check: PreflightRunner["check"], ready: boolean, summary: string) {

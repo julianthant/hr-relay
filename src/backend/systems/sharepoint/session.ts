@@ -1,3 +1,3 @@
-import { defineWorkerSessionProvider } from "../../../base/session.js";
+import { defineWorkerSessionProvider } from "../../../workflow-kit/session.js";
 
 export const sharepointSession = defineWorkerSessionProvider("sharepoint");

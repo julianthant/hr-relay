@@ -1,8 +1,8 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { deriveStableUuid } from "../../domain/identifiers.js";
-import { deriveArtifactProjectionRows, type DerivedArtifactProjectionRow } from "../../domain/workflow/artifact-projection.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { deriveStableUuid } from "../../rules/identity/identifiers.js";
+import { deriveArtifactProjectionRows, type DerivedArtifactProjectionRow } from "../../models/workflow/artifact-projection.js";
 import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
-import type { RunCheckpointRecord } from "../../domain/workflow/checkpoint.js";
+import type { RunCheckpointRecord } from "../../models/workflow/checkpoint.js";
 /** The checkpoint and every distinct output update share the actual outer transaction. */
 export function commitGeneratedCheckpoint(input:Readonly<{
  withTransaction<T>(work:(repositories:AuthorityRepositories)=>T):T;

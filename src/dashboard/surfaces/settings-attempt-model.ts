@@ -1,9 +1,9 @@
 import { z } from "zod";
-import { CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, type CommandResult } from "../../domain/commands.js";
-import { ProtectedSettingsReadbackSchema } from "../../domain/config/protected-settings.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { CommandResultSchema, ProtectedSettingsCommandRequestSchema, SettingsCommandRequestSchema, type CommandResult } from "../../rules/commands/commands.js";
+import { ProtectedSettingsReadbackSchema } from "../../models/config/protected-settings.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { DashboardClientError } from "../client/errors.js";
-import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 
 export type OrdinarySettingsAttempt = z.infer<typeof SettingsCommandRequestSchema>;
 export type ProtectedSettingsAttempt = z.infer<typeof ProtectedSettingsCommandRequestSchema>;

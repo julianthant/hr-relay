@@ -45,13 +45,35 @@ Identity keys, checksums, request fingerprints, permanent-write digests and exac
 their byte derivations. Existing Host/Origin admission, loopback access, session ownership, storage
 permissions, external-write safety and artifact identity remain required.
 
+## UI catalog retirement amendment — operator-approved 2026-10-01
+
+The generated UI catalog feature is retired: no catalog navigation or URL keys, endpoint/client
+method, projection schema, generator, selector-search command, generated JSON, or per-system catalog
+documents remain. The semantic UI registries and their stable IDs, live verification/evidence,
+selector recipes, effect classification, write proofs and safety assertions remain authoritative.
+The Workflow Explorer remains; its task links are built by
+`src/backend/systems/ui-task-links.ts` from those registries and preserve commit-task attribution.
+This amendment supersedes the catalog-specific requirements in D177, D274, D295 and D303; the
+dated decision and UI-contract history remains below as history, not current product scope.
+
+<a id="scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02"></a>
+
+## Scenario and parity test retirement amendment — operator-approved 2026-10-02
+
+The operator retired `tests/scenario/` and `tests/parity/`. Workflow-declared scenario identifiers
+and semantic UI verification/provenance records remain data contracts; none proves a test ran or
+current visual acceptance. Future scenario and visual-test design is operator-led. The Explorer's
+scenario source links remain honestly unresolved after suite removal. Do not invent replacement
+paths or wire fields; Explorer edits that require scenario compile evidence are blocked pending that
+operator-led design. Missing rehearsal manifests report unavailable before execution.
+
 ## Ownership (D1)
 
 | This doc **OWNS** | Imports from the owning sibling |
 |---|---|
-| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, search terms, registry records, generated catalog, and the typed system-driver boundary | Task contract/store/session model → ref task-contract; page leases → ref execution-and-sessions |
+| Canonical UI vocabulary: `ElementId`, `ScreenId`, `PageStateId`, `ObservationId`, semantic registry records, and the typed system-driver boundary | Task contract/store/session model → ref task-contract; page leases → ref execution-and-sessions |
 | Operator evidence receipt, failure record, diagnostic bundle, `explain run`, and redaction policy | Event/storage wire and retention → ref dashboard-surfaces; write-binding proof/write ledger → ref write-safety; secrets → ref clock-config-secrets |
-| Scenario corpus/manifests and the bug→regression-scenario rule | Task `example` and errors → ref task-contract; graph outcomes → ref workflow-model; test lanes/guards → ref guards-and-tests |
+| Evidence references and semantic UI verification scenarios | Task `example` and errors → ref task-contract; graph outcomes → ref workflow-model; active test tiers and future scenario-test design → ref guards-and-tests |
 | Structured knowledge lifecycle and the AI-assisted `FixRecord` ledger | Existing lessons are migration inputs, not another authority |
 | Read-only workflow explorer and the staged, constrained workflow editor | Descriptor/graph/delegation model → ref workflow-model; spans/projections → ref dashboard-surfaces |
 | The webpage-ready base capability inventory (§8) | Build order → the phase docs |
@@ -61,7 +83,7 @@ contracts. It defines the semantic/operator layer those contracts project into.
 
 All interfaces shown here are readable views of strict, versioned zod schemas; implementation
 types are inferred from those schemas. The registry, scenario, failure, evidence, diagnostic,
-knowledge, fix, editor-draft, and generated-catalog boundaries reject unknown keys recursively.
+knowledge, fix and editor-draft boundaries reject unknown keys recursively.
 Canonical ids/digests/instants are branded. A generic metadata map may exist only inside an opaque,
 schema-versioned diagnostic attachment that no workflow, command, projection, or policy reads.
 
@@ -72,7 +94,7 @@ schema-versioned diagnostic attachment that no workflow, command, projection, or
 <!-- roadmap: phase-1 -->
 
 <!-- roadmap-status: phase-1 -->
-- [x] a stable operator vocabulary instead of TypeScript property paths — four branded ids, 120 catalog entries (§1.1, §1.7)
+- [x] a stable operator vocabulary instead of TypeScript property paths — branded semantic ids and system-owned registries (§1.1, §1.7); the generated catalog was retired 2026-10-01
 - [x] tasks cannot reach a raw `Page` — `task-driver-boundary`, AST plus transitive import graph (§1.4)
 - [x] a failed run persists a structured record rather than a message — Phase 1f's durable `FailureRecord` (§2.1)
 - [x] a `done` run carries a receipt of inputs, observations, decisions, actions, verification, reuse and uncertainty (D141, §2.3)
@@ -247,6 +269,12 @@ blobs by `legacy-selector-port-provenance`, so legacy moving on cannot invalidat
 (and, per the charter, live re-verification at each migration is what keeps the SELECTOR current).
 
 ### 1.3 One canonical catalog for the operator and AI tools
+
+**Superseded by the operator-approved 2026-10-01 retirement amendment above.** The feature has no
+current generated projection, catalog surface, selector-search command or per-system catalog
+document. Semantic registries remain live; the Workflow Explorer builds its task links from them.
+The D177 text below records the previous contract and must not be used as current implementation
+scope.
 
 <!-- roadmap: p1-authority -->
 <!-- roadmap: p2-2i -->
@@ -1406,6 +1434,11 @@ cannot tell.
 
 ## 3. Scenario corpus: workflows improve safely as new cases are discovered
 
+**Historical test-tier record.** The executable `tests/scenario/` suite and its parity companion
+were retired on 2026-10-02. The dated corpus and tier state below are retained as history; use the
+current operator amendment above and `ref guards-and-tests` for test policy. Semantic UI verification
+scenarios and their proof requirements remain separate from those retired suites.
+
 <!-- roadmap: p2-2j -->
 
 <!-- roadmap-status: p2-2j -->
@@ -1874,6 +1907,10 @@ This serves both operator debugging and AI code changes: “the failure is at
 `separations/ucpath-transaction → ucpath.smart-hr.ready-to-submit`” resolves to stable ids and source
 locations without reverse-engineering row prose.
 
+The scenario source-link entries currently remain unresolved because their test suite was removed.
+Do not fabricate a replacement link or wire field. Explorer changes that require scenario compile
+evidence remain blocked pending operator-led test design.
+
 **Phase A shipped in 2i-G and is as-built in §5.7 (the derivation and its two named exclusions),
 §5.8 (the catalog surface) and §5.9 (the node panel's derived field census).** Those three sections
 amend this one; they keep their own numbers because the tree's `{#p2-2i}` and `{#track-b}` nodes
@@ -2214,7 +2251,7 @@ authority; the descriptor and validated draft history are.
 <!-- roadmap-status: p2-2i -->
 - [x] the explorer is a projection of the ONE composition root, guarded in both directions over the REAL registry (D176)
 - [x] source links RESOLVE against a real listing; a miss is `unresolved` carrying the path it tried
-- [x] the UI catalog surface serves the COMMITTED artifact and refuses a stale one (D177)
+- [x] D177's committed-artifact surface was delivered historically; the catalog feature was retired by the 2026-10-01 operator amendment, while the semantic registries remain
 - [x] the node panel is a derived FIELD census (D227) and the descriptor's own prose is declared and guarded (D229)
 - [ ] the live-run overlay stays EXCLUDED by decision — run facts belong to the run-detail timeline
 - [ ] scenario coverage CLAIMS stay in the executable corpus by decision, not for want of a wire
@@ -2299,6 +2336,11 @@ safe subset: DCC5 adds exact field-row affordances only for label, icon and cate
 review and exact refreshed readback; no other explorer fact becomes editable.
 
 ### 5.8 The generated UI catalog gets a surface, and it serves the COMMITTED artifact (2026-08-09, D177)
+
+**Historical D177 contract, superseded 2026-10-01.** The surface and all catalog-specific
+navigation, route, projection, generation and search requirements are retired. See the current
+[retirement amendment](#ui-catalog-retirement-amendment--operator-approved-2026-10-01); semantic
+registries, verification, provenance and write-safety requirements remain in force.
 
 <!-- roadmap: p2-2i -->
 

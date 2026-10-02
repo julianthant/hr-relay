@@ -22,11 +22,11 @@
  * that still looks live.
  */
 import { z } from "zod";
-import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
+import type { DashboardDayWire } from "../../models/dashboard/projection.js";
 import {
   DashboardStreamEnvelopeSchema,
   type DashboardStreamEnvelope,
-} from "../../domain/dashboard/subscription.js";
+} from "../../models/dashboard/subscription.js";
 import { applyDashboardDayPatch } from "./day-state.js";
 import { DashboardClientError, protocolError } from "./errors.js";
 import type { DashboardTransport, StreamHandle } from "./transport.js";

@@ -1,5 +1,5 @@
-import { defineTask } from "../../../../base/task.js";
-import { KualiMatchSeparationFinalization } from "../../../../domain/contracts/kuali/match-separation-finalization.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { KualiMatchSeparationFinalization } from "../../../../models/systems/kuali/match-separation-finalization.js";
 import { kualiDriver } from "../driver-declaration.js";
 import { kualiFinalizationVerdict } from "../finalization-verdict.js";
 

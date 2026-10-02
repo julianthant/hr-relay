@@ -1,5 +1,5 @@
 import { useCallback,useEffect,useMemo,useRef,useState } from "react";
-import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
+import type { DashboardDayWire } from "../../models/dashboard/projection.js";
 import { type PanelTab } from "../surfaces/log-panel-model.js";
 import { type NavControls } from "../surfaces/navigation-controls.js";
 import {
@@ -99,8 +99,6 @@ export function useDashboardNavigation({ route, setRoute, day, activeWorkflowId,
           archiveWorkflow: undefined,
           activity: undefined,
           explore: undefined,
-          catalog: undefined,
-          catalogView: undefined,
           settings: undefined,
           day: place.followToday === true ? undefined : place.day,
           run: place.runId ?? undefined,

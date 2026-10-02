@@ -24,7 +24,7 @@
  *    adding another early `return`.
  */
 import type { Page } from "playwright";
-import type { DuoCeremonyLeaseToken } from "../../../base/duo-ceremony-lease.js";
+import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { BrowserLoginError } from "./login-contract.js";
 import type {
   AuthenticatedApplicationEvidence,
@@ -34,9 +34,9 @@ import type {
   SystemLoginContext,
   SystemLoginRecipe,
 } from "./login-contract.js";
-import type { BrowserSystemId } from "../../../domain/ids.js";
-import { LoginResultSchema } from "../../../domain/session.js";
-import type { LoginResult } from "../../../domain/session.js";
+import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import { LoginResultSchema } from "../../../models/sessions/session.js";
+import type { LoginResult } from "../../../models/sessions/session.js";
 
 /**
  * One observed fact. `holds` answers exactly the question the caller asked

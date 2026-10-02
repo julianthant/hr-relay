@@ -3,7 +3,7 @@ import { z } from "zod";
 import { cn } from "../../lib/utils.js";
 import { BareButton, dsBorder, dsClip, dsFocus, dsMotion, dsRadius, dsText } from "../../ds/ui.js";
 import { fmtClock, fmtElapsed } from "../format.js";
-import { timelineEventDuration, RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
+import { timelineEventDuration, RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import {
   decisionAge, timelineHasOrphanGate, timelineSegmentUnmeasured,
 } from "./timeline-model.js";

@@ -13,7 +13,7 @@ import type { z } from "zod";
 import type {
   ContextSummaryWireSchema,
   RunDetailSectionResponseSchema,
-} from "../../domain/dashboard/run-detail.js";
+} from "../../models/dashboard/run-detail.js";
 
 type RunDetailSectionResponse = z.infer<typeof RunDetailSectionResponseSchema>;
 

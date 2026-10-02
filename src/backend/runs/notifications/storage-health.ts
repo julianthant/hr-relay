@@ -1,14 +1,14 @@
 /**
  * Retained D222 compatibility helper; D322 retired its production caller.
- * Production health observations live in dashboard/compose/notification-health.ts
+ * Production health observations live in app/composition/dashboard/notification-health.ts
  * and require actual failure evidence plus durable episode identities. Missing
  * or stale unrequested backups are not production notification sources.
  * This helper retries failed calls but cannot identify a new durable episode;
  * the inbox treats a repeated event as the same source.
  */
 import { z } from "zod";
-import { FingerprintSchema, type Fingerprint } from "../../../domain/ids.js";
-import { sha256Hex } from "../../../domain/sha256.js";
+import { FingerprintSchema, type Fingerprint } from "../../../rules/identity/ids.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 import type { NotificationInbox, NotificationPublishReport } from "./inbox.js";
 
 export const BackupHealthStateSchema = z.enum(["current", "stale", "missing"]);

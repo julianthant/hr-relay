@@ -7,7 +7,7 @@ export const PARKED_WRITE_DISPLAY = {
 } as const;
 
 
-import type { ProofFieldWire } from "../../domain/dashboard/run-detail.js";
+import type { ProofFieldWire } from "../../models/dashboard/run-detail.js";
 import { proofFieldLabel } from "../app/proof-form.js";
 
 export function proofDisplayLabel(field: ProofFieldWire): string {

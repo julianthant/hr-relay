@@ -7,6 +7,20 @@ reference, not a second plan or contract: the roadmap, admitted phase doc, and o
 are the pre-1.6 baseline unless they explicitly name a landed 1.6 seam; verify current
 status against the owning phase before implementation.
 
+## Current code paths — 2026-10-01
+
+The current source and dependency map is `docs/rebuild/reference/codebase-structure.md`. Use it
+when an older section names a moved module; dated path narratives preserve their original revision
+evidence. Active checked-in migration/provenance inputs live under
+`docs/rebuild/migrations/legacy/`; canonical field inventory and pending implementation bindings
+now live under `src/models/fields/` and `src/backend/app/registries/`.
+
+The operator retired the `tests/scenario/` and `tests/parity/` suites on 2026-10-02. Their commands,
+layouts and acceptance descriptions below are historical. Do not restore those suites; any future
+scenario or visual-test design requires a separate operator-led task. Workflow scenario IDs remain
+declaration data, not test evidence. The current suite map is
+`docs/rebuild/reference/codebase-structure.md`.
+
 ## Before you start
 
 **The plan is the SSOT — read it, do not re-derive it.** It has three parts: the **tree** at
@@ -52,7 +66,7 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
   `data-intake-and-edit-data` (extraction, OCR, intake, Edit Data) · `write-safety` (the write
   sequencer, intents, the ALWAYS-GATE) · `guards-and-tests` (the guard/test architecture) ·
   `clock-config-secrets` (clock, config resolver, secrets) · `operator-trust` (failures, receipts,
-  knowledge, the explorer) · `frontend-backend-integration` (the BFF, the wire, the parity lane) ·
+  knowledge, the explorer) · `frontend-backend-integration` (the BFF and wire) ·
   `foundation-gap-audit` (frozen — a design input, owns nothing) · `stores` (the DERIVED store
   catalog — read it before authoring a task, and remember the code wins over it).
 - `docs/rebuild/reference/lessons.md` — the dated lessons ledger (`ref lessons`), recording
@@ -78,7 +92,7 @@ admitted **phase docs** under `docs/rebuild/plans/` (actionable: subphase folder
 ```bash
 npm run typecheck          # tsc --noEmit over src/, tests/, scripts/ — one program, no exclusions
 npm run lint               # eslint src tests scripts --max-warnings 0 — zero-debt, no manifest
-npm run test               # every vitest project (unit + integration + architecture + scenario)
+npm run test               # registered unit + integration + architecture projects
 npm run test:unit          # deterministic units only; positional file filters allowed
 npm run test:integration   # real-resource and composed workflow proofs; run deliberately
 npm run test:architecture  # the guard suite alone
@@ -86,18 +100,15 @@ npm run test:coverage      # 60/80 lines/statements/functions floors + the suite
 npm run test:watch
 npm run test:reap          # reclaim only validated inactive owned test-run roots; retain live/unknown runs
 
-npm run test:parity        # ref frontend-backend-integration §7 visual/a11y parity lane — builds the bundle, ASSERTS every reference
-npm run test:parity:update # the ONE deliberate way to re-freeze a reference (PARITY_UPDATE=1)
-
 npm run cli               # the runtime CLI (help | phase | dashboard | worker | dry-run-scenario | explain | storage | ocr)
-npm run cli -- dry-run-scenario <workflow> --subject <label> # execute exactly one T1b manifest case
+npm run cli -- dry-run-scenario <workflow> --subject <label> # missing rehearsal manifest reports unavailable before execution
 npm run cli -- storage backup  # the ONLY writer of a verified SQLite backup (D322); `storage doctor` / `storage restore --from` beside it
 npm run dashboard         # the dev dashboard in ONE terminal: BFF (3938) + vite (5174); Ctrl+C stops both
 npm run cli -- dashboard  # the BFF alone; `dashboard:prod` passes --prod and serves dist/dashboard from it (run web:build first)
 npm run web               # the vite dev server alone, proxying /api to a BFF you started yourself
-npm run web:build         # production bundle into dist/dashboard (test:parity builds this itself)
+npm run web:build         # production bundle into dist/dashboard
 
-npm run build:manifest     # regenerate src/domain/workflow/generated-build-manifest.ts
+npm run build:manifest     # regenerate src/workflow-kit/validation/generated-build-manifest.ts
 npm run build:manifest:check # fail if the committed manifest is stale
 npm run stores:catalog     # regenerate the generated §2 task catalog in docs/rebuild/reference/stores.md
 npm run stores:catalog:check # fail if the committed catalog is stale
@@ -106,8 +117,8 @@ npm run roadmap:check      # fail if the committed site is stale
 ```
 
 `build:manifest` recomputes every descriptor's `contractFingerprint` from its source closure. Run it
-after ANY edit under a descriptor's import closure (which includes `src/base/**` and most of
-`src/domain/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
+after ANY edit under a descriptor's import closure (including `src/models/**`, `src/rules/**` and
+`src/workflow-kit/**`) — `descriptor-coverage` regenerates and fails on a diff, so a stale manifest is a
 red gate, not a silent drift.
 
 Vitest schedules at most four isolated file forks (or the available CPU count when lower).
@@ -138,15 +149,15 @@ isolation" below for what still MUST differ from the legacy checkout.
 
 - **Never import, invoke, proxy, or read the legacy repo's live state from `src/`.** Two
   repositories share no module graph — this is now structural, not merely banned. Finished lint,
-  type, test, architecture, parity, performance, smoke, Duo, and generated gates are self-contained
+  type, test, architecture, performance, smoke, Duo, and generated gates are self-contained
   too: read-only porting work may consult legacy, but a committed gate may not resolve its checkout.
 - **Porting = copy with provenance.** When you bring verified knowledge across (a selector, a
   parsing rule, a page-state fact), copy it and record **the legacy commit hash and source path** in
   the ported code. Never link it at runtime — which is impossible anyway.
 - **Legacy change accounting is RETIRED (D150, 2026-08-05).** The two repositories no longer touch
   each other in either direction: nothing here reads legacy's working tree, and legacy work never
-  blocks a rebuild gate. `config/legacy-change-accounting.json` is a frozen historical record of
-  what was reconciled through the split — do not extend it. **What replaced it:** the risk was a
+  blocks a rebuild gate. `docs/rebuild/migrations/legacy/legacy-change-accounting.json` is a frozen
+  historical record of what was reconciled through the split — do not extend it. **What replaced it:** the risk was a
   ported selector or page-state fact going stale after legacy fixed it, and that is now covered by
   **live re-verification at each workflow's migration**, which the charter already makes mandatory
   and pre-authorized. A selector checked against the live system beats one diffed against legacy's
@@ -155,13 +166,14 @@ isolation" below for what still MUST differ from the legacy checkout.
   identifier-redacted source snapshots, so legacy moving on cannot invalidate it.
 - **Nothing in the legacy repo may be deleted** during the rebuild or the initial cutover. The whole
   repository is the D89 rollback asset.
-- Architecture guards read `config/ports/legacy-architecture-provenance.json`, whose strict parser
+- Architecture guards read the byte-preserved
+  `docs/rebuild/migrations/legacy/legacy-architecture-provenance.json`; its strict parser
   authenticates every identifier-redacted frozen source and path-inventory snapshot before exposing
   it. The external payload anchor prevents a changed snapshot from authenticating a recomputed
   digest; SSN- and UCSD EID-shaped values must never enter this evidence. Missing, malformed,
   duplicate, reordered, or content-address-mismatched evidence fails loud. Never restore a
   `../hr-automation` or `HRAUTO_LEGACY_REPO` execution dependency to a finished gate.
-- Inventories that span both repos (`src/domain/runtime-environment.ts`) mark legacy paths with an
+- Inventories that span both repos (`src/models/runtime/runtime-environment.ts`) mark legacy paths with an
   explicit **`legacy:` scheme**. Both repos have a `src/` — `src/cli.ts` exists in both — so a bare
   path is ambiguous. Unprefixed always means this repo.
 
@@ -261,14 +273,14 @@ go through `scripts/secure-env-bootstrap.ts`: normal runtime startup refuses mig
 names, opens the fixed provider-only path without following symlinks, validates that descriptor,
 and admits its exact bytes before importing the allowlisted entrypoint. Storage commands bypass
 runtime environment admission so stopped upgrade can inspect historical sources without changing
-them. Ordinary settings come only from SQLite; `src/domain/config/resolve.ts` combines those values
-with defaults. Protected settings come from the independent credential store through the registered
-secret reader. Provider credentials remain environment-owned. The `display` default is the host's
-primary display (D324): `src/infra/host/primary-display.ts` probes it once per process tree,
-`hostAwareResolutionEnvironment` in `src/domain/secrets.ts` publishes it as
+them. Ordinary settings come only from SQLite; `src/backend/app/config/resolve.ts` combines those
+values with defaults. Protected settings come from the independent credential store through the
+registered secret reader. Provider credentials remain environment-owned. The `display` default is the host's
+primary display (D324): `src/backend/app/host/primary-display.ts` probes it once per process tree,
+`hostAwareResolutionEnvironment` in `src/models/config/secrets.ts` publishes it as
 `HRAUTO_HOST_PRIMARY_DISPLAY` for every child process, and 2560×1440 remains only the headless
 fallback — never re-probe in a child, never guess on an unrecognized OS answer;
-`src/domain/secrets.ts` is the **only** module permitted to read a credential from `process.env`
+`src/models/config/secrets.ts` is the **only** module permitted to read a credential from `process.env`
 (`secrets-single-source.test.ts` enforces it). A credential must never be interpolated into a
 message — `no-secret-values-in-logs.test.ts` enforces that half. D361 permits complete
 classified local values already supplied to an authorized capture or presentation boundary;
@@ -278,30 +290,25 @@ Dry-run subjects resolve by label through the typed registry; workflow/kind must
 Unavailable/consumed/unknown subjects and declared-pending leaves block before private reads or a
 browser; malformed available subjects fail by label/date. Subjects and shared data live in
 `config/test-data.json`; private identifiers/paths live only in ignored `config/test-data.local.json`,
-read through `src/control/test-data.ts` (D341, pre-1.6.7 detour). `npm run cli -- test-data check
+read through `src/backend/app/registries/test-data.ts` and the private reader
+`src/backend/storage/configuration/test-data-local.ts` (D341). `npm run cli -- test-data check
 --json` reports names/states only. Read `ref guards-and-tests` §10.5 and `ref clock-config-secrets`
 §D341 for the detour's acceptance evidence. Never source a
 canary from `.env`, expose its value, silently substitute another target, or infer current availability.
 
 ## Coding conventions
 
-- `src/workflows/` has exactly two folder kinds (D265/D266): a top-level folder is a rail workflow,
-  and a child folder is one declared timeline step. A chunk harness lives in the matching step
-  folder with role `{ kind: "chunk-harness", of, step }`; it remains independently startable,
-  nests under its composition in the picker/Explorer, and never appears in the rail. There is no
-  `src/workflows/proving/` and no registered workflow whose purpose is test equipment. Since the
-  2026-09-02 deletion acceptance every workflow folder holds exactly one file, `workflow.ts`; a step
-  folder exists only when it carries a harness (`job-summary` is a declared group with no folder),
-  and the `workflow-layout` guard refuses any other file beside a `workflow.ts`.
-- A workflow's T1 proof lives at
-  `tests/scenario/workflows/<workflow-id>/{structural.scenario.test.ts,dry-run.scenario.ts}`: exactly
-  one collected structural scenario and one sibling T1b live manifest. D318 gives that manifest two
-  exclusive graph-derived arms: `dry-run-preview` for a transaction-bearing graph and `live-read`
-  for a zero-transaction graph. `live-read` runs with `dryRun=false`, requires zero transaction
-  nodes and proves exact zero deltas in all three write-authority tables; never add a no-op
-  transaction to qualify for preview. The live half may write
-  ordinary upstream `run_checkpoints`; its submit-free invariant is zero deltas in
-  `run_operations`, `run_operation_attempts`, and `operation_outbox`.
+- `src/workflows/` uses role-derived source paths: an operator entry is
+  `src/workflows/<id>/workflow.ts`; a retained chunk-harness proof is
+  `src/workflows/<composition>/steps/<step>/step.ts`. The backend composes harnesses separately;
+  they are not operator-startable or picker entries. The composition owns step identities and each
+  harness imports them. An operator workflow folder may also contain its backend-loaded
+  `task-registry.ts` and `tasks/`, but no arbitrary descriptor/module/node files beside the entry.
+  A step folder exists only when it carries a harness (`job-summary` has none). There is no
+  `src/workflows/proving/`.
+- Workflow scenario suites and their T1 proof convention were retired on 2026-10-02. Do not rely on
+  old structural-scenario or parity files as current evidence. Future scenario tests must be designed
+  with the operator; a declared workflow scenario ID alone proves no execution.
 - No default exports.
 - A `src/dashboard/surfaces/*.tsx` or `src/dashboard/app/*.tsx` module exports **components only**;
   its hooks, folds, vocabularies and object constants live in a sibling `<surface>-model.ts`
@@ -317,17 +324,18 @@ canary from `.env`, expose its value, silently substitute another target, or inf
   `defineTask(driver, contract, impl)`; never project a semantic driver down to `{system}` or mint a
   second declaration for tasks registered in the same store. Service/workflow tasks remain
   `defineTask(contract, impl)` and receive no driver.
-- All time reads go through `src/domain/clock.ts` (`clock-single-source.test.ts`); `manualClock` is
-  test-only (`manual-clock-test-only.test.ts`).
-- Registry exports are recursively frozen at module load (`src/domain/immutability.ts`).
+- All time reads go through `src/rules/time/clock.ts` (`clock-single-source.test.ts`); `manualClock`
+  is test-only (`manual-clock-test-only.test.ts`).
+- Registry exports are recursively frozen at module load (`src/rules/validation/immutability.ts`).
 - Structured errors, never `console.*` in `src/`.
-- Workflow definitions remain browser-safe: value imports are restricted to zod, `src/domain/**`,
-  and audited `src/base/**` builders. D311/D317 supersede the old D106 per-workflow `module.ts`
-  attachment instruction: author one `workflow.ts`; `compileWorkflow` derives its module requirements.
+- Workflow definitions remain browser-safe: value imports are restricted to zod, `src/models/**`,
+  `src/rules/**` and audited `src/workflow-kit/**` builders. The current dependency map is
+  `docs/rebuild/reference/codebase-structure.md`. D311/D317 supersede the old D106 per-workflow
+  `module.ts` attachment instruction: author one `workflow.ts`; `compileWorkflow` derives its module requirements.
   Branch cases and parallel branches name nodes downstream of their controller (D104).
 
 - A contract a descriptor uses but no store implements yet must be listed in
-  `config/pending-impl-bindings.json`; the guard fails in both directions (D107).
+  `src/backend/app/registries/pending-impl-bindings.json`; the guard fails in both directions (D107).
 
 ## Authorized orchestration
 

@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { RunDetailSectionResponseSchema } from "../../../domain/dashboard/run-detail.js";
+import type { RunDetailSectionResponseSchema } from "../../../models/dashboard/run-detail.js";
 import type { ContextSections } from "../context-rail-model.js";
 import type { IdentityGatePayload } from "../../app/identity-ceremony.js";
 import type { ParkedWritePayload } from "../park-resolve.js";

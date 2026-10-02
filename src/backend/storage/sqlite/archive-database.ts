@@ -4,9 +4,9 @@ import { createHash } from "node:crypto";
 import { backup as sqliteBackup, DatabaseSync } from "node:sqlite";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { ArchiveReportSchema, ArchiveFileReferenceSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema,
-  type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../../domain/archive/report.js";
-import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../../domain/run/deleted-run.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+  type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../../models/archive/report.js";
+import { DeletedRunRecordSchema, type DeletedRunRecord } from "../../../models/run/deleted-run.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { attestPublishedArchiveReport } from "./archive-records.js";
 import { z } from "zod";
 

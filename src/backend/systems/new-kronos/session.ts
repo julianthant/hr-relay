@@ -35,7 +35,7 @@
  * entry → ForgeRock SSO form ≈ 1.5 s; credential submit → `…/wfd/home`
  * **3.32 s** measured; whole browser-launch-to-home ≈ 33 s.
  */
-import { resolveSystemLoginUrl } from "../../../domain/config/instance.js";
+import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
 import {
   defineVerifiedLoginRecipe,

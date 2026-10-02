@@ -1,6 +1,6 @@
 import { Download, Expand } from "lucide-react";
 import { useMemo } from "react";
-import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
+import type { DiagnosticBundleWire } from "../../models/dashboard/diagnostic-bundle.js";
 import {
   BareButton,
   Banner, Button, ButtonLink, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger,

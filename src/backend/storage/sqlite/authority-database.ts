@@ -1,5 +1,5 @@
-import { requireOperationSourceDeclaration } from "../../../domain/dashboard/operation-structure.js";
-import { requireWorkflowOperationDisplaySnapshot } from "../../../domain/workflow/operation-display-snapshot.js";
+import { requireOperationSourceDeclaration } from "../../../models/dashboard/operation-structure.js";
+import { requireWorkflowOperationDisplaySnapshot } from "../../../models/workflow/operation-display-snapshot.js";
 import { selectTransactions, selectStoppedConversionTransactions, selectedHistoricalTransactionRows } from "./transaction-selection.js";
 import {
   RuntimeVersionAdoptionSchema,
@@ -9,69 +9,69 @@ import {
   publishRuntimeVersionTransition as publishStoredRuntimeVersionTransition,
   type RuntimeVersionAuthority,
 } from "./runtime-versions.js";
-import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVersionState } from "../../../domain/archive/runtime-version.js";
-import { reviewRuntimeVersionTransition } from "../../../domain/archive/runtime-version-review.js";
-import { RuntimeVersionChangeSchema, type RuntimeVersionChange } from "../../../domain/archive/runtime-version-change.js";
+import { planRuntimeVersionTransition, RuntimeVersionScopeSchema, type RuntimeVersionState } from "../../../models/archive/runtime-version.js";
+import { reviewRuntimeVersionTransition } from "../../../models/archive/runtime-version-review.js";
+import { RuntimeVersionChangeSchema, type RuntimeVersionChange } from "../../../models/archive/runtime-version-change.js";
 import { createRunSearchIndex } from "./run-search-index.js";
-import { RunSearchPublicationSchema } from "../../../domain/dashboard/search-index.js";
+import { RunSearchPublicationSchema } from "../../../models/dashboard/search-index.js";
 import { createWorkerControlRepository, validateWorkerControls, type WorkerControlRepository } from "./worker-control.js";
-import { WorkerControlBasisSchema } from "../../../domain/run/worker.js";
+import { WorkerControlBasisSchema } from "../../../models/run/worker.js";
 import { createNotificationMetadataRepositories, validateNotificationMetadata } from "./notification-publications.js";
 import { createExplorerOverrideRepository, validateExplorerOverrides } from "./explorer-overrides.js";
-import { parsePendingCapture } from "../../../domain/archive/pending-capture.js";
+import { parsePendingCapture } from "../../../models/archive/pending-capture.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import { HistoricalVersionChangeSchema, RetainedVersionChangeSchema } from "./storage-records.js";
-import { ArchiveReportSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema, type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../../domain/archive/report.js";
+import { ArchiveReportSchema, ArchiveQuerySchema, ArchiveGroupQuerySchema, type ArchiveQuery, type ArchiveGroupQuery, type ArchiveReport } from "../../../models/archive/report.js";
 import { readScopedEventStreamLines, readEventStreamSlice, scopedEventStreamFiles } from "../events/jsonl-streams.js";
-import { DeclaredActionIdentitySchema } from "../../../domain/task-provenance.js";
-import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../domain/run/note-scope.js";
-import { NoteWireSchema } from "../../../domain/events/types.js";
-import { deriveCanonicalPerson } from "../../../domain/run/summary-derivation.js";
-import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../../domain/archive/change-record.js";
-import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../../domain/archive/lifecycle-source.js";
+import { DeclaredActionIdentitySchema } from "../../../rules/workflow/task-provenance.js";
+import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../models/run/note-scope.js";
+import { NoteWireSchema } from "../../../models/events/types.js";
+import { deriveCanonicalPerson } from "../../../rules/runs/summary-derivation.js";
+import { VersionChangeSchema, archiveVersionChange, versionChangeReview, type VersionChange } from "../../../models/archive/change-record.js";
+import { lifecycleOwnedSourceDigest, lifecycleSourceDigest, LifecycleSourceSnapshotSchema } from "../../../models/archive/lifecycle-source.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import type { VerifiedRelocationActivationIntent } from "../admission/installation.js";
 import { ArchiveTransferIdentitySchema, resolveSavedReportOwner, resolveRunEvidenceOwner } from "./run-evidence-ownership.js";
 import { createRunSummaries } from "./run-summaries.js";
-import { SummaryPublicationSchema } from "../../../domain/run/summary.js";
-import type { ProviderAccountingStorage } from "../../../base/provider-accounting.js";
+import { SummaryPublicationSchema } from "../../../models/run/summary.js";
+import type { ProviderAccountingStorage } from "../../../workflow-kit/provider-accounting.js";
 import { createGeneratedArtifactRepository } from "./generated-artifacts.js";
 import { createFailureResolutionRepository } from "./failure-resolution.js";
-import { FailureResolutionSchema } from "../../../domain/trust/failure-resolution.js";
+import { FailureResolutionSchema } from "../../../models/trust/failure-resolution.js";
 import { createSettingsActivationRepositories } from "./settings-activation.js";
 import { SqliteProviderAccounting, finalizeProviderRun, inspectGenericProviderAccounting } from "./provider-accounting.js";
 import { createImportedArtifactRepositories } from "./imported-artifacts.js";
-import { ImportedArtifactSchema } from "../../../domain/intake/imported-artifact.js";
-import { GeneratedArtifactSchema } from "../../../domain/generated-artifact.js";
-import { ArtifactRefSchema, type ArtifactRef } from "../../../domain/artifacts.js";
-import { ExtractPdfPagesOutputSchema } from "../../../domain/contracts/extraction/extract-pdf-pages.js";
-import { OperatorXlsxExportEvidenceSchema } from "../../../domain/dashboard/xlsx-export.js";
-import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
-import { AppSettingsSchema } from "../../../domain/config/app-settings.js";
-import { initialSettingsFileRecord } from "../../../domain/config/settings.js";
-import { completionFromAuthorization } from "../../../domain/run/completion.js";
-import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../../domain/run/completion-history.js";
-import { lifecycleCommandId } from "../../../domain/identifiers.js";
-import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../../domain/ledger-projection.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { HistoricalOperationSourceSchema, type HistoricalOperationSource } from "../../../domain/events/timeline.js";
-import { ArchivedRunRecordSchema, ArchivedTransactionsSchema, type ArchivedTransactions } from "../../../domain/archive/model.js";
+import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
+import { GeneratedArtifactSchema } from "../../../models/artifacts/generated-artifact.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
+import { ExtractPdfPagesOutputSchema } from "../../../models/processing/extraction/extract-pdf-pages.js";
+import { OperatorXlsxExportEvidenceSchema } from "../../../models/dashboard/xlsx-export.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { AppSettingsSchema } from "../../../models/config/app-settings.js";
+import { initialSettingsFileRecord } from "../../../models/config/settings.js";
+import { completionFromAuthorization } from "../../../models/run/completion.js";
+import { HistoricalTerminalOutboxRecordSchema, HistoricalTerminalAuthorizationSchema } from "../../../models/run/completion-history.js";
+import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema } from "../../../rules/runs/ledger-projection.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { HistoricalOperationSourceSchema, type HistoricalOperationSource } from "../../../models/events/timeline.js";
+import { ArchivedRunRecordSchema, ArchivedTransactionsSchema, type ArchivedTransactions } from "../../../models/archive/model.js";
 import { createTransactionHistory } from "./transaction-history.js";
-import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../domain/command-groups.js";
-import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../domain/events/confirmed-operation.js";
-import { timelineAppendContent, timelineCheckpointReference } from "../../../domain/events/timeline.js";
-import { deriveStableUuid } from "../../../domain/identifiers.js";
+import { deriveBulkChildCommand, deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
+import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
+import { timelineAppendContent, timelineCheckpointReference } from "../../../models/events/timeline.js";
+import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
 import { createTimelineRepository, timelineEventFromRow } from "./timeline-repository.js";
 import { readTimelineRecords } from "../events/timeline-reader.js";
-import type { TimelineRepository, TimelineAppend } from "../../../domain/events/timeline.js";
-import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
-import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../../domain/commands-history.js";
-import { CommandIdentityConflictError } from "../../../domain/commands.js";
-import { createCredentialStore } from "../config/credential-store.js";
-import { repeatEvidenceDigest } from "../../../domain/run/rerun.js";
-import { archivedRunContentDigest } from "../../../domain/archive/model.js";
-import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
+import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
+import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compatibility/d331-settings-current.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../../rules/commands/commands-history.js";
+import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
+import { createCredentialStore } from "../configuration/credential-store.js";
+import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
+import { archivedRunContentDigest } from "../../../models/archive/model.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 import { createHash, randomUUID } from "node:crypto";
 import { existsSync, statSync, lstatSync, openSync, closeSync, readFileSync, fstatSync, fsyncSync, unlinkSync, constants } from "node:fs";
 import { dirname, resolve, join } from "node:path";
@@ -81,8 +81,8 @@ import {
   assertWorkflowRunResultAuthorization,
   descriptorRuntimeNodes,
   type AnyWorkflowDescriptor,
-} from "../../../base/workflow.js";
-import type { ProviderAdmissionRepository } from "../../../base/providers.js";
+} from "../../../workflow-kit/workflow.js";
+import type { ProviderAdmissionRepository } from "../../../workflow-kit/providers.js";
 import {
   AUTHORITY_TABLE_REGISTRY,
   AuthorityUpgradeRecordSchema,
@@ -92,10 +92,10 @@ import {
   type AuthorityTableName,
   type TableName,
   type RunRecordRefusal,
-} from "../../../domain/authority.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock, localDatePart } from "../../../domain/clock.js";
+} from "../../../models/config/authority.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock, localDatePart } from "../../../rules/time/clock.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
@@ -107,20 +107,20 @@ import {
   StorageRelocationCommandRequestSchema,
   RunLifecycleCommandAuditRecordSchema,
   RunLifecycleCommandRecordSchema,
-} from "../../../domain/commands.js";
+} from "../../../rules/commands/commands.js";
 import {
   ConfigSnapshotRecordSchema,
   ConfigSnapshotWriteSchema,
-} from "../../../domain/config/snapshot.js";
+} from "../../../models/config/snapshot.js";
 import {
   type ActiveRuntimeConfigRecord,
   type RuntimeConfigClaimToken,
-} from "../../../domain/config/runtime-generation.js";
+} from "../../../models/config/runtime-generation.js";
 import {
   type SettingsCurrentRecord,
-} from "../../../domain/config/settings-current.js";
-import { DelegationManifestSchema, DependencyRecordSchema } from "../../../domain/dependencies.js";
-import { GateResultRecordSchema } from "../../../domain/gates.js";
+} from "../../../models/config/settings-current.js";
+import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
+import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
@@ -139,51 +139,51 @@ import {
   WorkflowIdSchema,
   WriteIntentIdSchema,
   type RunId,
-} from "../../../domain/ids.js";
+} from "../../../rules/identity/ids.js";
 
 
 
 
 import {
   nextAttemptEnvelope,
-} from "../../../domain/run/envelope.js";
+} from "../../../models/run/envelope.js";
 import {
   RunRecordSchema,
   runClaim,
   runTransitionViolation,
   type RunRecord,
-} from "../../../domain/run/record.js";
+} from "../../../models/run/record.js";
 import {
   DeletedRunRecordSchema,
   RunDeleteInputSchema,
   type DeletedRunRecord,
   type DeletedRunTableSchema,
-} from "../../../domain/run/deleted-run.js";
+} from "../../../models/run/deleted-run.js";
 import {
   RunResultRecordSchema,
   deriveCheckpointOutputDigest,
   deriveCheckpointProvenanceDigest,
   type RunResultRecord,
-} from "../../../domain/run/result.js";
+} from "../../../models/run/result.js";
 import {
   TerminalAuthorizationRecordSchema,
   type TerminalAuthorizationRecord,
-} from "../../../domain/run/terminal-authorization.js";
+} from "../../../models/run/terminal-authorization.js";
 import {
   StartPlanRecordSchema,
   isStartPlanExpired,
   type StartPlanRecord,
-} from "../../../domain/run/start-plan.js";
-import { IntakePlanManifestSchema } from "../../../domain/intake/manifest.js";
-import { IntakeSessionSchema } from "../../../domain/intake/session.js";
-import { AdmittedExtractionSchema } from "../../../domain/ocr/extraction.js";
-import { FailureRecordSchema, type FailureRecord } from "../../../domain/trust/failure.js";
+} from "../../../models/run/start-plan.js";
+import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
+import { IntakeSessionSchema } from "../../../models/intake/session.js";
+import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
+import { FailureRecordSchema, type FailureRecord } from "../../../models/trust/failure.js";
 import {
   LIVE_WORKER_STATES,
   WorkerLeaseRecordSchema,
   isLiveWorker,
   type WorkerLeaseRecord,
-} from "../../../domain/run/worker.js";
+} from "../../../models/run/worker.js";
 import {
   DuoCeremonyLeaseAcquireRequestSchema,
   DuoCeremonyLeaseRecordSchema,
@@ -193,15 +193,15 @@ import {
   type DuoCeremonyLeaseAcquireRequest,
   type DuoCeremonyLeaseRecord,
   type DuoCeremonyLeaseReleaseOutcome,
-} from "../../../domain/duo-ceremony-lease.js";
-import { HistoricalRunSessionRecordSchema, RunSessionRecordSchema, type RunSessionRecord } from "../../../domain/run/session.js";
-import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../../domain/run/worker-pool.js";
+} from "../../../rules/sessions/duo-ceremony-lease.js";
+import { HistoricalRunSessionRecordSchema, RunSessionRecordSchema, type RunSessionRecord } from "../../../models/run/session.js";
+import { WorkerPoolRecordSchema, workerPoolVersion, type WorkerPoolRecord } from "../../../models/run/worker-pool.js";
 import {
   isDuoCeremonyLeaseToken,
   mintDuoCeremonyLeaseToken,
   retireDuoCeremonyLeaseToken,
   type DuoCeremonyLeaseToken,
-} from "../../../base/duo-ceremony-lease.js";
+} from "../../../workflow-kit/duo-ceremony-lease.js";
 import {
   RunClaimOutcomeSchema,
   RunClaimRequestSchema,
@@ -252,8 +252,8 @@ import {
   checkpointLookupKey,
   checkpointRecordKey,
   type RunCheckpointRecord,
-} from "../../../domain/workflow/checkpoint.js";
-import { AtomicOutboxRecordSchema } from "../../../domain/outbox.js";
+} from "../../../models/workflow/checkpoint.js";
+import { AtomicOutboxRecordSchema } from "../../../models/notifications/outbox.js";
 import {
   NotificationFoldRequestSchema,
   NotificationRecordOutcomeSchema,
@@ -262,29 +262,29 @@ import {
   requireMutableNotification,
   type NotificationRecord,
   type NotificationRecordOutcome,
-} from "../../../domain/notifications.js";
+} from "../../../models/notifications/notifications.js";
 
 
 import {
   DiagnosticBundleSchema,
   type DiagnosticBundle,
-} from "../../../domain/trust/diagnostic.js";
+} from "../../../models/trust/diagnostic.js";
 import {
   RunEvidenceReceiptSchema,
   type RunEvidenceReceipt,
-} from "../../../domain/trust/evidence.js";
+} from "../../../models/trust/evidence.js";
 import {
   DryRunScenarioResultSchema,
   type DryRunScenarioResult,
-} from "../../../domain/trust/dry-run-scenario-result.js";
+} from "../../../models/trust/dry-run-scenario-result.js";
 import {
   type ActivityPersonPseudonymDomain,
   type ActivityPersonPseudonymEvidence,
-} from "../../../domain/trust/activity-person-pseudonym.js";
+} from "../../../models/trust/activity-person-pseudonym.js";
 import {
   type ActivityPersonPseudonymBackfillOutcome,
-} from "../../../domain/trust/activity-person-pseudonym-backfill.js";
-import { DryRunWriteSafetyCountsSchema } from "../../../domain/trust/dry-run-scenario.js";
+} from "../../../models/trust/activity-person-pseudonym-backfill.js";
+import { DryRunWriteSafetyCountsSchema } from "../../../models/trust/dry-run-scenario.js";
 
 
 
@@ -295,7 +295,7 @@ import {
   WriteIntentRecordSchema,
   type WriteAttemptRecord,
   type WriteIntentRecord,
-} from "../../../domain/write-safety.js";
+} from "../../../rules/write-safety/write-safety.js";
 import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
@@ -3406,7 +3406,7 @@ export class AuthorityDatabase implements Disposable {
   }
 
   /** Source custody is rooted beside this authority, never the process cwd. */
-  readLifecycleSourceFile(file: import("../../../domain/archive/report.js").ArchiveReport["content"]["files"][number]) {
+  readLifecycleSourceFile(file: import("../../../models/archive/report.js").ArchiveReport["content"]["files"][number]) {
     const root = this.#admission.artifactRoot;
     if (lstatSync(root).isSymbolicLink() || !lstatSync(root).isDirectory()) throw new Error("archive-source-file-root-invalid");
     if (!/^[a-f0-9]{64}$/u.test(file.digest)) throw new Error("archive-source-file-digest-invalid");

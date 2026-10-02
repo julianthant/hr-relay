@@ -1,9 +1,9 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { DeclaredActionIdentitySchema } from "../../domain/task-provenance.js";
-import { renderOperationTemplate } from "../../domain/workflow/operation-display.js";
-import type { WorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
-import type { OperationActionObservationWire } from "../../domain/dashboard/operation-structure.js";
-import type { ActionValueProducer, DeclaredActionIdentity } from "../../domain/task-provenance.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { DeclaredActionIdentitySchema } from "../../rules/workflow/task-provenance.js";
+import { renderOperationTemplate } from "../../models/workflow/operation-display.js";
+import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
+import type { OperationActionObservationWire } from "../../models/dashboard/operation-structure.js";
+import type { ActionValueProducer, DeclaredActionIdentity } from "../../rules/workflow/task-provenance.js";
 
 export type OperationInvocation = WorkflowOperationDisplaySnapshot["invocations"][number];
 export type OperationAction = OperationInvocation["operation"]["actions"][number];

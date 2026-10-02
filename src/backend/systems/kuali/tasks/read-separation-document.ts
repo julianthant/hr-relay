@@ -1,8 +1,8 @@
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   KualiReadSeparationDocument,
   ReadSeparationDocumentOutputSchema,
-} from "../../../../domain/contracts/kuali/read-separation-document.js";
+} from "../../../../models/systems/kuali/read-separation-document.js";
 import { kualiDriver } from "../driver-declaration.js";
 
 /**

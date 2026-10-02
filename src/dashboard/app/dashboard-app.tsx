@@ -1,4 +1,4 @@
-import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
+import { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./url-state.js";
 import { PreflightActionsProvider } from "../state/preflight-actions.js";
 import { resolveDateSelection, routeForDay, routeForStartedRun } from "./date-state-model.js";
@@ -8,14 +8,14 @@ import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
 import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
-import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../domain/absence.js";
-import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../rules/validation/absence.js";
+import { WorkflowBatchCommandRequestSchema } from "../../rules/commands/commands.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
-} from "../../domain/dashboard/bootstrap.js";
-import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
+} from "../../models/dashboard/bootstrap.js";
+import type { CrossDateSearchResult } from "../../models/dashboard/search.js";
 import { EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -1226,8 +1226,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         archiveWorkflow: undefined,
         activity: undefined,
         explore: undefined,
-        catalog: undefined,
-        catalogView: undefined,
         settings: undefined,
       };
       leaveSettings(() => {
@@ -1258,8 +1256,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       archiveWorkflow: undefined,
       activity: undefined,
       explore: undefined,
-      catalog: undefined,
-      catalogView: undefined,
       settings: "",
     });
   }, [route, setRoute]);

@@ -27,8 +27,8 @@
  * is a claim that nothing obviously wrong was typed, never a claim that the
  * kernel will accept it, and the surface says so in those terms.
  */
-import type { JsonValue } from "../../domain/canonical-json.js";
-import type { ProofFieldWire } from "../../domain/dashboard/run-detail.js";
+import type { JsonValue } from "../../rules/validation/canonical-json.js";
+import type { ProofFieldWire } from "../../models/dashboard/run-detail.js";
 
 /** Every operator-supplied leaf, keyed by the field's dot path, as typed. */
 export type ProofDrafts = Readonly<Record<string, string>>;

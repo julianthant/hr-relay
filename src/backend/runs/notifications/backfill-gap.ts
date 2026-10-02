@@ -12,7 +12,7 @@ import type { z } from "zod";
 import {
   BackfillGapTriggerEventSchema,
   deriveNotificationDedupeFingerprint,
-} from "../../../domain/notification-triggers.js";
+} from "../../../rules/notifications/notification-triggers.js";
 import type { NotificationInbox, NotificationPublishReport } from "./inbox.js";
 
 export const BackfillGapObservationSchema = BackfillGapTriggerEventSchema;

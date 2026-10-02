@@ -18,7 +18,7 @@
  * Prepared intent is durable before staging; interrupted intent refuses automatic retry.
  */
 import { mkdir, open, unlink } from "node:fs/promises";
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import type { AuthorityRepositories } from "../sqlite/authority-database.js";
 import { ArtifactSinkConflictError, type ArtifactSink } from "./xlsx-retention-sink.js";
 

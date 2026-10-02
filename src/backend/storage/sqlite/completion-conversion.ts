@@ -1,14 +1,14 @@
 /** Stopped schema <=40 conversion. Never reads retired authority during runtime. */
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../../domain/run/record.js";
-import { HistoricalTerminalAuthorizationSchema, HistoricalTerminalOutboxRecordSchema } from "../../../domain/run/completion-history.js";
-import { TerminalAuthorizationRecordSchema } from "../../../domain/run/terminal-authorization.js";
-import { completionFromAuthorization } from "../../../domain/run/completion.js";
-import { RunResultRecordSchema } from "../../../domain/run/result.js";
-import { FailureRecordSchema } from "../../../domain/trust/failure.js";
-import { RunLifecycleCommandAuditRecordSchema } from "../../../domain/commands.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../../models/run/record.js";
+import { HistoricalTerminalAuthorizationSchema, HistoricalTerminalOutboxRecordSchema } from "../../../models/run/completion-history.js";
+import { TerminalAuthorizationRecordSchema } from "../../../models/run/terminal-authorization.js";
+import { completionFromAuthorization } from "../../../models/run/completion.js";
+import { RunResultRecordSchema } from "../../../models/run/result.js";
+import { FailureRecordSchema } from "../../../models/trust/failure.js";
+import { RunLifecycleCommandAuditRecordSchema } from "../../../rules/commands/commands.js";
 
 const RowSchema = z.object({ record_key: z.string(), record_json: z.string() });
 

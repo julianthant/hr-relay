@@ -7,18 +7,18 @@
  * values for the local operator; invalid diagnostic fields remain counted.
  */
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import { localDatePart } from "../../../domain/clock.js";
-import { ClassifiedDiagnosticValueSchema } from "../../../domain/redaction.js";
-import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../domain/events/types.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { localDatePart } from "../../../rules/time/clock.js";
+import { ClassifiedDiagnosticValueSchema } from "../../../rules/redaction/redaction.js";
+import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../models/events/types.js";
 import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";
-import { DeclaredActionOccurrenceSchema } from "../../../domain/task-provenance.js";
-import { assertNoteWithinRunScope } from "../../../domain/run/note-scope.js";
-import type { RunRecord } from "../../../domain/run/record.js";
-import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../../domain/run/task-note.js";
+import { DeclaredActionOccurrenceSchema } from "../../../rules/workflow/task-provenance.js";
+import { assertNoteWithinRunScope } from "../../../models/run/note-scope.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from "../../../models/run/task-note.js";
 import { appendEventStreamLine } from "./jsonl-streams.js";
-import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../domain/trust/failure.js";
-import type { TaskLogger } from "../../../base/task.js";
+import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
+import type { TaskLogger } from "../../../workflow-kit/task.js";
 
 const RunNoteAddressSchema = z.strictObject({
   runId: z.string().min(1),

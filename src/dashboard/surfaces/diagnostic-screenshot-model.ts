@@ -1,5 +1,5 @@
 /** Per-attachment state; the bundle gallery never shares a failure slot between images. */
-import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
+import type { DiagnosticBundleWire } from "../../models/dashboard/diagnostic-bundle.js";
 import { useEffect, useReducer, useRef } from "react";
 import { diagnosticScreenshotBrowserLoadFailure, diagnosticScreenshotLoadFailure, type DiagnosticScreenshotLoadFailure } from "./trust-model.js";
 

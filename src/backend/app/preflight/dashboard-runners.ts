@@ -2,15 +2,15 @@ import { createServer } from "node:net";
 import { accessSync, constants, readFileSync, statfsSync } from "node:fs";
 import { basename, join } from "node:path";
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import { DashboardLaunchNonceSchema } from "../../../domain/dashboard-frontend-owner.js";
-import { ConfigSchema, type Config } from "../../../domain/config/schema.js";
-import { PreflightCheckIdSchema } from "../../../domain/preflight-contract.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { DashboardLaunchNonceSchema } from "../../../models/dashboard/dashboard-frontend-owner.js";
+import { ConfigSchema, type Config } from "../../../models/config/schema.js";
+import { PreflightCheckIdSchema } from "../../../models/preflight/preflight-contract.js";
 import {
   PreflightObservationSchema,
   requiredPreflightChecks,
   type PreflightRunner,
-} from "../../../domain/preflight.js";
+} from "../../../models/preflight/preflight.js";
 import { probeOwnedViteServer } from "../host/local-vite-probe.js";
 import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../storage/sqlite/runtime-process-locks.js";
 

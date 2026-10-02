@@ -37,11 +37,11 @@ import { createRequire } from "node:module";
 import { dirname } from "node:path";
 import { pathToFileURL } from "node:url";
 import { pdf } from "pdf-to-img";
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   ExtractPdfPages,
   ExtractPdfPagesOutputSchema,
-} from "../../../../domain/contracts/extraction/extract-pdf-pages.js";
+} from "../../../../models/processing/extraction/extract-pdf-pages.js";
 
 /**
  * Rendered at 2× so small hand-printing survives; the scale is PINNED because

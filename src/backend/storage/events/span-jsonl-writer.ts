@@ -28,9 +28,9 @@
  * what already landed.
  */
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import { localDatePart } from "../../../domain/clock.js";
-import { SpanEventWireSchema, type SpanEventWire } from "../../../domain/events/types.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { localDatePart } from "../../../rules/time/clock.js";
+import { SpanEventWireSchema, type SpanEventWire } from "../../../models/events/types.js";
 import { appendEventStreamLine } from "./jsonl-streams.js";
 
 export interface SpanJsonlWriterDeps {

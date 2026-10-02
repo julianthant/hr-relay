@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { workflowPlanning, workflowProjections } from "../../../../src/base/workflow.js";
-import { WORKFLOW_MODULES } from "../../../../src/backend/app/control/workflow-registry.js";
-import { StepOmissionsSchema, planStepOmissions } from "../../../../src/domain/workflow/step-omission.js";
-import { personLookupDescriptor, personLookupModule, separationsDescriptor, separationsModule } from "../../../helpers/registered-workflows.js";
+import { workflowPlanning, workflowProjections } from "../../../../src/workflow-kit/workflow.js";
+import { WORKFLOW_MODULES } from "../../../../src/backend/app/registries/workflow-registry.js";
+import { StepOmissionsSchema, planStepOmissions } from "../../../../src/models/workflow/step-omission.js";
+import { personLookupDescriptor, personLookupModule, separationsDescriptor, separationsModule } from "../../../support/helpers/registered-workflows.js";
 
 const nodeGraph = (descriptor: typeof personLookupDescriptor | typeof separationsDescriptor) =>
   descriptor.nodes.map((node) => {

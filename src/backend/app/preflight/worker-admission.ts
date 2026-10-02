@@ -1,7 +1,7 @@
-import type { WorkerBrowserSessionFactory } from "../../../base/session.js";
-import type { RunMutationOutcome } from "../../runs/run-record-service.js";
-import type { RunRecord } from "../../../domain/run/record.js";
-import { PreflightAdmissionRefusal, type PreflightAdmissionScope } from "../../../domain/preflight-admission.js";
+import type { WorkerBrowserSessionFactory } from "../../../workflow-kit/session.js";
+import type { RunMutationOutcome } from "../../runs/lifecycle/run-record-service.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import { PreflightAdmissionRefusal, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
 import type { RuntimePreflight } from "./runtime-admission.js";
 
 class PreparationRequired extends Error {

@@ -13,10 +13,10 @@ import {
 } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
-import { ActorIdSchema, FingerprintSchema } from "../../../domain/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { ActorIdSchema, FingerprintSchema } from "../../../rules/identity/ids.js";
 import {
   RecoveryRuntimeLockSnapshotSchema,
   StoppedSystemProofSchema,

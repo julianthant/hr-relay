@@ -17,8 +17,8 @@ import {
 import { cn } from "../lib/utils.js";
 import { ShadcnBadge } from "./shadcn-badge.js";
 import { dsClip, dsIcon, dsRadius, dsText } from "./tokens.js";
-import { DISPLAY_STATUS_LABELS } from "../../domain/dashboard/status-vocabulary.js";
-import type { displayStatusOf } from "../../domain/dashboard/status-vocabulary.js";
+import { DISPLAY_STATUS_LABELS } from "../../models/dashboard/status-vocabulary.js";
+import type { displayStatusOf } from "../../models/dashboard/status-vocabulary.js";
 
 /**
  * The shared queue status vocabulary.

@@ -5,7 +5,7 @@ import { SYSTEM_HOST_PRESENTATION } from "./settings-hosts-model.js";
 import { useEffect, useState } from "react";
 import { CheckCircle2, CircleSlash, CircleStop } from "lucide-react";
 import type { z } from "zod";
-import { systemClock } from "../../domain/clock.js";
+import { systemClock } from "../../rules/time/clock.js";
 import { cn } from "../lib/utils.js";
 import {
   Button,
@@ -30,7 +30,7 @@ import {
 } from "../ds/ui.js";
 import { RefusedNotice } from "./refused-notice.js";
 import type { Refused } from "./refused-notice-model.js";
-import type { ProofFieldWire, RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import type { ProofFieldWire, RunDetailSectionResponseSchema } from "../../models/dashboard/run-detail.js";
 import {
   PROOF_BOOLEAN_OPTIONS,
   composeProofValue,
@@ -40,7 +40,7 @@ import {
   proofFieldLabel,
   proofFieldProblem,
 } from "../app/proof-form.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import { bannerPills, parkResolutions } from "./actions-model.js";
 import { parkResolutionArm } from "./park-resolve-model.js";
 import { settleCommandResult } from "../app/command-result.js";

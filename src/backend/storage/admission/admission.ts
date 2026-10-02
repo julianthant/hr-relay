@@ -7,8 +7,8 @@ import { acquireInstallation, assertInstallationLease, type ExistingAuthorityEvi
   type RelocationPlanBinding, type RelocationPreparationVerifier, type RelocationActivationVerifier,
   type RelocationVerifier, type RuntimeLocator, type RuntimePair } from "./installation.js";
 import type { VerifiedSourceControlEntries } from "./installation.js";
-import { rebuildRuntimeIsolation } from "../../../config/runtime-isolation.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
 
 const issued = new WeakSet<RuntimeAdmission>();

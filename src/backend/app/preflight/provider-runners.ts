@@ -1,5 +1,5 @@
-import { FEATURE_RUNTIME_SPECS, PREFLIGHT_CHECKS, PROVIDER_ADAPTER_SPECS } from "../../../domain/runtime-dependencies.js";
-import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../domain/preflight.js";
+import { FEATURE_RUNTIME_SPECS, PREFLIGHT_CHECKS, PROVIDER_ADAPTER_SPECS } from "../../../models/runtime/runtime-dependencies.js";
+import { PreflightObservationSchema, requiredPreflightChecks, type PreflightRunner } from "../../../models/preflight/preflight.js";
 import type { RuntimePreflightRunnerInput } from "./runtime-runners.js";
 
 /** Executable adapter availability is supplied by the composition; keys alone never imply readiness. */

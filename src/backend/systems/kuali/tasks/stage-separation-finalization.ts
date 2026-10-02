@@ -1,10 +1,10 @@
-import { defineTask } from "../../../../base/task.js";
-import { KualiStageSeparationFinalization } from "../../../../domain/contracts/kuali/stage-separation-finalization.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { KualiStageSeparationFinalization } from "../../../../models/systems/kuali/stage-separation-finalization.js";
 import {
   KualiCommentsChangedError,
   KualiDepartmentOptionNotOfferedError,
   KualiFinalizationStageNotPersistedError,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
 import { kualiDriver } from "../driver-declaration.js";
 
 /**

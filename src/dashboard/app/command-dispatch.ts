@@ -26,9 +26,9 @@
  * are the honest ones: a shape this build has no ceremony for, an EID the
  * packet never showed, an answer that was never authored.
  */
-import { systemClock } from "../../domain/clock.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import { directIdentifierDisplay } from "../../domain/redaction.js";
+import { systemClock } from "../../rules/time/clock.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
+import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 import type { ActionTarget } from "../surfaces/actions.js";
 import {
   identityCeremonyFor,

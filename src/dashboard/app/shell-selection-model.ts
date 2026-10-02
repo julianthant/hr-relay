@@ -1,5 +1,5 @@
-import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
-import type { RunDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { DashboardDayWire } from "../../models/dashboard/projection.js";
+import type { RunDetailWire } from "../../models/dashboard/run-detail.js";
 import type { AsyncResource } from "../state/async-resource.js";
 import { defaultTabFor, tabsFor, type PanelTab } from "../surfaces/log-panel-model.js";
 import type { AppRouteState } from "./url-state.js";

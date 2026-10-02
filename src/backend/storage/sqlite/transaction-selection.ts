@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { TransactionHistorySelectionSchema, TransactionSelectionRecordSchema } from "../../../domain/transaction-selection.js";
-import { TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
-import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest } from "../../../domain/archive/lifecycle-source.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { TransactionHistorySelectionSchema, TransactionSelectionRecordSchema } from "../../../rules/write-safety/transaction-selection.js";
+import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest } from "../../../models/archive/lifecycle-source.js";
 import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
 import type { ArchiveDatabase } from "./archive-database.js";
 

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import { StartCommandRequestSchema } from "../../domain/commands.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
+import { StartCommandRequestSchema } from "../../rules/commands/commands.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 
 const RecoverySchema = z.strictObject({ version: z.literal(1), command: StartCommandRequestSchema });
 export type LaunchFinalCommand = z.infer<typeof StartCommandRequestSchema>;

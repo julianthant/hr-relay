@@ -17,7 +17,7 @@
  * belong to the writer, not to this port.
  */
 import { z } from "zod";
-import { DiagnosticSafetyVersionSchema } from "../../domain/trust/failure.js";
+import { DiagnosticSafetyVersionSchema } from "../../models/trust/failure.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
@@ -31,7 +31,7 @@ import {
   TraceIdSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../domain/ids.js";
+} from "../../rules/identity/ids.js";
 import type {
   BrowserSessionId,
   BrowserSystemId,
@@ -39,10 +39,10 @@ import type {
   TraceId,
   WorkerId,
   WorkflowId,
-} from "../../domain/ids.js";
-import { ContractFieldPathSchema } from "../../domain/contracts/base.js";
-import { RedactedFieldSchema } from "../../domain/redaction.js";
-import { RequeueCauseSchema } from "../../domain/run/record.js";
+} from "../../rules/identity/ids.js";
+import { ContractFieldPathSchema } from "../../models/task/task-contract.js";
+import { RedactedFieldSchema } from "../../rules/redaction/redaction.js";
+import { RequeueCauseSchema } from "../../models/run/record.js";
 
 const SpanPathSchema = z.string().min(1);
 

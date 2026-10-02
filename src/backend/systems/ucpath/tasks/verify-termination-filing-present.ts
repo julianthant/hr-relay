@@ -1,6 +1,6 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathVerifyTerminationFilingPresent } from "../../../../domain/contracts/ucpath/verify-termination-filing-present.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathVerifyTerminationFilingPresent } from "../../../../models/systems/ucpath/verify-termination-filing-present.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { ucpathTerminationFilingPresence } from "../termination-verdict.js";
 

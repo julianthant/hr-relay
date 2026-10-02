@@ -14,7 +14,7 @@
  * its own produced value — this module only speaks HTTP and JSON.
  */
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 
 export const GEMINI_ENDPOINT = "https://generativelanguage.googleapis.com/v1beta/models";
 

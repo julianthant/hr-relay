@@ -36,11 +36,11 @@
  * `defineVerifiedLoginRecipe` in `authenticated-application.ts`).
  */
 import type { Page } from "playwright";
-import type { DuoCeremonyGate } from "../../../base/duo-ceremony-lease.js";
-import type { Config } from "../../../domain/config/schema.js";
-import type { RuntimeInstance } from "../../../domain/config/instance.js";
-import type { BrowserSystemId } from "../../../domain/ids.js";
-import type { LoginResult } from "../../../domain/session.js";
+import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
+import type { Config } from "../../../models/config/schema.js";
+import type { RuntimeInstance } from "../../../models/config/instance.js";
+import type { BrowserSystemId } from "../../../rules/identity/ids.js";
+import type { LoginResult } from "../../../models/sessions/session.js";
 
 /** The bounded step vocabulary a login failure can name. */
 export type BrowserLoginStep =

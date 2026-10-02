@@ -1,4 +1,35 @@
-# `reference/decisions.md` — the decision ledger (D1–D362, 2026-07-17 → 2026-10-01)
+# `reference/decisions.md` — the decision ledger (D1–D363, 2026-07-17 → 2026-10-02)
+
+The numbered decision history through D362 remains unchanged. D363 is recorded in the current
+operator amendments below; no earlier number is reused.
+
+## Operator amendments
+
+**UI catalog retirement (2026-10-01).** The generated UI catalog feature and its catalog-specific
+navigation, route, projection, generator, search command and generated documents are retired.
+D177, D274, D295 and D303 are superseded only for their catalog-specific requirements; semantic UI
+registries, selector verification/provenance, proofs, effects, write safety and Workflow Explorer
+task links remain. Owners: [operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01),
+[dashboard surfaces §9.5.3](dashboard-surfaces.md#953-the-workflow-explorer-and-the-ui-catalog--read-only-graph-strict-safe-edits-d176d177),
+and [frontend/backend integration](frontend-backend-integration.md#ui-catalog-retirement--operator-approved-2026-10-01).
+
+**D363 — Scenario and parity test retirement (operator-approved 2026-10-02).** Retire
+`tests/scenario/`, `tests/parity/`, their exact suite-only cases and the parity reference corpus.
+The five corpus-dependent cases in `scenario-coverage` and five T1b-manifest cases in
+`test-target-registry` retire; their remaining pure graph, registry, negative-control, semantic,
+import-boundary, provenance and write-safety checks stay active. Coverage floors do not change, and
+Dashboard TSX remains instrumented without claiming visual execution. Declared workflow scenario
+IDs remain contract data, not test evidence. A missing rehearsal manifest reports unavailable before
+execution; synthetic fixtures do not substitute for production scenario proof. The Explorer's
+scenario source links remain unresolved, so edits requiring scenario compile evidence are blocked.
+Future scenario and visual-test design requires a separate operator-led task. Current policy and
+retirement evidence: [guards and tests](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02),
+[workflow model](workflow-model.md#workflow-model-scenario-test-amendment-2026-10-02),
+[operator trust](operator-trust.md#scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02),
+the owning [retirement record](../plans/phase-3/backend-and-unit-tests.md#layout-polish--finish-the-approved-structure-before-phase-3),
+and its exact [suite retirement](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>),
+[scenario guard cases](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
+and [test-target guard cases](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
 
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**
 R1 shows identity evidence comparisons; F2 leads with write outcome and next steps. Concise code-based
@@ -2798,3 +2829,21 @@ Operator-directed amendment: terminal Queue roots and complete terminal delegate
 archived manually through the C0 saved-report transfer; permanent deletion remains a separately
 confirmed menu command. Root revision, tree membership, interrupted adoption/publication and retained
 write-protection requirements belong to [dashboard-surfaces](dashboard-surfaces.md#manual-terminal-archive-amendment-2026-09-29).
+
+### UI catalog retirement amendment — operator-approved 2026-10-01
+
+This amends existing decisions; it assigns no new decision number.
+
+| Existing decision | Current disposition |
+| --- | --- |
+| D177 | The generated operator catalog surface, artifact projection, generator and search command are retired. |
+| D274 | Its catalog-specific product-surface clause is retired; other product surfaces remain unchanged. |
+| D295 | The Settings catalog section and catalog URL state are retired with the feature. |
+| D303 | The catalog rail/record presentation and catalog projection requirements are retired. |
+
+Semantic UI registries, canonical IDs, selectors, verification and evidence provenance, task links,
+effect classification, write proofs and their safety assertions remain. The Workflow Explorer remains
+and builds task links from the semantic registries. [Operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01)
+owns the current contract; [dashboard surfaces §9.5.3](dashboard-surfaces.md#953-the-workflow-explorer-and-the-ui-catalog--read-only-graph-strict-safe-edits-d176d177)
+and [frontend/backend integration §3.6](frontend-backend-integration.md#36-query-and-artifact-surface)
+own their surface and route pointers.

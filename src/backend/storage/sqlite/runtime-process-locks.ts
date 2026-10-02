@@ -55,15 +55,15 @@ import {
 } from "node:fs";
 import { join, resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   WorkerIdSchema,
-} from "../../../domain/ids.js";
+} from "../../../rules/identity/ids.js";
 import type { RecoveryRuntimeLockSnapshot } from "./recovery-contracts.js";
 import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
 
@@ -72,7 +72,7 @@ import { RecoveryRuntimeLockSnapshotSchema } from "./recovery-contracts.js";
  * (`RecoveryRuntimeLockSnapshotSchema.processLocks` is a strict `{server,
  * workers}` object, and `RUNTIME_PROCESS_LOCK_NAMES` below is exactly those
  * two). `live-smoke` is a THIRD role added for review finding 3
- * (`scripts/live-browser-login-smoke.ts`, ref execution-and-sessions §10): it
+ * (`scripts/verify/browser-login.ts`, ref execution-and-sessions §10): it
  * reuses this same acquire/release/liveness-refusal discipline so a smoke
  * cannot open the authority database — and potentially migrate it — while
  * another live smoke holds the role, but it is deliberately NOT added to

@@ -1,28 +1,28 @@
 import { createHash } from "node:crypto";
 import { isAbsolute, relative, resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
-import { FingerprintSchema } from "../../../domain/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
 import { defaultRuntimePaths } from "./runtime-paths.js";
-import { HostConfigFactsSchema, type HostConfigFacts } from "../../../domain/config/host-display.js";
+import { HostConfigFactsSchema, type HostConfigFacts } from "../../../models/config/host-display.js";
 import {
   ConfigLeafPathSchema,
   ConfigProvenanceSchema,
   configLeafPaths,
   type ConfigProvenance,
-} from "../../../domain/config/provenance.js";
+} from "../../../models/config/provenance.js";
 import {
   ConfigSchema,
   SettingsOverrideInputSchema,
   DEFAULT_DISPLAY,
   type Config,
   type SettingsOverride,
-} from "../../../domain/config/schema.js";
+} from "../../../models/config/schema.js";
 
-export { ConfigLeafPathSchema, ConfigProvenanceSchema, configLeafPaths } from "../../../domain/config/provenance.js";
-export type { ConfigLeafPath, ConfigProvenance } from "../../../domain/config/provenance.js";
+export { ConfigLeafPathSchema, ConfigProvenanceSchema, configLeafPaths } from "../../../models/config/provenance.js";
+export type { ConfigLeafPath, ConfigProvenance } from "../../../models/config/provenance.js";
 export const ResolvedConfigSchema = z.strictObject({
   config: ConfigSchema,
   /** Provenance is explanatory metadata, never runtime decision input. */

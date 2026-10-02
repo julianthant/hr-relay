@@ -54,11 +54,11 @@ import {
   dsIcon,
   dsText,
 } from "../ds/ui.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 import {
   isTerminalQueueStatus,
   type QueueSurfaceWireSchema,
-} from "../../domain/dashboard/projection.js";
+} from "../../models/dashboard/projection.js";
 import { renameDraftProblem } from "../app/rename-draft.js";
 import type { ActionTarget } from "./actions.js";
 import { runTiming } from "./format.js";

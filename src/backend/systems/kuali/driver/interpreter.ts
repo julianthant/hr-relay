@@ -34,10 +34,10 @@
 import type { ElementHandle, Locator, Page, Response } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
 import { z } from "zod";
-import type { Clock } from "../../../../domain/clock.js";
-import { EidSchema, IsoInstantSchema } from "../../../../domain/ids.js";
-import type { ElementId, ObservationId } from "../../../../domain/ids.js";
-import { assertMintedMutationCapability } from "../../../../base/mutation-capability.js";
+import type { Clock } from "../../../../rules/time/clock.js";
+import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import type { ElementId, ObservationId } from "../../../../rules/identity/ids.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
 import {
   KUALI_ACTION_LIST_DOCUMENT_LINK,
   KUALI_ACTION_LIST_MATCHED_NUMBER,
@@ -45,10 +45,10 @@ import {
   KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
   KUALI_ACTION_LIST_SEARCH_INPUT,
   KualiActionListObservationSchema,
-} from "../../../../domain/ui/kuali-action-list.js";
-import type { KualiActionListObservation } from "../../../../domain/ui/kuali-action-list.js";
-import type { MutationCapability, UiActionProof } from "../../../../domain/ui/driver.js";
-import { UiActionProofSchema } from "../../../../domain/ui/driver.js";
+} from "../../../../models/ui/kuali-action-list.js";
+import type { KualiActionListObservation } from "../../../../models/ui/kuali-action-list.js";
+import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
+import { UiActionProofSchema } from "../../../../models/ui/driver.js";
 import {
   KUALI_RRSS_DISPLAYED_EID,
   KUALI_RRSS_EID_FIELD,
@@ -57,10 +57,10 @@ import {
   KualiActionIdSchema,
   KualiDocumentNumberSchema,
   KualiRrssDocumentDriverSchema,
-} from "../../../../domain/ui/kuali-rrss-document.js";
+} from "../../../../models/ui/kuali-rrss-document.js";
 import type {
   KualiRrssDocumentDriver,
-} from "../../../../domain/ui/kuali-rrss-document.js";
+} from "../../../../models/ui/kuali-rrss-document.js";
 import {
   KUALI_BLANK_OPTION_TEXT,
   KUALI_RRSS_DEPARTMENT_FIELD,
@@ -83,7 +83,7 @@ import {
   KualiSeparationDocumentSchema,
   KualiTransactionNumberSchema,
   parseKualiFormDate,
-} from "../../../../domain/ui/kuali-separation-document.js";
+} from "../../../../models/ui/kuali-separation-document.js";
 import type {
   KualiDateField,
   KualiFinalPayChoice,
@@ -91,7 +91,7 @@ import type {
   KualiSeparationDocumentRead,
   KualiTextField,
   KualiTransactionNumberField,
-} from "../../../../domain/ui/kuali-separation-document.js";
+} from "../../../../models/ui/kuali-separation-document.js";
 import {
   KUALI_FINALIZATION_FIELD_NAMES,
   KUALI_RRSS_FINALIZATION_FORM_KEYS,
@@ -108,14 +108,14 @@ import {
   KualiSavedFinalizationProofSchema,
   compareKualiFinalizationFields,
   kualiFinalizationFields,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
 import type {
   KualiFinalizationFields,
   KualiFinalizationReadBack,
   KualiFinalizationStaging,
   KualiFinalizationTarget,
   KualiObservedFinalizationFields,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
 import { KUALI_RRSS_SPACE_ID, KUALI_UI_REGISTRY } from "./ui-registry.js";
 import type { KualiLocatorRecipe } from "./ui-registry.js";
 

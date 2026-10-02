@@ -18,14 +18,14 @@
  * JSON is provenance.
  */
 import { z } from "zod";
-import { defineTask } from "../../../../base/task.js";
-import { ArtifactRefSchema } from "../../../../domain/artifacts.js";
-import { ExtractFormPage } from "../../../../domain/contracts/ocr/extract-form-page.js";
-import { admitOcrExtraction } from "../../../../domain/ocr/extraction.js";
-import { OcrFormTypeSchema } from "../../../../domain/ocr/form-registry.js";
-import { buildExtractionInstruction } from "../../../../domain/ocr/instruction.js";
-import { deriveSchemaHash } from "../../../../domain/schema-bound-value.js";
-import { JsonValueSchema } from "../../../../domain/canonical-json.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { ArtifactRefSchema } from "../../../../models/artifacts/artifacts.js";
+import { ExtractFormPage } from "../../../../models/processing/ocr/extract-form-page.js";
+import { admitOcrExtraction } from "../../../../models/ocr/extraction.js";
+import { OcrFormTypeSchema } from "../../../../models/ocr/form-registry.js";
+import { buildExtractionInstruction } from "../../../../models/ocr/instruction.js";
+import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
+import { JsonValueSchema } from "../../../../rules/validation/canonical-json.js";
 
 /**
  * What the adapter is asked for. The page travels as the WHOLE `ArtifactRef` —

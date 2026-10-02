@@ -9,13 +9,13 @@
  * HR fixture that quietly answered an employment-grid read would be inventing
  * employment. Each half therefore refuses the other's operations by name.
  */
-import { assertMintedMutationCapability } from "../../../../base/mutation-capability.js";
-import { IsoInstantSchema } from "../../../../domain/ids.js";
-import type { Eid } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
-import { UiActionProofSchema, PageStateProofSchema } from "../../../../domain/ui/driver.js";
-import type { MutationCapability, UiActionProof } from "../../../../domain/ui/driver.js";
-import type { UcpathStoreDriver } from "../../../../domain/ui/ucpath-driver.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import type { Eid } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import { UiActionProofSchema, PageStateProofSchema } from "../../../../models/ui/driver.js";
+import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
+import type { UcpathStoreDriver } from "../../../../models/ui/ucpath-driver.js";
 import {
   UCPATH_SMART_HR_DETAILS_READY,
   UCPATH_SMART_HR_DETAILS_SCREEN,
@@ -31,7 +31,7 @@ import {
   UcpathPendingSweepStagingSchema,
   UcpathTerminationStagingSchema,
   UcpathTransactionScanSchema,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathPendingSweepStaging,
   UcpathSsSmartHrSettlementDiagnostic,
@@ -39,7 +39,7 @@ import type {
   UcpathTerminationTarget,
   UcpathTransactionRow,
   UcpathTransactionScan,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 
 function refuse(half: string, operation: string): never {
   throw new Error(

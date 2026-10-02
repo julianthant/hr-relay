@@ -1,6 +1,6 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
-import type { EditorValue } from "../../domain/dashboard/settings-editor.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
+import type { EditorValue } from "../../models/dashboard/settings-editor.js";
 
 const PROVIDER_NAMES: Readonly<Record<string, string>> = Object.freeze({
   ocrExtract: "OCR extraction",

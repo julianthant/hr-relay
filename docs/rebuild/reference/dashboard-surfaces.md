@@ -55,8 +55,8 @@ Context rail as its sub-square) · gate ceremony · archive/activity/explorer ·
 intake, mobile capture and Edit Data — in that order and under those names, then add the three
 squares that exist only here: settings/storage, the shell, and the delegation/row model. One
 square, one name, one order: a `Dashboard · wire` task in the tree names a square, and it must name
-the same square in both docs. That doc owns the WIRE (endpoints, payload shapes, the parity lane);
-this doc owns what a surface MEANS, what it refuses to show, and why an absence is drawn as an
+the same square in both docs. That doc owns the WIRE (endpoints, payload shapes, and the historical
+parity-lane record); this doc owns what a surface MEANS, what it refuses to show, and why an absence is drawn as an
 absence.
 
 **Status blocks.** A section that describes a tree node carries `<!-- roadmap: <id> -->` and, once
@@ -79,7 +79,7 @@ baseline and owns its final desktop/zoom matrix; it does not repeat mobile clean
 | **Imports from `ref workflow-model`** | the descriptor shape and builder, `RunEnvelope` (`dryRun`'s one home, D6), the run-state machine including gates and parks (D5), the checkpoint store, and the readable span-path grammar | referenced, never redefined |
 | **Exports `ref workflow-model` adopts** | verdict/detail semantics, completion-program semantics, and the wire projections; the descriptor carries every consumed field | §3–§4 |
 | **Imports from `ref operator-trust`** | `FailureRecord`, evidence receipts and diagnostic bundles, semantic action targets, scenario ids, knowledge/fix references | referenced, never redefined |
-| **Imports from `ref frontend-backend-integration`** | the HTTP/SSE transport, the per-square wiring matrix (§5.1), the action-descriptor rule (§8.5) and the parity lane (§7) | referenced, never redefined |
+| **Imports from `ref frontend-backend-integration`** | the HTTP/SSE transport, the per-square wiring matrix (§5.1), the action-descriptor rule (§8.5), and the historical parity-lane record (§7) | referenced, never redefined |
 
 The "Where" column read `§§1–5, §9–10` until 2026-08-20 and had been wrong since 2i: §11 (intake),
 §12 (the capture phone) and §13 (the two reference takeovers) were this doc's too. They folded into
@@ -6235,6 +6235,19 @@ hygiene row.
 
 #### 9.5.3 The Workflow Explorer and the UI catalog — read-only graph, strict safe edits (D176/D177)
 
+**Current status — operator amendments 2026-10-01/02.** The Workflow Explorer remains; the UI
+catalog surface and catalog-specific routes, URL state, schemas, generation and search are retired.
+The semantic registries, selectors, verification/provenance, effect classification and write proofs
+remain. Catalog navigation, route state, projection and parity material are historical. The parity
+suite and reference corpus were retired on 2026-10-02; no current visual acceptance is claimed.
+Future visual-test design requires the operator. Explorer scenario source links remain unresolved,
+and changes requiring scenario compile evidence are blocked pending operator-led design. See
+[operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01)
+and its [scenario/parity amendment](operator-trust.md#scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02).
+[Frontend/backend integration §3.6](frontend-backend-integration.md#36-query-and-artifact-surface)
+owns the served route inventory. The Logs layout amendment preserves the approved presentation and
+interaction treatment; it adds no Logs API, which remains future Phase 3–5 work.
+
 Ref operator-trust §5 owns what the explorer IS and §1.3 owns what the catalog IS; this section owns where they
 sit and what they refuse to look like.
 
@@ -6280,7 +6293,11 @@ acts on a page. A page that colours six kinds six ways spends its whole colour b
 and has nothing left for consequence. In every case the word travels beside the glyph, so the tint
 is never the only encoding.
 
-##### D295 (2026-09-01) — the catalog is a Settings SECTION, and `?catalog=` is subordinate
+##### D295 (2026-09-01) — historical catalog Settings and URL contract
+
+**Historical D295 contract, superseded by the current status amendment at the top of §9.5.3:**
+the catalog section, route keys and navigation described below were retired on 2026-10-01. The
+Workflow Explorer and its current layout contract remain.
 
 **The Explorer replaces the queue at `?explore=<workflowId>`. The UI catalog does not replace
 anything: it is the `ui-catalog` section of the Settings takeover, at `?settings=ui-catalog`.**

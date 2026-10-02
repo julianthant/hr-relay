@@ -23,21 +23,21 @@
  * reasons, and a non-JSON body reports its SHAPE, never an excerpt.
  */
 import { z } from "zod";
-import type { ProviderAdapter, ProviderCallOptions } from "../../../base/providers.js";
-import type { Clock } from "../../../domain/clock.js";
+import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import {
   censusConfidence,
   confidenceFromImportance,
   GeocodeOutcomeSchema,
   GeocodeRequestSchema,
-} from "../../../domain/normalization/geocode.js";
+} from "../../../rules/normalization/geocode.js";
 import {
   ProviderAdapterOutcomeSchema,
   ProviderRequestEnvelopeSchema,
   type ProviderAdapterOutcome,
   type ProviderRequestEnvelope,
-} from "../../../domain/providers.js";
-import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
+} from "../../../models/providers/providers.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 
 const CENSUS_BASE = "https://geocoding.geo.census.gov/geocoder/locations";
 const NOMINATIM_BASE = "https://nominatim.openstreetmap.org/search";

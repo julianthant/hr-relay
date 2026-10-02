@@ -18,9 +18,42 @@ as-built blocks above §0. Each has been folded into the numbered section it ame
 states the contract AND what the tree actually holds in one place. The chronology header that
 recorded *when* the doc changed is `history/superseded/2026-08-21-workflow-model-status-header.md`.
 
-**Two workflows are registered** (`src/control/workflow-registry.ts`): `person-lookup` and
-`separations`. The latter owns its declared timeline steps. The five former `separations-*`
-registrations remain as historical step proofs and test fixtures, outside the active registry.
+**Two operator workflows enter**
+(`src/backend/app/registries/workflow-registry.ts`): `person-lookup` and `separations`. Separately,
+`step-proof-modules.ts` composes the five retained Separations chunk-harness definitions for
+historical proof reads; they do not enter the operator workflow registry or become startable, and
+their composition does not claim current scenario-test coverage.
+
+## Current source layout — operator-approved 2026-10-01
+
+The current folder map and dependency rules live in [codebase structure](codebase-structure.md).
+`src/workflow-kit/` owns shared browser-safe workflow authoring and compilation; schema shapes live
+in `src/models/`, and reusable pure decisions live in `src/rules/`. Each operator workflow keeps its
+browser-safe entry at `src/workflows/<id>/workflow.ts`; the workflow-specific `task-registry.ts` and
+`tasks/` are backend-loaded. A chunk harness is `src/workflows/<composition>/steps/<step>/step.ts`.
+For Separations,
+the five step keys are `identity-check`, `kronos-timecard`, `kuali-extraction`, `kuali-finalization`
+and `ucpath-transaction`. `src/workflow-kit/validation/source-layout.ts` derives workflow source and
+potential scenario locations from role, so paths move without changing runtime workflow IDs. The backend
+composition root in `src/backend/app/registries/` binds the main definitions to registered tasks and
+composes retained proofs separately. Renderer and lower-level packages must not import workflow
+implementations, and definitions must not import backend task implementations. The registration
+filename is `task-registry.ts`; task-store types, factories and namespace IDs keep their meanings.
+
+<a id="workflow-model-scenario-test-amendment-2026-10-02"></a>
+
+**Scenario-test amendment — operator-approved 2026-10-02.** `tests/scenario/` and `tests/parity/`
+were retired. `definition.scenarios` IDs remain declaration data for contract validation; they do
+not assert that tests ran. The source-layout scenario helpers do not imply current scenario files or
+coverage. Rehearsal manifests are unavailable before execution when absent. Future scenario and
+visual-test requirements are operator-led. The dated scenario-corpus sections below are historical;
+`scenario-coverage` retains pure graph-point checks and does not assert production scenario
+execution. Unit fixtures that inject scenario inputs remain unit evidence, not production-scenario
+proof. See the
+[current test policy](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).
+
+The older path diagrams and status snapshots below retain their original decision and behavioral
+evidence. Their directory names are superseded by the current map; they are not a second layout.
 
 ## Ownership (D1)
 
@@ -786,6 +819,19 @@ use their retained descriptors without admitting a new run or worker for those i
 
 #### 1.2.2 The workflow tree IS the rail and the timeline (D265, 2026-08-21)
 
+**Current path/file convention — operator-approved 2026-10-01.** The composition remains
+`src/workflows/<workflow>/workflow.ts`; only chunk-harness source moves to
+`src/workflows/<workflow>/steps/<step>/step.ts`. If future operator-led test design adds structural
+scenarios, the source-layout helper can derive matching role paths; no such files are current.
+`workflowSourceFolder`, `workflowSourcePath`,
+`workflowScenarioFolder` and `workflowStructuralScenarioPath` in
+`src/workflow-kit/validation/source-layout.ts` are the shared derivation for Explorer links, audits
+and authoring-budget checks. The main `WORKFLOW_MODULES` tuple still contains operator workflows;
+`STEP_PROOF_MODULES` separately composes retained harness proofs. Runtime workflow IDs and the
+D106 browser-safe import boundary do not change.
+
+The 2026-08-21/09-02 path discussion below records the prior step folder and entry-file convention;
+its role, timeline and safety decisions remain, but current path statements below follow this amendment.
 
 - [x] the rule, the separations mapping and the `workflow-layout` guard's invariant are written (this section, D265, 2026-08-21)
 - [x] `src/workflows/separations/` holds six step folders and the composition's `timeline` is one category per folder
@@ -815,18 +861,17 @@ rules below still audit those files, but they confer no registration or startabi
 | Path | What it is | Role (§1.2.1) | Where it shows |
 |---|---|---|---|
 | `src/workflows/<workflow>/workflow.ts` (its compiled descriptor + module) | a workflow the RAIL lists | `standalone` · `composition` | the rail, the picker, the Explorer |
-| `src/workflows/<workflow>/<step>/` | one TIMELINE STEP of that workflow — the folder name is the step's key | a folder, with a retained proof definition when present | one segment of that workflow's timeline; no separate picker, Explorer or worker entry (D345) |
+| `src/workflows/<workflow>/steps/<step>/step.ts` | one chunk-harness proof definition for the named timeline step | `chunk-harness` with `{ of, step }` | retained proof composition; no test-coverage claim, operator entry or startability |
 | ~~`src/workflows/proving/<workflow>/`~~ | **RETIRED the same day (D266)** — there is no test equipment: a proof of machinery is a dry-run scenario on the real workflow (ref guards-and-tests §10), never a workflow of its own | — | — |
 
 1. **A top-level folder is a rail entry.** The rail is D220's filter (`standalone` + `composition`),
    and since this ruling that filter is a READ of the tree's top level: nothing may sit at
    `src/workflows/<x>/` that the rail would not list, and nothing the rail lists may live anywhere
-   else. There is no reserved `proving/` arm.
+   else. The operator entry remains `workflow.ts`. There is no reserved `proving/` arm.
 2. **A sub-folder is a timeline step, and the declared timeline is one category per sub-folder.**
    D225 made the timeline categorical — a descriptor declares `timeline: [{ label, nodes }]`, one
-   category per segment, exhaustive over the graph. The step folder is where that category LIVES:
-   it holds the step's node fragments (the `.step()` / `.transaction()` / `.gate()` calls and the
-   pure folds only those nodes consume — what the composition imports to build itself) and the
+   category per segment, exhaustive over the graph. The declared step folder is under `steps/<step>/`; when separately proved it holds the
+   `step.ts` chunk-harness definition. The composition continues to own the step's node identities and the
    composition declares exactly one category per step folder, keyed by the folder name, labelled
    by the folder's own declared label. **D225's exhaustiveness now holds both ways:** a declared
    category with no folder, a folder with no category, or a node owned by two folders each fails
@@ -840,8 +885,7 @@ rules below still audit those files, but they confer no registration or startabi
    > is a declared group with no folder — and the guard's arm (b) below reads: every step folder
    > is a declared group AND a retained proof address; a declared group needs no folder.
 3. **A harness lives inside the step it proves.** D219's sentence — *a chunk harness is a step of
-   its composition* — becomes a path: the harness's `workflow.ts` sits in the step
-   folder, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
+   its composition* — becomes a path: the harness's `step.ts` sits under `steps/<step>/`, and its role gains the folder, `{ kind: "chunk-harness", of, step }`. The role audit
    refuses a `step` that `of` does not declare as a timeline category, or an `of` that is not an
    active composition. A harness that needs other steps' nodes IMPORTS
    their entry identities rather than restating them — today the three write harnesses each carry a second
@@ -865,6 +909,9 @@ are under `src/workflows/` and value-import only what a descriptor may.
 
 **The separations mapping — D225's six approved categories, as folders.**
 
+The table below is the prior folder/file mapping retained as D225 history; current harness paths use
+`src/workflows/separations/steps/<step>/step.ts` as specified above.
+
 | `src/workflows/separations/<step>/` | Timeline label (D225) | Nodes | Harness inside (id unchanged) |
 |---|---|---|---|
 | `kuali-extraction/` | Kuali extraction | `action` · `document` · `plan` · `termination-type` | `separations-kuali-read` |
@@ -879,16 +926,16 @@ operator-approved strings and the label/key pair is declared once in the folder.
 becomes `kuali-extraction` because the folder IS the category and the category's name was already
 ruled.
 
-**The guard — `workflow-layout` (`tests/unit/architecture/workflow-layout.test.ts`, active in
+**The guard — `workflow-layout` (`tests/architecture/workflow-kit/workflow-layout.test.ts`, active in
 `docs/rebuild/guard-inventory.json`, owned here).** Four arms, all decided against the real registry
 and the real tree, each with a violating fixture: (a) every active or retained proof module's path matches its
-role's arm above and holds exactly its one `workflow.ts` (D312/D317), and nothing else lives under
+role's arm above and holds exactly its one role-derived definition file (`workflow.ts` or `steps/<step>/step.ts`) (D312/D317), and nothing else lives under
 `src/workflows/` — a stray folder is refused; (b) for every workflow that declares a timeline, every
 step folder is one of its declared groups and the address of a retained `chunk-harness` proof, and a
 workflow with no declared timeline has no step folders (a declared group with no harness has no
 folder — D312 §1.6.1 item 5, 2026-09-02); (c) every `chunk-harness.step` names one of `of`'s declared categories; (d)
 `descriptor-coverage` §1.4 and `workflow-editor-compile-integrity` derive a descriptor's path from
-its ROLE (`src/workflows/<id>/` or `src/workflows/<of>/<step>/`), never from its id alone.
+its ROLE (`src/workflows/<id>/workflow.ts` or `src/workflows/<of>/steps/<step>/step.ts`), never from its id alone.
 
 **Every later migration inherits this shape** through the Phase 4 admission packet (§1.6.2):
 one top-level folder when the workflow is a rail workflow, step folders for its declared timeline,
@@ -1175,16 +1222,24 @@ the second spends write-safety evidence to solve an authoring problem.
 
 #### 1.6.1 The simplicity budget and explicit entry algebra (D312/D315/D316, 2026-09-02)
 
+**Current authoring/testing amendment — operator-approved 2026-10-02.** D312's four-artifact
+workflow surface below included scenario proof files, which were retired with `tests/scenario/`.
+Current authored artifacts are the workflow definition and its migration record, plus any new task
+required by the feature. Declared scenario IDs remain contract-validation data; they do not claim
+test execution. An absent rehearsal manifest is unavailable before execution. Future scenario tests
+are a separate operator-led design task.
+
 For a workflow that reuses existing tasks and generic surfaces, the authored workflow surface is
-exactly four artifacts:
+four artifacts under the former scenario-tier contract:
 
 1. `src/workflows/<id>/workflow.ts` containing one `defineWorkflow(...)` call;
 2. `tests/scenario/workflows/<id>/structural.scenario.test.ts`;
 3. `tests/scenario/workflows/<id>/dry-run.scenario.ts`; and
 4. `docs/rebuild/migrations/<id>.md`.
 
-Generated descriptors, module requirements, registry values, build-manifest rows and generic
-dashboard projections do not count because they are not authored. New driver operations, reusable
+Those T1 files are historical and are not current requirements. Generated descriptors, module
+requirements, registry values, build-manifest rows and generic dashboard projections do not count
+because they are not authored. New driver operations, reusable
 store tasks or genuinely new dashboard capabilities are allowed only when the workflow requires new
 behavior; they may not carry descriptor/module/registry glue under another name. A grouping, label,
 run-option or omission-form change to a reuse-only workflow changes `workflow.ts` once.
@@ -1265,9 +1320,10 @@ may be recorded as tasks beneath the selected subphase before admission. The mig
 gate and Phase 3 prerequisites are unchanged; numbered discovery tasks do not claim admission.
 
 Admission verification and phase completion are different gates. Admission proves that the planned
-workflow is understood well enough to build. Phase completion proves that the rebuilt workflow works
-under T1, live selector verification and controlled-write evidence where applicable. Work done for
-one candidate never silently admits the next candidate.
+workflow is understood well enough to build. Phase completion uses the owning plan's current checks,
+live selector verification and controlled-write evidence where applicable; the retired T1 scenario
+tier is not current evidence or a gate. Future scenario-test requirements need separate operator-led
+design. Work done for one candidate never silently admits the next candidate.
 
 #### 1.6.3 Shared capabilities enter with the first admitted consumer (D319/D329)
 
@@ -1298,8 +1354,9 @@ A workflow's optional `operationDisplay` is the composition layer. Its complete 
 instantiates every task/prepare/commit contract occurrence by stable occurrence path, binds only
 declared value slots, and supplies composition-specific transforms and outcome cases. Its value
 references resolve real run-input, configuration, constant, task-output, transformation, or child-
-output schema paths. Outcome case ids and continuations are display predicates, not executable
-scenario ids; `contract.scenarios` remains the test corpus only. Templates retain literal,
+output schema paths. Outcome case ids and continuations are display predicates, not workflow scenario
+ids; `contract.scenarios` remains declaration data for contract validation, not proof of test execution.
+Templates retain literal,
 variable, and ordered optional segments with closed pure conditions and declared join/trim rules.
 A fill-field action may reference its exact task-owned template through `templateId`. Compiler and
 frozen snapshot validation refuse missing templates or references on other action kinds. The
@@ -1892,7 +1949,12 @@ type fails the proof rather than passing it vacuously. `tests/integration/flow-t
 `tsc --extendedDiagnostics` over that file alone and fails outside the 5s / 1 GiB budget (measured
 0.47s / 215 MiB on the baseline machine).
 
-**Graph scenario coverage** is `src/domain/workflow/scenario-coverage.ts`. Task-level coverage is
+**Historical scenario-coverage implementation.** The design below describes the retired production
+scenario corpus and its former paths. `tests/scenario/` no longer exists; the retained
+`scenario-coverage` guard checks pure graph points and negative controls only, as recorded in the
+[current guard inventory](../guard-inventory.json) and [test policy](guards-and-tests.md#scenario-and-parity-suite-retirement--2026-10-02).
+
+**Graph scenario coverage** was implemented at `src/domain/workflow/scenario-coverage.ts`. Task-level coverage was
 already `defineTaskContract`'s job; what it cannot see is the graph, so
 `deriveGraphCoveragePoints` reads the paths off the runtime node view — one point per branch arm,
 open+resolve per gate, zero/one/many fan-out plus replay per delegation, one per declared policy on

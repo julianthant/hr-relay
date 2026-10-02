@@ -1,6 +1,6 @@
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import type { RunExistence } from "../../../domain/authority.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import type { RunExistence } from "../../../models/config/authority.js";
 /**
  * Ref dashboard-surfaces §2.6 / §10.4 (D79b) and ref operator-trust §6 — the durable, actor-keyed inbox.
  *
@@ -23,19 +23,19 @@ import type { RunExistence } from "../../../domain/authority.js";
  * prevents the durable write.
  */
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import type { IdFactory } from "../../../domain/identifiers.js";
-import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema } from "../../../domain/ids.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { IdFactory } from "../../../rules/identity/identifiers.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema } from "../../../rules/identity/ids.js";
 import {
   NotificationDeliverabilitySchema,
   NotificationTriggerEventSchema,
   notificationDeliverability,
   projectNotificationTrigger,
-} from "../../../domain/notification-triggers.js";
+} from "../../../rules/notifications/notification-triggers.js";
 import {
   NotificationRecordSchema,
   type NotificationRecord,
-} from "../../../domain/notifications.js";
+} from "../../../models/notifications/notifications.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
 /**

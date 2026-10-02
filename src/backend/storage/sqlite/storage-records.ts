@@ -1,71 +1,71 @@
-import { TransactionSelectionRecordSchema } from "../../../domain/transaction-selection.js";
+import { TransactionSelectionRecordSchema } from "../../../rules/write-safety/transaction-selection.js";
 import { RuntimeVersionAdoptionSchema, RuntimeVersionAuthoritySchema } from "./runtime-versions.js";
-import { RuntimeVersionChangeSchema } from "../../../domain/archive/runtime-version-change.js";
-import { RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../../domain/dashboard/search-index.js";
-import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../../domain/worker-control.js";
+import { RuntimeVersionChangeSchema } from "../../../models/archive/runtime-version-change.js";
+import { RunSearchIndexRecordSchema, RunSearchPublicationSchema, RunSearchDeclarationSchema, RunSearchGramSchema, RunSearchActorLinkSchema } from "../../../models/dashboard/search-index.js";
+import { WorkerControlRecordSchema, WorkerBrowserObservationSchema } from "../../../models/run/worker-control.js";
 import { NotificationPublicationSchema, NotificationHealthSchema } from "./notification-publications.js";
-import { ExplorerWorkflowOverrideSchema } from "../../../domain/dashboard/explorer.js";
-import { parsePendingCapture } from "../../../domain/archive/pending-capture.js";
-import { VersionChangeStorageSchema } from "../../../domain/archive/change-record.js";
+import { ExplorerWorkflowOverrideSchema } from "../../../models/dashboard/explorer.js";
+import { parsePendingCapture } from "../../../models/archive/pending-capture.js";
+import { VersionChangeStorageSchema } from "../../../models/archive/change-record.js";
 import { ArchiveTransferIdentitySchema } from "./run-evidence-ownership.js";
-import { RunSummarySchema, SummaryPublicationSchema } from "../../../domain/run/summary.js";
-import { AppSettingsSchema } from "../../../domain/config/app-settings.js";
-import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../domain/provider-accounting.js";
-import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../domain/generated-artifact.js";
-import { ImportedArtifactSchema } from "../../../domain/intake/imported-artifact.js";
-import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
-import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../../domain/commands-history.js";
+import { RunSummarySchema, SummaryPublicationSchema } from "../../../models/run/summary.js";
+import { AppSettingsSchema } from "../../../models/config/app-settings.js";
+import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../rules/providers/provider-accounting.js";
+import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
+import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
+import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../../rules/commands/commands-history.js";
 import { z } from "zod";
-import { DuoCeremonyLeaseRecordSchema } from "../../../domain/duo-ceremony-lease.js";
-import { RunSessionRecordSchema } from "../../../domain/run/session.js";
-import { DeletedRunRecordSchema } from "../../../domain/run/deleted-run.js";
-import { WorkerPoolRecordSchema } from "../../../domain/run/worker-pool.js";
+import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
+import { RunSessionRecordSchema } from "../../../models/run/session.js";
+import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
+import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
 import {
   AuthorityUpgradeRecordSchema,
   type AuthorityTableName,
-} from "../../../domain/authority.js";
-import { AdmittedExtractionSchema } from "../../../domain/ocr/extraction.js";
+} from "../../../models/config/authority.js";
+import { AdmittedExtractionSchema } from "../../../models/ocr/extraction.js";
 import {
   AuthorityCommandAuditRecordSchema,
   AuthorityCommandRecordSchema,
   BulkParentCommandRecordSchema,
-} from "../../../domain/commands.js";
-import { ConfigSnapshotRecordSchema } from "../../../domain/config/snapshot.js";
-import { DelegationManifestSchema, DependencyRecordSchema } from "../../../domain/dependencies.js";
-import { GateResultRecordSchema } from "../../../domain/gates.js";
+} from "../../../rules/commands/commands.js";
+import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
+import { DelegationManifestSchema, DependencyRecordSchema } from "../../../rules/workflow/dependencies.js";
+import { GateResultRecordSchema } from "../../../models/workflow/gates.js";
 import {
   DiagnosticBundleIdSchema,
   FingerprintSchema,
   IsoInstantSchema,
   PositiveIntSchema,
   VersionPlanIdSchema,
-} from "../../../domain/ids.js";
+} from "../../../rules/identity/ids.js";
 
 
-import { NotificationRecordSchema } from "../../../domain/notifications.js";
+import { NotificationRecordSchema } from "../../../models/notifications/notifications.js";
 
 
-import { RunRecordSchema } from "../../../domain/run/record.js";
-import { RunResultRecordSchema } from "../../../domain/run/result.js";
-import { StartPlanRecordSchema } from "../../../domain/run/start-plan.js";
-import { WorkerLeaseRecordSchema } from "../../../domain/run/worker.js";
-import { SchemaBoundCanonicalValueSchema } from "../../../domain/schema-bound-value.js";
+import { RunRecordSchema } from "../../../models/run/record.js";
+import { RunResultRecordSchema } from "../../../models/run/result.js";
+import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
+import { WorkerLeaseRecordSchema } from "../../../models/run/worker.js";
+import { SchemaBoundCanonicalValueSchema } from "../../../models/validation/schema-bound-value.js";
 import {
   ArchivedRunRecordSchema,
   ArchiveRelaunchRecordSchema,
   VersionBumpApplicationSchema,
   VersionBumpPlanSchema,
   versionBumpPlanFingerprint,
-} from "../../../domain/archive/model.js";
-import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";
-import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../domain/write-safety.js";
+} from "../../../models/archive/model.js";
+import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
+import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../rules/write-safety/write-safety.js";
 import {
   DiagnosticAttachmentSchema,
   DiagnosticBundleSchema,
-} from "../../../domain/trust/diagnostic.js";
-import { RunEvidenceReceiptSchema } from "../../../domain/trust/evidence.js";
-import { DryRunScenarioResultSchema } from "../../../domain/trust/dry-run-scenario-result.js";
-import { FailureRecordSchema } from "../../../domain/trust/failure.js";
+} from "../../../models/trust/diagnostic.js";
+import { RunEvidenceReceiptSchema } from "../../../models/trust/evidence.js";
+import { DryRunScenarioResultSchema } from "../../../models/trust/dry-run-scenario-result.js";
+import { FailureRecordSchema } from "../../../models/trust/failure.js";
 
 export const SqliteStorageRecordIdSchema = z.string().uuid().brand<"SqliteStorageRecordId">();
 
@@ -163,7 +163,7 @@ export type VersionPlanConsumeOutcome = z.infer<typeof VersionPlanConsumeOutcome
  * this is the first real shape, not a migration of one. `projectedAt` exists
  * exactly when `state` is `"projected"` (enforced by the repository's ack).
  */
-export { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema, ArtifactOutboxAckRequestSchema, ArtifactSinkHeadRecordRequestSchema } from "../../../domain/generated-artifact.js";
+export { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema, ArtifactOutboxAckRequestSchema, ArtifactSinkHeadRecordRequestSchema } from "../../../models/artifacts/generated-artifact.js";
 
 /**
  * A diagnostic attachment is stored beside its bundle so a content-addressed

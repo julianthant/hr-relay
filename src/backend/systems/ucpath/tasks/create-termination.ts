@@ -1,10 +1,10 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathCreateTermination } from "../../../../domain/contracts/ucpath/create-termination.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathCreateTermination } from "../../../../models/systems/ucpath/create-termination.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
   UCPATH_SMART_HR_SAVE_AND_SUBMIT_BUTTON,
   UcpathCommitRefusedError,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathTerminationVerdict } from "../termination-verdict.js";
 

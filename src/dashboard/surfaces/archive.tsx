@@ -102,12 +102,12 @@ TriangleAlert,
 } from "lucide-react";
 import { Fragment,useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import { z } from "zod";
-import type { VersionBumpChangeRecord } from "../../domain/archive/change-record.js";
-import type { ResolvedLedgerLineWire } from "../../domain/archive/ledger-resolution.js";
-import { EVENT_STREAM_RETENTION_DAYS,type ArchiveRetentionWire } from "../../domain/archive/retention.js";
-import type { ArchivedCaptureTile,ArchivedRunAttempt,ArchivedRunSections } from "../../domain/archive/sections.js";
-import { systemClock } from "../../domain/clock.js";
-import type { CommandResult,VersionScope } from "../../domain/commands.js";
+import type { VersionBumpChangeRecord } from "../../models/archive/change-record.js";
+import type { ResolvedLedgerLineWire } from "../../models/archive/ledger-resolution.js";
+import { EVENT_STREAM_RETENTION_DAYS,type ArchiveRetentionWire } from "../../models/archive/retention.js";
+import type { ArchivedCaptureTile,ArchivedRunAttempt,ArchivedRunSections } from "../../models/archive/sections.js";
+import { systemClock } from "../../rules/time/clock.js";
+import type { CommandResult,VersionScope } from "../../rules/commands/commands.js";
 import type {
 ArchivedCaptureResourceWire,
 ArchivedRunDetailWire,
@@ -116,8 +116,8 @@ ArchiveIndexWire,
 ArchiveSweepWire,
 VersionBumpPlanWire,
 WorkflowVersionStateWire,
-} from "../../domain/dashboard/archive.js";
-import { timelineEventDuration,type NoteWireSchema } from "../../domain/dashboard/run-detail.js";
+} from "../../models/dashboard/archive.js";
+import { timelineEventDuration,type NoteWireSchema } from "../../models/dashboard/run-detail.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { DashboardClientError } from "../client/errors.js";
 import {

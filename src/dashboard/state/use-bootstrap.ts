@@ -5,7 +5,7 @@
  * this list; there is no parallel workflow registry in the frontend.
  */
 import { useEffect, useState } from "react";
-import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
+import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import { DashboardClientError } from "../client/index.js";
 import { failed, loaded, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";

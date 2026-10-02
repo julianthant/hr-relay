@@ -1,6 +1,6 @@
 import { existsSync, statSync } from "node:fs";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import { AuthorityDatabase, AuthorityDatabaseOptionsSchema } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import {

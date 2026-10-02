@@ -35,8 +35,8 @@
  * function, so no two of them can disagree about what is a step and what is a
  * workflow.
  */
-import type { WorkflowCategory } from "../../domain/workflow/presentation.js";
-import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
+import type { WorkflowCategory } from "../../models/workflow/presentation.js";
+import type { WorkflowModuleRole } from "../../workflow-kit/validation/module-role.js";
 
 interface CategoryDisplay {
   /** the operator's heading for this category */

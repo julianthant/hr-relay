@@ -1,8 +1,8 @@
 import { z } from "zod";
-import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { RerunPlanRefusalCodeSchema } from "../../domain/run/rerun.js";
-import { StartPlanRequestSchema,StartPlanWireSchema,type StartPlanWire } from "../../domain/dashboard/start-plan.js";
+import { RerunWarningRequestSchema, RerunWarningWireSchema, type RerunWarningWire } from "../../models/dashboard/rerun-warning.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { RerunPlanRefusalCodeSchema } from "../../models/run/rerun.js";
+import { StartPlanRequestSchema,StartPlanWireSchema,type StartPlanWire } from "../../models/dashboard/start-plan.js";
 import { DashboardClientError, httpError, schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 

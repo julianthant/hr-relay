@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useEffectEvent, useRef, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { deepFreeze } from "../../domain/immutability.js";
-import { SettingsCommandRequestSchema } from "../../domain/commands.js";
-import { deriveSettingsPatchFingerprint } from "../../domain/config/settings.js";
-import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { deepFreeze } from "../../rules/validation/immutability.js";
+import { SettingsCommandRequestSchema } from "../../rules/commands/commands.js";
+import { deriveSettingsPatchFingerprint } from "../../models/config/settings.js";
+import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { useSettingsPreflight } from "./settings-preflight-model.js";
 import { useProtectedSettings } from "./settings-protected-model.js";

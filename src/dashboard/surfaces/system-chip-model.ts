@@ -8,7 +8,7 @@
  * refresh boundary.
  */
 import type { z } from "zod";
-import type { BrowserSystemIdSchema } from "../../domain/ids.js";
+import type { BrowserSystemIdSchema } from "../../rules/identity/ids.js";
 
 export type BrowserSystemId = z.infer<typeof BrowserSystemIdSchema>;
 

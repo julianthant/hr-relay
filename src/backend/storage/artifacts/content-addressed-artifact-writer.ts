@@ -12,14 +12,14 @@ import {
 import { join } from "node:path";
 import { Readable } from "node:stream";
 import { z } from "zod";
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
+import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import {
   ArtifactPutMetadataSchema,
   ArtifactRefSchema,
-} from "../../../domain/artifacts.js";
-import type { ArtifactPutMetadata, ArtifactRef } from "../../../domain/artifacts.js";
-import { ArtifactIdSchema } from "../../../domain/ids.js";
+} from "../../../models/artifacts/artifacts.js";
+import type { ArtifactPutMetadata, ArtifactRef } from "../../../models/artifacts/artifacts.js";
+import { ArtifactIdSchema } from "../../../rules/identity/ids.js";
 
 const StoredArtifactSchema = z.strictObject({
   ref: ArtifactRefSchema,

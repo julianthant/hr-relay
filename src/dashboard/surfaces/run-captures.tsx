@@ -2,7 +2,7 @@ import { fmtActionClock } from "./format.js";
 /** Verified captures retain their exact run membership. */
 import { Banner, Button, ButtonLink, Dialog, DialogBody, DialogClose, DialogContent, DialogFooter,
   DialogTrigger, EmptyState, SectionLabel, Skeleton, dsRadius, dsText } from "../ds/ui.js";
-import type { RunCaptureArtifactWire } from "../../domain/dashboard/run-detail.js";
+import type { RunCaptureArtifactWire } from "../../models/dashboard/run-detail.js";
 import { cn } from "../lib/utils.js";
 import { runCaptureFrame, useRunCaptureImage, type RunCaptureItem, type RunCapturesState } from "./run-captures-model.js";
 

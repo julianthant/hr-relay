@@ -1,7 +1,7 @@
-import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../domain/canonical-json.js";
-import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../rules/validation/canonical-json.js";
+import type { RerunValuesSnapshot } from "../../models/dashboard/rerun-values.js";
 import type { RunStartWorkflow } from "./run-start.js";
-import type { RerunSource } from "../../domain/run/rerun.js";
+import type { RerunSource } from "../../models/run/rerun.js";
 
 export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): string[] {
   if (snapshot.source.workflow !== workflow.workflowId || snapshot.source.descriptorVersion !== workflow.version

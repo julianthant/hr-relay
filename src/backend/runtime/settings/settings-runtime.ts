@@ -1,18 +1,18 @@
-import { selectActiveRunSettings } from "../../runs/run-settings.js";
-import { executionConfigFromStored } from "../../../domain/config/snapshot-generations.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import type { HostConfigFacts } from "../../../domain/config/host-display.js";
-import type { CredentialStore } from "../../../domain/config/credential-store.js";
+import { selectActiveRunSettings } from "../../runs/settings/run-settings.js";
+import { executionConfigFromStored } from "../../../models/config/snapshot-generations.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { HostConfigFacts } from "../../../models/config/host-display.js";
+import type { CredentialStore } from "../../../models/config/credential-store.js";
 import { resolveConfigWithProvenance, type AdmittedRuntimeStoragePair } from "../../app/config/resolve.js";
 import {
   SettingsRuntimeStatusSchema, SETTINGS_SCHEMA_HASH,
   initialSettingsFileRecord, settingsRuntimeIdentity,
   type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus,
-} from "../../../domain/config/settings.js";
-import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../domain/config/protected-settings.js";
-import type { CommandAuthority } from "../../runs/command-kernel.js";
+} from "../../../models/config/settings.js";
+import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
+import type { CommandAuthority } from "../../runs/commands/command-kernel.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
 /** SQLite is the sole ordinary authority. Revision one is the absent singleton. */

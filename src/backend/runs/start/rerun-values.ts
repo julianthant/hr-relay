@@ -1,21 +1,21 @@
 import { z } from "zod";
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { RunExistenceSchema, type RunExistence } from "../../../domain/authority.js";
-import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../domain/canonical-json.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { RunExistenceSchema, type RunExistence } from "../../../models/config/authority.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import { RerunValuesRequestSchema, RerunValuesResponseSchema,
-  type RerunValuesRefusalCode, type RerunValuesResponse, type RerunValuesSnapshot } from "../../../domain/dashboard/rerun-values.js";
-import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../domain/protected-input.js";
-import { FingerprintSchema, BrowserSystemIdSchema } from "../../../domain/ids.js";
-import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../domain/write-safety.js";
-import { repeatEvidenceDigest } from "../../../domain/run/rerun.js";
-import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
-import { projectTransactionOutcome } from "../../../domain/workflow/graph.js";
-import type { RuntimeFlowNode } from "../../../domain/workflow/graph.js";
-import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
-import { RerunValueMappingsSchema } from "../../../domain/workflow/rerun-values.js";
-import { TransactionOutcomeSchema } from "../../../domain/write-safety-primitives.js";
+  type RerunValuesRefusalCode, type RerunValuesResponse, type RerunValuesSnapshot } from "../../../models/dashboard/rerun-values.js";
+import { retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
+import { FingerprintSchema, BrowserSystemIdSchema } from "../../../rules/identity/ids.js";
+import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../rules/write-safety/write-safety.js";
+import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
+import { projectTransactionOutcome } from "../../../models/workflow/graph.js";
+import type { RuntimeFlowNode } from "../../../models/workflow/graph.js";
+import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import { RerunValueMappingsSchema } from "../../../models/workflow/rerun-values.js";
+import { TransactionOutcomeSchema } from "../../../rules/write-safety/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { rerunTargetAccepts } from "../../../domain/validation/rerun-values.js";
+import { rerunTargetAccepts } from "../../../models/validation/rerun-values.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };

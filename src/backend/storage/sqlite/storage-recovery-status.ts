@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { closeSync, constants, fstatSync, lstatSync, openSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { z } from "zod";
-import { backupHasArchiveTransferCustody } from "../compat/backup-inspection.js";
+import { backupHasArchiveTransferCustody } from "../compatibility/backup-inspection.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "./migrations.js";
 import { verifyLifecyclePair } from "./lifecycle-storage.js";

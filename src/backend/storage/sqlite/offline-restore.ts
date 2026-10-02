@@ -16,9 +16,9 @@ import {
 } from "node:fs";
 import { basename, dirname, join, resolve } from "node:path";
 import { z } from "zod";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
-import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { inspectAuthorityBackupReadOnly } from "../compatibility/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { isNormalAuthoritySchemaVersion } from "./migrations.js";

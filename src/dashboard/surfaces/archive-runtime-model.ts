@@ -1,5 +1,5 @@
-import type { SavedArchiveGroupsWire, SavedArchiveReportWire, SavedRuntimeVersionIndexWire } from "../../domain/dashboard/archive.js";
-import { formatRuntimeVersion, planRuntimeVersionTransition, type RuntimeVersion, type RuntimeVersionScope, type RuntimeVersionTransition } from "../../domain/archive/runtime-version.js";
+import type { SavedArchiveGroupsWire, SavedArchiveReportWire, SavedRuntimeVersionIndexWire } from "../../models/dashboard/archive.js";
+import { formatRuntimeVersion, planRuntimeVersionTransition, type RuntimeVersion, type RuntimeVersionScope, type RuntimeVersionTransition } from "../../models/archive/runtime-version.js";
 
 export type ArchiveGroup = SavedArchiveGroupsWire["groups"][number];
 export type DashboardArchiveGroup = {

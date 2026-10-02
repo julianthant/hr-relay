@@ -10,7 +10,7 @@
  */
 import { execFileSync } from "node:child_process";
 import { z } from "zod";
-import type { HostPrimaryDisplayObservation } from "../../../domain/config/host-display.js";
+import type { HostPrimaryDisplayObservation } from "../../../models/config/host-display.js";
 
 export type HostCommandRunner = (file: string, args: readonly string[]) => string;
 

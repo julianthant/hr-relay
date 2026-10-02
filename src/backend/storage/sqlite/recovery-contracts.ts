@@ -1,6 +1,6 @@
-import { ProtectedSettingsPresenceEntriesSchema } from "../../../domain/config/protected-settings.js";
+import { ProtectedSettingsPresenceEntriesSchema } from "../../../models/config/protected-settings.js";
 import { z } from "zod";
-import { AuthorityTableNameSchema, ProjectionTableNameSchema, AuthorityUpgradePhaseSchema } from "../../../domain/authority.js";
+import { AuthorityTableNameSchema, ProjectionTableNameSchema, AuthorityUpgradePhaseSchema } from "../../../models/config/authority.js";
 import {
   ActorIdSchema,
   CommandIdSchema,
@@ -12,15 +12,15 @@ import {
   RunIdSchema,
   TraceIdSchema,
   WorkflowIdSchema,
-} from "../../../domain/ids.js";
+} from "../../../rules/identity/ids.js";
 import {
   InstanceSelectionSchema,
   RunPrioritySchema,
   RunShapeSchema,
-} from "../../../domain/run/envelope.js";
+} from "../../../models/run/envelope.js";
 import {
   ProtectedSettingsNameSchema,
-} from "../../../domain/config/protected-settings.js";
+} from "../../../models/config/protected-settings.js";
 import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, NORMAL_AUTHORITY_SCHEMA_VERSION } from "./migrations.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();

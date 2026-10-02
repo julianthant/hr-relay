@@ -17,33 +17,33 @@ import { pipeline } from "node:stream/promises";
 import { basename, dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
 import {
   deriveSettingsCommandFingerprint,
   CommandAuditRecordSchema,
   MarkedProtectedSettingsCommandRequestSchema,
   SettingsCommandRequestSchema,
-} from "../../../domain/commands.js";
+} from "../../../rules/commands/commands.js";
 import {
   deriveJournaledSettingsCommandFingerprint,
   HistoricalProtectedSettingsAuditSchema,
   HistoricalProtectedSettingsCommandSchema,
   journaledSettingsCommand,
-} from "../../../domain/commands-history.js";
+} from "../../../rules/commands/commands-history.js";
 import {
   ProtectedSettingsNameSchema,
-} from "../../../domain/config/protected-settings.js";
-import { LegacyProtectedSettingsNameSchema } from "../../../domain/config/protected-settings-legacy.js";
+} from "../../../models/config/protected-settings.js";
+import { LegacyProtectedSettingsNameSchema } from "../../../models/config/protected-settings-legacy.js";
 import {
   SettingsFileRecordSchema,
   type SettingsFileRecord,
-} from "../../../domain/config/settings.js";
-import { SettingsCurrentRecordSchema } from "../compat/d331-settings-current.js";
-import { D350HistoricalSettingsFileRecordSchema, D350HistoricalSettingsRootAuthoritySchema } from "../compat/d350-settings-v2-backup.js";
-import { ProtectedSettingsCurrentRecordSchema } from "../../../domain/authority.js";
-import { inspectAuthorityBackupReadOnly } from "../compat/backup-inspection.js";
+} from "../../../models/config/settings.js";
+import { SettingsCurrentRecordSchema } from "../compatibility/d331-settings-current.js";
+import { D350HistoricalSettingsFileRecordSchema, D350HistoricalSettingsRootAuthoritySchema } from "../compatibility/d350-settings-v2-backup.js";
+import { ProtectedSettingsCurrentRecordSchema } from "../../../models/config/authority.js";
+import { inspectAuthorityBackupReadOnly } from "../compatibility/backup-inspection.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";
 import { isNormalAuthoritySchemaVersion } from "./migrations.js";

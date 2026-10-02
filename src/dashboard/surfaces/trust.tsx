@@ -53,8 +53,8 @@ import {
   dsRadius,
   dsText,
 } from "../ds/ui.js";
-import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
+import type { FailureDetailWireSchema } from "../../models/dashboard/run-detail.js";
+import type { RunEvidenceReceiptSchema } from "../../models/trust/evidence.js";
 import { fmtClock, shortHash } from "./format.js";
 import {
   acceptFailureResolutionReadback,
@@ -79,7 +79,7 @@ import { SystemTag } from "./system-chip.js";
 import { DiagnosticScreenshotGallery, RestrictedScreenshotWarning } from "./diagnostic-screenshot.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
-import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
+import type { DiagnosticBundleWire } from "../../models/dashboard/diagnostic-bundle.js";
 
 export type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;
 export type FailureDetailWire = z.infer<typeof FailureDetailWireSchema>;

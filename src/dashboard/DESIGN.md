@@ -63,6 +63,11 @@ the macOS system UI font (San Francisco) through the dashboard sans token.
     under `src/dashboard`), and the dirty `ValueField` is a real controlled field.
 -->
 
+**Current visual acceptance (2026-10-02).** This brief and the retained demo remain design
+references. The parity suite and reference corpus were retired; historical visual receipts do not
+prove current acceptance. Future visual-test design is operator-led, and this note does not claim a
+refreeze or new visual acceptance.
+
 **Current Logs theme scope (2026-09-30).** Logs is the first surface using the reusable Tailwind v4
 palette and type scale. See [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for its tokens and incremental
 adoption guidance; `.ui-theme-scope` keeps the new palette opt-in for existing DS controls.

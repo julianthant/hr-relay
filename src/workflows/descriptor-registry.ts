@@ -12,7 +12,7 @@
  * entry here is the exact object `WORKFLOW_MODULES` composes, in the same
  * order, so the two tuples cannot drift.
  */
-import { compileWorkflow } from "../base/workflow-definition.js";
+import { compileWorkflow } from "../workflow-kit/workflow-definition.js";
 import { personLookupWorkflow } from "./person-lookup/workflow.js";
 import { separationsWorkflow } from "./separations/workflow.js";
 

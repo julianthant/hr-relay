@@ -5,7 +5,7 @@
  * is a finished server read model.
  */
 import { useEffect, useState } from "react";
-import type { RunDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/index.js";
 import { failed, IDLE, loaded, LOADING, type AsyncResource } from "./async-resource.js";
 import { useDashboardClient } from "./client-context.js";

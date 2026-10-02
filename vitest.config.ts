@@ -11,8 +11,6 @@ export const REBUILD_ARCHITECTURE_TEST_INCLUDE = [
   "tests/architecture/**/*.test.ts",
 ] as const;
 export const REBUILD_ARCHITECTURE_TEST_EXCLUDE = [] as const;
-export const REBUILD_SCENARIO_TEST_INCLUDE = ["tests/scenario/**/*.test.ts"] as const;
-export const REBUILD_SCENARIO_TEST_EXCLUDE = ["tests/scenario/combined/**"] as const;
 export const REBUILD_TEST_PROJECTS = [
   { name: "unit", include: REBUILD_UNIT_TEST_INCLUDE, exclude: REBUILD_UNIT_TEST_EXCLUDE },
   { name: "integration", include: REBUILD_INTEGRATION_TEST_INCLUDE, exclude: REBUILD_INTEGRATION_TEST_EXCLUDE },
@@ -21,7 +19,6 @@ export const REBUILD_TEST_PROJECTS = [
     include: REBUILD_ARCHITECTURE_TEST_INCLUDE,
     exclude: REBUILD_ARCHITECTURE_TEST_EXCLUDE,
   },
-  { name: "scenario", include: REBUILD_SCENARIO_TEST_INCLUDE, exclude: REBUILD_SCENARIO_TEST_EXCLUDE },
 ] as const;
 export const REBUILD_TEST_EXEC_ARGV = ["--no-experimental-webstorage"] as const;
 export const REBUILD_TEST_REPORTERS = ["verbose"] as const;
@@ -30,24 +27,6 @@ export const REBUILD_COVERAGE_EXCLUSIONS = [
     pattern: "src/generated/**/*.ts",
     activation: { ownerRoot: "src/generated", status: "planned" },
     reason: "Generated projections are verified by determinism guards.",
-  },
-  // The .tsx presentation subtrees (ref frontend-backend-integration §2) landed with the 1i shell;
-  // their rendered behavior is proven by the headless Playwright parity lane
-  // (tests/parity), not v8 line counting. Extracted .ts logic stays measured.
-  {
-    pattern: "src/dashboard/app/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/app", status: "active" },
-    reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
-  },
-  {
-    pattern: "src/dashboard/surfaces/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/surfaces", status: "active" },
-    reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
-  },
-  {
-    pattern: "src/dashboard/ds/**/*.tsx",
-    activation: { ownerRoot: "src/dashboard/ds", status: "active" },
-    reason: "Presentation components use the headless Playwright lane; extracted .ts logic remains measured.",
   },
 ] as const;
 
@@ -71,7 +50,7 @@ export default defineConfig({
     // full behavior/refusal title. Commands do not layer a second reporter on
     // top, and focused callers may still deliberately override it.
     reporters: [...REBUILD_TEST_REPORTERS],
-    // Node's process-global experimental localStorage is neither browser parity
+    // Node's process-global experimental localStorage is neither browser state
     // nor isolated test state. Disable it in workers instead of suppressing its
     // warning; browser tests exercise real window.localStorage in Playwright.
     execArgv: [...REBUILD_TEST_EXEC_ARGV],
@@ -106,46 +85,46 @@ export default defineConfig({
         "src/backend/logs/generated-artifact-projection.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/logs/observed-data.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/logs/span-emitter.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/command-application.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/command-kernel.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/command-refusal.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/dry-run-scenario-runner.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/evidence-receipt.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/failure-resolution.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/provider-admission.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/run-claim-admission.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/run-fan-out.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/run-record-service.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/run-result.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/run-settings.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/run-summary.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/task-provenance.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/commands/command-application.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/commands/command-kernel.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/commands/command-refusal.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/start/dry-run-scenario-runner.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/provenance/evidence-receipt.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/lifecycle/failure-resolution.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/start/provider-admission.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/lifecycle/run-claim-admission.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/lifecycle/run-fan-out.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/lifecycle/run-record-service.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/lifecycle/run-result.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/settings/run-settings.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/projections/run-summary.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/provenance/task-provenance.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/archive/archive-runtime-version-changes.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/archive/archive-terminal-runs.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runs/archive/archive-version-changes.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/storage/run-lifecycle-storage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/storage/storage-relocation-plans.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/terminal-authorization.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runs/test-data-usage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/app/runtime-composition.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/checkpoint-patch.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/deadline-scheduler.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/duo-ceremony-gate.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/gate-source-runtime.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/operation-action-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/receipt-derivation-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/repeat-proof.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/run-checkpoint-reader.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/run-executor.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/storage/sqlite/run-lifecycle-storage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/storage/maintenance/storage-relocation-plans.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/lifecycle/terminal-authorization.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runs/provenance/test-data-usage.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/app/composition/runtime-composition.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/checkpoints/checkpoint-patch.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/scheduling/deadline-scheduler.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/gates/duo-ceremony-gate.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/gates/gate-source-runtime.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/writes/operation-action-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/writes/receipt-derivation-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/gates/repeat-proof.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/checkpoints/run-checkpoint-reader.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-executor.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/durable-intent.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/idle-claim.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/backend/runtime/policies/task-retry.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/run-failure.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/worker-loop.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/worker-sessions.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/write-recovery.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/write-resolution-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
-        "src/backend/runtime/write-sequencer.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/execution/run-failure.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/workers/worker-loop.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/workers/worker-sessions.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/writes/write-recovery.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/writes/write-resolution-binding.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
+        "src/backend/runtime/writes/write-sequencer.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/stores/common/mutation*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*write-sequencer*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,
         "src/**/*subject-binding*.ts": REBUILD_COVERAGE_FLOORS.safetyCritical,

@@ -35,22 +35,22 @@
 import type { Readable } from "node:stream";
 import { Buffer } from "node:buffer";
 import { z } from "zod";
-import type { ProviderAdapter, ProviderCallOptions } from "../../../base/providers.js";
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
-import { ArtifactRefSchema } from "../../../domain/artifacts.js";
-import type { Clock } from "../../../domain/clock.js";
-import { deepFreeze } from "../../../domain/immutability.js";
+import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
+import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
+import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import {
   ProviderCostEstimateSchema,
   ProviderUnavailableReasonSchema,
-} from "../../../domain/provider-admission.js";
+} from "../../../rules/providers/provider-admission.js";
 import {
   ProviderAdapterOutcomeSchema,
   ProviderRequestEnvelopeSchema,
   type ProviderAdapterOutcome,
   type ProviderRequestEnvelope,
-} from "../../../domain/providers.js";
-import { OcrFormTypeSchema } from "../../../domain/ocr/form-registry.js";
+} from "../../../models/providers/providers.js";
+import { OcrFormTypeSchema } from "../../../models/ocr/form-registry.js";
 import {
   GeminiResponseBodySchema,
   geminiAnswerText,
@@ -58,8 +58,8 @@ import {
   geminiRetryAt,
   parseGeminiModelJson,
 } from "./gemini-transport.js";
-import { SubmittedExtractionSchema } from "../../../domain/ocr/extraction.js";
-import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
+import { SubmittedExtractionSchema } from "../../../models/ocr/extraction.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 
 /** The exact payload `ocr/extract-form-page` sends; refused strictly here. */
 const OcrExtractRequestPayloadSchema = z.strictObject({

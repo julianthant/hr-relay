@@ -1,9 +1,9 @@
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   NewKronosSearchEmployee,
   SearchEmployeeOutputSchema,
-} from "../../../../domain/contracts/new-kronos/search-employee.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/systems/new-kronos/search-employee.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { newKronosDriver } from "../driver-declaration.js";
 
 /**

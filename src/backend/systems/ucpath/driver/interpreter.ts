@@ -1,9 +1,9 @@
 import type { Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
-import { assertMintedMutationCapability } from "../../../../base/mutation-capability.js";
-import { EidSchema } from "../../../../domain/ids.js";
-import { UiActionProofSchema } from "../../../../domain/ui/driver.js";
-import type { PageStateProof, UiActionProof } from "../../../../domain/ui/driver.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
+import { UiActionProofSchema } from "../../../../models/ui/driver.js";
+import type { PageStateProof, UiActionProof } from "../../../../models/ui/driver.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_READY,
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -17,13 +17,13 @@ import {
   UCPATH_PERSON_ORG_RESULTS_READY,
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
-} from "../../../../domain/ui/ucpath-person-org.js";
-import type { UcpathStoreDriver } from "../../../../domain/ui/ucpath-driver.js";
+} from "../../../../models/ui/ucpath-person-org.js";
+import type { UcpathStoreDriver } from "../../../../models/ui/ucpath-driver.js";
 import {
   UCPATH_SMART_HR_DISPLAYED_PERSON_NAME,
   UCPATH_SMART_HR_IN_PROGRESS_NAME,
   UCPATH_SS_SMART_HR_DISPLAYED_NAME,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import {
   nowIso,
   readInProgressSubjectOnPage,
@@ -34,13 +34,13 @@ import type { UcpathSmartHrOperations } from "./smart-hr-operation.js";
 import type {
   SearchPersonOrgInputSchema,
   SearchPersonOrgOutput,
-} from "../../../../domain/contracts/ucpath/search-person-org.js";
+} from "../../../../models/systems/ucpath/search-person-org.js";
 import type { z } from "zod";
-import { IsoInstantSchema } from "../../../../domain/ids.js";
-import type { Eid } from "../../../../domain/ids.js";
-import type { Clock } from "../../../../domain/clock.js";
-import { systemClock } from "../../../../domain/clock.js";
-import type { UcpathJobSummaryRead } from "../../../../domain/ui/ucpath-job-summary.js";
+import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import type { Eid } from "../../../../rules/identity/ids.js";
+import type { Clock } from "../../../../rules/time/clock.js";
+import { systemClock } from "../../../../rules/time/clock.js";
+import type { UcpathJobSummaryRead } from "../../../../models/ui/ucpath-job-summary.js";
 import { readJobSummaryOnPage, searchPersonOrgOnPage } from "./person-org-operation.js";
 import {
   resolveUcpathElement,

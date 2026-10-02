@@ -5,7 +5,7 @@ ProviderKeysRetryIntentSchema,
 SettingsCommandRequestSchema,
 StorageRelocationCommandRequestSchema,
 type CommandResult
-} from "../../domain/commands.js";
+} from "../../rules/commands/commands.js";
 import { DashboardClientError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 

@@ -1,23 +1,23 @@
-import { TransactionHistorySelectionSchema, type TransactionHistorySelection } from "../../../domain/transaction-selection.js";
-export { TransactionHistorySelectionSchema } from "../../../domain/transaction-selection.js";
+import { TransactionHistorySelectionSchema, type TransactionHistorySelection } from "../../../rules/write-safety/transaction-selection.js";
+export { TransactionHistorySelectionSchema } from "../../../rules/write-safety/transaction-selection.js";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { localDatePart } from "../../../domain/clock.js";
-import { NonNegativeIntSchema, RunIdSchema } from "../../../domain/ids.js";
-import { hasProtectedTransactionInput } from "../../../domain/protected-input.js";
-import { ActivityLedgerBlockSchema } from "../../../domain/dashboard/activity.js";
-import { resolveLedgerLine, unresolvedLedgerLine, type LedgerLinePointer } from "../../../domain/archive/ledger-resolution.js";
-import { ArchivedTransactionsSchema } from "../../../domain/archive/model.js";
-import { reconstructConfirmedOperation } from "../../../domain/events/confirmed-operation.js";
-import type { TimelineRepository, HistoricalOperationSource } from "../../../domain/events/timeline.js";
-import { TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
-import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from "../../../domain/write-safety.js";
-import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";
-import type { LifecycleSourceSnapshot } from "../../../domain/archive/lifecycle-source.js";
-import type { RunRecord } from "../../../domain/run/record.js";
-import type { DeletedRunRecord } from "../../../domain/run/deleted-run.js";
-import type { WriteIntentRecord } from "../../../domain/write-safety.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { localDatePart } from "../../../rules/time/clock.js";
+import { NonNegativeIntSchema, RunIdSchema } from "../../../rules/identity/ids.js";
+import { hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
+import { ActivityLedgerBlockSchema } from "../../../models/dashboard/activity.js";
+import { resolveLedgerLine, unresolvedLedgerLine, type LedgerLinePointer } from "../../../models/archive/ledger-resolution.js";
+import { ArchivedTransactionsSchema } from "../../../models/archive/model.js";
+import { reconstructConfirmedOperation } from "../../../models/events/confirmed-operation.js";
+import type { TimelineRepository, HistoricalOperationSource } from "../../../models/events/timeline.js";
+import { TimelineEventRecordSchema } from "../../../models/events/timeline.js";
+import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from "../../../rules/write-safety/write-safety.js";
+import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
+import type { LifecycleSourceSnapshot } from "../../../models/archive/lifecycle-source.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import type { DeletedRunRecord } from "../../../models/run/deleted-run.js";
+import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
 
 /** One consistent database query serves Activity, archive capture and explicit exports. */
 type HistoryRepositories = Parameters<typeof reconstructConfirmedOperation>[0] & {

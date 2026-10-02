@@ -1,12 +1,12 @@
-import { CalendarQuerySchema, CalendarWireSchema } from "../../../domain/dashboard/calendar.js";
+import { CalendarQuerySchema, CalendarWireSchema } from "../../../models/dashboard/calendar.js";
 import { hasHistoricalArchiveTables, unarchivedRunSql } from "./archive-compatibility.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { QueueStatusSchema } from "../../../domain/dashboard/projection.js";
-import { RunRecordSchema, RunStateSchema } from "../../../domain/run/record.js";
-import { RunSummarySchema, SummaryPublicationSchema, RunSummarySourceSchema, SummaryQuerySchema } from "../../../domain/run/summary.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { deriveRunSummary, runSummaryDigest } from "../../../domain/run/summary-derivation.js";
+import { QueueStatusSchema } from "../../../models/dashboard/projection.js";
+import { RunRecordSchema, RunStateSchema } from "../../../models/run/record.js";
+import { RunSummarySchema, SummaryPublicationSchema, RunSummarySourceSchema, SummaryQuerySchema } from "../../../models/run/summary.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deriveRunSummary, runSummaryDigest } from "../../../rules/runs/summary-derivation.js";
 
 export const RUN_SUMMARIES_DDL = `CREATE TABLE run_summaries (
  record_key TEXT PRIMARY KEY, workflow TEXT NOT NULL, local_day TEXT NOT NULL, state TEXT NOT NULL,

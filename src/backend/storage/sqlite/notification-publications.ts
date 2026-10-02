@@ -1,8 +1,8 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema, NonNegativeIntSchema } from "../../../domain/ids.js";
-import { NotificationTriggerEventSchema, StorageHealthConcernSchema } from "../../../domain/notification-triggers.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema, NonNegativeIntSchema } from "../../../rules/identity/ids.js";
+import { NotificationTriggerEventSchema, StorageHealthConcernSchema } from "../../../rules/notifications/notification-triggers.js";
 
 export const NotificationPublicationSchema = z.strictObject({
   sourceId: FingerprintSchema,

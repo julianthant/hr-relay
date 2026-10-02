@@ -1,15 +1,15 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../../src/domain/dashboard/artifacts.js";
-import { FrontendBootstrapWireSchema } from "../../../../src/domain/dashboard/bootstrap.js";
-import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/domain/dashboard/projection.js";
-import { CaptureListSchema, RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/domain/dashboard/run-detail.js";
+import { ArtifactRefWireSchema, ArtifactResourceWireSchema, CapturePointerWireSchema } from "../../../../src/models/dashboard/artifacts.js";
+import { FrontendBootstrapWireSchema } from "../../../../src/models/dashboard/bootstrap.js";
+import { DashboardDayWireSchema, QueueSurfaceWireSchema } from "../../../../src/models/dashboard/projection.js";
+import { CaptureListSchema, RunCaptureArtifactWireSchema, RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../../src/models/dashboard/run-detail.js";
 import {
   DashboardStreamEnvelopeSchema,
   DashboardTopicPatchSchema,
   DashboardTopicSnapshotSchema,
-} from "../../../../src/domain/dashboard/subscription.js";
-import { failureDetailWireFixture, receiptWireFixture } from "../../../helpers/trust/trust-wire-fixtures.js";
+} from "../../../../src/models/dashboard/subscription.js";
+import { failureDetailWireFixture, receiptWireFixture } from "../../../support/helpers/trust/trust-wire-fixtures.js";
 
 const RUN_1 = "11111111-1111-4111-8111-111111111111";
 const RUN_2 = "22222222-2222-4222-8222-222222222222";

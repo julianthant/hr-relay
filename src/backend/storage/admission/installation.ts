@@ -5,15 +5,15 @@ import {
 } from "node:fs";
 import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
 import { z } from "zod";
-import { rebuildRuntimeIsolation } from "../../../config/runtime-isolation.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 import { acquireRuntimeRestoreAdmission, observeProcessIdentity, observeRuntimeLockSnapshot, ProcessStartIdentitySchema, RestoreAdmissionFileSchema,
   type ProcessStartIdentity, type RestoreAdmissionHandle } from "../sqlite/runtime-process-locks.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { storageRelocationDesiredDigest } from "../../../domain/commands.js";
-import { NonNegativeIntSchema } from "../../../domain/ids.js";
-import { systemClock } from "../../../domain/clock.js";
-import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../domain/config/snapshot.js";
-import { ActiveRuntimeConfigRecordSchema } from "../../../domain/config/runtime-generation.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { storageRelocationDesiredDigest } from "../../../rules/commands/commands.js";
+import { NonNegativeIntSchema } from "../../../rules/identity/ids.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { ConfigSnapshotRecordSchema, ConfigSnapshotWriteSchema } from "../../../models/config/snapshot.js";
+import { ActiveRuntimeConfigRecordSchema } from "../../../models/config/runtime-generation.js";
 
 const PairSchema = z.strictObject({ stateRoot: z.string().min(1), artifactRoot: z.string().min(1) });
 const InstallationSchema = z.strictObject({ schemaVersion: z.literal(1), installationId: z.uuid(), workspace: z.string().min(1) });

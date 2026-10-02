@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { selectedTestArguments } from "../../../../scripts/test-runner.js";
-import { projectOwnershipViolations } from "../../../../scripts/test-project-policy.js";
+import { selectedTestArguments } from "../../../../scripts/test/runner.js";
+import { projectOwnershipViolations } from "../../../../scripts/test/project-policy.js";
 
 describe("named test project policy", () => {
   it("locks unit and integration commands to one named project and rejects widening options", () => {

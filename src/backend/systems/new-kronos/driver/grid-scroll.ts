@@ -38,8 +38,8 @@
 import {
   describeTimecardCoverage,
   timecardRangeCoverage,
-} from "../../../../domain/kronos/separation-timecard.js";
-import type { TimecardDateRange } from "../../../../domain/timecard-period.js";
+} from "../../../../rules/kronos/separation-timecard.js";
+import type { TimecardDateRange } from "../../../../rules/time/timecard-period.js";
 
 /** One rendered grid row, still raw — every derivation happens in the fold. */
 export interface RawTimecardGridRow {

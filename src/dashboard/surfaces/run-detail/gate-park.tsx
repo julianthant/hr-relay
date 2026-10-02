@@ -24,8 +24,8 @@ import { identityGateArm } from "../identity-approve-model.js";
 import { ParkResolveDialog, type ParkResolveTarget, type ParkedWritePayload } from "../park-resolve.js";
 import { parkResolutionArm } from "../park-resolve-model.js";
 import type { PanelSections } from "./sections.js";
-import type { ActionDescriptorWire } from "../../../domain/dashboard/actions.js";
-import type { RunDetailWireSchema } from "../../../domain/dashboard/run-detail.js";
+import type { ActionDescriptorWire } from "../../../models/dashboard/actions.js";
+import type { RunDetailWireSchema } from "../../../models/dashboard/run-detail.js";
 import { fmtClock, fmtActionClock } from "../format.js";
 import { decisionAge } from "./timeline-model.js";
 

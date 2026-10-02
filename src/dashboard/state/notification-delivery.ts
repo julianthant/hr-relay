@@ -1,4 +1,4 @@
-import { notificationTitle, type NotificationWire } from "../../domain/dashboard/projection.js";
+import { notificationTitle, type NotificationWire } from "../../models/dashboard/projection.js";
 
 export type NotificationDeliveryState = "off" | "requesting" | "permission-default" | "permission-denied" | "unsupported" | "standby" | "active" | "delivery-failed";
 export interface NotificationDeliveryPlatform {

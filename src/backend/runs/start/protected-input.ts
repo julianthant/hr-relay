@@ -1,10 +1,10 @@
-import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../../domain/config/protected-settings.js";
-import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../domain/canonical-json.js";
-import { PositiveIntSchema } from "../../../domain/ids.js";
-import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../../domain/protected-input.js";
-import type { SchemaBoundCanonicalValue } from "../../../domain/schema-bound-value.js";
-import type { ProtectedSecretSource } from "../../../domain/secrets.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { ProtectedStoreRecordSchema, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
+import { canonicalJsonStringify, JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
+import { PositiveIntSchema } from "../../../rules/identity/ids.js";
+import { ProtectedInputBindingsSchema, protectedInputBindings, type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
+import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
+import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
 
 /**
  * D341's closed subject binding replaces the private part of item identity.

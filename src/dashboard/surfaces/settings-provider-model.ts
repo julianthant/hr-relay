@@ -1,9 +1,9 @@
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { ProviderKeysCommandRequestSchema, ProviderKeysRetryIntentSchema, type CommandResult } from "../../domain/commands.js";
-import { ProviderKeySlotSchema } from "../../domain/config/provider-keys.js";
-import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
-import { deepFreeze } from "../../domain/immutability.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { ProviderKeysCommandRequestSchema, ProviderKeysRetryIntentSchema, type CommandResult } from "../../rules/commands/commands.js";
+import { ProviderKeySlotSchema } from "../../models/config/provider-keys.js";
+import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
+import { deepFreeze } from "../../rules/validation/immutability.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, settingsRefusal, type SettingsSaveState } from "./settings-attempt-model.js";

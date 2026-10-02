@@ -1,8 +1,8 @@
 import {
   NewKronosSearchReadSchema,
   NewKronosTimecardReadSchema,
-} from "../../../../domain/ui/new-kronos-timecard.js";
-import type { NewKronosTimecardDriver } from "../../../../domain/ui/new-kronos-timecard.js";
+} from "../../../../models/ui/new-kronos-timecard.js";
+import type { NewKronosTimecardDriver } from "../../../../models/ui/new-kronos-timecard.js";
 
 /**
  * A deterministic New Kronos driver for scenarios and unit tests.

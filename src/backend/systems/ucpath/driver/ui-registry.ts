@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { deepFreeze } from "../../../../domain/immutability.js";
+import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
   BrowserSystemIdSchema,
   DateOnlySchema,
@@ -9,7 +9,7 @@ import {
   PageStateIdSchema,
   ScenarioIdSchema,
   ScreenIdSchema,
-} from "../../../../domain/ids.js";
+} from "../../../../rules/identity/ids.js";
 import {
   UiEffectSchema,
   UiRoleSchema,
@@ -19,7 +19,7 @@ import {
   UiVerificationEvidenceManifestSchema,
   UiVerificationScenarioSchema,
   UiVerificationSchema,
-} from "../../../../domain/ui/contracts.js";
+} from "../../../../models/ui/contracts.js";
 import {
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_DETAIL_READY,
@@ -43,7 +43,7 @@ import {
   UCPATH_PERSON_ORG_SEARCH_BUTTON,
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
-} from "../../../../domain/ui/ucpath-person-org.js";
+} from "../../../../models/ui/ucpath-person-org.js";
 import {
   UCPATH_SMART_HR_CONTINUE_BUTTON,
   UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON,
@@ -68,7 +68,7 @@ import {
   UCPATH_SS_SMART_HR_SEARCH_EID_INPUT,
   UCPATH_SS_SMART_HR_SEARCH_READY,
   UCPATH_SS_SMART_HR_SEARCH_SCREEN,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import {
   UCPATH_SS_SMART_HR_APPROVAL_STATUS,
   UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
@@ -76,13 +76,13 @@ import {
   UCPATH_SS_SMART_HR_TRANSACTION_READY,
   UCPATH_SS_SMART_HR_TRANSACTION_RECEIPT,
   UCPATH_SS_SMART_HR_TRANSACTION_SCREEN,
-} from "../../../../domain/ui/ucpath-ss-smart-hr.js";
-import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../domain/trust/preflight-scenarios.js";
+} from "../../../../models/ui/ucpath-ss-smart-hr.js";
+import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
 const UCPATH_SELECTOR_BLOB = "695d88fcc7a108f262b91b45eb1b9a276deaf427";
-const FIXTURE_EVIDENCE = "evidence/ui/ucpath/person-org.fixture.json";
-const LIVE_EVIDENCE = "evidence/ui/ucpath/person-org.live.json";
+const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/person-org.fixture.json";
+const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/person-org.live.json";
 const SEARCH_SCENARIO = "ui/ucpath-person-org-search-eid-input";
 const RESULTS_SCENARIO = "ui/ucpath-person-org-results-grid";
 const DISPLAY_SCENARIO = "ui/ucpath-person-org-displayed-eid";
@@ -105,8 +105,8 @@ const RETURN_PORT_KEY = "personOrgSummary.returnToSearchButton()";
  * its own `verifiedAt` — the person-org family was verified 2026-08-02 and
  * must not inherit this probe's date, nor this family that one's.
  */
-const SS_SMART_HR_FIXTURE_EVIDENCE = "evidence/ui/ucpath/ss-smart-hr.fixture.json";
-const SS_SMART_HR_LIVE_EVIDENCE = "evidence/ui/ucpath/ss-smart-hr.live.json";
+const SS_SMART_HR_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.fixture.json";
+const SS_SMART_HR_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/ss-smart-hr.live.json";
 const RECEIPT_SCENARIO = "ui/ucpath-ss-smart-hr-transaction-receipt";
 const RECEIPT_PORT_KEY = "ssSmartHRTransactions.transactionResultRow()";
 const APPROVAL_STATUS_PORT_KEY = "ssSmartHRTransactions.approvalStatusSelect()";
@@ -129,8 +129,8 @@ const APPROVAL_STATUS_PORT_KEY = "ssSmartHRTransactions.approvalStatusSelect()";
  * operator-named canary. Both stay driver-internal until they can be observed
  * honestly.
  */
-const SMART_HR_FIXTURE_EVIDENCE = "evidence/ui/ucpath/smart-hr-termination.fixture.json";
-const SMART_HR_LIVE_EVIDENCE = "evidence/ui/ucpath/smart-hr-termination.live.json";
+const SMART_HR_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.fixture.json";
+const SMART_HR_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/ucpath/smart-hr-termination.live.json";
 const WIZARD_SCENARIO = "ui/ucpath-smart-hr-termination-wizard";
 const SWEEP_SCENARIO = "ui/ucpath-smart-hr-pending-sweep";
 const SS_SEARCH_SCENARIO = "ui/ucpath-ss-smart-hr-search";

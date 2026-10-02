@@ -3,7 +3,7 @@ import { describe, it } from "vitest";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
   OperatorXlsxExportEvidenceSchema,
-} from "../../../../../src/domain/dashboard/xlsx-export.js";
+} from "../../../../../src/models/dashboard/xlsx-export.js";
 
 const HASH = "a".repeat(64);
 const EXPORT_ID = "00020002-0002-4002-8002-000200020002";

@@ -1,4 +1,4 @@
-import type { FailureDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { FailureDetailWire } from "../../models/dashboard/run-detail.js";
 
 export const FAILURE_OUTCOME: Record<FailureDetailWire["writeState"], { label: string; tone: "good" | "info" | "warning"; caution?: string }> = {
   "not-attempted": { label: "No write attempted", tone: "good" },

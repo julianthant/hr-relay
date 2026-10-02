@@ -1,7 +1,8 @@
 # Backend, unit tests and confirmed Logs connection
 
 Status: Phase 1, its startup reconciliation prerequisite and Phase 2 are accepted locally on
-2026-10-01; Phases 3–5 remain proposed. This descriptive
+2026-10-01; the operator-approved layout polish has passed code verification and is closing locally
+before Phases 3–5, which remain proposed. This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -13,12 +14,14 @@ and connect the approved Logs design to structured, confirmed facts emitted by t
 
 The operator wants focused unit tests now. Complex-test design and execution will be discussed
 later with the operator. An [initial test audit](backend-and-unit-tests-audit.md) inventories the
-corpus, identifies mixed tiers and proposes dispositions. This plan does not delete complex suites
-as a shortcut or claim that unit tests prove browser behavior, persistence, sockets or crashes.
+corpus, identifies mixed tiers and proposes dispositions. The operator subsequently retired the
+parity and scenario suites; retained integration and performance suites remain for later discussion.
+Unit tests do not prove browser behavior, persistence, sockets or crashes.
 
 The continuation is
 `/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-logs-backend`,
-branch `codex/logs-backend`, source HEAD `27fd907207ab42fc938856954ef75a136da32f74`.
+branch `codex/logs-backend`. The initiative started from source commit
+`27fd907207ab42fc938856954ef75a136da32f74`; each phase records its own verified entry and acceptance.
 It contains the approved Logs UI commit `1211a24b81547ec2b7c6e27837c4d57c081d259e`.
 Verify the checkout and any new changes before each phase. Keep the existing worktree; do not
 create more worktrees, repurpose another checkout, push or merge without operator authorization.
@@ -49,18 +52,24 @@ The handoff authorizes existing `docs/` owners and external evidence in place of
   runtime/browser compatibility, IPC implementation and OS acceptance are separate delivery work.
 - Do not migrate or revalidate every existing workflow now. New authoring follows the shared model;
   old runs and unmigrated definitions have an explicit legacy path. Do not guess confirmed success.
-- Keep existing complex tests available with recorded dispositions. Only exact obsolete or replaced
-  tests are retirement candidates. Unknown primary-checkout files are outside cleanup scope.
+- Keep existing integration tests available with recorded dispositions. The operator retired the
+  parity and scenario suites on 2026-10-02; future scenario tests will be designed with the operator.
+  Unknown primary-checkout files are outside cleanup scope.
 
 ## Backend layout and naming
 
-The target structure is:
+The operator-approved target structure, amended on 2026-10-01, is:
 
 ```text
 src/
-  base/                         browser-safe workflow/task authoring builders
-  domain/                       shared strict schemas and pure business rules
-  workflows/<workflow-id>/workflow.ts
+  workflow-kit/                 browser-safe shared workflow/task authoring and compilation
+  models/                       shared types, strict schemas and schema-bound validation
+  rules/                        shared pure decisions; backend-only policies stay with their owner
+  workflows/<workflow-id>/
+    workflow.ts                 browser-safe definition entry point
+    steps/<step-name>/step.ts    browser-safe step harness definition, when registered
+    task-registry.ts            backend-loaded implementation registration
+    tasks/<verb-object>.ts      workflow-specific implementations
   dashboard/                    renderer, state and client transport adapter
   backend/
     app/                        boot, configuration admission, dependency composition
@@ -69,15 +78,19 @@ src/
     logs/                       confirmed facts, step/result projection, stream coordination
     systems/<system>/           semantic driver, session provider and verb-object tasks
     processing/<capability>/    headless extraction, OCR, normalization and roster tasks
-    workflow-tasks/<workflow>/  workflow-specific task wrappers over domain decisions
     storage/                    SQLite repositories, JSONL and artifact adapters
-    transports/                 HTTP/SSE routes and transport admission
+    transports/http/            HTTP routes, SSE subscriptions and transport admission
+    transports/cli/             CLI transport adapters
   cli.ts                        thin command entry point
 ```
 
 Create folders when they have an owner and real code. Keep the browser-safe builders outside
-`backend`; moving every existing `base` module into the backend would break workflow imports.
-Shared wire shapes belong in `domain`; Node/filesystem/browser implementations belong in `backend`.
+`backend`; the authoring library remains browser-safe in `workflow-kit`.
+Shared wire shapes belong in `models`; Node/filesystem/browser implementations belong in `backend`
+or the explicitly backend-loaded workflow task implementations. Validate browser safety from each
+definition entry point's transitive closure, rather than treating every file in `workflows` as a
+renderer entry point. Models may include schema refinements; shared business decisions belong in
+rules. Do not blindly rename mixed domain modules or introduce old-path forwarding modules.
 The renderer does not import the backend. Composition wires dependencies; module functions receive
 explicit ports instead of reaching through a global container.
 
@@ -102,16 +115,16 @@ Their implementations move by responsibility:
 | --- | --- | --- |
 | Browser: UCPath, Kuali, CRM and the other registered browser systems | `backend/systems/<system>/` | Browser/session lifecycle, semantic page operations and reusable system tasks |
 | Service: extraction, OCR, normalization and roster | `backend/processing/<capability>/` | Artifact/provider processing and reusable headless tasks |
-| Workflow: Person Lookup and Separations mini-stores | `backend/workflow-tasks/<workflow-id>/` | Task wrappers, provenance and named refusals for workflow-specific domain decisions |
+| Workflow: Person Lookup and Separations mini-stores | `workflows/<workflow-id>/tasks/` and sibling `task-registry.ts` | Task wrappers, provenance and named refusals for workflow-specific decisions |
 
-Use a consistent `store.ts` registration file and `tasks/<verb-object>.ts` convention in each
+Use a consistent `task-registry.ts` registration file and `tasks/<verb-object>.ts` convention in each
 package. Browser packages additionally have `driver-declaration.ts`, `session-provider.ts` and
 `driver/`. Boot composition owns the executable task registry. Preserve the existing factory
 validation, exact shared driver object, namespace/contract IDs, strict outputs and effect rules;
 moving a file does not authorize changing a task's contract or widening write authority.
 
 Workflow definitions continue importing contracts, never concrete store implementations. Pure
-decisions remain in `domain`; database repositories remain in `backend/storage`. Place shared
+decisions belong in `rules` or their actual workflow/module owner; database repositories remain in `backend/storage`. Place shared
 helpers at their actual owner after checking for I/O; do not blindly move `stores/common` into
 domain or create another unowned shared-helper folder. Pending/unwired stores remain explicitly
 unwired; a directory move is not a feature implementation or retirement decision.
@@ -132,17 +145,20 @@ complex proofs for later operator review.
 ```text
 tests/
   unit/
-    domain/<module>/
+    models/<module>/
+    rules/<module>/
+    workflow-kit/<module>/
     backend/<module>/
     dashboard/<module>/
     workflows/<module>/
     tooling/<capability>/       deterministic script, build and test-runner policies
-  integration/<module>/         real storage, process, transport or composed boundary proofs
-  architecture/                import, schema, collection and generated-product invariants
-  scenario/                    existing workflow/feature scenarios and live manifests
-  parity/                      existing browser scenes and reviewed references
-  fixtures/                    shared synthetic data
-  helpers/                     only small, explicitly owned cross-tier harnesses
+  integration/<owner>/<module>/ real storage, process, transport or composed boundary proofs
+  architecture/<owner>/        import, schema, collection and generated-product invariants
+  perf/                        existing performance checks, not a current execution gate
+  types/                       compile-time contract checks
+  support/fixtures/            genuinely shared synthetic data
+  support/helpers/             small, explicitly owned cross-tier harnesses
+  support/processes/           shared child-process fixtures
 ```
 
 A unit exercises a cohesive public behavior with deterministic inputs. Inject external page,
@@ -168,9 +184,10 @@ coverage, and remove obsolete or redundant units only with a recorded reason and
 mapping. A deliberately retired requirement must be identified explicitly. Private implementation
 assertions need a meaningful behavior or constraint to justify keeping them. Do not retire a test
 because it fails, nor lose distinct refusal, boundary or safety cases when consolidating.
-Complex-suite redesign and retirement remain for later operator discussion; their retained files
-stay collected in their own tiers. Extracting a pure case does not authorize deleting its original
-complex proof. These suites are not in the development phase gates below.
+Retained integration and performance suites stay collected in their own tiers; their redesign and
+retirement remain for later operator discussion. Extracting a pure case does not authorize deleting
+a retained complex proof. Parity and scenario suites are the operator-approved retirement exception.
+These complex suites are not in the development phase gates below.
 
 ## Shared logging contract to implement
 
@@ -347,6 +364,70 @@ Focused units/lint pass, affected generated closures are current, and the produc
 confirms browser-safe imports. Report any static baseline limits.
 Real process boot, DB recovery and external-write behavior remain deferred complex proofs.
 
+## Layout polish — Finish the approved structure before Phase 3
+
+**Status:** code verified; final ledger correction and local commit closure pending. Authorized by
+the operator on 2026-10-01. Entry candidate:
+`7e237bd7c3d0a45952e38c49f6d9be75057d08ef`, branch `codex/logs-backend` in the assigned continuation
+worktree. Deployment ID: `backend-layout-polish-20261001`. This is a structural continuation of
+accepted Phase 2; it does not reopen that candidate or implement Phases 3–5.
+
+**Deliverable:** apply the amended source/test layout and retire the operator-rejected UI catalog.
+Use parallel packages only after a stable move map establishes disjoint file ownership. Preserve
+exports, task/contract IDs, refusals, admission and external-write ordering during moves. Keep
+required generated workflow code beside its owner. Do not create placeholder log APIs or an empty
+Electron shell; those remain later work.
+
+1. Produce an exact source, test and support move/retirement map. Classify schema and pure-decision
+   ownership from code and dependencies. Move the authoring kit, combine workflow definitions and
+   workflow-specific tasks, and name implementation registration files `task-registry.ts`.
+2. Complete backend responsibility groups: app bootstrap/composition/registries, runtime
+   execution/workers/checkpoints/gates/writes, run commands/queries/projections/lifecycle, HTTP/SSE
+   transports and storage maintenance/configuration/compatibility. Keep actual modules cohesive.
+3. Group scripts under dev/build/docs/test/verify. Move build-only infrastructure into scripts and
+   reusable workflow validation into the kit. Keep root configuration limited to active application
+   configuration; move migration/provenance ledgers to their documentation owner and sanitized
+   selector manifests to `docs/rebuild/evidence/selectors/`, updating readers and references.
+4. Retire the UI catalog navigation, URL keys, endpoint/client method, projection schemas, generator,
+   selector-search command, generated JSON and per-system catalog documents. Keep actual semantic
+   registries, selectors, action proofs, write classification and their distinct safety assertions.
+   Retire only exact feature-only tests and references; preserve mixed-test unrelated behaviors.
+5. Mirror source ownership in units and group integration files by owner. Consolidate truly shared
+   support under `tests/support`, retaining suite-local fixtures with their consumers. Preserve every
+   retained test's collection, assertions, coverage ownership and timeout. Complex suite redesign,
+   execution and broader quality approval remain deferred; catalog and the subsequently approved
+   parity/scenario retirements are the exact exceptions. Remove verified empty folders.
+6. Apply the operator's continuation amendments: group architecture guards by the responsibility
+   they protect, with owned helpers and violation fixtures; update recursive collection, guard
+   inventory and all consumers without changing guard membership or assertions. Keep main workflow
+   definitions at `<workflow-id>/workflow.ts` and registered step harnesses at
+   `<workflow-id>/steps/<step-name>/step.ts`. Preserve runtime workflow IDs, role declarations,
+   declared scenario IDs and the operator's manual identity-check edits.
+   The shared source-path derivation remains the single authority for these locations.
+7. Apply the operator's 2026-10-02 retirement of the parity and scenario suites. Do not restore their
+   tests or reference images. Remove obsolete suite commands, collection and configuration wiring;
+   retain useful shared synthetic support only where a remaining test needs it. Preserve runtime
+   declaration and write-safety validation without presenting deleted tests as executed evidence.
+   Missing rehearsal manifests must produce an explicit unavailable result before execution.
+   Future scenario tests are a separate operator-led design task, not part of this phase.
+   Unit harnesses may inject deterministic scenario source text for declared test identities; those
+   fixtures do not provide production scenario evidence. Production Explorer source links remain
+   unresolved when the real sources are absent, and edits requiring that evidence remain refused.
+
+**Acceptance:** exact mapped disposition for every affected file/case; no unresolved import or
+browser-safe definition-closure regression; unchanged critical write blocks and approved Logs UI;
+focused affected units and lint, applicable source-only guards, current build/store/roadmap outputs
+and production web build. Use deterministic import/AST preservation evidence for mechanical moves.
+Do not run DB/process/socket/browser suites or refreeze screenshots. Record unrelated baseline
+failures separately and repair every new diagnostic attributable to this change. No push, merge,
+next-phase execution or production/Electron acceptance is authorized.
+
+Evidence owner:
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/`.
+The existing empty-folder receipt remains historical; new implementation/verification receipts get
+their own subfolders. The root owns this phase's progress and acceptance record; closure documentation
+uses the existing docs/evidence framework instead of creating absent `agent_docs` files.
+
 ## Phase 3 — Implement the shared confirmed action and step API
 
 **Deliverable:** one versioned contract and execution-context API used by system helpers and a
@@ -444,7 +525,8 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 | --- | --- | --- |
 | 1 — Test ownership and unit execution | Accepted locally | `a46d792273af908dd9bfd29d6f5eb19b874a319e`; focused checks and independent preservation verification below; broad checks deferred |
 | 2 — Backend modules and reviewed units | Accepted locally | Code candidate `2a1bad93b14b9b17bbccb7e69dc7974dfcf0e3f7`; exact mappings, focused checks and independent combined-candidate preservation verification below |
-| 3 — Confirmed action/step API | Proposed | Requires Phase 2 |
+| Layout polish — Approved final source/test homes | Code verified; local closure pending | Frozen code SHA-256 `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`; entry `7e237bd7` |
+| 3 — Confirmed action/step API | Proposed | Requires Phase 2 and layout polish |
 | 4 — Ordered worker streams | Proposed | Requires Phase 3 |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
 
@@ -1047,6 +1129,8 @@ another phase automatically. The operator's future complex-test review stays def
 
 ### Phase 1 prompt
 
+Historical launch prompt for the accepted phase; its entry paths describe that phase's original inputs.
+
 ```text
 Work in /Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-logs-backend.
 Use Heavy route only: read ~/.codex/codex_workflow/heavy_route.md and follow it directly.
@@ -1069,6 +1153,9 @@ categories and update this plan's Phase 1 acceptance record with actual evidence
 ```
 
 ### Phase 2 prompt
+
+Historical launch prompt for the accepted phase. The layout-polish amendment above now owns the
+final source and test homes; do not rerun this prompt to undo that structure.
 
 ```text
 Work in /Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-logs-backend.
@@ -1111,7 +1198,8 @@ Work in /Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-l
 Use Heavy route only: read ~/.codex/codex_workflow/heavy_route.md and follow it directly.
 Do not use /astra-orchestrator, /luna-worker or other worker-adapter skills.
 Read current instructions, docs/README.md and
-docs/rebuild/plans/phase-3/backend-and-unit-tests.md. Verify the accepted Phase 2 candidate.
+docs/rebuild/plans/phase-3/backend-and-unit-tests.md. Verify accepted Phase 2 and the subsequent
+layout-polish candidate. Use the current workflow-kit/models/rules/workflows/backend homes.
 Execute only Phase 3: the shared confirmed action/step contract and execution-context API.
 Implement distinct read, fill/readback, interaction, protected submit and verification meanings.
 Use exact frozen run/action/attempt/worker/system/session/step ownership and explicit timestamps.

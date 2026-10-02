@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type { DatabaseSync } from "node:sqlite";
-import { RunRecordSchema } from "../../../domain/run/record.js";
-import { FingerprintSchema } from "../../../domain/ids.js";
-import { DeletedRunRecordSchema } from "../../../domain/run/deleted-run.js";
+import { RunRecordSchema } from "../../../models/run/record.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
 import type { ArchiveDatabase } from "./archive-database.js";
 
 export const ArchiveTransferIdentitySchema = z.strictObject({

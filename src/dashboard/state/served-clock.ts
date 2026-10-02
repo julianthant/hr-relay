@@ -54,7 +54,7 @@
  * it VERIFIES the freeze rather than assuming it — D187's rule.
  */
 import { useEffect, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
+import { systemClock } from "../../rules/time/clock.js";
 
 /** One second: `fmtElapsed`'s smallest unit, so nothing finer would be visible. */
 export const SERVED_CLOCK_TICK_MS = 1000;

@@ -28,20 +28,20 @@ import {
   type VersionBumpCandidate,
   type VersionDriftReason,
   type WorkflowVersionIdentity,
-} from "../../../domain/archive/model.js";
-import type { VersionScope } from "../../../domain/commands.js";
+} from "../../../models/archive/model.js";
+import type { VersionScope } from "../../../rules/commands/commands.js";
 import {
   ArchivedCaptureTileSchema,
   ArchivedRunSectionsSchema,
   type ArchivedCaptureTile,
   type ArchivedProjectionSections,
   type ArchivedRunSections,
-} from "../../../domain/archive/sections.js";
-import type { QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
-import type { FailureDetailWire, RunDetailWire } from "../../../domain/dashboard/run-detail.js";
-import { isTerminalRunState, type RunRecord } from "../../../domain/run/record.js";
+} from "../../../models/archive/sections.js";
+import type { QueueSurfaceWire } from "../../../models/dashboard/projection.js";
+import type { FailureDetailWire, RunDetailWire } from "../../../models/dashboard/run-detail.js";
+import { isTerminalRunState, type RunRecord } from "../../../models/run/record.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { projectReceiptForOperator } from "../../../domain/trust/evidence.js";
+import { projectReceiptForOperator } from "../../../models/trust/evidence.js";
 
 /**
  * The final projected row and detail for a run about to be archived. The

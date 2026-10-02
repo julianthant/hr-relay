@@ -1,15 +1,15 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { RunIdSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { RunIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import {
   INITIAL_RUNTIME_VERSION,
   planRuntimeVersionTransition,
   RuntimeVersionSchema,
   RuntimeVersionStateSchema,
   type RuntimeVersionState,
-} from "../../../domain/archive/runtime-version.js";
+} from "../../../models/archive/runtime-version.js";
 
 export const RUNTIME_VERSION_SCHEMA_VERSION = 55;
 

@@ -1,9 +1,9 @@
 import { timingSafeEqual } from "node:crypto";
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import {
   DASHBOARD_FRONTEND_OWNER_PATH,
   DashboardLaunchNonceSchema,
-} from "../../../domain/dashboard-frontend-owner.js";
+} from "../../../models/dashboard/dashboard-frontend-owner.js";
 
 /**
  * Each identity endpoint carries its own ceiling: a nonce and a dev index are tiny, while Vite's

@@ -42,7 +42,7 @@
  * exists to prevent.
  */
 import { z } from "zod";
-import { deepFreeze } from "../../../../domain/immutability.js";
+import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
   BrowserSystemIdSchema,
   DateOnlySchema,
@@ -51,7 +51,7 @@ import {
   PageStateIdSchema,
   ScenarioIdSchema,
   ScreenIdSchema,
-} from "../../../../domain/ids.js";
+} from "../../../../rules/identity/ids.js";
 import {
   UiEffectSchema,
   UiEvidenceReferenceSchema,
@@ -61,7 +61,7 @@ import {
   UiVerificationEvidenceManifestSchema,
   UiVerificationScenarioSchema,
   UiVerificationSchema,
-} from "../../../../domain/ui/contracts.js";
+} from "../../../../models/ui/contracts.js";
 import {
   NEW_KRONOS_EMPLOYEE_SEARCH_SCREEN,
   NEW_KRONOS_NO_RESULTS_SENTINEL,
@@ -88,13 +88,13 @@ import {
   NEW_KRONOS_TIMECARD_READY,
   NEW_KRONOS_TIMECARD_SCREEN,
   NEW_KRONOS_TIMECARD_SELECT_RANGE_BUTTON,
-} from "../../../../domain/ui/new-kronos-timecard.js";
-import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../domain/trust/preflight-scenarios.js";
+} from "../../../../models/ui/new-kronos-timecard.js";
+import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
 const NEW_KRONOS_SELECTOR_BLOB = "4143290c85acf70d0730ad4c1c97b243bbd74208";
-const FIXTURE_EVIDENCE = "evidence/ui/new-kronos/timecard.fixture.json";
-const LIVE_EVIDENCE = "evidence/ui/new-kronos/timecard.live.json";
+const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/new-kronos/timecard.fixture.json";
+const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/new-kronos/timecard.live.json";
 const SEARCH_SCENARIO = "ui/new-kronos-employee-search";
 const TIMECARD_SCENARIO = "ui/new-kronos-timecard-read";
 

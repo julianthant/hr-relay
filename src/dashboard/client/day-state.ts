@@ -41,8 +41,8 @@
  * every row the patch did not name.
  */
 import { z } from "zod";
-import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
-import { DashboardDayPatchSchema } from "../../domain/dashboard/subscription.js";
+import type { DashboardDayWire } from "../../models/dashboard/projection.js";
+import { DashboardDayPatchSchema } from "../../models/dashboard/subscription.js";
 import { protocolError } from "./errors.js";
 
 export type DashboardDayPatch = z.infer<typeof DashboardDayPatchSchema>;

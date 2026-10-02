@@ -1,9 +1,9 @@
 import { join } from "node:path";
 import { AuthorityDatabase } from "./backend/storage/sqlite/authority-database.js";
 import { createTransactionHistory } from "./backend/storage/sqlite/transaction-history.js";
-import { exportTransactions, parseTransactionExportArgs, TRANSACTION_EXPORT_HELP } from "./backend/storage/storage/transaction-export.js";
+import { exportTransactions, parseTransactionExportArgs, TRANSACTION_EXPORT_HELP } from "./backend/storage/maintenance/transaction-export.js";
 import { fileURLToPath } from "node:url";
-import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
+import { rebuildRuntimeIsolation } from "./backend/app/config/runtime-isolation.js";
 import {
   registerDashboardComposer,
   registerDryRunScenarioComposer,
@@ -13,17 +13,17 @@ import {
   registerTestDataComposer,
   registerWorkerComposer,
   startRebuildRuntime,
-} from "./backend/app/runtime-composition.js";
-import { composeDashboardRuntime } from "./backend/app/dashboard/compose.js";
-import { composeDryRunScenarioCommand } from "./backend/app/dry-run-scenario/compose.js";
-import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./backend/app/dry-run-scenario/manifests.js";
-import { parseDryRunScenarioManifest } from "./domain/trust/dry-run-scenario.js";
+} from "./backend/app/composition/runtime-composition.js";
+import { composeDashboardRuntime } from "./backend/app/composition/dashboard/compose.js";
+import { composeDryRunScenarioCommand } from "./backend/app/dry-run/compose.js";
+import { listDryRunScenarioWorkflows, loadDryRunScenarioManifest } from "./backend/app/dry-run/manifests.js";
+import { parseDryRunScenarioManifest } from "./models/trust/dry-run-scenario.js";
 import { composeTestDataCommand } from "./backend/app/test-data/compose.js";
-import { createProductionDryRunScenarioRuntime } from "./backend/app/dry-run-scenario/runtime.js";
-import { composeExplainRuntime } from "./backend/app/explain-compose.js";
+import { createProductionDryRunScenarioRuntime } from "./backend/app/dry-run/runtime.js";
+import { composeExplainRuntime } from "./backend/app/composition/explain-compose.js";
 import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
-import { composeStorageCommand } from "./backend/app/storage-compose.js";
-import { composeWorkerRuntime } from "./backend/app/worker-compose.js";
+import { composeStorageCommand } from "./backend/app/composition/storage-compose.js";
+import { composeWorkerRuntime } from "./backend/app/composition/worker-compose.js";
 import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
 
 /**
@@ -52,11 +52,7 @@ export async function runCli(admission: RuntimeAdmission): Promise<void> {
     admission,
     isolation: runtimeIsolation,
     args,
-    // The manifest registration itself lives in ./server/dry-run-scenario/manifests.js
-    // (ref guards-and-tests §10.9) — `test-target-registry` (architecture) reads
-    // that file's own source and walks the layout, failing in both directions,
-    // so a manifest that lands without a registration there, or a registration
-    // that outlives its manifest, is red.
+    // The loader reports absent T1b manifests before runtime execution.
     loadManifest: loadDryRunScenarioManifest,
     createRuntime: createProductionDryRunScenarioRuntime,
     repoRoot: REPOSITORY_ROOT,

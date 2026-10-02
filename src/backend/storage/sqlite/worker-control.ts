@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { CommandIdentityConflictError } from "../../../domain/commands.js";
-import { WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerControlRecord } from "../../../domain/worker-control.js";
-import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../domain/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
+import { WorkerBrowserObservationSchema, WorkerControlRecordSchema, WorkerControlPhaseSchema, type WorkerControlPhase, type WorkerControlRecord } from "../../../models/run/worker-control.js";
+import { CommandIdSchema, IsoInstantSchema, WorkerIdSchema } from "../../../rules/identity/ids.js";
 
 export const WORKER_CONTROL_DDL = `CREATE TABLE worker_controls (
   record_key TEXT PRIMARY KEY, scope TEXT NOT NULL, record_json TEXT NOT NULL CHECK(json_valid(record_json)), created_at TEXT NOT NULL

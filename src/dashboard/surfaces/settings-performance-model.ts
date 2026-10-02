@@ -1,4 +1,4 @@
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
 import { timeoutSetting } from "./settings-timeouts-model.js";
 
 export const PERFORMANCE_GROUPS = ["Navigation", "Work", "Sign-in & Duo", "Worker scheduling", "Retry & termination", "OCR processing", "Browser recovery", "Other limits"] as const;

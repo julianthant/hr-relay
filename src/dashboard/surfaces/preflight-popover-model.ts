@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { z } from "zod";
-import type { PreflightCheckWireSchema, PreflightVerdictSchema } from "../../domain/dashboard/bootstrap.js";
+import type { PreflightCheckWireSchema, PreflightVerdictSchema } from "../../models/dashboard/bootstrap.js";
 import { usePreflightActions } from "../state/preflight-actions.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import type { EditableSettingsState } from "./settings-editor-model.js";

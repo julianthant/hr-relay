@@ -1,4 +1,4 @@
-import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
+import { sqliteRunReader } from "../support/helpers/canonical-run-reader.js";
 /**
  * The §7.4 measurement fixture: ONE seeded state root at legacy's real
  * volume — 1,240 queue rows on ONE day, an operation with 108 members, a
@@ -24,32 +24,32 @@ import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { buildRunResult } from "../../src/backend/runs/run-result.js";
-import { manualClock, type TestClock } from "../../src/domain/clock.js";
-import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
-import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import type { RunRecord } from "../../src/domain/run/record.js";
-import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
+import { buildRunResult } from "../../src/backend/runs/lifecycle/run-result.js";
+import { manualClock, type TestClock } from "../../src/rules/time/clock.js";
+import { ReadActiveStatus } from "../../src/models/workflows/person-lookup/read-active-status.js";
+import { deriveSchemaHash } from "../../src/models/validation/schema-bound-value.js";
+import type { RunRecord } from "../../src/models/run/record.js";
+import { RunCheckpointRecordSchema } from "../../src/models/workflow/checkpoint.js";
 import { createNoteJsonlWriter } from "../../src/backend/storage/events/note-jsonl-writer.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
-import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
+import { AuthorityDatabase } from "../support/helpers/synthetic-storage-admission.js";
+import { descriptorSetHash } from "../../src/backend/app/composition/dashboard/compose.js";
 import {
   createRunQueueProjection,
   type RunQueueProjection,
-} from "../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
-import type { ArchiveQueryDeps } from "../../src/backend/runs/dashboard/queries/archive.js";
-import { createArchiveSnapshotSource } from "../../src/backend/runs/dashboard/queries/archive-snapshot.js";
-import type { RunDetailQueryDeps } from "../../src/backend/runs/dashboard/queries/run-detail.js";
+} from "../../src/backend/runs/projections/run-queue-projection.js";
+import type { ArchiveQueryDeps } from "../../src/backend/runs/queries/archive.js";
+import { createArchiveSnapshotSource } from "../../src/backend/runs/queries/archive-snapshot.js";
+import type { RunDetailQueryDeps } from "../../src/backend/runs/queries/run-detail.js";
 import { createReceiptService } from "../../src/backend/runs/trust/receipt-service.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
-import { personLookupDescriptor } from "../helpers/registered-workflows.js";
+import { personLookupDescriptor } from "../support/helpers/registered-workflows.js";
 
 /* ── the declared shape ──────────────────────────────────────────────────── */
 
 /**
- * The fixture's declared volume. `tests/integration/server/dashboard-perf-fixture-shape.test.ts`
+ * The fixture's declared volume. `tests/integration/backend/storage/events/jsonl-streams/dashboard-perf-fixture-shape.test.ts`
  * asserts the seeded world matches this exactly, so a silent drift in the
  * seeder cannot quietly change what a baseline number is a number OF.
  *

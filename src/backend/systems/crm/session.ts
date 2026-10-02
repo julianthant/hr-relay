@@ -24,9 +24,9 @@
  * Not ported: legacy's debug screenshots, `waitForTimeout` settles, and Duo
  * poll loop (ref execution-and-sessions §5).
  */
-import { resolveSystemLoginUrl } from "../../../domain/config/instance.js";
+import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
-import type { DuoCeremonyLeaseToken } from "../../../base/duo-ceremony-lease.js";
+import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import {
   defineVerifiedLoginRecipe,
   probeAbsentControl,

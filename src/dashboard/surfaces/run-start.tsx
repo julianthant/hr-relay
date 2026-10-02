@@ -1,7 +1,7 @@
-import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
+import type { RerunValuesSnapshot } from "../../models/dashboard/rerun-values.js";
 import { Input as HeroInput } from "@heroui/react";
-import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
-import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
+import type { RerunWarningWire } from "../../models/dashboard/rerun-warning.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../rules/validation/canonical-json.js";
 import { candidateText, defaultRerunSteps, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
 import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "../app/run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "../app/run-launch-model.js";
@@ -94,7 +94,7 @@ import {
   dsRadius,
   dsText,
 } from "../ds/ui.js";
-import type { CommandResult } from "../../domain/commands.js";
+import type { CommandResult } from "../../rules/commands/commands.js";
 import { settleCommandResult } from "../app/command-result.js";
 import {
   inputRunParserLabel,
@@ -104,9 +104,9 @@ import {
   toRawSubmission,
   type InputRunSurface,
   type ParsedInputEntry,
-} from "../../domain/workflow/ingress.js";
-import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
-import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
+} from "../../models/workflow/ingress.js";
+import type { WorkflowModuleRole } from "../../workflow-kit/validation/module-role.js";
+import type { EnqueuePolicy } from "../../models/workflow/presentation.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
 import {
@@ -153,7 +153,7 @@ import {
   type RunStartStage,
 } from "./run-start-timeline.js";
 import { versionTag } from "./format.js";
-import type { StepOmissionForm } from "../../domain/workflow/step-omission.js";
+import type { StepOmissionForm } from "../../models/workflow/step-omission.js";
 
 /** the surface id this command family is audited under (ref frontend-backend-integration §3.4) */
 

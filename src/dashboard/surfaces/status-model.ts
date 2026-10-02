@@ -14,10 +14,10 @@ import { cn } from "../lib/utils.js";
 import { DS_STATUS, dsStatusAccessibleName, dsStatusText, type DsStatus } from "../ds/ui.js";
 import {
   displayStatusOf,
-} from "../../domain/dashboard/status-vocabulary.js";
+} from "../../models/dashboard/status-vocabulary.js";
 import type { z } from "zod";
-import type { QueueStatusSchema } from "../../domain/dashboard/projection.js";
-import type { OutcomeWireSchema } from "../../domain/dashboard/run-detail.js";
+import type { QueueStatusSchema } from "../../models/dashboard/projection.js";
+import type { OutcomeWireSchema } from "../../models/dashboard/run-detail.js";
 
 export type QueueStatus = z.infer<typeof QueueStatusSchema>;
 

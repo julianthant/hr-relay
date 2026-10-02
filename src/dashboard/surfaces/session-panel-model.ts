@@ -2,7 +2,7 @@ import { z } from "zod";
 import type {
 WorkerCardWireSchema,
 WorkerPoolWireSchema
-} from "../../domain/dashboard/projection.js";
+} from "../../models/dashboard/projection.js";
 import { type SubscriptionState } from "../client/subscription.js";
 import { dsClip,dsRadius,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";

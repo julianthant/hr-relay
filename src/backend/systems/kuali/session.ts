@@ -25,7 +25,7 @@
  * Duo cleared hands-off by Duo Autopilot → `ucsd.kualibuild.com`, ~32s wall end
  * to end, of which the Duo step was under 8s.
  */
-import { resolveSystemLoginUrl } from "../../../domain/config/instance.js";
+import { resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
 import {
   defineVerifiedLoginRecipe,

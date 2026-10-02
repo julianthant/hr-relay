@@ -5,7 +5,7 @@ import { AuthorityDatabase } from "../sqlite/authority-database.js";
 import { acquireExclusiveRuntimeAdmission, acquireInitialRuntimeAdmission, acquireSharedRuntimeAdmission,
   type RuntimeAdmission } from "./admission.js";
 import { AdmissionMutexBusyError, admissionMutexOwnerProvenDead, recoverAbandonedAdmissionMutexAtStartup, type ExistingAuthorityEvidence, type RuntimePair } from "./installation.js";
-import { rebuildRuntimeIsolation } from "../../../config/runtime-isolation.js";
+import { rebuildRuntimeIsolation } from "../../app/config/runtime-isolation.js";
 
 function verifyKnownDefaultAuthority(pair: RuntimePair, inspection: RuntimeAdmission): ExistingAuthorityEvidence {
   const path = join(pair.stateRoot, "state.db");

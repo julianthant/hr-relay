@@ -10,10 +10,10 @@ import {
 import { FailureAdvisoryPanel } from "../advisory.js";
 import { fmtClock, fmtActionClock } from "../format.js";
 import { dsFocus, dsIcon, dsText, MetaLine, SectionLabel } from "../../ds/ui.js";
-import type { RunDetailSectionResponseSchema, NotePageSchema } from "../../../domain/dashboard/run-detail.js";
-import type { CapabilityAvailabilitySchema } from "../../../domain/absence.js";
+import type { RunDetailSectionResponseSchema, NotePageSchema } from "../../../models/dashboard/run-detail.js";
+import type { CapabilityAvailabilitySchema } from "../../../rules/validation/absence.js";
 import type { LiveFailureContext } from "../trust-model.js";
-import { projectFailureDisplay } from "../../../domain/dashboard/failure-display.js";
+import { projectFailureDisplay } from "../../../models/dashboard/failure-display.js";
 import { FAILURE_OUTCOME, failureNextSteps } from "../failure-outcome-model.js";
 import { exactBundleCaptures, type RunCaptureItem } from "../run-captures-model.js";
 import { OperationCapture } from "../run-captures.js";

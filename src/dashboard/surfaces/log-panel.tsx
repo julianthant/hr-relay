@@ -74,9 +74,9 @@ import {
   dsText,
   type DsStatus,
 } from "../ds/ui.js";
-import type { RunDetailWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
+import type { RunDetailWireSchema } from "../../models/dashboard/run-detail.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
+import type { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
 import type { IdentityGatePayload } from "../app/identity-ceremony.js";
 import { OutcomeActionButton, DataActions, type DashboardActionHandler } from "./actions.js";
 import { AttemptHistorySection } from "./context-rail.js";

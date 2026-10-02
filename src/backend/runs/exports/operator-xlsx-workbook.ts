@@ -1,18 +1,18 @@
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import writeXlsxFile, { type Cell, type Sheet } from "write-excel-file/node";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
   OperatorXlsxWorkbookDocumentSchema,
   operatorXlsxActivityCaveats,
   operatorXlsxSearchCaveats,
-} from "../../../domain/dashboard/xlsx-export.js";
-import { activityErrorRatePercent } from "../../../domain/dashboard/activity.js";
+} from "../../../models/dashboard/xlsx-export.js";
+import { activityErrorRatePercent } from "../../../models/dashboard/activity.js";
 import type {
   OperatorXlsxActivityDocument,
   OperatorXlsxSearchDocument,
-} from "../../../domain/dashboard/xlsx-export.js";
+} from "../../../models/dashboard/xlsx-export.js";
 
-export { OPERATOR_XLSX_MEDIA_TYPE } from "../../../domain/dashboard/xlsx-export.js";
+export { OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
 
 export const OPERATOR_XLSX_SEARCH_COLUMNS = Object.freeze([
   "Run number",

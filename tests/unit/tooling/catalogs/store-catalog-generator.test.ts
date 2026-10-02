@@ -13,11 +13,11 @@ import {
   applyStoreCatalogSection,
   renderStoreCatalogSection,
   taskVerbOf,
-} from "../../../../scripts/generate-store-catalog.js";
+} from "../../../../scripts/docs/generate-store-catalog.js";
 import type {
   StoreCatalogPendingBindings,
   StoreCatalogRegistry,
-} from "../../../../scripts/generate-store-catalog.js";
+} from "../../../../scripts/docs/generate-store-catalog.js";
 
 const unionInput = z.union([
   z.strictObject({ kind: z.literal("by-eid"), emplId: z.string() }),

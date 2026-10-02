@@ -29,8 +29,8 @@ import { Sparkles } from "lucide-react";
 import type { z } from "zod";
 import { cn } from "../lib/utils.js";
 import { Button, MetaLine, Refusal, SectionLabel, Spinner, dsIcon, dsText } from "../ds/ui.js";
-import type { CapabilityAvailabilitySchema } from "../../domain/absence.js";
-import type { RunAdvisoryWireSchema } from "../../domain/dashboard/advisory.js";
+import type { CapabilityAvailabilitySchema } from "../../rules/validation/absence.js";
+import type { RunAdvisoryWireSchema } from "../../models/dashboard/advisory.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { DashboardClientError } from "../client/index.js";
 

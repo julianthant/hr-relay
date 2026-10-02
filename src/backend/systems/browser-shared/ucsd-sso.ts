@@ -25,8 +25,8 @@
  */
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "./action-notes.js";
-import { assertDuoCeremonyLeaseToken } from "../../../base/duo-ceremony-lease.js";
-import type { DuoCeremonyLeaseToken } from "../../../base/duo-ceremony-lease.js";
+import { assertDuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
+import type { DuoCeremonyLeaseToken } from "../../../workflow-kit/duo-ceremony-lease.js";
 import { probeAbsentControl } from "./authenticated-application.js";
 import type { ObservedFact } from "./authenticated-application.js";
 import { BrowserLoginError, DuoTerminalRefusalError } from "./login-contract.js";
@@ -35,7 +35,7 @@ import type {
   BrowserLoginStep,
   SystemLoginContext,
 } from "./login-contract.js";
-import type { BrowserSystemId } from "../../../domain/ids.js";
+import type { BrowserSystemId } from "../../../rules/identity/ids.js";
 
 /** legacy src/infra/auth/login.ts — the TritON SSO host every UCSD flow hops through. */
 export const UCSD_SSO_HOST = "a5.ucsd.edu";

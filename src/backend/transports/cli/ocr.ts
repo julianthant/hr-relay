@@ -23,15 +23,15 @@
  */
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { admitOcrExtraction } from "../../../domain/ocr/extraction.js";
+import { admitOcrExtraction } from "../../../models/ocr/extraction.js";
 import {
   OCR_FORM_TYPES,
   OcrFormTypeSchema,
   ocrForm,
   type OcrFormType,
-} from "../../../domain/ocr/form-registry.js";
-import { buildExtractionInstruction } from "../../../domain/ocr/instruction.js";
-import { ClassifiedStackSchema, groupStack, reportStack } from "../../../domain/ocr/stack.js";
+} from "../../../models/ocr/form-registry.js";
+import { buildExtractionInstruction } from "../../../models/ocr/instruction.js";
+import { ClassifiedStackSchema, groupStack, reportStack } from "../../../models/ocr/stack.js";
 
 const USAGE = [
   "usage:",

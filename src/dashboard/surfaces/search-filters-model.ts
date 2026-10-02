@@ -1,4 +1,4 @@
-import { CrossDateSearchQuerySchema } from "../../domain/dashboard/search.js";
+import { CrossDateSearchQuerySchema } from "../../models/dashboard/search.js";
 export const EMPTY_SEARCH_FILTERS=Object.freeze({scope:"",from:"",to:"",workflow:"",subject:"",actor:"",state:"",version:"",failure:"",evidence:"",shape:"",dryRun:"",system:""});
 export type SearchFilterDraft={ [Key in keyof typeof EMPTY_SEARCH_FILTERS]:string };
 export function searchQueryFromDraft(q:string,draft:SearchFilterDraft) {

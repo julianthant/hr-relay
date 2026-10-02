@@ -23,8 +23,8 @@
  * which is strictly worse than having no guard, because the server would still
  * be reporting that it had asked for a choice.
  */
-import type { RunDetailSectionResponse } from "../../domain/dashboard/run-detail.js";
-import { directIdentifierDisplay } from "../../domain/redaction.js";
+import type { RunDetailSectionResponse } from "../../models/dashboard/run-detail.js";
+import { directIdentifierDisplay } from "../../rules/redaction/redaction.js";
 
 /** The served `identity-gate` section, in every state the wire admits. */
 export type IdentityGatePayload =

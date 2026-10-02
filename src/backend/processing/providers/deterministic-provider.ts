@@ -1,16 +1,16 @@
-import type { ProviderAdapter, ProviderCallOptions } from "../../../base/providers.js";
-import type { ProviderCapabilityId } from "../../../domain/ids.js";
-import { deepFreeze } from "../../../domain/immutability.js";
+import type { ProviderAdapter, ProviderCallOptions } from "../../../workflow-kit/providers.js";
+import type { ProviderCapabilityId } from "../../../rules/identity/ids.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
 import {
   ProviderCostEstimateSchema,
   type ProviderCostEstimate,
-} from "../../../domain/provider-admission.js";
+} from "../../../rules/providers/provider-admission.js";
 import {
   ProviderAdapterOutcomeSchema,
   ProviderRequestEnvelopeSchema,
   type ProviderAdapterOutcome,
   type ProviderRequestEnvelope,
-} from "../../../domain/providers.js";
+} from "../../../models/providers/providers.js";
 
 export type DeterministicProviderScript =
   | Readonly<{ kind: "return"; estimate: ProviderCostEstimate; outcome: ProviderAdapterOutcome }>

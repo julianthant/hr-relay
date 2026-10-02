@@ -8,7 +8,7 @@
  * absence instead of becoming a 404 the operator has to interpret.
  */
 import { useEffect, useState } from "react";
-import type { RunDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { DashboardClientError } from "../client/index.js";
 import type { PanelSections } from "../surfaces/run-detail/sections.js";
 import { mergeSection, sectionsWanted } from "../surfaces/run-detail/section-registration.js";

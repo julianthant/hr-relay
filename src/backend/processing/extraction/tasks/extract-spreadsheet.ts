@@ -38,17 +38,17 @@
  * never marked as one is a loud rejection naming the cell, not a silent
  * 1900-epoch guess.
  */
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   ExtractSpreadsheet,
   ExtractSpreadsheetOutputSchema,
-} from "../../../../domain/contracts/extraction/extract-spreadsheet.js";
-import { CANONICAL_FIELDS, CANONICAL_FIELD_IDS } from "../../../../domain/fields/registry.js";
+} from "../../../../models/processing/extraction/extract-spreadsheet.js";
+import { CANONICAL_FIELDS, CANONICAL_FIELD_IDS } from "../../../../models/fields/registry.js";
 import {
   canonicalAliasIndex,
   rankHeaderRows,
-} from "../../../../domain/intake/header-discovery.js";
-import { detectColumns } from "../../../../domain/intake/mapping.js";
+} from "../../../../rules/intake/header-discovery.js";
+import { detectColumns } from "../../../../models/intake/mapping.js";
 import {
   parseSpreadsheetGrid,
   readArtifactBytes,

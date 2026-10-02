@@ -1,11 +1,12 @@
 # 13 — Production frontend/backend integration contract
 
-Status: **binding contract, as-built through Track C (2026-08-20).** The BFF, the wire, the one
-command route and the one resumable stream are BUILT and carry a real operator's daily work; the
-parity lane asserts 151 reference pairs; Track D is the ratified hardening list (D264) and is the
-only planned change to this document's contracts. Every section below states what IS — where the
-contract is normative and the code has not reached it yet, the section says so in its own status
-block rather than reading as met.
+Status: **binding integration contract; dated as-built blocks retain their original scope.** The
+BFF, wire, command route and resumable stream carry the operator's daily work. The operator retired
+`tests/parity/` and `tests/scenario/` on 2026-10-02; the parity counts, instructions and receipts
+below are historical, not current test coverage or visual acceptance. Future scenario and visual-
+test design is operator-led. Current source homes are in the [codebase map](codebase-structure.md);
+phase acceptance remains with its plan. A section's own status block still distinguishes contract
+from implementation.
 
 This document is the production-wiring companion for the rebuild demo. It answers one question:
 **how do we make the rebuilt product render the approved frontend exactly, while ensuring every
@@ -17,6 +18,11 @@ reference specs (workflow-model, dashboard-surfaces, data-intake-and-edit-data, 
 clock-config-secrets, operator-trust); this document owns the composition boundary between those
 contracts and the production React application. If a wire shape below needs to change, its owning
 document must be amended before implementation.
+
+**Current source paths — 2026-10-01:** server-side routes and composition now live under
+`src/backend/`; see the [current codebase map](codebase-structure.md). The approved Logs layout
+describes presentation and organization only: it adds no Logs API, which remains future Phase 3–5
+work.
 
 Visual authority:
 
@@ -99,10 +105,11 @@ The following are settled:
    not locally turn Running into Done, remove a row, resolve a gate, or invent a receipt. The next
    server projection or an authoritative replacement returned with the command result does that.
 6. **Build end-to-end slices.** A surface is not complete when its JSX exists. It is complete when
-   its schema, projector/query, stream invalidation, command path, degraded/error state, fixture,
-   and Playwright visual proof all exist.
-7. **The demo remains the visual oracle until parity is complete.** We port its visual language;
-   we do not redesign while wiring production data.
+   its schema, projector/query, stream invalidation, command path, degraded/error state, fixture and
+   checks required by the owning phase exist. The former Playwright parity lane is retired; future
+   visual-test requirements need operator-led design.
+7. **The demo remains a preserved design source.** We retain its visual language and approved UI
+   decisions; historical parity completion is not a current acceptance claim.
 8. **The product does not explain itself.** General teaching copy lives in an accessible ⓘ
    popover; only a refusal, a genuine hazard, or a fact about the selected run may consume standing
    surface space (ref dashboard-surfaces D24).
@@ -207,7 +214,7 @@ src/
 ├── server/
 │   └── dashboard/
 │       ├── routes/api.ts         # the ONE thin parse/host-gate/dispatch boundary
-│       ├── queries/              # bootstrap · run-detail · archive · explorer · activity-export · storage · advisory · ui-catalog
+│       ├── queries/              # Historical snapshot: bootstrap · run-detail · archive · explorer · activity-export · storage · advisory · ui-catalog
 │       ├── projectors/           # run-queue-projection · worker-cards · queue-row-actions · run-subject-title
 │       ├── commands/             # command-service · start-plan-service · intake-service · settings-service · explorer-edit-service · operator-command-ingress
 │       ├── subscriptions/        # dashboard-stream: cursor/ring → SSE envelopes
@@ -552,7 +559,7 @@ Data lives in the Context rail. Captures live in Receipt and Review where releva
 capability may make a section empty/absent; it may not silently change the approved composition.
 
 **Four of the eleven section arms have no producer, and each is DECLARED** in
-`config/pending-wire-bindings.json` rather than left silent (D184, the D107 pattern one layer up):
+`docs/rebuild/migrations/legacy/pending-wire-bindings.json` rather than left silent (D184, the D107 pattern one layer up):
 `review` and `people` (no registered descriptor declares those panel kinds; the record store is 2h),
 `context-evidence` (`buildRunDetail` serves `evidenceFacts: 0` and the evidence service is a later
 slice), and `captures` (the section lists artifact refs and **nothing serves artifact bytes** —
@@ -867,7 +874,7 @@ with `tests/unit/dashboard/use-dashboard-day.test.ts` for the hook's half.
 `dashboard-day:YYYY-MM-DD` and the hub emits only that topic. Every per-run subscription this
 section and §3.3 describe — Review record patches, note-page appends, artifact availability — is
 machinery with nothing on the other side of it. **That is the one unserved thing on this wire that
-is NOT declared** in `config/pending-wire-bindings.json`, and it should be; it is listed as to-build
+is NOT declared** in `docs/rebuild/migrations/legacy/pending-wire-bindings.json`, and it should be; it is listed as to-build
 in §3's status block. What a panel does instead is D257: it follows the day stream's `rowRevision`
 for that run and re-reads the section, so a live thing has a live key.
 
@@ -883,7 +890,7 @@ fold after" structural.
 <!-- roadmap: def-search-export -->
 <!-- roadmap: cross-cutting -->
 
-The served route layout (`src/server/dashboard/routes/api.ts` — a fresh rebuild API, no legacy
+The served route layout (`src/backend/transports/http/routes/api.ts` — a fresh rebuild API, no legacy
 compatibility layer):
 
 ```text
@@ -906,13 +913,25 @@ GET  /api/v1/search?q=…                        # strict bounded cross-date sea
 GET  /api/v1/reports/activity?from=&to=   ·  GET /api/v1/reports/activity.csv?from=&to=
 POST /api/v1/exports/xlsx                      # dedicated authenticated search/Activity workbook download (DCR5)
 GET  /api/v1/storage/doctor
-GET  /api/v1/ui-catalog
 POST /api/v1/preflight/rerun                 # strict loopback, bounded, retained-id replay
 POST /api/v1/start-plans
 POST /api/v1/intake/files      ·  GET /api/v1/intake/:sessionId
 POST /api/v1/commands          ·  POST /api/v1/commands/bulk
 GET  /events/v1?topics=…                       # the one stream; cursor via Last-Event-ID
 ```
+
+<a id="ui-catalog-retirement--operator-approved-2026-10-01"></a>
+
+**UI catalog retirement — operator-approved 2026-10-01.** This route list is current: catalog
+navigation and URL keys, the endpoint/client method, projection schemas, generator, search command,
+JSON artifact, per-system catalog documents and `catalog-search` parity scene are retired. The
+parity suite and its reference corpus were retired on 2026-10-02; old references are historical, and
+no current visual acceptance is claimed. Semantic UI registries, verification, provenance,
+write-safety assertions and the Workflow Explorer remain. Explorer scenario source links remain
+unresolved, and changes requiring scenario compile evidence are blocked pending operator-led design.
+See [operator trust](operator-trust.md#ui-catalog-retirement-amendment--operator-approved-2026-10-01)
+and its [scenario/parity amendment](operator-trust.md#scenario-and-parity-test-retirement-amendment--operator-approved-2026-10-02),
+and [dashboard surfaces §9.5.3](dashboard-surfaces.md#953-the-workflow-explorer-and-the-ui-catalog--read-only-graph-strict-safe-edits-d176d177).
 
 V (2.6.8) composes Queue and Activity with the published summary query ports. Selected Queue
 rows are enriched from canonical authority; summaries never authorize an action. CSV and XLSX use
@@ -1149,7 +1168,7 @@ until every cell in its row has an implementation and a test. The **Built** colu
 | Explorer | descriptor graph projection; optional run overlay | selected run overlay patches | DCC-safe label/icon/category validate/apply; source briefs or named unavailable arms otherwise | refs workflow-model/operator-trust exact descriptor + spans/checkpoints | graph plus complete existing-workflow boundary: label/icon/category hot-apply; timeline/grouping and notification unavailable without owners; policy and descriptor-allowlisted Edit Data yield strict source briefs; **the run overlay and new-workflow authoring are not served** |
 | Activity | server aggregate by range/category/workflow/status/outcome, plus the write-ledger block (D236) | explicit refresh or range invalidation; no per-row stream required | CSV export, SERVED (D240) — `GET /api/v1/reports/activity.csv`, caveats inside the artifact | aggregation query over the same run projection/receipts, beside the one ledger read-through | yes |
 | AI failure advisory | on-demand `POST /api/v1/runs/:runId/advisory` | none — it is a request, not a projection | none; it is unjournaled and holds no authority (D178) | the advisory provider behind the zero-authority-edge guard | yes |
-| UI catalog | `GET /api/v1/ui-catalog` — the committed semantic catalog | none | none | the generated catalog, pinned by its own guard | yes (fixture/dev surface, not product navigation) |
+| UI catalog | retired 2026-10-01 by operator amendment | none | none | semantic registries and Explorer task links remain; see ref operator-trust | no route, client method, projection or generated catalog |
 
 <!-- roadmap-status: dash-defaults -->
 - [x] run modal — the typed start door, its declared examples and its four modal rows (D250/D251, §5.1.1)
@@ -2217,6 +2236,11 @@ daily local tool.
 ---
 ## 7. Exact visual-parity and contract verification
 
+**Historical verification record.** The corpus descriptions, commands, gaps and receipts in this
+section record the former parity lane and its dated state. That lane and `tests/parity/` were retired
+on 2026-10-02. Do not run or restore these commands as current gates, and do not present the old
+comparisons as acceptance of the current UI. Future visual-test design requires the operator.
+
 ### 7.1 Reference route matrix
 
 <!-- roadmap: p1-spine -->
@@ -2749,7 +2773,7 @@ ways. A rule with no guard is listed as such rather than implied.
 8. **Panel composition coverage:** every descriptor panel kind resolves to the approved tab/Context
    mapping; every advertised section has a query and renderer. **HELD by `wire-connectivity`**,
    which generalises this rule to the WHOLE wire in both directions against
-   `config/pending-wire-bindings.json` (D107's pattern one layer up): every section arm is either
+   `docs/rebuild/migrations/legacy/pending-wire-bindings.json` (D107's pattern one layer up): every section arm is either
    returnable by `availableSections` — proven by CALLING it over parsed records covering every run
    state and outcome — or declared in the manifest; every command key the client can name is
    accepted by the kernel and every serveable verb is one some producer emits (D234); every path
@@ -2962,10 +2986,10 @@ Frontend/backend integration is complete only when — with the 2026-08-20 state
 > 2026-08-25 | 03a reconciliation | §7.4's D4/D5 budget row is MET; the other partial/unmet integration criteria above are unchanged
 <!-- /roadmap-status -->
 
-### D272–D276 parity disposition (2026-08-26)
+### D272–D276 visual-design disposition (2026-08-26)
 
-The operator ratified the 49 presentation recommendations as future ports. The parity lane remains
-assert-mode until those ports and their proofs deliberately re-freeze references; ratification is
-not a reference update or an implementation claim. The detailed decisions, including each rejected
-B/C alternative, live in `ref dashboard-surfaces` §10; served-truth boundaries remain in the owning
-contracts (D173, D179, D225, D238, D250–D253 and D264 unchanged).
+The operator ratified the 49 presentation recommendations as future ports. That ratification was
+not a reference update or an implementation claim. The former parity lane was retired on
+2026-10-02; no current visual acceptance is asserted here. The detailed decisions, including each
+rejected B/C alternative, live in `ref dashboard-surfaces` §10; served-truth boundaries remain in
+the owning contracts (D173, D179, D225, D238, D250–D253 and D264 unchanged).

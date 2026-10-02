@@ -53,7 +53,7 @@ tests/parity/.output/
 # Live-probe screenshots and accessibility dumps. A probe against UCPath /
 # Kuali / CRM captures REAL names, EIDs, and transaction numbers, so these are
 # restricted HR data and must never enter git. The committed evidence for a
-# probe is its sanitized manifest under evidence/ui/**, which records that a
+# probe is its sanitized manifest under docs/rebuild/evidence/selectors/**, which records that a
 # recipe matched exactly once and deliberately carries `capturedValue: false`.
 .screenshots/
 

@@ -1,7 +1,7 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathStageTermination } from "../../../../domain/contracts/ucpath/stage-termination.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
-import { UcpathEmplIdNotRecognizedError } from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathStageTermination } from "../../../../models/systems/ucpath/stage-termination.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import { UcpathEmplIdNotRecognizedError } from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /**

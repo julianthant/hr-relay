@@ -1,4 +1,4 @@
-import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema, type StorageDoctorLatestWire, type StorageDoctorWire } from "../../domain/dashboard/storage.js";
+import { StorageDoctorWireSchema, StorageDoctorLatestWireSchema, type StorageDoctorLatestWire, type StorageDoctorWire } from "../../models/dashboard/storage.js";
 import { parseOrThrow } from "./query-parse.js";
 import type { DashboardTransport } from "./transport.js";
 

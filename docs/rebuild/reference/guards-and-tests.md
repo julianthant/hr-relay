@@ -1,36 +1,57 @@
 # 10 — Guards & Tests: the test suite and the guard umbrella
 
-Status: **as-built through 2026-09-02, and normative for the testing tiers R10 ratifies.** Every
-guard named here is checked against `docs/rebuild/guard-inventory.json` and
-`tests/unit/architecture/` at HEAD, never against this document's own earlier prose (D252). At HEAD
-the tree carries **81 inventory entries — 70 active, 9 retired, 2 planned**, exactly 70 files under
-`tests/unit/architecture/`, nine executable ratchet arms in
-`tests/unit/architecture/helpers/ratchet-arms.ts`, 17 scenario files under `tests/scenario/`, 222
-parity reference triples, and a measured `test:coverage` of **87.34 % lines / 85.40 % statements /
-89.41 % functions / 76.39 % branches** (28,534 / 33,412 statements). §10 is the normative half:
-`tests/` is organized by **what a test needs**, and every test that must RUN a workflow is a live
-dry-run scenario.
+Status: **guard ownership and gate policy are current; the R10 scenario/parity tier specification is
+historical.** D363 retired `tests/scenario/` and `tests/parity/` on 2026-10-02. Current
+suite roots and boundaries are in the [codebase map](codebase-structure.md); future scenario and
+visual-test design requires a separate operator-led task. Workflow-declared scenario IDs remain
+contract data, not proof that tests executed. If a rehearsal manifest is missing, report it
+unavailable before execution. Unit fixtures that inject scenario inputs prove only their unit
+behavior, not production scenario execution. Counts and gate results below refer to their dated
+evidence, not the current tree.
 
-**Where to start.** §10 if you are writing tests or adding a workflow. §5.1 if you are adding or
+**Where to start.** Current test roots and gate policy are in the codebase map and §3.14. §5.1 if you are adding or
 retiring a guard. §2 and §3 for what each guard actually holds. §11 is the phase-by-phase activation
 ledger — history, kept because "which guard activated when, and what was deliberately NOT activated"
 is the record that stops a planned guard being reported as green.
 
+<a id="scenario-and-parity-suite-retirement--2026-10-02"></a>
+
+## D363 — Scenario and parity suite retirement — 2026-10-02
+
+The operator retired `tests/scenario/`, `tests/parity/`, their exact suite-only cases and the parity
+reference corpus. The [current codebase map](codebase-structure.md) is the single current test-tree
+home. Section 10 and older parity receipts remain dated history, not active commands, coverage
+claims or visual acceptance. Workflow-declared scenario IDs remain contract data, not test evidence;
+synthetic fixtures do not substitute for production scenario proof. An absent rehearsal manifest
+reports unavailable before execution. The Explorer's scenario source links remain unresolved, and
+edits requiring scenario compile evidence are blocked pending operator-led test design.
+
+`parity-reference-authority` retired with its sole parity lane. `scenario-coverage` and
+`test-target-registry` remain active for their retained pure graph and shared test-target invariants;
+five corpus cases and five T1b-manifest cases were retired from those mixed guards. Other semantic,
+import-boundary, provenance and write-safety guards remain. Coverage floors are unchanged. Dashboard
+TSX is no longer excluded solely for the retired parity lane; instrumentation does not itself
+execute UI behavior. Exact suite and sole-consumer case scope is recorded in the
+[layout-polish amendment](../plans/phase-3/backend-and-unit-tests.md#layout-polish--finish-the-approved-structure-before-phase-3)
+and [retirement ledger](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/retirement-and-freeze.json>);
+the retained/retired cases for `scenario-coverage` and `test-target-registry` are pinned in their
+[guard receipts](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/scenario-guard-retirement.json>)
+and [test-target receipt](</Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-target-guard-retirement.json>).
+
 Owns gap-audit (`08`) BLOCKER #2: ratchet port map, safety guards, descriptor projection coverage,
-guard inventory, TDD topology, the testing tiers, and the live lane.
+guard inventory, current test-scope policy, and gate cadence.
 
 ## Ownership header (D1)
 
 | | |
 |---|---|
-| **This doc OWNS** | The test/guard suite: ratchet inventory, strict-boundary/driver/subject/control/delegation/storage guards, transaction/write/outbox/provenance/artifact safety guards, descriptor projection coverage, accidental-shrink meta-test, **the testing tiers and the `tests/` layout (§10)**, the subject registry, the dry-run scenario contract, and the live lane. |
-| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, scenarios, evidence, knowledge/fix records, editor projections — **ref operator-trust**. The visual/a11y parity lane's own contract — **ref frontend-backend-integration §7**. |
+| **This doc OWNS** | Current guard inventory, ratchet and safety-guard policy, descriptor projection coverage, accidental-shrink protection, current test-scope policy and gate cadence. |
+| **Imports (never redefines)** | Task contract / `effect` / `example` / `fakeCtx` / mutation primitive / dry-run overloads — **ref task-contract**. Descriptor shape + `descriptor-coverage.test.ts` §1.4 + run-state/checkpoint/delegation — **ref workflow-model**. Span/event schema + command protocol + storage recovery + notifications + completion and the cross-repo runtime/cutover boundary — **ref dashboard-surfaces**. Worker/session/sleep-budget guards, the worker pool and the Duo ceremony lease — **ref execution-and-sessions**. Receipt/idempotency/fence/subject contract and the dry-run beat order — **ref write-safety**. Clock/config/secrets single-source — **ref clock-config-secrets**. Semantic UI registry, evidence, knowledge/fix records and editor projections — **ref operator-trust**. |
 | **Charter bindings** | "Same quality umbrella from day one"; "fail loud"; §1a fill/submit split is the dry-run safety model. Descriptor SSOT replaces parity lists in the rebuild repo; the legacy repo's own guard tests remain through initial cutover. |
 
-**One-sentence thesis.** ONE place owns *how* every doc's per-§ guard promise lands in
-`tests/unit/architecture/`, what each of the nine ported ratchet arms scans, why descriptor
-projection coverage replaces parallel parity lists, and — since R10 — **what a test needs in order to
-run**, because that is the only split that tells an agent which suites a change must re-run.
+**Current thesis.** ONE place owns how guard promises are recorded and verified, what each active
+ratchet scans, and the current focused/phase-exit gate cadence. The former scenario/parity tiers are
+preserved below as historical design evidence only.
 
 ---
 
@@ -462,9 +483,10 @@ read while still permitting replay-safe browser downloads.
 - **`semantic-ui-registry.test.ts`.** Every driver action/observation/page-state dependency resolves
   to one same-system canonical registry id. IDs are unique; search terms never create identity;
   `supersedes` references resolve without cycles. Entries have owner/intent/state/selector-strategy/
-  verification metadata and scenario refs. Generated `UI-CATALOG.md` must match the registry.
-  Removed ids require an explicit `supersedes` migration that updates all dependents—never a second
-  name for the same element.
+  verification metadata and scenario refs. Removed ids require an explicit `supersedes` migration
+  that updates all dependents—never a second name for the same element. The generated UI catalog
+  and its byte-freshness check were retired by operator amendment on 2026-10-01; semantic registry
+  and verification proofs remain.
 - **`task-driver-boundary.test.ts`.** Task/workflow modules cannot import Playwright types, driver
   internals, selector registry implementation, or call `locator/newPage/evaluate` directly. Public
   driver signatures reject selector strings, Page, Locator, and untyped maps; they expose domain
@@ -1154,15 +1176,17 @@ and intermediate integration. Phase 3.1 and earlier admitted assignments keep th
 
 | Stage | Required verification |
 | --- | --- |
-| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite, full coverage or broad parity run per task/group. |
-| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes unit, architecture and scenario projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide parity, generated-freshness, build, performance, recovery and live acceptance gate. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
+| Task/subtask implementation and integration | Add or update meaningful regression coverage. Run `npm run test -- <exact affected test paths>`, scoped lint with zero warnings, and the type/static/generated checks affected by the change. Bind actual paths and commands in the brief. Repair failures now; do not defer a red focused check. No whole test/architecture suite or full coverage per task/group. |
+| Phase exit | Run `npm run typecheck`, `npm run lint`, then `npm run test:coverage`; coverage includes the registered unit, integration and architecture projects, so do not append duplicate whole-suite runs. Also run every applicable phase-wide generated-freshness, build, performance, recovery and live acceptance gate. Scenario and visual-test requirements are operator-led, not implied by this cadence. Fix failures, rerun invalidated focused checks and re-establish the full exit gates on the corrected combined tree before phase completion. |
 | Documentation/evidence only | Use the existing documentation-only and unchanged-input rules below; a recording-only commit is not another full test cycle. |
 
 A phase here is an executable delivery part: 3.2, 3.3, 3.5, each admitted 4.x, 5A/5B and each
 scheduled 6A–6F part. Optional 3.4 binds a selected feature batch and one end-of-batch full gate;
 unselected features are never release prerequisites. A later batch gets its own exit evidence.
 The owning plan names the final gate outcome and carries an explicit list of deferred broad checks.
-Focused PASS is task evidence, not proof that those deferred checks passed.
+Focused PASS is task evidence, not proof that those deferred checks passed. The 2026-10-02
+operator amendment separately retires the scenario and parity suites; this is not a change to the
+coverage floors or to retained semantic guards.
 
 Independent reviews remain as required by the owning phase. Phase 3.2's final audit/freeze remains
 read-only: a defect returns to bounded remediation and restarts the audit. Phase 3.3 may not repair
@@ -2203,7 +2227,13 @@ Net: the safety suite plus descriptor projection coverage replace synchronized h
 guards—one contract change, and the compiler plus ratchets force the rest.
 
 
-## 10. The test family, and the split by what a test needs (R10)
+## 10. Historical R10 test family and retired scenario/parity tiers
+
+The specification below records the former R10 scenario/parity test tiers and their dated
+implementation. The operator retired both suites on 2026-10-02. Keep this material for provenance,
+but do not use its paths, counts, commands or checklists as current test requirements. Current test
+roots and active guard status live in the [codebase map](codebase-structure.md), the retirement
+amendment above and the guard inventory.
 
 
 - [x] DOCS the spec — §10 rewritten as-built with the tiers, layout, naming, run policy, subject registry, durable result and the two checklists (this commit)
@@ -2218,9 +2248,10 @@ guards—one contract change, and the compiler plus ratchets force the rest.
 > 2026-08-25 | test-tiers | registry, authority row and CLI runner built; the finalization canary now records `blocked`/`not-started` before browser composition because its honest subject is unavailable until 2026-08-28. The T1 PROOF remains open until that manifest records `met`
 > 2026-09-02 | test-suite-rationalization R5a | the T1a structural half is complete for all seven registered workflows: each owns exactly one `workflows/<workflow-id>/structural.scenario.test.ts`, the architecture lane refuses split/flat ownership, and all structural person/document identities are synthetic. The overall T1 item remains open: only `separations` and `separations-kuali-finalization` have T1b manifests, and their sole retained canary is honestly `gone`/blocked rather than `met`.
 
-This section is normative and it is the one an agent writing tests reads first. **R10's rule:
-`tests/` is organized by what a test NEEDS in order to run**, because that is the only split that
-answers the question every change actually asks — *which suites must I re-run?* A split by subject
+This was the normative R10 test policy; the operator retired its scenario and parity tiers on
+2026-10-02. The remaining specification is retained as decision history, not current instructions.
+**R10's former rule was: `tests/` is organized by what a test NEEDS in order to run**, because that
+was the split intended to answer the question every change asked — *which suites must I re-run?* A split by subject
 (“the separations tests”) cannot answer it; a split by mechanism (“unit vs integration”) cannot
 either. A split by need can: a test that needs nothing but the tree runs on every commit, and a test
 that must RUN a workflow needs a browser, a real system and a real subject, so it runs when somebody
@@ -3192,6 +3223,11 @@ These results complete **Phase 1c**. They do not complete Phase 1, whose next it
 exit remains the live Person Lookup spine proof.
 
 ### Phase 1d guard-activation boundary (ratified 2026-08-01)
+
+**Current amendment — 2026-10-01.** The UI catalog feature, generated-artifact freshness check,
+and catalog-only test cases are retired. Semantic UI registries, selector evidence, verification,
+provenance and write-safety assertions remain. The dated Phase 1d inventory below preserves its
+original paths and gate evidence; current homes are in [codebase structure](codebase-structure.md).
 
 <!-- roadmap: p1-authority -->
 

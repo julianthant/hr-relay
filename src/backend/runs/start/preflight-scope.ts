@@ -1,7 +1,7 @@
-import { workflowProjections, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { PreflightAdmissionScopeSchema, PreflightAdmissionRefusal, type PreflightAdmissionScope } from "../../../domain/preflight-admission.js";
-import { RuntimeCapabilitySchema, type RuntimeCapability } from "../../../domain/preflight-contract.js";
-import type { InstanceSelection } from "../../../domain/run/envelope.js";
+import { workflowProjections, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { PreflightAdmissionScopeSchema, PreflightAdmissionRefusal, type PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { RuntimeCapabilitySchema, type RuntimeCapability } from "../../../models/preflight/preflight-contract.js";
+import type { InstanceSelection } from "../../../models/run/envelope.js";
 import { resolveInstances } from "./plan.js";
 
 /** The admitted graph owns dependencies; caller-supplied capability lists never authorize a run. */

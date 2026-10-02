@@ -1,21 +1,21 @@
 import { z } from "zod";
 
-import type { Clock } from "../../../domain/clock.js";
-import type { IdFactory } from "../../../domain/identifiers.js";
-import { deriveStableUuid } from "../../../domain/identifiers.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { canonicalJsonStringify, JsonValueSchema } from "../../../domain/canonical-json.js";
-import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../../../domain/ids.js";
-import { RuntimeVersionChangeSchema, runtimeVersionChangeReviewFingerprint } from "../../../domain/archive/runtime-version-change.js";
-import { RuntimeVersionScopeSchema } from "../../../domain/archive/runtime-version.js";
-import { ArchiveReportSchema } from "../../../domain/archive/report.js";
-import type { CommandRequest } from "../../../domain/commands.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { IdFactory } from "../../../rules/identity/identifiers.js";
+import { deriveStableUuid } from "../../../rules/identity/identifiers.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import { FingerprintSchema, IsoInstantSchema, RunIdSchema } from "../../../rules/identity/ids.js";
+import { RuntimeVersionChangeSchema, runtimeVersionChangeReviewFingerprint } from "../../../models/archive/runtime-version-change.js";
+import { RuntimeVersionScopeSchema } from "../../../models/archive/runtime-version.js";
+import { ArchiveReportSchema } from "../../../models/archive/report.js";
+import type { CommandRequest } from "../../../rules/commands/commands.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../storage/sqlite/storage-records.js";
 import { createRunLifecycleStorage } from "../../storage/sqlite/lifecycle-storage.js";
 import type { ArchiveSnapshotSource } from "./archive-service.js";
 import { captureArchiveReport, genericArchiveSection } from "../../storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../storage/archive-transfer.js";
+import { transferArchiveReport } from "../../storage/archive/archive-transfer.js";
 
 export function createRuntimeVersionChanges(deps: Readonly<{
   database: AuthorityDatabase;

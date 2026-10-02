@@ -1,5 +1,5 @@
-import { SavedArchiveReportWireSchema, type SavedArchiveQuery, type SavedArchiveReportWire } from "../../domain/dashboard/archive.js";
-import { ARCHIVE_CSV_HEADER, ArchiveExportFormatSchema, archiveCsvFields, archiveCsvRows, type ArchiveExportFormat } from "../../domain/dashboard/archive-export.js";
+import { SavedArchiveReportWireSchema, type SavedArchiveQuery, type SavedArchiveReportWire } from "../../models/dashboard/archive.js";
+import { ARCHIVE_CSV_HEADER, ArchiveExportFormatSchema, archiveCsvFields, archiveCsvRows, type ArchiveExportFormat } from "../../models/dashboard/archive-export.js";
 
 export type ArchiveExportRead = (query: SavedArchiveQuery, signal?: AbortSignal) => Promise<{
   items: SavedArchiveReportWire[];

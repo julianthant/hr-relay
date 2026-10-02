@@ -5,7 +5,7 @@
 /**
  * The dashboard's design system, in one import.
  *
- *   import { Button, Panel, StatusPill, … } from "../ds/ui.js";
+ *   import { Button, Panel, StatusPill, … } from "./ui.js";
  *
  * READ `DESIGN.md` (same folder) BEFORE building a surface on top of this.
  * It is short and it is binding: token names, the status mapping, layout and

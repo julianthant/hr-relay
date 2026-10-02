@@ -1,12 +1,12 @@
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   CrmReadOnboardingRecord,
   ReadOnboardingRecordOutputSchema,
-} from "../../../../domain/contracts/crm/read-onboarding-record.js";
+} from "../../../../models/systems/crm/read-onboarding-record.js";
 import {
   CrmSubjectBindingSchema,
-} from "../../../../domain/ui/crm-onboarding.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/ui/crm-onboarding.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { crmDriver } from "../driver-declaration.js";
 
 /** Ported semantic operation: legacy 793abe1, src/systems/crm/onboarding-records.ts. */

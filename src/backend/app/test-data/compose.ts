@@ -12,7 +12,7 @@
  * Both commands run under the secure bootstrap's environment bypass: they
  * never load `.env`.
  */
-import type { RuntimeIsolation } from "../../../config/define-runtime-isolation.js";
+import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
 import {
   readTestDataFileBytes,
   readTestDataLocalConfig,
@@ -24,7 +24,7 @@ import {
   absentTestDataInputSource,
   type TestDataLocalReadOutcome,
   type TestDataShared,
-} from "../control/test-data.js";
+} from "../registries/test-data.js";
 import {
   PERSON_LOOKUP_WORKFLOW,
   SEPARATIONS_WORKFLOW,
@@ -34,20 +34,20 @@ import {
   resolveSeparationsKualiFinalizationTestTarget,
   resolveSeparationsTestTarget,
   type TestTargetManifestView,
-} from "../control/test-target-registry.js";
+} from "../registries/test-target-registry.js";
 import {
   TEST_DATA_CONFIG_PATH,
   TEST_DATA_LOCAL_CONFIG_PATH,
   TestDataConfigError,
   TestDataLocalConfigError,
   type TestDataInputSource,
-} from "../../../domain/test-data.js";
+} from "../../../models/config/test-data.js";
 import { realpathSync, statSync, openSync, readSync, closeSync } from "node:fs";
-import { TEST_DATA_USAGE } from "../../runs/test-data-usage.js";
+import { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 import {
   migrateTestDataFromCredentials,
   type CredentialTestDataMigrationReport,
-} from "../../storage/config/credential-test-data-migration.js";
+} from "../../storage/configuration/credential-test-data-migration.js";
 
 export interface TestDataCommandOutcome {
   readonly output: string;
@@ -60,7 +60,7 @@ export interface TestDataComposeDependencies {
   readonly now?: () => Date;
 }
 
-export { TEST_DATA_USAGE } from "../../runs/test-data-usage.js";
+export { TEST_DATA_USAGE } from "../../runs/provenance/test-data-usage.js";
 
 type SubjectState = "ready" | "blocked" | "defect";
 interface SubjectReport {

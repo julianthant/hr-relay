@@ -1,7 +1,7 @@
-import { type ProtectedInputBinding } from "../../../domain/protected-input.js";
+import { type ProtectedInputBinding } from "../../../models/write-safety/protected-input.js";
 import { admitProtectedInput, protectedSubjectMatchKey } from "./protected-input.js";
-import type { ProtectedSecretSource } from "../../../domain/secrets.js";
-import type { SchemaBoundCanonicalValue } from "../../../domain/schema-bound-value.js";
+import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
+import type { SchemaBoundCanonicalValue } from "../../../models/validation/schema-bound-value.js";
 /**
  * Start planning — the step between "the operator typed something" and "runs
  * exist" (ref frontend-backend-integration §5.1).
@@ -16,32 +16,32 @@ import type { SchemaBoundCanonicalValue } from "../../../domain/schema-bound-val
  * silently planning three. Dropping the fourth would be the same failure mode
  * as a fallback: the operator would act on a lie.
  */
-import type { RerunPlan } from "../../../domain/run/rerun.js";
-import { workflowDryRunSupport, workflowPlanning, workflowProjections } from "../../../base/workflow.js";
-import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import { JsonValueSchema } from "../../../domain/canonical-json.js";
-import type { JsonValue } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { deriveItemId } from "../../../domain/identifiers.js";
-import type { IdFactory } from "../../../domain/identifiers.js";
+import type { RerunPlan } from "../../../models/run/rerun.js";
+import { workflowDryRunSupport, workflowPlanning, workflowProjections } from "../../../workflow-kit/workflow.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import { JsonValueSchema } from "../../../rules/validation/canonical-json.js";
+import type { JsonValue } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { deriveItemId } from "../../../rules/identity/identifiers.js";
+import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import {
   BrowserSystemIdSchema,
   IsoInstantSchema,
   PositiveIntSchema,
-} from "../../../domain/ids.js";
-import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../../domain/run/envelope.js";
-import type { StepOmissions } from "../../../domain/workflow/step-omission.js";
-import { InstanceSelectionSchema } from "../../../domain/run/envelope.js";
-import { isTerminalRunState, type RunRecord } from "../../../domain/run/record.js";
-import { startSupersedeTargets } from "../../../domain/run/start-supersede.js";
+} from "../../../rules/identity/ids.js";
+import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../../models/run/envelope.js";
+import type { StepOmissions } from "../../../models/workflow/step-omission.js";
+import { InstanceSelectionSchema } from "../../../models/run/envelope.js";
+import { isTerminalRunState, type RunRecord } from "../../../models/run/record.js";
+import { startSupersedeTargets } from "../../../models/run/start-supersede.js";
 import {
   deriveCanonicalInputDigest,
   derivePlannedInputFingerprint,
   PlannedRunSchema,
   StartPlanRecordSchema,
-} from "../../../domain/run/start-plan.js";
-import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../domain/run/start-plan.js";
-import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
+} from "../../../models/run/start-plan.js";
+import type { PlannedRun, StartPlanRecord, StartRefusal } from "../../../models/run/start-plan.js";
+import { deriveSchemaHash } from "../../../models/validation/schema-bound-value.js";
 
 
 export interface StartPlannerDeps {

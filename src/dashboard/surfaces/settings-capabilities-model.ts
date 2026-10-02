@@ -1,6 +1,6 @@
 import {
 type WorkflowCapabilityRowWire
-} from "../../domain/dashboard/settings.js";
+} from "../../models/dashboard/settings.js";
 
 
 export type CapabilityKey =

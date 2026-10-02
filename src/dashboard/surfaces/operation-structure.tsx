@@ -6,10 +6,10 @@ import { exactOperationCaptures, type RunCaptureItem } from "./run-captures-mode
 import { fmtActionClock } from "./format.js";
 import { useEffect, useRef, useState } from "react";
 import { ChevronRight, Eye, MousePointer2, PencilLine, Monitor, Link2, PanelsTopLeft, Cpu, GitBranch, CircleStop, CheckCheck, LockKeyhole } from "lucide-react";
-import type { SessionNeed } from "../../domain/session.js";
-import type { WorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
-import type { OperationActionObservationWire, ObservedOperationStructureWire } from "../../domain/dashboard/operation-structure.js";
-import type { DeclaredActionIdentity } from "../../domain/task-provenance.js";
+import type { SessionNeed } from "../../models/sessions/session.js";
+import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
+import type { OperationActionObservationWire, ObservedOperationStructureWire } from "../../models/dashboard/operation-structure.js";
+import type { DeclaredActionIdentity } from "../../rules/workflow/task-provenance.js";
 import { Button, Collapsible, CollapsibleContent, CollapsibleTrigger, Dialog, DialogContent, DialogBody, Select, dsText, dsIcon } from "../ds/ui.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { cn } from "../lib/utils.js";

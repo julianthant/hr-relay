@@ -53,8 +53,8 @@ import {
   openContextMenuFor,
   dsText,
 } from "../ds/ui.js";
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
-import { isTerminalQueueStatus } from "../../domain/dashboard/projection.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
+import { isTerminalQueueStatus } from "../../models/dashboard/projection.js";
 import {
   FooterActions,
   OutcomeActionButton,

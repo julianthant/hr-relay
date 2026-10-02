@@ -1,7 +1,7 @@
 import { useEffect,useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { SavedArchiveFileWireSchema,type SavedArchiveQuery,type SavedArchiveReportWire,type SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
-import type { ArchiveReportCell } from "../../domain/archive/report.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { SavedArchiveFileWireSchema,type SavedArchiveQuery,type SavedArchiveReportWire,type SavedVersionIndexWire } from "../../models/dashboard/archive.js";
+import type { ArchiveReportCell } from "../../models/archive/report.js";
 import { observeResource } from "../state/async-resource.js";
 
 export type SavedResource<T> = { state: "loading" } | { state: "loaded"; value: T } | { state: "error"; message: string };

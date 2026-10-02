@@ -1,5 +1,5 @@
-import { RunRecordService } from "../run-record-service.js";
-import { systemClock, type Clock } from "../../../domain/clock.js";
+import { RunRecordService } from "../lifecycle/run-record-service.js";
+import { systemClock, type Clock } from "../../../rules/time/clock.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { TrustRunReader } from "./run-reader.js";
 

@@ -1,6 +1,6 @@
 import type { NotificationInbox } from "./inbox.js";
-import type { NotificationTriggerEvent } from "../../../domain/notification-triggers.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import type { NotificationTriggerEvent } from "../../../rules/notifications/notification-triggers.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
 export type NotificationObservation = Readonly<{ event: NotificationTriggerEvent; source: { identity: string; occurredAt: string } }>;
 export type NotificationSourceRead = Readonly<{ observations: readonly NotificationObservation[]; diagnostics: readonly "NOTIFICATION_RECEIPT_MISSING"[] }>;

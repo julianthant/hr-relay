@@ -1,12 +1,12 @@
-import { sha256Hex } from "../../../domain/sha256.js";
-import { ActorIdSchema, IsoInstantSchema, PositiveIntSchema, FingerprintSchema, OutboxIdSchema } from "../../../domain/ids.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { ActorIdSchema, IsoInstantSchema, PositiveIntSchema, FingerprintSchema, OutboxIdSchema } from "../../../rules/identity/ids.js";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordRequestSchema, GeneratedArtifactSchema,
-  GENERATED_ARTIFACT_METADATA_LIMIT, type GeneratedArtifact } from "../../../domain/generated-artifact.js";
-import { OperatorXlsxExportEvidenceSchema, OperatorXlsxExportRequestSchema, OperatorXlsxExportIdSchema, OPERATOR_XLSX_MEDIA_TYPE } from "../../../domain/dashboard/xlsx-export.js";
-import { ArtifactRefSchema } from "../../../domain/artifacts.js";
+  GENERATED_ARTIFACT_METADATA_LIMIT, type GeneratedArtifact } from "../../../models/artifacts/generated-artifact.js";
+import { OperatorXlsxExportEvidenceSchema, OperatorXlsxExportRequestSchema, OperatorXlsxExportIdSchema, OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
+import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
 
 export interface GeneratedArtifactPorts {
   database: DatabaseSync;

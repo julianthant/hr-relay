@@ -1,14 +1,14 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { artifactOwnershipViolations } from "../../../../scripts/test-artifact-policy.js";
+import { artifactOwnershipViolations } from "../../../../scripts/test/artifact-policy.js";
 
 it("keeps generated output untracked and scratch/evidence outside the repository", () => {
   const input = {
     repositoryRoot: "/repo",
     scratchRoot: "/tmp/hrt-501",
     evidenceRoot: "/evidence/logs-backend-phase1",
-    tracked: ["tests/fixtures/sample.ts", "tests/parity/references/run.png"],
-    ignored: ["test-results/.last-run.json", "coverage/index.html", "tests/parity/.output/result.json"],
+    tracked: ["tests/support/fixtures/sample.ts"],
+    ignored: ["test-results/.last-run.json", "coverage/index.html"],
   };
   assert.deepEqual(artifactOwnershipViolations(input), []);
   assert.match(artifactOwnershipViolations({ ...input, tracked: [...input.tracked, "test-results/.last-run.json"] }).join("\n"),

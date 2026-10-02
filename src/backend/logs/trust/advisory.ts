@@ -25,9 +25,9 @@
  * and an advisory that silently retried would spend a budget the operator
  * never asked it to spend.
  */
-import type { ProviderClient } from "../../../base/providers.js";
-import type { Clock } from "../../../domain/clock.js";
-import { IsoInstantSchema } from "../../../domain/ids.js";
+import type { ProviderClient } from "../../../workflow-kit/providers.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { IsoInstantSchema } from "../../../rules/identity/ids.js";
 import {
   ADVISORY_PROMPT_SCHEMA_HASH,
   ADVISORY_TEMPLATES,
@@ -40,8 +40,8 @@ import {
   buildAdvisoryFacts,
   parseAdvisoryAnswer,
   type FailureTriageOutcome,
-} from "../../../domain/trust/advisory.js";
-import { projectFailureForOperator } from "../../../domain/trust/failure.js";
+} from "../../../models/trust/advisory.js";
+import { projectFailureForOperator } from "../../../models/trust/failure.js";
 
 export interface FailureTriageAdvisorDeps {
   readonly clock: Clock;

@@ -10,7 +10,7 @@ Siren,
 TriangleAlert
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
+import { systemClock } from "../../rules/time/clock.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { BareButton, Badge,Button,Chip,Drawer,DrawerContent,DrawerTrigger,EmptyState,MetaLine,Refusal,dsFocus,dsIcon,dsMotion,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";

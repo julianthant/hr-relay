@@ -1,8 +1,8 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import type { DeclaredActionIdentity } from "../../domain/task-provenance.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import type { DeclaredActionIdentity } from "../../rules/workflow/task-provenance.js";
 /** Capture state belongs to the app's requested run. */
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import type { RunCaptureArtifactWire, RunDetailWire } from "../../domain/dashboard/run-detail.js";
+import type { RunCaptureArtifactWire, RunDetailWire } from "../../models/dashboard/run-detail.js";
 import { useDashboardClient } from "../state/client-context.js";
 
 export interface RunCaptureItem {

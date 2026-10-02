@@ -1,5 +1,5 @@
 import type { z } from "zod";
-import type { NotificationWireSchema } from "../../domain/dashboard/projection.js";
+import type { NotificationWireSchema } from "../../models/dashboard/projection.js";
 
 
 export type NotificationRowWire = z.infer<typeof NotificationWireSchema>;

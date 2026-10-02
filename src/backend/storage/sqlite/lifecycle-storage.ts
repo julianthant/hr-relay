@@ -1,14 +1,14 @@
-import { backupPendingCaptureFiles, backupHasArchiveTransferCustody } from "../compat/backup-inspection.js";
+import { backupPendingCaptureFiles, backupHasArchiveTransferCustody } from "../compatibility/backup-inspection.js";
 import { requireSupportedRecoverySchema } from "./recovery-admission.js";
 import { validateStorageRelocationRestoreCandidate } from "./relocation-restore-candidate.js";
-import type { VersionChange } from "../../../domain/archive/change-record.js";
+import type { VersionChange } from "../../../models/archive/change-record.js";
 import { z } from "zod";
 import type { AuthorityDatabase } from "./authority-database.js";
-import type { ArchiveReport } from "../../../domain/archive/report.js";
-import { ArchiveFileReferenceSchema } from "../../../domain/archive/report.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import type { ArchiveReport } from "../../../models/archive/report.js";
+import { ArchiveFileReferenceSchema } from "../../../models/archive/report.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 
-export { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../../domain/archive/lifecycle-source.js";
+export { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../../models/archive/lifecycle-source.js";
 
 /** The common lifecycle port: A owns capture policy; Q owns derivation and query policy. */
 export function createRunLifecycleStorage(database: AuthorityDatabase) {
@@ -20,8 +20,8 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
     readManualReport: (runId: string) => database.readManualArchiveReport(runId),
     readPendingReport: (runId:string,transferId:string) => database.readPendingArchiveReport(runId,transferId),
     archiveWorkflows: () => database.archiveWorkflows(),
-    listReports: (query: import("../../../domain/archive/report.js").ArchiveQuery) => database.queryArchiveReports(query),
-    archiveGroups: (query: import("../../../domain/archive/report.js").ArchiveGroupQuery) => database.archiveGroups(query),
+    listReports: (query: import("../../../models/archive/report.js").ArchiveQuery) => database.queryArchiveReports(query),
+    archiveGroups: (query: import("../../../models/archive/report.js").ArchiveGroupQuery) => database.archiveGroups(query),
     readVersionChange: (id: string) => database.readVersionChange(id),
     runtimeVersionIndex: () => database.readRuntimeVersionIndex(),
     writeVersionChange: (change: VersionChange) => database.writeVersionChange(change),
@@ -56,7 +56,7 @@ export function createRunLifecycleStorage(database: AuthorityDatabase) {
 import { existsSync, readFileSync, writeFileSync, mkdirSync, lstatSync, renameSync, unlinkSync, openSync, closeSync, fsyncSync, constants } from "node:fs";
 import { dirname, join } from "node:path";
 import { createHash, randomUUID } from "node:crypto";
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import { ArchiveDatabase } from "./archive-database.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "./backup-service.js";
 import { OfflineAuthorityRestoreService, OfflineRestoreOptionsSchema, OfflineRestoreFailure } from "./offline-restore.js";

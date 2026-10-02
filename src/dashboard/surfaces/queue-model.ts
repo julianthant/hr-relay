@@ -11,7 +11,7 @@
  */
 import { useEffect, useRef, useState } from "react";
 import type { z } from "zod";
-import type { QueueSurfaceWireSchema } from "../../domain/dashboard/projection.js";
+import type { QueueSurfaceWireSchema } from "../../models/dashboard/projection.js";
 import {
   dsStatusOf,
   statusAccessibleName,

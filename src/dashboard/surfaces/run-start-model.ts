@@ -9,12 +9,12 @@
  *
  * Everything here is D251: three facts the modal already held and did not draw.
  */
-import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
+import type { EnqueuePolicy } from "../../models/workflow/presentation.js";
 import {
   stepOmissionFactsSchema,
   type StepOmissionField,
   type StepOmissionForm,
-} from "../../domain/workflow/step-omission.js";
+} from "../../models/workflow/step-omission.js";
 
 /**
  * Why THIS DIALOG cannot start a workflow.

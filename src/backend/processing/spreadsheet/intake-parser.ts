@@ -20,18 +20,18 @@
  * of sheet-switching cannot grow without bound, not to make lookups fast.
  */
 import { z } from "zod";
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
-import type { IntakeParser } from "../../../base/intake-parser.js";
-import { ArtifactRefSchema, type ArtifactRef } from "../../../domain/artifacts.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { CANONICAL_FIELDS } from "../../../domain/fields/registry.js";
-import { canonicalAliasIndex, rankHeaderRows } from "../../../domain/intake/header-discovery.js";
-import { detectColumns, headerFingerprint } from "../../../domain/intake/mapping.js";
+import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
+import type { IntakeParser } from "../../../workflow-kit/intake-parser.js";
+import { ArtifactRefSchema, type ArtifactRef } from "../../../models/artifacts/artifacts.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { CANONICAL_FIELDS } from "../../../models/fields/registry.js";
+import { canonicalAliasIndex, rankHeaderRows } from "../../../rules/intake/header-discovery.js";
+import { detectColumns, headerFingerprint } from "../../../models/intake/mapping.js";
 import {
   IntakeParseSchema,
   type IntakeLayout,
   type IntakeParse,
-} from "../../../domain/intake/parse.js";
+} from "../../../models/intake/parse.js";
 import {
   parseSpreadsheetGrid,
   readArtifactBytes,

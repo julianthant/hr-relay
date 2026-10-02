@@ -5,7 +5,7 @@ ShieldCheck,
 Sun
 } from "lucide-react";
 import { Fragment,type ReactElement,memo } from "react";
-import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
+import type { CrossDateSearchResult } from "../../models/dashboard/search.js";
 import { BareButton,DEMO_THEME_LABEL,type DemoTheme,IconButton,dsBorder,dsFocus,dsIcon,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { type DayCountWire } from "./date-navigation-model.js";

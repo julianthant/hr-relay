@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { deepFreeze } from "../../../../domain/immutability.js";
+import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
   BrowserSystemIdSchema,
   DateOnlySchema,
@@ -8,7 +8,7 @@ import {
   PageStateIdSchema,
   ScenarioIdSchema,
   ScreenIdSchema,
-} from "../../../../domain/ids.js";
+} from "../../../../rules/identity/ids.js";
 import {
   UiEffectSchema,
   UiEvidenceReferenceSchema,
@@ -18,7 +18,7 @@ import {
   UiVerificationEvidenceManifestSchema,
   UiVerificationScenarioSchema,
   UiVerificationSchema,
-} from "../../../../domain/ui/contracts.js";
+} from "../../../../models/ui/contracts.js";
 import {
   CRM_ONBOARDING_DISPLAYED_EID,
   CRM_ONBOARDING_HISTORY_READY,
@@ -33,13 +33,13 @@ import {
   CRM_ONBOARDING_SEARCH_RESULT_ROW_CELLS,
   CRM_ONBOARDING_SEARCH_RESULT_ROWS,
   CRM_ONBOARDING_SEARCH_SCREEN,
-} from "../../../../domain/ui/crm-onboarding.js";
-import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../domain/trust/preflight-scenarios.js";
+} from "../../../../models/ui/crm-onboarding.js";
+import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
 const CRM_SELECTOR_BLOB = "e63530d375478dd330d07460c740f2027dbd7bdd";
-const FIXTURE_EVIDENCE = "evidence/ui/crm/onboarding.fixture.json";
-const LIVE_EVIDENCE = "evidence/ui/crm/onboarding.live.json";
+const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/crm/onboarding.fixture.json";
+const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/crm/onboarding.live.json";
 const SEARCH_SCENARIO = "ui/crm-onboarding-search-results";
 const RECORD_SCENARIO = "ui/crm-onboarding-record-identity";
 const HISTORY_SCENARIO = "ui/crm-onboarding-history-transitions";

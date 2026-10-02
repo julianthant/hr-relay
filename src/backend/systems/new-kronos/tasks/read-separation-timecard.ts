@@ -1,9 +1,9 @@
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   NewKronosReadSeparationTimecard,
   ReadSeparationTimecardOutputSchema,
-} from "../../../../domain/contracts/new-kronos/read-separation-timecard.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/systems/new-kronos/read-separation-timecard.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { newKronosDriver } from "../driver-declaration.js";
 
 /**

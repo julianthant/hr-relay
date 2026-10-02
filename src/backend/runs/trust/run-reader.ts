@@ -1,6 +1,6 @@
-import type { RunRecordService } from "../run-record-service.js";
-import type { RunRecord } from "../../../domain/run/record.js";
-import { SectionUnavailableError, TargetNotFoundError } from "../refusals.js";
+import type { RunRecordService } from "../lifecycle/run-record-service.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import { SectionUnavailableError, TargetNotFoundError } from "../commands/refusals.js";
 
 export type TrustRunReader = Pick<RunRecordService, "read" | "list">;
 

@@ -1,12 +1,10 @@
 import {
 ExplorerEditDraftSchema,
 ExplorerEditValidationResultSchema,
-UiCatalogWireSchema,
 WorkflowExplorerWireSchema,
 type ExplorerEditValidationResult,
-type UiCatalogWire,
 type WorkflowExplorerWire,
-} from "../../domain/dashboard/explorer.js";
+} from "../../models/dashboard/explorer.js";
 import {
 httpError
 } from "./errors.js";
@@ -25,8 +23,6 @@ export interface ExplorerQueries {
    */
   validateExplorerEdit(input: unknown): Promise<ExplorerEditValidationResult>;
 
-  /** The committed `generated/ui-catalog.json`, served read-only (2i-G, D177). */
-  uiCatalog(): Promise<UiCatalogWire>;
 }
 
 export function createExplorerQueries(transport: DashboardTransport): ExplorerQueries { return Object.freeze({
@@ -52,11 +48,4 @@ export function createExplorerQueries(transport: DashboardTransport): ExplorerQu
       return parseOrThrow(ExplorerEditValidationResultSchema, `POST ${path}`, response.body);
     },
 
-    async uiCatalog(): Promise<UiCatalogWire> {
-      return parseOrThrow(
-        UiCatalogWireSchema,
-        "GET /api/v1/ui-catalog",
-        await transport.requestJson("/api/v1/ui-catalog"),
-      );
-    }
 }); }

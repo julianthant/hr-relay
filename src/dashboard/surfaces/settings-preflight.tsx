@@ -7,7 +7,7 @@ import { preflightRemedy, preflightVerdict } from "./preflight-popover-model.js"
 import type { PreflightRerunState } from "./settings-preflight-model.js";
 import { fmtClock } from "./format.js";
 import type { PreflightCheckWire } from "./preflight-popover-model.js";
-import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import "./diagnostic-presentation.css";
 
 const CHECK_COPY: Record<string, { name: string; description: string }> = {

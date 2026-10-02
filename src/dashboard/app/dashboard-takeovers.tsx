@@ -1,13 +1,12 @@
 import type { ComponentProps,ReactNode } from "react";
 import {
 type FrontendBootstrapWire
-} from "../../domain/dashboard/bootstrap.js";
+} from "../../models/dashboard/bootstrap.js";
 import { ActivityReport } from "../surfaces/activity.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-runtime.js";
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
-import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
 import { SettingsPage } from "../surfaces/settings.js";
 import {
 RUN_START_DOOR_ID,
@@ -45,10 +44,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               sections={settingsSections}
               workflowLabels={workflowLabels}
               section={route.settings ?? ""}
-              catalogQuery={route.catalog ?? ""}
-              catalogView={route.catalogView ?? DEFAULT_CATALOG_VIEW}
-              onCatalogQuery={(next) => setRoute({ ...route, catalog: next })}
-              onCatalogView={(next) => setRoute({ ...route, catalogView: next })}
               actorId={boot.actor.id}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
@@ -148,8 +143,6 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 archiveWorkflow: undefined,
                 activity: undefined,
                 explore: undefined,
-                catalog: undefined,
-                catalogView: undefined,
               })}
             />
           ) : children);}

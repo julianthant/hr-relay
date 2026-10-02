@@ -71,12 +71,12 @@ run coverage without this task's compiler/linter contention. Guard additions/ret
 | Task | Required owners |
 | --- | --- |
 | Roadmap planning/supervision | [Plans index](docs/rebuild/plans/README.md), exact task plan, roadmap Governance / Plan-implement-review and D344 |
-| Workflow/task | `ref task-contract`, `ref workflow-model`, `ref stores` (derived; code wins), [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
+| Workflow/task | [Current codebase map](docs/rebuild/reference/codebase-structure.md), `ref task-contract`, `ref workflow-model`, `ref stores` (derived; code wins), [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
 | Run, settings, upgrade | `ref dashboard-surfaces` D330/D332, `ref clock-config-secrets` D331/D332, `ref guards-and-tests` §5.2, active phase bindings |
 | Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, relevant store instructions |
 | Dashboard, BFF, CLI | `src/dashboard/AGENTS.md`, `src/backend/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`, `ref operator-trust`; use `/ui` for frontend work |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
-| Tests/guards | `ref guards-and-tests`; `tests/scenario/AGENTS.md` for scenarios |
+| Tests/guards | `ref guards-and-tests`; use only the test roots in the [current codebase map](docs/rebuild/reference/codebase-structure.md). |
 | Known failure/lesson | Search `ref lessons` and the module's linked ledger by seam/decision |
 | Environment, isolation, porting, conventions | Relevant section of the [operating reference](.agents/skill-library/repository-work/REFERENCE.md) |
 | Authorized delegation | Operating reference §Authorized orchestration, then the platform's personal `parallel-agent-work` reference |
@@ -111,8 +111,12 @@ run coverage without this task's compiler/linter contention. Guard additions/ret
 | --- | --- |
 | Dev BFF + Vite | `npm run dashboard` (Ctrl+C stops both); BFF only: `npm run cli -- dashboard` |
 | Production bundle/server | `npm run web:build`, then `npm run dashboard:prod` |
-| Live dry-run case | `npm run cli -- dry-run-scenario <workflow> --subject <label>` |
-| Desktop visual/a11y | `npm run test:parity`; D340 excludes mobile/coarse-pointer cases but preserves resize, zoom and accessibility. Refreeze deliberately with attribution and phase-required validation. |
+| Workflow rehearsal | `npm run cli -- dry-run-scenario <workflow> --subject <label>`; a missing manifest must report unavailable before execution. |
 | Descriptor import closure | `npm run build:manifest`, then `npm run build:manifest:check` |
 | Store catalog | `npm run stores:catalog`, then `npm run stores:catalog:check` |
 | Roadmap | `npm run roadmap`, then `npm run roadmap:check` |
+
+The operator retired `tests/scenario/` and `tests/parity/` on 2026-10-02. Do not restore either
+suite or treat its old gates as current evidence. Future scenario and visual-test design is a
+separate operator-led task; workflow-declared scenario IDs remain contract data, not proof that a
+test executed.

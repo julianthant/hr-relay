@@ -3,11 +3,11 @@ import { constants, closeSync, fstatSync, lstatSync, openSync, readFileSync } fr
 import { join } from "node:path";
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createHash } from "node:crypto";
-import { ExplorerEditApplyRequestSchema, ExplorerOverrideDocumentSchema, ExplorerWorkflowOverrideSchema } from "../../../domain/dashboard/explorer.js";
-import { ExplorerOverrideImportSourceSchema, type ExplorerOverrideImportSource } from "../../../domain/dashboard/explorer-override.js";
-import { applyExplorerPresentationChanges, explorerEditCommandFingerprint } from "../../../domain/dashboard/explorer-override.js";
+import { ExplorerEditApplyRequestSchema, ExplorerOverrideDocumentSchema, ExplorerWorkflowOverrideSchema } from "../../../models/dashboard/explorer.js";
+import { ExplorerOverrideImportSourceSchema, type ExplorerOverrideImportSource } from "../../../models/dashboard/explorer-override.js";
+import { applyExplorerPresentationChanges, explorerEditCommandFingerprint } from "../../../models/dashboard/explorer-override.js";
 import { assertExplorerOverrideEvidence } from "./explorer-overrides.js";
 import { requireDatabaseSourcePath } from "./recovery-admission.js";
 

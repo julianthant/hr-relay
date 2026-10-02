@@ -1,5 +1,5 @@
-import { createFailureResolutionQuery } from "../dashboard/queries/failure-resolution.js";
-import type { RunRecordService } from "../run-record-service.js";
+import { createFailureResolutionQuery } from "../queries/failure-resolution.js";
+import type { RunRecordService } from "../lifecycle/run-record-service.js";
 /**
  * The ONE authority-backed receipt path (D141).
  *
@@ -17,10 +17,10 @@ import {
   type EnsureReceiptOutcome,
   type EvidenceReceiptStore,
   type ReceiptWriteEvidence,
-} from "../evidence-receipt.js";
-import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
-import type { FailureRecord } from "../../../domain/trust/failure.js";
+} from "../provenance/evidence-receipt.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
+import type { FailureRecord } from "../../../models/trust/failure.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "./run-reader.js";
 

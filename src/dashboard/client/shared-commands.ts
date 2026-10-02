@@ -5,7 +5,7 @@ CommandRequestSchema,
 CommandResultSchema,
 type BulkRunCommandResponse,
 type CommandResult
-} from "../../domain/commands.js";
+} from "../../rules/commands/commands.js";
 import { schemaError } from "./errors.js";
 import type { DashboardTransport } from "./transport.js";
 

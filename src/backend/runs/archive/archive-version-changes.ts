@@ -1,15 +1,15 @@
-import { PositiveIntSchema, NonNegativeIntSchema, RunIdSchema } from "../../../domain/ids.js";
-import { parsePendingCapture } from "../../../domain/archive/pending-capture.js";
-import { archivedRunReferenceFingerprint } from "../../../domain/archive/model.js";
+import { PositiveIntSchema, NonNegativeIntSchema, RunIdSchema } from "../../../rules/identity/ids.js";
+import { parsePendingCapture } from "../../../models/archive/pending-capture.js";
+import { archivedRunReferenceFingerprint } from "../../../models/archive/model.js";
 import type { createRunLifecycleStorage } from "../../storage/sqlite/lifecycle-storage.js";
 import { lifecycleSourceDigest } from "../../storage/sqlite/lifecycle-storage.js";
-import type { Clock } from "../../../domain/clock.js";
-import type { IdFactory } from "../../../domain/identifiers.js";
-import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import type { RunRecordService } from "../run-record-service.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { IdFactory } from "../../../rules/identity/identifiers.js";
+import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import type { ArchiveSnapshotSource } from "./archive-service.js";
 import type { createRuntimeVersionChanges } from "./archive-runtime-version-changes.js";
-import type { TargetReference, VersionChange as RunVersionChange } from "../run-fan-out.js";
+import type { TargetReference, VersionChange as RunVersionChange } from "../lifecycle/run-fan-out.js";
 interface ArchiveCommandDependencies {
   authority: { withAuthorityTransaction<Result>(work: (repositories: AuthorityRepositories) => Result): Result;
     readRuntimeVersionAdoption?(runId: string): { dashboard: { major: number; minor: number }; workflow: { major: number; minor: number } } | undefined };
@@ -24,17 +24,17 @@ interface ArchiveCommandDependencies {
 export interface ArchiveCommandTools {
   applied(request: CommandRequest, targets: readonly TargetReference[], changes: readonly RunVersionChange[]): CommandApplication;
 }
-import type { CommandApplication } from "../command-application.js";
+import type { CommandApplication } from "../commands/command-application.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { CommandIdentityConflictError, VersionScopeSchema, type CommandRequest, type CommandResult } from "../../../domain/commands.js";
-import { JsonValueSchema, canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { deriveStableUuid, lifecycleCommandId } from "../../../domain/identifiers.js";
-import { runTarget } from "../run-fan-out.js";
+import { CommandIdentityConflictError, VersionScopeSchema, type CommandRequest, type CommandResult } from "../../../rules/commands/commands.js";
+import { JsonValueSchema, canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { deriveStableUuid, lifecycleCommandId } from "../../../rules/identity/identifiers.js";
+import { runTarget } from "../lifecycle/run-fan-out.js";
 import { assessVersionBump, resolveBumpEffect, describeBlocker } from "./archive-service.js";
-import { VersionChangeSchema, versionChangeReviewFingerprint, archiveVersionChange, type VersionChange } from "../../../domain/archive/change-record.js";
+import { VersionChangeSchema, versionChangeReviewFingerprint, archiveVersionChange, type VersionChange } from "../../../models/archive/change-record.js";
 import { captureArchiveReport, genericArchiveSection } from "../../storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../storage/archive-transfer.js";
+import { transferArchiveReport } from "../../storage/archive/archive-transfer.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../../storage/sqlite/storage-records.js";
 import { projectArchiveReport } from "../../storage/sqlite/archive-records.js";
 

@@ -7,7 +7,8 @@ rebuild repo, D93: the rebuild lives in its own `hr-automation-rebuild` repo at 
 `docs/plans/2026-08-20-rebuild-docs-roadmap-cohesion.md` §3.5).**
 Intake now produces a durable, replayable admission manifest; every data boundary is strict;
 scenario coverage and evidence make partial/excluded rows impossible to mistake for silently
-completed work.
+completed work. Current source homes follow the [codebase structure map](codebase-structure.md);
+older dated path snapshots retain their cited locations.
 
 ## Ownership (D1 — this doc owns / this doc references)
 
@@ -21,7 +22,7 @@ completed work.
 
 | This doc **references** (owner) |
 |---|
-| **Canonical field definitions** — the field vocabulary + zod schemas live in the rebuild repo's `src/domain/` (defined THERE). This doc owns the *mapping/intake semantics onto* those fields, not the vocabulary itself |
+| **Canonical field definitions** — the field vocabulary + zod schemas live in `src/models/fields/` (defined THERE). This doc owns the *mapping/intake semantics onto* those fields, not the vocabulary itself |
 | Task contract/impl split (`defineTaskContract`/`defineTask`), service stores (D4), `freshness` field, error taxonomy → **ref task-contract** |
 | The **injected-data mechanism** (`RunEnvelope.injected`, §5.6 #3), checkpoint store + resume scope (D9), freshness walk (D8), the "Live Edit Data over checkpoints" subsection → **ref workflow-model** |
 | SSE wire shapes (`detailSurfaces` incl. the Context-rail `data` section), the span vocabulary (incl. D254's retirement of `span.patched`), notes stream, SQLite projection role (D14) → **ref dashboard-surfaces** |
@@ -61,12 +62,12 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 
 ---
 
-## 1. Canonical field registry (vocabulary lives in the rebuild repo's `src/domain/`, referenced here)
+## 1. Canonical field registry (vocabulary lives in `src/models/fields/`, referenced here)
 
 <!-- roadmap: p2-2h -->
 
 <!-- roadmap-status: p2-2h -->
-- [x] the canonical field registry is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (§1/§1.1, D146; `src/domain/fields/registry.ts:56-110`, `config/canonical-field-inventory.json` at legacy `4deabc5a`)
+- [x] the canonical field registry is closed at 47 ids and frozen against the RECORDED D58/D68 scan, checked in both directions (§1/§1.1, D146; `src/models/fields/registry.ts`, `src/models/fields/canonical-field-inventory.json` at legacy `4deabc5a`)
 - [x] mapping identity, the layout fingerprint, per-cell coercion, the suggestion scorer and `defineIntakeProjection`'s object-identity proof are built and bundle-safe (§2.1–§2.6, D147)
 - [x] the extraction store's two tasks (§3.1/§3.2, D149/D152), the roster store with its honest port split (§4, D163) and the normalization store including D178's `ai` arm (§4.2, D165/D178)
 - [x] OCR: one admission gate three producers cannot bypass, the generated instruction, the form registry and the classify/group scanner (§4.3–§4.11, D151–D161)
@@ -82,7 +83,7 @@ Data a **typed view of the run's checkpoints** edited through ref workflow-model
 - [ ] `effectiveDate` as a per-run constant typed once (§8 step 2) rides the intake session's `constants`; the drawn control belongs to ref dashboard-surfaces §11
 > 2026-08-20 | docs-cohesion data-intake-and-edit-data | verified against `ls src/workflows/` (no work-study) and `src/domain/fields/registry.ts`; left: the workflow itself
 
-The closed, typed field vocabulary is domain-owned (charter §11). This doc consumes it; it does not
+The closed, typed field vocabulary is model-owned (charter §11). This doc consumes it; it does not
 redefine the field schemas. **The ids shown below are an excerpt, not the Phase-1 inventory.** Before
 the registry freezes, D58/D68 scan every legacy workflow input/schema, roster/header rule, OCR form,
 and Edit-Data field; each shared mappable concept is assigned one canonical id/schema or explicitly
@@ -90,7 +91,7 @@ remains a workflow-local strict field with a reason. No current mappable field m
 omitted because it was absent from this example. The registry entry shape is:
 
 ```ts
-// src/domain/fields/registry.ts  — domain-owned; imports zod + domain identity only
+// src/models/fields/registry.ts  — model-owned; imports zod + model identity only
 import { z } from "zod";
 
 export type CanonicalFieldId = // excerpt; generated inventory/type is exhaustive in the build
@@ -155,9 +156,9 @@ may still have non-intake fields such as file refs, selectors, options, and disc
 
 <!-- roadmap: p2-2h -->
 
-`src/domain/fields/registry.ts` holds the closed `CanonicalFieldId` union (47 ids) and
-`src/domain/fields/cell-coercion.ts` holds the pure per-cell core. The D58/D68 scan this section
-required is **recorded**, not implied: `config/canonical-field-inventory.json` lists every legacy
+`src/models/fields/registry.ts` holds the closed `CanonicalFieldId` union (47 ids) and
+`src/models/fields/cell-coercion.ts` holds the pure per-cell core. The D58/D68 scan this section
+required is **recorded**, not implied: `src/models/fields/canonical-field-inventory.json` lists every legacy
 workflow input schema, the roster header rules, the OCR form fields and the Edit-Data editable
 fields at legacy commit `4deabc5a`, and gives each scanned field exactly one disposition — a
 canonical id, or workflow-local **with a reason id drawn from a declared, fully-used set**.
@@ -557,7 +558,7 @@ and a canonical field that is itself a union still matches by identity.
 
 **The projection binds two targets, and only two.** `emplId → eid` and `name → fullName` are the
 whole of what a roster row says about a *person*. `keepNonHdh` and `includeCrmDates` are recorded in
-`config/canonical-field-inventory.json` as `execution-option` precisely because they describe the
+`src/models/fields/canonical-field-inventory.json` as `execution-option` precisely because they describe the
 RUN, and binding a spreadsheet column to one would let a file decide whether this system reads CRM.
 They keep their schema defaults, so an intake row that omits them is valid.
 
@@ -1350,7 +1351,7 @@ the one gate. What the adapter owns is exactly two things:
 Three supporting changes landed with it. The request envelope carries the WHOLE `ArtifactRef` —
 the content-addressed store's `open()` demands the full ref and refuses a mismatched id/sha/size,
 so the previous id+sha pair named bytes nobody could actually resolve. `providerModelChain` joined
-`src/domain/secrets.ts` (the sole permitted env reader): it resolves the family's `modelsEnv`
+`src/models/config/secrets.ts` (the sole permitted env reader): it resolves the family's `modelsEnv`
 chain with the single-model legacy spelling honored, and an empty result is a fact the composition
 root judges, never a default. Neither repo's `.env` actually names a chain — legacy's models are
 registry knowledge, so a composition root passes the model id explicitly with provenance

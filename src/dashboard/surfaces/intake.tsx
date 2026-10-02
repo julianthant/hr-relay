@@ -55,16 +55,16 @@ X,
 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ReactNode } from "react";
 import type { z } from "zod";
-import { systemClock } from "../../domain/clock.js";
-import type { CommandResult } from "../../domain/commands.js";
-import type { RowRejectSchema } from "../../domain/intake/manifest.js";
+import { systemClock } from "../../rules/time/clock.js";
+import type { CommandResult } from "../../rules/commands/commands.js";
+import type { RowRejectSchema } from "../../models/intake/manifest.js";
 import type {
 ColumnBindingSchema,
 DetectedColumnSchema,
-} from "../../domain/intake/mapping.js";
-import type { IntakeTargetSchema } from "../../domain/intake/projection.js";
-import type { SuggestionSchema } from "../../domain/intake/suggestions.js";
-import type { IntakeSessionWire } from "../../domain/intake/wire.js";
+} from "../../models/intake/mapping.js";
+import type { IntakeTargetSchema } from "../../models/intake/projection.js";
+import type { SuggestionSchema } from "../../models/intake/suggestions.js";
+import type { IntakeSessionWire } from "../../models/intake/wire.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { DashboardClientError } from "../client/index.js";
 import {

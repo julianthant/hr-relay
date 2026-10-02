@@ -1,8 +1,8 @@
 import { Archive,Download,FileText,RefreshCw,ZoomIn } from "lucide-react";
 import { useCallback,useEffect,useRef,useState, type ReactNode } from "react";
-import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../domain/dashboard/archive.js";
-import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
-import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../domain/archive/report.js";
+import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQuery,SavedArchiveReportWire,SavedVersionIndexWire } from "../../models/dashboard/archive.js";
+import { formatRuntimeVersion } from "../../models/archive/runtime-version.js";
+import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../models/archive/report.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";

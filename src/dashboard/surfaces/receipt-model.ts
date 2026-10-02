@@ -23,7 +23,7 @@
  * src/dashboard/components/dev/rebuild-demo/DemoReceipt.tsx:82-86,220-232.
  */
 import type { z } from "zod";
-import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
+import type { RunEvidenceReceiptSchema } from "../../models/trust/evidence.js";
 import { fmtClock } from "./format.js";
 
 type RunEvidenceReceiptWire = z.infer<typeof RunEvidenceReceiptSchema>;

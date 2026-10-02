@@ -52,13 +52,13 @@
  */
 import type { Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
-import type { Clock } from "../../../../domain/clock.js";
-import { EidSchema, IsoInstantSchema } from "../../../../domain/ids.js";
-import type { Eid, ElementId } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
-import { assertMintedMutationCapability } from "../../../../base/mutation-capability.js";
-import { UiActionProofSchema } from "../../../../domain/ui/driver.js";
-import type { MutationCapability, UiActionProof } from "../../../../domain/ui/driver.js";
+import type { Clock } from "../../../../rules/time/clock.js";
+import { EidSchema, IsoInstantSchema } from "../../../../rules/identity/ids.js";
+import type { Eid, ElementId } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import { assertMintedMutationCapability } from "../../../../workflow-kit/mutation-capability.js";
+import { UiActionProofSchema } from "../../../../models/ui/driver.js";
+import type { MutationCapability, UiActionProof } from "../../../../models/ui/driver.js";
 import {
   UCPATH_SMART_HR_CONTINUE_BUTTON,
   UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON,
@@ -86,7 +86,7 @@ import {
   UcpathTerminationStagingSchema,
   UcpathTransactionScanSchema,
   isUcpathTerminationAction,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import type {
   UcpathInProgressRow,
   UcpathPendingSweepStaging,
@@ -96,12 +96,12 @@ import type {
   UcpathTerminationTarget,
   UcpathTransactionRow,
   UcpathTransactionScan,
-} from "../../../../domain/ui/ucpath-smart-hr-termination.js";
+} from "../../../../models/ui/ucpath-smart-hr-termination.js";
 import {
   UCPATH_SS_SMART_HR_APPROVAL_STATUS_DISPLAY,
   UCPATH_SS_SMART_HR_RECEIPT_DISPLAY,
   UcpathApprovalStatusSchema,
-} from "../../../../domain/ui/ucpath-ss-smart-hr.js";
+} from "../../../../models/ui/ucpath-ss-smart-hr.js";
 import {
   resolveUcpathElement,
   ucpathElementById,

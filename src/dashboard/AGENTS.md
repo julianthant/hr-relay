@@ -1,6 +1,7 @@
 # Operator dashboard
 
-Everything here is browser-reachable. Import only permitted pure contracts from `src/domain/**`;
+Everything here is browser-reachable. Import only permitted browser-safe contracts and rules from
+`src/models/**`, `src/rules/**`, and `src/workflow-kit/**`;
 never import Node or server code. `kit.html` is a separate entry whose closure is only `ds/**`
 and `lib/**`, never app/surfaces/client/state. Keep this file and `CLAUDE.md` identical.
 
@@ -8,8 +9,9 @@ and `lib/**`, never app/surfaces/client/state. Keep this file and `CLAUDE.md` id
 
 Use `/ui`. Read [DESIGN.md](DESIGN.md) and open the specimen (`npm run web` →
 `http://localhost:5174/kit.html`) before choosing primitives. Read [PARITY.md](PARITY.md) before
-changing a ruled deviation or judging reference parity. Search [LESSONS.md](LESSONS.md) by the
-surface/decision and read matching entries. Requested lessons go there.
+changing a ruled deviation; its decisions remain current while parity-suite receipts are historical.
+Search [LESSONS.md](LESSONS.md) by the surface/decision and read matching entries. Requested
+lessons go there.
 
 ## Boundaries
 
@@ -30,14 +32,14 @@ surface/decision and read matching entries. Requested lessons go there.
 
 D340: desktop/laptop only. Do not add mobile-only layouts, coarse-pointer styling or phone/touch
 test variants. Keep the 1024×720 CSS-pixel minimum desktop canvas: queue beside detail, document
-scrolling below the floor. Preserve desktop/zoom behavior, keyboard access and the desktop parity lane.
-The exact retirement/replacement mapping is in ref frontend-backend-integration §10.
+scrolling below the floor. Preserve desktop/zoom behavior and keyboard access. The parity suite and
+its reference corpus were retired on 2026-10-02; their receipts do not establish current visual
+acceptance. Future visual-test design requires the operator. The exact UI retirement mapping is in
+ref frontend-backend-integration §10.
 
 `npm run dashboard` starts BFF + Vite; `npm run web` alone needs a BFF. `npm run web:build` builds
 production assets. Root typecheck/lint/coverage requirements apply.
 
-For a single-surface change, run its filtered parity spec. Shared shell/tokens/primitives/models
-need the full `npm run test:parity` lane. Run the full lane before the last commit of a dashboard
-implementation unit. Never refreeze merely to pass: `test:parity:update` requires a deliberate,
-reviewed reference change. The lane and exact filters are owned by
-`docs/rebuild/reference/frontend-backend-integration.md` §7.
+No parity command or screenshot refreeze is current. The owning phase sets focused unit,
+integration, architecture, type, lint and coverage checks. Visual acceptance is deferred to
+operator-led test design; do not claim old reference comparisons as current evidence.

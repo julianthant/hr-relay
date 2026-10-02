@@ -1,10 +1,10 @@
 import { z } from "zod";
 import type { DatabaseSync } from "node:sqlite";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { SettingsCurrentRecordSchema } from "../../../domain/config/settings-current.js";
-import { ActiveRuntimeConfigActivationSchema, ActiveRuntimeConfigExpectationSchema, ActiveRuntimeConfigRecordSchema, RuntimeConfigClaimTokenSchema } from "../../../domain/config/runtime-generation.js";
-import { ConfigSnapshotRecordSchema } from "../../../domain/config/snapshot.js";
-import { CommandRequestSchema, CommandAuditRecordSchema, deriveSettingsCommandFingerprint } from "../../../domain/commands.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { SettingsCurrentRecordSchema } from "../../../models/config/settings-current.js";
+import { ActiveRuntimeConfigActivationSchema, ActiveRuntimeConfigExpectationSchema, ActiveRuntimeConfigRecordSchema, RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
+import { ConfigSnapshotRecordSchema } from "../../../models/config/snapshot.js";
+import { CommandRequestSchema, CommandAuditRecordSchema, deriveSettingsCommandFingerprint } from "../../../rules/commands/commands.js";
 import { readAppSettings, writeAppSettings } from "./settings-storage.js";
 interface SettingsActivationPorts {
  database: DatabaseSync;

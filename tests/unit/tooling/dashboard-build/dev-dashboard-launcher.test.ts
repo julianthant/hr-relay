@@ -21,7 +21,7 @@ async function launch(timeout = 1000) {
   });
   const signals = new EventEmitter();
   const output: string[] = [];
-  const module = await import("../../../../scripts/dev-dashboard.js");
+  const module = await import("../../../../scripts/dev/dashboard.js");
   const done = module.runDevDashboard({ startupTimeoutMs: timeout, signals,
     writeError: message => output.push(message) });
   return { children, signals, output, done };

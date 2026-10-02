@@ -1,12 +1,12 @@
 import { z } from "zod";
-import { NoteWireSchema, projectNoteForOperator } from "../../../domain/events/types.js";
-import { hasProtectedTransactionInput, retainedRunProtectedBindings, valueFreeProtectedData } from "../../../domain/protected-input.js";
+import { NoteWireSchema, projectNoteForOperator } from "../../../models/events/types.js";
+import { hasProtectedTransactionInput, retainedRunProtectedBindings, valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../sqlite/storage-records.js";
-import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport, type ArchiveReportCell } from "../../../domain/archive/report.js";
-import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../../domain/archive/lifecycle-source.js";
-import { RunRuntimeVersionStampSchema } from "../../../domain/archive/runtime-version.js";
+import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport, type ArchiveReportCell } from "../../../models/archive/report.js";
+import { JsonValueSchema, canonicalJsonStringify, type JsonValue } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { LifecycleSourceSnapshotSchema, lifecycleSourceDigest, type LifecycleSourceSnapshot } from "../../../models/archive/lifecycle-source.js";
+import { RunRuntimeVersionStampSchema } from "../../../models/archive/runtime-version.js";
 
 type Section = ArchiveReport["content"]["sections"][number];
 /** Flatten structure into labelled, typed cells. No live schema is needed to view it. */

@@ -1,8 +1,8 @@
 import { z } from "zod";
 import type {
 StorageHealthSummaryWireSchema
-} from "../../domain/dashboard/bootstrap.js";
-import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
+} from "../../models/dashboard/bootstrap.js";
+import type { StorageDoctorWire } from "../../models/dashboard/storage.js";
 
 
 export type StorageHealthSummary = z.infer<typeof StorageHealthSummaryWireSchema>;

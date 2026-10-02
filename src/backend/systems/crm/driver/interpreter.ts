@@ -4,25 +4,25 @@ import { z } from "zod";
 import {
   CrmReadOnboardingDates,
   ReadOnboardingDatesOutputSchema,
-} from "../../../../domain/contracts/crm/read-onboarding-dates.js";
+} from "../../../../models/systems/crm/read-onboarding-dates.js";
 import {
   CrmReadOnboardingRecord,
   ReadOnboardingRecordOutputSchema,
-} from "../../../../domain/contracts/crm/read-onboarding-record.js";
-import { DateOnlySchema, EidSchema } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/systems/crm/read-onboarding-record.js";
+import { DateOnlySchema, EidSchema } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
   CRM_ONBOARDING_DISPLAYED_EID,
   CrmOnboardingDatesReadSchema,
   CrmOnboardingDriverSchema,
   CrmOnboardingRecordReadSchema,
   CrmSubjectBindingSchema,
-} from "../../../../domain/ui/crm-onboarding.js";
+} from "../../../../models/ui/crm-onboarding.js";
 import type {
   CrmOnboardingDatesRead,
   CrmOnboardingDriver,
   CrmOnboardingRecordRead,
-} from "../../../../domain/ui/crm-onboarding.js";
+} from "../../../../models/ui/crm-onboarding.js";
 import { CRM_UI_REGISTRY } from "./ui-registry.js";
 
 const CRM_HOST = "act-crm.my.site.com";

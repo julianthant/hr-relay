@@ -26,7 +26,7 @@ are in before forming a theory.
 | immutable insert refused on `run_checkpoints`, gate resume fails one node past approval, retry impossible, attempt already spent | **Identity / checkpoint** → §5 |
 | timeline empty or one event, fold collapses two executions, receipt 500, panel blank | **Projection / evidence** → §6 |
 | `descriptor-coverage` red, guard-manifest mismatch, ratchet arm fires, typecheck red only in prod build | **Guards / build** → §7 |
-| parity screenshot green but wrong, theme wrong, 2-px panel | **Parity lane** → §8 |
+| old visual receipt mistaken for current acceptance, or a visual-test request | Operator-led visual-test design → §8 |
 | "is the dry run really submit-free" / which workflows have a dry run | **Dry-run audit** → §9 |
 
 ## 2 · Selector / page-state repair (the loop — no shortcuts)
@@ -34,7 +34,7 @@ are in before forming a theory.
 2. `playwright-cli -s=dbg open "<url>"` headless with Duo Autopilot (`channel: chromium`); log in with `.env` creds; `playwright-cli --raw snapshot > /tmp/s.yml`; find the TRUE anchor.
 3. Fix in the store driver / selector registry: **structural anchors first (`id`, `name`, role+accessible name), observed labels behind them; a no-match must refuse by NAME, never fall through** (`.or()` is a union under strict mode — it asserts the arms are exclusive; prefer `.first()`-settle + a pure verdict function, D213).
 4. Port from legacy only with `// ported from hr-automation@<sha> <path>`; re-verify LIVE (D150 — live beats diffing legacy).
-5. Re-run the failing step live; then the unit/scenario that pins it; `npm run build:manifest` if a descriptor closure moved.
+5. Re-run the failing step live; then the focused unit or architecture check that covers it. If scenario-test evidence is needed, record the gap for operator-led design; run `npm run build:manifest` if a descriptor closure moved.
 6. `playwright-cli close-all`. Record: the run id, the anchor before/after, the live proof — in the migration doc or the store AGENTS.md (invariants only). Lesson-worthy → tell the operator.
 
 Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the grid (D213); Kuali paints client-side (~1 s menubar, ~3 s heading, empty-heading decoys) — bound-wait for the fact; a Kuali `actionId` names a step, not a document — prove the document number from the h1; TritON renders one field under three labels — labels identify the realm; ui-grid virtualization terminates on coverage, not on `scrollTop` (D205); header names must come from the same container as the cells.
@@ -64,16 +64,19 @@ Known traps on record: the count banner `#PTS_CRITTEXT_DISP` renders WITH the gr
 - A browser-reachable module importing `node:*` crashes dev and only warns in prod — never alias/stub; move the Node half to a server module (`dashboard-wire-boundary` prints the chain).
 - `npm run typecheck && npm run lint && npm run test:coverage` is the gate; `--max-warnings 0`, no debt manifest.
 
-## 8 · Parity lane
-- References only change via `npm run test:parity:update`; theme is seeded through `addInitScript` + asserted (`assertThemeApplied`); a green a11y tree is not a visible panel (D187) — look at the PNG.
+## 8 · Visual and scenario-test evidence
+The operator retired the parity and scenario test suites on 2026-10-02. Old visual receipts are
+historical, not current acceptance. Future visual or scenario proof requires operator-led test
+design; do not restore the suites or imply an active screenshot lane. A green accessibility tree
+does not establish visual acceptance (D187).
 
 ## 9 · Dry-run audit ("dry run means nothing gets submitted")
 For a workflow (or all of them):
 1. From the descriptor, list every node that touches an external system; mark each `read` / `transaction` / `child-run`.
-2. For each transaction node: under `dryRun`, `executeDryRun` must PREVIEW (probe + would-prepare, or report `already-present`) and never fence/commit — check the `dry-run-commit-free` + `subject-before-fence` guards cover it and the scenario asserts `write_intents` / `write_attempts` / `durable_outbox` deltas = 0.
-3. The rehearsal must still exercise the WHOLE path (searches, navigation, form staging) — a preview that refuses where the real run succeeds is a false rehearsal (D215); a preview that answers where the real run stops is the same defect from the other side.
-4. Run it live with `dryRun=true` (hr-manage), then `explain run` + the durable counts.
-5. Emit the matrix: `| workflow | has dry-run scenario | last live dry run (date, run id) | durable deltas | gaps |` — and put the gaps in the migration doc / tree node, not in chat only.
+2. For each transaction node: under `dryRun`, `executeDryRun` must PREVIEW (probe + would-prepare, or report `already-present`) and never fence/commit. Retained write-safety guards protect the fence and commit boundary; they do not prove a workflow rehearsal ran.
+3. A missing dry-run rehearsal manifest reports unavailable before execution. Do not invent a manifest or subject, and do not start browser/runtime work in its place.
+4. When an authorized live dry run has an available manifest, verify the whole path (search, navigation and form staging), then inspect `explain run` and durable counts. A refusal where the real run succeeds is a false rehearsal (D215); a preview that answers where the real run stops is the same defect from the other side.
+5. Record the matrix: `| workflow | rehearsal manifest (available/unavailable) | last verified live dry run (date, run id) | durable deltas | gaps |`. Scenario-test proof remains deferred to operator-led design.
 
 ## Close
 Failing test pinned → fix → gate green → under `/supervise` or an explicit review request, run the retained `review` skill's Correctness + Silent failures axes; otherwise inspect those two concerns inline → record (migration doc line / store AGENTS.md invariant) → tell the operator if it is lesson-worthy.

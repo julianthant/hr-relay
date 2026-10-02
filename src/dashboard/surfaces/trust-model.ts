@@ -1,7 +1,7 @@
 import { settleCommandResult } from "../app/command-result.js";
 import { useEffect, useRef, useState } from "react";
-import { FailureResolutionCommandSchema } from "../../domain/commands.js";
-import { RunDetailSectionResponseSchema } from "../../domain/dashboard/run-detail.js";
+import { FailureResolutionCommandSchema } from "../../rules/commands/commands.js";
+import { RunDetailSectionResponseSchema } from "../../models/dashboard/run-detail.js";
 import type { DashboardClient } from "../client/index.js";
 /**
  * The pure half of `trust.tsx` (the surface/model pairing rule, ref
@@ -14,9 +14,9 @@ import type { DashboardClient } from "../client/index.js";
  */
 import type { z } from "zod";
 import { DashboardClientError } from "../client/index.js";
-import type { DiagnosticBundleWire } from "../../domain/dashboard/diagnostic-bundle.js";
-import type { FailureDetailWireSchema } from "../../domain/dashboard/run-detail.js";
-import type { RunEvidenceReceiptSchema } from "../../domain/trust/evidence.js";
+import type { DiagnosticBundleWire } from "../../models/dashboard/diagnostic-bundle.js";
+import type { FailureDetailWireSchema } from "../../models/dashboard/run-detail.js";
+import type { RunEvidenceReceiptSchema } from "../../models/trust/evidence.js";
 import { fmtClock, plural, shortHash } from "./format.js";
 import { SYSTEM_LABEL } from "./system-chip-model.js";
 

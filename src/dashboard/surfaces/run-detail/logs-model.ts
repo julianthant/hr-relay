@@ -1,4 +1,4 @@
-import { ObservedOperationStructureWireSchema } from "../../../domain/dashboard/operation-structure.js";
+import { ObservedOperationStructureWireSchema } from "../../../models/dashboard/operation-structure.js";
 /**
  * Which tabs a run detail advertises, and which one opens.
  *
@@ -14,7 +14,7 @@ import {
   LogPageCursorSchema,
   type LogRowWire,
   type NotePageSchema,
-} from "../../../domain/dashboard/run-detail.js";
+} from "../../../models/dashboard/run-detail.js";
 
 export type NotePage = z.infer<typeof NotePageSchema>;
 

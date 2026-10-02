@@ -1,8 +1,8 @@
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   SearchPersonOrg,
   SearchPersonOrgOutputSchema,
-} from "../../../../domain/contracts/ucpath/search-person-org.js";
+} from "../../../../models/systems/ucpath/search-person-org.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /** Ported semantic operation: legacy 793abe1, src/workflows/person-lookup/lookup.ts. */

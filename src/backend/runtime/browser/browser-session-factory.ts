@@ -34,29 +34,29 @@ import type {
   BrowserSessionCloseReason,
   WorkerBrowserResource,
   WorkerBrowserSessionFactory,
-} from "../../../base/session.js";
-import type { DuoCeremonyGate } from "../../../base/duo-ceremony-lease.js";
-import type { RuntimeIsolation } from "../../../config/define-runtime-isolation.js";
-import type { Clock } from "../../../domain/clock.js";
-import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../../domain/config/instance.js";
-import type { RuntimeInstance } from "../../../domain/config/instance.js";
-import { AbsolutePathSchema } from "../../../domain/config/schema.js";
-import type { Config } from "../../../domain/config/schema.js";
-import { BrowserPresentationModeSchema } from "../../../domain/run/envelope.js";
-import type { BrowserPresentationMode } from "../../../domain/run/envelope.js";
+} from "../../../workflow-kit/session.js";
+import type { DuoCeremonyGate } from "../../../workflow-kit/duo-ceremony-lease.js";
+import type { RuntimeIsolation } from "../../../models/config/define-runtime-isolation.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { RuntimeInstanceSchema, resolveSystemEntryUrl } from "../../../models/config/instance.js";
+import type { RuntimeInstance } from "../../../models/config/instance.js";
+import { AbsolutePathSchema } from "../../../models/config/schema.js";
+import type { Config } from "../../../models/config/schema.js";
+import { BrowserPresentationModeSchema } from "../../../models/run/envelope.js";
+import type { BrowserPresentationMode } from "../../../models/run/envelope.js";
 import {
   BrowserSessionIdSchema,
   BrowserSystemIdSchema,
   FingerprintSchema,
   WorkerIdSchema,
   WorkflowIdSchema,
-} from "../../../domain/ids.js";
-import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../../domain/ids.js";
+} from "../../../rules/identity/ids.js";
+import type { BrowserSystemId, Fingerprint, WorkerId, WorkflowId } from "../../../rules/identity/ids.js";
 import {
   requireSecret,
   requireSecretFile,
   type ProtectedSecretSource,
-} from "../../../domain/secrets.js";
+} from "../../../models/config/secrets.js";
 import { assertAuthenticatedApplication } from "../../systems/browser-shared/authenticated-application.js";
 import type { AuthenticatedApplicationEvidence } from "../../systems/browser-shared/login-contract.js";
 import type { SystemLoginContext } from "../../systems/browser-shared/login-contract.js";

@@ -7,9 +7,9 @@
  * `stores/<system>/driver/**`). This module only assembles it, so the factory
  * has one place to look and a live smoke can bind a subset.
  */
-import type { BrowserDriver } from "../../../base/task.js";
-import type { Clock } from "../../../domain/clock.js";
-import type { BrowserSystemId } from "../../../domain/ids.js";
+import type { BrowserDriver } from "../../../workflow-kit/task.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { BrowserSystemId } from "../../../rules/identity/ids.js";
 import type { AuthenticatedApplicationVerifier, SystemLoginRecipe } from "../../systems/browser-shared/login-contract.js";
 import { createCrmOnboardingDriver } from "../../systems/crm/driver/interpreter.js";
 import { createKualiRrssDocumentDriver } from "../../systems/kuali/driver/interpreter.js";

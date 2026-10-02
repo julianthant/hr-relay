@@ -1,7 +1,7 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { AppSettingsSchema, type AppSettings } from "../../../domain/config/app-settings.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { AppSettingsSchema, type AppSettings } from "../../../models/config/app-settings.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 export const APP_SETTINGS_DDL = `CREATE TABLE app_settings (
  record_key TEXT PRIMARY KEY CHECK(record_key='current'), record_json TEXT NOT NULL CHECK(json_valid(record_json)),
  config_snapshot_id TEXT REFERENCES settings_snapshots(record_key) ON DELETE RESTRICT,

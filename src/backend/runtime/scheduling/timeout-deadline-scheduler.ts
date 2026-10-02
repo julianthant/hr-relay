@@ -10,11 +10,11 @@
  * It sits with runtime scheduling because it implements the kernel's timer port
  * for both worker and dashboard composition.
  */
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import type {
   MonotonicDeadlineHandle,
   MonotonicDeadlineScheduler,
-} from "../deadline-scheduler.js";
+} from "./deadline-scheduler.js";
 
 export function createTimeoutDeadlineScheduler(clock: Clock): MonotonicDeadlineScheduler {
   return Object.freeze({

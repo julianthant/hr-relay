@@ -1,21 +1,21 @@
-import { canonicalJsonStringify } from "../../domain/canonical-json.js";
-import { OperationSourceRequestSchema, OperationSourceResponseSchema, type OperationSourceRequest, type OperationSourceResponse } from "../../domain/dashboard/operation-structure.js";
-import { RunAdvisoryWireSchema,type RunAdvisoryWire } from "../../domain/dashboard/advisory.js";
+import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
+import { OperationSourceRequestSchema, OperationSourceResponseSchema, type OperationSourceRequest, type OperationSourceResponse } from "../../models/dashboard/operation-structure.js";
+import { RunAdvisoryWireSchema,type RunAdvisoryWire } from "../../models/dashboard/advisory.js";
 import {
   ItemAttemptHistoryResponseSchema,
   type ItemAttemptHistoryResponse,
-} from "../../domain/dashboard/item-attempt-history.js";
+} from "../../models/dashboard/item-attempt-history.js";
 import {
 DiagnosticBundleWireSchema,
 type DiagnosticBundleWire,
-} from "../../domain/dashboard/diagnostic-bundle.js";
+} from "../../models/dashboard/diagnostic-bundle.js";
 import {
 RunDetailSectionResponseSchema,
 RunDetailWireSchema,
 type RunDetailSectionResponse,
 type RunDetailWire,
-} from "../../domain/dashboard/run-detail.js";
-import { ArtifactIdSchema,DiagnosticBundleIdSchema } from "../../domain/ids.js";
+} from "../../models/dashboard/run-detail.js";
+import { ArtifactIdSchema,DiagnosticBundleIdSchema } from "../../rules/identity/ids.js";
 import {
 DashboardClientError,
 diagnosticBundleIdentityError

@@ -1,5 +1,5 @@
 import { saveDownload } from "../lib/save-download.js";
-import type { ActivityReportSelection } from "../../domain/dashboard/activity-selection.js";
+import type { ActivityReportSelection } from "../../models/dashboard/activity-selection.js";
 import { observeAsyncResource } from "../state/async-resource.js";
 /**
  * Ported from legacy hr-automation@1bffbd658db34ce84a08e69484db3a40b3658d6e,
@@ -74,7 +74,7 @@ activityErrorRatePercent,
 activityReportCaveats,
 activityStatusRuns,
 type ActivityReportWire,
-} from "../../domain/dashboard/activity.js";
+} from "../../models/dashboard/activity.js";
 import { DashboardClientError } from "../client/errors.js";
 import {
 BulletList,

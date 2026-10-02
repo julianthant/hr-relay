@@ -1,11 +1,11 @@
-import { EidSchema } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
-import { SearchPersonOrgOutputSchema } from "../../../../domain/contracts/ucpath/search-person-org.js";
-import type { SearchPersonOrgOutput } from "../../../../domain/contracts/ucpath/search-person-org.js";
-import { PageStateProofSchema, UiActionProofSchema } from "../../../../domain/ui/driver.js";
-import type { UiActionProof } from "../../../../domain/ui/driver.js";
-import { UcpathJobSummaryReadSchema } from "../../../../domain/ui/ucpath-job-summary.js";
-import type { UcpathJobSummaryRead } from "../../../../domain/ui/ucpath-job-summary.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
+import { SearchPersonOrgOutputSchema } from "../../../../models/systems/ucpath/search-person-org.js";
+import type { SearchPersonOrgOutput } from "../../../../models/systems/ucpath/search-person-org.js";
+import { PageStateProofSchema, UiActionProofSchema } from "../../../../models/ui/driver.js";
+import type { UiActionProof } from "../../../../models/ui/driver.js";
+import { UcpathJobSummaryReadSchema } from "../../../../models/ui/ucpath-job-summary.js";
+import type { UcpathJobSummaryRead } from "../../../../models/ui/ucpath-job-summary.js";
 import {
   UCPATH_PERSON_ORG_DETAIL_READY,
   UCPATH_PERSON_ORG_DETAIL_SCREEN,
@@ -13,9 +13,9 @@ import {
   UCPATH_PERSON_ORG_EID_INPUT,
   UCPATH_PERSON_ORG_SEARCH_READY,
   UCPATH_PERSON_ORG_SEARCH_SCREEN,
-} from "../../../../domain/ui/ucpath-person-org.js";
-import type { UcpathPersonOrgScreens } from "../../../../domain/ui/ucpath-person-org.js";
-import type { UcpathStoreDriver } from "../../../../domain/ui/ucpath-driver.js";
+} from "../../../../models/ui/ucpath-person-org.js";
+import type { UcpathPersonOrgScreens } from "../../../../models/ui/ucpath-person-org.js";
+import type { UcpathStoreDriver } from "../../../../models/ui/ucpath-driver.js";
 import { refuseUnimplementedSmartHrHalf } from "./smart-hr-fake.js";
 
 export function createDeterministicUcpathPersonOrgDriver(

@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { StartCommandRequestSchema } from "../../domain/commands.js";
-import { systemClock } from "../../domain/clock.js";
-import { canonicalJsonStringify, type JsonValue } from "../../domain/canonical-json.js";
-import { RerunValuesSnapshotSchema, type RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
-import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../domain/dashboard/start-plan.js";
+import { StartCommandRequestSchema } from "../../rules/commands/commands.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
+import { RerunValuesSnapshotSchema, type RerunValuesSnapshot } from "../../models/dashboard/rerun-values.js";
+import { StartPlanRequestSchema, StartPlanWireSchema, type StartPlanRequest } from "../../models/dashboard/start-plan.js";
 import type { DashboardClient } from "../client/index.js";
 import { START_DOOR_ABSENCE } from "../surfaces/run-start-model.js";
 import type { RunStartWorkflow } from "../surfaces/run-start.js";
 import type { WorkflowBootstrapPrimitive } from "../surfaces/shell-model.js";
 import { RUN_START_DOOR_ID, restoreDashboardTakeoverFocus } from "./dashboard-app-model.js";
-import type { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
+import type { RerunValuesRequestSchema } from "../../models/dashboard/rerun-values.js";
 import type { z } from "zod";
 export type RerunLaunchSource = z.infer<typeof RerunValuesRequestSchema>;
 

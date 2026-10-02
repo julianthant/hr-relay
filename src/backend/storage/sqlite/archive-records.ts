@@ -1,6 +1,6 @@
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { ArchiveReportSchema, type ArchiveReport } from "../../../domain/archive/report.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { ArchiveReportSchema, type ArchiveReport } from "../../../models/archive/report.js";
 import type { ArchiveDatabase } from "./archive-database.js";
 
 export type PublishedArchiveReportProvenance = Readonly<{

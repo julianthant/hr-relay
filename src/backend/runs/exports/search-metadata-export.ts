@@ -1,5 +1,5 @@
-import { SearchMetadataExportRequestSchema } from "../../../domain/dashboard/search-export.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { SearchMetadataExportRequestSchema } from "../../../models/dashboard/search-export.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { collectSearchDocument } from "./operator-xlsx-export-service.js";
 import { spreadsheetCsvRow } from "./spreadsheet-csv.js";
 import { selectionDownload } from "./selection-download.js";

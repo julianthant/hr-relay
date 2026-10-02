@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { Link2 } from "lucide-react";
-import { renderOperationTemplate, type OperationTemplateSegment } from "../../domain/workflow/operation-display.js";
-import type { WorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
+import { renderOperationTemplate, type OperationTemplateSegment } from "../../models/workflow/operation-display.js";
+import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
 import { Button, Dialog, DialogBody, DialogContent, Input, dsIcon, dsText } from "../ds/ui.js";
 import { definitionValueSources, operationFieldTemplate, type OperationAction, type OperationInvocation } from "./operation-structure-model.js";
 

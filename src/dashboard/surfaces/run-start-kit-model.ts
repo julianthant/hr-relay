@@ -1,5 +1,5 @@
 /** Pure value formatting for the component-only run-start presentation kit. */
-import type { SurfaceField } from "../../domain/workflow/ingress.js";
+import type { SurfaceField } from "../../models/workflow/ingress.js";
 
 export function surfaceValueLabel(constant: SurfaceField): string {
   switch (constant.value.kind) {

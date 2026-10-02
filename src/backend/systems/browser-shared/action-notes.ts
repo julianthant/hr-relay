@@ -1,7 +1,7 @@
 import { AsyncLocalStorage } from "node:async_hooks";
-import type { JsonValue } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import type { DeclaredActionOccurrence } from "../../../domain/task-provenance.js";
+import type { JsonValue } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { DeclaredActionOccurrence } from "../../../rules/workflow/task-provenance.js";
 
 export type BrowserActionKind = "opened" | "clicked" | "typed" | "selected" | "checked" | "set" | "cleared" | "pressed" | "read" | "computed" | "verified" | "branched" | "joined" | "gated" | "delegated" | "session";
 export interface BrowserAction {

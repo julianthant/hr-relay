@@ -1,9 +1,9 @@
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   ReadJobSummaryOutputSchema,
   UcpathReadJobSummary,
-} from "../../../../domain/contracts/ucpath/read-job-summary.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/systems/ucpath/read-job-summary.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 
 /**

@@ -28,7 +28,7 @@
  *    the full literal.
  */
 import { z } from "zod";
-import { deepFreeze } from "../../../../domain/immutability.js";
+import { deepFreeze } from "../../../../rules/validation/immutability.js";
 import {
   BrowserSystemIdSchema,
   DateOnlySchema,
@@ -37,7 +37,7 @@ import {
   PageStateIdSchema,
   ScenarioIdSchema,
   ScreenIdSchema,
-} from "../../../../domain/ids.js";
+} from "../../../../rules/identity/ids.js";
 import {
   UiEffectSchema,
   UiEvidenceReferenceSchema,
@@ -47,7 +47,7 @@ import {
   UiVerificationEvidenceManifestSchema,
   UiVerificationScenarioSchema,
   UiVerificationSchema,
-} from "../../../../domain/ui/contracts.js";
+} from "../../../../models/ui/contracts.js";
 import {
   KUALI_ACTION_LIST_DOCUMENT_LINK,
   KUALI_ACTION_LIST_MATCHED_NUMBER,
@@ -55,7 +55,7 @@ import {
   KUALI_ACTION_LIST_SCREEN,
   KUALI_ACTION_LIST_SEARCH_GO_BUTTON,
   KUALI_ACTION_LIST_SEARCH_INPUT,
-} from "../../../../domain/ui/kuali-action-list.js";
+} from "../../../../models/ui/kuali-action-list.js";
 import {
   KUALI_RRSS_DISPLAYED_EID,
   KUALI_RRSS_DOCUMENT_READY,
@@ -63,7 +63,7 @@ import {
   KUALI_RRSS_EID_FIELD,
   KUALI_RRSS_SAVE_BUTTON,
   KUALI_RRSS_TIMEKEEPER_FIELD,
-} from "../../../../domain/ui/kuali-rrss-document.js";
+} from "../../../../models/ui/kuali-rrss-document.js";
 import {
   KUALI_RRSS_DEPARTMENT_FIELD,
   KUALI_RRSS_DISPLAYED_FORM_TYPE,
@@ -83,17 +83,17 @@ import {
   KUALI_RRSS_TIMEKEEPER_COMMENTS_FIELD,
   KUALI_RRSS_TRANSACTION_NUMBER_FIELD,
   KUALI_SEPARATION_FORM_TYPE,
-} from "../../../../domain/ui/kuali-separation-document.js";
+} from "../../../../models/ui/kuali-separation-document.js";
 import {
   KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER,
   KUALI_RRSS_FINALIZATION_STAGED,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
-import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../domain/trust/preflight-scenarios.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
+import { PREFLIGHT_SCENARIO_MANIFESTS } from "../../../../models/trust/preflight-scenarios.js";
 
 const LEGACY_COMMIT = "793abe1f8265f3213ffe8a80d6cfd9860a32a1dc";
 const KUALI_SELECTOR_BLOB = "1c55c7d307891e07951ca38a89548418bdc23f49";
-const FIXTURE_EVIDENCE = "evidence/ui/kuali/rrss-document.fixture.json";
-const LIVE_EVIDENCE = "evidence/ui/kuali/rrss-document.live.json";
+const FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.fixture.json";
+const LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/rrss-document.live.json";
 const IDENTITY_SCENARIO = "ui/kuali-rrss-document-identity";
 const SHARED_FINALIZATION_CONTROLS_SCENARIO = "ui/kuali-rrss-shared-finalization-controls";
 
@@ -104,8 +104,8 @@ const SHARED_FINALIZATION_CONTROLS_SCENARIO = "ui/kuali-rrss-shared-finalization
  * 2026-08-04; the fourteen read elements below were live-verified 2026-08-12.
  * Folding both into one manifest would have to lie about one of them.
  */
-const READ_FIXTURE_EVIDENCE = "evidence/ui/kuali/separation-document.fixture.json";
-const READ_LIVE_EVIDENCE = "evidence/ui/kuali/separation-document.live.json";
+const READ_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/separation-document.fixture.json";
+const READ_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/separation-document.live.json";
 const READ_SURFACE_SCENARIO = "ui/kuali-separation-document-read-surface";
 
 /**
@@ -141,8 +141,8 @@ const FINALIZATION_SURFACE_SCENARIO = "ui/kuali-rrss-finalization-write-surface"
  * the action id separations §9.18/§9.22 had recorded by hand.
  */
 const ACTION_LIST_VERIFIED_AT = "2026-08-20";
-const ACTION_LIST_FIXTURE_EVIDENCE = "evidence/ui/kuali/action-list.fixture.json";
-const ACTION_LIST_LIVE_EVIDENCE = "evidence/ui/kuali/action-list.live.json";
+const ACTION_LIST_FIXTURE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/action-list.fixture.json";
+const ACTION_LIST_LIVE_EVIDENCE = "docs/rebuild/evidence/selectors/kuali/action-list.live.json";
 const ACTION_LIST_SCENARIO = "ui/kuali-action-list-resolve-surface";
 
 const EID_PORT_KEY = "separationForm.eid()";

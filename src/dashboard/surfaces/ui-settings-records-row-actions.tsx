@@ -1,4 +1,4 @@
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
 import { Button } from "../ds/ui.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 

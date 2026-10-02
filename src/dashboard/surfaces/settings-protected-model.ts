@@ -1,10 +1,10 @@
 import { settleCommandResult } from "../app/command-result.js";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
-import { systemClock } from "../../domain/clock.js";
-import { deepFreeze } from "../../domain/immutability.js";
-import { ProtectedSettingsCommandRequestSchema } from "../../domain/commands.js";
-import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../domain/config/protected-settings.js";
-import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
+import { systemClock } from "../../rules/time/clock.js";
+import { deepFreeze } from "../../rules/validation/immutability.js";
+import { ProtectedSettingsCommandRequestSchema } from "../../rules/commands/commands.js";
+import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSettingsName } from "../../models/config/protected-settings.js";
+import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 

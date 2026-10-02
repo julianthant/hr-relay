@@ -23,8 +23,8 @@
  * The values are byte-identical to what the runtime resolved before the split.
  */
 import { join, resolve } from "node:path";
-import { rebuildRuntimeIsolation } from "../../../config/runtime-isolation.js";
-import { ConfigPathsSchema, type ConfigPaths } from "../../../domain/config/schema.js";
+import { rebuildRuntimeIsolation } from "./runtime-isolation.js";
+import { ConfigPathsSchema, type ConfigPaths } from "../../../models/config/schema.js";
 
 /**
  * The rebuild's own Chromium profile root, absolute.

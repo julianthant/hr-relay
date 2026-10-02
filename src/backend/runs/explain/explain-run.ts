@@ -1,5 +1,5 @@
-import { retainedRunProtectedBindings } from "../../../domain/protected-input.js";
-import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../../domain/protected-input.js";
+import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
+import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtectedTransactionInput } from "../../../models/write-safety/protected-input.js";
 /**
  * `explain run <traceId|runId> [--json] [--bundle <dir>]` — ref operator-trust §2.5's
  * canonical debug entry point (D143).
@@ -22,18 +22,18 @@ import { PublicTransactionKeyDigestSchema, publicTransactionKeyDigest, hasProtec
  *    receipt can never disagree — they are one derivation.
  */
 import { z } from "zod";
-import { TimelineCategoryKeySchema } from "../../../domain/workflow/presentation.js";
-import { idempotencyKeyDigestReference } from "../../../domain/redaction.js";
-import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
-import { projectReceiptForOperator } from "../../../domain/trust/evidence.js";
+import { TimelineCategoryKeySchema } from "../../../models/workflow/presentation.js";
+import { idempotencyKeyDigestReference } from "../../../rules/redaction/redaction.js";
+import type { RunEvidenceReceipt } from "../../../models/trust/evidence.js";
+import { projectReceiptForOperator } from "../../../models/trust/evidence.js";
 import {
   projectFailureForOperator,
   type FailureRecord,
-} from "../../../domain/trust/failure.js";
-import type { RunRecord } from "../../../domain/run/record.js";
-import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js";
-import type { WriteIntentRecord } from "../../../domain/write-safety.js";
-import type { RemediationActionSchema } from "../../../domain/trust/failure.js";
+} from "../../../models/trust/failure.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import type { RunCheckpointRecord } from "../../../models/workflow/checkpoint.js";
+import type { WriteIntentRecord } from "../../../rules/write-safety/write-safety.js";
+import type { RemediationActionSchema } from "../../../models/trust/failure.js";
 
 /* ── the view ────────────────────────────────────────────────────────────── */
 

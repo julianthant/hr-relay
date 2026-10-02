@@ -1,21 +1,21 @@
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import {
   IsoInstantSchema,
   PositiveIntSchema,
   RunIdSchema,
   WriteIntentIdSchema,
-} from "../../../domain/ids.js";
-import { LedgerEntryPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../domain/ledger.js";
-import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";
-import { SchemaBoundCanonicalValueSchema } from "../../../domain/schema-bound-value.js";
+} from "../../../rules/identity/ids.js";
+import { LedgerEntryPayloadSchema, WriteCommittedSpanOutboxPayloadSchema } from "../../../rules/runs/ledger.js";
+import { RunCheckpointRecordSchema } from "../../../models/workflow/checkpoint.js";
+import { SchemaBoundCanonicalValueSchema } from "../../../models/validation/schema-bound-value.js";
 import {
   TransactionOutcomeSchema,
   WriteAuthorityReasonSchema,
   WriteRetrySettlementSchema,
   WriteAttemptRecordSchema,
   WriteIntentRecordSchema,
-} from "../../../domain/write-safety.js";
+} from "../../../rules/write-safety/write-safety.js";
 import { RunClaimTokenSchema } from "./run-store-contracts.js";
 
 export const WriteFenceInputSchema = z.strictObject({

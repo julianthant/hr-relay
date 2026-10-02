@@ -7,7 +7,7 @@
  * surface invalidate upward into `dashboard-app.tsx` and remount the app
  * instead of hot-swapping the component.
  */
-import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
+import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
 
 /** Which typed resolution a descriptor names. Nothing else may open this dialog. */
 export function parkResolutionArm(action: ActionDescriptorWire): "present" | "absent" | undefined {

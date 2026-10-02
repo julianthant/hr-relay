@@ -1,8 +1,8 @@
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
-import type { PreflightRunner, PreflightRunnerContext } from "../../../domain/preflight.js";
-import { PreflightObservationSchema } from "../../../domain/preflight.js";
-import { PreflightCheckIdSchema } from "../../../domain/preflight-contract.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import type { PreflightRunner, PreflightRunnerContext } from "../../../models/preflight/preflight.js";
+import { PreflightObservationSchema } from "../../../models/preflight/preflight.js";
+import { PreflightCheckIdSchema } from "../../../models/preflight/preflight-contract.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import {
   doctorAuthorityStorage,

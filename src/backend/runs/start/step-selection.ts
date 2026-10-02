@@ -1,6 +1,6 @@
-import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../base/workflow.js";
-import type { WorkflowStartWire } from "../../../domain/dashboard/bootstrap.js";
-import { JsonValueSchema, type JsonValue } from "../../../domain/canonical-json.js";
+import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
+import type { WorkflowStartWire } from "../../../models/dashboard/bootstrap.js";
+import { JsonValueSchema, type JsonValue } from "../../../rules/validation/canonical-json.js";
 import {
   planStepOmissions,
   stepOmissionCascade,
@@ -9,7 +9,7 @@ import {
   type StepOmissionForm,
   type StepOmissionGraphView,
   type StepOmissions,
-} from "../../../domain/workflow/step-omission.js";
+} from "../../../models/workflow/step-omission.js";
 
 /**
  * One start step, as the Steps screen draws it and the plan service validates

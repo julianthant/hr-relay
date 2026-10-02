@@ -1,6 +1,6 @@
-import { defineTask } from "../../../../base/task.js";
-import { UcpathVerifyPendingTerminationsCleared } from "../../../../domain/contracts/ucpath/verify-pending-terminations-cleared.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { UcpathVerifyPendingTerminationsCleared } from "../../../../models/systems/ucpath/verify-pending-terminations-cleared.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import { ucpathDriver } from "../driver-declaration.js";
 import { firstDisagreeingName, ucpathPendingSweepVerdict } from "../termination-verdict.js";
 

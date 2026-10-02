@@ -1,10 +1,10 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { deepFreeze } from "../../../domain/immutability.js";
-import { CommandAuditRecordSchema } from "../../../domain/commands.js";
-import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema, type ExplorerEditApplyRequest, type ExplorerWorkflowOverride } from "../../../domain/dashboard/explorer.js";
-import { applyExplorerPresentationChanges, explorerEditCommandFingerprint, ExplorerOverrideConflictError, type ExplorerOverrideRepository } from "../../../domain/dashboard/explorer-override.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { deepFreeze } from "../../../rules/validation/immutability.js";
+import { CommandAuditRecordSchema } from "../../../rules/commands/commands.js";
+import { ExplorerEditApplyRequestSchema, ExplorerWorkflowOverrideSchema, type ExplorerEditApplyRequest, type ExplorerWorkflowOverride } from "../../../models/dashboard/explorer.js";
+import { applyExplorerPresentationChanges, explorerEditCommandFingerprint, ExplorerOverrideConflictError, type ExplorerOverrideRepository } from "../../../models/dashboard/explorer-override.js";
 
 export const EXPLORER_OVERRIDES_DDL = `CREATE TABLE explorer_overrides (
   record_key TEXT PRIMARY KEY,

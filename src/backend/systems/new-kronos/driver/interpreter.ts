@@ -51,8 +51,8 @@
  */
 import type { FrameLocator, Locator, Page } from "playwright";
 import { recordBrowserAction } from "../../browser-shared/action-notes.js";
-import type { Clock } from "../../../../domain/clock.js";
-import { IsoInstantSchema } from "../../../../domain/ids.js";
+import type { Clock } from "../../../../rules/time/clock.js";
+import { IsoInstantSchema } from "../../../../rules/identity/ids.js";
 import {
   foldSeparationTimecard,
   formatRangeBound,
@@ -60,13 +60,13 @@ import {
   parseTimecardDate,
   rangesAreSameDays,
   resolveTimecardColumns,
-} from "../../../../domain/kronos/separation-timecard.js";
+} from "../../../../rules/kronos/separation-timecard.js";
 import { readVirtualizedGrid } from "./grid-scroll.js";
 import type { RawTimecardGridRow } from "./grid-scroll.js";
 import { judgeSearchRender, parseSlatIdentity, slatRenderComplete } from "./search-render.js";
 import type { SlatRenderFact } from "./search-render.js";
-import type { TimecardGridRow } from "../../../../domain/kronos/separation-timecard.js";
-import type { TimecardDateRange } from "../../../../domain/timecard-period.js";
+import type { TimecardGridRow } from "../../../../rules/kronos/separation-timecard.js";
+import type { TimecardDateRange } from "../../../../rules/time/timecard-period.js";
 import {
   NEW_KRONOS_SEARCH_CLOSE_BUTTON,
   NEW_KRONOS_SEARCH_GO_TO_BUTTON,
@@ -88,15 +88,15 @@ import {
   NewKronosSearchReadSchema,
   NewKronosTimecardDriverSchema,
   NewKronosTimecardReadSchema,
-} from "../../../../domain/ui/new-kronos-timecard.js";
+} from "../../../../models/ui/new-kronos-timecard.js";
 import type {
   NewKronosSearchCandidate,
   NewKronosSearchRead,
   NewKronosTimecardDriver,
   NewKronosTimecardRead,
-} from "../../../../domain/ui/new-kronos-timecard.js";
-import type { ElementId } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/ui/new-kronos-timecard.js";
+import type { ElementId } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
   NEW_KRONOS_PORTAL_FRAME_SELECTOR,
   NEW_KRONOS_TIMECARD_ROUTE,

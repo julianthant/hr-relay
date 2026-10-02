@@ -22,29 +22,29 @@ import {
   WorkerIdSchema,
   WorkflowIdSchema,
   WriteIntentIdSchema,
-} from "../../../domain/ids.js";
-import { StartPlanRecordSchema } from "../../../domain/run/start-plan.js";
+} from "../../../rules/identity/ids.js";
+import { StartPlanRecordSchema } from "../../../models/run/start-plan.js";
 import {
   WorkerControlSchema,
   WorkerBrowserSystemsSchema,
   WorkerLeaseRecordSchema,
   WorkerLifecycleSchema,
-} from "../../../domain/run/worker.js";
-import { WorkerPoolRecordSchema } from "../../../domain/run/worker-pool.js";
-import { RunDisplayNameSchema, VersionArchiveCommandRequestSchema } from "../../../domain/commands.js";
-import { CheckpointPatchSchema } from "../../../domain/workflow/checkpoint.js";
-import { RuntimeConfigClaimTokenSchema } from "../../../domain/config/runtime-generation.js";
-import { RunEnvelopeSchema } from "../../../domain/run/envelope.js";
+} from "../../../models/run/worker.js";
+import { WorkerPoolRecordSchema } from "../../../models/run/worker-pool.js";
+import { RunDisplayNameSchema, VersionArchiveCommandRequestSchema } from "../../../rules/commands/commands.js";
+import { CheckpointPatchSchema } from "../../../models/workflow/checkpoint.js";
+import { RuntimeConfigClaimTokenSchema } from "../../../models/config/runtime-generation.js";
+import { RunEnvelopeSchema } from "../../../models/run/envelope.js";
 import {
   RequeueCauseSchema,
   RunLifecycleSchema,
   RunInputStorageSchema,
   RunRecordSchema,
   RunStateSchema,
-} from "../../../domain/run/record.js";
-import { ArchivedRunRecordSchema } from "../../../domain/archive/model.js";
-import { RunExistenceSchema, RunRecordRefusalSchema } from "../../../domain/authority.js";
-import { DeletedRunRecordSchema } from "../../../domain/run/deleted-run.js";
+} from "../../../models/run/record.js";
+import { ArchivedRunRecordSchema } from "../../../models/archive/model.js";
+import { RunExistenceSchema, RunRecordRefusalSchema } from "../../../models/config/authority.js";
+import { DeletedRunRecordSchema } from "../../../models/run/deleted-run.js";
 import {
   FailureTerminalizationRequestSchema,
   SuccessTerminalizationReplayInputSchema,

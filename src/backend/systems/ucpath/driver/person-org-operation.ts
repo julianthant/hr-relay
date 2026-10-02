@@ -18,23 +18,23 @@ import {
   SearchPersonOrgInputSchema,
   SearchPersonOrgOutputSchema,
   UcpathCandidateSchema,
-} from "../../../../domain/contracts/ucpath/search-person-org.js";
+} from "../../../../models/systems/ucpath/search-person-org.js";
 import type {
   SearchPersonOrgOutput,
   UcpathCandidate,
-} from "../../../../domain/contracts/ucpath/search-person-org.js";
-import { EidSchema } from "../../../../domain/ids.js";
-import type { Eid, ElementId } from "../../../../domain/ids.js";
-import { directIdentifierDisplay } from "../../../../domain/redaction.js";
+} from "../../../../models/systems/ucpath/search-person-org.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
+import type { Eid, ElementId } from "../../../../rules/identity/ids.js";
+import { directIdentifierDisplay } from "../../../../rules/redaction/redaction.js";
 import {
   UCPATH_JOB_SUMMARY_PAGE_STATE,
   UcpathJobRowSchema,
   UcpathJobSummaryReadSchema,
-} from "../../../../domain/ui/ucpath-job-summary.js";
+} from "../../../../models/ui/ucpath-job-summary.js";
 import type {
   UcpathJobRow,
   UcpathJobSummaryRead,
-} from "../../../../domain/ui/ucpath-job-summary.js";
+} from "../../../../models/ui/ucpath-job-summary.js";
 import {
   UCPATH_PERSON_ORG_ASSIGNMENTS_GRID,
   UCPATH_PERSON_ORG_EID_DISPLAY,
@@ -51,7 +51,7 @@ import {
   UCPATH_PERSON_ORG_RETURN_TO_SEARCH,
   UCPATH_PERSON_ORG_SEARCH_BUTTON,
   UCPATH_PERSON_ORG_SEARCH_READY,
-} from "../../../../domain/ui/ucpath-person-org.js";
+} from "../../../../models/ui/ucpath-person-org.js";
 import {
   resolveUcpathElement,
   resolveUcpathIndexedElement,

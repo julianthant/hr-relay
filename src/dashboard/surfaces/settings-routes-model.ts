@@ -1,4 +1,4 @@
-import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
+import type { EditableSettingsLeafWire } from "../../models/dashboard/settings-editor.js";
 
 const ROUTES: Readonly<Record<string, { readonly name: string; readonly description: string; readonly fields: Readonly<Record<string, { readonly name: string; readonly description: string }>> }>> = {
   kuali: { name: "Kuali", description: "Forms and workflows", fields: { entry: { name: "Entry", description: "Open the Kuali workspace" } } },

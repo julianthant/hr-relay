@@ -1,4 +1,4 @@
-import type { NotificationTarget } from "../../domain/notifications.js";
+import type { NotificationTarget } from "../../models/notifications/notifications.js";
 export type OpenNotification = (id: string, opened: () => void, refused: (message: string) => void) => void;
 /** The second lookup runs only after Settings accepts leaving its draft. */
 export async function navigateNotification(input: {

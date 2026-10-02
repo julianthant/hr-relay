@@ -2,7 +2,7 @@
  * The dev server's launch-owner middleware, driven as the middleware — not as a
  * re-implementation of it.
  *
- * `scripts/dev-dashboard.ts` mints a launch nonce and passes it to Vite in the
+ * `scripts/dev/dashboard.ts` mints a launch nonce and passes it to Vite in the
  * child environment; the preflight's Vite-occupant detector counts an occupant
  * as OWNED only when this path answers with the CURRENT launcher's nonce
  * (ref frontend-backend-integration; the 2026-08-28 preflight lesson). Both
@@ -21,7 +21,7 @@ import { describe, it, vi } from "vitest";
 import {
   DASHBOARD_FRONTEND_OWNER_PATH,
   DASHBOARD_LAUNCH_NONCE_ENV,
-} from "../../../../src/domain/dashboard-frontend-owner.js";
+} from "../../../../src/models/dashboard/dashboard-frontend-owner.js";
 
 const NONCE = "a".repeat(64);
 

@@ -1,6 +1,6 @@
-import { defineTask } from "../../../../base/task.js";
-import { KualiSearchSeparationAction } from "../../../../domain/contracts/kuali/search-separation-action.js";
-import { classifyKualiActionResolution } from "../../../../domain/ui/kuali-action-list.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { KualiSearchSeparationAction } from "../../../../models/systems/kuali/search-separation-action.js";
+import { classifyKualiActionResolution } from "../../../../models/ui/kuali-action-list.js";
 import { kualiDriver } from "../driver-declaration.js";
 
 /**

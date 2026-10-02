@@ -1,11 +1,11 @@
-import { ActivityReportSelectionSchema, type ActivityReportSelection } from "../../../domain/dashboard/activity-selection.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
+import { ActivityReportSelectionSchema, type ActivityReportSelection } from "../../../models/dashboard/activity-selection.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import { createHash } from "node:crypto";
 import type { Readable } from "node:stream";
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
-import type { Clock } from "../../../domain/clock.js";
-import type { IdFactory } from "../../../domain/identifiers.js";
-import { ActorIdSchema, FingerprintSchema, type ActorId } from "../../../domain/ids.js";
+import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import type { IdFactory } from "../../../rules/identity/identifiers.js";
+import { ActorIdSchema, FingerprintSchema, type ActorId } from "../../../rules/identity/ids.js";
 import {
   OPERATOR_XLSX_MEDIA_TYPE,
   OperatorXlsxExportEvidenceSchema,
@@ -15,16 +15,16 @@ import {
   OperatorXlsxSearchDocumentSchema,
   type OperatorXlsxExportEvidence,
   type OperatorXlsxWorkbookDocument,
-} from "../../../domain/dashboard/xlsx-export.js";
+} from "../../../models/dashboard/xlsx-export.js";
 import {
   CROSS_DATE_SEARCH_ORDER,
   CrossDateSearchPageSchema,
   CrossDateSearchQuerySchema,
   type CrossDateSearchResult,
-} from "../../../domain/dashboard/search.js";
-import { ActivityReportWireSchema } from "../../../domain/dashboard/activity.js";
+} from "../../../models/dashboard/search.js";
+import { ActivityReportWireSchema } from "../../../models/dashboard/activity.js";
 import type { OperatorXlsxExportRepository } from "../../storage/sqlite/authority-database.js";
-import type { CrossDateSearchQueryService } from "../dashboard/queries/search.js";
+import type { CrossDateSearchQueryService } from "../queries/search.js";
 import { composeOperatorXlsxWorkbook } from "./operator-xlsx-workbook.js";
 
 export const OPERATOR_XLSX_MAX_ROWS = 5_000;

@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { ImportedArtifactSchema, importedArtifact, type ImportedArtifact } from "../../../domain/intake/imported-artifact.js";
-import { IntakeSessionSchema } from "../../../domain/intake/session.js";
-import { IntakePlanManifestSchema } from "../../../domain/intake/manifest.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { ImportedArtifactSchema, importedArtifact, type ImportedArtifact } from "../../../models/intake/imported-artifact.js";
+import { IntakeSessionSchema } from "../../../models/intake/session.js";
+import { IntakePlanManifestSchema } from "../../../models/intake/manifest.js";
 
 export const IMPORTED_ARTIFACT_DDL = `CREATE TABLE imported_artifacts (
   record_key TEXT PRIMARY KEY,

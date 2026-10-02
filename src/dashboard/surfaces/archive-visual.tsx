@@ -1,6 +1,6 @@
 import { Copy } from "lucide-react";
 import { useState, type ReactNode } from "react";
-import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../domain/archive/report.js";
+import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../models/archive/report.js";
 import { Button, dsIcon, dsText, Table } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { savedCell } from "./archive-report-model.js";

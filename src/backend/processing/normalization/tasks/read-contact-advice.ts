@@ -21,7 +21,7 @@
  * suggestion trustworthy. City/state/ZIP advice is offered only from a
  * `resolved` outcome whose confidence is not `unverified`.
  */
-import { defineTask } from "../../../../base/task.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
 import {
   ContactFieldIdSchema,
   NormalizeContact,
@@ -29,8 +29,8 @@ import {
   RedactedContactValueSchema,
   type ContactFieldId,
   type NormalizationChange,
-} from "../../../../domain/contracts/normalization/normalize-contact.js";
-import { CANONICAL_FIELDS } from "../../../../domain/fields/registry.js";
+} from "../../../../models/processing/normalization/normalize-contact.js";
+import { CANONICAL_FIELDS } from "../../../../models/fields/registry.js";
 import {
   ContactAdviceSchema,
   canonicalizeRelationshipRule,
@@ -41,22 +41,22 @@ import {
   normalizeUsStateRule,
   normalizeZipRule,
   type NormalizationRuleId,
-} from "../../../../domain/normalization/contact-rules.js";
+} from "../../../../rules/normalization/contact-rules.js";
 import {
   GeocodeOutcomeSchema,
   GeocodeRequestSchema,
   type GeocodeOutcome,
-} from "../../../../domain/normalization/geocode.js";
-import { RedactedFieldSchema, redactValue, retainLocalEvidenceValue } from "../../../../domain/redaction.js";
+} from "../../../../rules/normalization/geocode.js";
+import { RedactedFieldSchema, redactValue, retainLocalEvidenceValue } from "../../../../rules/redaction/redaction.js";
 import {
   ADVISORY_PROMPT_SCHEMA_HASH,
   AdvisoryAnswerEnvelopeSchema,
   CONTACT_ADVICE_SCHEMA_HASH,
   buildAdvisoryPrompt,
   parseAdvisoryAnswer,
-} from "../../../../domain/trust/advisory.js";
-import { deriveSchemaHash } from "../../../../domain/schema-bound-value.js";
-import type { ProviderResponseEnvelope } from "../../../../domain/providers.js";
+} from "../../../../models/trust/advisory.js";
+import { deriveSchemaHash } from "../../../../models/validation/schema-bound-value.js";
+import type { ProviderResponseEnvelope } from "../../../../models/providers/providers.js";
 
 const GEOCODE_REQUEST_SCHEMA_HASH = deriveSchemaHash(GeocodeRequestSchema, "input");
 

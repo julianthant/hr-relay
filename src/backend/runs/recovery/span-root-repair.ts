@@ -1,14 +1,14 @@
 /** Stopped recovery reconstructs a missing historical root from exact retained authority. */
 import { resolve } from "node:path";
 import { z } from "zod";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { Clock } from "../../../domain/clock.js";
-import { systemClock } from "../../../domain/clock.js";
-import { FingerprintSchema, RunIdSchema, WorkflowIdSchema } from "../../../domain/ids.js";
-import { localDatePart } from "../../../domain/clock.js";
-import { SpanEventWireSchema } from "../../../domain/events/types.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import type { Clock } from "../../../rules/time/clock.js";
+import { systemClock } from "../../../rules/time/clock.js";
+import { FingerprintSchema, RunIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
+import { localDatePart } from "../../../rules/time/clock.js";
+import { SpanEventWireSchema } from "../../../models/events/types.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
-import { lifecycleCommandId } from "../../../domain/identifiers.js";
+import { lifecycleCommandId } from "../../../rules/identity/identifiers.js";
 import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 import { RecoveryStopProofStore } from "../../storage/sqlite/recovery-stop-proof.js";
@@ -18,7 +18,7 @@ import {
   observeRuntimeLockSnapshot,
   type RestoreAdmissionHandle,
 } from "../../storage/sqlite/runtime-process-locks.js";
-import { runQueuedSpanEvent } from "../dashboard/commands/run-queued-span.js";
+import { runQueuedSpanEvent } from "../commands/run-queued-span.js";
 
 const NonNegativeIntSchema = z.number().int().nonnegative();
 

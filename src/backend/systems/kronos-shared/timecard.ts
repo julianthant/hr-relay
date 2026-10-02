@@ -28,14 +28,14 @@
  * The Old Kronos adapter closes its capability at migration order 2 and the New
  * Kronos adapter at order 8; this helper is the shared seam both bind to.
  */
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import {
   VisibleTimecardMonthDaysSchema,
   assertPeriodLabelSwitched,
   resolveCurrentVisibleTimecardRange,
   resolvePreviousVisibleTimecardRange,
-} from "../../../domain/timecard-period.js";
-import type { TimecardDateRange, VisibleTimecardMonthDays } from "../../../domain/timecard-period.js";
+} from "../../../rules/time/timecard-period.js";
+import type { TimecardDateRange, VisibleTimecardMonthDays } from "../../../rules/time/timecard-period.js";
 
 /**
  * Result of asking a Kronos view to move to the previous pay period. The

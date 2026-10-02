@@ -1,10 +1,10 @@
-import { defineTask } from "../../../../base/task.js";
-import { KualiSaveSeparationFinalization } from "../../../../domain/contracts/kuali/save-separation-finalization.js";
-import { KUALI_RRSS_SAVE_BUTTON } from "../../../../domain/ui/kuali-rrss-document.js";
+import { defineTask } from "../../../../workflow-kit/task.js";
+import { KualiSaveSeparationFinalization } from "../../../../models/systems/kuali/save-separation-finalization.js";
+import { KUALI_RRSS_SAVE_BUTTON } from "../../../../models/ui/kuali-rrss-document.js";
 import {
   KualiSaveRefusedError,
   kualiFinalizationFields,
-} from "../../../../domain/ui/kuali-separation-finalization.js";
+} from "../../../../models/ui/kuali-separation-finalization.js";
 import { kualiDriver } from "../driver-declaration.js";
 
 /**

@@ -1,14 +1,14 @@
-import { sha256Hex } from "../../../domain/sha256.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
 /** Stopped, backup-bound import of the old generated-file authorities. */
 import { createHash } from "node:crypto";
 import { closeSync, constants, existsSync, fsyncSync, fstatSync, linkSync, lstatSync, mkdirSync, mkdtempSync, openSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { ArtifactRefSchema } from "../../../domain/artifacts.js";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../domain/generated-artifact.js";
-import { OperatorXlsxExportEvidenceSchema, OPERATOR_XLSX_MEDIA_TYPE } from "../../../domain/dashboard/xlsx-export.js";
+import { ArtifactRefSchema } from "../../../models/artifacts/artifacts.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
+import { OperatorXlsxExportEvidenceSchema, OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
 import type { GeneratedSourceBackup } from "./generated-source-backup.js";
 import { insertGeneratedArtifact } from "./generated-artifacts.js";
 

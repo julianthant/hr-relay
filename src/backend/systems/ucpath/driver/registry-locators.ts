@@ -1,7 +1,7 @@
 import type { FrameLocator, Locator, Page } from "playwright";
-import type { ElementId, PageStateId } from "../../../../domain/ids.js";
-import { PageStateProofSchema } from "../../../../domain/ui/driver.js";
-import type { PageStateProof } from "../../../../domain/ui/driver.js";
+import type { ElementId, PageStateId } from "../../../../rules/identity/ids.js";
+import { PageStateProofSchema } from "../../../../models/ui/driver.js";
+import type { PageStateProof } from "../../../../models/ui/driver.js";
 import { UCPATH_UI_REGISTRY } from "./ui-registry.js";
 
 export type UcpathElementDefinition = (typeof UCPATH_UI_REGISTRY.elements)[number];

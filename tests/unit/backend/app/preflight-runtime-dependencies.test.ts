@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { setImmediate } from "node:timers";
 import { describe, it } from "vitest";
-import { manualClock } from "../../../../src/domain/clock.js";
+import { manualClock } from "../../../../src/rules/time/clock.js";
 import {
   buildPreflightReport,
   createPreflightAuthority,
@@ -11,11 +11,11 @@ import {
   PreflightReportSchema,
   requiredPreflightChecks,
   type PreflightDeadlineScheduler,
-} from "../../../../src/domain/preflight.js";
+} from "../../../../src/models/preflight/preflight.js";
 import {
   RUNTIME_ENVIRONMENT_REGISTRY,
   auditRuntimeEnvironmentInventory,
-} from "../../../../src/domain/runtime-environment.js";
+} from "../../../../src/models/runtime/runtime-environment.js";
 import {
   auditRuntimeDependencyCoverage,
   PREFLIGHT_CHECKS,
@@ -24,8 +24,8 @@ import {
   RUNTIME_DEPENDENCY_REGISTRY,
   RuntimeCapabilitySchema,
   type RuntimeCapability,
-} from "../../../../src/domain/runtime-dependencies.js";
-import { directIdentifierDisplay } from "../../../../src/domain/redaction.js";
+} from "../../../../src/models/runtime/runtime-dependencies.js";
+import { directIdentifierDisplay } from "../../../../src/rules/redaction/redaction.js";
 
 const CLOCK = manualClock(new Date("2026-08-10T12:00:00-07:00"));
 const CONFIG_FINGERPRINT = "a".repeat(64);

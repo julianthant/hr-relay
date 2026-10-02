@@ -51,7 +51,7 @@
  * database, which is the half that actually needs pinning.
  */
 import { z } from "zod";
-import { GateIdSchema, RunIdSchema, WorkflowIdSchema } from "../../../domain/ids.js";
+import { GateIdSchema, RunIdSchema, WorkflowIdSchema } from "../../../rules/identity/ids.js";
 import type { NotificationInbox, NotificationPublishReport } from "./inbox.js";
 
 /**

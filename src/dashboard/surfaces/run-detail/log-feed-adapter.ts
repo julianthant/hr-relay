@@ -1,7 +1,7 @@
-import type { LogRowWire } from "../../../domain/dashboard/run-detail.js";
-import type { RunOperationStructureWire } from "../../../domain/dashboard/operation-structure.js";
+import type { LogRowWire } from "../../../models/dashboard/run-detail.js";
+import type { RunOperationStructureWire } from "../../../models/dashboard/operation-structure.js";
 import type { LogEntry, LogField, LogScreenshot, LogStep } from "../log-feed-model.js";
-import type { OperationActionObservationWire } from "../../../domain/dashboard/operation-structure.js";
+import type { OperationActionObservationWire } from "../../../models/dashboard/operation-structure.js";
 import { fmtActionClock } from "../format.js";
 import { SYSTEM_HOST_PRESENTATION } from "../settings-hosts-model.js";
 import { contiguousOperationRows, observedOperationOutcome, operationAction, operationObservationParent, operationValueText } from "../operation-structure-model.js";

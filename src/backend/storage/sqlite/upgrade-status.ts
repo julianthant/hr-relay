@@ -1,4 +1,4 @@
-import type { Clock } from "../../../domain/clock.js";
+import type { Clock } from "../../../rules/time/clock.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import { AuthorityUpgradeInspectionSchema } from "./recovery-contracts.js";

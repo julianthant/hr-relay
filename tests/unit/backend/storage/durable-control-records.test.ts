@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { ConfigSnapshotRecordSchema } from "../../../../src/domain/config/snapshot.js";
-import { DelegationManifestSchema, DependencyRecordSchema, defineDelegationManifest } from "../../../../src/domain/dependencies.js";
-import { GateResultRecordSchema, gateResultRecordSchema } from "../../../../src/domain/gates.js";
-import { FingerprintSchema } from "../../../../src/domain/ids.js";
-import { LedgerEntryPayloadSchema, LedgerEntrySchema } from "../../../../src/domain/ledger.js";
-import { NotificationRecordSchema } from "../../../../src/domain/notifications.js";
-import { AtomicOutboxRecordSchema } from "../../../../src/domain/outbox.js";
+import { ConfigSnapshotRecordSchema } from "../../../../src/models/config/snapshot.js";
+import { DelegationManifestSchema, DependencyRecordSchema, defineDelegationManifest } from "../../../../src/rules/workflow/dependencies.js";
+import { GateResultRecordSchema, gateResultRecordSchema } from "../../../../src/models/workflow/gates.js";
+import { FingerprintSchema } from "../../../../src/rules/identity/ids.js";
+import { LedgerEntryPayloadSchema, LedgerEntrySchema } from "../../../../src/rules/runs/ledger.js";
+import { NotificationRecordSchema } from "../../../../src/models/notifications/notifications.js";
+import { AtomicOutboxRecordSchema } from "../../../../src/models/notifications/outbox.js";
 import {
   ChildFailurePolicySchema,
   ChildRetryPolicySchema,
   ChildVisibilitySchema,
   DelegationPolicySchema,
-} from "../../../../src/domain/workflow/delegation-policy.js";
+} from "../../../../src/models/workflow/delegation-policy.js";
 import {
   CONFIG_SNAPSHOT,
   DELEGATION_MANIFEST,
@@ -24,7 +24,7 @@ import {
   NOTIFICATION,
   NOW,
   UUID_1,
-} from "../../../fixtures/phase1c-contract-fixtures.js";
+} from "../../../support/fixtures/phase1c-contract-fixtures.js";
 import { z } from "zod";
 
 describe("durable control and outbox records", () => {

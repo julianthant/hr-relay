@@ -1,6 +1,6 @@
-import type { ContentAddressedArtifactWriter } from "../../../base/artifacts.js";
-import type { ArtifactRef } from "../../../domain/artifacts.js";
-import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../domain/dashboard/xlsx-export.js";
+import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artifacts.js";
+import type { ArtifactRef } from "../../../models/artifacts/artifacts.js";
+import { OPERATOR_XLSX_MEDIA_TYPE } from "../../../models/dashboard/xlsx-export.js";
 /**
  * The `xlsx-retention` sink (ref data-intake-and-edit-data §4.1, ref dashboard-surfaces §3.2): one workbook, one
  * stable-keyed idempotent upsert, one atomic replace.
@@ -40,9 +40,9 @@ import { lstat, mkdir, open, readFile, realpath, rename, writeFile } from "node:
 import { basename, dirname, join } from "node:path";
 import readXlsxFile from "read-excel-file/node";
 import writeXlsxFile from "write-excel-file/node";
-import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import { FingerprintSchema } from "../../../domain/ids.js";
-import type { Fingerprint } from "../../../domain/ids.js";
+import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import type { Fingerprint } from "../../../rules/identity/ids.js";
 import type {
   ArtifactOutboxStorageRecord,
   ArtifactSinkHeadRecord,

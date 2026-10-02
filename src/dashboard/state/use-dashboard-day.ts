@@ -9,7 +9,7 @@
  * painting a stale day is the exact failure ref frontend-backend-integration §3.5 forbids.
  */
 import { useEffect, useMemo, useState } from "react";
-import type { DashboardDayWire } from "../../domain/dashboard/projection.js";
+import type { DashboardDayWire } from "../../models/dashboard/projection.js";
 import type { SubscriptionState } from "../client/index.js";
 import { protocolError } from "../client/errors.js";
 import { failed, loaded, LOADING, type AsyncResource } from "./async-resource.js";

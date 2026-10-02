@@ -1,4 +1,4 @@
-import { valueFreeProtectedData } from "../../../domain/protected-input.js";
+import { valueFreeProtectedData } from "../../../models/write-safety/protected-input.js";
 /**
  * The one place a Kuali finalization read-back becomes a ref write-safety `ProbeVerdict`.
  *
@@ -12,18 +12,18 @@ import { valueFreeProtectedData } from "../../../domain/protected-input.js";
  * Every arm carries evidence. There is no boolean anywhere on this path, and a
  * driver-side throw arrives here already shaped as `unknown` — never `absent`.
  */
-import { FingerprintSchema } from "../../../domain/ids.js";
-import type { KualiFinalizationVerdict } from "../../../domain/contracts/kuali/match-separation-finalization.js";
-import { KualiFinalizationVerdictSchema } from "../../../domain/contracts/kuali/match-separation-finalization.js";
-import { kualiFinalizationIdempotencyKey } from "../../../domain/contracts/kuali/save-separation-finalization.js";
-import { sha256Hex } from "../../../domain/sha256.js";
-import { KUALI_RRSS_DOCUMENT_READY } from "../../../domain/ui/kuali-rrss-document.js";
-import { KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER } from "../../../domain/ui/kuali-separation-finalization.js";
+import { FingerprintSchema } from "../../../rules/identity/ids.js";
+import type { KualiFinalizationVerdict } from "../../../models/systems/kuali/match-separation-finalization.js";
+import { KualiFinalizationVerdictSchema } from "../../../models/systems/kuali/match-separation-finalization.js";
+import { kualiFinalizationIdempotencyKey } from "../../../models/systems/kuali/save-separation-finalization.js";
+import { sha256Hex } from "../../../rules/validation/sha256.js";
+import { KUALI_RRSS_DOCUMENT_READY } from "../../../models/ui/kuali-rrss-document.js";
+import { KUALI_RRSS_DISPLAYED_TRANSACTION_NUMBER } from "../../../models/ui/kuali-separation-finalization.js";
 import type {
   KualiFinalizationReadBack,
   KualiFinalizationTarget,
-} from "../../../domain/ui/kuali-separation-finalization.js";
-import { deriveIdempotencyKeyDigest } from "../../../domain/write-safety.js";
+} from "../../../models/ui/kuali-separation-finalization.js";
+import { deriveIdempotencyKeyDigest } from "../../../rules/write-safety/write-safety.js";
 
 /**
  * The exact question this read asked, hashed.

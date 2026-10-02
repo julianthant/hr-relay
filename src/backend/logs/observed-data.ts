@@ -24,12 +24,12 @@
  * 3. `redactEvidenceLeaf` shares the receipt's classification table and retains
  *    the original value alongside the transformed form.
  */
-import type { TaskId } from "../../domain/ids.js";
-import type { RecordedDataPoint } from "../../domain/task-provenance.js";
+import type { TaskId } from "../../rules/identity/ids.js";
+import type { RecordedDataPoint } from "../../rules/workflow/task-provenance.js";
 import {
   evidenceLeaves,
   redactEvidenceLeaf,
-} from "../../domain/trust/evidence-classification.js";
+} from "../../models/trust/evidence-classification.js";
 import { ObservedDataPointSchema } from "./span-emitter.js";
 import type { ObservedDataPoint } from "./span-emitter.js";
 

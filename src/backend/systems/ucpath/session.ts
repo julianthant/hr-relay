@@ -38,7 +38,7 @@
  * 2. The recipe is built by `defineVerifiedLoginRecipe`, so that proof runs on
  *    every return path including the early one.
  */
-import { resolveSystemEntryUrl, resolveSystemLoginUrl } from "../../../domain/config/instance.js";
+import { resolveSystemEntryUrl, resolveSystemLoginUrl } from "../../../models/config/instance.js";
 import { recordBrowserAction } from "../browser-shared/action-notes.js";
 import {
   defineVerifiedLoginRecipe,

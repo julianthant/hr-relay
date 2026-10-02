@@ -1,10 +1,10 @@
 import { createProviderPreflightRunners } from "./provider-runners.js";
 import { createWorkflowPreflightRunners } from "./workflow-runners.js";
-import type { Config } from "../../../domain/config/schema.js";
-import type { PreflightAdmissionScope } from "../../../domain/preflight-admission.js";
-import { requiredPreflightChecks, type PreflightRunner } from "../../../domain/preflight.js";
-import { PREFLIGHT_CHECKS } from "../../../domain/runtime-dependencies.js";
-import type { ProtectedSecretSource } from "../../../domain/secrets.js";
+import type { Config } from "../../../models/config/schema.js";
+import type { PreflightAdmissionScope } from "../../../rules/preflight/preflight-admission.js";
+import { requiredPreflightChecks, type PreflightRunner } from "../../../models/preflight/preflight.js";
+import { PREFLIGHT_CHECKS } from "../../../models/runtime/runtime-dependencies.js";
+import type { ProtectedSecretSource } from "../../../models/config/secrets.js";
 import { createDashboardPreflightRunners, type DashboardPreflightRunnerInput } from "./dashboard-runners.js";
 
 /** Stable Setup detector port. Protected values remain inside the registered secret reader. */

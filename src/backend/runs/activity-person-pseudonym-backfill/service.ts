@@ -1,11 +1,11 @@
-import type { RunRecord } from "../../../domain/run/record.js";
-import type { RunId } from "../../../domain/ids.js";
+import type { RunRecord } from "../../../models/run/record.js";
+import type { RunId } from "../../../rules/identity/ids.js";
 import {
   ActivityPersonPseudonymBackfillReportSchema,
   ActivityPersonPseudonymBackfillRequestSchema,
   type ActivityPersonPseudonymBackfillOutcome,
   type ActivityPersonPseudonymBackfillReport,
-} from "../../../domain/trust/activity-person-pseudonym-backfill.js";
+} from "../../../models/trust/activity-person-pseudonym-backfill.js";
 import type {
   ActivityPersonPseudonymBackfillWriteCapability,
 } from "../../storage/sqlite/authority-database.js";

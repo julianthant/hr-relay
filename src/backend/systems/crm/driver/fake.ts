@@ -1,17 +1,17 @@
 import {
   ReadOnboardingDatesOutputSchema,
   type ReadOnboardingDatesOutput,
-} from "../../../../domain/contracts/crm/read-onboarding-dates.js";
+} from "../../../../models/systems/crm/read-onboarding-dates.js";
 import {
   ReadOnboardingRecordOutputSchema,
   type ReadOnboardingRecordOutput,
-} from "../../../../domain/contracts/crm/read-onboarding-record.js";
-import { EidSchema } from "../../../../domain/ids.js";
+} from "../../../../models/systems/crm/read-onboarding-record.js";
+import { EidSchema } from "../../../../rules/identity/ids.js";
 import {
   CRM_ONBOARDING_DISPLAYED_EID,
   CrmSubjectBindingSchema,
-} from "../../../../domain/ui/crm-onboarding.js";
-import type { CrmOnboardingDriver } from "../../../../domain/ui/crm-onboarding.js";
+} from "../../../../models/ui/crm-onboarding.js";
+import type { CrmOnboardingDriver } from "../../../../models/ui/crm-onboarding.js";
 
 export function createDeterministicCrmOnboardingDriver(input: Readonly<{
   record: ReadOnboardingRecordOutput;

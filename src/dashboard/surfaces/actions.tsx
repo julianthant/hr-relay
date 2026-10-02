@@ -76,7 +76,7 @@ import {
   type ActionDescriptorWire,
   type ActionIconKey,
   type ActionIntent,
-} from "../../domain/dashboard/actions.js";
+} from "../../models/dashboard/actions.js";
 
 /** The object a run action is about — the row id and the revision it was projected at. */
 export interface ActionTarget {
