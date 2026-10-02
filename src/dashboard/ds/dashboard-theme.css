@@ -1,4 +1,4 @@
-/* Semantic palette for incremental Tailwind v4 adoption. */
+/* Canonical semantic palette shared by Tailwind and dashboard DS aliases. */
 :root, [data-demo-theme="light"] {
   --ui-canvas: #fafafa;
   --ui-panel: #ffffff;
@@ -6,7 +6,7 @@
   --ui-field: #ffffff;
   --ui-hover: #ebebeb;
   --ui-stroke: #dedede;
-  --ui-stroke-control: #a0a0a0;
+  --ui-stroke-control: #8b8b8b;
   --ui-primary: #202020;
   --ui-secondary: #626262;
   --ui-muted: #6b6b6b;
@@ -23,7 +23,7 @@
   --ui-field: #2b2b2b;
   --ui-hover: #323232;
   --ui-stroke: #3b3b3b;
-  --ui-stroke-control: #515151;
+  --ui-stroke-control: #747474;
   --ui-primary: #efefef;
   --ui-secondary: #b2b2b2;
   --ui-muted: #a0a0a0;

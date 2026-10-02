@@ -2262,3 +2262,73 @@ button.activity-range-apply:focus-visible {
     --ds-scale-enter: 1;
   }
 }
+
+/* All dashboard surfaces resolve neutral colors from the shared Tailwind palette. */
+:root,
+:root[data-demo-theme],
+body[data-demo-theme],
+[data-demo-theme],
+.ui-theme-scope,
+.ds-body-scope,
+.ds-body-overlay {
+  --background: var(--ui-canvas);
+  --foreground: var(--ui-primary);
+  --card: var(--ui-panel);
+  --card-foreground: var(--ui-primary);
+  --popover: var(--ui-panel);
+  --popover-foreground: var(--ui-primary);
+  --secondary: var(--ui-table);
+  --secondary-foreground: var(--ui-secondary);
+  --muted: var(--ui-table);
+  --muted-foreground: var(--ui-muted);
+  --accent: var(--ui-hover);
+  --accent-foreground: var(--ui-primary);
+  --border: var(--ui-stroke);
+  --input: var(--ui-stroke-control);
+  --ring: var(--ui-info);
+
+  --ds-surface-page: var(--ui-canvas);
+  --ds-surface-1: var(--ui-panel);
+  --ds-surface-2: var(--ui-table);
+  --ds-surface-3: var(--ui-hover);
+  --ds-surface-overlay: var(--ui-panel);
+  --ds-border: var(--ui-stroke);
+  --ds-border-subtle: var(--ui-stroke);
+  --ds-border-strong: var(--ui-stroke-control);
+  --ds-control-border: var(--ui-stroke-control);
+  --ds-control-bg: var(--ui-table);
+  --ds-control-bg-hover: var(--ui-hover);
+  --ds-control-bg-active: var(--ui-hover);
+  --ds-control-fg: var(--ui-primary);
+  --ds-fg: var(--ui-primary);
+  --ds-fg-secondary: var(--ui-secondary);
+  --ds-fg-muted: var(--ui-muted);
+  --ds-focus-ring: var(--ui-info);
+  --ds-recess-bg: var(--ui-table);
+  --ds-recess-border: var(--ui-stroke);
+  --ds-recess-fg: var(--ui-secondary);
+  --ds-recess-fg-quiet: var(--ui-muted);
+
+  --ds-body-surface-page: var(--ui-canvas);
+  --ds-body-surface-group: var(--ui-panel);
+  --ds-body-surface-control: var(--ui-table);
+  --ds-body-surface-hover: var(--ui-hover);
+  --ds-body-surface-selected: var(--ui-hover);
+  --ds-body-border: var(--ui-stroke);
+  --ds-body-border-subtle: var(--ui-stroke);
+  --ds-body-control-border: var(--ui-stroke-control);
+  --ds-body-fg: var(--ui-primary);
+  --ds-body-fg-secondary: var(--ui-secondary);
+  --ds-body-fg-muted: var(--ui-muted);
+
+  --ds-settings-canvas: var(--ui-canvas);
+  --ds-settings-sidebar: var(--ui-panel);
+  --ds-settings-card: var(--ui-panel);
+  --ds-settings-control: var(--ui-table);
+  --ds-settings-hover: var(--ui-hover);
+  --ds-settings-border: var(--ui-stroke);
+  --ds-settings-control-border: var(--ui-stroke-control);
+  --ds-settings-fg: var(--ui-primary);
+  --ds-settings-fg-secondary: var(--ui-secondary);
+  --ds-settings-fg-muted: var(--ui-muted);
+}
