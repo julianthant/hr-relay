@@ -23,10 +23,17 @@ ceremony. The shared renderer does not invent a generic approve command or decis
 supplies `ExplorerTimeline`; the run panel mounts `LogSample` through `LogPanel`, `LogFeed` and
 `LogTimeline`; and `SessionPanel` feeds `SessionsView` through `SessionsViewState`. Local fictional
 producers supply the detailed design examples while backend services and contracts remain
-available. Logs defaults to the selected queue row's served subject, status, attempt, current message
-and pipeline; it updates with the selection and queue projection. This context does not infer browser
-action history or screenshots. A queue selection resets any explicitly chosen fictional sample, while
-the sample selector retains all approved examples. Queue, Activity and Explorer share `ActionBar`/`ActionBarRow`. Explorer has no back control
+available. Logs defaults to a visibly labelled fictional history matched to the selected subject and
+status. The Person Lookup example has UCPath/CRM searches, identity review, employment status and
+appointment-date checks, with action-associated captures and explicit sample durations. Review and
+failure selections open at their inline decision while retaining earlier action history and timeline
+jumps. Completed substeps retain their durations; only the affected substep changes state. Local
+match approval, rejection and search retry update the sample timeline and append ordinary log events.
+A blocked-write row selects a separately labelled Separations sample, rather than inventing a write
+operation in Person Lookup. The selector's **Selected run · queue facts** view renders only the served
+subject, status, attempt, current message and pipeline, without inferred actions, captures or durations.
+A queue selection resets the sample selection and local decisions. The selector retains all approved
+examples. Queue, Activity and Explorer share `ActionBar`/`ActionBarRow`. Explorer has no back control
 or `onBack` prop; shell navigation exits it.
 
 Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
@@ -41,7 +48,22 @@ duration/failure values remain unavailable; an empty failure list means “No fa
 has zero runtime and no finished-run rate.
 
 Explorer retains workflow sources, branch previews and comments, with no registered-definition
-fallback or client request. Logs keeps its approved field tables, click rows, search/copy/latest controls
+fallback or client request. Its fictional workflow list contains Separations, Onboarding and Emergency
+Contact. Onboarding illustrates CRM intake, person matching, I-9 reuse/creation and new/concurrent
+hire filing; Emergency Contact illustrates packet review, per-person fan-out, identity checks,
+duplicate handling, address/phone entry and save/readback. Review, mismatch, duplicate and dry-run
+choices control the hypothetical path and reset when changing workflows. The copied concepts are
+source-pinned to legacy `9bb973672666b9267569a22d3fa0af722e4c5e87`; the browser has no legacy runtime
+dependency. Each workflow begins with its declared browser systems, matching Separations. Emergency
+Contact names UCPath first and authenticates only after packet review. These chips declare session
+needs; they do not report launched or authenticated sessions.
+
+Archive retains served report identities, route joins and command boundaries. Wide reports pair
+retained fields, compact metadata and table rows, and keep section navigation sticky. Workflow groups
+use compact summaries and filters. Loading skeletons, empty results and failed reads are distinct;
+failed reads retain their error and offer read retry and navigation controls.
+
+Logs keeps its approved field tables, click rows, search/copy/latest controls
 and action-associated screenshots. Its Completed header is hidden while unfinished and failure states remain.
 `LogScreenshots` consumes presentation capture metadata (`kind`: fields, form, browser or person;
 system, label, capture time and declared dimensions). Unclassified retained captures keep a generic
@@ -75,7 +97,7 @@ change fictional examples only; connected resolution and failure authority remai
 The compact timeline is directly above the logs: equal-width 10px bars, small state dots and labels, and
 explicit fictional durations. Selected queue context retains its supplied pipeline states, including gray
 skipped/cancelled stages, and shows only supplied durations; missing completed durations have no
-visible placeholder. A decision retains the complete five-stage pipeline and earlier completed
+visible placeholder. A decision retains its complete sample pipeline and earlier completed
 states and durations. Later stages remain gray and unavailable for jumping, without visible “Upcoming”
 text; only the affected stage
 and substep change state/color. Completed, active and failed bars are solid, waiting is hatched and

@@ -12,8 +12,12 @@ log-block examples, required-only continuation forms, ordinary follow-up logs, n
 indented fitted notices and timestamps in the log rail. The image workspace uses a thumbnail sidebar,
 zoom, rotation and comparison, closes on outside click and retries explicit load failures. The timeline
 retains completed stages and grays future stages without visible “Upcoming” text; only the affected
-portion changes state/color. The selected queue row now supplies its subject, status, attempt, current
-message and pipeline to Logs; fictional action histories remain explicit sample choices. Inline image
+portion changes state/color. Logs defaults to a labelled fictional action history matched to the
+selected subject and status, with sample captures and durations. The separate Selected run · queue
+facts view retains only served facts. Local sample decisions update the affected timeline portion and
+append ordinary log events. Explorer adds Onboarding and Emergency Contact mocks, listing browser
+systems first as Separations does; contact authentication remains after packet review. Archive uses
+paired report fields, compact rows and distinct loading/empty/error states. Inline image
 areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
 Backend classifiers and failure/resolve wiring remain deferred.

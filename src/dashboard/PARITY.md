@@ -26,11 +26,24 @@ earlier completed stages retain their state and durations, future stages are gra
 “Upcoming” text, and only the affected
 stage/substep changes color. Focused dark/light 1024/1440 interaction and accessibility checks cover
 these approved changes. Reference screenshots have not been refrozen; backend wiring remains deferred.
-Logs defaults to the selected queue row's served context; choosing another row changes its name,
-status, message and pipeline and resets any explicit sample selection. Fictional action histories remain
-in the sample selector. Single previews have a 128px image area and at most 360px width; browser
+Logs defaults to a labelled fictional history matched to the selected subject and status; the separate
+Selected run · queue facts view contains only served facts. Person Lookup mocks use UCPath/CRM
+captures and four stages with named substeps and sample durations. Inline attention blocks open in
+view while preserving earlier history. Local continuation changes the sample timeline. A blocked-write
+row uses a labelled Separations sample. Queue selection resets sample choice and local decisions.
+Single previews have a 128px image area and at most 360px width; browser
 previews use 96px image areas. Dimension validation measures the detached decoded source, retaining
 real mismatches and decode failures instead of rejecting a scaled preview.
+
+## Archive polish and Explorer workflow mocks (2026-10-02)
+
+Archive keeps served report identities and commands while using paired retained fields on wide screens,
+compact metadata and rows, sticky report-section navigation and distinct loading/empty/error states
+with read-retry controls. Explorer adds fictional Onboarding and Emergency Contact paths to the existing
+Separations preview, including source returns, identity/review stops, duplicate handling and dry-run
+branches. All three begin with declared browser systems; contact authentication remains after packet
+review. Focused desktop dark/light interaction checks cover the changes; frozen reference screenshots
+remain unchanged. Mock workflows are presentation only and cannot start runs.
 
 ## Ruled deviations from the rebuild-demo
 
