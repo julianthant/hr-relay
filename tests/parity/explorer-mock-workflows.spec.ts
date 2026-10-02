@@ -1,0 +1,92 @@
+import { createHash } from "node:crypto";
+import { expect, test } from "@playwright/test";
+import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
+import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
+import { startFixtureServer } from "./helpers/fixture-bff.js";
+
+for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
+  const evidence = `explorer-mocks-${theme.attribute}-${width}.a11y.yml`;
+  test(`Explorer onboarding and contact mock paths @ ${theme.attribute} ${width}`, {
+    annotation: [{ type: "required-a11y-evidence", description: evidence }],
+  }, async ({ page }) => {
+    ensureParityBundle();
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    try {
+      await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
+      await installTheme(page, theme);
+      const requests: string[] = [];
+      page.on("request", (request) => { if (request.method() !== "GET" || /\/api\/v1\/(?:explorer|runs\/)/u.test(new URL(request.url()).pathname)) requests.push(`${request.method()} ${request.url()}`); });
+      await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
+      const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
+      const workflows = surface.getByRole("navigation", { name: "Preview workflows" });
+      await expect(workflows.getByRole("button")).toHaveCount(3);
+      await workflows.getByRole("button", { name: "Onboarding 10", exact: true }).click();
+      await expect(surface.getByRole("heading", { name: "Onboarding", exact: true })).toBeVisible();
+      await expect(surface.getByText("Mock data", { exact: true })).toBeVisible();
+      await expect(surface.locator("li[data-step-number]")).toHaveCount(10);
+      expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+      await test.info().attach(`onboarding-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await surface.getByRole("button", { name: "Preview paths", exact: true }).click();
+      const person = surface.getByRole("combobox", { name: "Person search result preview" });
+      await expect(person).toBeFocused();
+      await person.selectOption("review");
+      await expect(surface.locator("#explorer-step-6")).toBeHidden();
+      await expect(surface.getByText("Pause for identity approval. No I-9 profile or hire is filed.", { exact: true })).toBeVisible();
+      await person.selectOption("none");
+      await surface.getByRole("combobox", { name: "Hire type preview" }).selectOption("rehire");
+      await expect(surface.locator("#explorer-step-6")).toBeHidden();
+      await person.selectOption("matched");
+      await expect(surface.locator("#explorer-step-6")).toContainText("Skip I-9 creation");
+      await expect(surface.locator("#explorer-step-7")).toContainText("UC_CONC_HIRE");
+      await surface.getByRole("button", { name: "Show source for Compensation rate", exact: true }).click();
+      const wage = surface.getByRole("dialog", { name: "Compensation rate source", exact: true });
+      await wage.getByRole("button", { name: "Go to original field" }).click();
+      await expect(surface.locator("#explorer-field-2-wage")).toBeFocused();
+      await surface.getByRole("button", { name: "Return to filled field" }).click();
+      await expect(surface.getByRole("button", { name: "Show source for Compensation rate", exact: true })).toBeFocused();
+      await surface.getByRole("combobox", { name: "Hire rehearsal preview" }).selectOption("dry");
+      await expect(surface.locator("#explorer-step-9")).toBeHidden();
+      await workflows.getByRole("button", { name: "Emergency Contact 11", exact: true }).click();
+      await expect(surface.getByRole("heading", { name: "Emergency Contact", exact: true })).toBeVisible();
+      await expect(surface.locator("li[data-step-number]")).toHaveCount(11);
+      await test.info().attach(`emergency-contact-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      const snapshot = await surface.ariaSnapshot();
+      test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
+      await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
+      await surface.getByRole("button", { name: "Preview paths", exact: true }).click();
+      const review = surface.getByRole("combobox", { name: "Contact review preview" });
+      await expect(review).toBeFocused();
+      await review.selectOption("pending");
+      await expect(surface.locator("#explorer-step-3")).toBeHidden();
+      await review.selectOption("approved");
+      const identity = surface.getByRole("combobox", { name: "Contact identity preview" });
+      await identity.selectOption("mismatch");
+      await expect(surface.locator("#explorer-step-6")).toBeHidden();
+      await identity.selectOption("verified");
+      const existing = surface.getByRole("combobox", { name: "Existing contact preview" });
+      await existing.selectOption("exact");
+      await expect(surface.locator("#explorer-step-8")).toHaveCount(0);
+      await expect(surface.locator("#explorer-step-10")).toHaveCount(0);
+      await expect(surface.locator("#explorer-step-11")).toBeVisible();
+      await existing.selectOption("fuzzy");
+      await expect(surface.locator("#explorer-step-7")).toContainText("Demote the existing");
+      await surface.getByRole("combobox", { name: "Contact address preview" }).selectOption("manual");
+      const address = surface.getByRole("button", { name: "Show source for Street · city · state · postal code · country", exact: true });
+      await address.click();
+      await expect(surface.getByRole("dialog")).toContainText("Emergency Contact Form");
+      await page.keyboard.press("Escape");
+      await expect(address).toBeFocused();
+      await surface.getByRole("combobox", { name: "Contact rehearsal preview" }).selectOption("dry");
+      await expect(surface.locator("#explorer-step-10")).toHaveCount(0);
+      await expect(surface.locator("#explorer-step-7")).not.toContainText("Demote the existing");
+      await expect(surface.locator("#explorer-step-11")).toBeVisible();
+      await workflows.getByRole("button", { name: "Separations 22", exact: true }).click();
+      await expect(surface.locator("li[data-step-number]")).toHaveCount(22);
+      await expect(surface.getByRole("combobox", { name: "Identity check preview" })).toHaveValue("verified");
+      await surface.getByRole("textbox", { name: "Find workflow" }).fill("contact");
+      await expect(workflows.getByRole("button")).toHaveCount(1);
+      await expect(workflows.getByRole("button", { name: "Emergency Contact 11", exact: true })).toBeVisible();
+      expect(requests).toEqual([]);
+    } finally { await server.close(); }
+  });
+}

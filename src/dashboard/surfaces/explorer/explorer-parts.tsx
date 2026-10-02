@@ -10,6 +10,7 @@ interface PartProps {
   formTitle?: string;
   onStep: (step: number) => void; selected?: string; disabled: boolean;
   comments: CommentChoices; onComments: (choices: CommentChoices) => void;
+  onMockChoice?: (id: string, value: string) => void;
 }
 
 function BranchChoice({ choice, scenario, onScenario, disabled, result = false }: Pick<PartProps, "scenario" | "onScenario" | "disabled"> & { choice: keyof PreviewScenario; result?: boolean }) {
@@ -66,9 +67,16 @@ export function ExplorerParts(props: PartProps) {
       </div>;
     })}</div>;
     if (part.kind === "choice") return <BranchChoice key={key} choice={part.choice} {...props} />;
+    if (part.kind === "mock-choice") return <div key={key} className="mb-3 flex items-center gap-2.5 rounded-lg border border-ui-stroke bg-ui-table px-4 py-3">
+      <GitBranch aria-hidden className="size-4 shrink-0 text-ui-info" /><label className="text-body font-medium" htmlFor={`preview-${part.id}`}>{part.label}</label>
+      <select id={`preview-${part.id}`} aria-label={`${part.label} preview`} value={part.value} disabled={props.disabled} onChange={(event) => props.onMockChoice?.(part.id, event.target.value)}
+        className={`ml-auto h-8 max-w-[60%] rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary disabled:cursor-not-allowed ${dsFocus}`}>
+        {part.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+      </select>
+    </div>;
     if (part.kind === "note") return <p key={key} className="my-2 max-w-prose text-body text-ui-secondary">{part.text}</p>;
     if (part.kind === "resume") return <button key={key} type="button" className={`flex items-center gap-2 px-4 pt-3 text-caption text-ui-info hover:underline ${dsFocus}`} onClick={() => onStep(part.step)}><CornerDownRight aria-hidden className="size-3.5" />{part.text}</button>;
-    if (part.kind === "sessions") return <div key={key} className="flex gap-2 pt-1">{["Kuali", "Kronos", "UCPath"].map((system) => <span key={system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body" title={`Declared session: open ${system} and authenticate`}><Monitor aria-hidden className="size-4 text-ui-muted" />{system}<LockKeyhole aria-hidden className="ml-2 size-3 text-ui-muted" /></span>)}</div>;
+    if (part.kind === "sessions") return <div key={key} className="flex flex-wrap gap-2 pt-1">{(part.systems ?? ["Kuali", "Kronos", "UCPath"]).map((system) => <span key={system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body" title={`Declared session: open ${system} and authenticate`}><Monitor aria-hidden className="size-4 text-ui-muted" />{system}<LockKeyhole aria-hidden className="ml-2 size-3 text-ui-muted" /></span>)}</div>;
     const Icon = { click: MousePointer2, read: Eye, verify: CheckCheck, compute: Cpu, key: Keyboard, rejoin: GitMerge, stop: CircleStop }[part.icon];
     return <div key={key} className={`my-2.5 flex min-h-9 items-center gap-2.5 text-body ${part.icon === "stop" ? "text-ui-danger" : "text-ui-secondary"} ${part.icon === "stop" ? "rounded-md border border-ui-stroke bg-ui-table p-3" : part.icon === "click" ? "ml-3 w-fit rounded-md border border-ui-stroke bg-ui-table px-2.5 py-1.5 text-ui-primary" : part.icon === "rejoin" ? "mt-3.5 border-t border-ui-stroke pt-3" : "px-2"}`}>
       <Icon aria-hidden className={`size-3.5 shrink-0 ${part.icon === "verify" ? "text-ui-positive" : part.icon === "rejoin" ? "text-ui-info" : ""}`} /><span>{part.text}</span>

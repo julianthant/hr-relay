@@ -1,0 +1,114 @@
+// @vitest-environment jsdom
+import assert from "node:assert/strict";
+import { act, createElement } from "react";
+import { createRoot, type Root } from "react-dom/client";
+import { afterAll, afterEach, beforeAll, describe, it } from "vitest";
+import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
+import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
+import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO, EXPLORER_MOCK_WORKFLOWS, mockFieldSource, updateMockScenario } from "../../../src/dashboard/surfaces/explorer/explorer-mock-fixtures.js";
+
+Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
+let root: Root | undefined;
+const originalScroll = Object.getOwnPropertyDescriptor(HTMLElement.prototype, "scrollIntoView");
+beforeAll(() => Object.defineProperty(HTMLElement.prototype, "scrollIntoView", { configurable: true, value: () => undefined }));
+afterAll(() => {
+  if (originalScroll) Object.defineProperty(HTMLElement.prototype, "scrollIntoView", originalScroll);
+  else Reflect.deleteProperty(HTMLElement.prototype, "scrollIntoView");
+});
+afterEach(async () => {
+  if (root) await act(async () => root?.unmount());
+  root = undefined;
+  document.body.replaceChildren();
+});
+async function render(): Promise<void> {
+  const host = document.createElement("div");
+  document.body.append(host);
+  root = createRoot(host);
+  await act(async () => root?.render(createElement(WorkflowExplorer, { onVersionRegistry: () => undefined })));
+}
+function button(name: string): HTMLButtonElement {
+  const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
+  assert.ok(found instanceof HTMLButtonElement, `missing button ${name}`);
+  return found;
+}
+async function click(name: string): Promise<void> { await act(async () => button(name).click()); }
+async function choose(label: string, value: string): Promise<void> {
+  const select = [...document.querySelectorAll("select")].find((node) => node.getAttribute("aria-label") === `${label} preview`);
+  assert.ok(select instanceof HTMLSelectElement);
+  await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
+}
+function hidden(number: number): boolean {
+  const node = document.getElementById(`explorer-step-${number}`);
+  return node === null || node.hidden;
+}
+
+describe("frontend-only Explorer mock workflows", () => {
+  it("keeps fixture identifiers, unique field addresses and reachable sources on alternate paths", () => {
+    assert.equal(EXPLORER_MOCK_WORKFLOWS.length, 3);
+    assert.ok(EXPLORER_MOCK_WORKFLOWS.every((workflow) => workflow.id.startsWith("fixture-")));
+    for (const scenario of [DEFAULT_MOCK_SCENARIO, { ...DEFAULT_MOCK_SCENARIO, "fixture-hire-mode": "rehire", "fixture-person": "matched" }, { ...DEFAULT_MOCK_SCENARIO, "fixture-i9": "present", "fixture-contact-address": "manual" }]) {
+      for (const flow of [buildOnboardingMock(scenario), buildEmergencyContactMock(scenario)]) {
+        const addresses = flow.steps.flatMap((step) => allFields(step.parts).map((field) => `${step.number}:${field.id}`));
+        assert.equal(new Set(addresses).size, addresses.length);
+        for (const step of flow.steps) for (const field of allFields(step.parts).filter((item) => item.mode === "fill")) {
+          const source = mockFieldSource(field.source!);
+          assert.ok(source, `${step.number}:${field.id} needs a source`);
+          for (const read of source.reads ?? []) {
+            const target = flow.steps.find((node) => node.number === read.step);
+            assert.ok(target);
+            if (read.fieldId) assert.ok(allFields(target.parts).some((item) => item.id === read.fieldId));
+          }
+        }
+      }
+    }
+    assert.throws(() => updateMockScenario(DEFAULT_MOCK_SCENARIO, "unknown", "none"), /explorer-mock-choice-unknown/);
+    assert.throws(() => updateMockScenario(DEFAULT_MOCK_SCENARIO, "fixture-person", "guess"), /explorer-mock-choice-invalid/);
+  });
+  it("switches mock workflows without a client provider, resets transient details and preserves Separations", async () => {
+    await render();
+    assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
+    await click("Onboarding10");
+    assert.equal(document.querySelectorAll("li[data-step-number]").length, 10);
+    await click("Show source for Legal name");
+    assert.ok(document.querySelector('[aria-label="Legal name source"]'));
+    await click("Emergency Contact11");
+    assert.equal(document.querySelectorAll("li[data-step-number]").length, 11);
+    assert.equal(document.querySelector('[aria-label="Legal name source"]'), null);
+    await click("Separations22");
+    assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
+    assert.ok(document.querySelector('[aria-label="Read result preview"]'));
+  });
+  it("holds onboarding writes, supports concurrent hire, and stops its rehearsal at the I-9 boundary", async () => {
+    await render(); await click("Onboarding10");
+    await choose("Person search result", "review"); assert.equal(hidden(6), true);
+    await choose("Person search result", "rejected"); assert.equal(hidden(9), true);
+    await choose("Person search result", "none"); assert.equal(hidden(10), false);
+    await choose("Hire type", "rehire"); assert.equal(hidden(6), true, "rehire cannot proceed without a matched EID");
+    await choose("Person search result", "matched"); assert.equal(hidden(10), false);
+    assert.match(document.getElementById("explorer-step-6")?.textContent ?? "", /Skip I-9 creation/);
+    assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /UC_CONC_HIRE/);
+    await choose("Hire rehearsal", "dry"); assert.equal(hidden(6), true); assert.equal(hidden(9), true);
+    await choose("Hire type", "new"); await choose("Person search result", "none"); await choose("Hire rehearsal", "write");
+    await choose("I-9 profile", "present");
+    assert.match(document.getElementById("explorer-step-6")?.textContent ?? "", /reuse the existing profile ID/);
+    assert.doesNotMatch(document.getElementById("explorer-step-6")?.textContent ?? "", /Create the I-9 profile/);
+  });
+  it("holds contact writes on review/identity, skips exact duplicates and keeps rollup after dry run", async () => {
+    await render(); await click("Emergency Contact11");
+    await choose("Contact review", "pending"); assert.equal(hidden(3), true);
+    await choose("Contact review", "rejected"); assert.equal(hidden(10), true);
+    await choose("Contact review", "approved"); await choose("Contact identity", "mismatch"); assert.equal(hidden(6), true);
+    await choose("Contact identity", "verified"); await choose("Existing contact", "exact");
+    assert.equal(hidden(8), true); assert.equal(hidden(10), true); assert.equal(hidden(11), false);
+    await choose("Existing contact", "fuzzy");
+    assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /Demote the existing/);
+    await choose("Contact rehearsal", "dry");
+    assert.doesNotMatch(document.getElementById("explorer-step-7")?.textContent ?? "", /Demote the existing/);
+    assert.equal(hidden(8), false); assert.equal(hidden(10), true); assert.equal(hidden(11), false);
+    await choose("Contact address", "manual");
+    await click("Show source for Street · city · state · postal code · country");
+    assert.match(document.querySelector('[role="dialog"]')?.textContent ?? "", /Emergency Contact Form/);
+    await click("Close field source");
+    assert.equal(document.activeElement, button("Show source for Street · city · state · postal code · country"));
+  });
+});

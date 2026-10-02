@@ -27,12 +27,13 @@ export type FlowPart =
   | { readonly kind: "note"; readonly text: string }
   | { readonly kind: "detail"; readonly id: string; readonly title: string; readonly parts: readonly FlowPart[] }
   | { readonly kind: "choice"; readonly choice: "identity" | "termination" }
+  | { readonly kind: "mock-choice"; readonly id: string; readonly label: string; readonly value: string; readonly options: readonly (readonly [value: string, label: string])[] }
   | { readonly kind: "resume"; readonly step: number; readonly text: string }
-  | { readonly kind: "sessions" };
+  | { readonly kind: "sessions"; readonly systems?: readonly string[] };
 export interface FlowStep {
   readonly number: number;
   readonly title: string;
-  readonly system?: "Kuali" | "Kronos" | "UCPath" | "Local" | "You";
+  readonly system?: "Kuali" | "Kronos" | "UCPath" | "Local" | "You" | "CRM" | "I-9" | "OCR";
   readonly parts: readonly FlowPart[];
 }
 export interface FieldSource {
