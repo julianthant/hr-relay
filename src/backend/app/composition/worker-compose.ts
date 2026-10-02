@@ -741,6 +741,11 @@ export async function composeWorkerRuntime(input: WorkerComposeInput): Promise<W
         idleRepollMs: resolved.config.daemon.idleRepollMs,
         log,
         taskNotes,
+        confirmedActionAppend: event => {
+          const authority = database.authority.runs.get(event.action.runId);
+          if (authority === undefined) throw new Error("confirmed-action-run-authority-missing");
+          taskNotes.emitConfirmedAction(event, authority);
+        },
         stopSignal: stopController.signal,
         exitWhenIdle: drain,
         controlPoll,

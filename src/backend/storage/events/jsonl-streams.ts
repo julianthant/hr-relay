@@ -175,7 +175,34 @@ export interface EventStreamTailResult {
   readonly lines: readonly EventStreamLine[];
   /** The resume state: one entry per currently-listed stream file, keyed by path. */
   readonly cursors: ReadonlyMap<string, EventStreamFileCursor>;
+  readonly hasMore?: boolean;
+  readonly bytesRead?: number;
 }
+
+export interface EventStreamTailIo {
+  list(stateRoot: string, stream: EventStream, scope?: EventStreamScope): readonly EventStreamFile[];
+  size(file: EventStreamFile): number;
+  read(file: EventStreamFile, start: number, length: number): Buffer;
+}
+
+const FILE_TAIL_IO: EventStreamTailIo = {
+  list: (stateRoot, stream, scope) => scope === undefined ? listEventStreamFiles(stateRoot, stream)
+    : scopedEventStreamFiles(stateRoot, stream, scope),
+  size: file => statSync(file.path).size,
+  read: (file, start, length) => {
+    const chunk = Buffer.alloc(length);
+    const handle = openSync(file.path, "r");
+    try {
+      let filled = 0;
+      while (filled < chunk.length) {
+        const got = readSync(handle, chunk, filled, chunk.length - filled, start + filled);
+        if (got === 0) throw new Error(`${file.path} ended ${String(chunk.length - filled)} bytes before its just-observed size`);
+        filled += got;
+      }
+    } finally { closeSync(handle); }
+    return chunk;
+  },
+};
 
 /**
  * Cursor-based read — the offset-aware half of the D218 cross-process tailer.
@@ -197,12 +224,24 @@ export function readEventStreamLinesFrom(
   stateRoot: string,
   stream: EventStream,
   cursors: ReadonlyMap<string, EventStreamFileCursor>,
+  scope?: EventStreamScope,
+  limits?: Readonly<{ maxBytes: number; maxLines: number }>,
+  io: EventStreamTailIo = FILE_TAIL_IO,
 ): EventStreamTailResult {
+  const maxBytes = limits?.maxBytes ?? Number.MAX_SAFE_INTEGER;
+  const maxLines = limits?.maxLines ?? Number.MAX_SAFE_INTEGER;
+  if (!Number.isSafeInteger(maxBytes) || maxBytes < 1 || !Number.isSafeInteger(maxLines) || maxLines < 1) {
+    throw new Error("event-stream-tail-limits-invalid");
+  }
   const lines: EventStreamLine[] = [];
   const nextCursors = new Map<string, EventStreamFileCursor>();
-  for (const file of listEventStreamFiles(stateRoot, stream)) {
+  let bytesRead = 0;
+  let consumedLines = 0;
+  let hasMore = false;
+  for (const file of io.list(stateRoot, stream, scope)) {
     const cursor = cursors.get(file.path) ?? { bytesConsumed: 0, linesConsumed: 0 };
-    const size = statSync(file.path).size;
+    nextCursors.set(file.path, cursor);
+    const size = io.size(file);
     if (size < cursor.bytesConsumed) {
       throw new Error(
         `${file.path} shrank from ${String(cursor.bytesConsumed)} to ${String(size)} bytes; `
@@ -210,45 +249,50 @@ export function readEventStreamLinesFrom(
       );
     }
     if (size === cursor.bytesConsumed) {
-      nextCursors.set(file.path, cursor);
       continue;
     }
-    const chunk = Buffer.alloc(size - cursor.bytesConsumed);
-    const handle = openSync(file.path, "r");
-    try {
-      let filled = 0;
-      while (filled < chunk.length) {
-        const got = readSync(handle, chunk, filled, chunk.length - filled, cursor.bytesConsumed + filled);
-        if (got === 0) {
-          throw new Error(
-            `${file.path} ended ${String(chunk.length - filled)} bytes before its just-observed size; `
-            + "an append-only stream file was truncated mid-read",
-          );
-        }
-        filled += got;
-      }
-    } finally {
-      closeSync(handle);
+    if (bytesRead >= maxBytes || consumedLines >= maxLines) { hasMore = true; continue; }
+    const remainingBudget = maxBytes - bytesRead;
+    if (remainingBudget < maxBytes && size - cursor.bytesConsumed > remainingBudget) {
+      hasMore = true;
+      continue;
     }
+    const requestedLength = Math.min(size - cursor.bytesConsumed, remainingBudget);
+    const chunk = io.read(file, cursor.bytesConsumed, requestedLength);
+    if (chunk.length !== requestedLength) throw new Error(`${file.path} ended before its just-observed size; an append-only stream file was truncated mid-read`);
+    bytesRead += chunk.length;
     // A `\n` is a single byte and no UTF-8 continuation byte can equal it, so
     // splitting on the raw byte before decoding cannot cut a character.
     const lastNewline = chunk.lastIndexOf(0x0a);
     if (lastNewline === -1) {
-      nextCursors.set(file.path, cursor);
+      if (chunk.length === maxBytes) throw new Error(`${file.path} has a JSONL line beyond the bounded tail read`);
       continue;
     }
-    const segments = chunk.subarray(0, lastNewline + 1).toString("utf8").split("\n");
+    let prefixEnd = lastNewline + 1;
+    let newlines = 0;
+    for (let index = 0; index <= lastNewline; index++) {
+      if (chunk[index] !== 0x0a) continue;
+      newlines++;
+      if (newlines === maxLines - consumedLines) {
+        prefixEnd = index + 1;
+        if (index < lastNewline || cursor.bytesConsumed + prefixEnd < size) hasMore = true;
+        break;
+      }
+    }
+    const segments = chunk.subarray(0, prefixEnd).toString("utf8").split("\n");
     segments.pop(); // the empty segment after the final consumed newline
     for (const [index, text] of segments.entries()) {
       if (text === "") continue;
       lines.push({ file, lineNumber: cursor.linesConsumed + index + 1, text });
     }
     nextCursors.set(file.path, {
-      bytesConsumed: cursor.bytesConsumed + lastNewline + 1,
+      bytesConsumed: cursor.bytesConsumed + prefixEnd,
       linesConsumed: cursor.linesConsumed + segments.length,
     });
+    consumedLines += segments.length;
+    if (cursor.bytesConsumed + chunk.length < size) hasMore = true;
   }
-  return Object.freeze({ lines: Object.freeze(lines), cursors: nextCursors });
+  return Object.freeze({ lines: Object.freeze(lines), cursors: nextCursors, hasMore, bytesRead });
 }
 
 export interface PruneReport {

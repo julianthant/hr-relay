@@ -138,6 +138,8 @@ import { createTransactionHistory } from "../../../storage/sqlite/transaction-hi
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { createTimelineEmitter } from "../../../storage/events/timeline-emitter.js";
 import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../../storage/events/note-jsonl-writer.js";
+import { createRunLogStreamStore } from "../../../logs/run-log-stream.js";
+import { RunLogsStreamHub } from "../../../transports/http/subscriptions/run-logs-stream.js";
 import { createContentAddressedArtifactWriter } from "../../../storage/artifacts/content-addressed-artifact-writer.js";
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 
@@ -567,15 +569,9 @@ async function composeDashboardRuntimeStartup(
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => {
       const activeRuntime = repositories.runtimeConfig.get();
-      const hasSettingsHistory = repositories.settingsCurrent.hasHistory();
-      const savedSettings = repositories.settingsCurrent.get();
       const persisted = readSettings(repositories);
-      if (activeRuntime === undefined && (hasSettingsHistory || repositories.runtimeConfig.hasHistory())) {
+      if (activeRuntime === undefined && repositories.runtimeConfig.hasHistory()) {
         throw new Error("dashboard settings/runtime authority is missing despite durable revision evidence");
-      }
-      if (savedSettings === undefined && (hasSettingsHistory
-        || (activeRuntime !== undefined && activeRuntime.settingsRevision > 1))) {
-        throw new Error("dashboard settings authority is missing despite durable revision evidence");
       }
       return persisted;
     });
@@ -734,6 +730,14 @@ async function composeDashboardRuntimeStartup(
   if (initialHealth.state === "degraded") {
     throw new Error(`dashboard refused to start over a degraded projection: ${initialHealth.lastError ?? "unknown"}`);
   }
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+    readRun: runId => {
+      const existence = lifecycle.read(runId);
+      return existence.state === "present" ? { disposition: existence.disposition, run: existence.run } : undefined;
+    } });
+  runLogsHub.poll();
+  if (runLogsHub.stats().degraded) throw new Error("dashboard refused to start over unreadable confirmed log history");
+  startupCleanups.push(() => runLogsHub.close());
 
   /**
    * Read the shared SQLite cursor so every producer process reaches the BFF.
@@ -741,6 +745,7 @@ async function composeDashboardRuntimeStartup(
    */
   const timelineTimer = setInterval(() => {
     projection.ingestFromTimeline();
+    runLogsHub.poll();
     // The Session Panel's cards and pool declarations are authority
     // (D248/D269); a lease moves without a span at birth, on the ticker's
     // `starting` → `idle`, on an operator directive, and on a crash/expiry
@@ -935,7 +940,7 @@ async function composeDashboardRuntimeStartup(
       },
     };
 
-  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors,
+  const shell = composeShell({ database, projection, activity, clock, timeZone, ids, artifacts, descriptors, runLogsHub,
     appVersion, descriptorSetHash: setHash, backfillGaps: backfillGapNotifier,
     preflightReport: () => preflightAuthority.readLatest(), backupSummary: readBackupSummary,
     advisoryAvailability: () => (advisory === undefined
@@ -1024,6 +1029,7 @@ async function composeDashboardRuntimeStartup(
       } catch (error: unknown) {
         failures.push(error);
       }
+      try { runLogsHub.close(); } catch (error: unknown) { failures.push(error); }
       clearInterval(timelineTimer);
       clearInterval(gateParkTimer);
       try {

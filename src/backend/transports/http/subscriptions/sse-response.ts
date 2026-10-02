@@ -13,6 +13,8 @@
  */
 import type { DashboardStreamEnvelope } from "../../../../models/dashboard/subscription.js";
 import type { DashboardStreamConnection } from "./dashboard-stream.js";
+import type { CompositeConnection } from "./run-logs-stream.js";
+import type { CompositeStreamEnvelope } from "../../../../models/dashboard/run-logs-subscription.js";
 
 /** One envelope as an SSE event: the cursor rides as the event id so `Last-Event-ID` resumes it. */
 export function sseSerialize(envelope: DashboardStreamEnvelope): string {
@@ -20,9 +22,11 @@ export function sseSerialize(envelope: DashboardStreamEnvelope): string {
   return `${id}data: ${JSON.stringify(envelope)}\n\n`;
 }
 
-export function dashboardEventStreamBody(connection: DashboardStreamConnection): ReadableStream<Uint8Array> {
+function streamBody<T>(connection: Readonly<{ initial: readonly T[]; next(): Promise<T | undefined>; close(): void }>,
+  serialize: (envelope: T, initial: boolean, finalInitial: boolean) => string): ReadableStream<Uint8Array> {
   const encoder = new TextEncoder();
-  const encode = (envelope: DashboardStreamEnvelope): Uint8Array => encoder.encode(sseSerialize(envelope));
+  const encode = (envelope: T, initial: boolean, finalInitial: boolean): Uint8Array =>
+    encoder.encode(serialize(envelope, initial, finalInitial));
   let closed = false;
   /** Closes the connection once; answers whether THIS call did it. */
   const closeOnce = (): boolean => {
@@ -33,10 +37,12 @@ export function dashboardEventStreamBody(connection: DashboardStreamConnection):
   };
   return new ReadableStream<Uint8Array>({
     start(controller): void {
-      for (const envelope of connection.initial) controller.enqueue(encode(envelope));
+      for (const [index, envelope] of connection.initial.entries()) {
+        controller.enqueue(encode(envelope, true, index === connection.initial.length - 1));
+      }
     },
     async pull(controller): Promise<void> {
-      let envelope: DashboardStreamEnvelope | undefined;
+      let envelope: T | undefined;
       try {
         envelope = await connection.next();
       } catch (error: unknown) {
@@ -52,10 +58,23 @@ export function dashboardEventStreamBody(connection: DashboardStreamConnection):
         if (closeOnce()) controller.close();
         return;
       }
-      controller.enqueue(encode(envelope));
+      controller.enqueue(encode(envelope, false, false));
     },
     cancel(): void {
       closeOnce();
     },
+  });
+}
+
+export function dashboardEventStreamBody(connection: DashboardStreamConnection): ReadableStream<Uint8Array> {
+  return streamBody(connection, sseSerialize);
+}
+
+export function compositeEventStreamBody(connection: CompositeConnection): ReadableStream<Uint8Array> {
+  return streamBody(connection, (envelope: CompositeStreamEnvelope, initial, finalInitial) => {
+    const resumeEligible = envelope.source === "control" && envelope.type === "reset-required" ? false
+      : !initial || (finalInitial && envelope.source === "control"
+        && envelope.type === "health" && envelope.state === "live");
+    return `${resumeEligible ? `id: ${envelope.transportCursor}\n` : ""}data: ${JSON.stringify(envelope)}\n\n`;
   });
 }

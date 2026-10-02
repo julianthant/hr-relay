@@ -37,6 +37,7 @@ import { OperationInputLineageSchema, OperationChildResultIdentitySchema } from 
  * would duplicate that identity today).
  */
 import { z } from "zod";
+import { ConfirmedActionEventSchema } from "./confirmed-action.js";
 import { DiagnosticSafetyVersionSchema } from "../trust/failure.js";
 import { DataClassificationSchema, refineEvidenceTransformPair } from "../../rules/redaction/redaction-policy.js";
 import { RunRecoveryModeSchema } from "../run/envelope.js";
@@ -44,7 +45,7 @@ import { RunRecoveryModeSchema } from "../run/envelope.js";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 const HEX64_PATTERN = /^[0-9a-f]{64}$/;
-const TRACE_PATTERN = /^[a-z0-9]{2}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/;
+const TRACE_PATTERN = /^[a-z0-9]{2,4}-(?:[01][0-9]|2[0-3])[0-5][0-9][0-5][0-9]-[0-9a-f]{4}$/;
 /** `TaskIdSchema`'s grammar, restated (this leaf imports nothing but zod). */
 const TASK_ID_PATTERN =
   /^(?:(?:ucpath|crm|onbase|kuali|servicenow|i9|new-kronos|old-kronos|sharepoint|extraction|normalization|ocr|roster)|workflow:[a-z0-9]+(?:-[a-z0-9]+)*)\/[a-z0-9]+(?:-[a-z0-9]+)*$/;
@@ -480,6 +481,7 @@ const NoteBodyFields = {
   level: NoteLevelSchema,
   message: z.string().min(1),
   fields: z.array(NoteFieldWireSchema).optional(),
+  confirmedAction: ConfirmedActionEventSchema.optional(),
   action: z.strictObject({
     kind: z.enum(["opened", "clicked", "typed", "selected", "checked", "set", "cleared", "pressed", "read", "computed", "verified", "branched", "joined", "gated", "delegated", "session"]),
     targetId: z.string().regex(/^[a-z][a-z0-9._/-]{2,119}$/iu),
@@ -492,7 +494,15 @@ const NoteBodyFields = {
 export const NoteWireSchema = z.union([
   z.strictObject({ ...NoteBodyFields, ...RunSpanIdentityFields }),
   z.strictObject({ ...NoteBodyFields, ...WorkerSpanIdentityFields }),
-]);
+]).superRefine((note, context) => {
+  const confirmed = note.confirmedAction;
+  if (confirmed === undefined) return;
+  if (!("runId" in note) || note.runId !== confirmed.action.runId
+    || note.traceId !== confirmed.traceId || note.attempt !== confirmed.action.attempt
+    || note.workflow.length === 0 || note.ts !== confirmed.recordedAt) {
+    context.addIssue({ code: "custom", path: ["confirmedAction"], message: "confirmed action note owner or recorded instant mismatch" });
+  }
+});
 export type NoteWire = z.infer<typeof NoteWireSchema>;
 
 /** Serve retained note text, including older notes with no safety stamp. */

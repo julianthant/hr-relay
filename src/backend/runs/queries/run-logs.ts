@@ -45,6 +45,7 @@ type RunAtRestNote = Readonly<{
   message: string;
   fields?: z.infer<typeof NoteAtRestSchema>["fields"];
   action?: z.infer<typeof NoteAtRestSchema>["action"];
+  confirmedAction?: z.infer<typeof NoteAtRestSchema>["confirmedAction"];
 }>;
 
 type RunLogProducer = Readonly<{ nodeId: string; step: string; taskId: string; system?: string }>;
@@ -295,6 +296,7 @@ function logLinesForRun(
             message: projected.message,
             fields: projected.fields,
             action: projected.action,
+            confirmedAction: projected.confirmedAction,
           },
         });
       }
@@ -504,6 +506,8 @@ export function buildRunLogsSection(
       operationStructure: operationStructureForRun(authority, runId, page),
       rows,
       notes: rows.flatMap((row) => row.kind === "note" ? [row.note] : []),
+      confirmedActions: page.flatMap((entry) => entry.kind === "note" && entry.note.confirmedAction !== undefined
+        ? [entry.note.confirmedAction] : []),
       nextCursor: offset + LOGS_PAGE_SIZE < all.length
         ? { state: "present", value: `lc:${snapshot.id}:${String(offset + LOGS_PAGE_SIZE)}` }
         : { state: "absent", reason: "end-of-page" },

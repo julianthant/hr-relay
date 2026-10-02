@@ -3,6 +3,7 @@ import { DeclaredActionIdentitySchema } from "../workflow/operation-action-ident
 import { FailureResolutionCaptureSchema, FailureResolutionCapabilitySchema } from "../trust/failure-resolution.js";
 import { PublicTransactionKeyDigestSchema } from "../write-safety/protected-input.js";
 import { z } from "zod";
+import { ConfirmedActionEventSchema } from "../events/confirmed-action.js";
 import {
   ActorIdSchema,
   ArtifactIdSchema,
@@ -495,6 +496,7 @@ export const LogPageCursorSchema = z.string()
 
 export const NotePageSchema = z.strictObject({
   runId: RunIdSchema,
+  confirmedActions: z.array(ConfirmedActionEventSchema).optional(),
   /** Live Logs always send this; older frozen archive pages predate it. */
   operationStructure: RunOperationStructureWireSchema.optional(),
   /**

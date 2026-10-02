@@ -19,6 +19,54 @@ import { TaskRunNoteKindSchema, taskRunNoteMessage, type TaskRunNoteKind } from 
 import { appendEventStreamLine } from "./jsonl-streams.js";
 import { CURRENT_DIAGNOSTIC_SAFETY_VERSION } from "../../../models/trust/failure.js";
 import type { TaskLogger } from "../../../workflow-kit/task.js";
+import { ConfirmedActionEventSchema, type ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
+import { registeredUiSensitivity } from "../../logs/semantic-ui-effect.js";
+
+function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): ConfirmedActionEvent {
+  const event = ConfirmedActionEventSchema.parse(input);
+  if (event.eventId !== `${event.workerStreamId}/${String(event.sequence)}`) throw new Error("confirmed-action-stream-identity-mismatch");
+  if (event.action.runId !== authority.envelope.runId
+    || event.action.definitionFingerprint !== authority.envelope.contractFingerprint
+    || event.action.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
+  const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
+    candidate.id === event.action.invocationId && candidate.entryId === event.action.nodeId
+    && candidate.taskId === event.action.taskId);
+  if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
+  if (JSON.stringify(event.action.occurrencePath) !== JSON.stringify(invocation.occurrencePath)
+    || event.action.logicalSessionId !== invocation.operation.session.id
+    || (event.source.kind === "browser"
+      ? invocation.operation.system !== event.source.system
+        || invocation.operation.session.kind !== "browser"
+        || invocation.operation.session.system !== event.source.system
+      : invocation.operation.system !== "local" || invocation.operation.session.kind !== "local")) {
+    throw new Error("confirmed-action-frozen-source-mismatch");
+  }
+  const declaredAction = (logicalActionId: string): (typeof invocation.operation.actions)[number] => {
+    const matches: (typeof invocation.operation.actions)[number][] = [];
+    const visit = (actions: readonly (typeof invocation.operation.actions)[number][]): void => {
+      for (const candidate of actions) {
+        if (candidate.id === logicalActionId) matches.push(candidate);
+        if (candidate.children !== undefined) visit(candidate.children);
+      }
+    };
+    visit(invocation.operation.actions);
+    if (matches.length !== 1) throw new Error("confirmed-action-frozen-action-mismatch");
+    return matches[0];
+  };
+  const isPublicScalar = (action: ConfirmedActionEvent["action"]): boolean => {
+    const declared = declaredAction(action.logicalActionId);
+    if (action.value?.consumed.state !== "observed") return true;
+    const value = action.value.consumed.value;
+    if (event.source.kind !== "browser" || (value !== null && typeof value === "object")) return false;
+    return registeredUiSensitivity(event.source.system, declared.target ?? declared.id) === "public";
+  };
+  const safeAction = isPublicScalar(event.action) ? event.action : { ...event.action, value: undefined };
+  if (event.kind === "trace") return ConfirmedActionEventSchema.parse({ ...event, action: safeAction });
+  const verifier = event.proof.verifier;
+  const safeVerifier = isPublicScalar(verifier) ? verifier : { ...verifier, value: undefined };
+  return ConfirmedActionEventSchema.parse({ ...event, action: safeAction,
+    proof: { ...event.proof, verifier: safeVerifier } });
+}
 
 const RunNoteAddressSchema = z.strictObject({
   runId: z.string().min(1),
@@ -47,10 +95,12 @@ export interface NoteJsonlWriterDeps {
   readonly stateRoot: string;
   readonly clock: Clock;
   readonly pid?: number;
+  readonly appendLine?: (workflow: string, date: string, line: string) => void;
 }
 
 export interface NoteJsonlWriter {
   emitNote(input: unknown): NoteWire;
+  emitConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord): NoteWire;
   emitRunLog(input: Readonly<{
     workflow: string;
     address: z.input<typeof RunNoteAddressSchema>;
@@ -73,7 +123,7 @@ export interface NoteJsonlWriter {
 export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWriter {
   const pid = z.number().int().positive().parse(deps.pid ?? process.pid);
   const write = (input: unknown, authority?: RunRecord, occurredAt?: string, action?: BrowserAction,
-    taskFields?: Parameters<TaskLogger["info"]>[1]): NoteWire => {
+    taskFields?: Parameters<TaskLogger["info"]>[1], confirmedAction?: ConfirmedActionEvent): NoteWire => {
     const ingress = NoteIngressSchema.parse(input);
     const at = deps.clock.now();
     if (authority !== undefined) {
@@ -110,12 +160,18 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       pid,
       level: ingress.level,
       message: ingress.message,
+      ...(confirmedAction === undefined ? {} : { confirmedAction }),
       ...(action === undefined ? {} : { action: { kind: action.kind, targetId: action.targetId,
         ...(action.value === undefined ? {} : { value: action.value }),
         ...(action.operation === undefined ? {} : { operation: action.operation }) } }),
       ...(fields.length === 0 ? {} : { fields }),
     });
-    appendEventStreamLine(deps.stateRoot, "notes", note.workflow, localDatePart(at), JSON.stringify(note));
+    const line = JSON.stringify(note);
+    if (confirmedAction !== undefined && Buffer.byteLength(line, "utf8") > 256 * 1024 - 1) {
+      throw new Error("confirmed-action-note-line-exceeds-tail-bound");
+    }
+    (deps.appendLine ?? ((workflow, date, durableLine) => appendEventStreamLine(deps.stateRoot, "notes", workflow, date, durableLine)))(
+      note.workflow, localDatePart(at), line);
     return note;
   };
   const emitRunNote: NoteJsonlWriter["emitRunNote"] = (input, authority) => {
@@ -162,8 +218,19 @@ export function createNoteJsonlWriter(deps: NoteJsonlWriterDeps): NoteJsonlWrite
       message: browserActionMessage(durableAction),
     }, authority, action.at, durableAction);
   };
+  const emitConfirmedAction: NoteJsonlWriter["emitConfirmedAction"] = (input, authority) => {
+    const confirmedAction = safeConfirmedAction(input, authority);
+    return write({
+      workflow: authority.envelope.workflow,
+      address: { runId: confirmedAction.action.runId, attempt: confirmedAction.action.attempt,
+        traceId: confirmedAction.traceId,
+        spanPath: `confirmed/${confirmedAction.action.nodeId}/${confirmedAction.action.taskId}/${String(confirmedAction.action.taskAttempt)}` },
+      level: "step", message: confirmedAction.kind === "fact" ? "Confirmed action" : "Action lifecycle",
+    }, authority, confirmedAction.recordedAt, undefined, undefined, confirmedAction);
+  };
   return Object.freeze({
     emitNote: (input: unknown): NoteWire => write(input),
+    emitConfirmedAction,
     emitRunLog,
     emitRunNote,
     emitRunAction,
