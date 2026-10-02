@@ -5,7 +5,7 @@ import { describe, it } from "vitest";
 import { SessionPanel } from "../../../src/dashboard/surfaces/session-panel.js";
 import { previewSessionAdd, previewSessionControl, sessionsSample } from "../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 import { sessionTimelineSummary, sessionTallies } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
-import { previewScenarios } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
+import { previewScenarios, separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
 import { visualLogSteps } from "../../../src/dashboard/surfaces/log-feed-model.js";
 
 describe("frontend timeline and sessions", () => {
@@ -20,6 +20,25 @@ describe("frontend timeline and sessions", () => {
     }
     assert.ok(previewScenarios.find(item => item.id === "waiting")?.timeline.some(stage => stage.state === "waiting"));
     assert.ok(previewScenarios.find(item => item.id === "failed")?.timeline.some(stage => stage.state === "failed"));
+  });
+  it("timeline substep durations match fixture boundaries and incomplete steps do not claim measurements", () => {
+    const seconds = (time: string) => time.split(":").map(Number).reduce((total, value) => total * 60 + value, 0);
+    const full = previewScenarios.find(item => item.id === "separation")!;
+    const substeps = full.timeline.flatMap(stage => stage.substeps);
+    assert.deepEqual(substeps.map(step => step.id), separationLogs.map(step => step.id));
+    const durations = substeps.map((substep, index) => {
+      const start = seconds(separationLogs[index].time);
+      const end = seconds(separationLogs[index + 1]?.time ?? "09:33:36");
+      assert.equal(substep.durationLabel, `${end - start}s`);
+      assert.equal(substep.state, "completed");
+      return end - start;
+    });
+    assert.equal(durations.reduce((sum, duration) => sum + duration, 0), 156);
+    for (const scenario of previewScenarios) for (const stage of scenario.timeline) for (const substep of stage.substeps) {
+      if (substep.state !== "completed") assert.equal(substep.durationLabel, undefined, `${scenario.id}: ${substep.id}`);
+    }
+    assert.equal(previewScenarios.find(item => item.id === "failed")?.timeline.at(-1)?.substeps.at(-1)?.state, "failed");
+    assert.ok(previewScenarios.find(item => item.id === "waiting")?.timeline.some(stage => stage.substeps.some(substep => substep.state === "waiting")));
   });
   it("local worker controls preserve peers and input fixtures; invalid transitions fail loud", () => {
     const data = sessionsSample("active");
@@ -41,6 +60,12 @@ describe("frontend timeline and sessions", () => {
     assert.equal(stopped.workers[0].subject, undefined);
     assert.equal(stopped.workers[0].timeline, undefined);
     assert.deepEqual(stopped.workers[0].browsers, []);
+    const removed = previewSessionControl(stopped, first.id, "remove");
+    if (removed.state !== "ready") throw new Error("ready result required");
+    assert.deepEqual(removed.workers, data.workers.slice(1));
+    assert.equal(removed.workers[0], data.workers[1]);
+    assert.equal(stopped.workers.length, 4);
+    assert.throws(() => previewSessionControl(data, first.id, "remove"), /sessions-preview-remove-invalid/);
     assert.throws(() => previewSessionControl(data, first.id, "resume"), /sessions-preview-resume-invalid/);
     assert.throws(() => previewSessionControl(data, "missing", "stop"), /sessions-preview-worker-missing/);
     assert.throws(() => previewSessionControl(sessionsSample("loading"), first.id, "stop"), /sessions-preview-not-ready/);
@@ -93,6 +118,8 @@ describe("frontend timeline and sessions", () => {
     assert.doesNotMatch(markup, /Sample data|Add to preview/);
     assert.match(markup, /Ready for the next run/);
     assert.match(markup, /aria-label="No run in progress"/);
+    assert.match(markup, /aria-label="Remove worker"/);
+    assert.doesNotMatch(markup, /Worker stopped|Worker paused|>Pause<|>Stop<|>Retry<|>Resume</);
     assert.match(markup, /Read the timecard/);
     assert.doesNotMatch(markup, /pool version|expectedVersion|lease|Live<|No worker is running|>Worker \d+</);
   });
