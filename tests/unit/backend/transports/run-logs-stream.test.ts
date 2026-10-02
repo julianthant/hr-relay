@@ -155,6 +155,20 @@ describe("confirmed run log composite stream", () => {
     assert.equal(CompositeCursorSchema.safeParse(`mc:${GENERATION}:${HASH}:9007199254740992`).success, false);
   });
 
+  it("retains the latest persisted members across a lower-sorting restarted worker stream", () => {
+    const delivered = Array.from({ length: 200 }, (_, index) => event("stream-z", index + 1));
+    delivered.push(event("stream-a", 1), event("stream-a", 2));
+    let state = emptyRunLogsMergeState(RUN);
+    for (const item of delivered) state = mergeRunLogs(state, { type: "delta", runId: RUN, event: item });
+    const snapshot = mergeRunLogs(emptyRunLogsMergeState(RUN), {
+      type: "snapshot", runId: RUN, events: delivered.slice(-200), hasEarlier: true,
+    });
+    assert.equal(state.events.length, 200);
+    assert.equal(state.events.some(item => item.eventId === "stream-a/2"), true);
+    assert.deepEqual(state.events.map(item => item.eventId), snapshot.events.map(item => item.eventId));
+    assert.equal(state.hasEarlier, snapshot.hasEarlier);
+  });
+
   it("refuses a sequence gap and conflicting replay while preserving a distinct restart stream", () => {
     const h = harness();
     h.batches.push([event("stream-a", 1), event("stream-b", 1)]);

@@ -47,11 +47,12 @@ export type CompositeStreamEnvelope = z.infer<typeof CompositeStreamEnvelopeSche
 export interface RunLogsMergeState {
   readonly runId: string;
   readonly events: readonly z.infer<typeof ConfirmedActionEventSchema>[];
+  readonly deliveryOrder: readonly string[];
   readonly hasEarlier: boolean;
 }
 
 export function emptyRunLogsMergeState(runId: string): RunLogsMergeState {
-  return { runId: RunIdSchema.parse(runId), events: [], hasEarlier: false };
+  return { runId: RunIdSchema.parse(runId), events: [], deliveryOrder: [], hasEarlier: false };
 }
 
 export function mergeRunLogs(
@@ -60,7 +61,13 @@ export function mergeRunLogs(
     | Readonly<{ type: "delta"; runId: string; event: z.infer<typeof ConfirmedActionEventSchema> }>,
 ): RunLogsMergeState {
   if (RunIdSchema.parse(change.runId) !== current.runId) throw new Error("run-log-selection-mismatch");
-  const candidates = change.type === "snapshot" ? change.events : [...current.events, change.event];
+  const currentById = new Map(current.events.map(event => [event.eventId, event]));
+  const candidates = change.type === "snapshot" ? change.events
+    : [...current.deliveryOrder.map(id => {
+      const retained = currentById.get(id);
+      if (retained === undefined) throw new Error("run-log-merge-state-invalid");
+      return retained;
+    }), change.event];
   const byId = new Map<string, z.infer<typeof ConfirmedActionEventSchema>>();
   for (const candidate of candidates) {
     const event = ConfirmedActionEventSchema.parse(candidate);
@@ -69,9 +76,11 @@ export function mergeRunLogs(
     if (previous !== undefined && JSON.stringify(previous) !== JSON.stringify(event)) throw new Error("run-log-event-id-conflict");
     byId.set(event.eventId, event);
   }
-  const ordered = [...byId.values()].sort((a, b) =>
+  const retained = [...byId.values()].slice(-200);
+  const ordered = retained.sort((a, b) =>
     a.action.attempt - b.action.attempt || a.action.claimGeneration - b.action.claimGeneration
     || a.workerStreamId.localeCompare(b.workerStreamId) || a.sequence - b.sequence);
-  return Object.freeze({ runId: current.runId, events: Object.freeze(ordered.slice(-200)),
-    hasEarlier: (change.type === "snapshot" ? change.hasEarlier : current.hasEarlier) || ordered.length > 200 });
+  return Object.freeze({ runId: current.runId, events: Object.freeze(ordered),
+    deliveryOrder: Object.freeze([...byId.keys()].slice(-200)),
+    hasEarlier: (change.type === "snapshot" ? change.hasEarlier : current.hasEarlier) || byId.size > 200 });
 }
