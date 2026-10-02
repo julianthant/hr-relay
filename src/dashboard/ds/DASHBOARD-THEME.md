@@ -1,8 +1,9 @@
 # Dashboard theme tokens
 
-This guide records the reusable Tailwind v4 palette and type scale used by the Activity, Explorer,
-Logs, and Sessions presentations. The canonical values and Tailwind theme mappings live in
-`dashboard-theme.css`; use those definitions when changing tokens.
+This guide records the shared Tailwind v4 palette and type scale used across the dashboard, including
+the navbar, Activity, Explorer, Logs, Sessions, Settings and content-body primitives. Canonical semantic
+colors and Tailwind mappings live in `dashboard-theme.css`; `tokens.css` maps DS, body, Settings and
+shadcn neutral aliases to those values. Edit the canonical definitions when changing the palette.
 
 ## Palette
 
@@ -18,7 +19,7 @@ The `ui-*` names are semantic Tailwind utilities, so surfaces can use `bg-ui-pan
 | `ui-field` | Input fill | `#ffffff` | `#2b2b2b` |
 | `ui-hover` | Hover fill | `#ebebeb` | `#323232` |
 | `ui-stroke` | General borders | `#dedede` | `#3b3b3b` |
-| `ui-stroke-control` | Stronger control border | `#a0a0a0` | `#515151` |
+| `ui-stroke-control` | Stronger control border | `#8b8b8b` | `#747474` |
 | `ui-primary` | Main text | `#202020` | `#efefef` |
 | `ui-secondary` | Supporting text | `#626262` | `#b2b2b2` |
 | `ui-muted` | Labels, timestamps, metadata | `#6b6b6b` | `#a0a0a0` |
@@ -47,15 +48,13 @@ utilities, so conditional size classes resolve by precedence instead of leaving 
 
 ## Current presentation seams
 
-The dashboard stylesheet imports this theme. Activity, Explorer, Logs, and Sessions put
-`.ui-theme-scope` on their presentation roots and use the `ui-*`, typography, and `font-*` utilities.
-Consumers outside that scope keep their current styling; migrate other dashboard surfaces separately.
-Activity's `ActivityReport` host supplies `activity-fixture.ts` through the typed `ActivityViewState`
-seam. `WorkflowExplorer` supplies `explorer-fixture.ts` to `ExplorerTimeline`. The run panel's
-`LogSample` uses fictional `log-fixture.ts` data with `LogPanel` and `LogFeed`. `SessionPanel` supplies
-`sessions-fixture.ts` through `SessionsViewState` to `SessionsView`. These are local producers, not
-authoritative records; approved backend wiring replaces the producers while retaining the renderers,
-layouts, and interactions.
+The dashboard stylesheet imports this theme. Its neutral DS, content-body, Settings and shadcn aliases
+resolve to the shared palette across the dashboard; `.ui-theme-scope` groups migrated presentation
+utilities but does not gate those aliases. Activity, Explorer, Logs, Sessions, the navbar and
+notifications use the `ui-*`, typography and `font-*` utilities. Presentation seams are `ActivityViewState`,
+`ExplorerTimeline`, `LogPanel`/`LogFeed`, `SessionsViewState`, `NavbarData` into `NavbarView`, and
+`NotificationsState` into `NotificationsView`. Current producers use local fixtures; approved backend
+wiring must feed the same renderers and interactions.
 
 Queue, Activity, and Explorer share `ActionBar`/`ActionBarRow`. Activity keeps four metrics in one
 row: `text-page` values at 1024px and `text-workflow` values at wider desktop widths. Use `text-body`
@@ -72,8 +71,13 @@ The Session bar's Add workers action uses the outlined secondary button. An idle
 shows “Ready for the next run” above one full-width `ui-stroke-control` bar labeled “No run in progress.”
 The Add workers dialog is 320px wide, with a 12px gap between fields and no fixed worker-count cap.
 
-For Logs tables, use one opaque gray `ui-table` fill for each header and body. Leave tables open,
-keep 16px between a heading and its table, and put timestamps before action icons. Balance displayed
-values while keeping identifiers unsplit. Filled values use plain blue text without an input-like
-border. Logs shows reads, fills, and clicks; internal computations are omitted. Screenshots appear at
-the end of their associated step.
+For Logs, hover/focus reveals named substeps and measured durations; unfinished steps disclose state
+without a duration. Hover leaves the background unchanged; green bars darken to 90% brightness. Keep Completed
+out of the header while retaining unfinished and failure states. The header, timeline and content use
+`ui-panel`; table headers and rows use opaque `ui-table` fill. Leave tables open, keep 16px between a
+heading and its table, and put timestamps before action icons. Balance displayed values while keeping
+identifiers unsplit. Filled values use plain blue text without an input-like border. Logs shows reads,
+fills, and clicks; internal computations are omitted. Screenshots appear at the end of their associated
+step. Sessions uses canvas for its expanded well, panel fill for worker cards and table fill for system
+tiles. The full bar toggles independently of Add workers; commands use accessible icons, and idle removal
+returns focus to the bar without a worker-stopped strip.

@@ -628,9 +628,12 @@ this surface. The old connected SessionPanel and timeline renderer are retired; 
 and old connected-UI tests remain for deliberate future wiring and migration. The exact checks and
 retained limits are recorded in the [latest Sessions refinement checkpoint](/Users/julianhein/Projects/hr-automation-rebuild-evidence/sessions-dialog-2026-10-01/current-state.md).
 
-The Sessions bar shows its toggle, nonzero state counts (or “No workers”) and an outlined Add workers
-action. It has no visible scenario selector; local cases use the `sessionsPreview` query parameter with
+The entire Sessions bar toggles by mouse and keyboard; Add workers remains an independent action. The
+bar shows nonzero state counts (or “No workers”) and an outlined Add workers action. It has no visible
+scenario selector; local cases use the `sessionsPreview` query parameter with
 `active`, `attention`, `idle`, `empty`, `loading` or `unavailable`. The 320px Add workers dialog groups
 workflow selection and an editable positive whole-number count, with increment/decrement controls,
 Cancel and Add workers. There is no fixed worker-count cap. An idle worker without nodes shows
-“Ready for the next run” above one full-width empty gray bar labeled “No run in progress.”
+“Ready for the next run” above one full-width empty gray bar labeled “No run in progress.” Worker
+commands are accessible icon-only controls. Idle cards can be removed; active cards cannot. Removal
+preserves other cards and returns focus to the Sessions bar. No worker-stopped confirmation strip appears.

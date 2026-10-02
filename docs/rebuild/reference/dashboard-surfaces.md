@@ -39,12 +39,15 @@ has zero runtime and no finished-run rate.
 
 Explorer retains workflow sources, branch previews and comments, with no registered-definition
 fallback or client request. Logs keeps its approved field tables, click rows, search/copy/latest controls
-and end-of-step screenshots. The compact timeline is directly above the logs: equal-width 10px bars,
-small state dots and labels, and explicit fictional durations. Completed, active and failed bars are
-solid, waiting is hatched and upcoming is outlined. A stage click clears search, scrolls to its
-confirmed-action heading and moves focus there. Computations, connected identity/resolve/failure UI,
-run controls/status strip, tab band, capture gallery, elapsed-time footer and timeline disclosures stay
-removed. Logs does not mount run-detail, section or capture requests.
+and end-of-step screenshots. Its Completed header is hidden while unfinished and failure states remain.
+The compact timeline is directly above the logs: equal-width 10px bars, small state dots and labels, and
+explicit fictional durations. Completed, active and failed bars are solid, waiting is hatched and upcoming
+is outlined. Hover/focus reveals named substeps and measured durations; unfinished steps disclose state
+without an invented duration. Hover does not change the background; green bars darken to 90% brightness. A stage
+click clears search, scrolls to its confirmed-action heading and moves focus there. Computations, connected
+identity/resolve/failure UI, run controls/status strip, tab band, capture gallery, elapsed-time footer and
+persistent timeline disclosures stay removed. Logs does not mount run-detail, section or capture requests;
+its header, timeline and content use panel fill, with opaque table fills.
 
 Activity export remains a visible placeholder. A separately scoped backend producer must validate
 authoritative projections and feed these same components while preserving approved layouts and
@@ -56,15 +59,32 @@ Sessions cards place the workflow/subject header first, the systems grid next, a
 with its node timeline after that; elapsed time and controls finish the card. The grid has at most two
 columns of 32px tiles: one or an odd final system fills its row, while two systems share the row.
 Active cards stay below 250px tall. Each timeline segment represents a supplied node, and its
-completed/total count comes from that node array. The bar shows the Sessions toggle, nonzero state
-counts (or “No workers”), and a secondary Add workers action. Scenarios come from the `sessionsPreview`
-URL parameter, not a visible selector. The 320px dialog groups workflow selection and an editable
+completed/total count comes from that node array. The entire Sessions bar toggles by mouse and keyboard
+and shows nonzero state counts (or “No workers”); Add workers is an independent secondary action. Worker
+commands are accessible icon-only controls. Idle cards can be removed; active cards cannot. Removal
+preserves peer cards and returns focus to the bar. No worker-stopped strip appears. Scenarios come from
+the `sessionsPreview` URL parameter, not a visible selector. The 320px dialog groups workflow selection and an editable
 positive whole-number count with increment/decrement controls; there is no fixed worker-count cap.
 An idle worker without a timeline shows “Ready for the next run” above a full-width empty gray bar
 with the accessible label “No run in progress.” Pause/resume/retry/stop controls change fixtures only;
 App no longer passes worker cards, pools, clock, connection/version or worker command dispatch to the
 UI. The former connected SessionPanel and timeline renderer are retired. Backend worker/browser
 authority remains a separate wiring task.
+
+The approved Compact rail and popover design uses a 54px navbar with the text brand **RRSS HR** and no
+logo. It retains history, four views, search, date navigation, notifications, theme and Settings; preflight
+is removed. `TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
+`NotificationsState` to `NotificationsView`. The connected search/date renderers are retired. Search,
+date and notification examples use local fixtures: navigation and delivery placeholders invoke no API,
+command, browser permission or OS delivery path. Settings retains its separate existing preflight read.
+
+The 370px notification popover keeps its heading, filters and footer fixed while the message list scrolls.
+The pinned history-gap notice appears under every filter and has no lifecycle controls; read and snooze are
+independent, and the default four-unread count includes the pin. Removing a filtered row restores focus to
+the active filter. Empty, loading, unavailable and ping examples remain distinct. The shared semantic
+palette is authored in `src/dashboard/ds/dashboard-theme.css`; DS, body, Settings and shadcn neutral
+aliases resolve through `src/dashboard/ds/tokens.css`. Current values and presentation seams are in the
+[Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
 
 
 **What this doc is.** The contract for everything the operator SEES and for every mechanism that

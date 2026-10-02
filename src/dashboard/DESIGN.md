@@ -63,9 +63,10 @@ the macOS system UI font (San Francisco) through the dashboard sans token.
     under `src/dashboard`), and the dirty `ValueField` is a real controlled field.
 -->
 
-**Current Logs theme scope (2026-09-30).** Logs is the first surface using the reusable Tailwind v4
-palette and type scale. See [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for its tokens and incremental
-adoption guidance; `.ui-theme-scope` keeps the new palette opt-in for existing DS controls.
+**Shared dashboard palette (2026-10-01).** The semantic palette and Tailwind mappings live in
+`ds/dashboard-theme.css`. `ds/tokens.css` maps DS, content-body, Settings and shadcn neutral aliases to
+that palette across the dashboard. `.ui-theme-scope` groups presentation utilities; it no longer gates
+the palette. See [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for current values and seams.
 
 # Rebuild demo — design brief
 
@@ -159,8 +160,9 @@ import { Panel, PanelHeader, Button, StatusPill, dsText } from "../demo-ui";
 - **Compose primitives.** If a primitive is missing a variant you need, add it
   *in the primitive*, so every surface inherits it. Never fork one locally.
 - **Never write a literal value** for colour, size, radius, shadow or duration.
-  If a token is missing, add it to `ds/tokens.css` — that file is the only place
-  a raw value may appear.
+  Shared semantic palette values belong in `ds/dashboard-theme.css`; DS tokens
+  and component geometry belong in `ds/tokens.css`. See
+  [DASHBOARD-THEME.md](ds/DASHBOARD-THEME.md) for palette roles and aliases.
 - The specimen page `DemoUiKit.tsx` shows every primitive in every state. Skim
   it before choosing a component.
 
@@ -186,8 +188,9 @@ are demonstrated together in the Forms section of the current kit page.
 
 ## Tokens — what to reach for
 
-All tokens are CSS custom properties in `ds/tokens.css`; `ds/tokens.ts` exports
-the class names you type. Use `bg-[var(--ds-…)]` / `text-[color:var(--ds-…)]` /
+Shared semantic colors and Tailwind mappings live in `ds/dashboard-theme.css`;
+DS component tokens are CSS custom properties in `ds/tokens.css`. `ds/tokens.ts`
+exports the class names you type. Use `bg-[var(--ds-…)]` / `text-[color:var(--ds-…)]` /
 `border-[color:var(--ds-…)]` when you need one directly.
 
 ### Surface (depth = surface + hairline, never shadow)
@@ -285,9 +288,10 @@ the outlined toolbar peers — the loudness belongs to the fill, not to a hue.
 
 Two compositions of one product, selected by a `data-demo-theme` attribute:
 **`dark` — Graphite Warm** (warm near-black, depth from surface + hairline) and
-**`light` — Paper Ink** (tinted page, white cards, depth from a shadow). Each is
-authored as its own block in `ds/tokens.css`; neither is a lightening of the
-other, and four of the five hues are re-picked between them.
+**`light` — Paper Ink** (tinted page, white cards, depth from a shadow). The
+shared semantic palette is authored in `ds/dashboard-theme.css`; DS component
+tokens remain in `ds/tokens.css`. Neither theme is a lightening of the other,
+and four of the five hues are re-picked between them.
 
 `useDemoTheme()` (exported from `demo-ui`) owns the selection, persists it, and
 stamps the attribute on **`<html>`, `<body>` and the demo's root container**.
