@@ -14,3 +14,13 @@ export function registeredUiEffect(system: BrowserSystemId, targetId: string): "
     default: return undefined;
   }
 }
+
+export function registeredUiSensitivity(system: BrowserSystemId, targetId: string): "public" | "hr" | "restricted" | undefined {
+  switch (system) {
+    case "crm": return CRM_UI_REGISTRY.elements.find(element => element.id === targetId)?.sensitivity;
+    case "kuali": return KUALI_UI_REGISTRY.elements.find(element => element.id === targetId)?.sensitivity;
+    case "new-kronos": return NEW_KRONOS_UI_REGISTRY.elements.find(element => element.id === targetId)?.sensitivity;
+    case "ucpath": return UCPATH_UI_REGISTRY.elements.find(element => element.id === targetId)?.sensitivity;
+    default: return undefined;
+  }
+}

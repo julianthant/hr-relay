@@ -6,7 +6,7 @@ import { withBrowserActionBinding, withBrowserActionNotes } from "../systems/bro
 import { createDeclaredActionBinder, type DeclaredActionBinderInput } from "../runtime/writes/operation-action-binding.js";
 import type { ConfirmedActionPublisher } from "./confirmed-action-publisher.js";
 import { createConfirmedTaskActions } from "./confirmed-actions.js";
-import { registeredUiEffect } from "./semantic-ui-effect.js";
+import { registeredUiEffect, registeredUiSensitivity } from "./semantic-ui-effect.js";
 
 /** The executor's one invocation factory: frozen binding, registered source and early notes share identity. */
 export function createConfirmedInvocation(input: Readonly<{
@@ -24,7 +24,6 @@ export function createConfirmedInvocation(input: Readonly<{
   bind<T>(operation: () => Promise<T>): Promise<T>;
   withNotes<T>(operation: () => Promise<T>, drain: (actions: readonly BrowserAction[]) => void): Promise<T>;
 }> {
-  const binder = createDeclaredActionBinder(input.binding);
   if (input.registeredDriverSystem === undefined && input.headlessSystem === undefined) throw new Error("confirmed-invocation-source-missing");
   if (input.registeredDriverSystem !== undefined && input.headlessSystem !== undefined) throw new Error("confirmed-invocation-source-ambiguous");
   const invocation = input.binding.snapshot.invocations.find(candidate => candidate.entryId === input.binding.nodeId
@@ -35,6 +34,11 @@ export function createConfirmedInvocation(input: Readonly<{
   } else if (invocation.operation.system !== input.registeredDriverSystem
     || invocation.operation.session.kind !== "browser"
     || invocation.operation.session.system !== input.registeredDriverSystem) throw new Error("confirmed-invocation-browser-source-mismatch");
+  const binder = createDeclaredActionBinder({ ...input.binding,
+    allowPublishedValue: (targetId, value) => input.registeredDriverSystem !== undefined
+      && registeredUiSensitivity(input.registeredDriverSystem, targetId) === "public"
+      && (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean"),
+  });
   const confirmed = input.publisher === undefined ? undefined : createConfirmedTaskActions({
     publisher: input.publisher, snapshot: input.binding.snapshot, clock: input.clock,
     source: input.registeredDriverSystem === undefined

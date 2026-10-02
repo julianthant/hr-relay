@@ -36,6 +36,7 @@ export interface DeclaredActionBinderInput {
   readonly configurationValues?: Readonly<Record<string, JsonValue>>;
   readonly sources?: Map<string, Readonly<{ identity: DeclaredActionIdentity; value: JsonValue; ambiguous?: true }>>;
   readonly childInvocation?: Readonly<{ parentRunId: string; edgeId: string }>;
+  readonly allowPublishedValue?: (targetId: string, value: JsonValue) => boolean;
 }
 
 function flattenActions(actions: readonly SnapshotTaskAction[]): readonly SnapshotTaskAction[] {
@@ -267,6 +268,7 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
         throw new Error(`declared action ${declared.id} completed without its observed field value`);
       }
       const consumed = JsonValueSchema.parse(observed.declaredValue ?? observed.value);
+      const classified = input.allowPublishedValue?.(observed.targetId, consumed) ?? true;
       const protectionResolved = (reference: SnapshotWorkflowReference, depth = 0): boolean => {
         if (depth > 16) throw new Error("declared-action-protection-depth");
         if (reference.kind === "task-output" || reference.kind === "child-output") {
@@ -295,24 +297,24 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
           return input.snapshot.transforms.find((candidate) => candidate.id === reference.transformId)?.inputs.map((source) => referenceProtected(source.value)).find((binding) => binding !== undefined);
         };
         const protectedBinding = protectedBindingFor(slot.source.path, input.protectedBindings) ?? referenceProtected(bound);
-        redactActionValue = protectedBinding !== undefined || !protectionResolved(bound);
+        redactActionValue = !classified || protectedBinding !== undefined || !protectionResolved(bound);
         value = {
           slot: slot.id,
           fieldPath: slot.source.path,
           producer: producer(bound, consumed, input),
           consumed: protectedBinding === undefined
-            ? protectionResolved(bound) ? { state: "observed", value: consumed } : { state: "withheld", reason: "protection-unresolved" }
+            ? !classified ? { state: "withheld", reason: "classification-required" } : protectionResolved(bound) ? { state: "observed", value: consumed } : { state: "withheld", reason: "protection-unresolved" }
             : { state: "redacted", binding: protectedBinding },
         };
       } else {
         const protectedBinding = input.protectedBindings[0];
         const resolved = [...bindings.values()].every((reference) => protectionResolved(reference));
-        redactActionValue = protectedBinding !== undefined || !resolved;
+        redactActionValue = !classified || protectedBinding !== undefined || !resolved;
         value = {
           slot: slot.id,
           fieldPath: slot.source.path,
           producer: { kind: "task-output", entryId: input.nodeId, path: slot.source.path },
-          consumed: protectedBinding === undefined ? resolved ? { state: "observed", value: consumed } : { state: "withheld", reason: "protection-unresolved" } : { state: "redacted", binding: protectedBinding },
+          consumed: protectedBinding === undefined ? !classified ? { state: "withheld", reason: "classification-required" } : resolved ? { state: "observed", value: consumed } : { state: "withheld", reason: "protection-unresolved" } : { state: "redacted", binding: protectedBinding },
         };
       }
     }

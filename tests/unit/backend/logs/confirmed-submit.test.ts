@@ -9,6 +9,8 @@ import { runDeclaredAction, withBrowserActionBinding, withBrowserActionNotes, wi
 import { freezeWorkflowOperationDisplaySnapshot, WorkflowOperationDisplaySnapshotSchema } from "../../../../src/models/workflow/operation-display-snapshot.js";
 import { UCPATH_SMART_HR_DELETE_SELECTED_BUTTON } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
 import { plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
+import { BrowserSessionIdSchema } from "../../../../src/rules/identity/ids.js";
+import { OperationOccurrenceSegmentSchema } from "../../../../src/models/workflow/operation-display.js";
 
 const runId = "00000000-0000-4000-8000-000000000002";
 const session = "00000000-0000-4000-8000-000000000003";
@@ -55,12 +57,12 @@ function harness() {
       })), actions => { verifiers.push(...actions); });
     verifiedProofDigest = digest;
   };
-  const publish = (settled = true) => publishConfirmedSubmit({ publisher, snapshot, system: "ucpath", commitTaskId: "ucpath/fixture-commit",
+  const publish = (settled = true, overrides: Partial<Parameters<typeof publishConfirmedSubmit>[0]> = {}) => publishConfirmedSubmit({ publisher, snapshot, system: "ucpath", commitTaskId: "ucpath/fixture-commit",
     verifierTaskId: "ucpath/fixture-verify", commits, verifiers,
     verifiedProofDigest,
     ...(settled ? { durable: { writeIntentId: "intent-1", confirmedAt: clock.now().toISOString(), proofDigest: digest } } : {}),
-    checkpointNodeId: original.entryId, checkpointProofDigest: digest, traceId: "fpo-120000-0002" });
-  return { clock, events, publisher, commit, verify, publish, submitCalls: () => submitCalls };
+    checkpointNodeId: original.entryId, checkpointProofDigest: digest, traceId: "fpo-120000-0002", ...overrides });
+  return { clock, events, publisher, snapshot, commits, verifiers, commit, verify, publish, submitCalls: () => submitCalls };
 }
 
 describe("protected submit publication after sequencer settlement", () => {
@@ -92,6 +94,31 @@ describe("protected submit publication after sequencer settlement", () => {
       assert.equal(h.publish(), "proof-unavailable");
       assert.equal(h.events.length, 0);
       assert.equal(h.submitCalls(), 1);
+    }
+  });
+
+  it("refuses wrong frozen role or path, foreign session, stale verifier, and mismatched durable proof", async () => {
+    const cases: readonly Readonly<{ name: string; change: (h: ReturnType<typeof harness>) => Partial<Parameters<typeof publishConfirmedSubmit>[0]> }>[] = [
+      { name: "wrong role", change: h => ({ snapshot: WorkflowOperationDisplaySnapshotSchema.parse({ ...h.snapshot,
+        invocations: h.snapshot.invocations.map(invocation => invocation.contractRole === "verify"
+          ? { ...invocation, contractRole: "task" } : invocation) }) }) },
+      { name: "wrong path", change: h => ({ commits: h.commits.map(note => note.operation?.state === "completed"
+        ? { ...note, operation: { ...note.operation, occurrencePath: [OperationOccurrenceSegmentSchema.parse("foreign-step")] } } : note) }) },
+      { name: "foreign physical session", change: h => ({ verifiers: h.verifiers.map(note => note.operation?.state === "completed"
+        ? { ...note, physicalSessionId: BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000004"),
+          operation: { ...note.operation, physicalSessionId: BrowserSessionIdSchema.parse("00000000-0000-4000-8000-000000000004") } } : note) }) },
+      { name: "stale verifier", change: h => ({ verifiers: h.verifiers.map(note => note.operation?.state === "completed"
+        ? { ...note, at: "2026-10-02T11:59:59.000Z" } : note) }) },
+      { name: "mismatched checkpoint digest", change: () => ({ checkpointProofDigest: "b".repeat(64) }) },
+      { name: "mismatched saved digest", change: () => ({ verifiedProofDigest: "b".repeat(64) }) },
+    ];
+    for (const testCase of cases) {
+      const h = harness();
+      await h.commit();
+      await h.verify(async () => true);
+      assert.equal(h.publish(true, testCase.change(h)), "proof-unavailable", testCase.name);
+      assert.equal(h.events.length, 0, testCase.name);
+      assert.equal(h.submitCalls(), 1, testCase.name);
     }
   });
 

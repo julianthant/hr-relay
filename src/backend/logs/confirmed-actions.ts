@@ -10,6 +10,7 @@ import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/ope
 import { selectDeclaredStepResult, type ConfirmedOutcomeEvidence } from "./declared-step-result.js";
 import { z } from "zod";
 import { sha256Hex } from "../../rules/validation/sha256.js";
+import { confirmedStepOccurrence } from "../../models/events/confirmed-action.js";
 
 const OutcomeObservationSchema = z.discriminatedUnion("state", [
   z.strictObject({ state: z.literal("value"), value: JsonValueSchema }),
@@ -57,7 +58,7 @@ export function createConfirmedTaskActions(input: Readonly<{
   const common = (action: DeclaredActionOccurrence, occurredAt: string) => ({
     version: 1 as const,
     ...(input.runSessionId === undefined ? {} : { runSessionId: input.runSessionId }),
-    stepOccurrence: `${action.runId}/${String(action.attempt)}/${String(action.claimGeneration)}/${String(action.taskAttempt)}/${action.occurrencePath.join("/")}`,
+    stepOccurrence: confirmedStepOccurrence(action),
     action,
     traceId: TraceIdSchema.parse(input.traceId),
     source: input.source,

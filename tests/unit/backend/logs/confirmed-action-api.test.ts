@@ -11,7 +11,9 @@ import type { ConfirmedTaskActions } from "../../../../src/workflow-kit/task.js"
 import { withBrowserActionSession } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import type { BrowserAction } from "../../../../src/backend/systems/browser-shared/action-notes.js";
 import { UCPATH_SMART_HR_CREATE_TRANSACTION_BUTTON, UCPATH_SMART_HR_DELETE_SELECTED_BUTTON } from "../../../../src/models/ui/ucpath-smart-hr-termination.js";
+import { KUALI_ACTION_LIST_SEARCH_INPUT } from "../../../../src/models/ui/kuali-action-list.js";
 import { EidSchema } from "../../../../src/rules/identity/ids.js";
+import { sha256Hex } from "../../../../src/rules/validation/sha256.js";
 import { plan1Contract, plan1Leaf } from "../../../support/fixtures/plan1-operation-workflows.js";
 
 const runId = "00000000-0000-4000-8000-000000000002";
@@ -27,20 +29,21 @@ function snapshotForTest() {
 const snapshot = snapshotForTest();
 
 function harness(capacity = 32, frozen = snapshot,
-  onEvent?: (event: import("../../../../src/models/events/confirmed-action.js").ConfirmedActionEvent) => void) {
+  onEvent?: (event: import("../../../../src/models/events/confirmed-action.js").ConfirmedActionEvent) => void,
+  taskInput = input) {
   const clock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
   const publisherClock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
   const events: Array<import("../../../../src/models/events/confirmed-action.js").ConfirmedActionEvent> = [];
   const publisher = createConfirmedActionPublisher({ workerId: "fixture-worker-1", streamId: "fixture-stream-1", clock: publisherClock,
     capacity, append: event => { events.push(event); onEvent?.(event); } });
-  const invoke = async (nodeId: "first" | "second", task: ReturnType<typeof syntheticTask>) => {
+  const invoke = async (nodeId: "first" | "second", task: ReturnType<typeof syntheticTask>, onNotes?: (notes: readonly BrowserAction[]) => void) => {
     const invocation = createConfirmedInvocation({ binding: { snapshot: frozen, runId, attempt: 2, claimGeneration: 3, taskAttempt: 4,
-      nodeId, taskId: plan1Contract.id, contractRole: "task", parsedInput: input, protectedBindings: [] },
+      nodeId, taskId: plan1Contract.id, contractRole: "task", parsedInput: taskInput, protectedBindings: [] },
       publisher, clock, headlessSystem: "service", traceId: "fpo-120000-0002" });
-    return await invocation.withNotes(() => invocation.bind(() => task.impl.run({ input,
+    return await invocation.withNotes(() => invocation.bind(() => task.impl.run({ input: taskInput,
       ctx: { signal: new AbortController().signal, log: { debug() {}, info() {}, warn() {} },
         fail: (code, message) => { throw new Error(`${code}: ${message}`); }, recordData() {}, providers: {}, confirmed: invocation.actions },
-    })), () => undefined);
+    })), notes => { onNotes?.(notes); });
   };
   return { clock, publisherClock, events, publisher, invoke };
 }
@@ -83,6 +86,8 @@ describe("confirmed action production invocation API", () => {
       const facts = h.events.filter(event => event.kind === "fact");
       assert.equal(facts.length, 1);
       const fact = facts[0];
+      assert.deepEqual(h.events.map(event => event.kind === "trace" ? `${event.action.logicalActionId}:${event.state}` : event.kind),
+        ["consume-text:started", "consume-text:completed", "verify-consume-text:started", "verify-consume-text:completed", "fact"]);
       assert.equal(fact.action.invocationId, "first-operation");
       assert.equal(fact.action.nodeId, "first");
       assert.equal(fact.action.state, "confirmed");
@@ -141,13 +146,14 @@ describe("confirmed action production invocation API", () => {
     if (display?.capability !== "complete") throw new Error("complete fixture display missing");
     const reference = { kind: "task-output" as const, entryId: "first", path: "disposition" };
     const outcome = { id: "no-pending", label: "No pending terminations", when: { kind: "is-absent" as const, value: reference } };
-    const makeSnapshot = (duplicate: boolean) => {
+    type SyntheticOutcome = Readonly<{ id: string; label: string; when: Readonly<{ kind: "is-absent" | "equals"; value: typeof reference; expected?: string; expectedDigest?: string }> }>;
+    const makeSnapshot = (duplicate: boolean, selectedOutcome: SyntheticOutcome = outcome) => {
       return WorkflowOperationDisplaySnapshotSchema.parse({ ...snapshot,
         invocations: snapshot.invocations.map(invocation => invocation.entryId === "first"
-          ? { ...invocation, outcomes: duplicate ? [outcome, { ...outcome, id: "also-empty" }] : [outcome] } : invocation) });
+          ? { ...invocation, outcomes: duplicate ? [selectedOutcome, { ...selectedOutcome, id: "also-empty" }] : [selectedOutcome] } : invocation) });
     };
-    const run = async (duplicate: boolean, observed: unknown = { state: "empty" }) => {
-      const frozen = makeSnapshot(duplicate);
+    const run = async (duplicate: boolean, observed: unknown = { state: "empty" }, selectedOutcome: SyntheticOutcome = outcome) => {
+      const frozen = makeSnapshot(duplicate, selectedOutcome);
       const h = harness(32, frozen);
       let chosen: ConfirmedTaskActions["result"] | undefined;
       const task = defineTask(plan1Contract, { sessions: [], async run({ input: value, ctx }) {
@@ -155,7 +161,7 @@ describe("confirmed action production invocation API", () => {
         assert.equal(ctx.confirmed.result().state, "unavailable");
         const confirm = () => ctx.confirmed!.confirmOutcome(frozen.invocations[0].outcomes[0].when.value,
           { action: { id: "verify-consume-text", targetId: "verify-consume-text" },
-            purpose: "read-validation", observe: async () => observed, matches: value => value.state === "empty" });
+            purpose: "read-validation", observe: async () => observed, matches: value => value.state === (selectedOutcome.when.kind === "equals" ? "value" : "empty") });
         if (observed === null || (typeof observed === "object" && observed !== null && Reflect.get(observed, "state") === "unavailable")) {
           await assert.rejects(confirm(), /confirmed-outcome-unavailable/u);
         } else await confirm();
@@ -163,14 +169,25 @@ describe("confirmed action production invocation API", () => {
         return { eid: value.emplId, disposition: value.text, providerState: value.text };
       } });
       await h.invoke("first", task);
-      return chosen?.();
+      return { result: chosen?.(), fact: h.events.find(event => event.kind === "fact") };
     };
     const selected = await run(false);
-    assert.equal(selected?.state, "selected");
-    if (selected?.state === "selected") assert.equal(selected.label, "No pending terminations");
-    assert.equal((await run(true))?.state, "ambiguous");
-    assert.equal((await run(false, null))?.state, "unavailable");
-    assert.equal((await run(false, { state: "unavailable" }))?.state, "unavailable");
+    assert.equal(selected.result?.state, "selected");
+    if (selected.result?.state === "selected") {
+      assert.equal(selected.result.label, "No pending terminations");
+      assert.equal(selected.result.stepOccurrence, selected.fact?.stepOccurrence);
+    }
+    const valueOutcome = { id: "ready", label: "Ready", when: { kind: "equals" as const, value: reference, expected: "ready",
+      expectedDigest: sha256Hex('hrauto:operation-display-static-value:v1\0"ready"') } };
+    const value = await run(false, { state: "value", value: "ready" }, valueOutcome);
+    assert.equal(value.result?.state, "selected");
+    if (value.result?.state === "selected") {
+      assert.equal(value.result.label, "Ready");
+      assert.equal(value.result.stepOccurrence, value.fact?.stepOccurrence);
+    }
+    assert.equal((await run(true)).result?.state, "ambiguous");
+    assert.equal((await run(false, null)).result?.state, "unavailable");
+    assert.equal((await run(false, { state: "unavailable" })).result?.state, "unavailable");
   });
 
   it("refuses a browser source that disagrees with the frozen registered system", () => {
@@ -197,6 +214,61 @@ describe("confirmed action production invocation API", () => {
     await h.invoke("first", task);
     assert.equal(h.events.filter(event => event.kind === "fact").length, 1);
     assert.equal(JSON.stringify(h.events).includes("fixture-secret-never-publish"), false);
+  });
+
+  it("withholds unclassified read output and fill value from facts, traces and raw notes", async () => {
+    const secretRead = "fixture-restricted-read-object";
+    const secretFill = "fixture-restricted-fill-text";
+    const frozen = WorkflowOperationDisplaySnapshotSchema.parse({ ...snapshot,
+      invocations: snapshot.invocations.map(invocation => invocation.entryId === "first"
+        ? { ...invocation, operation: { ...invocation.operation, actions: [
+          { id: "read-disposition", kind: "read-field", valueSlot: "disposition", confirmationActionId: "verify-read-disposition" },
+          { id: "verify-read-disposition", kind: "verify" },
+          { id: "fill-text", kind: "fill-field", valueSlot: "text", confirmationActionId: "verify-fill-text" },
+          { id: "verify-fill-text", kind: "verify" },
+        ] } } : invocation) });
+    const h = harness(32, frozen, undefined, { ...input, text: secretFill });
+    const notes: BrowserAction[] = [];
+    const task = defineTask(plan1Contract, { sessions: [], async run({ input: value, ctx }) {
+      if (ctx.confirmed === undefined) throw new Error("confirmed context unavailable");
+      await ctx.confirmed.read({ id: "read-disposition", targetId: "read-disposition" }, async () => ({ restricted: secretRead }),
+        { action: { id: "verify-read-disposition", targetId: "verify-read-disposition" }, purpose: "read-validation",
+          observe: async () => true, matches: observed => observed === true });
+      await ctx.confirmed.fill({ id: "fill-text", targetId: "fill-text" }, value.text, async () => {},
+        { action: { id: "verify-fill-text", targetId: "verify-fill-text" }, purpose: "readback",
+          observe: async () => value.text, matches: observed => observed === value.text });
+      return { eid: value.emplId, disposition: value.text, providerState: value.text };
+    } });
+    await h.invoke("first", task, emitted => { notes.push(...emitted); });
+    assert.equal(h.events.filter(event => event.kind === "fact").length, 2);
+    assert.equal(JSON.stringify({ events: h.events, notes }).includes(secretRead), false);
+    assert.equal(JSON.stringify({ events: h.events, notes }).includes(secretFill), false);
+    assert.ok(notes.some(note => note.operation?.value?.consumed.state === "withheld"
+      && note.operation.value.consumed.reason === "classification-required"));
+  });
+
+  it("retains a declared scalar value for a registered public field", async () => {
+    const frozen = WorkflowOperationDisplaySnapshotSchema.parse({ ...snapshot,
+      invocations: snapshot.invocations.map(invocation => invocation.entryId === "first"
+        ? { ...invocation, operation: { ...invocation.operation, system: "kuali", session: { kind: "browser", id: "fixture-session", system: "kuali" },
+          actions: [{ id: "fill-public", kind: "fill-field", target: KUALI_ACTION_LIST_SEARCH_INPUT, valueSlot: "text", confirmationActionId: "verify-public" },
+            { id: "verify-public", kind: "verify", target: "verify-public" }] } } : invocation) });
+    const clock = manualClock(new Date("2026-10-02T12:00:00.000Z"));
+    const events: Array<import("../../../../src/models/events/confirmed-action.js").ConfirmedActionEvent> = [];
+    const publisher = createConfirmedActionPublisher({ workerId: "fixture-worker-1", streamId: "public-stream-1", clock,
+      capacity: 8, append: event => { events.push(event); } });
+    const invocation = createConfirmedInvocation({ binding: { snapshot: frozen, runId, attempt: 2, claimGeneration: 3,
+      taskAttempt: 4, nodeId: "first", taskId: plan1Contract.id, contractRole: "task", parsedInput: input, protectedBindings: [] },
+      clock, publisher, registeredDriverSystem: "kuali", traceId: "fpo-120000-0002" });
+    const notes: BrowserAction[] = [];
+    await invocation.withNotes(() => withBrowserActionSession(browserSession, () => invocation.bind(async () => {
+      await invocation.actions!.fill({ id: "fill-public", targetId: KUALI_ACTION_LIST_SEARCH_INPUT }, input.text, async () => {},
+        { action: { id: "verify-public", targetId: "verify-public" }, purpose: "readback",
+          observe: async () => input.text, matches: observed => observed === input.text });
+    })), emitted => { notes.push(...emitted); });
+    assert.ok(notes.some(note => note.operation?.value?.consumed.state === "observed"
+      && note.operation.value.consumed.value === input.text));
+    assert.equal(events.filter(event => event.kind === "fact" && event.meaning === "fill").length, 1);
   });
 
   it("rejects verifier purpose misuse before its observation callback", async () => {

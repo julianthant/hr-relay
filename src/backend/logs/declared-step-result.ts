@@ -1,7 +1,9 @@
-import { z } from "zod";
 import type { WorkflowOperationDisplaySnapshot } from "../../models/workflow/operation-display-snapshot.js";
-import { DeclaredActionOccurrenceSchema, type DeclaredActionOccurrence } from "../../rules/workflow/task-provenance.js";
+import type { DeclaredActionOccurrence } from "../../rules/workflow/task-provenance.js";
 import { canonicalJsonStringify, type JsonValue } from "../../rules/validation/canonical-json.js";
+import { confirmedStepOccurrence, DeclaredStepResultSchema, type DeclaredStepResult } from "../../models/events/confirmed-action.js";
+export { DeclaredStepResultSchema } from "../../models/events/confirmed-action.js";
+export type { DeclaredStepResult } from "../../models/events/confirmed-action.js";
 
 type Invocation = WorkflowOperationDisplaySnapshot["invocations"][number];
 type Reference = Invocation["outcomes"][number]["when"]["value"];
@@ -14,14 +16,6 @@ export type ConfirmedOutcomeEvidence = Readonly<{
   value?: JsonValue;
 }>;
 
-export const DeclaredStepResultSchema = z.discriminatedUnion("state", [
-  z.strictObject({ version: z.literal(1), state: z.literal("selected"), stepOccurrence: z.string().min(1),
-    caseId: z.string().min(1), label: z.string().min(1), source: DeclaredActionOccurrenceSchema }),
-  z.strictObject({ version: z.literal(1), state: z.literal("unavailable"), stepOccurrence: z.string().min(1) }),
-  z.strictObject({ version: z.literal(1), state: z.literal("ambiguous"), stepOccurrence: z.string().min(1) }),
-  z.strictObject({ version: z.literal(1), state: z.literal("no-match"), stepOccurrence: z.string().min(1) }),
-]);
-export type DeclaredStepResult = z.infer<typeof DeclaredStepResultSchema>;
 
 /** Select only a frozen declared outcome from exact confirmed invocation evidence. */
 export function selectDeclaredStepResult(input: Readonly<{
@@ -35,11 +29,12 @@ export function selectDeclaredStepResult(input: Readonly<{
   taskAttempt: number;
   evidence: readonly ConfirmedOutcomeEvidence[];
 }>): DeclaredStepResult {
-  const stepOccurrence = `${input.runId}/${String(input.attempt)}/${String(input.claimGeneration)}/${String(input.taskAttempt)}/${input.entryId}/${input.invocationId}`;
-  const result = (value: object): DeclaredStepResult => DeclaredStepResultSchema.parse({ version: 1, stepOccurrence, ...value });
   const invocation = input.snapshot.invocations.find(candidate => candidate.entryId === input.entryId
     && candidate.taskId === input.taskId && candidate.id === input.invocationId && candidate.contractRole === "task");
   if (invocation === undefined) throw new Error("declared-step-result-invocation-missing");
+  const stepOccurrence = confirmedStepOccurrence({ runId: input.runId, attempt: input.attempt,
+    claimGeneration: input.claimGeneration, taskAttempt: input.taskAttempt, occurrencePath: invocation.occurrencePath });
+  const result = (value: object): DeclaredStepResult => DeclaredStepResultSchema.parse({ version: 1, stepOccurrence, ...value });
   if (invocation.outcomes.length === 0) return result({ state: "no-match" });
   const matching: Array<{ candidate: Invocation["outcomes"][number]; source: DeclaredActionOccurrence }> = [];
   for (const candidate of invocation.outcomes) {

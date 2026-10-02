@@ -4,6 +4,25 @@ import { BrowserSystemIdSchema, IsoInstantSchema, RunSessionIdSchema, TraceIdSch
 
 export const CONFIRMED_ACTION_EVENT_VERSION = 1 as const;
 
+export function confirmedStepOccurrence(action: Readonly<{
+  runId: string; attempt: number; claimGeneration: number; taskAttempt: number; occurrencePath: readonly string[];
+}>): string {
+  return `${action.runId}/${String(action.attempt)}/${String(action.claimGeneration)}/${String(action.taskAttempt)}/${action.occurrencePath.join("/")}`;
+}
+
+export const DeclaredStepResultSchema = z.discriminatedUnion("state", [
+  z.strictObject({ version: z.literal(CONFIRMED_ACTION_EVENT_VERSION), state: z.literal("selected"), stepOccurrence: z.string().min(1),
+    caseId: z.string().min(1), label: z.string().min(1), source: DeclaredActionOccurrenceSchema }),
+  z.strictObject({ version: z.literal(CONFIRMED_ACTION_EVENT_VERSION), state: z.literal("unavailable"), stepOccurrence: z.string().min(1) }),
+  z.strictObject({ version: z.literal(CONFIRMED_ACTION_EVENT_VERSION), state: z.literal("ambiguous"), stepOccurrence: z.string().min(1) }),
+  z.strictObject({ version: z.literal(CONFIRMED_ACTION_EVENT_VERSION), state: z.literal("no-match"), stepOccurrence: z.string().min(1) }),
+]).superRefine((result, context) => {
+  if (result.state === "selected" && result.stepOccurrence !== confirmedStepOccurrence(result.source)) {
+    context.addIssue({ code: "custom", path: ["stepOccurrence"], message: "selected result step differs from confirming action" });
+  }
+});
+export type DeclaredStepResult = z.infer<typeof DeclaredStepResultSchema>;
+
 const EventBaseSchema = z.strictObject({
   version: z.literal(CONFIRMED_ACTION_EVENT_VERSION),
   eventId: z.string().min(1),
@@ -31,7 +50,7 @@ export const ConfirmedActionEventSchema = z.discriminatedUnion("kind", [
     if (event.action.state !== event.state) context.addIssue({ code: "custom", path: ["state"], message: "trace state differs from action occurrence" });
     const action = event.action;
     if ((event.source.kind === "browser") !== (action.physicalSessionId !== undefined)) context.addIssue({ code: "custom", path: ["source"], message: "trace source/session mismatch" });
-    const step = `${action.runId}/${String(action.attempt)}/${String(action.claimGeneration)}/${String(action.taskAttempt)}/${action.occurrencePath.join("/")}`;
+    const step = confirmedStepOccurrence(action);
     if (event.stepOccurrence !== step) context.addIssue({ code: "custom", path: ["stepOccurrence"], message: "trace step occurrence mismatch" });
   }),
   EventBaseSchema.extend({
@@ -55,7 +74,7 @@ export const ConfirmedActionEventSchema = z.discriminatedUnion("kind", [
     if ((event.source.kind === "browser") !== (action.physicalSessionId !== undefined)) context.addIssue({ code: "custom", path: ["source"], message: "fact source/session mismatch" });
     const step = event.meaning === "submit"
       ? `${action.runId}/${String(action.attempt)}/${String(action.claimGeneration)}/${action.nodeId}/transaction`
-      : `${action.runId}/${String(action.attempt)}/${String(action.claimGeneration)}/${String(action.taskAttempt)}/${action.occurrencePath.join("/")}`;
+      : confirmedStepOccurrence(action);
     if (event.stepOccurrence !== step) context.addIssue({ code: "custom", path: ["stepOccurrence"], message: "fact step occurrence mismatch" });
     if (verifier.state !== "completed") context.addIssue({ code: "custom", path: ["proof", "verifier"], message: "verifier did not complete" });
     if (action.runId !== verifier.runId || action.definitionFingerprint !== verifier.definitionFingerprint

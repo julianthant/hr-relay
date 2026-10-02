@@ -80,7 +80,7 @@ export type ActionValueProducer = z.infer<typeof ActionValueProducerSchema>;
 
 /** Exact local value when safe, otherwise the retained protected-source identity. */
 export const ActionConsumedValueSchema = z.discriminatedUnion("state", [
-  z.strictObject({ state: z.literal("withheld"), reason: z.literal("protection-unresolved") }),
+  z.strictObject({ state: z.literal("withheld"), reason: z.enum(["protection-unresolved", "classification-required"]) }),
   z.strictObject({ state: z.literal("observed"), value: JsonValueSchema }),
   z.strictObject({ state: z.literal("redacted"), binding: ProtectedInputBindingSchema }),
 ]);
