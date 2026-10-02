@@ -40,13 +40,15 @@ export function StatusBadge({
   label,
   age,
   hideIcon,
+  presentation,
 }: {
   status: ProposedStatus;
   label?: string;
   age?: string;
   hideIcon?: boolean;
+  presentation?: "default" | "queue";
 }) {
-  return <StatusPill status={status} label={label} age={age} size="sm" hideIcon={hideIcon} />;
+  return <StatusPill status={status} label={label} age={age} size="sm" hideIcon={hideIcon} presentation={presentation} />;
 }
 
 /**

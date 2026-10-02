@@ -1,12 +1,9 @@
-import { queueBatchLayout, type QueueBatch } from "./queue-model.js";
-import { WorkflowBatchGroup, GroupWorkflowBatchButton } from "./workflow-batch.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoQueue.tsx
  *
  * The Queue Panel: attention bands, the three row types, ONE member shape at
- * every count, and the row rhythm DESIGN.md mandates (one grid, one gap, a
- * footer that wraps rather than truncates).
+ * every count, with aligned content and a provenance footer that wraps.
  *
  * WHAT CHANGED IN THE PORT. The demo rendered a fixture row object that knew
  * its own facts, chips, links, records and explanations. Here every row is a
@@ -22,23 +19,21 @@ import { WorkflowBatchGroup, GroupWorkflowBatchButton } from "./workflow-batch.j
  *    honest default (the 1g BFF serves none yet) is a row with no command
  *    controls at all.
  *  - **Absence is served too.** A `subtitle`/`liveMessage` that is absent
- *    carries the server's reason, and the row shows that reason as a fact about
- *    this run in its ⓘ rather than inventing a value or silently dropping it.
+ *    carries the server's reason; the queue does not invent a value.
  *
  * Bands, member ordering and elapsed formatting are the only derivations, and
  * each is a fixed map over a closed served enum or a display-only subtraction
  * of two served instants — never a second opinion about what a run IS.
  */
-import { Fragment, memo, useState } from "react";
+import { memo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText, Info } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   BareButton,
   Chip,
   IconButton,
   Checkbox,
-  MetaLine,
   Popover,
   PopoverTrigger,
   PopoverContent,
@@ -50,7 +45,6 @@ import {
   dsRadius,
   dsSize,
   dsSurface,
-  openContextMenuFor,
   dsText,
 } from "../ds/ui.js";
 import type { ActionDescriptorWire } from "../../models/dashboard/actions.js";
@@ -90,12 +84,21 @@ import {
   queueRowAccessibleName,
   queueRowTitle,
   queueRowTitleTooltip,
-  rowInfoFacts,
   groupQueueAttempts,
+  queueItemLayout,
+  type QueueBatch,
   type QueueItemGroup,
   sortQueueBand,
   useAttentionAnnounce,
 } from "./queue-model.js";
+
+function openContextMenuFor(target: HTMLElement): void {
+  const bounds = target.getBoundingClientRect();
+  target.dispatchEvent(new MouseEvent("contextmenu", {
+    bubbles: true, cancelable: true, clientX: bounds.left + bounds.width / 2,
+    clientY: bounds.top + bounds.height / 2,
+  }));
+}
 
 /* ── the queue's client-owned view state (ref frontend-backend-integration §4) ─────────────────────── */
 
@@ -185,15 +188,14 @@ export type { QueueSortKey };
 /* ── small row pieces ────────────────────────────────────────────────────── */
 
 /**
- * The served pipeline, as dots.
+ * The served pipeline, one segment per step.
  *
  * The state vocabulary is the wire's own closed enum; each state gets a token,
- * and `active` is the only one that moves — the same "one spinning thing"
- * discipline the Running status keeps.
+ * while the Running badge owns the single animated indicator.
  */
 const STEP_TONE: Record<PipelineStep["state"], string> = {
-  done: "bg-[var(--ds-success-mark)]",
-  active: "bg-[var(--ds-status-running-mark)] animate-pulse motion-reduce:animate-none",
+  done: "bg-ui-info",
+  active: "bg-ui-info ring-1 ring-ui-info ring-offset-1 ring-offset-[var(--ds-surface-1)]",
   pending: "bg-[var(--ds-border)]",
   failed: "bg-[var(--ds-danger)]",
   blocked: "bg-[var(--ds-status-waiting-mark)]",
@@ -204,7 +206,7 @@ const STEP_TONE: Record<PipelineStep["state"], string> = {
 };
 
 /**
- * One step, as the dots' hover sentence reads it.
+ * One step, including only served measurements.
  *
  * Ported from the demo's own `MicroSteps` title
  * (`DemoQueue.tsx:273`, `${label}${durationSec ? ` ${fmtElapsed()}` : ""} (${state})`)
@@ -222,20 +224,18 @@ function stepTitle(step: PipelineStep): string {
   return `${step.label}${duration}${executions} (${step.state})`;
 }
 
-function MicroSteps({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
+function QueueProgress({ pipeline }: { pipeline: QueueSurfaceWire["pipeline"] }) {
   if (pipeline.length === 0) return null;
   return (
-    <span
-      // Same height as StatusBadge `sm` / the title row — centres the dots on
-      // the name instead of leaving them top-aligned in a taller chip stack.
-      className="inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[3px]"
-      title={pipeline.map(stepTitle).join(" · ")}
-      aria-label={`Steps: ${pipeline.map((step) => `${step.label} ${step.state}`).join(", ")}`}
+    <div
+      data-queue-progress
+      className="flex min-w-0 items-center gap-[var(--ds-space-tight)]"
+      aria-label={`Steps: ${pipeline.map(stepTitle).join(", ")}`}
     >
       {pipeline.map((step) => (
-        <span key={step.id} aria-hidden className={cn("h-1.5 w-2.5 rounded-full", STEP_TONE[step.state])} />
+        <span key={step.id} title={stepTitle(step)} className={cn("h-1.5 min-w-0 flex-1 rounded-full", STEP_TONE[step.state])} />
       ))}
-    </span>
+    </div>
   );
 }
 
@@ -362,36 +362,26 @@ function HeaderChips({
           {surface.warnings.state === "present" ? surface.warnings.count : 1}
         </span>
       )}
-      {/* Progress dots then the status pill — both on the TITLE row's right
-          edge. The dots sit in the same `--ds-h-xs` box as the badge so they
-          centre on the name rather than hugging the top of the chip line. */}
-      {status === "running" && surface.surfaceKind !== "operation" && <MicroSteps pipeline={surface.pipeline} />}
-      <StatusBadge status={status} hideIcon {...(gateAge === undefined ? {} : { age: gateAge })} />
+      <StatusBadge
+        status={status}
+        presentation="queue"
+        hideIcon={status !== "running" && status !== "waiting" && status !== "failed"}
+        {...(gateAge === undefined ? {} : { age: gateAge })}
+      />
+      {surface.surfaceKind === "operation" && (
+        <span
+          data-queue-member-count
+          title={`${surface.memberRollup.terminal} of ${surface.memberRollup.total} finished; ${surface.memberRollup.failed} failed`}
+          aria-label={`${surface.memberRollup.terminal} of ${surface.memberRollup.total} finished; ${surface.memberRollup.failed} failed`}
+          className={cn(dsText.meta, dsText.nums, dsRadius.sm, dsBorder.base,
+            "inline-flex h-[var(--ds-h-xs)] min-w-[var(--ds-w-queue-counter)] items-center justify-center whitespace-nowrap border bg-[var(--ds-surface-2)] px-[var(--ds-space-tight)] text-[color:var(--ds-fg-secondary)]")}
+        >
+          {surface.memberRollup.terminal}/{surface.memberRollup.total}
+        </span>
+      )}
     </>
   );
 }
-
-/**
- * The four panel kinds, in the demo's own words.
- *
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `demo-catalog.ts:418-430` (`PANEL_KIND_SPECS` names + `PANEL_EXPLANATION`).
- * This is FRONTEND COPY, the same move R2 made for the category table: the
- * sentence is a fact about what this product's panel does with a kind, not a
- * fact about the run, so the server serves the closed `panelKind` enum and the
- * frontend owns the words. A new arm on the enum fails `tsc` here rather than
- * rendering a hole.
- *
- * The demo's other two sentences (`doing` / `why`) come off its row-VARIANT
- * naming layer, which needs a wire this projection does not serve — they stay
- * on the wire-hookup ledger (R3 finding 16) rather than being invented here.
- */
-const PANEL_KIND_NAME: Record<QueueSurfaceWire["panelKind"], string> = {
-  run: "Run Panel",
-  review: "Review Panel",
-  group: "Group Panel",
-  member: "Member Panel",
-};
 
 const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
   run: "Opening it shows the logs, recorded values, screenshots and operator decisions.",
@@ -401,117 +391,14 @@ const PANEL_EXPLANATION: Record<QueueSurfaceWire["panelKind"], string> = {
 };
 
 /**
- * The ⓘ on a queue row.
- *
- * IT IS ALWAYS DRAWN. It used to render only when the server had reported an
- * absence, so the affordance appeared and disappeared down the column and an
- * operator learned it was not there — the demo's own rule is that *quiet at
- * rest is not the same as absent* (R3 finding 16). Two things are inside it,
- * and both are honest:
- *
- *  - **What opening the row will show**, from the SERVED `panelKind` through
- *    the frontend vocabulary above. The field was already on the wire and read
- *    by nothing.
- *  - **What this run did not report** — an absent subtitle or live message
- *    arrives with the server's own reason, and that reason is a fact about THIS
- *    run, which is the one thing beyond the panel sentence the ⓘ may hold.
- *  - **What a present fact SAYS IN FULL** — the fold that composes both lives
- *    in `queue-model.ts` (`rowInfoFacts`), because a fact drawn as a chip is
- *    clipped by design and this is the row's only hover-free route to the whole
- *    value.
- *
- * It EXPLAINS; it never HIDES. Nothing load-bearing (status, counts, error,
- * trace, every command) moves in here from the row — it is the same values,
- * unclipped, in the place DESIGN.md sanctions for detail.
- */
-
-function RowInfo({
-  surface,
-  workflowLabel,
-}: {
-  surface: QueueSurfaceWire;
-  workflowLabel: string;
-}) {
-  const facts = rowInfoFacts(surface);
-  const panelName = PANEL_KIND_NAME[surface.panelKind];
-  return (
-    <Popover>
-      <PopoverTrigger asChild>
-        <IconButton
-          size="xs"
-          label={`What is this row? — ${panelName}`}
-          icon={<Info aria-hidden className={dsIcon.sm} />}
-          // Both stopped: the card root is itself a button, so without these a
-          // press on the ⓘ also selects the row underneath it.
-          onClick={(event) => event.stopPropagation()}
-          onKeyDown={(event) => {
-            if (event.key === "Enter" || event.key === " ") event.stopPropagation();
-          }}
-          className={cn(
-            "text-[color:var(--ds-fg-faint)] hover:text-[color:var(--ds-fg)] data-[state=open]:text-[color:var(--ds-fg)]",
-            // Keep the compact information control within its own row.
-            "relative",
-          )}
-        />
-      </PopoverTrigger>
-      {/* `md`, not `lg`: a 380px surface in a 380px queue column is
-          collision-shifted on every open, which moves the point the entrance
-          scales out of. */}
-      <PopoverContent title={panelName} side="bottom" align="start" width="md">
-        <div className="flex flex-col gap-[var(--ds-space-base)]">
-          {/*
-            NO PRODUCT EXPLANATION HERE, and that is the operator's own ruling:
-            *"dont put unnecessary explanations in there. just put the subtitle
-            and other important stuff related to the run."*
-
-            Two paragraphs used to lead this surface — what opening a panel of
-            this KIND shows, and what this row's containment means. Both are
-            frontend copy about the PRODUCT: identical on every row that shares
-            a `panelKind`, and therefore worth exactly one read ever. Printed
-            above the one thing an operator opened the ⓘ to see, they are what
-            it costs to reach that thing. `PANEL_EXPLANATION` survives one map
-            up because `LinkedRunChip` still titles itself with it — a chip
-            pointing at a panel you have NOT opened is the one place the
-            sentence is news.
-
-            What is left is this run's own facts, and nothing that is on the
-            row already.
-          */}
-          {facts.map((fact) => (
-            <p
-              key={`${fact.state}:${fact.label}`}
-              className={cn(dsText.body, "leading-relaxed text-[color:var(--ds-fg-secondary)]")}
-            >
-              <span className="font-semibold text-[color:var(--ds-fg)]">{fact.label}: </span>
-              {fact.state === "present" ? (
-                /* A PRESENT fact is the row's chip, UNCLIPPED — `break-words`
-                   rather than a second truncation, following
-                   `intake.tsx`'s `IdentifierPopover`: a popover that clipped
-                   the value again would be the hover surface's failure moved
-                   somewhere quieter. Monospace, because it is the same token
-                   the chip draws. */
-                <span className={cn(dsText.nums, "break-words text-[color:var(--ds-fg)]")}>{fact.text}</span>
-              ) : (
-                fact.text
-              )}
-            </p>
-          ))}
-          <MetaLine items={[workflowLabel, surface.traceId]} tone="faint" />
-        </div>
-      </PopoverContent>
-    </Popover>
-  );
-}
-
-/**
  * The subline is TEXT ONLY, and it is the server's `liveMessage` — the one
  * sentence the projection authors about what this run is doing or why it
  * stopped. Its tone follows the status; a run whose message is absent has no
  * subline rather than a manufactured one.
  */
 const SUBLINE_TONE: Record<ProposedStatus, string> = {
-  waiting: "text-[color:var(--ds-status-waiting-fg)]",
-  failed: "text-[color:var(--ds-status-failed-fg)]",
+  waiting: "text-ui-info",
+  failed: "text-ui-danger",
   parked: "text-[color:var(--ds-status-parked-fg)]",
   running: "text-[color:var(--ds-status-running-fg)]",
   cancelling: "text-[color:var(--ds-status-running-fg)]",
@@ -524,7 +411,7 @@ const SUBLINE_TONE: Record<ProposedStatus, string> = {
 /**
  * The row's FOOTER — the run's provenance line and its controls.
  *
- * The meta zone is ONE WRAPPING provenance line at the row's own indent, and
+ * The meta zone is one wrapping provenance line, and
  * the controls are a sibling pinned top-right. When a run carries a trace, a
  * subtitle and an elapsed, all three stay readable — the demo's production
  * predecessor packed them onto one line and `truncate`d whatever lost, which at
@@ -535,8 +422,12 @@ function RowFooterLine({
   actions,
   onAction,
   nowIso,
+  itemGroup,
+  onSelect,
 }: {
   surface: QueueSurfaceWire;
+  itemGroup?: QueueItemGroup;
+  onSelect: (runId: string) => void;
   actions: readonly ActionDescriptorWire[];
   onAction?: DashboardActionHandler;
   nowIso: string;
@@ -549,8 +440,9 @@ function RowFooterLine({
   // `now − startedAt` answers a question nobody asked of a settled run and
   // grows forever: the live exit run displayed 2h 47m for ~14.5 minutes of
   // execution (D124). A terminal row with no served end instant says the
-  // duration is unknown and names why; it never falls back to `now`.
-  const timing = runTiming(surface, nowIso, isTerminalQueueStatus);
+  // duration is unmeasured and omitted; it never falls back to `now`.
+  const timing = isTerminalQueueStatus(surface.status) && surface.endedAt.state === "absent"
+    ? undefined : runTiming(surface, nowIso, isTerminalQueueStatus);
   return (
     <div
       className={cn(
@@ -569,29 +461,13 @@ function RowFooterLine({
         )}
       >
         <span className="whitespace-nowrap">{fmtClock(surface.startedAt)}</span>
-        {/*
-          #N — the run's ATTEMPT, in the demo's own chip slot
-          (`DemoQueue.tsx:709`). The operator ruled the number here is the
-          attempt — how many times this item has been run — not the run's
-          ordinal within its workflow. `#1` is the ordinary case and is still
-          drawn, because the demo draws it on every row and a slot that appears
-          only on re-runs would shift the trace id sideways between rows.
-
-          The workflow ordinal (`runNumber`) is context, not provenance; it
-          moved into the ⓘ (`rowInfoFacts`), whole, where its absence was
-          already recorded (D230/D133).
-        */}
-        <span
-          title={surface.attempt > 1 ? `Attempt ${String(surface.attempt)} of this item` : "First attempt"}
-          className={cn(
-            "inline-flex shrink-0 items-center border px-[var(--ds-space-tight)] whitespace-nowrap",
-            "h-[var(--ds-h-xs)]",
-            dsRadius.sm,
-            "border-[color:var(--ds-recess-border)] bg-transparent",
-          )}
-        >
-          #{surface.attempt}
-        </span>
+        <QueueAttemptSelector
+          title={queueRowTitle(surface)}
+          surface={surface}
+          item={itemGroup}
+          selectedRunId={String(surface.runId)}
+          onSelect={onSelect}
+        />
         {/* The trace id is the run's NAME in every log, every receipt and every
             support conversation, so it is the last thing that may be cut. It is
             `nowrap`: if the line runs out, the SEGMENTS AFTER IT wrap. It is
@@ -605,41 +481,6 @@ function RowFooterLine({
             {timing.text}
           </span>
         )}
-        {/*
-          THE SUBTITLE IS NOT HERE, and its absence is the rule.
-
-          This line is PROVENANCE — when the run started, which run it is,
-          which trace names it, how long it took. The demo's own fact set is
-          those four and nothing else (`DemoQueue.tsx:698-717`; its `subtitle`
-          IS the trace, `se-140211-9f3a`, which is why it has no fifth
-          segment). `subtitle` is a different KIND of fact: across the whole
-          product it is the workflow's own name, a start option, the filer, or
-          a re-read ordinal with the operator's free-text reason
-          (each `descriptor.ts`'s `presentation.subtitle`). None of those
-          is provenance, and one of them is unbounded prose — a 200-character
-          ceiling on `reRead.reason` alone.
-
-          Two treatments were tried here and both were wrong the same way:
-          `nowrap` let the card's `overflow-hidden` clip it silently, and
-          `break-words` obeyed DESIGN.md's *"A row footer's facts WRAP; they
-          never truncate"* literally and turned a one-line footer into a
-          FOUR-line one, with `took 24m 48s` stranded under two lines of prose.
-          That rule is stated over four short tokens; applying it to a sentence
-          applies it to something it never covered. Truncating instead only
-          moved the damage somewhere quieter.
-
-          So the segment is GONE, on the operator's rule: the row surface
-          carries what the run PRODUCED — status, outcome facts, warnings,
-          timing, trace — and context about how the run came to BE lives in the
-          ⓘ. That is this file's own charter for the ⓘ read from the other
-          side: nothing load-bearing moves INTO it, and a fact that is not
-          load-bearing need not be on the row at all. `rowInfoFacts` carries
-          the present subtitle there, unclipped.
-
-          What it buys, and why it beats every truncation: the footer can no
-          longer GROW. Its four segments are bounded by construction, so no
-          descriptor can author a row that reflows by writing a longer string.
-        */}
       </div>
       {/* The frequent commands, inline. The full set is one right-click away —
           there is no `⋯`, because a button whose only job is to admit there are
@@ -656,87 +497,6 @@ function RowFooterLine({
   );
 }
 
-/**
- * The member line's column template.
- *
- * THREE columns, not the demo's four: the fourth held each member's EID, and
- * the queue wire serves no per-member identifier beyond its run id — a column
- * of run ids is not the column the operator was reading. Its leading track is
- * the card's own `--ds-w-row-indent`, which is what puts a member's NAME on the
- * same x as the card's TITLE and its status glyph under the card's own.
- */
-const MEMBER_GRID = "grid grid-cols-[var(--ds-w-row-indent)_minmax(0,1fr)_var(--ds-w-member-detail)]";
-
-/** Shared horizontal inset for every row inside the member mini-table. */
-const MEMBER_WELL_PAD = "px-[var(--ds-space-snug)]";
-
-/**
- * A group's served rollup, as a tally strip.
- *
- * EXACTLY the three numbers the wire authorises — `total`, `terminal`,
- * `failed`. The demo read an eight-status tally off its fixture store; a
- * rollup of three cannot produce that without inventing five, so the strip
- * says what it knows. Per DESIGN.md a count that hits zero DIMS rather than
- * disappearing, so the eye does not have to re-scan the strip between ticks.
- */
-function RollupStrip({ rollup }: { rollup: OperationSurfaceWire["memberRollup"] }) {
-  const done = PROPOSED_STATUS.verifiedDone;
-  const failed = PROPOSED_STATUS.failed;
-  const DoneIcon = done.icon;
-  const FailedIcon = failed.icon;
-  return (
-    <>
-      <span
-        className={cn("inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] whitespace-nowrap", dsText.flush)}
-        title={`${rollup.terminal} of ${rollup.total} members have finished`}
-        aria-label={`${rollup.terminal} of ${rollup.total} finished`}
-      >
-        <DoneIcon
-          aria-hidden
-          className={cn(dsIcon.sm, "shrink-0", rollup.terminal === 0 ? "text-[color:var(--ds-fg-faint)]" : done.iconClass)}
-        />
-        <span
-          className={cn(
-            dsText.nums,
-            "font-medium",
-            rollup.terminal === 0 ? "text-[color:var(--ds-fg-faint)]" : done.soloTone,
-          )}
-        >
-          {rollup.terminal}/{rollup.total}
-        </span>
-      </span>
-      <span
-        className={cn("inline-flex shrink-0 items-center gap-[var(--ds-space-tight)] whitespace-nowrap", dsText.flush)}
-        title={`${rollup.failed} of ${rollup.total} members failed`}
-        aria-label={`${rollup.failed} failed`}
-      >
-        <FailedIcon
-          aria-hidden
-          className={cn(dsIcon.sm, "shrink-0", rollup.failed === 0 ? "text-[color:var(--ds-fg-faint)]" : failed.iconClass)}
-        />
-        <span
-          className={cn(
-            dsText.nums,
-            "font-medium",
-            rollup.failed === 0 ? "text-[color:var(--ds-fg-faint)]" : failed.soloTone,
-          )}
-        >
-          {rollup.failed}
-        </span>
-      </span>
-    </>
-  );
-}
-
-/**
- * THE WELL. One container for a row's people.
- *
- * IT IS AN OUTLINE, NOT A HOLE — the well sits ON the card plane and is
- * separated by its EDGE, so the lines inside it are the content and the
- * container is a frame around them rather than a second surface underneath.
- * Only the person lines scroll, and that region clips on a LINE, never through
- * one — both heights are `N × line + (N−1) hairlines`.
- */
 function MemberWell({
   children,
   open,
@@ -749,13 +509,12 @@ function MemberWell({
   footer?: ReactNode;
 }) {
   return (
-    <div className="flex flex-col overflow-hidden border border-x-0 border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]">
+    <div className="flex flex-col overflow-hidden rounded-[var(--ds-radius-sm)] border border-[color:var(--ds-border)] bg-[var(--ds-surface-1)]">
       {header}
       <div
         className={cn(
-          "min-h-0 divide-y overflow-y-auto",
-          "divide-[color:var(--ds-border-subtle)]",
-          open ? "max-h-[var(--ds-h-member-well-open)]" : "max-h-[var(--ds-h-member-well)]",
+          "min-h-0 overflow-y-auto",
+          open ? "max-h-[var(--ds-h-queue-member-well-open)]" : "max-h-[var(--ds-h-queue-member-well)]",
         )}
       >
         {children}
@@ -765,20 +524,7 @@ function MemberWell({
   );
 }
 
-/**
- * ONE member, on ONE line: status glyph · name · detail, on the fixed
- * `MEMBER_GRID` track so the names down the left land on the same edge in every
- * list, in every row, at every count. Status changes a member's ORDER and its
- * INK, never its row shape.
- */
-function MemberLine({
-  surface,
-  item,
-  selected,
-  checked,
-  onSelect,
-  onToggleChecked,
-}: {
+function MemberLine({ surface, item, selected, checked, onSelect, onToggleChecked }: {
   surface: MemberSurfaceWire;
   item: QueueItemGroup;
   selected: boolean;
@@ -793,97 +539,32 @@ function MemberLine({
     surface.subtitle.state === "present" ? surface.subtitle.value : statusAccessibleName(status).toLowerCase()
   }`;
   return (
-    <div
-      data-demo-row-id={surface.runId}
-      // A member line draws no status word at all — only the leading glyph —
-      // so the row's title keeps the status distinction available on hover.
+    <tr data-demo-row-id={surface.runId}
       title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
-      className={cn(
-        MEMBER_GRID,
-        MEMBER_WELL_PAD,
-        "w-full items-center text-left",
-        // The line's own rhythm token; the well's height is a multiple of it,
-        // which is the whole mechanism that stops the container clipping
-        // through a row.
-        "h-[var(--ds-h-member-line)] gap-x-[var(--ds-space-base)]",
-        dsText.body,
-        dsMotion.fast,
-        "hover:bg-[var(--ds-surface-3)]",
-        selected && "bg-[var(--ds-surface-selected)]",
-      )}
+      className={cn(dsText.body, dsMotion.fast, "h-[var(--ds-h-queue-member-line)] hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
     >
-      <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass)} />
-      <span
-        className={cn(
-          "flex min-w-0 items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg)]",
-          "truncate",
-        )}
-      >
-        {/* Selection and local triage are sibling controls: nesting the latter
-            in a row button would create an invalid interactive hierarchy. */}
-        <BareButton
-          type="button"
-          title={`${queueRowTitle(surface)} — ${statusAccessibleName(status).toLowerCase()}`}
-          aria-label={selectionLabel}
-          onClick={() => onSelect(String(surface.runId))}
-          className={cn("min-w-0 truncate text-left", dsFocus)}
-        >
-          {queueRowTitle(surface)}
-        </BareButton>
-        <QueueAttemptSelector
-          title={queueRowTitle(surface)}
-          item={item}
-          selectedRunId={selected ? String(surface.runId) : undefined}
-          onSelect={onSelect}
-        />
-        {checked && (
-          <span title="Marked checked by you" className="inline-flex shrink-0 items-center text-[color:var(--ds-success-fg)]">
-            <CheckCircle2 aria-hidden className={dsIcon.sm} />
-            <span className="sr-only">checked by you</span>
-          </span>
-        )}
-        {onToggleChecked !== undefined && (
-          <IconButton
-            size="sm"
-            className="relative"
+      <td className="max-w-0 border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)]">
+        <div className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+          <Icon aria-hidden className={cn(dsIcon.sm, "shrink-0", spec.iconClass, status === "running" && "animate-spin motion-reduce:animate-none")} />
+          <BareButton type="button" title={surface.subtitle.state === "present" ? surface.subtitle.value : surface.subtitle.reason}
+            aria-label={selectionLabel} onClick={(event) => { event.stopPropagation(); onSelect(String(surface.runId)); }}
+            className={cn("min-w-0 truncate text-left text-[color:var(--ds-fg)] hover:underline", dsFocus)}
+          >{queueRowTitle(surface)}</BareButton>
+          {item.attempts.length > 1 && <QueueAttemptSelector title={queueRowTitle(surface)} surface={surface} item={item}
+            selectedRunId={String(surface.runId)} onSelect={onSelect} />}
+          {checked && <span title="Marked checked by you" className="inline-flex shrink-0 items-center text-[color:var(--ds-success-fg)]">
+            <CheckCircle2 aria-hidden className={dsIcon.sm} /><span className="sr-only">checked by you</span>
+          </span>}
+          {onToggleChecked !== undefined && <IconButton size="xs" className="relative"
             label={checked ? `Mark ${queueRowTitle(surface)} unchecked` : `Mark ${queueRowTitle(surface)} checked by you`}
-            onClick={(event) => {
-              event.stopPropagation();
-              onToggleChecked();
-            }}
-            icon={<CheckCircle2 aria-hidden className={cn(dsIcon.sm, checked && "text-[color:var(--ds-success-fg)]")} />}
-          />
-        )}
-      </span>
-      {surface.subtitle.state === "present" ? (
-        <span
-          className={cn(
-            dsText.meta,
-            "min-w-0 truncate",
-            // A FAILED member's fact is the failure (R3 finding 21). The demo
-            // tints this cell whenever the member failed and was not contained
-            // as `rejected`, and the tint keys off the served status ALONE —
-            // which is now provably identical rather than merely wider:
-            // `containment` IS served (D231) and has no `rejected` arm, because
-            // a submission the parent could not turn into work never becomes a
-            // run at all. A member the server called failed is never rejected,
-            // so the demo's second condition can only ever hold.
-            status === "failed" ? "text-[color:var(--ds-status-failed-fg)]" : "text-[color:var(--ds-fg-muted)]",
-          )}
-        >
-          {surface.subtitle.value}
-        </span>
-      ) : (
-        // A blank cell reads as a value that failed to render; an em dash reads
-        // as "nothing yet". The server's reason for the absence rides the title.
-        <span
-          className={cn(dsText.meta, dsText.nums, "text-[color:var(--ds-fg-faint)]")}
-          title={surface.subtitle.reason}
-        >
-          —
-        </span>
-      )}
-    </div>
+            onClick={(event) => { event.stopPropagation(); onToggleChecked(); }}
+            icon={<CheckCircle2 aria-hidden className={cn(dsIcon.sm, checked && "text-[color:var(--ds-success-fg)]")} />} />}
+        </div>
+      </td>
+      <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
+        <span aria-label={statusAccessibleName(status)}>{statusText(status)}</span>
+      </td>
+    </tr>
   );
 }
 
@@ -972,61 +653,16 @@ function GroupMemberList({
   return (
     <MemberWell
       open={wellOpen && canExpand}
-      header={
-        <div className="shrink-0 border-b border-[color:var(--ds-border-subtle)] bg-[var(--ds-surface-2)]">
-          {/* Composition chrome — the served rollup lives HERE, not as a
-              floating strip above the frame. */}
-          <div
-            className={cn(
-              MEMBER_GRID,
-              MEMBER_WELL_PAD,
-              "min-h-[var(--ds-h-member-line)] items-center gap-x-[var(--ds-space-base)] py-[var(--ds-space-tight)]",
-              dsText.meta,
-            )}
-          >
-            <div className="col-span-3 flex min-w-0 flex-wrap items-center gap-[var(--ds-space-cozy)]">
-              <RollupStrip rollup={surface.memberRollup} />
-              {checkedCount > 0 && (
-                <span
-                  className="inline-flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-success-fg)]"
-                  aria-label={`${checkedCount} of ${surface.memberRollup.total} checked by you`}
-                  title="How many loaded members you have marked checked"
-                >
-                  <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "shrink-0")} />
-                  <span className={dsText.nums}>{checkedCount}/{surface.memberRollup.total}</span>
-                </span>
-              )}
-              {/* The payload can legitimately hold fewer member surfaces than
-                  the rollup counts (the day query pages). Saying so is a fact
-                  about this list; silently drawing a short list is not. */}
-              {ordered.length < surface.memberRollup.total && (
-                <span className="text-[color:var(--ds-fg-muted)]">
-                  {ordered.length} of {plural(surface.memberRollup.total, "member")} loaded
-                </span>
-              )}
-            </div>
-          </div>
-          {/* Column heads only when there are columns under them. A labelled
-              header over an empty region reads as a failed render, which is
-              exactly the state a paged operation with no member surfaces is
-              in — the tally above still tells the operator what the group
-              holds. */}
-          {ordered.length > 0 && (
-            <div
-              className={cn(
-                MEMBER_GRID,
-                MEMBER_WELL_PAD,
-                "h-[var(--ds-h-member-line)] items-center gap-x-[var(--ds-space-base)]",
-                dsText.meta,
-                "text-[color:var(--ds-fg-faint)]",
-              )}
-            >
-              <span className="col-span-2 col-start-1 truncate">Name</span>
-              <span className="col-start-3 truncate">Detail</span>
-            </div>
-          )}
+      header={(checkedCount > 0 || (ordered.length > 0 && ordered.length < surface.memberRollup.total)) && (
+        <div className={cn(dsText.meta, "flex flex-wrap items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
+          {checkedCount > 0 && <span aria-label={`${checkedCount} of ${surface.memberRollup.total} checked by you`}>
+            {checkedCount}/{surface.memberRollup.total} checked by you
+          </span>}
+          {ordered.length > 0 && ordered.length < surface.memberRollup.total && <span>
+            {ordered.length} of {plural(surface.memberRollup.total, "member")} loaded
+          </span>}
         </div>
-      }
+      )}
       footer={
         showDisclosures ? (
           <div
@@ -1042,26 +678,26 @@ function GroupMemberList({
         ) : undefined
       }
     >
-      {ordered.map((member) => {
-        const item = itemGroups.find((candidate) => candidate.representative.runId === member.runId);
-        if (item === undefined) throw new Error(`member list lost item ${String(member.itemId)}`);
-        const selectedAttempt = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId);
-        const visible = selectedAttempt ?? member;
-        const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
-        return (
-          <MemberLine
-            key={item.key}
-            surface={visible as MemberSurfaceWire}
-            item={item}
-            selected={selected}
-            checked={checkedIds.has(String(visible.runId))}
-            onSelect={handlers.onSelect}
-            {...(handlers.onToggleChecked === undefined
-              ? {}
-              : { onToggleChecked: () => handlers.onToggleChecked?.(String(visible.runId)) })}
-          />
-        );
-      })}
+      <table aria-label={`Members of ${queueRowTitle(surface)}`} className="w-full border-collapse text-left [&_tbody>tr:last-child>td]:border-b-0">
+        <thead className="sticky top-0 bg-[var(--ds-surface-2)]">
+          <tr className={cn(dsText.meta, "h-[var(--ds-h-queue-member-head)] text-[color:var(--ds-fg-secondary)]")}>
+            <th scope="col" className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)] font-medium">Name</th>
+            <th scope="col" className="border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-snug)] text-right font-medium">Status</th>
+          </tr>
+        </thead>
+        <tbody>
+          {ordered.length === 0 && <tr><td colSpan={2} className={cn(dsText.body, "px-[var(--ds-space-base)] py-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>Members not loaded</td></tr>}
+          {ordered.map((member) => {
+            const item = itemGroups.find((candidate) => candidate.representative.runId === member.runId);
+            if (item === undefined) throw new Error(`member list lost item ${String(member.itemId)}`);
+            const visible = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId) ?? member;
+            const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
+            return <MemberLine key={item.key} surface={visible as MemberSurfaceWire} item={item} selected={selected}
+              checked={checkedIds.has(String(visible.runId))} onSelect={handlers.onSelect}
+              {...(handlers.onToggleChecked === undefined ? {} : { onToggleChecked: () => handlers.onToggleChecked?.(String(visible.runId)) })} />;
+          })}
+        </tbody>
+      </table>
     </MemberWell>
   );
 }
@@ -1157,7 +793,7 @@ function ParentBackChip({
  * re-derives a status out of the day payload, which is the second status path
  * D81 exists to delete and which goes blank the moment the child ran on another
  * day. `panelKind` supplies the sentence about what OPENING it shows, through
- * the same frontend vocabulary the ⓘ uses; the run id is the route.
+ * the served panel vocabulary; the run id is the route.
  */
 function LinkedRunChip({ link, onOpen }: { link: LinkedRunWire; onOpen: () => void }) {
   return (
@@ -1200,81 +836,42 @@ function FactChip({ fact, grow }: { fact: { label: string; value: string }; grow
   );
 }
 
-function QueueAttemptSelector({
-  title,
-  item,
-  selectedRunId,
-  onSelect,
-}: {
+function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }: {
   title: string;
-  item: QueueItemGroup;
+  surface: QueueSurfaceWire;
+  item?: QueueItemGroup;
   selectedRunId?: string;
   onSelect: (runId: string) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [closedSelection, setClosedSelection] = useState<string | undefined>();
-  if (item.attempts.length < 2) return null;
-  const selectedOlderAttempt = selectedRunId !== undefined
-    && selectedRunId !== String(item.representative.runId)
-    && item.attempts.some((attempt) => String(attempt.runId) === selectedRunId)
-    && selectedRunId !== closedSelection;
-  const open = expanded || selectedOlderAttempt;
-
+  const [open, setOpen] = useState(false);
+  const attempts = item?.attempts ?? [surface];
   return (
-    <Popover open={open} onOpenChange={(next) => {
-      setExpanded(next);
-      if (!next) setClosedSelection(selectedRunId);
-      else setClosedSelection(undefined);
-    }}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild>
-        <BareButton
-          type="button"
-          aria-label={`Attempts for ${title}`}
-          aria-expanded={open}
+        <BareButton type="button" aria-label={`Attempts for ${title}`} aria-expanded={open}
+          title={`Attempt ${String(surface.attempt)} of this item`}
           onClick={(event) => event.stopPropagation()}
-          className={cn(
-            "inline-flex shrink-0 items-center border px-[var(--ds-space-snug)]",
-            "h-[var(--ds-h-xs)]",
-            dsRadius.sm,
-            dsBorder.base,
-            dsText.micro,
-            dsFocus,
-            "text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
-          )}
-        >
-          Attempts · {item.attempts.length}
-        </BareButton>
+          className={cn("inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] whitespace-nowrap border px-[var(--ds-space-tight)]",
+            dsRadius.sm, dsText.meta, dsText.nums, dsFocus, "border-[color:var(--ds-recess-border)] text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]")}
+        >#{surface.attempt}<ChevronDown aria-hidden className={dsIcon.sm} /></BareButton>
       </PopoverTrigger>
-      <PopoverContent title={`Attempts for ${title}`} width="md" className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
+      <PopoverContent title={`Attempts for ${title}`} width="sm" hideTitle hideClose className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
         <ol className="flex flex-col divide-y divide-[color:var(--ds-border-subtle)]">
-          {item.attempts.map((attempt) => {
+          {[...attempts].reverse().map((attempt) => {
             const status = dsStatusOf(attempt.status);
             const selected = String(attempt.runId) === selectedRunId;
-            return (
-              <li key={attempt.runId}>
-                <BareButton
-                  type="button"
-                  aria-label={`Open ${title} — attempt ${String(attempt.attempt)} — ${statusAccessibleName(status).toLowerCase()}`}
-                  aria-current={selected ? "true" : undefined}
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onSelect(String(attempt.runId));
-                  }}
-                  className={cn(
-                    "flex w-full items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)] py-[var(--ds-space-tight)] text-left",
-                    dsText.meta,
-                    dsFocus,
-                    "hover:bg-[var(--ds-surface-3)]",
-                    selected && "bg-[var(--ds-surface-selected)]",
-                  )}
-                >
-                  <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-secondary)]")}>#{attempt.attempt}</span>
-                  <StatusBadge status={status} />
-                  <span className="min-w-0 flex-1 truncate text-[color:var(--ds-fg-muted)]">{attempt.traceId}</span>
-                  <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-faint)]")}>{fmtClock(attempt.startedAt)}</span>
-                </BareButton>
-              </li>
-            );
+            return <li key={attempt.runId}>
+              <BareButton type="button" aria-label={`Open ${title} — attempt ${String(attempt.attempt)} — ${statusAccessibleName(status).toLowerCase()}`}
+                aria-current={selected ? "true" : undefined}
+                onClick={(event) => { event.stopPropagation(); onSelect(String(attempt.runId)); setOpen(false); }}
+                className={cn("flex w-full items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)] py-[var(--ds-space-snug)] text-left", dsText.meta, dsFocus,
+                  "hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
+              >
+                <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-secondary)]")}>#{attempt.attempt}</span>
+                <StatusBadge status={status} presentation="queue" />
+                {selected && <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "ml-auto text-[color:var(--ds-fg-muted)]")} />}
+              </BareButton>
+            </li>;
           })}
         </ol>
       </PopoverContent>
@@ -1316,7 +913,6 @@ export function QueueRow({
     ?? state.selectedRunId === surface.runId;
   const actions = actionsOf(surface);
   const target = { runId: surface.runId, expectedVersion: surface.rowRevision };
-  const StatusIcon = PROPOSED_STATUS[status].icon;
   const workflowLabel = workflowLabelOf(surface.workflowId);
   /**
    * TWO different questions, and conflating them is what R3 finding 9 caught.
@@ -1357,7 +953,13 @@ export function QueueRow({
   const titleTooltip = queueRowTitleTooltip(surface);
 
   return (
-    <div className="px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
+    <div className="flex items-start gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pt-[var(--ds-space-snug)] first:pt-[var(--ds-space-cozy)]">
+      {state.selectMode === true && onToggleBulk !== undefined && <Checkbox
+        checked={bulkIds?.has(surface.runId) ?? false}
+        label={<span className="sr-only">Select {queueRowTitle(surface)} for a bulk command</span>}
+        onCheckedChange={() => onToggleBulk(surface.runId)}
+        className="mt-[var(--ds-space-queue-top)] shrink-0"
+      />}
       <RowContextMenu
         actions={actions}
         target={target}
@@ -1395,7 +997,7 @@ export function QueueRow({
             }
           }}
           className={cn(
-            "group relative flex cursor-pointer flex-col overflow-hidden border",
+            "group relative flex min-w-0 flex-1 cursor-pointer flex-col overflow-hidden border",
             dsRadius.lg,
             dsMotion.base,
             dsSurface.card,
@@ -1408,43 +1010,9 @@ export function QueueRow({
             announcing && cn(dsMotion.move, "-translate-y-[var(--ds-travel-sm)]"),
           )}
         >
-          {/*
-            THE ROW'S RHYTHM, and the whole of it.
-
-            One grid with a fixed leading track (`--ds-w-row-indent`) and ONE
-            vertical gap. Every line under the title hangs off the same edge as
-            the title, because the edge is a grid column rather than an `ml-5`
-            re-typed on each of the things that can appear here. Never add a
-            `mt-*` to space one of them.
-          */}
-          <div
-            className={cn(
-              "grid min-w-0 grid-cols-[var(--ds-w-row-indent)_minmax(0,1fr)] items-start",
-              "gap-y-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)]",
-            )}
-          >
-            {/* The icon, title and status pill share one cross-axis centre. The
-                icon box matches the StatusBadge (`sm` = `--ds-h-xs`) so a taller
-                title line cannot leave the glyph floating above the pill. */}
-            <div className="col-start-1 row-start-1 flex h-[var(--ds-h-xs)] items-center">
-              <StatusIcon aria-hidden className={cn(dsIcon.md, "shrink-0", PROPOSED_STATUS[status].iconClass)} />
-            </div>
-            <div
-              className="col-start-2 row-start-1 flex min-w-0 flex-nowrap items-center gap-x-[var(--ds-space-base)]"
-            >
+          <div data-queue-body className="flex min-w-0 flex-col gap-[var(--ds-space-base)] px-[var(--ds-space-cozy)] pb-[var(--ds-space-cozy)] pt-[var(--ds-space-queue-top)]">
+            <div className="flex min-w-0 items-center gap-x-[var(--ds-space-base)]">
               <div className="flex min-w-0 flex-1 items-center gap-[var(--ds-space-snug)]">
-                {/* Bulk selection is a TOP-LEVEL act: a member is acted on
-                    through its group or on its own row, never half-selected
-                    inside one. */}
-                {state.selectMode === true && onToggleBulk !== undefined && (
-                  <Checkbox
-                    checked={bulkIds?.has(surface.runId) ?? false}
-                    label={<span className="sr-only">Select {queueRowTitle(surface)} for a bulk command</span>}
-                    onClick={(event) => event.stopPropagation()}
-                    onCheckedChange={() => onToggleBulk(surface.runId)}
-                    className="shrink-0"
-                  />
-                )}
                 <span
                   data-demo-row-title
                   className={cn(
@@ -1470,7 +1038,6 @@ export function QueueRow({
                     {workflowLabel}
                   </span>
                 )}
-                <RowInfo surface={surface} workflowLabel={workflowLabel} />
               </div>
               <div className="ml-auto flex shrink-0 flex-nowrap items-center justify-end gap-[var(--ds-space-snug)]">
                 {/* Status ALWAYS sits on the title row's right — never on the
@@ -1497,31 +1064,33 @@ export function QueueRow({
               the operation variant, so its presence IS the "this row stands for
               a set" test the noun was standing in for.
 
-              Absent draws NOTHING: a group that has fanned out to nobody yet is
-              a real state, and an empty string in this slot reads as a group of
-              nobody. Its reason rides the ⓘ with every other absence.
+              Absent previews draw nothing; the table distinguishes unloaded members.
             */}
             {isOperation
               && surface.surfaceKind === "operation"
               && !membersVisible
               && surface.memberPreview.state === "present" && (
               <div
-                className={cn(dsText.meta, "col-start-2 truncate text-[color:var(--ds-fg-muted)]")}
+                className={cn(dsText.meta, "truncate text-[color:var(--ds-fg-muted)]")}
                 title={surface.memberPreview.value}
               >
                 {surface.memberPreview.value}
               </div>
             )}
 
-            {subline !== undefined && (
+            {status === "running" && !isOperation && <QueueProgress pipeline={surface.pipeline} />}
+            {(subline !== undefined || (status === "running" && !isOperation && surface.pipeline.length > 0)) && (
               <div
                 className={cn(
                   dsText.meta,
-                  "col-start-2 flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
+                  "flex min-w-0 flex-wrap items-center gap-x-[var(--ds-space-base)] gap-y-[var(--ds-space-tight)]",
                   SUBLINE_TONE[status],
                 )}
               >
                 <span className="min-w-0 flex-1 truncate">{subline}</span>
+                {status === "running" && !isOperation && surface.pipeline.length > 0 && <span className="shrink-0 text-[color:var(--ds-fg-muted)]">
+                  {surface.pipeline.filter((step) => step.state === "done").length} / {surface.pipeline.length} steps
+                </span>}
                 <OutcomeActionButton
                   actions={actions}
                   target={target}
@@ -1549,12 +1118,9 @@ export function QueueRow({
               </div>
             )}
 
-            {/* FULL WIDTH, both tracks. The well's own grid supplies the leading
-                column, so its glyphs land under the card's status icon and its
-                text under the card's title — one left edge for the whole card
-                rather than a well indented inside column two. */}
+
             {isOperation && surface.surfaceKind === "operation" && (
-              <div className="col-span-2 flex flex-col gap-[var(--ds-space-base)]">
+              <div className="flex flex-col gap-[var(--ds-space-base)]">
                 <GroupMemberList
                   surface={surface}
                   itemKey={itemGroup?.key ?? String(surface.runId)}
@@ -1567,9 +1133,7 @@ export function QueueRow({
 
             {/*
               THE BAND A CROSS-PANEL CHIP LIVES IN (`DemoQueue.tsx:1008-1046`).
-              It aligns to the well's table when one is on screen, and to the
-              title column otherwise, so a jump never hangs off a different
-              edge from the row it belongs to.
+              It shares the row body's left edge.
 
               Three of the demo's four chip families are served and drawn: the
               forward routes to the runs this one delegated to (`linkedRuns[]`,
@@ -1592,7 +1156,6 @@ export function QueueRow({
                 className={cn(
                   "flex w-full min-w-0 flex-wrap items-center",
                   "gap-x-[var(--ds-space-snug)] gap-y-[var(--ds-space-tight)]",
-                  membersVisible ? cn("col-span-2", MEMBER_WELL_PAD) : "col-start-2",
                 )}
               >
                 {surface.linkedRuns.map((link) => (
@@ -1614,19 +1177,11 @@ export function QueueRow({
             actions={actions}
             {...(onAction === undefined ? {} : { onAction })}
             nowIso={state.nowIso}
-          />
-        </div>
-      </RowContextMenu>
-      {itemGroup !== undefined && itemGroup.attempts.length > 1 && (
-        <div className="flex pl-[var(--ds-w-row-indent)] pt-[var(--ds-space-hair)]">
-          <QueueAttemptSelector
-            title={queueRowTitle(surface)}
-            item={itemGroup}
-            selectedRunId={state.selectedRunId}
+            itemGroup={itemGroup}
             onSelect={handlers.onSelect}
           />
         </div>
-      )}
+      </RowContextMenu>
     </div>
   );
 }
@@ -1695,7 +1250,7 @@ export const QueuePanel = memo(function QueuePanel({
   sort?: QueueSortKey;
 }) {
   const { top, membersOf } = partition(surfaces);
-  const { batchByRun, flatBatchByFirst, displayTop, itemByRunId } = queueBatchLayout(top, sort, state.nowIso);
+  const { displayTop, itemByRunId } = queueItemLayout(top);
   const bands = BAND_ORDER.map((key) => ({
     key,
     label: BAND_LABEL[key],
@@ -1703,7 +1258,7 @@ export const QueuePanel = memo(function QueuePanel({
     // another one on the toolbar — and even then the reorder stays inside the
     // band, so nothing leaves the group its status put it in.
     rows: sortQueueBand(
-      displayTop.filter((surface) => (batchByRun.get(surface.runId)?.band ?? bandOf(dsStatusOf(surface.status))) === key),
+      displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
       sort,
       state.nowIso,
     ),
@@ -1885,25 +1440,7 @@ export const QueuePanel = memo(function QueuePanel({
                     {...(parentOf === undefined ? {} : { parentOf })}
                   />;
                 };
-                const batch = batchByRun.get(surface.runId);
-                if (batch !== undefined) {
-                  const selectedItem = state.selectedRunId === undefined ? undefined : itemByRunId.get(state.selectedRunId);
-                  const selected = selectedItem !== undefined && batch.members.some((row) => row.runId === selectedItem.representative.runId)
-                    ? state.selectedRunId
-                    : undefined;
-                  return <WorkflowBatchGroup
-                    key={batch.id}
-                    batch={batch}
-                    label={workflowLabelOf(surface.workflowId)}
-                    selected={selected}
-                    {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })}
-                    history={batch.history.map(renderRow)}
-                  >
-                    {batch.members.map(renderRow)}
-                  </WorkflowBatchGroup>;
-                }
-                const flatBatch = flatBatchByFirst.get(surface.runId);
-                return <Fragment key={surface.runId}>{flatBatch !== undefined && <GroupWorkflowBatchButton batch={flatBatch} {...(handlers.onSetBatchGrouping === undefined ? {} : { onGrouping: handlers.onSetBatchGrouping })} />}{renderRow(surface)}</Fragment>;
+                return renderRow(surface);
               })}
             </div>
           );
