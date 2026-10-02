@@ -39,7 +39,21 @@ has zero runtime and no finished-run rate.
 
 Explorer retains workflow sources, branch previews and comments, with no registered-definition
 fallback or client request. Logs keeps its approved field tables, click rows, search/copy/latest controls
-and end-of-step screenshots. Its Completed header is hidden while unfinished and failure states remain.
+and action-associated screenshots. Its Completed header is hidden while unfinished and failure states remain.
+`LogScreenshots` consumes presentation capture metadata (`kind`: fields, form, browser or person;
+system, label, capture time and declared dimensions). Unclassified retained captures keep a generic
+screenshot label. Filled-field groups show their supplied fields; Submit/Save captures show the complete
+form; person checks show the candidate record. A Kuali action contains only Kuali captures. The local
+sample supplies 16 fictional captures, including complete tall forms and verified result pages.
+Inline previews are bounded to 160px and 460px wide for a single capture. Forms preview their top and
+open at readable width with scrolling; the viewer also offers Whole image and 100%. Multiple forms use
+two preview columns; browser groups use three compact columns on wide desktops and two below 1280px.
+The viewer preserves capture order,
+names the selected system and action, bounds Previous/Next, and returns focus to its trigger on close.
+Missing image bytes or a dimension mismatch produce an explicit screenshot-unavailable alert.
+Capture classifications and viewer grouping are frontend presentation inputs, not a new backend wire
+or capture producer. The revised failure/review/write-parked blocks remain a separate design preview
+pending operator approval; no connected resolution or failure behavior changes in this amendment.
 The compact timeline is directly above the logs: equal-width 10px bars, small state dots and labels, and
 explicit fictional durations. Completed, active and failed bars are solid, waiting is hatched and upcoming
 is outlined. Hover/focus reveals named substeps and measured durations; unfinished steps disclose state

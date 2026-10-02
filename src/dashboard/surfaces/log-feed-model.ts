@@ -12,6 +12,9 @@ export type LogScreenshot = Readonly<{
   time: string;
   width: number;
   height: number;
+  label?: string;
+  kind?: "fields" | "form" | "browser" | "person";
+  system?: string;
 }>;
 
 export type LogEntry = Readonly<{

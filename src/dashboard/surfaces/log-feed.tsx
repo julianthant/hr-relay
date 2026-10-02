@@ -1,27 +1,9 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Check, Copy, Cpu, Eye, GitBranch, Info, Monitor, MousePointer2, PanelsTopLeft, PencilLine, ScanSearch } from "lucide-react";
-import { Button, Dialog, DialogBody, DialogContent, DialogTrigger, IconButton, SearchInput } from "../ds/ui.js";
+import { Button, IconButton, SearchInput } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
-import { filterLogSteps, logPlainText, logRowCount, visualLogSteps, type LogEntry, type LogScreenshot, type LogStep } from "./log-feed-model.js";
-
-function Screenshot({ screenshot }: { screenshot: LogScreenshot }) {
-  const [failed, setFailed] = useState(false);
-  return <figure className="m-0 mt-3 max-w-log-capture">
-    {failed ? <p role="alert" className="rounded-md border border-ui-stroke p-3 text-body text-ui-danger">Screenshot could not be displayed.</p> : <Dialog>
-      <DialogTrigger asChild>
-        <button type="button" className="block w-full cursor-zoom-in overflow-hidden rounded-md border border-ui-stroke focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info" aria-label={`Enlarge screenshot captured at ${screenshot.time}`}>
-          <img className="block h-auto w-full" src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} loading="lazy" onError={() => setFailed(true)} onLoad={event => {
-            if (event.currentTarget.naturalWidth !== screenshot.width || event.currentTarget.naturalHeight !== screenshot.height) setFailed(true);
-          }} />
-        </button>
-      </DialogTrigger>
-      <DialogContent className="ui-theme-scope bg-ui-panel font-ui text-ui-primary" title="Screenshot" description={`Captured ${screenshot.time}`} size="xl">
-        <DialogBody><img className="block h-auto w-full" src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} /></DialogBody>
-      </DialogContent>
-    </Dialog>}
-    <figcaption className="mt-2 text-caption text-ui-muted">Captured <time className="tabular-nums">{screenshot.time}</time></figcaption>
-  </figure>;
-}
+import { filterLogSteps, logPlainText, logRowCount, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
+import { LogScreenshots } from "./log-screenshots.js";
 
 function Entry({ entry }: { entry: LogEntry }) {
   if (entry.kind === "fields") return <div className={cn("overflow-hidden rounded-lg border border-ui-stroke bg-ui-table", entry.title === undefined && entry.result === undefined && "px-3")}>
@@ -102,8 +84,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
         <time className="pt-0.5 font-data text-caption tabular-nums text-ui-muted">{step.time}</time>
         <div className="min-w-0">
           <header className="mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
-          <div className="flex min-w-0 flex-col gap-3">{step.entries.map(entry => <Entry key={entry.id} entry={entry} />)}</div>
-          {[...new Map(step.entries.flatMap(entry => entry.kind === "note" ? [] : entry.screenshots ?? []).map(screenshot => [screenshot.src, screenshot])).values()].map(screenshot => <Screenshot key={screenshot.src} screenshot={screenshot} />)}
+          <div className="flex min-w-0 flex-col gap-3">{step.entries.map(entry => <div key={entry.id}><Entry entry={entry} />{entry.kind !== "note" && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} />}</div>)}</div>
         </div>
         {afterStep?.(step.id)}
       </section>)}

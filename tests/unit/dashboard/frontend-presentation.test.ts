@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
@@ -92,6 +93,21 @@ describe("frontend presentation producers", () => {
     const steps = visualLogSteps(separationLogs);
     assert.ok(!steps.some(step => step.title === "Build separation plan" || step.title === "Reconcile dates"));
     assert.ok(steps.some(step => step.entries.some(entry => entry.kind === "click" && entry.label === "Save and Submit")));
-    assert.equal(steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "note" ? [] : entry.screenshots ?? []).length, 2);
+    assert.equal(steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "note" ? [] : entry.screenshots ?? []).length, 16);
+  });
+  it("binds classified captures to the filled fields, submission and matching person", () => {
+    for (const step of visualLogSteps(separationLogs)) for (const entry of step.entries) {
+      if (entry.kind === "note") continue;
+      if (entry.kind === "fields" && entry.fields.some(field => field.kind === "fill")) assert.ok(entry.screenshots?.some(shot => shot.kind === "fields"), `missing filled fields capture: ${entry.id}`);
+      if (entry.kind === "click" && ["Save", "Save and Submit"].includes(entry.label)) assert.ok(entry.screenshots?.some(shot => shot.kind === "form" && shot.height > shot.width && shot.time >= entry.time));
+      for (const shot of entry.screenshots ?? []) {
+        assert.equal(shot.system, step.system);
+        const svg = readFileSync(new URL(`../../../src/dashboard/public${shot.src}`, import.meta.url), "utf8");
+        assert.match(svg, new RegExp(`width="${shot.width}" height="${shot.height}"`));
+        assert.match(svg, /FICTIONAL/);
+      }
+    }
+    const candidate = separationLogs.find(step => step.id === "search-person")?.entries.find(entry => entry.id === "person-match");
+    assert.ok(candidate?.kind === "fields" && candidate.screenshots?.some(shot => shot.kind === "person"));
   });
 });
