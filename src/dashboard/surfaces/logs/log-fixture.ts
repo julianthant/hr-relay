@@ -1,3 +1,5 @@
+import { LOG_DECISION_STATUS } from "../log-decision-model.js";
+import { logDecisionExamples } from "./log-decision-fixture.js";
 import type { LogEntry, LogField, LogScreenshot, LogStep } from "../log-feed-model.js";
 import type { LogTimelineStage } from "./log-timeline-model.js";
 
@@ -123,7 +125,37 @@ export function logTimelineSample(scenario: string): readonly LogTimelineStage[]
 export const previewScenarios = [
   { id: "separation", label: "Full separation", subject: "Alex Morgan", status: "Completed", steps: separationLogs },
   { id: "reading", label: "Reading timecard", subject: "Alex Morgan", status: "In progress", steps: separationLogs.slice(0, 6) },
-  { id: "waiting", label: "Awaiting confirmation", subject: "Alex Morgan", status: "Waiting", steps: separationLogs.slice(0, 6) },
-  { id: "failed", label: "Document read failed", subject: "Alex Morgan", status: "Failed", steps: separationLogs.slice(0, 12) },
+  { id: "waiting", label: "Awaiting confirmation", subject: "Alex Morgan", status: "Waiting", steps: [...separationLogs.slice(0, 6), decisionStep("review-fields")] },
+  { id: "failed", label: "Document read failed", subject: "Alex Morgan", status: "Failed", steps: [...separationLogs.slice(0, 12), decisionStep("failure-verified")] },
   { id: "empty", label: "Waiting for actions", subject: "Alex Morgan", status: "Starting", steps: [] },
 ].map(scenario => ({ ...scenario, timeline: logTimelineSample(scenario.id) }));
+
+function decisionStep(id: string): LogStep {
+  const example = logDecisionExamples.find(item => item.id === id);
+  if (!example) throw new Error("log-decision-example-missing");
+  return { id: `decision-${id}`, time: example.entry.time, title: "Run decision", header: false, entries: [example.entry] };
+}
+const decisionStepIds: Readonly<Record<string, string>> = {
+  parked: "file", verification: "file", "write-absent": "file", "park-unavailable": "file", "failure-prepared": "file", "failure-attempting": "file", implementation: "file", "failure-unavailable": "file", "screenshot-unavailable": "file", "screenshot-fields": "file", "screenshot-form": "file", "screenshot-browsers": "file",
+  "failure-no-write": "read-document", "review-fields": "read-document", configuration: "find-document",
+  "review-identity": "search-person", "review-candidates": "search-person", "review-employment": "read-job", "review-held": "search-person", "review-approved": "read-job", "review-rejected": "search-person", "identity-mismatch": "search-person", loading: "search-person", "authority-changed": "read-job", "transport-unknown": "search-person", cancelled: "read-job", "screenshot-person": "search-person",
+  "failure-committed": "verify-termination", "failure-unknown": "verify-termination", "write-present": "verify-termination", "failure-verified": "finalize", warning: "verify-document", "screenshot-forms": "finalize",
+};
+export const decisionScenarios = logDecisionExamples.map(example => {
+  const targetId = decisionStepIds[example.id];
+  if (!targetId) throw new Error("log-decision-stage-binding-missing");
+  const targetIndex = separationLogs.findIndex(step => step.id === targetId);
+  if (targetIndex < 0) throw new Error("log-decision-step-missing");
+  const baseTimeline = logTimelineSample("separation");
+  const affectedIndex = baseTimeline.findIndex(stage => stage.substeps.some(substep => substep.id === targetId));
+  if (affectedIndex < 0) throw new Error("log-decision-stage-missing");
+  const state: LogTimelineStage["state"] = example.entry.kind !== "decision" ? "completed" : example.entry.decision.state === "failed" ? "failed" : example.entry.decision.state === "loading" || example.entry.decision.state === "recorded" || example.entry.decision.state === "resolved" ? "active" : "waiting";
+  const steps = [...separationLogs.slice(0, targetIndex), { ...decisionStep(example.id), id: targetId }];
+  const timeline = baseTimeline.map((stage, index): LogTimelineStage => {
+    if (index < affectedIndex) return stage;
+    if (index > affectedIndex) return { id: stage.id, label: stage.label, state: "pending", substeps: stage.substeps.map(substep => ({ id: substep.id, label: substep.label, state: "pending" })) };
+    const affectedSubstep = stage.substeps.findIndex(substep => substep.id === targetId);
+    return { id: stage.id, label: stage.label, state, time: example.entry.time, stepId: stage.substeps[0]?.id, substeps: stage.substeps.map((substep, subIndex) => subIndex < affectedSubstep ? substep : { id: substep.id, label: substep.label, state: subIndex === affectedSubstep ? state : "pending" }) };
+  });
+  return { id: example.id, label: `${example.category} · ${example.label}`, subject: "Alex Morgan", status: example.entry.kind === "decision" ? LOG_DECISION_STATUS[example.entry.decision.state].label : "Recorded", steps, timeline };
+});

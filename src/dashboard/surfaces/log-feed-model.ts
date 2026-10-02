@@ -1,3 +1,5 @@
+import type { LogDecision } from "./log-decision-model.js";
+
 export type LogField = Readonly<{
   id: string;
   time: string;
@@ -35,6 +37,13 @@ export type LogEntry = Readonly<{
   id: string;
   time: string;
   message: string;
+  tone?: "info" | "danger" | "positive";
+  announce?: boolean;
+}> | Readonly<{
+  kind: "decision";
+  id: string;
+  time: string;
+  decision: LogDecision;
 }>;
 
 export type LogStep = Readonly<{
@@ -42,6 +51,7 @@ export type LogStep = Readonly<{
   time: string;
   title: string;
   system?: string;
+  header?: boolean;
   entries: readonly LogEntry[];
 }>;
 
@@ -61,6 +71,7 @@ export function logEntryText(entry: LogEntry): string {
     case "fields": return [entry.title, ...entry.fields.map(field => `${field.time} ${field.label} ${field.value}`), entry.result].filter(Boolean).join(" ");
     case "click": return `${entry.time} ${entry.label}`;
     case "note": return `${entry.time} ${entry.message}`;
+    case "decision": return [entry.time, entry.decision.title, entry.decision.message, entry.decision.attemptedAction, entry.decision.lastCompleted, entry.decision.field?.label, entry.decision.field?.value, entry.decision.caution, entry.decision.footer, ...(entry.decision.comparison ?? []).map(row => `${row.label} ${row.expected} ${row.observed}`)].filter(Boolean).join(" ");
   }
 }
 

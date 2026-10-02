@@ -45,18 +45,33 @@ system, label, capture time and declared dimensions). Unclassified retained capt
 screenshot label. Filled-field groups show their supplied fields; Submit/Save captures show the complete
 form; person checks show the candidate record. A Kuali action contains only Kuali captures. The local
 sample supplies 16 fictional captures, including complete tall forms and verified result pages.
-Inline previews are bounded to 160px and 460px wide for a single capture. Forms preview their top and
-open at readable width with scrolling; the viewer also offers Whole image and 100%. Multiple forms use
-two preview columns; browser groups use three compact columns on wide desktops and two below 1280px.
-The viewer preserves capture order,
-names the selected system and action, bounds Previous/Next, and returns focus to its trigger on close.
-Missing image bytes or a dimension mismatch produce an explicit screenshot-unavailable alert.
-Capture classifications and viewer grouping are frontend presentation inputs, not a new backend wire
-or capture producer. The revised failure/review/write-parked blocks remain a separate design preview
-pending operator approval; no connected resolution or failure behavior changes in this amendment.
+The operator approved the revised log blocks and image workspace on 2026-10-02. Single capture
+previews use a 188px image area and at most 600px width; browser groups use three compact 124px
+image areas. Multiple forms use two preview columns. Forms preview their top and open at readable
+width with scrolling. The viewer offers Fit width, Whole image and 100%, zoom, quarter-turn rotation,
+keyboard navigation and two-capture comparison. Multiple captures appear in a left thumbnail sidebar.
+The viewer preserves capture order, names the selected system and action, bounds Previous/Next,
+and returns focus to its trigger after Escape, Close or outside dismissal. Missing bytes and dimension
+mismatches have distinct explicit alerts; Retry reloads the affected capture without replacing evidence.
+Capture classifications and viewer grouping remain frontend presentation inputs, not a backend wire
+or capture producer.
+
+The local sample includes all 33 approved failure, review, parked-write, other-state and screenshot
+examples. Blocks use neutral borders, distinct header/body/action bands and the established system
+font and type scale. Review is blue, Write parked yellow and Failed red. The timestamp stays in the
+surrounding log. Necessary yellow notices are indented and fit their content. Failures lead with the
+problem, attempted action, last completed action when relevant, failed field/value and all browser
+captures. Only values needed to continue receive inputs; generic Details, Evidence, Reference and
+external-action controls are absent. Date corrections use the shared DateInput and calendar. The first
+Escape closes an open calendar while retaining its continuation dialog. Same-run outcomes append
+ordinary log entries outside the block; local continuation retains its screenshots. These controls
+change fictional examples only; connected resolution and failure authority remain deferred.
 The compact timeline is directly above the logs: equal-width 10px bars, small state dots and labels, and
-explicit fictional durations. Completed, active and failed bars are solid, waiting is hatched and upcoming
-is outlined. Hover/focus reveals named substeps and measured durations; unfinished steps disclose state
+explicit fictional durations. A decision retains the complete five-stage pipeline and earlier completed
+states and durations. Later stages remain gray and unavailable for jumping, without visible “Upcoming”
+text; only the affected stage
+and substep change state/color. Completed, active and failed bars are solid, waiting is hatched and
+upcoming is outlined. Hover/focus reveals named substeps and measured durations; unfinished steps disclose state
 without an invented duration. Hover does not change the background; green bars darken to 90% brightness. A stage
 click clears search, scrolls to its confirmed-action heading and moves focus there. Computations, connected
 identity/resolve/failure UI, run controls/status strip, tab band, capture gallery, elapsed-time footer and

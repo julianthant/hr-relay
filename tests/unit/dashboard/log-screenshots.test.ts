@@ -8,6 +8,7 @@ import type { LogScreenshot } from "../../../src/dashboard/surfaces/log-feed-mod
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 Reflect.set(HTMLElement.prototype, "scrollTo", () => {});
+Reflect.set(globalThis, "ResizeObserver", class { observe() {} disconnect() {} });
 let root: Root | undefined;
 afterEach(async () => {
   await act(async () => root?.unmount());
@@ -37,15 +38,15 @@ describe("classified log screenshot viewer", () => {
     await click("Enlarge screenshot captured at 09:32:38");
     assert.equal(button("Previous screenshot").disabled, true);
     assert.equal(button("Next screenshot").disabled, false);
-    assert.equal(document.querySelector('[role="dialog"] img')?.getAttribute("alt"), "First form");
+    assert.equal(document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt"), "First form");
     await click("100%");
-    assert.equal((document.querySelector('[role="dialog"] img') as HTMLImageElement).style.width, "850px");
+    assert.equal((document.querySelector('[role="dialog"] .log-viewer-image') as HTMLImageElement).style.width, "850px");
     await click("Next screenshot");
-    assert.equal(document.querySelector('[role="dialog"] img')?.getAttribute("alt"), "Second form");
+    assert.equal(document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt"), "Second form");
     assert.equal(button("Fit width").getAttribute("aria-pressed"), "true");
     assert.equal(button("Next screenshot").disabled, true);
     await click("Previous screenshot");
-    assert.equal(document.querySelector('[role="dialog"] img')?.getAttribute("alt"), "First form");
+    assert.equal(document.querySelector('[role="dialog"] .log-viewer-image')?.getAttribute("alt"), "First form");
     await click("Whole image");
     assert.equal(button("Whole image").getAttribute("aria-pressed"), "true");
   });
@@ -54,9 +55,13 @@ describe("classified log screenshot viewer", () => {
     const image = document.querySelector("img");
     assert.ok(image);
     await act(async () => image.dispatchEvent(new Event("error")));
-    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Screenshot could not be displayed/);
-    assert.match(document.body.textContent ?? "", /UCPath · Termination/);
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Screenshot could not be loaded/);
+    assert.equal(document.querySelector(".log-capture-header")?.textContent, "UCPathFull form");
+    assert.match(document.querySelector("figcaption")?.textContent ?? "", /Termination/u);
     assert.equal(document.querySelector("img"), null);
+    await click("Retry screenshot");
+    assert.ok(document.querySelector("img"));
+    assert.equal(document.querySelector('[role="alert"]'), null);
   });
   it("rejects declared-dimension mismatches and leaves other captures intact", async () => {
     await mount();
@@ -65,6 +70,7 @@ describe("classified log screenshot viewer", () => {
     Object.defineProperties(image, { naturalWidth: { value: 400 }, naturalHeight: { value: 400 } });
     await act(async () => image.dispatchEvent(new Event("load")));
     assert.equal(document.querySelectorAll('[role="alert"]').length, 1);
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /expected 850 × 1050, received 400 × 400/u);
     assert.equal(document.querySelectorAll("img").length, 1);
   });
   it("has no capture controls for an empty group", async () => {

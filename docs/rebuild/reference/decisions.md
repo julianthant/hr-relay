@@ -7,8 +7,13 @@ step progress plus an operation member table with a boxed finished/total count. 
 render separately without changing publication. Review text is blue; Write parked remains yellow.
 The RRSS HR navbar retains every view and separates its paired history arrows with a divider.
 Logs screenshots sit beside their action and use fields/form/browser/person presentation classes,
-bounded previews and fit-width/whole-image/100% viewing. The local fixture has 16 fictional captures;
-backend classifiers and the revised failure/review/write-parked blocks remain deferred.
+bounded previews and fit-width/whole-image/100% viewing. The 2026-10-02 approval adds all 33 local
+log-block examples, required-only continuation forms, ordinary follow-up logs, neutral borders,
+indented fitted notices and timestamps in the log rail. The image workspace uses a thumbnail sidebar,
+zoom, rotation and comparison, closes on outside click and retries explicit load failures. The timeline
+retains completed stages and grays future stages without visible “Upcoming” text; only the affected
+portion changes state/color.
+Backend classifiers and failure/resolve wiring remain deferred.
 Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
 
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**

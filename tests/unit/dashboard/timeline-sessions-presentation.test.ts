@@ -5,12 +5,12 @@ import { describe, it } from "vitest";
 import { SessionPanel } from "../../../src/dashboard/surfaces/session-panel.js";
 import { previewSessionAdd, previewSessionControl, sessionsSample } from "../../../src/dashboard/surfaces/sessions/sessions-fixture.js";
 import { sessionTimelineSummary, sessionTallies } from "../../../src/dashboard/surfaces/sessions/sessions-view-model.js";
-import { previewScenarios, separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
+import { decisionScenarios, previewScenarios, separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
 import { visualLogSteps } from "../../../src/dashboard/surfaces/log-feed-model.js";
 
 describe("frontend timeline and sessions", () => {
   it("every available timeline jump targets a displayed confirmed-action step", () => {
-    for (const scenario of previewScenarios) {
+    for (const scenario of [...previewScenarios, ...decisionScenarios]) {
       const visual = new Set(visualLogSteps(scenario.steps).map(step => step.id));
       assert.equal(scenario.timeline.length, 5);
       for (const stage of scenario.timeline) {
@@ -39,6 +39,21 @@ describe("frontend timeline and sessions", () => {
     }
     assert.equal(previewScenarios.find(item => item.id === "failed")?.timeline.at(-1)?.substeps.at(-1)?.state, "failed");
     assert.ok(previewScenarios.find(item => item.id === "waiting")?.timeline.some(stage => stage.substeps.some(substep => substep.state === "waiting")));
+  });
+  it("preserves completed stages and grays later stages around the affected portion", () => {
+    const full = previewScenarios.find(item => item.id === "separation")!;
+    const failure = decisionScenarios.find(item => item.id === "failure-prepared")!;
+    assert.equal(failure.timeline.length, 5);
+    assert.deepEqual(failure.timeline.slice(0, 3), full.timeline.slice(0, 3));
+    assert.equal(failure.timeline[3].label, "File termination");
+    assert.equal(failure.timeline[3].state, "failed");
+    assert.equal(failure.timeline[4].state, "pending");
+    assert.equal(failure.timeline[4].durationLabel, undefined);
+    const review = decisionScenarios.find(item => item.id === "review-employment")!;
+    assert.deepEqual(review.timeline[0], full.timeline[0]);
+    assert.equal(review.timeline[1].label, "Verify employee");
+    assert.equal(review.timeline[1].state, "waiting");
+    assert.ok(review.timeline.slice(2).every(stage => stage.state === "pending"));
   });
   it("local worker controls preserve peers and input fixtures; invalid transitions fail loud", () => {
     const data = sessionsSample("active");

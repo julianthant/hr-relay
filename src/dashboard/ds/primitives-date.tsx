@@ -22,7 +22,7 @@ function textDateValue(value: string): CalendarDate | null {
 }
 
 /** The calendar used by every ordinary date field in the dashboard. */
-export function DateInput({ label, value, onChange, min, max, inline = false, className, textEntry = false, disabled = false, required = false }: {
+export function DateInput({ label, value, onChange, min, max, inline = false, className, textEntry = false, disabled = false, required = false, onOpenChange }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
@@ -34,12 +34,13 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
   textEntry?: boolean;
   disabled?: boolean;
   required?: boolean;
+  onOpenChange?: (open: boolean) => void;
 }) {
   const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const selected = textEntry ? textDateValue(value) : dateValue(value);
   return (
     <DatePicker
-      onOpenChange={open => { if (!open) setYearPickerOpen(false); }}
+      onOpenChange={open => { if (!open) setYearPickerOpen(false); onOpenChange?.(open); }}
       value={selected}
       onChange={date => onChange(date === null ? "" : textEntry ? `${String(date.month)}/${String(date.day)}/${String(date.year)}` : date.toString())}
       minValue={dateValue(min) ?? undefined}

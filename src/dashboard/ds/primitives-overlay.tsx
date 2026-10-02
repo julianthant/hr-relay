@@ -271,6 +271,7 @@ export function DialogContent({
   hideClose,
   className,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   children,
 }: {
   title: ReactNode;
@@ -279,6 +280,7 @@ export function DialogContent({
   hideClose?: boolean;
   className?: string;
   onCloseAutoFocus?: (event: Event) => void;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
   children: ReactNode;
 }) {
   return (
@@ -290,6 +292,7 @@ export function DialogContent({
         hideClose={hideClose}
         className={className}
         onCloseAutoFocus={onCloseAutoFocus}
+        onEscapeKeyDown={onEscapeKeyDown}
       >
         {children}
       </DialogSurface>
@@ -305,6 +308,7 @@ function DialogSurface({
   hideClose,
   className,
   onCloseAutoFocus,
+  onEscapeKeyDown,
   children,
 }: {
   title: ReactNode;
@@ -313,6 +317,7 @@ function DialogSurface({
   hideClose?: boolean;
   className?: string;
   onCloseAutoFocus?: (event: Event) => void;
+  onEscapeKeyDown?: (event: KeyboardEvent) => void;
   children: ReactNode;
 }) {
   const entered = useEntered();
@@ -322,6 +327,7 @@ function DialogSurface({
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
         onCloseAutoFocus={onCloseAutoFocus}
+        onEscapeKeyDown={onEscapeKeyDown}
         className={cn(
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],

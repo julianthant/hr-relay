@@ -15,6 +15,18 @@ segmented bar, and operation members in Name/Status columns with a boxed finishe
 Review messages are blue; Write parked remains yellow. Existing reference screenshots have not been
 refrozen. Focused presentation and interaction specs verify this approved change in both themes.
 
+## Approved log blocks and image workspace (2026-10-02)
+
+The [dashboard presentation amendment](../../docs/rebuild/reference/dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01)
+owns the 33 local examples, neutral frames, required-only continuation forms, ordinary follow-up logs,
+fitted indented notices and timestamps in the surrounding log. Keep the established typography and
+shared DateInput calendar. The viewer has bounded previews, a thumbnail sidebar, fit/zoom/rotate,
+comparison, outside dismissal, explicit load/mismatch errors and Retry. Preserve the complete pipeline:
+earlier completed stages retain their state and durations, future stages are gray without visible
+“Upcoming” text, and only the affected
+stage/substep changes color. Focused dark/light 1024/1440 interaction and accessibility checks cover
+these approved changes. Reference screenshots have not been refrozen; backend wiring remains deferred.
+
 ## Ruled deviations from the rebuild-demo
 
 One shell affordance has no demo counterpart and STAYS, ruled by **D272 item 3**

@@ -3,9 +3,13 @@ import { ArrowDownToLine, Check, Copy, Cpu, Eye, GitBranch, Info, Monitor, Mouse
 import { Button, IconButton, SearchInput } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { filterLogSteps, logPlainText, logRowCount, visualLogSteps, type LogEntry, type LogStep } from "./log-feed-model.js";
+import { LogDecisionBlock } from "./log-decision.js";
+import type { LogDecisionAction, LogDecisionAnswer } from "./log-decision-model.js";
 import { LogScreenshots } from "./log-screenshots.js";
 
-function Entry({ entry }: { entry: LogEntry }) {
+function Entry({ entry, onDecision, timeInStep = false }: { entry: LogEntry; timeInStep?: boolean; onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void }) {
+  if (entry.kind === "decision" && timeInStep) return <LogDecisionBlock decision={entry.decision} onAction={onDecision ? (action, answer) => onDecision(entry.id, action, answer) : undefined} />;
+  if (entry.kind === "decision") return <div className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-3"><time className="pt-4 font-data text-caption tabular-nums text-ui-muted">{entry.time}</time><LogDecisionBlock decision={entry.decision} onAction={onDecision ? (action, answer) => onDecision(entry.id, action, answer) : undefined} /></div>;
   if (entry.kind === "fields") return <div className={cn("overflow-hidden rounded-lg border border-ui-stroke bg-ui-table", entry.title === undefined && entry.result === undefined && "px-3")}>
     {entry.title && <div className="flex items-center gap-2.5 border-b border-ui-stroke px-3 py-3"><PanelsTopLeft aria-hidden className="size-4 shrink-0 text-ui-muted" /><h4 className="m-0 text-control font-semibold">{entry.title}</h4></div>}
     <dl className={cn("m-0", (entry.title !== undefined || entry.result !== undefined) && "px-3")}>
@@ -27,7 +31,12 @@ function Entry({ entry }: { entry: LogEntry }) {
       <span className="inline-flex min-w-0 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-2.5 py-1.5 text-body font-medium"><MousePointer2 aria-hidden className="size-3.5 shrink-0 text-ui-muted" />{entry.label}</span>
     </div>
   </div>;
-  return <div className="grid grid-cols-[var(--spacing-log-time)_1rem_minmax(0,1fr)] items-baseline gap-3 py-1 text-body text-ui-secondary"><time className="font-data text-caption tabular-nums text-ui-muted">{entry.time}</time><Info aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-muted" /><p className="m-0 min-w-0 text-balance [overflow-wrap:break-word]">{entry.message}</p></div>;
+  return <LogNote entry={entry} timeInStep={timeInStep} />;
+}
+function LogNote({ entry, timeInStep }: { entry: Extract<LogEntry, { kind: "note" }>; timeInStep: boolean }) {
+  const target = useRef<HTMLParagraphElement>(null);
+  useEffect(() => { if (entry.announce) target.current?.focus(); }, [entry.id, entry.announce]);
+  return <div className={cn("grid items-baseline gap-3 py-1 text-body", timeInStep ? "grid-cols-[1rem_minmax(0,1fr)]" : "grid-cols-[var(--spacing-log-time)_1rem_minmax(0,1fr)]", entry.tone === "positive" ? "text-ui-positive" : entry.tone === "danger" ? "text-ui-danger" : entry.tone === "info" ? "text-ui-info" : "text-ui-secondary")}>{!timeInStep && <time className="font-data text-caption tabular-nums text-ui-muted">{entry.time}</time>}<Info aria-hidden className="size-3.5 self-start translate-y-0.5 text-ui-muted" /><p ref={target} tabIndex={entry.announce ? -1 : undefined} className="m-0 min-w-0 rounded-sm text-balance [overflow-wrap:break-word] focus-visible:outline-2 focus-visible:outline-ui-info">{entry.message}</p></div>;
 }
 
 function FieldValue({ value }: { value: string }) {
@@ -35,8 +44,9 @@ function FieldValue({ value }: { value: string }) {
 }
 
 /** Shared presentation for the operator stream and the isolated design preview. */
-export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, loading = false }: {
+export function LogFeed({ steps, label = "Run logs", embedded = false, beforeContent, afterStep, trailingContent, footerContent, navigation, onDecision, loading = false }: {
   steps: readonly LogStep[];
+  onDecision?: (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => void;
   label?: string;
   embedded?: boolean;
   loading?: boolean;
@@ -81,10 +91,10 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
         return content == null ? null : <div key={step.id}>{content}</div>;
       })}
       {visible.map(step => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-b border-ui-stroke py-5 first:pt-0 last:border-b-0">
-        <time className="pt-0.5 font-data text-caption tabular-nums text-ui-muted">{step.time}</time>
+        <time className={cn("font-data text-caption tabular-nums text-ui-muted", step.header === false ? "pt-4" : "pt-0.5")}>{step.time}</time>
         <div className="min-w-0">
-          <header className="mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
-          <div className="flex min-w-0 flex-col gap-3">{step.entries.map(entry => <div key={entry.id}><Entry entry={entry} />{entry.kind !== "note" && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} />}</div>)}</div>
+          <header className={step.header === false ? "sr-only" : "mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"}><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
+          <div className="flex min-w-0 flex-col gap-3">{step.entries.map((entry, index) => <div key={entry.id}><Entry entry={entry} onDecision={onDecision} timeInStep={step.header === false && index === 0} />{(entry.kind === "fields" || entry.kind === "click") && entry.screenshots && <LogScreenshots screenshots={entry.screenshots} />}</div>)}</div>
         </div>
         {afterStep?.(step.id)}
       </section>)}
