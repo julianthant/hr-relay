@@ -327,4 +327,3 @@ export function auditWorkflowModuleBindings(
   }
   return violations;
 }
-

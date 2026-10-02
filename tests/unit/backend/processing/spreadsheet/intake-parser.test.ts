@@ -138,4 +138,3 @@ describe("prepared intake parser", () => {
     if (newest.state === "parsed") assert.deepEqual(newest.layout?.rows, [["10800000", "Avery Example"]]);
   });
 });
-
