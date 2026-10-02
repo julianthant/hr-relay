@@ -68,6 +68,7 @@ import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js"
 import type { ConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
 import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
 import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
+import { drainBrowserActionNotes } from "../../logs/browser-action-drain.js";
 import {
   withBrowserActionBinding,
   withBrowserActionNotes,
@@ -592,20 +593,17 @@ export async function executeClaimedRun(
 
   const drainBrowserActions = (spanPath: string, actions: readonly BrowserAction[]): void => {
     const sink = deps.taskNotes;
+    if (sink === undefined) return;
     const address = { runId, attempt: envelope.attempt, traceId: envelope.traceId, spanPath };
-    for (const action of actions) {
-      if (sink === undefined) continue;
-      try {
-        sink.emitRunAction({
+    drainBrowserActionNotes({ actions,
+      emitAction: action => { sink.emitRunAction({
           workflow: descriptor.id,
           address,
           action,
-        }, getRun());
-      } catch {
-        // Diagnostic I/O must not change a settled external write into a failed or UNKNOWN result.
-        deps.log.warn("browser action note could not be recorded");
-      }
-    }
+        }, getRun()); },
+      warn: () => deps.log.warn("browser action note could not be recorded"),
+      publisher: deps.confirmedActionPublisher,
+    });
   };
 
   const emit = (event: Readonly<Record<string, unknown>>): void => {
