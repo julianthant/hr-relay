@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Moon, Search, Settings, ShieldCheck, Sun, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Moon, Search, Settings, Sun, X } from "lucide-react";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger, dsFocus, type DemoTheme } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
@@ -100,7 +100,7 @@ export function NavbarView({ data, view, onView, nav, theme, onToggleTheme, sett
   onResult: (result: NavbarSearchResult) => void; notifications: ReactNode;
 }) {
   return <header role="banner" className="ui-theme-scope flex h-13.5 shrink-0 items-center gap-2 border-b border-ui-stroke bg-ui-panel px-3 font-ui text-ui-primary min-[1151px]:gap-3 min-[1151px]:px-4">
-    <div className="flex shrink-0 items-center gap-2"><span className="flex size-7 items-center justify-center rounded-lg bg-ui-table text-ui-warning"><ShieldCheck aria-hidden className="size-4" /></span><h1 className="m-0 whitespace-nowrap text-control font-semibold">HR Automation</h1></div>
+    <h1 className="m-0 shrink-0 whitespace-nowrap text-control font-semibold">RRSS HR</h1>
     <div className="flex shrink-0 gap-px"><button type="button" aria-label="Back" title={nav.backTo ? `Back to ${nav.backTo}` : "Back"} disabled={!nav.canBack} className={iconButton} onClick={nav.onBack}><ArrowLeft aria-hidden className="size-3.5" /></button><button type="button" aria-label="Forward" title={nav.forwardTo ? `Forward to ${nav.forwardTo}` : "Forward"} disabled={!nav.canForward} className={iconButton} onClick={nav.onForward}><ArrowRight aria-hidden className="size-3.5" /></button></div>
     <nav aria-label="Main navigation" className="flex shrink-0 items-center gap-0.5 rounded-lg border border-ui-stroke bg-ui-canvas p-0.5">{NAVBAR_VIEWS.map(item => <button type="button" key={item.id} aria-pressed={view === item.id} onClick={() => onView(item.id)} className={cn("h-6.5 rounded px-2 text-body hover:bg-ui-hover", dsFocus, view === item.id ? "bg-ui-table font-semibold text-ui-primary" : "font-medium text-ui-secondary")}>{item.label}</button>)}</nav>
     <NavbarSearch data={data} onResult={onResult} />

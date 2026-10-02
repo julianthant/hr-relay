@@ -42,7 +42,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const requests = disconnectedRequests(page);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&activity=`);
       const bar = page.getByRole("banner");
-      await expect(bar.getByRole("heading", { name: "HR Automation" })).toBeVisible();
+      await expect(bar.getByRole("heading", { name: "RRSS HR", exact: true })).toBeVisible();
+      await expect(bar.locator("svg.lucide-shield-check")).toHaveCount(0);
       expect((await bar.boundingBox())!.height).toBe(54);
       for (const label of ["Back", "Forward", "Dashboard", "Archive", "Explorer", "Activity", "Search runs", "Choose date", "Notifications, 4 unread", "Settings"]) {
         const control = bar.getByRole("button", { name: label, exact: true });
@@ -57,7 +58,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await bar.getByRole("button", { name: "Explorer", exact: true }).click();
       await expect(page.getByRole("region", { name: "Workflow explorer preview" })).toBeVisible();
       await bar.getByRole("button", { name: "Dashboard", exact: true }).click();
-      await bar.getByRole("heading", { name: "HR Automation", exact: true }).click();
+      await bar.getByRole("heading", { name: "RRSS HR", exact: true }).click();
       await page.locator("[data-demo-row-id]").first().click();
       const runUrl = page.url();
       await expect(bar.getByRole("button", { name: "Back", exact: true })).toBeEnabled();

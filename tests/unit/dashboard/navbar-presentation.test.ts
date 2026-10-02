@@ -13,8 +13,8 @@ describe("canonical frontend navbar", () => {
       view: "queue", onView: noop, nav: { canBack: false, canForward: false, onBack: noop, onForward: noop },
       theme: "dark", onToggleTheme: noop, settingsOpen: false, onOpenSettings: noop,
     }));
-    for (const label of ["HR Automation", "Back", "Forward", "Dashboard", "Archive", "Explorer", "Activity", "Search runs", "Choose date", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
-    assert.doesNotMatch(html, /Preflight|doctor|Storage checks/);
+    for (const label of ["RRSS HR", "Back", "Forward", "Dashboard", "Archive", "Explorer", "Activity", "Search runs", "Choose date", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
+    assert.doesNotMatch(html, /HR Automation|lucide-shield|Preflight|doctor|Storage checks/);
     assert.match(html, /Sat, Sep 26/);
   });
   it("finds every requested word across the local run fields, with no empty-query loss", () => {
