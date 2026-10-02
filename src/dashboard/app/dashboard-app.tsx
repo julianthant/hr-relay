@@ -1,10 +1,9 @@
 import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./url-state.js";
 import { PreflightActionsProvider } from "../state/preflight-actions.js";
-import { resolveDateSelection, routeForDay, routeForStartedRun } from "./date-state-model.js";
+import { resolveDateSelection, routeForStartedRun } from "./date-state-model.js";
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
-import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
 import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
@@ -13,7 +12,6 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
-import type { CrossDateSearchResult } from "../../domain/dashboard/search.js";
 import { EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useDashboardClient } from "../state/client-context.js";
@@ -33,11 +31,10 @@ type PendingCommand,
 } from "../surfaces/actions.js";
 import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/command-recovery.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
-import { serverLocalDay,type DayCountWire } from "../surfaces/date-navigation-model.js";
+import { serverLocalDay } from "../surfaces/date-navigation-model.js";
 import { fmtClock } from "../surfaces/format.js";
 import { type PanelTab } from "../surfaces/log-panel-model.js";
 import { LogSample } from "../surfaces/logs/log-sample.js";
-import { type NotificationRowWire } from "../surfaces/notification-bell-model.js";
 import type { QueueBatch } from "../surfaces/queue-model.js";
 import {
   attentionRunIds,
@@ -97,19 +94,6 @@ shellViewOf,
 type AppRouteState
 } from "./url-state.js";
 
-
-/**
- * The stable empties the three `memo`'d panels are handed when the day has not
- * loaded (D4). `?? []` in a prop slot mints a fresh array on every render, so
- * under `memo` it is a prop that can never compare equal — the wrapper would
- * be pure overhead for exactly the state (still loading) where the most
- * renders happen. `dashboard-memo-prop-stability` refuses the literal form.
- */
-const NO_SURFACES: readonly QueueSurfaceWire[] = Object.freeze([]);
-
-const NO_NOTIFICATIONS: readonly NotificationRowWire[] = Object.freeze([]);
-
-const NO_DAY_COUNTS: readonly DayCountWire[] = Object.freeze([]);
 
 const NO_LOG_TABS: readonly PanelTab[] = Object.freeze([]);
 
@@ -310,7 +294,7 @@ function LoadedApp({
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
-  const { day: dayResource, connection } = useDashboardDay(dateSelection.state === "valid" ? day : undefined);
+  const { day: dayResource } = useDashboardDay(dateSelection.state === "valid" ? day : undefined);
 
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
@@ -509,25 +493,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay: day}), section: "logs" }));
     },
     [route, setRoute, day, leaveSettings],
-  );
-
-  const openNotification = useCallback<OpenNotification>((id, opened, refused) => {
-    void navigateNotification({ lookup: () => client.notificationTarget(id), guard: leaveSettings, refused,
-      open: target => {
-        const base = routeForCrossDateSearchResult(route, { runId: "", partitionDay: day });
-        if (target.kind === "storage") setRoute({ ...base, run: undefined, section: undefined, settings: "storage" });
-        else if (target.kind === "archive") setRoute({ ...base, run: undefined, section: undefined, archive: target.runId, archiveView: "runs" });
-        else setRoute({ ...base, day: target.day, run: target.runId, section: "logs" });
-        opened();
-      },
-    });
-  }, [client, leaveSettings, route, day, setRoute]);
-
-  const selectCrossDateRun = useCallback(
-    (result: CrossDateSearchResult): void => {
-      leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, result), section: "logs" }));
-    },
-    [route, setRoute, leaveSettings],
   );
 
   /**
@@ -1019,32 +984,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     onTab,
   });
 
-  /**
-   * THE `memo` BOUNDARY'S PROPS (D4).
-   *
-   * `TopBar` and `LogPanel` are `memo`'d, so each of these used to be written
-   * inline in a prop slot and each was a fresh reference on every render:
-   * `dayWire?.queueSurfaces ?? []` mints an array whenever the day has not
-   * loaded, `SettingsSectionPrimitiveSchema.array().parse(…)` mints one AND
-   * re-runs a zod parse on every render of the whole app, and an inline
-   * `onDay`/`nav` closes over the route. Naming them here is what makes the
-   * wrappers below real rather than decorative;
-   * `dashboard-memo-prop-stability` refuses the inline forms.
-   */
-  const daySurfaces = useMemo(
-    (): readonly QueueSurfaceWire[] => dayWire?.queueSurfaces ?? NO_SURFACES,
-    [dayWire],
-  );
-  const dayNotifications = useMemo(
-    // The boot document composes this array from zod parts, so it infers as
-    // `unknown[]` at the wire; the day payload is already parsed whole.
-    (): readonly NotificationRowWire[] => dayWire?.notifications ?? NO_NOTIFICATIONS,
-    [dayWire],
-  );
-  const dayMonthCounts = useMemo(
-    (): readonly DayCountWire[] => dayWire?.monthCounts ?? NO_DAY_COUNTS,
-    [dayWire],
-  );
   // The boot document composes this array from zod parts so it infers as
   // `unknown[]`; re-parsing is the check bootstrap's
   // own refinement makes, not a cast past one. It is done ONCE per boot
@@ -1060,13 +999,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
     [workflows],
   );
-  const onSelectDay = useCallback(
-    (next: string): void => { if (next !== day) leaveSettings(() => setRoute(routeForDay(route, next))); },
-    [day, route, setRoute, leaveSettings],
-  );
-
-  const onToday = useCallback(() => leaveSettings(() => setRoute(routeForDay(route, undefined))), [leaveSettings, route, setRoute]);
-
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
   // cannot disagree with a link that carries more than one key.
@@ -1146,26 +1078,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       <TopBar
         view={shellView}
         onView={onShellView}
-        daySurfaces={daySurfaces}
-        workflowLabelOf={workflowLabelOf}
-        onOpenRun={selectRun}
-        onOpenCrossDateResult={selectCrossDateRun}
-        notifications={dayNotifications}
-        onOpenNotification={openNotification}
-        notificationConnected={connection.state === "live" && dayWire !== undefined}
-        actorId={boot.actor.id}
-        nowIso={nowIso}
-        storage={boot.storage}
         settingsOpen={takeover === "settings"}
         onOpenSettings={openSettings}
-        day={day}
-        today={today}
-        dateError={dateError}
-        onToday={onToday}
-        calendarRevision={dayWire}
-        dayState={dayResource.state === "loaded" ? "loaded" : dayResource.state === "failed" ? "failed" : "loading"}
-        monthCounts={dayMonthCounts}
-        onDay={onSelectDay}
         theme={theme}
         onToggleTheme={onToggleTheme}
         nav={nav}
