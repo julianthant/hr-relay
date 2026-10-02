@@ -348,7 +348,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 
   const sessionsEvidence = `sessions-presentation-${theme.attribute}-${width}.a11y.yml`;
-  test(`Sessions local presentation @ ${theme.attribute} ${width}`, { annotation: [{ type: "required-a11y-evidence", description: sessionsEvidence }] }, async ({ page }) => {
+  const sessionsAddEvidence = `sessions-add-${theme.attribute}-${width}.a11y.yml`;
+  test(`Sessions local presentation @ ${theme.attribute} ${width}`, { annotation: [
+    { type: "required-a11y-evidence", description: sessionsEvidence },
+    { type: "required-a11y-evidence", description: sessionsAddEvidence },
+  ] }, async ({ page }) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -485,7 +489,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(dialog).toHaveCSS("opacity", "1");
       await expect(dialog).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
       await test.info().attach(`sessions-add-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      await test.info().attach(`sessions-add-${theme.attribute}-${width}.a11y.yml`, { body: await dialog.ariaSnapshot(), contentType: "text/yaml" });
+      const addSnapshot = await dialog.ariaSnapshot();
+      test.info().annotations.push({ type: `a11y-attachment-sha256:${sessionsAddEvidence}`, description: createHash("sha256").update(addSnapshot).digest("hex") });
+      await test.info().attach(sessionsAddEvidence, { body: addSnapshot, contentType: "text/yaml" });
       await dialog.getByRole("button", { name: "Add workers", exact: true }).click();
       await expect(panel.getByRole("article")).toHaveCount(12);
       await expect(panel.getByRole("heading", { name: "Person lookup", exact: true })).toHaveCount(12);
