@@ -12,7 +12,7 @@ import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
 import { createGateSourceRuntime, type GateSourceDelivery, type GateSourceEnvelope } from "../../src/backend/runtime/gate-source-runtime.js";
-import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
+import { readTimelineRecords } from "../../src/backend/storage/events/timeline-reader.js";
 import {
   executeClaimedRun,
   type ChildRunExecutor,
@@ -31,7 +31,7 @@ import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { GateResultRecord } from "../../src/domain/gates.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { HASH_A, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";

@@ -5,7 +5,7 @@ import ts from "typescript";
 import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT, repoRelative } from "./helpers/guard-files.js";
 
-const ALLOWLIST = ["src/infra/sqlite/authority-database.ts", "src/backend/runs/run-record-service.ts"];
+const ALLOWLIST = ["src/backend/storage/sqlite/authority-database.ts", "src/backend/runs/run-record-service.ts"];
 const RUN_MUTATORS = new Set(["enqueue", "claimNext", "claimEligible", "renewClaim", "transition", "resume", "requeue",
   "sweepExpiredClaims", "requestCancellation", "advanceRevision", "bumpPriority", "updatePresentation", "injectCheckpointPatches",
   "delete", "terminalizeFailure", "terminalizeSuccess"]);
@@ -28,14 +28,14 @@ function mutator(declaration: ts.Declaration | undefined): boolean {
 const ARCHIVE_SECTION_SQL = "UPDATE archived_runs SET transactions_json=?, transactions_digest=? WHERE record_key=? AND transactions_json IS NULL";
 const COMPLETION_SQL = "UPDATE workflow_runs SET record_json = ? WHERE record_key = ?";
 function allowedCompletionSql(relative: string, node: ts.Node): boolean {
-  if (relative !== "src/infra/sqlite/completion-conversion.ts" || !ts.isStringLiteralLike(node) || node.text !== COMPLETION_SQL) return false;
+  if (relative !== "src/backend/storage/sqlite/completion-conversion.ts" || !ts.isStringLiteralLike(node) || node.text !== COMPLETION_SQL) return false;
   for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
     if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "convertRunCompletions";
   }
   return false;
 }
 function allowedArchiveSectionSql(relative: string, node: ts.Node): boolean {
-  if (relative !== "src/infra/sqlite/timeline-conversion.ts" || !ts.isStringLiteralLike(node)
+  if (relative !== "src/backend/storage/sqlite/timeline-conversion.ts" || !ts.isStringLiteralLike(node)
     || node.text !== ARCHIVE_SECTION_SQL) return false;
   for (let parent = node.parent; parent !== undefined; parent = parent.parent) {
     if (ts.isFunctionDeclaration(parent)) return parent.name?.text === "freezeConvertedArchiveTransactions";
@@ -107,7 +107,7 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
       const visit = (node: ts.Node): void => { if (allowedArchiveSectionSql(path, node)) admitted = true; ts.forEachChild(node, visit); };
       visit(source); return admitted;
     };
-    const path = "src/infra/sqlite/timeline-conversion.ts";
+    const path = "src/backend/storage/sqlite/timeline-conversion.ts";
     assert.equal(check(ARCHIVE_SECTION_SQL, path, "freezeConvertedArchiveTransactions"), true);
     assert.equal(check(ARCHIVE_SECTION_SQL, "src/core/guard-fixtures/sql.ts", "freezeConvertedArchiveTransactions"), false);
     assert.equal(check(ARCHIVE_SECTION_SQL, path, "ordinaryRuntime"), false);
@@ -121,10 +121,10 @@ describe("no-lifecycle-sql-outside-the-adapter", () => {
       const visit = (node: ts.Node): void => { if (allowedCompletionSql(path,node)) admitted = true; ts.forEachChild(node,visit); };
       visit(source); return admitted;
     };
-    assert.equal(check("src/infra/sqlite/completion-conversion.ts","convertRunCompletions",COMPLETION_SQL),true);
+    assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","convertRunCompletions",COMPLETION_SQL),true);
     assert.equal(check("src/core/unsafe.ts","convertRunCompletions",COMPLETION_SQL),false);
-    assert.equal(check("src/infra/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
-    assert.equal(check("src/infra/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
+    assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","runtime",COMPLETION_SQL),false);
+    assert.equal(check("src/backend/storage/sqlite/completion-conversion.ts","convertRunCompletions","DELETE FROM workflow_runs"),false);
   });
   it("limits lifecycle writes to the service/adapter and remaining exact stopped conversions", () => { assert.deepEqual(audit(), []); });
   it("detects checked-in SQL, aliased mutator and runs_view reader violations", () => {

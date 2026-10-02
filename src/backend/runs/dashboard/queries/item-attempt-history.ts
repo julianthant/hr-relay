@@ -15,7 +15,7 @@ import { DateOnlySchema } from "../../../../domain/ids.js";
 import type { RunRecord } from "../../../../domain/run/record.js";
 import type { DeletedRunRecord } from "../../../../domain/run/deleted-run.js";
 import type { RunRecordService } from "../../run-record-service.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
 type HistoryRun = Extract<ItemAttemptHistoryRun, { disposition: "live" | "archived" }>;
 

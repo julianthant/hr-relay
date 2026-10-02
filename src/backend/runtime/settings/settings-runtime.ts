@@ -13,7 +13,7 @@ import {
 } from "../../../domain/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../domain/config/protected-settings.js";
 import type { CommandAuthority } from "../../runs/command-kernel.js";
-import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
 /** SQLite is the sole ordinary authority. Revision one is the absent singleton. */
 export function readSettings(repositories: AuthorityRepositories): SettingsFileRecord {

@@ -1,4 +1,4 @@
-import type { AuthorityRepositories } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 /**
  * Explorer draft validation and apply authority (D186/D283).
  *

@@ -33,14 +33,14 @@ import {
   inspectAuthorityBackupReadOnly,
   openAuthorityBackupSourceReadOnly,
 } from "../helpers/synthetic-storage-admission.js";
-import { SettingsCurrentRecordSchema } from "../../src/infra/compat/d331-settings-current.js";
-import { SettingsRootAuthoritySchema } from "../../src/infra/compat/d331-settings-root.js";
+import { SettingsCurrentRecordSchema } from "../../src/backend/storage/compat/d331-settings-current.js";
+import { SettingsRootAuthoritySchema } from "../../src/backend/storage/compat/d331-settings-root.js";
 import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";
 import {
   D350_HISTORICAL_SETTINGS_SCHEMA_HASH,
   D350HistoricalSettingsFileRecordSchema,
   D350HistoricalSettingsRootAuthoritySchema,
-} from "../../src/infra/compat/d350-settings-v2-backup.js";
+} from "../../src/backend/storage/compat/d350-settings-v2-backup.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH } from "../../src/domain/config/protected-settings.js";
 import {
   AuthorityBackupService,
@@ -50,11 +50,11 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   AUTHORITY_APPLICATION_ID,
   SQLITE_MIGRATIONS,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import {
   AuthorityBackupManifestSchema,
   type AuthorityBackupManifest,
-} from "../../src/infra/sqlite/recovery-contracts.js";
+} from "../../src/backend/storage/sqlite/recovery-contracts.js";
 import { createSettingsFileAuthority } from "../fixtures/d331-settings-file.js";
 import { initializeSyntheticSettingsBackupRoot } from "./helpers/settings-backup-fixture.js";
 

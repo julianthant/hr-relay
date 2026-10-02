@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { ActivityReportSelectionSchema } from "../../../src/domain/dashboard/activity-selection.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
 import { composeQueueSummaries } from "../../../src/backend/app/dashboard/compose/queue-summaries.js";
 import { registerActivityRoutes } from "../../../src/backend/transports/dashboard/routes/activity.js";

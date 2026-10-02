@@ -25,7 +25,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { buildRunDetail } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { createArchiveSnapshotSource } from "../../../src/backend/runs/dashboard/queries/archive-snapshot.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import {
   claimEventOf,
   instantOffsetOf,

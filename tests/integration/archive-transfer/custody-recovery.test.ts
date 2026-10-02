@@ -2,13 +2,13 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { it } from "vitest";
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import { id, NOW } from "../../unit/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { composeStorageCommand } from "../../helpers/synthetic-storage-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 

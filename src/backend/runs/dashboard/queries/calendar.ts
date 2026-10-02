@@ -1,6 +1,6 @@
 import { CalendarQuerySchema, CalendarWireSchema, type CalendarQuery, type CalendarWire } from "../../../../domain/dashboard/calendar.js";
 import type { Clock } from "../../../../domain/clock.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
 export interface CalendarQueryService { read(input: CalendarQuery): CalendarWire }
 export function createCalendarQuery(database: Pick<AuthorityDatabase, "queryRunCalendar">, clock: Clock): CalendarQueryService {

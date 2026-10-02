@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { WorkerProcessLockFileSchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { systemClock } from "../../../src/domain/clock.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
@@ -16,7 +16,7 @@ import { SETTINGS_SCHEMA_HASH, deriveSettingsPatchFingerprint } from "../../../s
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { deriveTraceId } from "../../../src/domain/identifiers.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 import { PARITY_DIST_DIR, ensureParityBundle } from "./bundle.js";

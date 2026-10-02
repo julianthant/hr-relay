@@ -1,5 +1,5 @@
 import { join } from "node:path";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { WorkerIdSchema } from "../../../src/domain/ids.js";
 import * as geminiOcr from "../../../src/backend/processing/providers/gemini-ocr-extract.js";
 import { runWorkerLoop } from "../../../src/backend/runtime/worker-loop.js";
@@ -16,7 +16,7 @@ import { randomUUID } from "node:crypto";
 import { chromium } from "playwright";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { createRunResourcesFactory } from "../../../src/backend/app/worker/run-resources.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { afterEach, it, vi } from "vitest";
 import { requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";

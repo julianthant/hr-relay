@@ -1,6 +1,6 @@
 import { historicalArchiveAuthority } from "../integration/helpers/historical-archive-authority.js";
 import { completionFromAuthorization } from "../../src/domain/run/completion.js";
-import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
+import { databaseStateTable } from "../../src/backend/storage/sqlite/migrations.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
@@ -43,11 +43,11 @@ import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js"
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { TerminalAuthorizationRecordSchema } from "../../src/domain/run/terminal-authorization.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
-import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
+import { createSpanJsonlWriter } from "../../src/backend/storage/events/span-jsonl-writer.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
-import { createTimelineRepository } from "../../src/infra/sqlite/timeline-repository.js";
-import { AuthorityDatabase as RealAuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { inspectSpanAuthorityCorpusReadOnly } from "../../src/infra/sqlite/storage-doctor.js";
+import { createTimelineRepository } from "../../src/backend/storage/sqlite/timeline-repository.js";
+import { AuthorityDatabase as RealAuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
+import { inspectSpanAuthorityCorpusReadOnly } from "../../src/backend/storage/sqlite/storage-doctor.js";
 import {
   AuthorityBackupService,
   AuthorityBootStore,
@@ -65,7 +65,7 @@ import {
   acquireRuntimeProcessLock,
   acquireRuntimeRestoreAdmission,
   observeRuntimeLockSnapshot,
-} from "../../src/infra/sqlite/runtime-process-locks.js";
+} from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import {
   ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
   COMMAND_FIXTURES,
@@ -95,7 +95,7 @@ import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   NORMAL_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import { PersonLookupCanonicalInput } from "../../src/workflows/person-lookup/workflow.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
@@ -3751,38 +3751,38 @@ describe("authority.health preflight and static recovery boundary", () => {
   });
 
   it("keeps native SQLite use in the reviewed recovery boundaries and bans copy or VACUUM fallbacks", () => {
-    const adapterPath = "src/infra/sqlite/authority-database.ts";
+    const adapterPath = "src/backend/storage/sqlite/authority-database.ts";
     const sqliteBoundaryPaths = [
-      "src/infra/compat/archive-upgrade-journal.ts",
-      "src/infra/sqlite/archive-compatibility.ts",
-      "src/infra/compat/backup-inspection.ts",
+      "src/backend/storage/compat/archive-upgrade-journal.ts",
+      "src/backend/storage/sqlite/archive-compatibility.ts",
+      "src/backend/storage/compat/backup-inspection.ts",
       adapterPath,
-      "src/infra/sqlite/backup-service.ts",
-      "src/infra/sqlite/archive-database.ts",
-      "src/infra/sqlite/run-evidence-ownership.ts",
-      "src/infra/sqlite/run-summaries.ts",
-    "src/infra/sqlite/completion-conversion.ts",
-      "src/infra/sqlite/stopped-database-conversion.ts",
-      "src/infra/sqlite/timeline-conversion.ts",
-      "src/infra/sqlite/timeline-repository.ts",
-      "src/infra/sqlite/explorer-override-conversion.ts",
-      "src/infra/sqlite/explorer-overrides.ts",
-      "src/infra/sqlite/failure-resolution.ts",
-      "src/infra/sqlite/foundation-retirement.ts",
-      "src/infra/sqlite/generated-artifacts.ts",
-      "src/infra/sqlite/generated-conversion.ts",
-      "src/infra/sqlite/imported-artifacts.ts",
-      "src/infra/sqlite/notification-publications.ts",
-      "src/infra/sqlite/provider-accounting.ts",
-      "src/infra/sqlite/provider-storage.ts",
-      "src/infra/sqlite/relocation-restore-candidate.ts",
-      "src/infra/sqlite/run-search-index.ts",
-      "src/infra/sqlite/runtime-versions.ts",
-      "src/infra/sqlite/settings-activation.ts",
-      "src/infra/sqlite/settings-storage.ts",
-      "src/infra/sqlite/transaction-selection.ts",
-      "src/infra/sqlite/worker-control.ts",
-      "src/server/storage/upgrade.ts",
+      "src/backend/storage/sqlite/backup-service.ts",
+      "src/backend/storage/sqlite/archive-database.ts",
+      "src/backend/storage/sqlite/run-evidence-ownership.ts",
+      "src/backend/storage/sqlite/run-summaries.ts",
+    "src/backend/storage/sqlite/completion-conversion.ts",
+      "src/backend/storage/sqlite/stopped-database-conversion.ts",
+      "src/backend/storage/sqlite/timeline-conversion.ts",
+      "src/backend/storage/sqlite/timeline-repository.ts",
+      "src/backend/storage/sqlite/explorer-override-conversion.ts",
+      "src/backend/storage/sqlite/explorer-overrides.ts",
+      "src/backend/storage/sqlite/failure-resolution.ts",
+      "src/backend/storage/sqlite/foundation-retirement.ts",
+      "src/backend/storage/sqlite/generated-artifacts.ts",
+      "src/backend/storage/sqlite/generated-conversion.ts",
+      "src/backend/storage/sqlite/imported-artifacts.ts",
+      "src/backend/storage/sqlite/notification-publications.ts",
+      "src/backend/storage/sqlite/provider-accounting.ts",
+      "src/backend/storage/sqlite/provider-storage.ts",
+      "src/backend/storage/sqlite/relocation-restore-candidate.ts",
+      "src/backend/storage/sqlite/run-search-index.ts",
+      "src/backend/storage/sqlite/runtime-versions.ts",
+      "src/backend/storage/sqlite/settings-activation.ts",
+      "src/backend/storage/sqlite/settings-storage.ts",
+      "src/backend/storage/sqlite/transaction-selection.ts",
+      "src/backend/storage/sqlite/worker-control.ts",
+      "src/backend/storage/storage/upgrade.ts",
     ].sort();
     const sourceFiles = gitVisibleFiles(["src"]).filter(
       (path) => (path.endsWith(".ts") || path.endsWith(".tsx"))
@@ -3804,6 +3804,6 @@ describe("authority.health preflight and static recovery boundary", () => {
       .join("\n");
     assert.match(adapter, /backup as sqliteBackup/);
     assert.doesNotMatch(boundarySources, /\bcopyFile(?:Sync)?\b/);
-    assert.doesNotMatch(readFileSync(join(REPO_ROOT, "src/infra/sqlite/index.ts"), "utf8"), /DatabaseSync|node:sqlite/);
+    assert.doesNotMatch(readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/index.ts"), "utf8"), /DatabaseSync|node:sqlite/);
   });
 });

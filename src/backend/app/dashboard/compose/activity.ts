@@ -1,5 +1,5 @@
 import { createActivitySelectionService } from "../../../runs/dashboard/queries/activity-selection.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { runtimeTimeZone, type Clock } from "../../../../domain/clock.js";
 import { queryActivitySummaries } from "../../../runs/dashboard/queries/activity-summaries.js";
 import type { ActivityRouteDeps } from "../../../transports/dashboard/routes/activity-types.js";

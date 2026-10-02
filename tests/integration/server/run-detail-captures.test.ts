@@ -1,6 +1,6 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import {captureArchiveReport,genericArchiveSection} from "../../../src/backend/storage/archive/report-capture.js";
-import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
+import {transferArchiveReport} from "../../../src/backend/storage/archive-transfer.js";
 
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
@@ -19,7 +19,7 @@ import type { z } from "zod";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../src/domain/artifacts.js";
 import { CaptureListSchema } from "../../../src/domain/dashboard/run-detail.js";
-import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { FingerprintSchema, DiagnosticBundleIdSchema, FailureIdSchema, RunIdSchema } from "../../../src/domain/ids.js";

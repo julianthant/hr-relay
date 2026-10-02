@@ -9,7 +9,7 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { DryRunScenarioResultSchema } from "../../src/domain/trust/dry-run-scenario-result.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../src/infra/sqlite/storage-records.js";
+import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../src/backend/storage/sqlite/storage-records.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 
 const NOW = "2026-08-25T12:00:00.000Z";

@@ -12,8 +12,8 @@ import {
 } from "../../scripts/secure-env-bootstrap.js";
 
 import { admitLocalEnvironmentFile } from "../../src/domain/secrets.js";
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
-import { parseRelocationCommand } from "../../src/server/storage/relocate.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
+import { parseRelocationCommand } from "../../src/backend/app/storage/relocate.js";
 
 const REPO_ROOT = fileURLToPath(new URL("../..", import.meta.url));
 const TSX = join(REPO_ROOT, "node_modules", ".bin", "tsx");

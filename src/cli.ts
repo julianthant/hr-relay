@@ -1,7 +1,7 @@
 import { join } from "node:path";
-import { AuthorityDatabase } from "./infra/sqlite/authority-database.js";
-import { createTransactionHistory } from "./infra/sqlite/transaction-history.js";
-import { exportTransactions, parseTransactionExportArgs, TRANSACTION_EXPORT_HELP } from "./server/storage/transaction-export.js";
+import { AuthorityDatabase } from "./backend/storage/sqlite/authority-database.js";
+import { createTransactionHistory } from "./backend/storage/sqlite/transaction-history.js";
+import { exportTransactions, parseTransactionExportArgs, TRANSACTION_EXPORT_HELP } from "./backend/storage/storage/transaction-export.js";
 import { fileURLToPath } from "node:url";
 import { rebuildRuntimeIsolation } from "./config/runtime-isolation.js";
 import {
@@ -24,7 +24,7 @@ import { composeExplainRuntime } from "./backend/app/explain-compose.js";
 import { composeOcrCommand } from "./backend/transports/cli/ocr.js";
 import { composeStorageCommand } from "./backend/app/storage-compose.js";
 import { composeWorkerRuntime } from "./backend/app/worker-compose.js";
-import type { RuntimeAdmission } from "./infra/runtime-control/admission.js";
+import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";
 
 /**
  * Compose and start one admitted CLI invocation. Secure bootstrap is the sole

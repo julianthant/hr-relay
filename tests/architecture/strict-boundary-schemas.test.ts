@@ -308,8 +308,8 @@ import {
   SuccessTerminalizationReportSchema,
   SuccessTerminalizationRequestSchema,
   SuccessTerminalizationStorageStepSchema,
-} from "../../src/infra/sqlite/index.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/index.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/backend/storage/sqlite/migrations.js";
 import { buildSafeUiCatalog } from "../../src/backend/systems/ucpath/driver/catalog.js";
 import { CRM_UI_REGISTRY } from "../../src/backend/systems/crm/driver/ui-registry.js";
 import { UCPATH_UI_REGISTRY } from "../../src/backend/systems/ucpath/driver/ui-registry.js";

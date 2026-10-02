@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
-import { archiveFixture } from "../unit/archive-transfer/fixtures.js";
+import { archiveFixture } from "../helpers/archive-transfer/fixtures.js";
 import { id, NOW } from "../unit/database-foundation/fixtures.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
-import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../fixtures/phase1c-contract-fixtures.js";
 import { queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";

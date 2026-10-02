@@ -40,7 +40,7 @@ import {
 import type { QueueSurfaceWire } from "../../../domain/dashboard/projection.js";
 import type { FailureDetailWire, RunDetailWire } from "../../../domain/dashboard/run-detail.js";
 import { isTerminalRunState, type RunRecord } from "../../../domain/run/record.js";
-import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { projectReceiptForOperator } from "../../../domain/trust/evidence.js";
 
 /**

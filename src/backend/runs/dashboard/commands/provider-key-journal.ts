@@ -1,7 +1,7 @@
 import { canonicalJsonStringify } from "../../../../domain/canonical-json.js";
 import { deriveSettingsCommandFingerprint, markSettingsCommand } from "../../../../domain/commands.js";
-import { ProviderKeyStoreUnknownError, type ProviderKeyJournal } from "../../../../infra/config/provider-key-store.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import { ProviderKeyStoreUnknownError, type ProviderKeyJournal } from "../../../storage/config/provider-key-store.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import { providerCommandFromStore } from "./provider-key-projection.js";
 
 export function createProviderKeyJournal(database: AuthorityDatabase): ProviderKeyJournal {

@@ -1,5 +1,5 @@
 import { fixtureAdmission, installationAdmission, releaseAdmissionFixture, releaseAdmissionFixtures } from "../../helpers/admission-fixture.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 /**
  * The composed dashboard runtime over a REAL loopback socket:
@@ -55,11 +55,11 @@ import {
   ExplorerWorkflowOverrideSchema,
 } from "../../../src/domain/dashboard/explorer.js";
 import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
-import { SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import {
   RuntimeProcessLockFileSchema,
   WorkerProcessLockFileSchema,
-} from "../../../src/infra/sqlite/runtime-process-locks.js";
+} from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { explorerEditCommandFingerprint } from "../../../src/domain/dashboard/explorer-override.js";
 import {
   composeDashboardRuntime as composeProductionDashboardRuntime,
@@ -541,7 +541,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
     writeFileSync(join(stateRoot, "settings", "settings.json"), "{}", { mode: 0o600 });
 
     await withAuthorityBuildVariant("current-29", async () => {
-      const build = await import("../../../src/infra/sqlite/migrations.js");
+      const build = await import("../../../src/backend/storage/sqlite/migrations.js");
       assert.equal(build.CURRENT_AUTHORITY_SCHEMA_VERSION, 29);
       const resolver = await import("../../../src/backend/app/config/resolve.js");
       const resolveSpy = vi.spyOn(resolver, "resolveConfigWithProvenance");
@@ -550,7 +550,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
       vi.mocked(openSync).mockClear();
       vi.mocked(mkdirSync).mockClear();
       try {
-        await assert.rejects(composeOlderBuild({ admission: (await import("../../../src/infra/runtime-control/admission.js")).RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot),
+        await assert.rejects(composeOlderBuild({ admission: (await import("../../../src/backend/storage/admission/admission.js")).RuntimeAdmission.syntheticRoots(stateRoot, artifactRoot),
           isolation: rebuildRuntimeIsolation, backendPortOverride: 0, frontendPortOverride: 0,
           env: {}, clock: manualClock(new Date("2026-08-28T12:00:00.000Z")), repoRoot,
         }), new RegExp(`authority schema ${String(CURRENT_AUTHORITY_SCHEMA_VERSION)} is newer than supported 29`, "u"));
@@ -576,7 +576,7 @@ describe("composed dashboard runtime over an owned loopback socket", () => {
         resolveSpy.mockRestore();
       }
     });
-    assert.notEqual((await import("../../../src/infra/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 29,
+    assert.notEqual((await import("../../../src/backend/storage/sqlite/migrations.js")).CURRENT_AUTHORITY_SCHEMA_VERSION, 29,
       "the isolated pre-floor build substitution must not escape its callback");
   });
 

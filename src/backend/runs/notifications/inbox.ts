@@ -36,7 +36,7 @@ import {
   NotificationRecordSchema,
   type NotificationRecord,
 } from "../../../domain/notifications.js";
-import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
 /**
  * The OS delivery seam. It is allowed to fail, and the only thing the inbox

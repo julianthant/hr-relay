@@ -5,18 +5,18 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { ArchiveDatabase } from "../../../src/backend/storage/sqlite/archive-database.js";
 import { GeneratedArtifactSchema } from "../../../src/domain/generated-artifact.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
-import { insertGeneratedArtifact } from "../../../src/infra/sqlite/generated-artifacts.js";
-import { insertImportedArtifact } from "../../../src/infra/sqlite/imported-artifacts.js";
+import { insertGeneratedArtifact } from "../../../src/backend/storage/sqlite/generated-artifacts.js";
+import { insertImportedArtifact } from "../../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../../src/domain/intake/imported-artifact.js";
 import { IntakeSessionSchema } from "../../../src/domain/intake/session.js";
-import { verifyBackupManifestAtPath } from "../../../src/infra/sqlite/backup-service.js";
+import { verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/backup-service.js";
 import { copyRelocationFile, inspectRelocationFiles, prepareRelocationDirectories,
-  verifyRelocationFileCopies, verifyRelocationLiveReferences } from "../../../src/server/storage/relocation-inventory.js";
+  verifyRelocationFileCopies, verifyRelocationLiveReferences } from "../../../src/backend/storage/storage/relocation-inventory.js";
 
 function artifactBytes(bytes: Buffer): Readonly<{ name: string; stored: string }> {
   const sha256 = createHash("sha256").update(bytes).digest("hex");

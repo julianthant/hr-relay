@@ -8,7 +8,7 @@ import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import { ArchiveFileReferenceSchema } from "../../../src/domain/archive/report.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { createDashboardCommandService } from "../../../src/backend/runs/dashboard/commands/command-service.js";
 import { readArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
@@ -19,7 +19,7 @@ import { registerCommandsRoutes } from "../../../src/backend/transports/dashboar
 import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
-import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture } from "../../helpers/archive-transfer/fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { id } from "../../unit/database-foundation/fixtures.js";
 import { FIXTURE_ARCHIVE_EVIDENCE_BYTES } from "./fixture-archive-evidence.js";

@@ -17,8 +17,8 @@ import { HISTORICAL_STEP_PROOF_DESCRIPTORS, historicalStepProofDescriptorOf } fr
 import { systemClock, type Clock } from "../../domain/clock.js";
 import { descriptorRuntimeNodes } from "../../base/workflow.js";
 import { RunIdSchema, TraceIdSchema } from "../../domain/ids.js";
-import { AuthorityDatabase } from "../../infra/sqlite/index.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
+import { AuthorityDatabase } from "../storage/sqlite/index.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
 import { createTrustRunReader } from "../runs/trust/canonical-reader.js";
 import { requireTrustRun, listLiveTrustRuns, assertTrustEvidenceIdentity } from "../runs/trust/run-reader.js";
 import { createReceiptService } from "../runs/trust/receipt-service.js";

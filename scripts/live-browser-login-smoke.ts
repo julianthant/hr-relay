@@ -1,5 +1,5 @@
-import { createCredentialStore } from "../src/infra/config/credential-store.js";
-import { acquireEntrypointAdmission } from "../src/infra/runtime-control/bootstrap-admission.js";
+import { createCredentialStore } from "../src/backend/storage/config/credential-store.js";
+import { acquireEntrypointAdmission } from "../src/backend/storage/admission/bootstrap-admission.js";
 import { fileURLToPath } from "node:url";
 import { hostConfigFacts } from "../src/domain/config/host-display.js";
 /**
@@ -73,8 +73,8 @@ import type { BrowserDeadlineScheduler } from "../src/backend/runtime/browser/br
 import { createCredentialSecretSource, readSettings } from "../src/backend/runtime/settings/settings-runtime.js";
 import { probePrimaryDisplay } from "../src/backend/app/host/primary-display.js";
 import type { AuthenticatedApplicationEvidence } from "../src/backend/systems/browser-shared/login-contract.js";
-import { AuthorityDatabase } from "../src/infra/sqlite/authority-database.js";
-import { acquireRuntimeProcessLock } from "../src/infra/sqlite/runtime-process-locks.js";
+import { AuthorityDatabase } from "../src/backend/storage/sqlite/authority-database.js";
+import { acquireRuntimeProcessLock } from "../src/backend/storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "../src/backend/app/task-registry.js";
 
 const SUPPORTED = new Set(["ucpath", "crm"]);

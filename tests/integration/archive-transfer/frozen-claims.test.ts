@@ -3,16 +3,16 @@ import { it } from "vitest";
 import { join } from "node:path";
 import { renameSync, readFileSync, writeFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import { ArchiveReportSchema } from "../../../src/domain/archive/report.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { admission } from "../../unit/provider-accounting/fixtures.js";
-import { createGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
+import { createGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
 
 it("freezes source and display before any report publication, survives shared updates, and releases temporary captures", () => {
@@ -83,7 +83,7 @@ for (const published of [false,true]) it(`supports an admitted older claim with 
 
 import { foundationFixture, id, NOW, HASH } from "../../unit/database-foundation/fixtures.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { VersionChangeSchema, archiveVersionChange, versionChangeReviewFingerprint } from "../../../src/domain/archive/change-record.js";

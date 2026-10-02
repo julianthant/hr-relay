@@ -5,8 +5,8 @@ import { createWorkerBrowserControl } from "../runtime/worker/worker-browser-con
 import { selectRunRuntime } from "../runs/run-settings.js";
 import { createRunResourcesFactory } from "./worker/run-resources.js";
 import { bindFailureCapture } from "../runs/failure-resolution.js";
-import { createCredentialStore } from "../../infra/config/credential-store.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
+import { createCredentialStore } from "../storage/config/credential-store.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
 import { hostConfigFacts } from "../../domain/config/host-display.js";
 /**
  * The Phase-1f worker composition value: one workflow-scoped browser worker
@@ -86,24 +86,24 @@ import {
 } from "../../domain/secrets.js";
 import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "./host/primary-display.js";
-import { createContentAddressedArtifactWriter } from "../../infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../storage/artifacts/content-addressed-artifact-writer.js";
 import { createDiagnosticCaptureService } from "../../services/trust/diagnostic-capture.js";
 import {
   createRunBrowserScreenshotCapture,
   createRunDiagnosticCapture,
 } from "../../services/trust/run-diagnostic-capture.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../runtime/settings/settings-runtime.js";
-import { createTimelineEmitter } from "../../infra/events/timeline-emitter.js";
-import { createNoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
-import { pruneEventStreams } from "../../infra/events/jsonl-streams.js";
+import { createTimelineEmitter } from "../storage/events/timeline-emitter.js";
+import { createNoteJsonlWriter } from "../storage/events/note-jsonl-writer.js";
+import { pruneEventStreams } from "../storage/events/jsonl-streams.js";
 
 
 import { createTimeoutDeadlineScheduler } from "../runtime/scheduling/timeout-deadline-scheduler.js";
-import { AuthorityDatabase } from "../../infra/sqlite/index.js";
+import { AuthorityDatabase } from "../storage/sqlite/index.js";
 import {
   acquireRuntimeProcessLock,
   type ProcessIdentityObserver,
-} from "../../infra/sqlite/runtime-process-locks.js";
+} from "../storage/sqlite/runtime-process-locks.js";
 import { taskStoreRegistry } from "./task-registry.js";
 
 /**

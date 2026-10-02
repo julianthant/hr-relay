@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { writeFileSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
 import { localDatePart } from "../../src/domain/clock.js";
-import { historyWorld, historicalWorld } from "../unit/transaction-history-fixture.js";
+import { historyWorld, historicalWorld } from "../helpers/storage/transaction-history-fixture.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });
 const instant = "2026-08-03T18:30:00.000Z"; const day = localDatePart(new Date(instant));

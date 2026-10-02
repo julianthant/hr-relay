@@ -1,4 +1,4 @@
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/backend/storage/sqlite/migrations.js";
 import { deriveBulkChildCommand } from "../../src/domain/command-groups.js";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
@@ -13,7 +13,7 @@ import { manualClock } from "../../src/domain/clock.js";
 import { BulkRunCommandRequestSchema, deriveBulkRunCommandFingerprint, CommandRequestSchema } from "../../src/domain/commands.js";
 import { AuthorityDatabase, inspectConvertedAuthority } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { DELEGATION_MANIFEST, DEPENDENCY_RECORD } from "../fixtures/phase1c-contract-fixtures.js";
 

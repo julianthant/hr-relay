@@ -11,8 +11,8 @@ import {
   type BackupServiceStateWire,
   type StorageDoctorWire,
 } from "../../../../domain/dashboard/storage.js";
-import { doctorAuthorityStorage } from "../../../../infra/sqlite/index.js";
-import type { RuntimeAdmission } from "../../../../infra/runtime-control/admission.js";
+import { doctorAuthorityStorage } from "../../../storage/sqlite/index.js";
+import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 
 export interface StorageQueryDeps {
   readonly admission: RuntimeAdmission;

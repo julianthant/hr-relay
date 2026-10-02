@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createHash } from "node:crypto";
@@ -13,8 +13,8 @@ import {
   IsoInstantSchema,
   ProviderAdmissionIdSchema,
 } from "../../src/domain/ids.js";
-import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import type { ArtifactWriteFaultStep } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import type { ArtifactWriteFaultStep } from "../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
 
 async function readStream(stream: Readable): Promise<Uint8Array> {
@@ -100,10 +100,10 @@ describe("task, store, session, provider, and artifact seams", () => {
     const bytes = new TextEncoder().encode("hard crash before publication");
     const sha256 = createHash("sha256").update(bytes).digest("hex");
     const writerModuleUrl = new URL(
-      "../../src/infra/artifacts/content-addressed-artifact-writer.ts",
+      "../../src/backend/storage/artifacts/content-addressed-artifact-writer.ts",
       import.meta.url,
     ).href;
-    const admissionModuleUrl = new URL("../../src/infra/runtime-control/admission.ts", import.meta.url).href;
+    const admissionModuleUrl = new URL("../../src/backend/storage/admission/admission.ts", import.meta.url).href;
     const childSource = `
       import { createContentAddressedArtifactWriter } from ${JSON.stringify(writerModuleUrl)};
       import { RuntimeAdmission } from ${JSON.stringify(admissionModuleUrl)};

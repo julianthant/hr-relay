@@ -8,8 +8,8 @@ import { RunCheckpointRecordSchema } from '../../../src/domain/workflow/checkpoi
 import { SearchPersonOrgOutputSchema } from '../../../src/domain/contracts/ucpath/search-person-org.js';
 import { deriveSchemaHash } from '../../../src/domain/schema-bound-value.js';
 import { RunRecordService } from '../../../src/backend/runs/run-record-service.js';
-import { createTimelineEmitter } from '../../../src/infra/events/timeline-emitter.js';
-import { createTransactionHistory } from '../../../src/infra/sqlite/transaction-history.js';
+import { createTimelineEmitter } from '../../../src/backend/storage/events/timeline-emitter.js';
+import { createTransactionHistory } from '../../../src/backend/storage/sqlite/transaction-history.js';
 import { createOperatorProjection, createOperatorRunDetail } from '../../../src/backend/app/dashboard/compose/operator.js';
 import { queryQueueSummaries, queryActivitySummaries } from '../../../src/backend/runs/dashboard/queries/run-summaries.js';
 import { buildRunDetail } from '../../../src/backend/runs/dashboard/queries/run-detail.js';

@@ -3,7 +3,7 @@ import { createCalendarQuery } from "../../../runs/dashboard/queries/calendar.js
 import { randomBytes } from "node:crypto";
 import { WORKFLOW_MODULES } from "../../control/workflow-registry.js";
 import { SETTINGS_SCHEMA_HASH } from "../../../../domain/config/settings.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { BootstrapQueryDeps } from "../../../runs/dashboard/queries/bootstrap.js";
 import { createCrossDateSearchService } from "../../../runs/dashboard/queries/search.js";
 import type { OperatorXlsxExportServiceDependencies } from "../../../runs/exports/operator-xlsx-export-service.js";

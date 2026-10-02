@@ -1,4 +1,4 @@
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import type { RunEnvelope } from "../../domain/run/envelope.js";
 
 /** Fresh executions may resume their own checkpoints, never another run's latest row. */

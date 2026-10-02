@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 /** Disposable production Intake pipeline. Surrounding dashboard reads use the named fixture server. */
 import { Hono } from "hono";
 import { randomUUID } from "node:crypto";
@@ -10,7 +10,7 @@ import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createIntakeService } from "../../../src/backend/runs/dashboard/commands/intake-service.js";
 import { createIntakeParser } from "../../../src/backend/processing/spreadsheet/intake-parser.js";

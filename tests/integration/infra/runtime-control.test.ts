@@ -7,17 +7,17 @@ import { basename, join } from "node:path";
 import { afterEach, expect, it } from "vitest";
 import { acquireInstallation, recoverAbandonedAdmissionMutex, inspectPendingRelocationRecovery, inspectPendingRelocationStatus,
   type ExclusiveInstallationLease, type RelocationPlanBinding, type RuntimePair,
-  type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../src/infra/runtime-control/installation.js";
-import { acquireRuntimeRestoreAdmission, observeProcessIdentity, type RestoreAdmissionHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
+  type VerifiedRelocationEvidence, type VerifiedRelocationPreparation } from "../../../src/backend/storage/admission/installation.js";
+import { acquireRuntimeRestoreAdmission, observeProcessIdentity, type RestoreAdmissionHandle } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
 import { NonNegativeIntSchema } from "../../../src/domain/ids.js";
 import { manualClock } from "../../../src/domain/clock.js";
-import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../src/infra/runtime-control/admission.js";
-import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/bootstrap-admission.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
-import { projectStorageRelocationPlanHistory } from "../../../src/core/storage-relocation-plans.js";
+import { RuntimeAdmission, acquireRecoveryRuntimeRelocation } from "../../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { createStorageRelocationPlanReader } from "../../../src/backend/storage/storage-relocation-plans.js";
+import { projectStorageRelocationPlanHistory } from "../../../src/backend/storage/storage-relocation-plans.js";
 import { executeStorageRelocationCommand } from "../../../src/backend/runs/command-kernel.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
@@ -1040,7 +1040,7 @@ it("refuses offline mutex recovery while its recorded owner is live", () => {
 it("ignores a dead process lease after a crash outside the mutex", async () => {
   const { workspace, pair } = fixture();
   const initial = adoptSynthetic(workspace, pair); initial.release();
-  const moduleUrl = new URL("../../../src/infra/runtime-control/installation.ts", import.meta.url).href;
+  const moduleUrl = new URL("../../../src/backend/storage/admission/installation.ts", import.meta.url).href;
   const child = spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `import { acquireInstallation } from ${JSON.stringify(moduleUrl)}; acquireInstallation(${JSON.stringify(workspace)}, 'shared'); process.stdout.write('READY\\n'); setInterval(() => {}, 1000);`], { stdio: ["ignore", "pipe", "pipe"] });
   try {
     await new Promise<void>((resolve, reject) => { child.stdout?.once("data", (data: Buffer) => data.toString().includes("READY") ? resolve() : reject(new Error(String(data)))); child.once("error", reject); child.once("exit", (code) => reject(new Error(`child exited ${String(code)}`))); });
@@ -1053,7 +1053,7 @@ it("serializes simultaneous shared and exclusive child-process admission", async
   const { workspace, pair } = fixture();
   const initial = adoptSynthetic(workspace, pair); initial.release();
   const gate = join(workspace, "go");
-  const moduleUrl = new URL("../../../src/infra/runtime-control/installation.ts", import.meta.url).href;
+  const moduleUrl = new URL("../../../src/backend/storage/admission/installation.ts", import.meta.url).href;
   const launch = (mode: "shared" | "exclusive") => spawn(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `import { existsSync } from 'node:fs'; import { acquireInstallation } from ${JSON.stringify(moduleUrl)}; const tick=setInterval(()=>{if(!existsSync(${JSON.stringify(gate)}))return;clearInterval(tick);try{acquireInstallation(${JSON.stringify(workspace)},${JSON.stringify(mode)});process.stdout.write('ACQUIRED');setInterval(()=>{},1000);}catch(error){process.stdout.write('REFUSED:'+String(error));}},1);`], { stdio: ["ignore", "pipe", "pipe"] });
   const shared = launch("shared");
   const exclusive = launch("exclusive");

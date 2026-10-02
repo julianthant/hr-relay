@@ -3,13 +3,13 @@ import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
-import { exportTransactions } from "../../src/server/storage/transaction-export.js";
+import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
+import { exportTransactions } from "../../src/backend/storage/storage/transaction-export.js";
 import { describe, it, vi } from "vitest";
-import { historyWorld, historicalWorld, HISTORY_NOW } from "../unit/transaction-history-fixture.js";
+import { historyWorld, historicalWorld, HISTORY_NOW } from "../helpers/storage/transaction-history-fixture.js";
 import { fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
 import { captureArchiveReport } from "../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../src/backend/storage/archive-transfer.js";
 
 const range = { from: "2026-07-01", to: "2026-09-09" };
 describe("retained archive transaction history", () => {

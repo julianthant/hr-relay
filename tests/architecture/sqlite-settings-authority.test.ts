@@ -11,7 +11,7 @@ import { derivePersistedSettingsFingerprint } from "../../src/domain/config/sett
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import { walkFiles } from "./helpers/guard-files.js";
 
 /** D336: ordinary settings are SQLite authority; file formats survive only as frozen readers. */
@@ -56,11 +56,11 @@ const RETIRED_FILE_AUTHORITY_EXPORTS = new Set([
 
 /** These modules read frozen migration or backup formats; none is ordinary authority. */
 const HISTORICAL_SETTINGS_FILE_READERS = new Set([
-  "src/infra/compat/backup-inspection.ts",
-  "src/infra/compat/d331-protected-journal.ts",
-  "src/infra/compat/d331-settings-current.ts",
-  "src/infra/compat/d331-settings-root.ts",
-  "src/infra/sqlite/backup-service.ts",
+  "src/backend/storage/compat/backup-inspection.ts",
+  "src/backend/storage/compat/d331-protected-journal.ts",
+  "src/backend/storage/compat/d331-settings-current.ts",
+  "src/backend/storage/compat/d331-settings-root.ts",
+  "src/backend/storage/sqlite/backup-service.ts",
 ]);
 
 const FILESYSTEM_PATH_CONSUMERS = new Set([

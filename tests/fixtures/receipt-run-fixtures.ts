@@ -36,7 +36,7 @@ import {
 } from "../../src/domain/write-safety.js";
 import { buildRunResult } from "../../src/backend/runs/run-result.js";
 import type { ReceiptWriteEvidence } from "../../src/backend/runs/evidence-receipt.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { RunRecordSchema, type RunRecord } from "../../src/domain/run/record.js";
 import {
   RunResultRecordSchema,

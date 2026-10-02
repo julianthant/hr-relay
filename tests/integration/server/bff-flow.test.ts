@@ -1,9 +1,9 @@
 import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
-import {createRunLifecycleStorage} from "../../../src/infra/sqlite/lifecycle-storage.js";
+import {createRunLifecycleStorage} from "../../../src/backend/storage/sqlite/lifecycle-storage.js";
 import {captureArchiveReport} from "../../../src/backend/storage/archive/report-capture.js";
-import {transferArchiveReport} from "../../../src/services/archive/archive-transfer.js";
+import {transferArchiveReport} from "../../../src/backend/storage/archive-transfer.js";
 import { RunIdSchema } from "../../../src/domain/ids.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { CommandResultSchema, markSettingsCommand } from "../../../src/domain/commands.js";
@@ -73,15 +73,15 @@ import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { AuthorityDatabase, type AuthorityRepositories } from "../../helpers/synthetic-storage-admission.js";
-import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/backend/storage/sqlite/storage-records.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import {
   createServerVerifiedArtifactReader,
   type ServerVerifiedArtifactReader,
-} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { readTimelineRecords, timelineSpanLocation } from "../../../src/infra/events/timeline-reader.js";
+} from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { readTimelineRecords, timelineSpanLocation } from "../../../src/backend/storage/events/timeline-reader.js";
 import {
   createDashboardCommandService,
   deriveBulkChildCommandId,
@@ -135,7 +135,7 @@ import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER,
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";
 import { archiveQueryDeps, archiveSnapshots } from "../../fixtures/archive-seams.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { UNOBSERVED_BACKFILL_GAP_NOTIFIER } from "../../fixtures/dashboard-stream-seams.js";
 
 interface Harness {

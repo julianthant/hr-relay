@@ -12,7 +12,7 @@ import {
   readRuntimeVersionAuthority,
   registerRuntimeVersionWorkflows,
   runtimeVersionForNewRun,
-} from "../../src/infra/sqlite/runtime-versions.js";
+} from "../../src/backend/storage/sqlite/runtime-versions.js";
 
 const NOW = "2026-09-24T00:00:00.000Z";
 const CHANGE_ID = "00000000-0000-4000-8000-000000000001";

@@ -14,7 +14,7 @@
  */
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";
-import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
+import { readEventStreamLines } from "../../../src/backend/storage/events/jsonl-streams.js";
 import {
   assertDashboardPerformanceStructuralBounds,
   DASHBOARD_PERFORMANCE_STRUCTURAL_BOUNDS,

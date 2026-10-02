@@ -22,7 +22,7 @@ import {
   readScopedEventStreamLines,
   type EventStreamLine,
   type EventStreamScope,
-} from "../../../../infra/events/jsonl-streams.js";
+} from "../../../storage/events/jsonl-streams.js";
 import {
   NoteWireSchema as NoteAtRestSchema,
   projectNoteForOperator,

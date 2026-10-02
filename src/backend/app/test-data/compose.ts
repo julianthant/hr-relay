@@ -8,7 +8,7 @@
  *
  * `migrate --from-credentials` is the ONE writer that moves the two retired
  * canary entries out of the pre-D341 credential document into the private
- * test-data file; its rules live in `src/infra/config/credential-test-data-migration.ts`.
+ * test-data file; its rules live in `src/backend/storage/config/credential-test-data-migration.ts`.
  * Both commands run under the secure bootstrap's environment bypass: they
  * never load `.env`.
  */
@@ -47,7 +47,7 @@ import { TEST_DATA_USAGE } from "../../runs/test-data-usage.js";
 import {
   migrateTestDataFromCredentials,
   type CredentialTestDataMigrationReport,
-} from "../../../infra/config/credential-test-data-migration.js";
+} from "../../storage/config/credential-test-data-migration.js";
 
 export interface TestDataCommandOutcome {
   readonly output: string;
@@ -204,7 +204,7 @@ function fileReport(shared: TestDataShared, local: TestDataLocalReadOutcome, nam
 }
 
 export async function composeTestDataCommand(
-  admission: import("../../../infra/runtime-control/admission.js").RuntimeAdmission,
+  admission: import("../../storage/admission/admission.js").RuntimeAdmission,
   _isolation: RuntimeIsolation,
   args: readonly string[],
   repoRoot: string,

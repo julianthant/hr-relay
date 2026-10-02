@@ -2,7 +2,7 @@ import {
   ProviderKeysCommandRequestSchema, deriveSettingsCommandFingerprint,
   type CommandRequest,
 } from "../../../../domain/commands.js";
-import type { ProviderKeyWriteRequest } from "../../../../infra/config/provider-key-store.js";
+import type { ProviderKeyWriteRequest } from "../../../storage/config/provider-key-store.js";
 
 export function providerStoreRequest(command: Extract<CommandRequest, { type: "apply-provider-keys" }>): ProviderKeyWriteRequest {
   const request = ProviderKeysCommandRequestSchema.parse(command);

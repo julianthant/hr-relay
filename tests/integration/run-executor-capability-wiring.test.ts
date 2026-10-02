@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D162 executor capability wiring (ref data-intake-and-edit-data §4.11): the run executor mints
@@ -45,9 +45,9 @@ import type { RunRecord } from "../../src/domain/run/record.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { HASH_A, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import {
   QUEUED_RUN,

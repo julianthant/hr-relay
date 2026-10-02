@@ -21,7 +21,7 @@ import {
 import type { AnyWorkflowDescriptor } from "../../../base/workflow.js";
 import type { RunEvidenceReceipt } from "../../../domain/trust/evidence.js";
 import type { FailureRecord } from "../../../domain/trust/failure.js";
-import type { AuthorityDatabase } from "../../../infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/index.js";
 import { requireTrustRun, assertTrustEvidenceIdentity } from "./run-reader.js";
 
 export interface ReceiptServiceDeps {

@@ -1,5 +1,5 @@
 import { RuntimeConfigClaimTokenSchema } from "../../domain/config/runtime-generation.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 /** S owns new-run selection; callers retain the chosen immutable snapshot. */
 export function selectRunRuntime(repositories:Pick<AuthorityRepositories,"runtimeConfig">) {
  const active=repositories.runtimeConfig.get();

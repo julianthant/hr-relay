@@ -2,9 +2,9 @@ import { afterEach, expect, it } from "vitest";
 import { existsSync, linkSync, mkdirSync, mkdtempSync, realpathSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { RuntimeAdmission, acquireInitialRuntimeAdmission, requireRuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { ArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";
+import { RuntimeAdmission, acquireInitialRuntimeAdmission, requireRuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
+import { ArchiveDatabase } from "../../src/backend/storage/sqlite/archive-database.js";
 
 const roots: string[] = [];
 function fixture(): string {

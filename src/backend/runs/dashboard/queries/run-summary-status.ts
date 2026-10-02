@@ -1,5 +1,5 @@
 import type { RunQueueStatus } from "../../run-status.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 export type SummaryRow = ReturnType<AuthorityDatabase["queryRunSummaries"]>["items"][number];
 export function statusOf(row:SummaryRow):RunQueueStatus {
   if(row.lifecycle.state === "terminal") {

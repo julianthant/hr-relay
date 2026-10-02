@@ -26,12 +26,12 @@
  */
 import { systemClock } from "../../src/domain/clock.js";
 import { PositiveIntSchema, WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
-import { AuthorityDatabase } from "../../src/infra/sqlite/authority-database.js";
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
-import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/bootstrap-admission.js";
+import { AuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { dirname, join } from "node:path";
-import { acquireRuntimeProcessLock } from "../../src/infra/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const [dbPath, lockRoot, fixtureKind, subcommand, workflowRaw, poolIndexFlag, poolIndexRaw] = process.argv.slice(2);
 if (

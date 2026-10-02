@@ -17,7 +17,7 @@ import { PlaywrightWorkerSessionFactory } from "../../runtime/browser/browser-se
 import { createGeminiOcrExtractAdapter } from "../../processing/providers/gemini-ocr-extract.js";
 import { createCensusGeocodeAdapter, createNominatimGeocodeAdapter } from "../../processing/providers/geocode-adapters.js";
 import { createProviderPool } from "../../processing/providers/provider-pool.js";
-import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { composeDuoCeremonyGateFactory, type DuoCeremonyGateFactory } from "../../runtime/duo-ceremony-gate.js";
 import type { MonotonicDeadlineScheduler } from "../../runtime/deadline-scheduler.js";
 import type { WorkerBrowserSessionFactory } from "../../runtime/worker-sessions.js";

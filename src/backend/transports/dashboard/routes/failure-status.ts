@@ -23,7 +23,7 @@ import {
 import { StartStepOmissionRefusedError } from "../../../runs/start/step-selection.js";
 import { errorText } from "../../../runs/support.js";
 import { ProviderAuditUncertainError } from "../../../runs/command-kernel.js";
-import { ProviderKeyStoreUnknownError } from "../../../../infra/config/provider-key-store.js";
+import { ProviderKeyStoreUnknownError } from "../../../storage/config/provider-key-store.js";
 
 export type WireError = z.infer<typeof WireErrorSchema>;
 
@@ -54,7 +54,7 @@ export function wireError(code: string, message: string, retryable: boolean): Wi
  * the substring table caught by accident: an authority-layer INVARIANT
  * violation whose message happens to contain `"does not exist"` — a start plan
  * row a command names, a notification row, a write intent, a worker lease
- * (`src/infra/sqlite/authority-database.ts` and the kernel modules) — used to
+ * (`src/backend/storage/sqlite/authority-database.ts` and the kernel modules) — used to
  * reach the operator as a 404 saying "the thing you asked for is not here" and
  * now reaches them as a 500 saying "this process is broken". That is the more
  * honest of the two: those rows are not caller-named targets on a request path

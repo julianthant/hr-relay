@@ -2,9 +2,9 @@ import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { foundationFixture, NOW, id } from "../../unit/database-foundation/fixtures.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { ArchiveFileReferenceSchema, ArchiveReportSchema } from "../../../src/domain/archive/report.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";

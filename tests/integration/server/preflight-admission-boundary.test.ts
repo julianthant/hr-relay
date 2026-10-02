@@ -13,7 +13,7 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { initialProtectedStoreRecord, PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedStoreRecordSchema } from "../../../src/domain/config/protected-settings.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { composeRuntimePreflight } from "../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/backend/app/preflight/runtime-runners.js";

@@ -8,7 +8,7 @@ import {
 } from "../../../domain/trust/activity-person-pseudonym-backfill.js";
 import type {
   ActivityPersonPseudonymBackfillWriteCapability,
-} from "../../../infra/sqlite/authority-database.js";
+} from "../../storage/sqlite/authority-database.js";
 
 export interface ActivityPersonPseudonymBackfillAuthority {
   readonly runs: Readonly<{

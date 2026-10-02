@@ -1,9 +1,9 @@
 import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
-import { CanonicalRelaunchRequestSchema } from "../../../src/infra/sqlite/run-store-contracts.js";
+import { CanonicalRelaunchRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -42,7 +42,7 @@ import {
   type AuthorityLifecycleHooks,
   type AuthorityTerminalizationHooks,
 } from "../../helpers/synthetic-storage-admission.js";
-import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+import { createSpanJsonlWriter } from "../../../src/backend/storage/events/span-jsonl-writer.js";
 import { doctorAuthorityStorage } from "../../helpers/synthetic-storage-admission.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, COMMAND_FIXTURES, CONFIG_SNAPSHOT, GATE_RESULT, HASH_A, HASH_C, LATER, NOW, UUID_1, UUID_5, UUID_6 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

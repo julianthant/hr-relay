@@ -25,7 +25,7 @@ import {
   type CredentialUpgradeStore,
 } from "../../helpers/synthetic-storage-admission.js";
 import { migrateTestDataFromCredentials } from "../../helpers/synthetic-storage-admission.js";
-import { observeProcessIdentity } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const COMMAND_1 = "11111111-1111-4111-8111-111111111111";
 const COMMAND_2 = "22222222-2222-4222-8222-222222222222";

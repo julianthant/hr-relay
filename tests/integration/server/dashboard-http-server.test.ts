@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 /**
  * D291 request-lifetime ownership at the real node:http -> Hono adapter.
  *
@@ -15,8 +15,8 @@ import { join } from "node:path";
 import { Hono } from "hono";
 import type { ActorId } from "../../../src/domain/ids.js";
 import { afterEach, describe, it } from "vitest";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import {
   startDashboardHttpServer,
   type DashboardHttpServer,

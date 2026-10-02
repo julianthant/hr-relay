@@ -1,10 +1,10 @@
-import { historicalFixture, withHistoricalAuthority } from "../../unit/archive-transfer/historical-fixtures.js";
+import { historicalFixture, withHistoricalAuthority } from "./helpers/historical-fixtures.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { NOW } from "../../unit/database-foundation/fixtures.js";
 import { ARCHIVE_RELAUNCH } from "../../fixtures/archive-fixtures.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
-import { convertHistoricalArchives } from "../../../src/services/archive/archive-transfer.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
+import { convertHistoricalArchives } from "../../../src/backend/storage/archive-transfer.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 

@@ -4,7 +4,7 @@ import { WorkerBrowserCommandRequestSchema, type CommandRequest, type CommandRes
 import { lifecycleCommandId } from "../../../../domain/lifecycle-command-id.js";
 import { PositiveIntSchema } from "../../../../domain/ids.js";
 import { isLiveWorker } from "../../../../domain/run/worker.js";
-import type { AuthorityRepositories } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 
 type StartRequest = Extract<CommandRequest, { family: "start" }>;
 type WorkerRequest = Extract<CommandRequest, { family: "worker-browser" }>;

@@ -74,7 +74,7 @@ export function reviewedIntakeFixture(input: {
   parser: IntakeParser;
   projection: import("../../src/domain/intake/projection.js").IntakeProjection;
   descriptor: import("../../src/base/workflow.js").AnyWorkflowDescriptor;
-  manifests: Pick<import("../../src/infra/sqlite/authority-database.js").AuthorityRepositories["intakeManifests"], "get" | "findBySource">;
+  manifests: Pick<import("../../src/backend/storage/sqlite/authority-database.js").AuthorityRepositories["intakeManifests"], "get" | "findBySource">;
 }): string | undefined {
   const s = input.session;
   if (s.validation.state !== "validated" || s.sourceName === undefined || s.reservedManifestId === undefined) return undefined;

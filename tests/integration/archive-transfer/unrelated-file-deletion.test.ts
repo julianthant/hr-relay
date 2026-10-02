@@ -2,9 +2,9 @@ import { it } from "vitest";
 import assert from 'node:assert/strict';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { archiveFixture, attachFile } from '../../unit/archive-transfer/fixtures.js';
+import { archiveFixture, attachFile } from '../../helpers/archive-transfer/fixtures.js';
 import { id, NOW } from '../../unit/database-foundation/fixtures.js';
-import { createRunLifecycleStorage } from '../../../src/core/run-lifecycle-storage.js';
+import { createRunLifecycleStorage } from '../../../src/backend/storage/run-lifecycle-storage.js';
 import { projectArchiveReport } from '../../../src/backend/runs/dashboard/queries/archive-reports.js';
 
 function runCase(missing: 'none' | 'target' | 'unrelated') {

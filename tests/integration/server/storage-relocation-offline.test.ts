@@ -5,20 +5,20 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, it } from "vitest";
 import { ArtifactRefSchema } from "../../../src/domain/artifacts.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
-import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
+import { createStorageRelocationPlanReader } from "../../../src/backend/storage/storage-relocation-plans.js";
 import { AppSettingsSchema } from "../../../src/domain/config/app-settings.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
 import { NotificationRecordSchema } from "../../../src/domain/notifications.js";
-import { ArchiveDatabase } from "../../../src/infra/sqlite/archive-database.js";
-import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../src/infra/sqlite/backup-service.js";
-import { acquireSharedRuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { ArchiveDatabase } from "../../../src/backend/storage/sqlite/archive-database.js";
+import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { parseBackupManifestFile, verifyBackupManifestAtPath } from "../../../src/backend/storage/sqlite/backup-service.js";
+import { acquireSharedRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
 import { cleanupFixtureRoots, clock, durableSnapshot, installation, interruptedRelocation, leaveStoppedWal,
-  plan, relocate, WAL_NOTIFICATION_TITLE } from "../../unit/server/helpers/storage-relocation-fixture.js";
+  plan, relocate, WAL_NOTIFICATION_TITLE } from "../storage/helpers/storage-relocation-fixture.js";
 
 afterEach(cleanupFixtureRoots);
 

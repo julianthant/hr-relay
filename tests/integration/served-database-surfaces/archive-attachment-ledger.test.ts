@@ -3,13 +3,13 @@ import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { archiveFixture, attachFile } from '../../unit/archive-transfer/fixtures.js';
+import { archiveFixture, attachFile } from '../../helpers/archive-transfer/fixtures.js';
 import { id, NOW } from '../../unit/database-foundation/fixtures.js';
 import { ledgerCommitFixture } from '../../fixtures/ledger-projection-fixtures.js';
 import { atomicWriteCheckpoint } from '../../helpers/timeline-write-fixture.js';
-import { createTransactionHistory } from '../../../src/infra/sqlite/transaction-history.js';
+import { createTransactionHistory } from '../../../src/backend/storage/sqlite/transaction-history.js';
 import { RunRecordService } from '../../../src/backend/runs/run-record-service.js';
-import { createRunLifecycleStorage } from '../../../src/core/run-lifecycle-storage.js';
+import { createRunLifecycleStorage } from '../../../src/backend/storage/run-lifecycle-storage.js';
 import { projectArchiveReport } from '../../../src/backend/runs/dashboard/queries/archive-reports.js';
 import { queryActivitySummaries } from '../../../src/backend/runs/dashboard/queries/run-summaries.js';
 

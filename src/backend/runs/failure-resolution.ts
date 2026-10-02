@@ -3,7 +3,7 @@ import { localDatePart } from "../../domain/clock.js";
 import { FailureResolutionSchema } from "../../domain/trust/failure-resolution.js";
 import type { CommandApplication } from "./command-application.js";
 import type { FailureResolutionCommand } from "../../domain/commands.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import { rejectCommandRequest } from "./command-refusal.js";
 import { lifecycleCommandId } from "./run-record-service.js";
 

@@ -103,7 +103,7 @@ function installationLocator(checker: ts.TypeChecker, node: ts.PropertyAccessExp
     }
     if ((!ts.isPropertySignature(declaration) && !ts.isGetAccessorDeclaration(declaration)) || declaration.type === undefined) return false;
     return ts.isTypeReferenceNode(declaration.type) && declaredSymbol(checker, declaration.type.typeName,
-      "RuntimeLocator", "src/infra/runtime-control/installation.ts");
+      "RuntimeLocator", "src/backend/storage/admission/installation.ts");
   }) === true;
 }
 
@@ -111,7 +111,7 @@ function durableArchiveCommit(checker: ts.TypeChecker, node: ts.Node): boolean {
   if (!ts.isPropertyAssignment(node) || !ts.isArrowFunction(node.initializer)
     || !ts.isCallExpression(node.initializer.body)) return false;
   const call = node.initializer.body;
-  if (!declaredSymbol(checker, call.expression, "publishManualArchive", "src/core/archive-terminal-runs.ts")) return false;
+  if (!declaredSymbol(checker, call.expression, "publishManualArchive", "src/backend/runs/archive/archive-terminal-runs.ts")) return false;
   const object = node.parent;
   if (!ts.isObjectLiteralExpression(object)) return false;
   const contextual = checker.getContextualType(object);

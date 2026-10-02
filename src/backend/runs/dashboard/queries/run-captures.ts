@@ -16,7 +16,7 @@ import {
 } from "../../refusals.js";
 import { readDiagnosticBundle } from "./diagnostic-bundle.js";
 import { createArtifactVerificationPass } from "./artifact-bytes.js";
-import { VerifiedArtifactOperationalError } from "../../../../infra/artifacts/server-verified-artifact-reader.js";
+import { VerifiedArtifactOperationalError } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import type { RunDetailQueryDeps } from "./run-detail-types.js";
 import { requireTrustRun } from "../../trust/run-reader.js";
 

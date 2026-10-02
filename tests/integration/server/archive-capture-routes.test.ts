@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 /** DCA4: the real HTTP boundary over an immutable test archive repository. */
@@ -26,9 +26,9 @@ import {
   VerifiedArtifactSourceMissingError,
   type ServerVerifiedArtifactReader,
   type VerifiedByteLease,
-} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+} from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { WireErrorSchema } from "../../../src/domain/dashboard/primitives.js";
-import type { AuthorityRepositories } from "../../../src/infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { createDashboardApp, type DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api.js";
 import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";

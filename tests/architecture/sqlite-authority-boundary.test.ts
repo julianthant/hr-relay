@@ -8,35 +8,38 @@ import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 // Private adapter modules have no raw connection in the public SQLite entrypoint.
 // D336 historical backup readers remain; stopped conversion adapters expire in 2.6.
 const PRIVATE_SQLITE_ADAPTERS = [
-  "src/infra/compat/archive-upgrade-journal.ts",
-  "src/infra/compat/backup-inspection.ts",
-  "src/infra/sqlite/archive-compatibility.ts",
-  "src/infra/sqlite/archive-database.ts",
-  "src/infra/sqlite/authority-database.ts",
-  "src/infra/sqlite/backup-service.ts",
-  "src/infra/sqlite/completion-conversion.ts",
-  "src/infra/sqlite/explorer-override-conversion.ts",
-  "src/infra/sqlite/explorer-overrides.ts",
-  "src/infra/sqlite/failure-resolution.ts",
-  "src/infra/sqlite/foundation-retirement.ts",
-  "src/infra/sqlite/generated-artifacts.ts",
-  "src/infra/sqlite/generated-conversion.ts",
-  "src/infra/sqlite/imported-artifacts.ts",
-  "src/infra/sqlite/notification-publications.ts",
-  "src/infra/sqlite/provider-accounting.ts",
-  "src/infra/sqlite/provider-storage.ts",
-  "src/infra/sqlite/run-evidence-ownership.ts",
-  "src/infra/sqlite/run-search-index.ts",
-  "src/infra/sqlite/run-summaries.ts",
-  "src/infra/sqlite/settings-activation.ts",
-  "src/infra/sqlite/settings-storage.ts",
-  "src/infra/sqlite/stopped-database-conversion.ts",
-  "src/infra/sqlite/timeline-conversion.ts",
-  "src/infra/sqlite/timeline-repository.ts",
-  "src/infra/sqlite/transaction-selection.ts",
-  "src/infra/sqlite/worker-control.ts",
+  "src/backend/storage/compat/archive-upgrade-journal.ts",
+  "src/backend/storage/compat/backup-inspection.ts",
+  "src/backend/storage/sqlite/archive-compatibility.ts",
+  "src/backend/storage/sqlite/archive-database.ts",
+  "src/backend/storage/sqlite/authority-database.ts",
+  "src/backend/storage/sqlite/backup-service.ts",
+  "src/backend/storage/sqlite/completion-conversion.ts",
+  "src/backend/storage/sqlite/explorer-override-conversion.ts",
+  "src/backend/storage/sqlite/explorer-overrides.ts",
+  "src/backend/storage/sqlite/failure-resolution.ts",
+  "src/backend/storage/sqlite/foundation-retirement.ts",
+  "src/backend/storage/sqlite/generated-artifacts.ts",
+  "src/backend/storage/sqlite/generated-conversion.ts",
+  "src/backend/storage/sqlite/imported-artifacts.ts",
+  "src/backend/storage/sqlite/notification-publications.ts",
+  "src/backend/storage/sqlite/provider-accounting.ts",
+  "src/backend/storage/sqlite/provider-storage.ts",
+  "src/backend/storage/sqlite/relocation-restore-candidate.ts",
+  "src/backend/storage/sqlite/run-evidence-ownership.ts",
+  "src/backend/storage/sqlite/run-search-index.ts",
+  "src/backend/storage/sqlite/run-summaries.ts",
+  "src/backend/storage/sqlite/runtime-versions.ts",
+  "src/backend/storage/sqlite/settings-activation.ts",
+  "src/backend/storage/sqlite/settings-storage.ts",
+  "src/backend/storage/sqlite/stopped-database-conversion.ts",
+  "src/backend/storage/sqlite/timeline-conversion.ts",
+  "src/backend/storage/sqlite/timeline-repository.ts",
+  "src/backend/storage/sqlite/transaction-selection.ts",
+  "src/backend/storage/sqlite/worker-control.ts",
+  "src/backend/storage/storage/upgrade.ts",
 ];
-const ADAPTER_PATH = "src/infra/sqlite/authority-database.ts";
+const ADAPTER_PATH = "src/backend/storage/sqlite/authority-database.ts";
 
 function isPrivateMember(member: ts.ClassElement): boolean {
   const hashPrivate = member.name !== undefined && ts.isPrivateIdentifier(member.name);
@@ -60,7 +63,7 @@ describe("SQLite authority boundary", () => {
   });
 
   it("exports repositories and inspections without a raw connection or SQL escape hatch", () => {
-    const entrypoint = readFileSync(join(REPO_ROOT, "src/infra/sqlite/index.ts"), "utf8");
+    const entrypoint = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/index.ts"), "utf8");
     assert.doesNotMatch(entrypoint, /node:sqlite|DatabaseSync|\b(exec|prepare|connection|rawDatabase)\b/);
 
     const adapterText = readFileSync(join(REPO_ROOT, ADAPTER_PATH), "utf8");

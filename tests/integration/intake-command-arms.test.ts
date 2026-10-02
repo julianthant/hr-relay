@@ -1,5 +1,5 @@
 import { reviewedIntakeFixture } from "../fixtures/intake-kernel-seams.js";
-import { insertImportedArtifact } from "../../src/infra/sqlite/imported-artifacts.js";
+import { insertImportedArtifact } from "../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../src/domain/intake/imported-artifact.js";
 import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 /**

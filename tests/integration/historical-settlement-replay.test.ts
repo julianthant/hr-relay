@@ -11,10 +11,10 @@ import { RunRecordService, workerRunLifecyclePort } from "../../src/backend/runs
 import { executeSequencedWriteCommit } from "../../src/backend/runtime/write-sequencer.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { currentAtomicWriteFixture } from "../helpers/timeline-write-fixture.js";
-import { SequencedWriteCommitInputSchema } from "../../src/infra/sqlite/write-commit-contracts.js";
+import { SequencedWriteCommitInputSchema } from "../../src/backend/storage/sqlite/write-commit-contracts.js";
 
 it("replays an actual released settlement after conversion without rewriting its journal or accepting changed evidence", async () => {
   // Captured from the pinned baseline after a successful settlement and exact replay.

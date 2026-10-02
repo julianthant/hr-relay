@@ -45,14 +45,15 @@ const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/fixtures/preflight/corpus.ts",
   "tests/helpers/synthetic-storage-admission.ts",
   "tests/helpers/admission-fixture.ts",
+  "tests/helpers/storage/transaction-history-fixture.ts",
 ]);
 const SHARED_ROOTS = ["tests/fixtures", "tests/helpers"];
 const CROSS_TIER_ROOTS = ["tests/scenario", "tests/integration", "tests/parity", "tests/fixtures", "tests/helpers", "tests/process-fixtures", "scripts", "src"];
 /** Seams a shared fixture may never touch at import time. */
 const FORBIDDEN_SHARED_IMPORTS: readonly RegExp[] = [
   /src\/control\/test-data\.js$/u,
-  /src\/infra\/config\/credential-store\.js$/u,
-  /src\/infra\/config\/credential-test-data-migration\.js$/u,
+  /src\/backend\/storage\/config\/credential-store\.js$/u,
+  /src\/backend\/storage\/config\/credential-test-data-migration\.js$/u,
   /secure-env-bootstrap/u,
   /^dotenv/u,
   /^playwright/u,
@@ -76,9 +77,10 @@ function importsOf(path: string) {
 }
 
 const DEFERRED_CAPABILITIES = [
-  { importer: "tests/helpers/admission-fixture.ts", module: "src/infra/config/credential-store.js", symbol: "createCredentialStore" },
-  { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/infra/config/credential-store.js", symbol: "createCredentialStore" },
-  { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/infra/config/credential-test-data-migration.js", symbol: "migrateTestDataFromCredentials" },
+  { importer: "tests/helpers/admission-fixture.ts", module: "src/backend/storage/config/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/config/credential-store.js", symbol: "createCredentialStore" },
+  { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/config/credential-test-data-migration.js", symbol: "migrateTestDataFromCredentials" },
+  { importer: "tests/helpers/storage/transaction-history-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
@@ -256,7 +258,7 @@ describe("D341 test-data ownership", () => {
 
   it("recorded credential capabilities are deferred producer functions", () => {
     for (const entry of DEFERRED_CAPABILITIES) {
-      if (entry.module === "playwright") continue;
+      if (entry.module === "playwright" || entry.module === "node:sqlite") continue;
       const path = entry.module.replace(/\.js$/u, ".ts");
       const source = parseSource(path, readFileSync(join(REPO_ROOT, path), "utf8"));
       const producer = source.statements.find((statement) => ts.isFunctionDeclaration(statement) && statement.name?.text === entry.symbol);
@@ -274,7 +276,7 @@ describe("D341 test-data ownership", () => {
 
   it("capability checks reject eager calls, aliases, namespaces, unlisted symbols and IIFEs", () => {
     const path = "tests/helpers/admission-fixture.ts";
-    const prefix = 'import { createCredentialStore as factory } from "../../src/infra/config/credential-store.js";';
+    const prefix = 'import { createCredentialStore as factory } from "../../src/backend/storage/config/credential-store.js";';
     assert.deepEqual(capabilityViolations(path, `${prefix} export function fixture() { return factory({}); }`), []);
     for (const suffix of ['factory({});', 'new factory({});', 'const alias = factory;', '(() => factory({}))();',
       'function fixture() { return factory({}); } fixture();', '[1].map(() => factory({}));',
@@ -282,9 +284,9 @@ describe("D341 test-data ownership", () => {
       'function inner() { return factory({}); } function outer() { return inner(); } outer();']) {
       assert.ok(capabilityViolations(path, `${prefix} ${suffix}`).length > 0, suffix);
     }
-    assert.ok(capabilityViolations(path, 'import * as credential from "../../src/infra/config/credential-store.js";').length > 0);
-    assert.ok(capabilityViolations(path, 'import { unlisted } from "../../src/infra/config/credential-store.js";').length > 0);
-    assert.ok(capabilityViolations(path, 'import("../../src/infra/config/credential-store.js");').length > 0);
+    assert.ok(capabilityViolations(path, 'import * as credential from "../../src/backend/storage/config/credential-store.js";').length > 0);
+    assert.ok(capabilityViolations(path, 'import { unlisted } from "../../src/backend/storage/config/credential-store.js";').length > 0);
+    assert.ok(capabilityViolations(path, 'import("../../src/backend/storage/config/credential-store.js");').length > 0);
     const corpus = "tests/fixtures/preflight/corpus.ts";
     assert.deepEqual(capabilityViolations(corpus, 'import { chromium } from "playwright"; function test() { vi.spyOn(chromium, "launch"); }'), []);
     assert.ok(capabilityViolations(corpus, 'import { chromium } from "playwright"; function test() { chromium.launch(); }').length > 0);

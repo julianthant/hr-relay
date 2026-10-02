@@ -1,11 +1,11 @@
 import { plan1Leaf, plan1Contract } from "../../fixtures/plan1-operation-workflows.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../../src/domain/workflow/operation-display-snapshot.js";
 import { createDeclaredActionBinder } from "../../../src/backend/runtime/operation-action-binding.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
 import { resolveOperationSource } from "../../../src/backend/runs/dashboard/queries/operation-source.js";
 import { archivedRunContentDigest, type ArchivedRunRecord } from "../../../src/domain/archive/model.js";
 import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";

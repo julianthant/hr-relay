@@ -1,10 +1,10 @@
 import { mkdirSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
-import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/bootstrap-admission.js";
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
-import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../src/infra/sqlite/authority-database.js";
-import { createCredentialStore as productionCredentialStore } from "../../src/infra/config/credential-store.js";
+import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
+import { AuthorityDatabase as ProductionAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../src/backend/storage/sqlite/authority-database.js";
+import { createCredentialStore as productionCredentialStore } from "../../src/backend/storage/config/credential-store.js";
 
 const admissions = new Map<string, RuntimeAdmission>();
 export function initializeAdmissionFixture(root: string): void {

@@ -64,7 +64,7 @@ import type { Clock } from "../../domain/clock.js";
 import type { AnyReadTaskContract } from "../../domain/contracts/base.js";
 import type { GateResultRecord } from "../../domain/gates.js";
 import type { IdFactory } from "../../domain/identifiers.js";
-import type { NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
+import type { NoteJsonlWriter } from "../storage/events/note-jsonl-writer.js";
 import {
   withBrowserActionBinding,
   withBrowserActionNotes,
@@ -120,12 +120,12 @@ import { deriveSchemaHash } from "../../domain/schema-bound-value.js";
 import { planStepOmissions } from "../../domain/workflow/step-omission.js";
 import { requireWorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
 import { jsonLeafPaths } from "../runs/task-provenance.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
-import { RunClaimTokenSchema, type RunClaimToken } from "../../infra/sqlite/run-store-contracts.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
+import { RunClaimTokenSchema, type RunClaimToken } from "../storage/sqlite/run-store-contracts.js";
 import {
   WriteIntentParkCodeSchema,
   type WriteIntentParkCode,
-} from "../../infra/sqlite/write-commit-contracts.js";
+} from "../storage/sqlite/write-commit-contracts.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {
   createAdmittedProviderClient,

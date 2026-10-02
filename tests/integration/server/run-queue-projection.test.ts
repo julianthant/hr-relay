@@ -1,7 +1,7 @@
 import { RunRecordSchema, RunLifecycleSchema } from "../../../src/domain/run/record.js";
 import { DatabaseSync } from "node:sqlite";
-import { createTimelineRepository } from "../../../src/infra/sqlite/timeline-repository.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createTimelineRepository } from "../../../src/backend/storage/sqlite/timeline-repository.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { IsoInstantSchema } from "../../../src/domain/ids.js";
 import { RunSessionRecordSchema } from "../../../src/domain/run/session.js";
 /**
@@ -46,7 +46,7 @@ import {
   workerLeaseOf,
   type DashboardWorld,
 } from "../../unit/server/helpers/dashboard-harness.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../helpers/registered-workflows.js";
 
 /** C completion contract: projection fixtures still carry a valid terminal settlement. */

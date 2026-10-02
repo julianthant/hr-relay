@@ -5,11 +5,11 @@ import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner 
 import { ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../fixtures/phase1c-contract-fixtures.js";
 import { runQueuedSpanEvent } from "../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../../src/domain/ids.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/backend/storage/sqlite/migrations.js";
 import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../src/backend/runs/run-record-service.js";
 import { randomUUID } from "node:crypto";
-import { createSpanJsonlWriter } from "../../src/infra/events/span-jsonl-writer.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createSpanJsonlWriter } from "../../src/backend/storage/events/span-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 /**
  * D322: an authority backup is written ONLY by `cli storage backup`.

@@ -391,7 +391,11 @@ describe("reviewed architecture guard manifest", () => {
       "operation-action-binding", "receipt-derivation-binding", "repeat-proof",
       "run-checkpoint-reader", "run-executor", "run-failure", "worker-loop",
       "worker-sessions", "write-recovery", "write-resolution-binding", "write-sequencer",
-    ].map((name) => `src/backend/runtime/${name}.ts`));
+    ].map((name) => `src/backend/runtime/${name}.ts`)).concat([
+      "archive-runtime-version-changes", "archive-terminal-runs", "archive-version-changes",
+    ].map((name) => `src/backend/runs/archive/${name}.ts`), [
+      "run-lifecycle-storage", "storage-relocation-plans",
+    ].map((name) => `src/backend/storage/${name}.ts`));
     const thresholds = vitestConfig.test?.coverage?.thresholds as Record<string, unknown> | undefined;
     assert.ok(thresholds);
     const missingFloors = (candidate: Record<string, unknown>): string[] => movedCoreFiles.filter((path) =>

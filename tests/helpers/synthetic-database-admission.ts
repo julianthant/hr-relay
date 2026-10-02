@@ -1,6 +1,6 @@
-import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../src/infra/sqlite/authority-database.js";
-import { ArchiveDatabase as RealArchiveDatabase } from "../../src/infra/sqlite/archive-database.js";
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { AuthorityDatabase as RealAuthorityDatabase, AuthorityDatabaseOptionsSchema } from "../../src/backend/storage/sqlite/authority-database.js";
+import { ArchiveDatabase as RealArchiveDatabase } from "../../src/backend/storage/sqlite/archive-database.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 
 export type AuthorityDatabase = RealAuthorityDatabase;
 export type ArchiveDatabase = RealArchiveDatabase;

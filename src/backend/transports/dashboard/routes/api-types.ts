@@ -11,7 +11,7 @@ import type { Hono } from "hono";
 import type { DashboardCommandService } from "../../../runs/dashboard/commands/command-service.js";
 import type { BulkCommandAcceptanceAuthority } from "../../../runs/dashboard/commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../../domain/commands.js";
-import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../../infra/config/provider-key-store.js";
+import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../storage/config/provider-key-store.js";
 import type { StartPlanService } from "../../../runs/dashboard/commands/start-plan-service.js";
 import type { RunQueueProjection } from "../../../runs/dashboard/projectors/run-queue-projection.js";
 import type { StaticBundle } from "../static-bundle.js";

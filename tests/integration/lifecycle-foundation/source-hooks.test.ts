@@ -1,6 +1,6 @@
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import assert from "node:assert/strict";
-import { lifecycleSourceDigest } from "../../../src/core/run-lifecycle-storage.js";
+import { lifecycleSourceDigest } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { describe, it } from "vitest";
 import { foundationFixture, id, failure, terminalizeFixtureFailure, NOW } from "../../unit/database-foundation/fixtures.js";
 

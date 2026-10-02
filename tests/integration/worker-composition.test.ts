@@ -4,7 +4,7 @@ import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import { SettingsFactsWireSchema } from "../../src/domain/dashboard/settings.js";
 import { EditableSettingsWireSchema } from "../../src/domain/dashboard/settings-editor.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema, GateIdSchema, RunIdSchema, TraceIdSchema } from "../../src/domain/ids.js";
 import { createSettingsApplicationExecutor } from "../../src/backend/runs/dashboard/commands/settings-service.js";
@@ -59,7 +59,7 @@ import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import {
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
-} from "../../src/infra/sqlite/runtime-process-locks.js";
+} from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import type { WorkerProcessSupervisor } from "../../src/backend/runtime/worker-loop.js";
 import {
   composeWorkerRuntime,

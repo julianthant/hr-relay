@@ -11,7 +11,7 @@ import { RerunPlanSchema, RepeatWarningSchema, repeatEvidenceDigest, type RerunP
 import type { PlannedRun } from "../../../domain/run/start-plan.js";
 import { sha256Hex } from "../../../domain/sha256.js";
 import { deriveIdempotencyKeyDigest, IdempotencyKeySchema } from "../../../domain/write-safety.js";
-import type { AuthorityRepositories } from "../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 import { projectStartSteps } from "./step-selection.js";
 
 export class RerunRefusedError extends Error {

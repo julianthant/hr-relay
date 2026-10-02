@@ -38,16 +38,16 @@ it("refuses stale summary generations for both served calculations without fallb
   } finally { f.dispose(); }
 });
 
-import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture } from "../../helpers/archive-transfer/fixtures.js";
 import { ledgerCommitFixture } from "../../fixtures/ledger-projection-fixtures.js";
 import { atomicWriteCheckpoint } from "../../helpers/timeline-write-fixture.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { createOperatorProjection } from "../../../src/backend/app/dashboard/compose/operator.js";
 import { queryQueueSummaries, queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 import { composeOperatorXlsxWorkbook } from "../../../src/backend/runs/exports/operator-xlsx-workbook.js";
 import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import readXlsxFile from "read-excel-file/node";
 
 it("keeps JSON, CSV and XLSX transaction totals through archive cleanup/restart and removes them only on explicit deletion", async () => {

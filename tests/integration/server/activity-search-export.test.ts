@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync,rmSync } from "node:fs";
@@ -9,8 +9,8 @@ import { Hono } from "hono";
 import readXlsxFile from "read-excel-file/node";
 import { parse as parseCsvSync } from "csv-parse/sync";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";

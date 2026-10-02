@@ -4,8 +4,8 @@ import { afterEach, describe, it, vi } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 
 import { buildTrustSection, buildRunGate } from "../../../src/backend/runs/dashboard/queries/run-trust.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { readEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { readEventStreamLines } from "../../../src/backend/storage/events/jsonl-streams.js";
 import { createNotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
 import { readGateParks } from "../../../src/backend/app/dashboard/compose/trust.js";
 import { explainRunFrom } from "../../../src/backend/app/explain-compose.js";

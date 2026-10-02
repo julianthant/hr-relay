@@ -38,9 +38,9 @@ import {
   readEventStreamLines,
   readScopedEventStreamLines,
   scopedEventStreamFiles,
-} from "../../src/infra/events/jsonl-streams.js";
+} from "../../src/backend/storage/events/jsonl-streams.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
-import { readTimelineRecords } from "../../src/infra/events/timeline-reader.js";
+import { readTimelineRecords } from "../../src/backend/storage/events/timeline-reader.js";
 import { buildRunSection, runNotePartitionScope } from "../../src/backend/runs/dashboard/queries/run-detail.js";
 import { PERF_FIXTURE_PROFILE, seedDashboardPerfFixture, type PerfFixture } from "./dashboard-fixture.js";
 import { assertStatementCounterObserves, countSqliteStatements } from "./sqlite-statement-counter.js";

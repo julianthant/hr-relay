@@ -24,7 +24,7 @@
         "legacy-source-present:src/cli-daemon.ts",
         "src/backend/app/worker-compose.ts",
         "src/backend/app/runtime-composition.ts",
-        "src/infra/sqlite/runtime-process-locks.ts",
+        "src/backend/storage/sqlite/runtime-process-locks.ts",
         "npm run cli"
       ],
       "status": "implemented"
@@ -444,12 +444,12 @@
       "disposition": {
         "kind": "open",
         "milestone": "workflow-admission-backlog",
-        "reason": "No operator xlsx export exists. src/infra/artifacts/xlsx-retention-sink.ts is a stable-keyed DURABILITY sink whose four-column layout is deliberately not a display layout, and D164 leaves it NOT composed in production because no descriptor declares a projection yet. Ref workflow-model §1.6.3 requires behavioural CLI fixtures and help output for the export family before cutover."
+        "reason": "No operator xlsx export exists. src/backend/storage/artifacts/xlsx-retention-sink.ts is a stable-keyed DURABILITY sink whose four-column layout is deliberately not a display layout, and D164 leaves it NOT composed in production because no descriptor declares a projection yet. Ref workflow-model §1.6.3 requires behavioural CLI fixtures and help output for the export family before cutover."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/exports/export-excel.ts",
-        "src/infra/artifacts/xlsx-retention-sink.ts"
+        "src/backend/storage/artifacts/xlsx-retention-sink.ts"
       ],
       "status": "open"
     },
@@ -465,12 +465,12 @@
       "disposition": {
         "kind": "open",
         "milestone": "workflow-admission-backlog",
-        "reason": "No i9-check tracker export exists. src/infra/artifacts/xlsx-retention-sink.ts states in its own header that the i9-check operator COLUMN LAYOUT belongs to that workflow's migration; the sink only guarantees retry-safe stable-keyed materialization. This closes at order 5 with legacy-workflow-i9-check."
+        "reason": "No i9-check tracker export exists. src/backend/storage/artifacts/xlsx-retention-sink.ts states in its own header that the i9-check operator COLUMN LAYOUT belongs to that workflow's migration; the sink only guarantees retry-safe stable-keyed materialization. This closes at order 5 with legacy-workflow-i9-check."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/exports/i9-check-tracker.ts",
-        "src/infra/artifacts/xlsx-retention-sink.ts"
+        "src/backend/storage/artifacts/xlsx-retention-sink.ts"
       ],
       "status": "open"
     },
@@ -491,7 +491,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/tracker/exports/spreadsheet.ts",
-        "src/infra/artifacts/xlsx-retention-sink.ts"
+        "src/backend/storage/artifacts/xlsx-retention-sink.ts"
       ],
       "status": "open"
     },
@@ -675,7 +675,7 @@
       "verificationEvidence": [
         "legacy-source-present:src/tracker/dashboard/hono/routes/files.ts",
         "src/domain/dashboard/artifacts.ts",
-        "src/infra/artifacts/content-addressed-artifact-writer.ts"
+        "src/backend/storage/artifacts/content-addressed-artifact-writer.ts"
       ],
       "status": "open"
     },
@@ -1235,7 +1235,7 @@
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/compact-tracker.ts",
-        "src/infra/sqlite/storage-doctor.ts"
+        "src/backend/storage/sqlite/storage-doctor.ts"
       ],
       "status": "open"
     },

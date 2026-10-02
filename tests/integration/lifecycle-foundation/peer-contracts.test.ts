@@ -1,8 +1,8 @@
 import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
@@ -168,7 +168,7 @@ it("refuses a corrupt archived peer before deleting a live retry or writing a to
 });
 
 import { versionChangeReviewFingerprint, archiveVersionChange } from "../../../src/domain/archive/change-record.js";
-import { lifecycleSourceDigest } from "../../../src/core/run-lifecycle-storage.js";
+import { lifecycleSourceDigest } from "../../../src/backend/storage/run-lifecycle-storage.js";
 
 it("reserves one apply across connections and supersedes reviews without letting old confirmations claim replacements",()=>{
   const f=foundationFixture();let peer:AuthorityDatabase|undefined;

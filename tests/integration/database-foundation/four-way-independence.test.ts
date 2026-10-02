@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { PositiveIntSchema, ConfigSnapshotIdSchema } from "../../../src/domain/ids.js";
 import { resolutionKernel, resolutionCommand } from "../../unit/failure-resolution/fixtures.js";
 import { ConfigSchema } from "../../../src/domain/config/schema.js";
@@ -15,9 +15,9 @@ import { composeFailureResolution } from "../../../src/backend/app/dashboard/com
 import { bindFailureCapture } from "../../../src/backend/runs/failure-resolution.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
 import { createRunDiagnosticCapture } from "../../../src/services/trust/run-diagnostic-capture.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createArtifactSinkProjector } from "../../../src/infra/artifacts/artifact-sink-projector.js";
-import { createXlsxRetentionSink } from "../../../src/infra/artifacts/xlsx-retention-sink.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createArtifactSinkProjector } from "../../../src/backend/storage/artifacts/artifact-sink-projector.js";
+import { createXlsxRetentionSink } from "../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
 import { projectGeneratedUpdates } from "../../../src/core/generated-artifact-projection.js";
 import { selectRunRuntime,selectNewRunIdentity } from "../../../src/backend/runs/run-settings.js";
 import { runRuntimeMatches } from "../../../src/backend/runs/run-claim-admission.js";
@@ -85,7 +85,7 @@ describe("F actual four-way baseline independence",()=>{
   }finally{f.dispose();}
  });
  it("freezes four distinct existing source sets with no cross-owner mutable imports",()=>{
-  const scopes:Record<string,string[]>={P:["src/infra/sqlite/provider-accounting.ts","src/backend/runs/provider-admission.ts"],D:["src/backend/runs/failure-resolution.ts","src/infra/sqlite/failure-resolution.ts","src/backend/runs/dashboard/queries/failure-resolution.ts","src/backend/runs/dashboard/commands/failure-resolution.ts","src/backend/app/dashboard/compose/failure-resolution.ts","src/backend/runs/dashboard/queries/run-trust.ts","src/dashboard/surfaces/trust.tsx","src/dashboard/surfaces/trust-model.ts"],G:["src/core/generated-artifact-projection.ts","src/infra/sqlite/generated-artifacts.ts","src/infra/artifacts/artifact-sink-projector.ts","src/infra/artifacts/xlsx-retention-sink.ts","src/backend/runs/exports/operator-xlsx-export-service.ts","src/backend/app/dashboard/compose/generated-exports.ts"],S:["src/backend/runs/run-settings.ts","src/backend/runs/run-claim-admission.ts","src/infra/sqlite/settings-activation.ts","src/backend/app/worker/run-resources.ts","src/backend/runtime/settings/settings-runtime.ts","src/backend/runs/dashboard/commands/settings-service.ts","src/backend/runs/dashboard/commands/start-plan-service.ts","src/backend/runs/dashboard/queries/settings.ts","src/backend/runs/dashboard/queries/settings-editor.ts","src/dashboard/surfaces/settings.tsx","src/dashboard/surfaces/settings-model.ts"]};
+  const scopes:Record<string,string[]>={P:["src/backend/storage/sqlite/provider-accounting.ts","src/backend/runs/provider-admission.ts"],D:["src/backend/runs/failure-resolution.ts","src/backend/storage/sqlite/failure-resolution.ts","src/backend/runs/dashboard/queries/failure-resolution.ts","src/backend/runs/dashboard/commands/failure-resolution.ts","src/backend/app/dashboard/compose/failure-resolution.ts","src/backend/runs/dashboard/queries/run-trust.ts","src/dashboard/surfaces/trust.tsx","src/dashboard/surfaces/trust-model.ts"],G:["src/core/generated-artifact-projection.ts","src/backend/storage/sqlite/generated-artifacts.ts","src/backend/storage/artifacts/artifact-sink-projector.ts","src/backend/storage/artifacts/xlsx-retention-sink.ts","src/backend/runs/exports/operator-xlsx-export-service.ts","src/backend/app/dashboard/compose/generated-exports.ts"],S:["src/backend/runs/run-settings.ts","src/backend/runs/run-claim-admission.ts","src/backend/storage/sqlite/settings-activation.ts","src/backend/app/worker/run-resources.ts","src/backend/runtime/settings/settings-runtime.ts","src/backend/runs/dashboard/commands/settings-service.ts","src/backend/runs/dashboard/commands/start-plan-service.ts","src/backend/runs/dashboard/queries/settings.ts","src/backend/runs/dashboard/queries/settings-editor.ts","src/dashboard/surfaces/settings.tsx","src/dashboard/surfaces/settings-model.ts"]};
   const all=Object.values(scopes).flat();assert.equal(new Set(all).size,all.length);for(const path of all)assert.ok(existsSync(path),path);
   for(const [owner,files] of Object.entries(scopes))for(const file of files)for(const [peer,others] of Object.entries(scopes))if(owner!==peer)for(const other of others){const name=other.split("/").at(-1)?.replace(/\.tsx?$/u,"");assert.ok(name);assert.equal(readFileSync(file,"utf8").includes(`/${name}.js"`),false,`${owner} imports mutable ${peer}: ${file}`);}
  });

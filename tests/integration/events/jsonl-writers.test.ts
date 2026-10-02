@@ -23,9 +23,9 @@ import {
   readEventStreamLinesFrom,
   readScopedEventStreamLines,
   scopedEventStreamFiles,
-} from "../../../src/infra/events/jsonl-streams.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createSpanJsonlWriter } from "../../../src/infra/events/span-jsonl-writer.js";
+} from "../../../src/backend/storage/events/jsonl-streams.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createSpanJsonlWriter } from "../../../src/backend/storage/events/span-jsonl-writer.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 
 const roots: string[] = [];

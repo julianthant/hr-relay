@@ -6,7 +6,7 @@ import { RunRecordService } from "../../../runs/run-record-service.js";
 
 import {
   AuthorityDatabase,
-} from "../../../../infra/sqlite/index.js";
+} from "../../../storage/sqlite/index.js";
 
 import { type ArchiveQueryDeps } from "../../../runs/dashboard/queries/archive.js";
 

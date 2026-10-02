@@ -4,7 +4,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { manualClock } from "../../../src/domain/clock.js";
 import { createHash } from "node:crypto";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, databaseStateTable } from "../../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
 
 export function storageRecoveryFixture(version = 0) {

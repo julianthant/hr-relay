@@ -9,7 +9,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";

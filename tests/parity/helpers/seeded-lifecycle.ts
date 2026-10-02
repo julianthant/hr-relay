@@ -16,9 +16,9 @@ deriveIdempotencyKeyDigest,
 deriveWriteAuthorityReason,
 deriveWriteBindingProofDigest,
 } from "../../../src/domain/write-safety.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
 import { PersonLookupCanonicalInput } from "../../../src/workflows/person-lookup/workflow.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { CONFIG_FINGERPRINT,CONFIG_SNAPSHOT_ID,CONTRACT_FINGERPRINT,FAILURE_FINGERPRINT,INGRESS_SCHEMA_HASH,SEEDED_AT,SEEDED_NOW,WORKFLOW_ID } from "./seeded-identity.js";

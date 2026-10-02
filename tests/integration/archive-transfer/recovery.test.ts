@@ -4,7 +4,7 @@ import { it } from "vitest";
 import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 
 it.each([false, true])("transfers a frozen terminal parent/child tree; dependency evidence=%s", (withDependency) => {
   const f = foundationFixture();
@@ -49,7 +49,7 @@ it.each([false, true])("transfers a frozen terminal parent/child tree; dependenc
   } finally { f.dispose(); }
 });
 
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 
 for (const step of ["saveReport", "verifyReport", "transfer", "publishReport", "writeVersionChange", "audit"]) {
@@ -233,7 +233,7 @@ for (const step of ["readPendingReport", "saveReport"] as const) it(`requires ar
 });
 
 import { admission } from "../../unit/provider-accounting/fixtures.js";
-import { createGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
+import { createGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 it("preserves an applying report while shared provider accounting advances independently", () => {

@@ -57,7 +57,7 @@ import {
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const COUNT_FIELDS = new Set(["monthCounts", "workflowCounts", "statusCounts"]);
-const CALENDAR_SUMMARY = "src/infra/sqlite/run-summaries.ts";
+const CALENDAR_SUMMARY = "src/backend/storage/sqlite/run-summaries.ts";
 const THE_PROJECTION = "src/backend/runs/dashboard/projectors/run-queue-projection.ts";
 
 /**
@@ -72,10 +72,10 @@ const THE_PROJECTION = "src/backend/runs/dashboard/projectors/run-queue-projecti
  */
 const LEDGER_BLOCK_BUILDERS = [
   "src/domain/dashboard/activity.ts",
-  "src/infra/sqlite/transaction-history.ts",
+  "src/backend/storage/sqlite/transaction-history.ts",
 ];
 const LEDGER_BLOCK_CONSUMERS = [
-  "src/infra/sqlite/transaction-history.ts",
+  "src/backend/storage/sqlite/transaction-history.ts",
   THE_PROJECTION,
   "src/backend/runs/dashboard/queries/activity-summaries.ts",
 ];

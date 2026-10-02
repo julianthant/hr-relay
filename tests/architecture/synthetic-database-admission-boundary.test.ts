@@ -65,7 +65,7 @@ function forbiddenReach(closure: ReadonlySet<string>): string[] {
 describe("synthetic database fixture admission import boundary", () => {
   it("uses the real databases and admission without loading test-data or storage CLI composition", () => {
     const closure = valueClosure(narrowHelper);
-    for (const required of ["src/infra/sqlite/authority-database.ts", "src/infra/sqlite/archive-database.ts", "src/infra/runtime-control/admission.ts"]) assert.ok(closure.has(required), required);
+    for (const required of ["src/backend/storage/sqlite/authority-database.ts", "src/backend/storage/sqlite/archive-database.ts", "src/backend/storage/admission/admission.ts"]) assert.ok(closure.has(required), required);
     assert.deepEqual(forbiddenReach(closure), []);
     const harness = valueClosure("tests/unit/server/helpers/dashboard-harness.ts");
     assert.ok(harness.has(narrowHelper));
@@ -75,7 +75,7 @@ describe("synthetic database fixture admission import boundary", () => {
   it("launch fixtures retain real authority admission without unrelated command compositions", () => {
     const fixture = "tests/integration/fixtures/source-bound-fixtures.ts";
     const closure = valueClosure("tests/fixtures/run-launch-fixtures.ts");
-    for (const required of [fixture, narrowHelper, "src/infra/sqlite/authority-database.ts", "src/infra/runtime-control/admission.ts"]) assert.ok(closure.has(required), required);
+    for (const required of [fixture, narrowHelper, "src/backend/storage/sqlite/authority-database.ts", "src/backend/storage/admission/admission.ts"]) assert.ok(closure.has(required), required);
     assert.deepEqual(forbiddenReach(closure), []);
     const source = readFileSync(resolve(REPO_ROOT, fixture), "utf8");
     assert.ok(source.includes("../../helpers/synthetic-database-admission.js"));

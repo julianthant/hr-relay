@@ -1,11 +1,11 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture } from "../../helpers/archive-transfer/fixtures.js";
 import { NOW, id } from "../../unit/database-foundation/fixtures.js";
 import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { sealArchiveReport, type ArchiveGroupQuery } from "../../../src/domain/archive/report.js";
 import { projectArchiveReport, queryArchiveReports } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { createFixtureBff } from "../../parity/helpers/fixture-bff.js";

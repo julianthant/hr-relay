@@ -13,7 +13,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { NOW, WRITE_INTENT_ATTEMPTING } from "../fixtures/phase1c-contract-fixtures.js";
 import { createOperationRenameSource, operationFixtureId, OPERATION_TABLE_RENAMES } from "./helpers/operation-names-fixture.js";

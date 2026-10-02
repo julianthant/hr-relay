@@ -3,7 +3,7 @@ import type { VersionChange } from "../../../../domain/archive/change-record.js"
 import { SavedArchiveDeletionStatusWireSchema, SavedArchiveFileWireSchema } from "../../../../domain/dashboard/archive.js";
 import { FingerprintSchema, LOCAL_OPERATOR_ACTOR_ID } from "../../../../domain/ids.js";
 import { SavedVersionIndexWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../../domain/dashboard/archive.js";
-import type { createRunLifecycleStorage } from "../../../../infra/sqlite/lifecycle-storage.js";
+import type { createRunLifecycleStorage } from "../../../storage/sqlite/lifecycle-storage.js";
 import { readArchiveReport, queryArchiveReports } from "./archive-reports.js";
 import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, SavedArchiveGroupsWireSchema, type SavedArchiveQuery } from "../../../../domain/dashboard/archive.js";
 import type { ArchiveGroupQuery } from "../../../../domain/archive/report.js";
@@ -53,7 +53,7 @@ import {
 } from "../../../../domain/archive/model.js";
 import { archiveRetention } from "../../../../domain/archive/retention.js";
 
-import type { AuthorityRepositories } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
 import {
   assessVersionBumpFromRuns,
 } from "../../archive/archive-service.js";
@@ -71,8 +71,8 @@ import { ArtifactIdSchema, RunIdSchema } from "../../../../domain/ids.js";
 import type {
   ServerVerifiedArtifactReader,
   VerifiedByteLease,
-} from "../../../../infra/artifacts/server-verified-artifact-reader.js";
-import { VerifiedArtifactOperationalError } from "../../../../infra/artifacts/server-verified-artifact-reader.js";
+} from "../../../storage/artifacts/server-verified-artifact-reader.js";
+import { VerifiedArtifactOperationalError } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 import {
   ArtifactBytesCorruptError,
   createArtifactVerificationPass,

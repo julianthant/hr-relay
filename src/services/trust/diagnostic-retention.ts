@@ -1,5 +1,5 @@
 import { lifecycleCommandId } from "../../domain/identifiers.js";
-import { CanonicalRunPurgeOutcomeSchema } from "../../infra/sqlite/run-store-contracts.js";
+import { CanonicalRunPurgeOutcomeSchema } from "../../backend/storage/sqlite/run-store-contracts.js";
 /**
  * Ref operator-trust §2.2's retention/pin sweep.
  *
@@ -23,7 +23,7 @@ import { z } from "zod";
 import type { Clock } from "../../domain/clock.js";
 import { ArtifactIdSchema, DiagnosticBundleIdSchema, IsoInstantSchema } from "../../domain/ids.js";
 import { planDiagnosticSweep } from "../../domain/trust/diagnostic-capture.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../backend/storage/sqlite/authority-database.js";
 
 export const DiagnosticSweepReportSchema = z.strictObject({
   sweptAt: IsoInstantSchema,

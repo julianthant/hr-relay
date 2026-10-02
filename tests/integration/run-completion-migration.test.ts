@@ -1,10 +1,10 @@
 import { storageTree } from "./helpers/storage-recovery-fixture.js";
-import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../src/core/run-lifecycle-storage.js";
-import { convertImportedArtifacts } from "../../src/infra/sqlite/imported-artifacts.js";
-import { convertProviderStorage } from "../../src/infra/sqlite/provider-storage.js";
-import { convertAppSettings } from "../../src/infra/sqlite/settings-storage.js";
-import { convertGeneratedArtifacts } from "../../src/infra/sqlite/generated-conversion.js";
-import { assertFoundationRetirement } from "../../src/infra/sqlite/foundation-retirement.js";
+import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../src/backend/storage/run-lifecycle-storage.js";
+import { convertImportedArtifacts } from "../../src/backend/storage/sqlite/imported-artifacts.js";
+import { convertProviderStorage } from "../../src/backend/storage/sqlite/provider-storage.js";
+import { convertAppSettings } from "../../src/backend/storage/sqlite/settings-storage.js";
+import { convertGeneratedArtifacts } from "../../src/backend/storage/sqlite/generated-conversion.js";
+import { assertFoundationRetirement } from "../../src/backend/storage/sqlite/foundation-retirement.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, copyFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -19,14 +19,14 @@ import { HistoricalRunRecordV40Schema, RunRecordSchema } from "../../src/domain/
 import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { OfflineAuthorityRestoreService } from "../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
-import { convertRunCompletions } from "../../src/infra/sqlite/completion-conversion.js";
+import { RecoveryStopProofStore } from "../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID, CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/backend/storage/sqlite/migrations.js";
+import { convertRunCompletions } from "../../src/backend/storage/sqlite/completion-conversion.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 
 const clock = manualClock(new Date("2026-09-09T12:00:00.000Z"));
 const roots: string[] = [];

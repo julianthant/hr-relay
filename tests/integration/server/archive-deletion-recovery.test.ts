@@ -163,7 +163,7 @@ it("preserves historical exact-envelope replay without inventing browser recover
 import { DatabaseSync } from "node:sqlite";
 import { existsSync, readFileSync, renameSync } from "node:fs";
 import { join } from "node:path";
-import { attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import type { SavedArchiveReportWire } from "../../../src/domain/dashboard/archive.js";
 
 function deleteIntent(detail: SavedArchiveReportWire, sequence: number) {

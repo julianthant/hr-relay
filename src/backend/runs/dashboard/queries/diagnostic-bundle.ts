@@ -17,9 +17,9 @@ import {
   VerifiedArtifactOperationalError,
   type ServerVerifiedArtifactReader,
   type VerifiedByteLease,
-} from "../../../../infra/artifacts/server-verified-artifact-reader.js";
-import type { AuthorityRepositories } from "../../../../infra/sqlite/authority-database.js";
-import { DiagnosticAttachmentStorageRecordSchema } from "../../../../infra/sqlite/storage-records.js";
+} from "../../../storage/artifacts/server-verified-artifact-reader.js";
+import type { AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../../../storage/sqlite/storage-records.js";
 import { DiagnosticBundleBytesMissingError, DiagnosticBundleCorruptError, TargetNotFoundError, SectionUnavailableError } from "../../refusals.js";
 import {
   ArtifactBytesCorruptError,

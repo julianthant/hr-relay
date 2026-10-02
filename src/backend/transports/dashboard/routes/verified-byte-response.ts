@@ -1,4 +1,4 @@
-import type { VerifiedByteLease } from "../../../../infra/artifacts/server-verified-artifact-reader.js";
+import type { VerifiedByteLease } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 
 function primaryFirstAggregate(primary: unknown, cleanup: unknown, message: string): AggregateError {
   return new AggregateError([primary, cleanup], message, { cause: primary });

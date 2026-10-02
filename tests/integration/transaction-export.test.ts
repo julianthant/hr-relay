@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { lstatSync, readFileSync, symlinkSync, writeFileSync } from "node:fs";
 import { afterEach, describe, it } from "vitest";
-import { exportTransactions, parseTransactionExportArgs } from "../../src/server/storage/transaction-export.js";
-import { historyWorld } from "../unit/transaction-history-fixture.js";
+import { exportTransactions, parseTransactionExportArgs } from "../../src/backend/storage/storage/transaction-export.js";
+import { historyWorld } from "../helpers/storage/transaction-history-fixture.js";
 const cleanup: (() => void)[] = [];
 afterEach(() => { for (const dispose of cleanup.splice(0)) dispose(); });
 const range = { from: "2026-07-01", to: "2026-09-09" };

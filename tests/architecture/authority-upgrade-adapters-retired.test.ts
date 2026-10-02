@@ -13,10 +13,10 @@ import { walkFiles } from "./helpers/guard-files.js";
 const REPO_ROOT = resolve(import.meta.dirname, "../..");
 
 const STORAGE_COMPOSE = "src/backend/app/storage-compose.ts";
-const HISTORICAL_RESTORE = "src/server/storage/historical-restore.ts";
-const STORAGE_UPGRADE = "src/server/storage/upgrade.ts";
-const STORAGE_RELOCATE = "src/server/storage/relocate.ts";
-const STOPPED_CONVERTER = "src/infra/sqlite/stopped-database-conversion.ts";
+const HISTORICAL_RESTORE = "src/backend/storage/storage/historical-restore.ts";
+const STORAGE_UPGRADE = "src/backend/storage/storage/upgrade.ts";
+const STORAGE_RELOCATE = "src/backend/app/storage/relocate.ts";
+const STOPPED_CONVERTER = "src/backend/storage/sqlite/stopped-database-conversion.ts";
 const SECURE_BOOTSTRAP = "scripts/secure-env-bootstrap.ts";
 const CLI = "src/cli.ts";
 
@@ -229,7 +229,7 @@ function stoppedRelocationBoundary(graph: SourceGraph): readonly string[] {
     visit(block, (part) => {
       if (!ts.isCallExpression(part)) return;
       if (part.expression.kind === ts.SyntaxKind.ImportKeyword
-        && literalValue(part.arguments[0]) === "../src/server/storage/relocate.js") dynamicImport = true;
+        && literalValue(part.arguments[0]) === "../src/backend/app/storage/relocate.js") dynamicImport = true;
       if (ts.isIdentifier(part.expression) && part.expression.text === "parseRelocationCommand") parsedCommand = true;
       if (ts.isIdentifier(part.expression) && part.expression.text === "acquireEntrypointAdmission") acquiredAdmission = true;
       if (ts.isIdentifier(part.expression) && part.expression.text === "runOfflineStorageRelocation") invokedRelocation = true;
@@ -359,7 +359,7 @@ describe("authority-upgrade-adapters-retired", () => {
       sources: new Map(graph.sources).set(SECURE_BOOTSTRAP, parse(SECURE_BOOTSTRAP, body)),
       edges: graph.edges,
     });
-    const importLine = 'const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/server/storage/relocate.js");';
+    const importLine = 'const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/backend/app/storage/relocate.js");';
     assert.ok(source.includes(importLine));
     assert.match(
       stoppedRelocationBoundary(changed(source.replace(importLine, "").replace(

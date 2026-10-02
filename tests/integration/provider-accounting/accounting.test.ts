@@ -1,6 +1,6 @@
 import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import { storageTree } from "../helpers/storage-recovery-fixture.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
@@ -31,7 +31,7 @@ describe("P provider accounting integrity",()=>{
  });
 });
 
-import { createGenericProviderAccounting,inspectGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
+import { createGenericProviderAccounting,inspectGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { admission } from "../../unit/provider-accounting/fixtures.js";
 import { failure,terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
 const done=(n=100)=>({requestId:id(n),expectedVersion:1,now:NOW,state:"settled",usage:[{meter:"requests",quantity:{kind:"measured",value:1}}],reason:null});
@@ -123,7 +123,7 @@ import { join } from "node:path";
 import { backupStoppedAuthority,upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { ProviderAdmissionRecordSchema,ProviderBudgetCounterSchema } from "../../../src/domain/provider-admission.js";
-import { readProviderRequest,readProviderUsage } from "../../../src/infra/sqlite/provider-storage.js";
+import { readProviderRequest,readProviderUsage } from "../../../src/backend/storage/sqlite/provider-storage.js";
 const RaceResult=z.strictObject({state:z.literal("result"),outcome:z.enum(["reserved","denied","existing"]),pid:z.number(),attemptedAt:z.number(),finishedAt:z.number()});
 describe("P concurrency and historical conversion",()=>{
  it("races real independent processes/connections for the final shared allowance",async()=>{
@@ -194,9 +194,9 @@ describe("P concurrency and historical conversion",()=>{
  });
 });
 
-import { LifecycleSourceSnapshotSchema } from "../../../src/core/run-lifecycle-storage.js";
+import { LifecycleSourceSnapshotSchema } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 it("captures an archive without adding usage; archive deletion accounts pending uncertainty exactly once",()=>{
  const f=foundationFixture();const raw=new DatabaseSync(f.path);try{
   const p=createGenericProviderAccounting(f.db.authority.providerAccounting);p.reserve(admission(f));p.finish(done());p.reserve(admission(f,101));

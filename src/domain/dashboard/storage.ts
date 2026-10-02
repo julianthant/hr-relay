@@ -3,7 +3,7 @@ import { ProtectedSettingsPresenceEntriesSchema } from "../config/protected-sett
  * The storage doctor wire (ref dashboard-surfaces §2.5, 2i-D): the read-only recovery report
  * the Settings surface and `cli storage doctor` both render.
  *
- * This is a browser-safe PROJECTION of `src/infra/sqlite/recovery-contracts.ts`
+ * This is a browser-safe PROJECTION of `src/backend/storage/sqlite/recovery-contracts.ts`
  * — the infra schemas pin literals (application id, current schema version)
  * and closed cause vocabularies that belong to the storage layer; the wire
  * carries the same facts as plain strings/numbers so the dashboard bundle

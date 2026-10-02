@@ -1,4 +1,4 @@
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { Hono } from "hono";
 import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
 import { foundationFixture, id } from "../../unit/database-foundation/fixtures.js";
-import { archiveFixture } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture } from "../../helpers/archive-transfer/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { createCalendarQuery } from "../../../src/backend/runs/dashboard/queries/calendar.js";
 import { registerShellRoutes } from "../../../src/backend/transports/dashboard/routes/shell.js";

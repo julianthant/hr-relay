@@ -1,12 +1,12 @@
-import { projectArchiveReport } from "../../infra/sqlite/archive-records.js";
-import { createRunLifecycleStorage } from "../../infra/sqlite/lifecycle-storage.js";
+import { projectArchiveReport } from "../storage/sqlite/archive-records.js";
+import { createRunLifecycleStorage } from "../storage/sqlite/lifecycle-storage.js";
 import { runSettingsAvailable, selectNewRunIdentity } from "./run-settings.js";
 import { runRuntimeMatches } from "./run-claim-admission.js";
 import { localDatePart } from "../../domain/clock.js";
 import { z } from "zod";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../base/workflow.js";
 import { archivedRunReferenceFingerprint } from "../../domain/archive/model.js";
-import { RUNTIME_VERSION_SCHEMA_VERSION, runtimeVersionForNewRun } from "../../infra/sqlite/runtime-versions.js";
+import { RUNTIME_VERSION_SCHEMA_VERSION, runtimeVersionForNewRun } from "../storage/sqlite/runtime-versions.js";
 import {
   RunExistenceSchema,
   type RunExistence,
@@ -53,8 +53,8 @@ import {
   CanonicalTerminalizeRequestSchema,
   CanonicalTransitionRequestSchema,
   CanonicalWorkerTransitionRequestSchema,
-} from "../../infra/sqlite/run-store-contracts.js";
-import type { AuthorityDatabase, AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+} from "../storage/sqlite/run-store-contracts.js";
+import type { AuthorityDatabase, AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 
 const TERMINAL_SELF_EDGE_REFUSAL = "terminal has no self-edge; a settled outcome is settled";
 

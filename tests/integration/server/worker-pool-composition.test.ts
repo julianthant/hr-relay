@@ -32,7 +32,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
-import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/bootstrap-admission.js";
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
 import { DESCRIPTORS } from "../../../src/backend/app/control/workflow-registry.js";
 import {
   createCommandKernel,
@@ -49,7 +49,7 @@ import {
 } from "../../../src/domain/config/settings.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { AuthorityDatabase as AdmittedAuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { AuthorityDatabase as AdmittedAuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import {
   composeDashboardRuntime,
   composeWorkerProcessControl,

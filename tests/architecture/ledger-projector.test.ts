@@ -8,7 +8,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { deriveLedgerLineDigest } from "../../src/domain/ledger-projection.js";
-import { historyWorld, historicalWorld } from "../unit/transaction-history-fixture.js";
+import { historyWorld, historicalWorld } from "../helpers/storage/transaction-history-fixture.js";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 interface Source { path: string; content: string }
 export function retiredLedgerConsumerViolations(sources: readonly Source[]) {
@@ -18,7 +18,7 @@ const LEDGER_REFERENCE = /ledgerDirectory\s*\(|ledgerFilePath\s*\(|ledgerFileNam
 const DELETION_PRIMITIVES = /\b(?:unlinkSync|unlink|rmSync|rmdirSync|rmdir|truncateSync|ftruncateSync|rimraf)\s*\(/u;
 /** Pin the reviewed recovery-copy function; an edit cannot expand its deletion exception. */
 function withoutVerifiedScratchCleanup(source: Source): string {
-  if (source.path !== "src/infra/events/timeline-import.ts") return source.content;
+  if (source.path !== "src/backend/storage/events/timeline-import.ts") return source.content;
   const file = ts.createSourceFile(source.path, source.content, ts.ScriptTarget.Latest, true);
   const owner = file.statements.find((node) => ts.isFunctionDeclaration(node) && node.name?.text === "preserveTimelineSources");
   if (owner === undefined || createHash("sha256").update(owner.getText(file)).digest("hex") !== "961b8bf1f77ead9a2f547e15ca518bd5db66c25e02c0535884843e6039848771") return source.content;
@@ -48,7 +48,7 @@ describe("ledger projector retirement", () => {
       assert.deepEqual(ledgerPruneReachabilityViolations([{ path: "bad.ts", content: `${primitive}(\`\${root}/ledger/ucpath-2026-07-31.jsonl\`)` }]), ["bad.ts"]);
     }
     assert.deepEqual(ledgerSoleWriterViolations([{ path: "bad.ts", content: 'appendFileSync(`${root}/ledger/ucpath.jsonl`, line)' }]), ["bad.ts"]);
-    const path = "src/infra/events/timeline-import.ts";
+    const path = "src/backend/storage/events/timeline-import.ts";
     const content = readFileSync(join(REPO_ROOT, path), "utf8");
     for (const source of [{ path: "wrong.ts", content }, { path, content: content.replace("rmSync(temporary,", 'rmSync("ledger",') },
       { path, content: content + '\nrmSync("ledger");' }]) assert.deepEqual(ledgerPruneReachabilityViolations([source]), [source.path]);

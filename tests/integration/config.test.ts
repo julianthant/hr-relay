@@ -30,7 +30,7 @@ import { ConfigProvenanceSchema, configLeafPaths, resolveConfigWithProvenance } 
 import { defaultRuntimePaths } from "../../src/backend/app/config/runtime-paths.js";
 import { ConfigSchema, SettingsOverrideSchema } from "../../src/domain/config/schema.js";
 import { SettingsCurrentRecordSchema } from "../../src/domain/config/settings-current.js";
-import { settingsRootAuthority } from "../../src/infra/compat/d331-settings-root.js";
+import { settingsRootAuthority } from "../../src/backend/storage/compat/d331-settings-root.js";
 import {
   SETTINGS_SCHEMA_HASH,
   SettingsPatchSchema,

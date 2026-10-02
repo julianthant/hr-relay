@@ -3,7 +3,7 @@ import { workflowPreflightScope } from "./start/preflight-scope.js";
 import { startSupersedeTargets } from "../../domain/run/start-supersede.js";
 import { WorkerControlRefusal, workerControlScope, WorkerEffectAcknowledgementSchema, type WorkerControlRecord, type WorkerEffectAcknowledgement } from "../../domain/worker-control.js";
 import { CommandRefusal } from "./command-refusal.js";
-import type { StorageRelocationPlanReader } from "../../core/storage-relocation-plans.js";
+import type { StorageRelocationPlanReader } from "../storage/storage-relocation-plans.js";
 import type { CommandApplication } from "./command-application.js";
 export type { CommandApplication } from "./command-application.js";
 import { executeFailureResolution, failureResolutionCapability } from "./failure-resolution.js";
@@ -52,10 +52,10 @@ import {
   type TargetReference,
   type VersionChange,
 } from "./run-fan-out.js";
-import { prepareManualArchive, publishManualArchive } from "../../core/archive-terminal-runs.js";
+import { prepareManualArchive, publishManualArchive } from "./archive/archive-terminal-runs.js";
 import type { ArchiveSnapshotSource } from "./archive/archive-service.js";
-import { executeArchiveCommand, runArchiveCommand } from "../../core/archive-version-changes.js";
-import type { createRuntimeVersionChanges } from "../../core/archive-runtime-version-changes.js";
+import { executeArchiveCommand, runArchiveCommand } from "./archive/archive-version-changes.js";
+import type { createRuntimeVersionChanges } from "./archive/archive-runtime-version-changes.js";
 import { buildRerunPlan, RerunRefusedError } from "./start/rerun.js";
 import type { IntakeParser } from "../../base/intake-parser.js";
 import type { Clock } from "../../domain/clock.js";
@@ -109,7 +109,7 @@ import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../domain/workflo
 import { timelineCheckpointReference } from "../../events/timeline.js";
 import { readRunCheckpoint } from "../runtime/run-checkpoint-reader.js";
 import type { WriteIntentRecord } from "../../domain/write-safety.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import { dryRunRefusalMessage, resolveInstances, supportsDryRun } from "./start/plan.js";
 import {
   type ExplorerEditApplyRequest,
@@ -2680,7 +2680,7 @@ async function executeWorkerPoolCommand(
 const workerPoolSerializationKey = workerControlScope;
 
 
-export type { ArchiveCommandTools } from "../../core/archive-version-changes.js";
+export type { ArchiveCommandTools } from "./archive/archive-version-changes.js";
 function executeVersionArchive(dependencies: CommandKernelDependencies, repositories: AuthorityRepositories,
   request: Extract<CommandRequest, {family:"version-archive"}>, now: string): CommandApplication {
   return executeArchiveCommand(dependencies, repositories, request, now,

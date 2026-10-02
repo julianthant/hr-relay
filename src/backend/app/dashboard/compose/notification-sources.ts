@@ -1,5 +1,5 @@
 import type { RunRecordService } from "../../../runs/run-record-service.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { RunRecord } from "../../../../domain/run/record.js";
 import { FailureRecordSchema, type FailureRecord } from "../../../../domain/trust/failure.js";
 import { RunEvidenceReceiptSchema } from "../../../../domain/trust/evidence.js";

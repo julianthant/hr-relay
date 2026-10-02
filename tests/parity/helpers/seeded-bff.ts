@@ -7,10 +7,10 @@ import { createServer,type IncomingMessage,type Server,type ServerResponse } fro
 import { tmpdir } from "node:os";
 import { extname,join,normalize } from "node:path";
 import { manualClock } from "../../../src/domain/clock.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 import { type DashboardApp } from "../../../src/backend/transports/dashboard/routes/api.js";

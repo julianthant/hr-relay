@@ -1,6 +1,6 @@
 import { seedSyntheticRuntimeConfig, singleAppliedRunId } from "../fixtures/operator-command-fixtures.js";
 import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
-import { createRuntimeVersionChanges } from "../../src/core/archive-runtime-version-changes.js";
+import { createRuntimeVersionChanges } from "../../src/backend/runs/archive/archive-runtime-version-changes.js";
 /**
  * `control-command-single-path` — ref guards-and-tests §3.9, activated by D113.
  *
@@ -313,15 +313,15 @@ describe("control-command-single-path", () => {
   it("keeps the command journal, audit, and start-plan consumption on exactly one executing path", () => {
     const allowed = new Set([
       "src/backend/runs/command-kernel.ts",
-      "src/infra/sqlite/authority-database.ts",
+      "src/backend/storage/sqlite/authority-database.ts",
     ]);
     const tokens = ["commandAudits", ".commands.insert(", "startPlans.consume("];
     const settingsAuditReaders = new Map([
       ["src/backend/runtime/settings/settings-runtime.ts", 1],
-      ["src/core/storage-relocation-plans.ts", 1],
+      ["src/backend/storage/storage-relocation-plans.ts", 1],
       ["src/backend/runs/dashboard/commands/provider-key-journal.ts", 3],
-      ["src/infra/compat/d331-protected-journal.ts", 1],
-      ["src/infra/sqlite/backup-service.ts", 0],
+      ["src/backend/storage/compat/d331-protected-journal.ts", 1],
+      ["src/backend/storage/sqlite/backup-service.ts", 0],
     ]);
     const violations: string[] = [];
     let kernelDefinitions = 0;

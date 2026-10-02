@@ -38,14 +38,14 @@ describe("L archive report/file interruption", () => {
   });
 });
 
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { existsSync, mkdirSync } from "node:fs";
 
 describe("L paired recovery",()=>{

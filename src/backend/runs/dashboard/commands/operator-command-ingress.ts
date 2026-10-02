@@ -25,7 +25,7 @@ import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../domain/config/provider-ke
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../../domain/ids.js";
 import { RequestIdentityRefusedError } from "../../refusals.js";
 import { providerCommandFromStore } from "./provider-key-projection.js";
-import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../../infra/config/provider-key-store.js";
+import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../storage/config/provider-key-store.js";
 
 function refuseForeignActorClaim(input: unknown): void {
   if (typeof input !== "object" || input === null || Array.isArray(input)) return;

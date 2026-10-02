@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { healthyRuntimePreflightRunners } from "../fixtures/preflight-seams.js";
 import { createCredentialStore } from "../helpers/synthetic-storage-admission.js";
 import { journalProtectedSettings } from "./helpers/journaled-protected-settings.js";

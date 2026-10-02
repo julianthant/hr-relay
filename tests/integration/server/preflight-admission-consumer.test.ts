@@ -1,11 +1,11 @@
 import { join } from "node:path";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "../../fixtures/preflight/runtime-fixture.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { composeWorkerProcessControl } from "../../../src/backend/app/dashboard/compose.js";
 import { poolWorkerId } from "../../../src/backend/runtime/worker-loop.js";

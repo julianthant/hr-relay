@@ -1,5 +1,5 @@
 import { DatabaseSync } from "node:sqlite";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, databaseStateTable } from "../../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS, databaseStateTable } from "../../../src/backend/storage/sqlite/migrations.js";
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema, deriveIdempotencyKeyDigest } from "../../../src/domain/write-safety.js";
 import { AtomicOutboxRecordSchema } from "../../../src/domain/outbox.js";
 import { DeletedRunRecordSchema } from "../../../src/domain/run/deleted-run.js";

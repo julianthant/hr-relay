@@ -57,7 +57,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { checkpointLookupKey } from "../../src/domain/workflow/checkpoint.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { HASH_A, NOW } from "../fixtures/phase1c-contract-fixtures.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../fixtures/archive-fixtures.js";

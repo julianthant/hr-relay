@@ -347,7 +347,7 @@ function executableRuntimeBinding(
       composition.bindingPath,
       config.exportName,
       file,
-      resolve(repoRoot, "src/infra/runtime-control/admission.ts"),
+      resolve(repoRoot, "src/backend/storage/admission/admission.ts"),
     );
     if (!existsSync(compositionFactoryFile) || !importsBinding || !importsFactoryBinding
       || !isUnshadowed || !consumesBinding) {

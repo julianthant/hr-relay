@@ -33,7 +33,7 @@ import {
   ProviderResponseEnvelopeSchema,
 } from "../../domain/providers.js";
 import type { SchemaBoundCanonicalValue } from "../../domain/schema-bound-value.js";
-import { RunRequeueRequestSchema } from "../../infra/sqlite/run-store-contracts.js";
+import { RunRequeueRequestSchema } from "../storage/sqlite/run-store-contracts.js";
 import type { MonotonicDeadlineScheduler } from "../runtime/deadline-scheduler.js";
 
 export type ProviderAdapterRegistry = Readonly<{

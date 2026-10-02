@@ -228,7 +228,7 @@ try {
     const child = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "-e", `
       import assert from 'node:assert/strict';
       import { randomUUID } from 'node:crypto';
-      import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
+      import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
       import { manualClock } from './src/domain/clock.ts';
       import { resolveConfigWithProvenance } from './src/backend/app/config/resolve.ts';
       import { executeSettingsCommand } from './src/backend/runs/command-kernel.ts';

@@ -1,6 +1,6 @@
-import { projectArchiveReport } from "../../../../infra/sqlite/archive-records.js";
-export { projectArchiveReport } from "../../../../infra/sqlite/archive-records.js";
-import type { createRunLifecycleStorage } from "../../../../infra/sqlite/lifecycle-storage.js";
+import { projectArchiveReport } from "../../../storage/sqlite/archive-records.js";
+export { projectArchiveReport } from "../../../storage/sqlite/archive-records.js";
+import type { createRunLifecycleStorage } from "../../../storage/sqlite/lifecycle-storage.js";
 import { ArchiveQuerySchema, type ArchiveQuery } from "../../../../domain/archive/report.js";
 
 export function readArchiveReport(storage: Pick<ReturnType<typeof createRunLifecycleStorage>, "readReport">, runId: string) {

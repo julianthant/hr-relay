@@ -5,7 +5,7 @@
  *
  * `notes/` is partitioned append-at-now: the writer files a line under
  * `localDatePart(clock.now())` at the moment of the write
- * (`src/infra/events/note-jsonl-writer.ts`). The reader cannot afford to open
+ * (`src/backend/storage/events/note-jsonl-writer.ts`). The reader cannot afford to open
  * every day of every workflow to serve one run's thirteen lines, so it opens a
  * WINDOW composed from the run's durable instants — and nothing but this module
  * binds the two halves together. A note filed outside the window the reader

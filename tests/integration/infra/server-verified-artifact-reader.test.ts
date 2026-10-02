@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { mkdtemp, mkdir, readFile, readdir, rm, symlink, writeFile } from "node:fs/promises";
@@ -6,11 +6,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import { ArtifactRefSchema, type ArtifactRef } from "../../../src/domain/artifacts.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import type {
   VerifiedArtifactIoKind,
-} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+} from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 
 const ARTIFACT_ROOT = ".tracker/artifacts";
 const SMALL_BYTES = Uint8Array.from([0x00, 0x10, 0x7f, 0x80, 0xff]);
@@ -400,7 +400,7 @@ describe("server verified artifact reader", () => {
     assert.deepEqual(peaks, [4 * 64 * 1024, 4 * 64 * 1024, 4 * 64 * 1024]);
 
     const source = await readFile(
-      new URL("../../../src/infra/artifacts/server-verified-artifact-reader.ts", import.meta.url),
+      new URL("../../../src/backend/storage/artifacts/server-verified-artifact-reader.ts", import.meta.url),
       "utf8",
     );
     assert.doesNotMatch(source, /\breadFile(?:Sync)?\s*\(|Buffer\.concat\s*\(|Readable\.from\s*\(/u);

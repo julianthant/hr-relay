@@ -3,7 +3,7 @@ import { RunRecordService } from "../../../runs/run-record-service.js";
 
 import {
   AuthorityDatabase,
-} from "../../../../infra/sqlite/index.js";
+} from "../../../storage/sqlite/index.js";
 
 import { createRunQueueProjection } from "../../../runs/dashboard/projectors/run-queue-projection.js";
 

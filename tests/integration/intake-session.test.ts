@@ -1,4 +1,4 @@
-import { insertImportedArtifact } from "../../src/infra/sqlite/imported-artifacts.js";
+import { insertImportedArtifact } from "../../src/backend/storage/sqlite/imported-artifacts.js";
 import { importedArtifact } from "../../src/domain/intake/imported-artifact.js";
 /**
  * 2i-E1: the durable intake session — created in `mapping` by the upload

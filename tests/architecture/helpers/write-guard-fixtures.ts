@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import type { TestClock } from "../../../src/domain/clock.js";
 import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
 import { UUID_5, UUID_6, UUID_7, UUID_8 } from "../../fixtures/phase1c-contract-fixtures.js";
 import {
   WRITE_FIXTURE_ITEM_ID,

@@ -4,7 +4,7 @@ import { mkdirSync, copyFileSync } from "node:fs";
 import { join } from "node:path";
 import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
 import { GenericProviderRequestSchema, GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 export { foundationFixture, NOW, HASH, id };
 export function generic(f: ReturnType<typeof foundationFixture>) {
  const scope = {id:"synthetic.shared",kind:"shared-quota"};

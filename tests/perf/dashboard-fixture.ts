@@ -30,9 +30,9 @@ import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
-import { createNoteJsonlWriter } from "../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
-import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
+import { createNoteJsonlWriter } from "../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
+import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { descriptorSetHash } from "../../src/backend/app/dashboard/compose.js";
 import {

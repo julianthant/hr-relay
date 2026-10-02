@@ -1,4 +1,4 @@
-import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
+import { databaseStateTable } from "../../src/backend/storage/sqlite/migrations.js";
 import assert from "node:assert/strict";
 import {
   existsSync,
@@ -24,9 +24,9 @@ import {
   AUTHORITY_APPLICATION_ID,
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { acquireRuntimeProcessLock } from "../../src/infra/sqlite/runtime-process-locks.js";
+import { acquireRuntimeProcessLock } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { verifyBackupManifestAtPath } from "../helpers/synthetic-storage-admission.js";
 import {
   backupStoppedAuthority,

@@ -1,5 +1,5 @@
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { readTimelineRecords } from "../../../src/infra/events/timeline-reader.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
 import type { TaskStoreRegistry } from "../../../src/base/store.js";
 import type { WriteFixtureWorld } from "../../fixtures/write-sequencer-fixtures.js";
 import type { AnyWorkflowDescriptor } from "../../../src/base/workflow.js";

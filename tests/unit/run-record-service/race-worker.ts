@@ -1,4 +1,4 @@
-import { CanonicalFailureTerminalizeRequestSchema } from "../../../src/infra/sqlite/run-store-contracts.js";
+import { CanonicalFailureTerminalizeRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { parentPort, workerData } from "node:worker_threads";
 import { z } from "zod";

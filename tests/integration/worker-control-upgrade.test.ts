@@ -4,9 +4,9 @@ import { randomUUID, createHash } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { storageRecoveryFixture } from "./helpers/storage-recovery-fixture.js";
 import { AuthorityDatabase, OfflineAuthorityRestoreService, RecoveryStopProofStore } from "../helpers/synthetic-storage-admission.js";
-import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
+import { observeRuntimeLockSnapshot } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION, SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 
 const WORKER = "person-lookup-worker-1";
 function controlRecord(now: string) {

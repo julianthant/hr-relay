@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { ArtifactRefSchema } from "../../../../src/domain/artifacts.js";
-import type { VerifiedByteLease } from "../../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import type { VerifiedByteLease } from "../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { verifiedByteResponse } from "../../../../src/backend/transports/dashboard/routes/verified-byte-response.js";
 
 const REF = ArtifactRefSchema.parse({

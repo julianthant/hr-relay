@@ -1,4 +1,4 @@
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, UUID_5, UUID_6, LEDGER_PAYLOAD, SPAN_OUTBOX_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
@@ -15,10 +15,10 @@ import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
 import { TimelineAppendSchema } from "../../../src/events/timeline.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
-import { createTimelineRepository, TIMELINE_EVENT_INDEX_DDL, TIMELINE_EVENT_TABLE_DDL } from "../../../src/infra/sqlite/timeline-repository.js";
+import { createTimelineRepository, TIMELINE_EVENT_INDEX_DDL, TIMELINE_EVENT_TABLE_DDL } from "../../../src/backend/storage/sqlite/timeline-repository.js";
 import { inspectTimelineSources, preserveTimelineSources, readPreservedTimelineSources,
-  timelineImportRecords } from "../../../src/infra/events/timeline-import.js";
-import type { VerifiedBackup } from "../../../src/infra/sqlite/backup-service.js";
+  timelineImportRecords } from "../../../src/backend/storage/events/timeline-import.js";
+import type { VerifiedBackup } from "../../../src/backend/storage/sqlite/backup-service.js";
 
 const ATOMIC_WRITE_COMMIT = currentAtomicWriteFixture(HISTORICAL_ATOMIC_WRITE_COMMIT);
 
@@ -61,8 +61,8 @@ describe("SQLite timeline delivery", () => {
     const path = join(root(), "cross-process.db");
     const first = AuthorityDatabase.open({ path, busyTimeoutMs: 500, migrationOwner: "timeline-process-test" }, manualClock(new Date(ts)));
     const script = `
-      import { AuthorityDatabase } from './src/infra/sqlite/authority-database.ts';
-      import { createTimelineEmitter } from './src/infra/events/timeline-emitter.ts';
+      import { AuthorityDatabase } from './src/backend/storage/sqlite/authority-database.ts';
+      import { createTimelineEmitter } from './src/backend/storage/events/timeline-emitter.ts';
       import { manualClock } from './src/domain/clock.ts';
       const clock = manualClock(new Date(process.argv[2]));
       const db = AuthorityDatabase.open({ path: process.argv[1], busyTimeoutMs: 500, migrationOwner: 'timeline-child' }, clock);

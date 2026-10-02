@@ -10,7 +10,7 @@ import { sha256Hex } from "../../domain/sha256.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import { descriptorRuntimeNodes, type AnyWorkflowDescriptor } from "../../base/workflow.js";
 import type { RuntimeFlowNode } from "../../domain/workflow/graph.js";
-import type { AuthorityDatabase } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../storage/sqlite/authority-database.js";
 import { requireLifecycleApplied, type RunRecordService } from "../runs/run-record-service.js";
 import { z } from "zod";
 

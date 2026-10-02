@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import { DCC4_SUPERSEDED_V19_MIGRATION } from "../fixtures/dcc4-superseded-migration.js";
 
 interface MigrationShape {

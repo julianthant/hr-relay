@@ -1,4 +1,4 @@
-import type { AuthorityDatabase } from "../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
 import type { WorkerSessionManager } from "../worker-sessions.js";
 import type { Clock } from "../../../domain/clock.js";
 import { WorkerControlRefusal } from "../../../domain/worker-control.js";

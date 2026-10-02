@@ -4,7 +4,7 @@ import { it } from "vitest";
 import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
 import { NOW, id } from "../../unit/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { createRunLifecycleStorage, lifecycleSourceDigest } from "../../../src/infra/sqlite/lifecycle-storage.js";
+import { createRunLifecycleStorage, lifecycleSourceDigest } from "../../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { SavedVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";

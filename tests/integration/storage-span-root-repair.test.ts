@@ -5,13 +5,13 @@ import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { SpanEventWireSchema } from "../../src/events/types.js";
 import { AuthorityDatabase, syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { doctorAuthorityStorage } from "../helpers/synthetic-storage-admission.js";
-import { OfflineSpanRootRepairService } from "../../src/server/storage/span-root-repair.js";
+import { OfflineSpanRootRepairService } from "../../src/backend/runs/recovery/span-root-repair.js";
 import {
   LATER,
   NOW,

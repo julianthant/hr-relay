@@ -2,7 +2,7 @@ import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic
 import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
 import { foundationFixture, failure, terminalizeFixtureFailure, HASH, NOW } from "../unit/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { SearchPersonOrgOutputSchema } from "../../src/domain/contracts/ucpath/search-person-org.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";

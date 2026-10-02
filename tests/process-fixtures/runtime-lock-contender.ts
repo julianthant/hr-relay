@@ -3,7 +3,7 @@ import { join } from "node:path";
 import {
   acquireRuntimeProcessLock,
   observeRuntimeLockSnapshot,
-} from "../../src/infra/sqlite/runtime-process-locks.js";
+} from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const [root, readyDirectory, startPath, releasePath, contenderId] = process.argv.slice(2);
 if (root === undefined

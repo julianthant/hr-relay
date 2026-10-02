@@ -35,7 +35,7 @@ import {
   DiagnosticBundleSchema,
   type DiagnosticBundle,
 } from "../../domain/trust/diagnostic.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../../backend/storage/sqlite/authority-database.js";
 
 /**
  * The exact media type each attachment arm may carry. Ref operator-trust §2.2 allows a

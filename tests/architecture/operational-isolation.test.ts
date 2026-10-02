@@ -206,7 +206,7 @@ describe("operational isolation", () => {
       const source = readFileSync(join(root, "src/cli.ts"), "utf8")
         .replace('export function runCli(): void {', 'export function runCli(admission: RuntimeAdmission): void { admission.assertLive();');
       const admitted = 'import type { RuntimeAdmission } from "./infra/runtime-control/admission.js";\n' + source;
-      write(root, "src/infra/runtime-control/admission.ts", "export interface RuntimeAdmission { assertLive(): void; }\n");
+      write(root, "src/backend/storage/admission/admission.ts", "export interface RuntimeAdmission { assertLive(): void; }\n");
       write(root, "src/cli.ts", admitted);
       assert.deepEqual(fixtureViolations(root), []);
       for (const invalid of [

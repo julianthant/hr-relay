@@ -3,7 +3,7 @@ import type { AuthorityDatabase } from "../../helpers/synthetic-storage-admissio
 import type { Clock } from "../../../src/domain/clock.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { queryActivitySummaries, queryQueueSummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 
 export const DATE_HISTORY = ["2024-12-31", "2025-01-02", "2026-06-15", "2026-07-01", "2026-07-30"] as const;

@@ -4,8 +4,8 @@ import assert from "node:assert/strict";
 import { it, vi } from "vitest";
 import { unlinkSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { id } from "../../unit/database-foundation/fixtures.js";
 

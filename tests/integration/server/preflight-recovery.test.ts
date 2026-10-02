@@ -10,8 +10,8 @@ import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admissio
 import { composeStorageCommand } from "../../helpers/synthetic-storage-admission.js";
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { restoreLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityHealthPreflightRunner } from "../../helpers/synthetic-storage-admission.js";
 import { doctorAuthorityStorage } from "../../helpers/synthetic-storage-admission.js";
 

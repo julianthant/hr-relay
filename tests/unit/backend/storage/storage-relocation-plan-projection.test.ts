@@ -12,7 +12,7 @@ import {
   projectStorageRelocationPlanHistory,
   type StorageRelocationEpoch,
   type StorageRelocationHistoryRepositories,
-} from "../../../../src/core/storage-relocation-plans.js";
+} from "../../../../src/backend/storage/storage-relocation-plans.js";
 
 const uuid = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, "0")}`;
 const WORKSPACE = "/tmp/hr-storage-plan-projection";

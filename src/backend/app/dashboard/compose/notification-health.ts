@@ -1,14 +1,14 @@
 import { existsSync, readdirSync, statSync, statfsSync } from "node:fs";
 import { join } from "node:path";
 import type { Clock } from "../../../../domain/clock.js";
-import { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
-import { verifyBackupManifestAtPath } from "../../../../infra/sqlite/backup-service.js";
+import { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import { verifyBackupManifestAtPath } from "../../../storage/sqlite/backup-service.js";
 import { sha256Hex } from "../../../../domain/sha256.js";
 import type { NotificationInbox } from "../../../runs/notifications/inbox.js";
 import { StorageHealthConcernSchema } from "../../../../domain/notification-triggers.js";
 import { listCanonicalRuns } from "../../../runs/dashboard/queries/canonical-runs.js";
 import type { RunRecordService } from "../../../runs/run-record-service.js";
-import type { RuntimeAdmission } from "../../../../infra/runtime-control/admission.js";
+import type { RuntimeAdmission } from "../../../storage/admission/admission.js";
 
 export interface NotificationHealthReading { freeBytes: number; walBytes: number; integrityFailed: boolean; backupFailed: boolean; leaseExpired: boolean }
 /** No backup writer, credential reader, or unrelated outbox is called by this observation. */

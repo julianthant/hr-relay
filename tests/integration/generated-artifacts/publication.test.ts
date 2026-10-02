@@ -1,13 +1,13 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
 import { readFileSync, writeFileSync, rmSync, existsSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
 import { describe, it } from "vitest";
 import type { ArtifactRef } from "../../../src/domain/artifacts.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createArtifactSinkProjector, ArtifactSinkBusyError, type ArtifactSinkProjectorOptions } from "../../../src/infra/artifacts/artifact-sink-projector.js";
-import { createXlsxRetentionSink, type PublicationFaultPoint } from "../../../src/infra/artifacts/xlsx-retention-sink.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createArtifactSinkProjector, ArtifactSinkBusyError, type ArtifactSinkProjectorOptions } from "../../../src/backend/storage/artifacts/artifact-sink-projector.js";
+import { createXlsxRetentionSink, type PublicationFaultPoint } from "../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { foundationFixture, update, id, NOW } from "../../unit/database-foundation/fixtures.js";
 
 async function fixture() {

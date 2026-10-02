@@ -20,7 +20,7 @@ import {
   VerifiedArtifactSourceMissingError,
   type ServerVerifiedArtifactReader,
   type VerifiedByteLease,
-} from "../../../../../src/infra/artifacts/server-verified-artifact-reader.js";
+} from "../../../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import {
   buildArchivedCaptureResource,
   prepareArchivedCaptureLease,

@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
+import { createGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 const send=(value:unknown)=>{if(process.send===undefined)throw new Error("race process requires IPC");process.send(value);};
 const disconnect=process.disconnect?.bind(process);
 if(disconnect===undefined)throw new Error("race process requires IPC");

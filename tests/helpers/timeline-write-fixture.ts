@@ -4,7 +4,7 @@ import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { TransactionOutcomeSchema } from "../../src/domain/write-safety.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
-import { AtomicWriteCommitInputSchema } from "../../src/infra/sqlite/write-commit-contracts.js";
+import { AtomicWriteCommitInputSchema } from "../../src/backend/storage/sqlite/write-commit-contracts.js";
 import type { AuthorityDatabase } from "./synthetic-storage-admission.js";
 import { HASH_A, HASH_B, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 

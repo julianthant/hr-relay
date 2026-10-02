@@ -51,14 +51,14 @@ import {
   settingsRootPaths,
   type SettingsDocumentTarget,
   type SettingsRootAuthority,
-} from "../../src/infra/compat/d331-settings-root.js";
+} from "../../src/backend/storage/compat/d331-settings-root.js";
 import { deepFreeze } from "../../src/domain/immutability.js";
 import { FingerprintSchema, PositiveIntSchema } from "../../src/domain/ids.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
 import {
   ProcessStartIdentitySchema,
   observeProcessIdentity,
-} from "../../src/infra/sqlite/runtime-process-locks.js";
+} from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 export interface SettingsFileOperations {
   readonly writeExclusive?: (path: string, bytes: Uint8Array) => void;

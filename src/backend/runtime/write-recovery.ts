@@ -52,7 +52,7 @@ import {
   type WriteIntentRecord,
   type WriteAuthorityReason,
 } from "../../domain/write-safety.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import {
   rebuildCommitInput,
   requireWriteResolutionBinding,
@@ -85,7 +85,7 @@ import {
   type WriteSequencerHooks,
 } from "./write-sequencer.js";
 import type { RunConfigFingerprintBinding } from "./worker-sessions.js";
-import type { WriteIntentParkCode } from "../../infra/sqlite/write-commit-contracts.js";
+import type { WriteIntentParkCode } from "../storage/sqlite/write-commit-contracts.js";
 import type { TaskStoreRegistry } from "../../base/store.js";
 import type { TaskLogger } from "../../base/task.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";

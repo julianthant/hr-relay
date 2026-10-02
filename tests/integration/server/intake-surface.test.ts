@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
@@ -29,8 +29,8 @@ import { createCommandKernel } from "../../../src/backend/runs/command-kernel.js
 import { manualClock, type TestClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createDashboardCommandService } from "../../../src/backend/runs/dashboard/commands/command-service.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
@@ -50,7 +50,7 @@ import {
   intakeFixtureDescriptor,
   intakeFixtureProjection,
 } from "../../fixtures/intake-workflow-fixture.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 
 const ROSTER_CSV = [
   "Work-study roster,,",

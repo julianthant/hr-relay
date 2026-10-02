@@ -1,4 +1,4 @@
-import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
+import { databaseStateTable } from "../../src/backend/storage/sqlite/migrations.js";
 import { storageTree } from "./helpers/storage-recovery-fixture.js";
 import { restoreHistoricalStorage } from "../helpers/synthetic-storage-admission.js";
 import { executeSequencedWriteCommit } from "../../src/backend/runtime/write-sequencer.js";
@@ -10,7 +10,7 @@ import { LOCAL_OPERATOR_ACTOR_ID, WorkerIdSchema, PositiveIntSchema } from "../.
 import { RunRecordService, workerRunLifecyclePort, sweepWorkerClaims } from "../../src/backend/runs/run-record-service.js";
 import { randomUUID } from "node:crypto";
 import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 /**
  * The 2j restore drill, driven through the OPERATOR'S OWN COMMAND (D181).
  *
@@ -69,13 +69,13 @@ import {
 import {
   AUTHORITY_APPLICATION_ID,
   SQLITE_MIGRATIONS,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import {
   acquireRuntimeProcessLock,
   acquireRuntimeRestoreAdmission,
   observeProcessIdentity,
   observeRuntimeLockSnapshot,
-} from "../../src/infra/sqlite/runtime-process-locks.js";
+} from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import {
   composeStorageCommand,
   restoreFailureDisposition,

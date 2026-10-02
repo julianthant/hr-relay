@@ -2,7 +2,7 @@ import { ProtectedStoreRecordSchema } from "../../../src/domain/config/protected
 import { renameSync } from "node:fs";
 import { runtimeFixture, populatedProtectedRecord } from "./runtime-fixture.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { composeRuntimePreflight } from "../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/backend/app/preflight/runtime-runners.js";
 import { createPreflightAuthority } from "../../../src/domain/preflight.js";

@@ -8,7 +8,7 @@ import {
   type RunResultRecord,
 } from "../../../src/domain/run/result.js";
 import { deriveSchemaHash } from "../../../src/domain/schema-bound-value.js";
-import type { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
 import { SeparationsResultSchema } from "../../../src/workflows/separations/workflow.js";
 import {
   COMPOSITION_ACTION_ID,

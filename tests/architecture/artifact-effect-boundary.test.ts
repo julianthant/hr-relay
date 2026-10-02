@@ -70,7 +70,7 @@ describe("content-addressed artifact boundary", () => {
     assert.deepEqual(refKeys, ["bytes", "id", "mediaType", "sha256"]);
     assert.equal(refKeys.some((key) => /path|root|fileName/iu.test(key)), false);
     const writer = readFileSync(
-      resolve(REPO_ROOT, "src/infra/artifacts/content-addressed-artifact-writer.ts"),
+      resolve(REPO_ROOT, "src/backend/storage/artifacts/content-addressed-artifact-writer.ts"),
       "utf8",
     );
     let cursor = -1;

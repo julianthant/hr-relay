@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { RunIdSchema } from "../../../src/domain/ids.js";
 import { SectionUnavailableError } from "../../../src/backend/runs/refusals.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
 import {
   buildRunSection,
   readRunSection,

@@ -36,7 +36,7 @@ import { describe, it } from "vitest";
 import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const TOKEN_MODULE = "src/base/duo-ceremony-lease.ts";
-const LEASE_STORE = "src/infra/sqlite/authority-database.ts";
+const LEASE_STORE = "src/backend/storage/sqlite/authority-database.ts";
 const WRAPPER_MODULE = "src/backend/systems/browser-shared/authenticated-application.ts";
 const GATE_MODULE = "src/backend/runtime/duo-ceremony-gate.ts";
 const WRAPPER = "defineVerifiedLoginRecipe";

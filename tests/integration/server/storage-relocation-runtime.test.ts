@@ -9,9 +9,9 @@ import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { StorageRelocationCommandRequestSchema, storageRelocationDesiredDigest,
   storageRelocationRequestFingerprint } from "../../../src/domain/commands.js";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { acquireEntrypointAdmission } from "../../../src/infra/runtime-control/bootstrap-admission.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { acquireEntrypointAdmission } from "../../../src/backend/storage/admission/bootstrap-admission.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
 import { composeDashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
 
 it("plans, reads, retries, conflicts, and cancels through a real admitted dashboard", async () => {

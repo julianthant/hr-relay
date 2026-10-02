@@ -7,7 +7,7 @@
  * form. Its type brand is declare-only, so a structurally identical literal
  * type-checks — unforgeability is the module-private WeakSet below, and nothing
  * else. Only an object THIS module minted is in the set, and only the lease
- * store (`src/infra/sqlite/authority-database.ts`) may mint or retire one;
+ * store (`src/backend/storage/sqlite/authority-database.ts`) may mint or retire one;
  * the `duo-ceremony-lease` guard fails any other module that names either
  * function and any attempt to conjure the brand through `as` / `satisfies`.
  *
@@ -42,7 +42,7 @@ interface MintedTokenShape {
   readonly expiresAt: IsoInstant;
 }
 
-/** DO NOT CALL. The lease store in `src/infra/sqlite/authority-database.ts` is the only permitted caller. */
+/** DO NOT CALL. The lease store in `src/backend/storage/sqlite/authority-database.ts` is the only permitted caller. */
 export function mintDuoCeremonyLeaseToken(input: MintedTokenShape): DuoCeremonyLeaseToken {
   const value: MintedTokenShape = Object.freeze({
     credentialKey: input.credentialKey,

@@ -3,7 +3,7 @@ import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpa
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, expect, it } from "vitest";
-import { createStorageRelocationPlanReader } from "../../../src/core/storage-relocation-plans.js";
+import { createStorageRelocationPlanReader } from "../../../src/backend/storage/storage-relocation-plans.js";
 import { executeStorageRelocationCommand } from "../../../src/backend/runs/command-kernel.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import {
@@ -11,10 +11,10 @@ import {
   storageRelocationRequestFingerprint,
   type StorageRelocationCommandRequest,
 } from "../../../src/domain/commands.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/authority-database.js";
-import { acquireInstallation } from "../../../src/infra/runtime-control/installation.js";
-import { acquireRuntimeRestoreAdmission } from "../../../src/infra/sqlite/runtime-process-locks.js";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/authority-database.js";
+import { acquireInstallation } from "../../../src/backend/storage/admission/installation.js";
+import { acquireRuntimeRestoreAdmission } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 
 const cleanups: Array<() => void> = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });

@@ -1,6 +1,6 @@
 import { z } from "zod";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
-import { RunSummaryQuerySchema } from "../../../../infra/sqlite/run-summaries.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
+import { RunSummaryQuerySchema } from "../../../storage/sqlite/run-summaries.js";
 import { runtimeTimeZone } from "../../../../domain/clock.js";
 import { statusOf } from "./run-summary-status.js";
 import type { SummaryRow } from "./run-summary-status.js";

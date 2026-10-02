@@ -262,7 +262,7 @@ describe("Phase 1c atomic write authority commit", () => {
     assert.deepEqual(Object.keys(database.authority.writeAttempts), ["get", "listByIntent"]);
     assert.equal("durableOutbox" in database.authority, false);
 
-    const adapterPath = join(REPO_ROOT, "src/infra/sqlite/authority-database.ts");
+    const adapterPath = join(REPO_ROOT, "src/backend/storage/sqlite/authority-database.ts");
     const adapter = readFileSync(adapterPath, "utf8");
     assert.match(adapter, /commitWriteAttempt\(input: unknown, checkpointInput: unknown\)[\s\S]*?return this\.withAuthorityTransaction\(\(\) => \{/);
     assert.doesNotMatch(adapter, /writeAttempts:\s*Object\.freeze\(\{\s*insert:/);

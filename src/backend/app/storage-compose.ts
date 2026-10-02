@@ -1,6 +1,6 @@
-import { verifyBackupManifestAtPath } from "../../infra/sqlite/backup-service.js";
-import { backupHasArchiveTransferCustody } from "../../infra/compat/backup-inspection.js";
-import { restoreLifecyclePair, verifyLifecyclePair } from "../../infra/sqlite/lifecycle-storage.js";
+import { verifyBackupManifestAtPath } from "../storage/sqlite/backup-service.js";
+import { backupHasArchiveTransferCustody } from "../storage/compat/backup-inspection.js";
+import { restoreLifecyclePair, verifyLifecyclePair } from "../storage/sqlite/lifecycle-storage.js";
 import { RunRecordService } from "../runs/run-record-service.js";
 /**
  * `cli storage doctor` and `cli storage restore` (ref dashboard-surfaces
@@ -27,14 +27,14 @@ import { RunRecordService } from "../runs/run-record-service.js";
  * see it and does not pretend to.
  */
 import { SETTINGS_CATALOG } from "../../domain/config/catalog.js";
-import { createCredentialStore } from "../../infra/config/credential-store.js";
+import { createCredentialStore } from "../storage/config/credential-store.js";
 import { protectedSettingsReadback } from "../../domain/config/protected-settings.js";
-import { NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION } from "../storage/sqlite/migrations.js";
 import { existsSync, readFileSync } from "node:fs";
 import { basename, join, resolve } from "node:path";
 import { z } from "zod";
 import type { RuntimeIsolation } from "../../config/define-runtime-isolation.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../infra/runtime-control/admission.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../storage/admission/admission.js";
 import { DESCRIPTORS, SERVER_REGISTRY } from "./control/workflow-registry.js";
 import type { Clock } from "../../domain/clock.js";
 import { systemClock } from "../../domain/clock.js";
@@ -46,22 +46,22 @@ import {
   RecoveryStopProofStore,
   doctorAuthorityStorage,
   summarizeSpanAuthorityReconciliation,
-} from "../../infra/sqlite/index.js";
-import { observeRuntimeLockSnapshot } from "../../infra/sqlite/runtime-process-locks.js";
+} from "../storage/sqlite/index.js";
+import { observeRuntimeLockSnapshot } from "../storage/sqlite/runtime-process-locks.js";
 import type {
   OfflineRestoreReport,
   RecoveryRuntimeLockSnapshot,
   StorageDoctorReport,
-} from "../../infra/sqlite/recovery-contracts.js";
+} from "../storage/sqlite/recovery-contracts.js";
 import {
   descriptorSetHash,
 } from "./dashboard/compose.js";
 import { createRunQueueProjection } from "../runs/dashboard/projectors/run-queue-projection.js";
-import { createTransactionHistory } from "../../infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../storage/sqlite/transaction-history.js";
 import {
   OfflineSpanRootRepairService,
   type SpanRootRepairReport,
-} from "../../server/storage/span-root-repair.js";
+} from "../runs/recovery/span-root-repair.js";
 
 export interface StorageCommandOutcome {
   readonly output: string;
@@ -414,8 +414,8 @@ async function restoreCommand(
       finally { backupAdmission.release(); }
     }
     if (selected !== undefined && !historical && (existsSync(join(stateRoot,"archive.sqlite")) || selectedHasArchiveCustody)) throw new Error("paired-lifecycle-backup-required");
-    const { upgradeStorage } = await import("../../server/storage/upgrade.js");
-    const { restoreHistoricalStorage } = await import("../../server/storage/historical-restore.js");
+    const { upgradeStorage } = await import("../storage/storage/upgrade.js");
+    const { restoreHistoricalStorage } = await import("../storage/storage/historical-restore.js");
     const historicalResult = historical ? await restoreHistoricalStorage(admission,{authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
       processLockRoot,stoppedProofMaxAgeMs:RESTORE_STOPPED_PROOF_MAX_AGE_MS},{manifestPath:resolvedManifest,stoppedSystemProof},join(repoRoot,".env"),clock) : undefined;
     const report = historicalResult !== undefined ? historicalResult.report : paired ? await restoreLifecyclePair(admission,{authorityPath,suspectDirectory:join(stateRoot,"suspects"),busyTimeoutMs:5000,
@@ -557,7 +557,7 @@ async function backupCommand(
       exitCode: 1,
     };
   }
-  const { backupStoppedAuthority } = await import("../../server/storage/upgrade.js");
+  const { backupStoppedAuthority } = await import("../storage/storage/upgrade.js");
   const report = await backupStoppedAuthority(admission,stateRoot, clock);
     const manifest = report.manifests.at(-1);
     if (manifest === undefined) {
@@ -598,7 +598,7 @@ export async function composeStorageCommand(
       return { output: `unsupported storage upgrade argument: ${argument ?? "missing"}\n${STORAGE_USAGE}`, exitCode: 2 };
     }
     try {
-      const { upgradeStorage } = await import("../../server/storage/upgrade.js");
+      const { upgradeStorage } = await import("../storage/storage/upgrade.js");
       const report = await upgradeStorage(admission,{ stateRoot: admission.stateRoot,
         processLockRoot: join(repoRoot, isolation.processLockRoot), environmentFile: join(repoRoot, ".env"), plan: rest.includes("--plan"),
         ...(timelineSourceDirectory === undefined ? {} : { timelineSourceDirectory }) }, clock);

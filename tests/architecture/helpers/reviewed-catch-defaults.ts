@@ -27,24 +27,24 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Only a before-effect refusal clears the attempt; unconfirmed credential writes retain it."
   },
   {
-    "path": "src/infra/sqlite/explorer-override-conversion.ts",
-    "sha256": "23df9ce2ea42330ad8cecaae3e56eb40535a1877d636dfb24ed1aeb5b8d21264",
-    "reason": "ENOENT alone denotes an absent optional legacy file; all other errors propagate."
+    "path": "src/backend/storage/sqlite/explorer-override-conversion.ts",
+    "sha256": "eafb91300b8c6d48f196d2e5d47e6dd812a4632c5682044c41548f7545801808",
+    "reason": "P2 path-only relocation/import update; ENOENT alone denotes an absent optional legacy file; all other errors propagate."
   },
   {
-    "path": "src/infra/sqlite/storage-doctor.ts",
-    "sha256": "265943eddf435d61d0bddd475023403bb7e5a5f025dfc0012b90638da3555527",
-    "reason": "ENOENT alone denotes no backup directory; failed inspection sets an explicit invalid health flag."
+    "path": "src/backend/storage/sqlite/storage-doctor.ts",
+    "sha256": "98822cf362946611c38ceda77cf5836cecbefba39f61d11c4a11170a3292cf7d",
+    "reason": "P2 path-only relocation/import update; ENOENT alone denotes no backup directory; failed inspection sets an explicit invalid health flag."
   },
   {
-    "path": "src/infra/sqlite/storage-recovery-status.ts",
-    "sha256": "361e137e127fd421eba62d38e8072a09e87c7c5dfe7e4b6614f321c2c165cc81",
-    "reason": "ENOENT alone proves absent archive; all other errors propagate to unavailable custody."
+    "path": "src/backend/storage/sqlite/storage-recovery-status.ts",
+    "sha256": "880020f5256f2670b16d3a464b807ef7f36ebdc175b829683ba03fffc590491b",
+    "reason": "P2 path-only relocation/import update; ENOENT alone proves absent archive; all other errors propagate to unavailable custody."
   },
   {
     "path": "src/backend/app/dashboard/compose/notification-health.ts",
-    "sha256": "e46f08feb28c745d5774b42d998812fdd305556e495bbf6a4fb6b63f2e6b235a",
-    "reason": "Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
+    "sha256": "15adc467978d1dd20f7df810076b4ccebf310e36d137fc9f04c6241e73d0037d",
+    "reason": "P2 path-only relocation/import update; Failure booleans trigger explicit failed health notifications; they never claim a healthy read."
   },
   {
     "path": "src/dashboard/app/archive-route-model.ts",
@@ -77,14 +77,14 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "Invalid IANA zones fail the validation predicate; public callers reject with named errors without substituting a zone."
   },
   {
-    "path": "src/infra/config/provider-key-store.ts",
-    "sha256": "ddbcc6c212d7b1bde91f0e4fd49ea00bc6b9abe57c805a1498d7e24bc7d31e27",
-    "reason": "Only ENOENT denotes optional metadata or stage absence; managed history and pending state require exact custody, and other failures throw unknown."
+    "path": "src/backend/storage/config/provider-key-store.ts",
+    "sha256": "3aa46e746475ba0a488a545ea14e0b278d99a1773dbc8561873da5b3a26dd882",
+    "reason": "P2 path-only relocation/import update; Only ENOENT denotes optional metadata or stage absence; managed history and pending state require exact custody, and other failures throw unknown."
   },
   {
-    "path": "src/infra/runtime-control/installation.ts",
-    "sha256": "b973ba434dfe263d4130aa0c8de3cfd663d36cc1138dc54015dc34c98f391c06",
-    "reason": "Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
+    "path": "src/backend/storage/admission/installation.ts",
+    "sha256": "09a4a30274c4f732027eeb2560c17a1a01ce288fe551eafd975117c718b76971",
+    "reason": "P2 path-only relocation/import update; Only ENOENT denotes path absence; callers validate exact optional-path contracts or refuse missing required entries; other errors propagate."
   },
   {
     "path": "src/backend/runs/dashboard/commands/ordinary-path-validator.ts",
@@ -98,8 +98,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
   },
   {
     "path": "src/backend/runs/dashboard/queries/item-attempt-history.ts",
-    "sha256": "9750fddde138429f2aaca0b80d40f9f2e8de778c3fd3342ddc03f3e31c78c797",
-    "reason": "Malformed supplied cursors become explicit refusal before authority reads; omitted cursors remain distinct valid first-page requests."
+    "sha256": "4d6c3d771922f81f30e291f272d6d3e460cb9930a5b8b3a39fed529b022878d5",
+    "reason": "P2 path-only relocation/import update; Malformed supplied cursors become explicit refusal before authority reads; omitted cursors remain distinct valid first-page requests."
   },
   {
     "path": "src/backend/runtime/dashboard/worker-supervisor.ts",
@@ -107,8 +107,8 @@ export const REVIEWED_CATCH_DEFAULTS = [
     "reason": "The rejection observer does not replace the original drain promise; shutdown races that promise and throws aggregate failure."
   },
   {
-    "path": "src/server/storage/relocation-inventory.ts",
-    "sha256": "12cfef319cccfc2464fe26470610911535469af40d46f8cce6f134f9067985d7",
-    "reason": "A failed binding rejects that candidate; absence of any verified matching backup throws an unbound preserved-copy error."
+    "path": "src/backend/storage/storage/relocation-inventory.ts",
+    "sha256": "30271c318f7c1ccf488ff16923fd4c833e6de3c5537689da32faff15cd65635b",
+    "reason": "P2 path-only relocation/import update; A failed binding rejects that candidate; absence of any verified matching backup throws an unbound preserved-copy error."
   }
 ] as const;

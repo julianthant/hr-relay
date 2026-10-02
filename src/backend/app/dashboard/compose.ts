@@ -25,8 +25,8 @@ import { createTrustReadDependencies } from "./compose/trust.js";
 import { composeDataQueries } from "./compose/data.js";
 export { dataOriginViewsOf } from "./compose/run-detail-descriptors.js";
 export { readGateParks } from "./compose/notifications.js";
-import { createCredentialStore } from "../../../infra/config/credential-store.js";
-import { createProviderKeyStore } from "../../../infra/config/provider-key-store.js";
+import { createCredentialStore } from "../../storage/config/credential-store.js";
+import { createProviderKeyStore } from "../../storage/config/provider-key-store.js";
 import { normalizeProviderBootProvenance, providerBootProvenance, type ProviderBootProvenance } from "../../../domain/config/provider-boot-provenance.js";
 import { createProviderKeyJournal } from "../../runs/dashboard/commands/provider-key-journal.js";
 import { providerMarkedFingerprint } from "../../runs/dashboard/commands/provider-key-projection.js";
@@ -101,8 +101,8 @@ import {
   type WorkerProcessSpawner,
 } from "../../runtime/dashboard/worker-supervisor.js";
 import { RunRecordService, runContinuationPort } from "../../runs/run-record-service.js";
-import { createRuntimeVersionChanges } from "../../../core/archive-runtime-version-changes.js";
-import { createStorageRelocationPlanReader } from "../../../core/storage-relocation-plans.js";
+import { createRuntimeVersionChanges } from "../../runs/archive/archive-runtime-version-changes.js";
+import { createStorageRelocationPlanReader } from "../../storage/storage-relocation-plans.js";
 import { createWriteResolutionExecutor } from "../../runtime/write-recovery.js";
 import type { Clock } from "../../../domain/clock.js";
 import { systemClock } from "../../../domain/clock.js";
@@ -131,15 +131,15 @@ import {
   AuthorityDatabase,
   AuthorityHealthPreflightRunner,
   summarizeBackupHealth,
-} from "../../../infra/sqlite/index.js";
-import { acquireRuntimeProcessLock } from "../../../infra/sqlite/runtime-process-locks.js";
-import { pruneEventStreams } from "../../../infra/events/jsonl-streams.js";
-import { createTransactionHistory } from "../../../infra/sqlite/transaction-history.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
-import { createTimelineEmitter } from "../../../infra/events/timeline-emitter.js";
-import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../../infra/events/note-jsonl-writer.js";
-import { createContentAddressedArtifactWriter } from "../../../infra/artifacts/content-addressed-artifact-writer.js";
-import { createServerVerifiedArtifactReader } from "../../../infra/artifacts/server-verified-artifact-reader.js";
+} from "../../storage/sqlite/index.js";
+import { acquireRuntimeProcessLock } from "../../storage/sqlite/runtime-process-locks.js";
+import { pruneEventStreams } from "../../storage/events/jsonl-streams.js";
+import { createTransactionHistory } from "../../storage/sqlite/transaction-history.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
+import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
+import { createNoteJsonlWriter, type NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import { createContentAddressedArtifactWriter } from "../../storage/artifacts/content-addressed-artifact-writer.js";
+import { createServerVerifiedArtifactReader } from "../../storage/artifacts/server-verified-artifact-reader.js";
 
 import { createIntakeParser } from "../../processing/spreadsheet/intake-parser.js";
 import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../../runtime/settings/settings-runtime.js";

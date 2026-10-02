@@ -8,7 +8,7 @@ import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
  * is exactly one.
  */
 import type { Clock } from "../../src/domain/clock.js";
-import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import type { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   type ArchiveQueryDeps,

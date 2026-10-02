@@ -6,7 +6,7 @@ import { createServer, request as httpRequest, type Server } from "node:http";
 import { dirname, join } from "node:path";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { Hono } from "hono";
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import { createFixtureBff, startFixtureServer, type FixtureServer } from "./fixture-bff.js";
 import { assertParityBundleIsCurrent, PARITY_DIST_DIR, readBundleStamp } from "./bundle.js";
 import { registerStorageRoutes } from "../../../src/backend/transports/dashboard/routes/storage.js";
@@ -16,8 +16,8 @@ import { composeStorageCommand } from "../../helpers/synthetic-storage-admission
 import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot, type RuntimeProcessLockHandle } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { acquireRuntimeProcessLock, observeRuntimeLockSnapshot, type RuntimeProcessLockHandle } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createCredentialStore } from "../../helpers/synthetic-storage-admission.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, ProtectedSettingsApplyInputSchema } from "../../../src/domain/config/protected-settings.js";
 

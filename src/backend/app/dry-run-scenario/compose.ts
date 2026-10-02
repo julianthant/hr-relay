@@ -37,8 +37,8 @@ import {
   parseDryRunScenarioManifest,
   type DryRunScenarioManifest,
 } from "../../../domain/trust/dry-run-scenario.js";
-import { AuthorityDatabase } from "../../../infra/sqlite/index.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../infra/runtime-control/admission.js";
+import { AuthorityDatabase } from "../../storage/sqlite/index.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../storage/admission/admission.js";
 
 /**
  * One workflow, one resolver. The runner itself is workflow-generic — it reads

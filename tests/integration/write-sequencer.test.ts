@@ -1,7 +1,7 @@
 import { reconstructConfirmedOperation } from "../../src/events/confirmed-operation.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
-import { RunClaimTokenSchema } from "../../src/infra/sqlite/run-store-contracts.js";
+import { RunClaimTokenSchema } from "../../src/backend/storage/sqlite/run-store-contracts.js";
 import { lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";
 import { testRunLifecycle, testRunService } from "../fixtures/run-lifecycle-fixtures.js";
 /**

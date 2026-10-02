@@ -1,4 +1,4 @@
-import { NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { QUEUED_RUN } from "../../fixtures/phase1f-run-fixtures.js";
 import assert from "node:assert/strict";
@@ -6,12 +6,12 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { historicalFixture, withHistoricalAuthority } from "../../unit/archive-transfer/historical-fixtures.js";
+import { historicalFixture, withHistoricalAuthority } from "./helpers/historical-fixtures.js";
 import { NOW, id } from "../../unit/database-foundation/fixtures.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
-import { HistoricalVersionChangeSchema } from "../../../src/infra/sqlite/storage-records.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
+import { HistoricalVersionChangeSchema } from "../../../src/backend/storage/sqlite/storage-records.js";
 import { ARCHIVE_RELAUNCH } from "../../fixtures/archive-fixtures.js";
 import { projectArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 
@@ -69,8 +69,8 @@ for(const step of ["captured","verified","cleaned","published","retired","commit
 });
 
 import { restoreHistoricalStorage } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { mkdirSync } from "node:fs";
 for(const interruption of ["restored","quarantined","converted"] as const)it(`restores a populated schema 48 backup through conversion after ${interruption}`,async()=>{
   const f=historicalFixture();
@@ -103,7 +103,7 @@ for(const interruption of ["restored","quarantined","converted"] as const)it(`re
 });
 
 import { renameSync } from "node:fs";
-import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../../src/infra/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS, AUTHORITY_APPLICATION_ID } from "../../../src/backend/storage/sqlite/migrations.js";
 import { z } from "zod";
 
 /** A released schema-49 image with an already published report and a live descendant. */

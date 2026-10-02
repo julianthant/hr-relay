@@ -20,7 +20,7 @@ import {
   type VersionBumpApplication,
   type VersionBumpPlan,
 } from "../../src/domain/archive/model.js";
-import { VersionPlanStorageRecordSchema } from "../../src/infra/sqlite/storage-records.js";
+import { VersionPlanStorageRecordSchema } from "../../src/backend/storage/sqlite/storage-records.js";
 import { HASH_A, HASH_B, HASH_C, NOW, UUID_1, UUID_5, UUID_6, UUID_7 } from "./phase1c-contract-fixtures.js";
 import { ITEM_ID, RUN_ID, RUN_INPUT, TRACE_ID, WORKFLOW_ID } from "./phase1f-run-fixtures.js";
 

@@ -68,9 +68,9 @@ it("corrupt protected annotation JSON fails by name without echoing private text
   } finally { sql.close(); f.dispose(); }
 });
 
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { projectArchiveReport } from "../../../src/infra/sqlite/archive-records.js";
+import { projectArchiveReport } from "../../../src/backend/storage/sqlite/archive-records.js";
 import { NOW } from "../../unit/database-foundation/fixtures.js";
 
 it("withholds protected resolution notes throughout production archive capture while retaining private evidence", () => {

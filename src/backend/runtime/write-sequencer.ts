@@ -102,15 +102,15 @@ import {
   type WriteBindingProof,
   type WriteIntentRecord,
 } from "../../domain/write-safety.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
-import type { RunClaimToken } from "../../infra/sqlite/run-store-contracts.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
+import type { RunClaimToken } from "../storage/sqlite/run-store-contracts.js";
 import {
   SequencedWriteCommitInputSchema,
   AtomicWriteCommitReportSchema,
   type AtomicWriteCommitReport,
   type SequencedWriteCommitStep,
   type WriteIntentParkCode,
-} from "../../infra/sqlite/write-commit-contracts.js";
+} from "../storage/sqlite/write-commit-contracts.js";
 import type { SessionNeed } from "../../domain/session.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import type { SpanEmitter } from "../../core/span-emitter.js";

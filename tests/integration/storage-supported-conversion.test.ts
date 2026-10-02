@@ -7,7 +7,7 @@ import { describe, it } from "vitest";
 import { storageRecoveryFixture, storageTree, credentialTrap } from "./helpers/storage-recovery-fixture.js";
 import { upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { NORMAL_AUTHORITY_SCHEMA_VERSION, UPGRADE_FLOOR_SCHEMA_VERSION } from "../../src/backend/storage/sqlite/migrations.js";
 import { readLatestDatabaseUpgrade } from "../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { readSettings } from "../../src/backend/runtime/settings/settings-runtime.js";

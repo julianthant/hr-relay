@@ -4,12 +4,12 @@ import {
   assertNoMigratedEnvironmentKeys,
 } from "../src/domain/secrets.js";
 import { publishProviderBootProvenance } from "../src/domain/config/provider-boot-provenance.js";
-import { acquireEntrypointAdmission } from "../src/infra/runtime-control/bootstrap-admission.js";
-import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../src/infra/runtime-control/installation.js";
-import { acquireRuntimeRestoreAdmission } from "../src/infra/sqlite/runtime-process-locks.js";
+import { acquireEntrypointAdmission } from "../src/backend/storage/admission/bootstrap-admission.js";
+import { inspectPendingRelocationStatus, recoverAbandonedAdmissionMutex } from "../src/backend/storage/admission/installation.js";
+import { acquireRuntimeRestoreAdmission } from "../src/backend/storage/sqlite/runtime-process-locks.js";
 import { rebuildRuntimeIsolation } from "../src/config/runtime-isolation.js";
 import { join } from "node:path";
-import type { RuntimeAdmission } from "../src/infra/runtime-control/admission.js";
+import type { RuntimeAdmission } from "../src/backend/storage/admission/admission.js";
 import { assertDashboardBuildCurrent } from "../src/backend/app/dashboard/build-identity.js";
 
 export type SecureEnvironmentEntrypoint = "cli" | "test-target-document-number";
@@ -62,7 +62,7 @@ export async function runSecureEnvironmentBootstrap(
   }
 
   if (entrypoint === "cli" && entrypointArgs[0] === "storage" && entrypointArgs[1] === "relocate") {
-    const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/server/storage/relocate.js");
+    const { parseRelocationCommand, runOfflineStorageRelocation, StorageRelocationIncompleteError } = await import("../src/backend/app/storage/relocate.js");
     const command = parseRelocationCommand(entrypointArgs.slice(2));
     if (command.kind === "status") {
       const pending = (dependencies.inspectRelocationStatus ?? inspectPendingRelocationStatus)(workspace);

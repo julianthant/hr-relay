@@ -1,7 +1,7 @@
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { generatedUpdateId, pendingGeneratedUpdateIds } from "../../src/core/generated-artifact-projection.js";
-import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * Ref data-intake-and-edit-data §4.1 / ref dashboard-surfaces §2.1 (D45, D164): the stable-keyed local artifact
@@ -43,11 +43,11 @@ import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentatio
 import {
   ArtifactSinkBusyError,
   createArtifactSinkProjector,
-} from "../../src/infra/artifacts/artifact-sink-projector.js";
+} from "../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import {
   ArtifactSinkConflictError,
   createXlsxRetentionSink,
-} from "../../src/infra/artifacts/xlsx-retention-sink.js";
+} from "../../src/backend/storage/artifacts/xlsx-retention-sink.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { HASH_A } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";

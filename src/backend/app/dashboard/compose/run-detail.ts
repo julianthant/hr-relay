@@ -5,7 +5,7 @@ import { historicalStepProofModuleOf } from "../../control/step-proof-modules.js
 
 import {
   AuthorityDatabase,
-} from "../../../../infra/sqlite/index.js";
+} from "../../../storage/sqlite/index.js";
 
 import type {
   RunDetailQueryDeps,

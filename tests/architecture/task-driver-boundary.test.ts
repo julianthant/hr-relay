@@ -153,7 +153,7 @@ it("parses JSX templates while retaining raw browser calls embedded in JSX", () 
 it("requires declared installation locator ownership and preserves raw aliases, computed methods and any refusals", () => {
   const root = resolve(tmpdir(), `hrauto-ui-locator-${String(process.pid)}-${String(Date.now())}`);
   const path = resolve(root, "src/core/reader.ts");
-  const owner = resolve(root, "src/infra/runtime-control/installation.ts");
+  const owner = resolve(root, "src/backend/storage/admission/installation.ts");
   try {
     mkdirSync(dirname(path), { recursive: true }); mkdirSync(dirname(owner), { recursive: true });
     writeFileSync(owner, 'export type RuntimeLocator = { installationId: string; generation: number; stateRoot: string; artifactRoot: string };');
@@ -182,10 +182,10 @@ it("allows only the declared durable archive callback and rejects browser, any, 
   const path = resolve(root, "src/core/kernel.ts");
   try {
     mkdirSync(dirname(path), { recursive: true });
-    mkdirSync(resolve(root, "src/backend/runs"), { recursive: true });
+    mkdirSync(resolve(root, "src/backend/runs/archive"), { recursive: true });
     writeFileSync(resolve(root, "src/backend/runs/command-application.ts"), 'export interface CommandApplication { commit?: () => void }');
-    writeFileSync(resolve(root, "src/core/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
-    const imports = 'import type { CommandApplication } from "../backend/runs/command-application.js"; import { publishManualArchive } from "./archive-terminal-runs.js";';
+    writeFileSync(resolve(root, "src/backend/runs/archive/archive-terminal-runs.ts"), 'export function publishManualArchive(input: unknown): void { void input; }');
+    const imports = 'import type { CommandApplication } from "../backend/runs/command-application.js"; import { publishManualArchive } from "../backend/runs/archive/archive-terminal-runs.js";';
     writeFileSync(path, imports + 'export function prepare(): CommandApplication { return { commit: () => publishManualArchive("verified") }; }');
     assert.deepEqual(auditTaskDriverBoundary(root), []);
     for (const source of [

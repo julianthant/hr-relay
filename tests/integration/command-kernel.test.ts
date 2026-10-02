@@ -1,8 +1,8 @@
 import { explorerEditCommandFingerprint } from "../../src/domain/dashboard/explorer-override.js";
-import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../src/services/archive/archive-transfer.js";
-import { projectArchiveReport } from "../../src/infra/sqlite/archive-records.js";
+import { transferArchiveReport } from "../../src/backend/storage/archive-transfer.js";
+import { projectArchiveReport } from "../../src/backend/storage/sqlite/archive-records.js";
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { RETIRED_EDIT_CHECKPOINT_COMMAND } from "../fixtures/phase1c-contract-fixtures.js";

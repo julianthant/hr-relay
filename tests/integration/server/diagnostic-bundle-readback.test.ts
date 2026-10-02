@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { createTrustRunReader } from "../../../src/backend/runs/trust/canonical-reader.js";
 /** E29/D291: durable D137 bundle readback through request-local verified-byte passes and leases. */
 import assert from "node:assert/strict";
@@ -14,13 +14,13 @@ import {
   DiagnosticBundleSchema,
   type DiagnosticBundle,
 } from "../../../src/domain/trust/diagnostic.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import {
   createServerVerifiedArtifactReader,
   VerifiedArtifactOperationalError,
-} from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+} from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/infra/sqlite/storage-records.js";
+import { DiagnosticAttachmentStorageRecordSchema } from "../../../src/backend/storage/sqlite/storage-records.js";
 import {
   createArtifactVerificationPass,
   IndexedArtifactBytesMissingError,

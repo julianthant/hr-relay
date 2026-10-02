@@ -8,7 +8,7 @@ import { pathToFileURL } from "node:url";
 import { afterEach, describe, it, vi } from "vitest";
 import { ActorIdSchema, SourceSurfaceIdSchema } from "../../../src/domain/ids.js";
 import { createProviderKeyStore, ProviderKeyStoreConflictError, ProviderKeyStoreUnknownError, type ProviderKeyJournal, type ProviderKeyWriteRequest } from "../../helpers/synthetic-storage-admission.js";
-import { observeProcessIdentity } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { observeProcessIdentity } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });

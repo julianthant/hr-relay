@@ -18,9 +18,9 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, it } from "vitest";
-import { appendEventStreamLine } from "../../../src/infra/events/jsonl-streams.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { appendEventStreamLine } from "../../../src/backend/storage/events/jsonl-streams.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { deterministicUuid } from "../../../src/backend/runs/support.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import {

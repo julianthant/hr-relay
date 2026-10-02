@@ -1,6 +1,6 @@
 import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";
 import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import type { DashboardAppDeps } from "../../../src/backend/transports/dashboard/routes/api-types.js";
 import { createCalendarQuery } from "../../../src/backend/runs/dashboard/queries/calendar.js";
 import { createProtectedSettingsRuntimeReader } from "../../../src/backend/runtime/settings/settings-runtime.js";
@@ -14,9 +14,9 @@ import { resolveConfigWithProvenance } from "../../../src/backend/app/config/res
 import { initialSettingsFileRecord,settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { ActorIdSchema as PublicationActorIdSchema } from "../../../src/domain/ids.js";
 import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { createRunLifecycleStorage } from "../../../src/infra/sqlite/lifecycle-storage.js";
-import { AuthorityDatabase } from "../../../src/infra/sqlite/index.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/sqlite/lifecycle-storage.js";
+import { AuthorityDatabase } from "../../../src/backend/storage/sqlite/index.js";
 import { createDashboardCommandService } from "../../../src/backend/runs/dashboard/commands/command-service.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { createStartPlanService } from "../../../src/backend/runs/dashboard/commands/start-plan-service.js";

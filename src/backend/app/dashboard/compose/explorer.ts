@@ -1,5 +1,5 @@
 import { readCommittedUiCatalog } from "../../../runs/dashboard/queries/ui-catalog.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 import type { Clock } from "../../../../domain/clock.js";
 import type { Fingerprint } from "../../../../domain/ids.js";
 import { WORKFLOW_MODULES, readPendingImplBindings } from "../../control/workflow-registry.js";

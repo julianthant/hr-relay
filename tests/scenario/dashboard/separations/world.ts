@@ -57,8 +57,8 @@ import { SeparationWritePlanSchema } from "../../../../src/domain/separations/wr
 import { RunCheckpointRecordSchema } from "../../../../src/domain/workflow/checkpoint.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../../src/domain/workflow/build-manifest.js";
 import { parseInputRunText, toRawSubmission } from "../../../../src/domain/workflow/ingress.js";
-import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
-import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import { AuthorityDatabase } from "../../../helpers/synthetic-storage-admission.js";
 import { createDashboardCommandService } from "../../../../src/backend/runs/dashboard/commands/command-service.js";
 import { createStartPlanService } from "../../../../src/backend/runs/dashboard/commands/start-plan-service.js";

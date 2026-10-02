@@ -3,7 +3,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { foundationFixture, admission, generic, id, NOW } from "../../unit/provider-accounting/fixtures.js";
 import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
-import { createGenericProviderAccounting, inspectGenericProviderAccounting } from "../../../src/infra/sqlite/provider-accounting.js";
+import { createGenericProviderAccounting, inspectGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { GenericProviderUsageSchema, type ProviderUsageStorage } from "../../../src/domain/provider-accounting.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";

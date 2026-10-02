@@ -1,6 +1,6 @@
 import { historicalArchiveAuthority } from "./helpers/historical-archive-authority.js";
 import { VersionChangeStorageSchema } from "../../src/domain/archive/change-record.js";
-import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../src/backend/storage/run-lifecycle-storage.js";
 import { projectArchiveReport, queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { ArchiveReportSchema } from "../../src/domain/archive/report.js";
 import { DatabaseSync } from "node:sqlite";
@@ -54,7 +54,7 @@ import {
   VersionBumpPlanSchema,
 } from "../../src/domain/archive/model.js";
 import { RunEvidenceReceiptSchema } from "../../src/domain/trust/evidence.js";
-import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 
 import { UcpathCreateTermination } from "../../src/domain/contracts/ucpath/create-termination.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";

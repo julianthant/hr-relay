@@ -4,7 +4,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe, it } from "vitest";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { failureResolutionCapability } from "../../../src/backend/runs/failure-resolution.js";
-import { readTimelineRecords } from "../../../src/infra/events/timeline-reader.js";
+import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
 import { TimelineAppendSchema } from "../../../src/events/timeline.js";
 import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";

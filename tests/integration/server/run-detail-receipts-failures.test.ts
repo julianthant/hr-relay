@@ -1,12 +1,12 @@
 import { join } from "node:path";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { ActorIdSchema, DiagnosticBundleIdSchema, FailureIdSchema } from "../../../src/domain/ids.js";
 import { DiagnosticBundleSchema, type DiagnosticBundle } from "../../../src/domain/trust/diagnostic.js";
 import { deriveDiagnosticContentDigest } from "../../../src/domain/trust/diagnostic-capture.js";
-import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { buildReceiptFailureSection } from "../../../src/backend/runs/dashboard/queries/run-detail/receipts-failures.js";
 import { DiagnosticBundleCorruptError } from "../../../src/backend/runs/refusals.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";

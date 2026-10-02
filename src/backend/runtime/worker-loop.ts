@@ -48,7 +48,7 @@ import type {
 import type { ContentAddressedArtifactWriter } from "../../base/artifacts.js";
 import type { RunDiagnosticCapture } from "../../base/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../base/diagnostics.js";
-import type { NoteJsonlWriter } from "../../infra/events/note-jsonl-writer.js";
+import type { NoteJsonlWriter } from "../storage/events/note-jsonl-writer.js";
 import type { GateSourceRuntime } from "./gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 import {

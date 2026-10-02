@@ -10,9 +10,9 @@ export async function withAuthorityBuildVariant(
   run: () => Promise<void>,
 ): Promise<void> {
   vi.resetModules();
-  vi.doMock("../../../src/infra/sqlite/migrations.js", async () => {
-    const actual = await vi.importActual<typeof import("../../src/infra/sqlite/migrations.js")>(
-      "../../../src/infra/sqlite/migrations.js",
+  vi.doMock("../../../src/backend/storage/sqlite/migrations.js", async () => {
+    const actual = await vi.importActual<typeof import("../../src/backend/storage/sqlite/migrations.js")>(
+      "../../../src/backend/storage/sqlite/migrations.js",
     );
     if (variant === "current-29") {
       // The database fixture remains real v30. Only this isolated build's
@@ -32,7 +32,7 @@ export async function withAuthorityBuildVariant(
   try {
     await run();
   } finally {
-    vi.doUnmock("../../../src/infra/sqlite/migrations.js");
+    vi.doUnmock("../../../src/backend/storage/sqlite/migrations.js");
     vi.resetModules();
   }
 }

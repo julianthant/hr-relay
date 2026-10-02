@@ -1,7 +1,7 @@
 import { AuthorityDatabase } from "../../../helpers/synthetic-database-admission.js";
 import { DatabaseSync } from "node:sqlite";
 import type { TimelineRepository } from "../../../../src/events/timeline.js";
-import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/infra/sqlite/timeline-repository.js";
+import { createTimelineRepository, TIMELINE_EVENT_TABLE_DDL, TIMELINE_EVENT_INDEX_DDL } from "../../../../src/backend/storage/sqlite/timeline-repository.js";
 import { inMemoryRunReaderFake, type CanonicalRunReader, type InMemoryRunReaderState } from "../../../helpers/canonical-run-reader.js";
 import { type RunSessionRecord } from "../../../../src/domain/run/session.js";
 /**
@@ -36,9 +36,9 @@ import { GateResultRecordSchema, type GateResultRecord } from "../../../../src/d
 import type { RunCheckpointRecord } from "../../../../src/domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../src/domain/write-safety.js";
 import type { RunQueuedWire, SpanOutcomeWire } from "../../../../src/events/types.js";
-import { createTimelineEmitter } from "../../../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../../../src/backend/storage/events/timeline-emitter.js";
 type TimelineEmitter = ReturnType<typeof createTimelineEmitter>;
-import { createTransactionHistory } from "../../../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../../../src/backend/storage/sqlite/transaction-history.js";
 import {
   createRunQueueProjection,
   RunQueueProjection,

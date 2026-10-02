@@ -4,8 +4,8 @@ import { lstatSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, 
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { it } from "vitest";
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { copyNativeSnapshot } from "../../../src/server/storage/relocate.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { copyNativeSnapshot } from "../../../src/backend/app/storage/relocate.js";
 
 it("replays only the exact interrupted native snapshot publication", () => {
   const workspace = realpathSync(mkdtempSync(join(tmpdir(), "relocation-native-publication-")));

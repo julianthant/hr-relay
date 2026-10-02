@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync,rmSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { AUTHORITY_APPLICATION_ID,SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID,SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
 import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
 
 /** Replace only a caller-owned synthetic fixture with an inspected frozen schema-46 image. */

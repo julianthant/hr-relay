@@ -35,7 +35,7 @@ import {
 import {
   SettingsRootAuthoritySchema,
   settingsRootPaths,
-} from "../../src/infra/compat/d331-settings-root.js";
+} from "../../src/backend/storage/compat/d331-settings-root.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import {

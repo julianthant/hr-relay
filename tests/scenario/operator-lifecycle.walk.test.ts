@@ -1,6 +1,6 @@
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
-import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { genericArchiveSection } from "../../src/backend/storage/archive/report-capture.js";
 import { JsonValueSchema } from "../../src/domain/canonical-json.js";
 import { LifecycleSourceSnapshotSchema } from "../../src/domain/archive/lifecycle-source.js";
@@ -77,8 +77,8 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { deriveEvidenceReceiptId } from "../../src/domain/trust/evidence-identity.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
-import { createContentAddressedArtifactWriter } from "../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createContentAddressedArtifactWriter } from "../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { createNotificationInbox } from "../../src/backend/runs/notifications/inbox.js";
 import { createDashboardCommandService } from "../../src/backend/runs/dashboard/commands/command-service.js";
@@ -105,7 +105,7 @@ import {
   EXIT_TERMINAL_AT,
   seedPersonLookupExitRun,
 } from "../fixtures/receipt-run-fixtures.js";
-import { createTransactionHistory } from "../../src/infra/sqlite/transaction-history.js";
+import { createTransactionHistory } from "../../src/backend/storage/sqlite/transaction-history.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 
 /* ── the source file, as an operator would upload it ─────────────────────── */

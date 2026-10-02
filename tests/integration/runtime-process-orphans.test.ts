@@ -4,7 +4,7 @@ import { syncBuiltinESMExports } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
-import { inspectRuntimeProcessOrphans, WorkerProcessLockFileSchema } from "../../src/infra/sqlite/runtime-process-locks.js";
+import { inspectRuntimeProcessOrphans, WorkerProcessLockFileSchema } from "../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
 
 const roots: string[] = [];

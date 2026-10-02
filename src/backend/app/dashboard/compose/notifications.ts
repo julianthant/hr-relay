@@ -10,7 +10,7 @@ import {
 
 import {
   AuthorityDatabase,
-} from "../../../../infra/sqlite/index.js";
+} from "../../../storage/sqlite/index.js";
 import { createNotificationInbox } from "../../../runs/notifications/inbox.js";
 import { createBackfillGapNotifier } from "../../../runs/notifications/backfill-gap.js";
 import {
@@ -20,7 +20,7 @@ import {
 } from "../../../runs/notifications/gate-park.js";
 
 import { createTrustRunReader } from "../../../runs/trust/canonical-reader.js";
-import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../../infra/runtime-control/admission.js";
+import { requireRuntimeAdmission, type RuntimeAdmission } from "../../../storage/admission/admission.js";
 import { listLiveTrustRuns, type TrustRunReader } from "../../../runs/trust/run-reader.js";
 
 /** Retained gate-watch adapter; production observation also includes canonical occurrence identity. */

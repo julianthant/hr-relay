@@ -3,8 +3,8 @@ import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import type { Clock } from "../../../src/domain/clock.js";
 import { withStoppedArchiveConversion, AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/infra/sqlite/migrations.js";
-import { createRunSummaries } from "../../../src/infra/sqlite/run-summaries.js";
+import { AUTHORITY_APPLICATION_ID, SQLITE_MIGRATIONS } from "../../../src/backend/storage/sqlite/migrations.js";
+import { createRunSummaries } from "../../../src/backend/storage/sqlite/run-summaries.js";
 
 /** Frozen mirror-model tests use the released v48 schema explicitly. Current opens still refuse it.
  * Each operation borrows the same stopped conversion capability used by the production migrator. */

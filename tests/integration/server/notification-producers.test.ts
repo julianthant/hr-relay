@@ -13,7 +13,7 @@ import { sequentialIdFactory, QUEUED_RUN, WORKER_START_REQUEST } from "../../fix
 import type { RunRecord } from "../../../src/domain/run/record.js";
 import { failureRecordOf, cleanReceiptOf, runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { dirname, join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { readNotificationSources } from "../../../src/backend/app/dashboard/compose/notification-sources.js";

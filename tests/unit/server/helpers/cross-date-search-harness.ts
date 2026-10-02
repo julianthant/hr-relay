@@ -1,5 +1,5 @@
 import { RunRecordSchema, type RunRecord } from "../../../../src/domain/run/record.js";
-import type { AuthorityDatabase } from "../../../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../../../src/backend/storage/sqlite/index.js";
 import { runRecordOf, type SeedRunInput } from "./dashboard-harness.js";
 
 /** One strict authority row shaped exactly like the sanitized D283 search corpus. */

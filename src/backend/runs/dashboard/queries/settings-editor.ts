@@ -16,7 +16,7 @@ import { activeProviderKeySlots, optionalSecretFamily, SecretFamilyNameSchema } 
 import type { ProtectedSettingsRuntimeSnapshot, SettingsRuntimeSnapshot } from "../../../runtime/settings/settings-runtime.js";
 import { PROVIDER_KEYS_SCHEMA_HASH, ProviderKeySlotSchema } from "../../../../domain/config/provider-keys.js";
 import type { ProviderBootProvenance } from "../../../../domain/config/provider-boot-provenance.js";
-import type { createProviderKeyStore } from "../../../../infra/config/provider-key-store.js";
+import type { createProviderKeyStore } from "../../../storage/config/provider-key-store.js";
 
 const SECTION_LABELS = { general: "General", display: "Display", performance: "Performance", paths: "Paths", routes: "Routes", "annual-dates": "Annual dates", providers: "Provider budgets & models" } as const;
 const LABELS: Readonly<Record<string, string>> = {

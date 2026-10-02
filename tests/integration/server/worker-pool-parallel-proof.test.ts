@@ -50,7 +50,7 @@ import { poolWorkerId, type WorkerPoolMember } from "../../../src/backend/runtim
 import { manualClock, systemClock, type Clock, type TestClock } from "../../../src/domain/clock.js";
 import { PositiveIntSchema, WorkflowIdSchema } from "../../../src/domain/ids.js";
 import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
-import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { WorkerProcessLockFileSchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import {
   composeDashboardRuntime,

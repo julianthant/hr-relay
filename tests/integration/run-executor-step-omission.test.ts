@@ -1,4 +1,4 @@
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { timelineCheckpointReference } from "../../src/events/timeline.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
@@ -26,7 +26,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
 import type { StepOmissionDeclaration } from "../../src/domain/workflow/step-omission.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { HASH_A, UUID_4 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN, RUN_ID, WORKER_ID, sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

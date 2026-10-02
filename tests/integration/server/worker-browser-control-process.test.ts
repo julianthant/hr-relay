@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
 import { ActorIdSchema } from "../../../src/domain/ids.js";
 import { deriveTraceId } from "../../../src/domain/identifiers.js";
@@ -18,7 +18,7 @@ import { rebuildRuntimeIsolation } from "../../../src/config/runtime-isolation.j
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { AuthorityDatabase } from "../../helpers/admission-fixture.js";
-import { WorkerProcessLockFileSchema } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { WorkerProcessLockFileSchema } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { composeDashboardRuntime, type DashboardRuntime } from "../../../src/backend/app/dashboard/compose.js";
 import type { WorkerProcessSpawner } from "../../../src/backend/runtime/dashboard/worker-supervisor.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";

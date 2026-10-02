@@ -2,7 +2,7 @@ import type { DashboardCommandService } from "../../../runs/dashboard/commands/c
 import type { BulkCommandAcceptanceAuthority } from "../../../runs/dashboard/commands/operator-command-ingress.js";
 import type { CommandRequest } from "../../../../domain/commands.js";
 import type { IntakeService } from "../../../runs/dashboard/commands/intake-service.js";
-import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../../infra/config/provider-key-store.js";
+import type { ProviderKeyPendingIdentity, ProviderKeyWriteRequest } from "../../../storage/config/provider-key-store.js";
 
 export interface CommandsRouteDeps {
   readonly clock: import("../../../../domain/clock.js").Clock;

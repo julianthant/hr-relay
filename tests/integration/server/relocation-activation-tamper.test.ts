@@ -6,10 +6,10 @@ import { afterEach, it } from "vitest";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { ArchiveReportSchema, sealArchiveReport } from "../../../src/domain/archive/report.js";
 import { hostConfigFacts } from "../../../src/domain/config/host-display.js";
-import { acquireExclusiveRuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
-import { inspectPendingRelocationStatus } from "../../../src/infra/runtime-control/installation.js";
-import { runOfflineStorageRelocation, StorageRelocationIncompleteError } from "../../../src/server/storage/relocate.js";
-import { cleanupFixtureRoots, clock, installation, leaveStoppedWal, plan } from "../../unit/server/helpers/storage-relocation-fixture.js";
+import { acquireExclusiveRuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
+import { inspectPendingRelocationStatus } from "../../../src/backend/storage/admission/installation.js";
+import { runOfflineStorageRelocation, StorageRelocationIncompleteError } from "../../../src/backend/app/storage/relocate.js";
+import { cleanupFixtureRoots, clock, installation, leaveStoppedWal, plan } from "../storage/helpers/storage-relocation-fixture.js";
 
 afterEach(cleanupFixtureRoots);
 

@@ -30,7 +30,7 @@ import { runWorkerLoop, type WorkerLoopDependencies } from "../../src/backend/ru
 import type { ExecutorSpanEvent, SpanEmitter } from "../../src/core/span-emitter.js";
 import { WorkerIdSchema, WorkflowIdSchema } from "../../src/domain/ids.js";
 import type { RunRecord } from "../../src/domain/run/record.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { taskStoreRegistry } from "../../src/backend/app/task-registry.js";
 import { sequentialIdFactory, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import {

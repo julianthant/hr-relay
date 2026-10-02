@@ -1,4 +1,4 @@
-import { RuntimeAdmission } from "../../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../../src/backend/storage/admission/admission.js";
 import { PositiveIntSchema } from "../../../src/domain/ids.js";
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
@@ -11,7 +11,7 @@ import { describe, it } from "vitest";
 import { manualClock } from "../../../src/domain/clock.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { CrossDateSearchPageSchema } from "../../../src/domain/dashboard/search.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createOperatorXlsxExportService } from "../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { createCrossDateSearchService } from "../../../src/backend/runs/dashboard/queries/search.js";

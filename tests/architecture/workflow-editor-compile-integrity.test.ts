@@ -429,8 +429,8 @@ describe("the Phase B safe-edit protocol cannot become a code-authoring path", (
   });
 
   it("keeps override writes inside the command transaction with strict SQL readback and audit binding", () => {
-    const repository = read("src/infra/sqlite/explorer-overrides.ts");
-    const database = read("src/infra/sqlite/authority-database.ts");
+    const repository = read("src/backend/storage/sqlite/explorer-overrides.ts");
+    const database = read("src/backend/storage/sqlite/authority-database.ts");
     const kernel = read("src/backend/runs/command-kernel.ts");
     const service = read("src/backend/runs/dashboard/commands/explorer-edit-service.ts");
     const violations = (source: string): string[] => [

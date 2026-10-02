@@ -1,8 +1,8 @@
 # Shared test fixtures (D341)
 
 One discoverable interface for synthetic inputs that more than one test tier uses. Pure data
-fixtures stay free of private input, credentials, databases and browsers. Two existing resource
-harnesses shared with scenario or parity are named below; they run only when a caller invokes them.
+fixtures stay free of private input, credentials, databases and browsers. Existing resource
+harnesses are named below; they run only when a caller invokes them.
 The architecture guard `tests/architecture/test-data-ownership.test.ts` enforces this map.
 
 ## Ownership map
@@ -17,7 +17,7 @@ The architecture guard `tests/architecture/test-data-ownership.test.ts` enforces
 | Existing shared seam fixtures | `descriptor-fixtures`, `explorer-authority`, `explorer-timeline-wire`, `run-operations`. | Unit, architecture and integration callers |
 | `tests/helpers/*.ts` | Behavioural harnesses shared across tiers: executor harness (`phase1f-executor-harness`), composition builders (`separations-composition-fixtures`, `ucpath-termination-fixtures`, `kuali-finalization-fixtures`, `duo-ceremony-fixtures`), the synthetic protected-store source (`protected-secret-source`), `registered-workflows`, `t1b-manifests`, and `canonical-run-reader` (injected SQLite reader and explicit in-memory unit fake). | `tests/unit`, `tests/scenario`, `tests/integration` |
 | `tests/helpers/*.ts` moved from unit | `timeline-write-fixture`. | Unit and integration callers |
-| Exact shared resource harness exceptions | `tests/fixtures/preflight/corpus.ts` injects browser/process/storage faults; `tests/helpers/synthetic-storage-admission.ts` admits real test databases and credential-store adapters through synthetic roots. | Integration, scenario and parity callers only |
+| Exact shared resource harness exceptions | `tests/fixtures/preflight/corpus.ts` injects browser/process/storage faults; `tests/helpers/synthetic-storage-admission.ts` admits real test databases and credential-store adapters through synthetic roots; `tests/helpers/storage/transaction-history-fixture.ts` builds explicit historical SQLite fixtures when invoked. | Architecture and integration callers only |
 | `tests/integration/{fixtures,helpers}/` | Real SQLite, filesystem, authority and composition harnesses moved with integration proofs, including the synthetic private input source `test-data-source`. | Integration tests |
 | `tests/unit/fixtures/`, `tests/unit/helpers/` | Unit-only fixtures and helpers (case-specific assertions, violation fixtures and fake pages). | `tests/unit` only; no other tier may import them |
 | `tests/unit/fixtures/{plan1-browser-operation,plan1-operation-workflows,plan1-separation-operation,run-launch-fixtures,workflow-definition-fixtures,write-sequencer-fixtures}.ts` | Exact re-exports of shared fixtures for unchanged parity source imports. | Parity only |

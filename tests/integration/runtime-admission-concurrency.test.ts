@@ -1,6 +1,6 @@
 import * as filesystem from "node:fs";
-import * as processLocks from "../../src/infra/sqlite/runtime-process-locks.js";
-import { AdmissionMutexBusyError } from "../../src/infra/runtime-control/installation.js";
+import * as processLocks from "../../src/backend/storage/sqlite/runtime-process-locks.js";
+import { AdmissionMutexBusyError } from "../../src/backend/storage/admission/installation.js";
 import { randomUUID } from "node:crypto";
 import assert from "node:assert/strict";
 import { spawn, type ChildProcess } from "node:child_process";
@@ -9,7 +9,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { pathToFileURL } from "node:url";
 import { afterEach, it, vi } from "vitest";
-import { acquireEntrypointAdmission } from "../../src/infra/runtime-control/bootstrap-admission.js";
+import { acquireEntrypointAdmission } from "../../src/backend/storage/admission/bootstrap-admission.js";
 
 vi.mock("node:fs", async importOriginal => {
   const actual = await importOriginal<typeof import("node:fs")>();
@@ -54,8 +54,8 @@ it("admits and releases simultaneous installed children after a live mutex holde
   const root = realpathSync(mkdtempSync(join(tmpdir(), "runtime-admission-concurrent-")));
   roots.push(root);
   acquireEntrypointAdmission(root, "exclusive").release();
-  const bootUrl = pathToFileURL(join(process.cwd(), "src/infra/runtime-control/bootstrap-admission.ts")).href;
-  const locksUrl = pathToFileURL(join(process.cwd(), "src/infra/sqlite/runtime-process-locks.ts")).href;
+  const bootUrl = pathToFileURL(join(process.cwd(), "src/backend/storage/admission/bootstrap-admission.ts")).href;
+  const locksUrl = pathToFileURL(join(process.cwd(), "src/backend/storage/sqlite/runtime-process-locks.ts")).href;
   const holder = launch(`
     import { mkdirSync, writeFileSync, unlinkSync, rmdirSync } from "node:fs";
     import { join } from "node:path";

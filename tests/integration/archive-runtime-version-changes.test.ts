@@ -1,18 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 
-import { createRuntimeVersionChanges } from "../../src/core/archive-runtime-version-changes.js";
+import { createRuntimeVersionChanges } from "../../src/backend/runs/archive/archive-runtime-version-changes.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
 import { RunIdSchema } from "../../src/domain/ids.js";
-import { createRunLifecycleStorage } from "../../src/infra/sqlite/lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { foundationFixture, id, NOW } from "../unit/database-foundation/fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../fixtures/archive-fixtures.js";
 import type { ArchiveRunSnapshot } from "../../src/backend/runs/archive/archive-service.js";
 import { queryArchiveReports } from "../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { savedArchiveRuntimeVersions } from "../../src/backend/runs/dashboard/queries/archive.js";
-import { archiveFixture } from "../unit/archive-transfer/fixtures.js";
+import { archiveFixture } from "../helpers/archive-transfer/fixtures.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 
 function fixture(afterTransferStep?: (runId: string, step: "captured" | "verified" | "cleaned" | "published") => void) {

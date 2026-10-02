@@ -1,7 +1,7 @@
 import { DatabaseSync } from "node:sqlite";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
-import { SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 import { activeKnowledgeView, projectKnowledgePages } from "../../src/domain/trust/knowledge-projection.js";
 /**
  * Guard: `knowledge-fix-integrity` (ref guards-and-tests §3.10; ref operator-trust §4 + §9).

@@ -57,7 +57,7 @@ import {
 } from "../../domain/write-safety.js";
 import type { RunRecord } from "../../domain/run/record.js";
 import type { RuntimeFlowNode, RuntimeScope } from "../../domain/workflow/graph.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 
 export type TransactionRuntimeNode = Extract<RuntimeFlowNode, { kind: "transaction" }>;
 

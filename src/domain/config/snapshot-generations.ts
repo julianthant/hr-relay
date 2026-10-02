@@ -25,7 +25,7 @@ import { ConfigSchema as HistoricalConfigSchema } from "./settings-v29-schema.js
  *
  * So adding a required config leaf changes no TABLE — it changes what a stored
  * ROW must contain — and it is versioned HERE rather than in
- * `src/infra/sqlite/migrations.ts`. Each generation names the decision that
+ * `src/backend/storage/sqlite/migrations.ts`. Each generation names the decision that
  * introduced it, lists the leaves it introduced, and pins the exact leaf set of
  * the config AT that generation. A snapshot captured at an older generation is
  * read FORWARD: the leaves later generations introduced are permitted to be

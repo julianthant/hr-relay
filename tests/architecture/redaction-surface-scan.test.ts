@@ -71,7 +71,7 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   VerifiedArtifactSourceMissingError,
   type ServerVerifiedArtifactReader,
-} from "../../src/infra/artifacts/server-verified-artifact-reader.js";
+} from "../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { buildArchivedCaptureResource } from "../../src/backend/runs/dashboard/queries/archive.js";
 import { ArtifactBytesCorruptError, IndexedArtifactBytesMissingError } from "../../src/backend/runs/dashboard/queries/artifact-bytes.js";
 import { ARCHIVED_RUN_WITH_SECTIONS, VERSION_BUMP_APPLICATION, VERSION_PLAN_ROW } from "../fixtures/archive-fixtures.js";

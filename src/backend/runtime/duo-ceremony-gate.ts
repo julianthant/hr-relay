@@ -36,7 +36,7 @@ import { BrowserSystemIdSchema, FingerprintSchema, WorkerIdSchema } from "../../
 import type { BrowserSystemId, Fingerprint, WorkerId } from "../../domain/ids.js";
 import { resolveSecretFileIdentity } from "../../domain/secrets.js";
 import { DuoTerminalRefusalError } from "../systems/browser-shared/login-contract.js";
-import type { DuoCeremonyLeaseRepository } from "../../infra/sqlite/authority-database.js";
+import type { DuoCeremonyLeaseRepository } from "../storage/sqlite/authority-database.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
 
 /** §10.4 — another worker holds the ceremony for this credential, and the budget is spent. */

@@ -43,7 +43,7 @@ import {
   ArchivedRunContentSchema,
   ArchivedRunRecordSchema,
 } from "../../src/domain/archive/model.js";
-import type { AuthorityDatabase } from "../../src/infra/sqlite/index.js";
+import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../src/domain/canonical-json.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
@@ -192,7 +192,7 @@ describe("archive invariants", () => {
      * the record of what was really filed against a live HR system, which is
      * the one thing ref write-safety §6 forbids projecting past.
      */
-    const reader = readFileSync(join(REPO_ROOT, "src/infra/sqlite/transaction-history.ts"), "utf8")
+    const reader = readFileSync(join(REPO_ROOT, "src/backend/storage/sqlite/transaction-history.ts"), "utf8")
       .replaceAll(/\/\*[\s\S]*?\*\//gu, "")
       .replaceAll(/^\s*\/\/.*$/gmu, "");
     for (const primitive of ["writeFileSync", "appendFileSync", "writeSync", "unlinkSync", "rmSync", "renameSync", "openSync"]) {

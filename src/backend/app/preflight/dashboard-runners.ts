@@ -12,7 +12,7 @@ import {
   type PreflightRunner,
 } from "../../../domain/preflight.js";
 import { probeOwnedViteServer } from "../host/local-vite-probe.js";
-import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../../infra/sqlite/runtime-process-locks.js";
+import { inspectRuntimeProcessOrphans, observeProcessIdentity } from "../../storage/sqlite/runtime-process-locks.js";
 
 const RuntimePackageSchema = z.object({
   name: z.string().min(1),

@@ -5,9 +5,9 @@ import { describe, it } from "vitest";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { AuthorityBackupService, verifyBackupManifestAtPath } from "../../helpers/synthetic-storage-admission.js";
 import { OfflineAuthorityRestoreService } from "../../helpers/synthetic-storage-admission.js";
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/infra/sqlite/migrations.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../../src/backend/storage/sqlite/migrations.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { explorerAuthorityFixture } from "../../fixtures/explorer-authority.js";
 
 const FIRST = "11111111-1111-4111-8111-111111111111";

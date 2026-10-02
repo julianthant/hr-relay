@@ -1,11 +1,11 @@
-import { createTimelineEmitter } from "../../src/infra/events/timeline-emitter.js";
+import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { explorerAuthorityFixture } from "../fixtures/explorer-authority.js";
-import { createRunLifecycleStorage } from "../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../src/backend/storage/archive/report-capture.js";
 import { versionChangeReviewFingerprint } from "../../src/domain/archive/change-record.js";
 import { sha256Hex } from "../../src/domain/sha256.js";
-import { historicalWorld } from "../unit/transaction-history-fixture.js";
-import { databaseStateTable } from "../../src/infra/sqlite/migrations.js";
+import { historicalWorld } from "../helpers/storage/transaction-history-fixture.js";
+import { databaseStateTable } from "../../src/backend/storage/sqlite/migrations.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../helpers/timeline-write-fixture.js";
 import assert from "node:assert/strict";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
@@ -38,7 +38,7 @@ import {
   UPGRADE_FLOOR_SCHEMA_VERSION,
   SQLITE_MIGRATIONS,
   requiresStoppedSystemAuthorityUpgrade,
-} from "../../src/infra/sqlite/migrations.js";
+} from "../../src/backend/storage/sqlite/migrations.js";
 import {
   COMMAND_FIXTURES,
   ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT,
@@ -1143,7 +1143,7 @@ describe("native SQLite authority schema", () => {
     admitted.close();
     const before = readFileSync(path);
     await withAuthorityBuildVariant("ddl-derived-layouts", async () => {
-      const { AuthorityDatabase: brokenBuild } = await import("../../src/infra/sqlite/authority-database.js");
+      const { AuthorityDatabase: brokenBuild } = await import("../../src/backend/storage/sqlite/authority-database.js");
       assert.throws(() => brokenBuild.open(RuntimeAdmission.syntheticFixture(path, "authority"),{
         path, busyTimeoutMs: 250, migrationOwner: "m21-negative-control",
         openMode: "storage-upgrade-preflight-read-only-no-migrate",
@@ -2605,4 +2605,4 @@ describe("workflow batch migration and presentation persistence", () => {
     sql.close();
   });
 });
-import { RuntimeAdmission } from "../../src/infra/runtime-control/admission.js";
+import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";

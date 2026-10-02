@@ -1,4 +1,4 @@
-import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/infra/sqlite/migrations.js";
+import { CURRENT_AUTHORITY_SCHEMA_VERSION } from "../../src/backend/storage/sqlite/migrations.js";
 import {restoreRetainedFixture} from "./helpers/retained-database-fixture.js";
 import assert from "node:assert/strict";
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
@@ -12,7 +12,7 @@ import { AUTHORITY_TABLE_REGISTRY } from "../../src/domain/authority.js";
 import { DeletedRunRecordSchema } from "../../src/domain/run/deleted-run.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../helpers/synthetic-storage-admission.js";
-import { AUTHORITY_APPLICATION_ID, DATABASE_TABLE_RENAMES, SQLITE_MIGRATIONS } from "../../src/infra/sqlite/migrations.js";
+import { AUTHORITY_APPLICATION_ID, DATABASE_TABLE_RENAMES, SQLITE_MIGRATIONS } from "../../src/backend/storage/sqlite/migrations.js";
 import { backupStoppedAuthority, upgradeStorage } from "../helpers/synthetic-storage-admission.js";
 import { CONFIG_SNAPSHOT as UNPINNED_CONFIG_SNAPSHOT, NOW, HASH_A, HASH_B, UUID_5, UUID_7, UUID_8 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";

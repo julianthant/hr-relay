@@ -1,11 +1,11 @@
 import { plan1SeparationWorkflow, plan1SeparationStores, fictionalSeparationDrivers } from "../../unit/fixtures/plan1-separation-operation.js";
 import { createReceiptService } from "../../../src/backend/runs/trust/receipt-service.js";
-import { readScopedEventStreamLines } from "../../../src/infra/events/jsonl-streams.js";
+import { readScopedEventStreamLines } from "../../../src/backend/storage/events/jsonl-streams.js";
 import { runNotePartitionScope, runRecordNoteScopeInstants } from "../../../src/domain/run/note-scope.js";
 import { NoteWireSchema } from "../../../src/events/types.js";
 import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
-import { createContentAddressedArtifactWriter } from "../../../src/infra/artifacts/content-addressed-artifact-writer.js";
-import { createServerVerifiedArtifactReader } from "../../../src/infra/artifacts/server-verified-artifact-reader.js";
+import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
+import { createServerVerifiedArtifactReader } from "../../../src/backend/storage/artifacts/server-verified-artifact-reader.js";
 import { syntheticStateRoot } from "../../helpers/synthetic-storage-admission.js";
 import type { FictionalFormDriver } from "../../unit/fixtures/plan1-browser-operation.js";
 import { plan1BrowserStores, plan1BrowserWorkflow, fictionalFormDriver } from "../../unit/fixtures/plan1-browser-operation.js";
@@ -16,9 +16,9 @@ import { projectStartSteps, startStepWireControl } from "../../../src/backend/ru
 import { Hono } from "hono";
 import { composeWorkflowModule } from "../../../src/base/workflow-definition.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../../src/backend/runtime/run-executor.js";
-import { createTimelineEmitter } from "../../../src/infra/events/timeline-emitter.js";
-import { createNoteJsonlWriter } from "../../../src/infra/events/note-jsonl-writer.js";
-import { createTransactionHistory } from "../../../src/infra/sqlite/transaction-history.js";
+import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
+import { createNoteJsonlWriter } from "../../../src/backend/storage/events/note-jsonl-writer.js";
+import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { buildQueuedRun } from "../../../src/backend/runs/enqueue.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { sha256Hex } from "../../../src/domain/sha256.js";

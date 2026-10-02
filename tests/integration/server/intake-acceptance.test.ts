@@ -1,7 +1,7 @@
 import { createHash, randomUUID } from "node:crypto";
-import { createRunLifecycleStorage } from "../../../src/core/run-lifecycle-storage.js";
+import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { CommandRequestSchema } from "../../../src/domain/commands.js";
 import { readArtifactBytes } from "../../../src/backend/processing/spreadsheet/spreadsheet-grid.js";
 import assert from "node:assert/strict";

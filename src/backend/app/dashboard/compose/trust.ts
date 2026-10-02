@@ -7,8 +7,8 @@ import { RunRecordService } from "../../../runs/run-record-service.js";
 
 import {
   AuthorityDatabase,
-} from "../../../../infra/sqlite/index.js";
-import { createServerVerifiedArtifactReader } from "../../../../infra/artifacts/server-verified-artifact-reader.js";
+} from "../../../storage/sqlite/index.js";
+import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 
 import { createReceiptService } from "../../../runs/trust/receipt-service.js";
 

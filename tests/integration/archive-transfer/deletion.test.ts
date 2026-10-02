@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { existsSync, writeFileSync, unlinkSync, symlinkSync } from "node:fs";
 import { join } from "node:path";
-import { archiveFixture, attachFile } from "../../unit/archive-transfer/fixtures.js";
+import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import { NOW, id } from "../../unit/database-foundation/fixtures.js";
 import { projectArchiveReport, queryArchiveReports } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
-import { transferArchiveReport } from "../../../src/services/archive/archive-transfer.js";
+import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 
 it("authenticates public references, resumes a failed final audit after reopening, and never resurrects a deleted transfer", () => {
   const f = archiveFixture();
@@ -98,8 +98,8 @@ it("refuses missing, changed and symlinked source bytes before transfer; restore
 });
 
 import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
-import { RecoveryStopProofStore } from "../../../src/infra/sqlite/recovery-stop-proof.js";
-import { observeRuntimeLockSnapshot } from "../../../src/infra/sqlite/runtime-process-locks.js";
+import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
+import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { mkdirSync } from "node:fs";
 it("backs up and restores explicit deletion with reserved numbering and no report resurrection", async () => {

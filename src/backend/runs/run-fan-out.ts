@@ -15,7 +15,7 @@ import { CreateRunRequestSchema, lifecycleCommandId, requireLifecycleApplied, ty
 import { RuntimeConfigClaimTokenSchema } from "../../domain/config/runtime-generation.js";
 import type { RunEnvelope } from "../../domain/run/envelope.js";
 import { freezeWorkflowOperationDisplaySnapshot } from "../../domain/workflow/operation-display-snapshot.js";
-import type { AuthorityRepositories } from "../../infra/sqlite/authority-database.js";
+import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";
 import type { AnyWorkflowDescriptor } from "../../base/workflow.js";
 import type { BrowserPresentationMode, InstanceSelection, RunPriority, RunShape } from "../../domain/run/envelope.js";
 import type { StepOmissions } from "../../domain/workflow/step-omission.js";

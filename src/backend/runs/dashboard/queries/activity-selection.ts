@@ -5,7 +5,7 @@ import { sha256Hex } from "../../../../domain/sha256.js";
 import { ActivityReportWireSchema, type ActivityReportWire } from "../../../../domain/dashboard/activity.js";
 import { ActivityReportSelectionSchema, ActivitySnapshotIdentitySchema, ActivitySnapshotTokenSchema } from "../../../../domain/dashboard/activity-selection.js";
 import type { Clock } from "../../../../domain/clock.js";
-import type { AuthorityDatabase } from "../../../../infra/sqlite/authority-database.js";
+import type { AuthorityDatabase } from "../../../storage/sqlite/authority-database.js";
 
 const RangeSchema = z.strictObject({ from: z.iso.date(), to: z.iso.date() }).refine(range => range.from <= range.to, { message: "activity range ends before it starts" });
 /** A process-bound, expiring review token. No cached/latest report substitutes for the selected authority. */

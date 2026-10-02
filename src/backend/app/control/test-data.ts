@@ -3,7 +3,7 @@ import { dirname, isAbsolute, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { deepFreeze } from "../../../domain/immutability.js";
-import { assertNoDuplicateKeys } from "../../../infra/config/test-data-local.js";
+import { assertNoDuplicateKeys } from "../../storage/config/test-data-local.js";
 import {
   TEST_DATA_CONFIG_PATH,
   TestDataConfigError,
@@ -151,7 +151,7 @@ export function testDataSamples(shared: TestDataShared = TEST_DATA): {
 }
 
 // ---------------------------------------------------------------------------
-// Private file — implemented in infra (src/infra/config/test-data-local.ts), re-exported here
+// Private file — implemented in infra (src/backend/storage/config/test-data-local.ts), re-exported here
 // so every consumer of test data keeps ONE import site.
 // ---------------------------------------------------------------------------
 export {
@@ -171,4 +171,4 @@ export {
   type TestDataLocalMergePlan,
   type TestDataLocalReadOutcome,
   type TestDataLocalWriteAccess,
-} from "../../../infra/config/test-data-local.js";
+} from "../../storage/config/test-data-local.js";
