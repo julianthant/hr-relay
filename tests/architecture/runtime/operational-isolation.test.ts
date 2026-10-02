@@ -55,7 +55,7 @@ function seedValidRuntime(root: string): void {
   write(root, "src/models/config/define-runtime-isolation.ts",
     "export function defineRuntimeIsolation<T>(value: T): T { return value; }\n");
   write(root, config.module, [
-    `import { ${config.factory} } from "./define-runtime-isolation.js";`,
+    `import { ${config.factory} } from "../../../models/config/define-runtime-isolation.js";`,
     `export const ${config.exportName} = ${config.factory}({`,
     `  stateRoot: ${JSON.stringify(side.stateRoot)},`,
     ...(side.archiveDatabaseFile === undefined ? [] : [`  archiveDatabaseFile: ${JSON.stringify(side.archiveDatabaseFile)},`]),
@@ -71,8 +71,8 @@ function seedValidRuntime(root: string): void {
   write(root, "src/backend/app/composition/runtime-composition.ts",
     "export function startRebuildRuntime(_input: { isolation: unknown }): void {}\n");
   write(root, "src/cli.ts", [
-    `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-    'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
+    `import { ${config.exportName} } from "./backend/app/config/runtime-isolation.js";`,
+    'import { startRebuildRuntime } from "./backend/app/composition/runtime-composition.js";',
     `export function runCli(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
     "",
   ].join("\n"));
@@ -136,6 +136,20 @@ describe("operational isolation", () => {
     );
   });
 
+  it("refuses changed frozen capability source-command anchors", () => {
+    for (const snapshotName of ["discoveredPaths", "sourcePaths", "legacyPaths"] as const) {
+      const tampered = structuredClone(FROZEN_LEGACY_ARCHITECTURE_PROVENANCE) as Record<string, unknown>;
+      const capabilities = tampered.capabilities as Record<string, unknown>;
+      const snapshot = capabilities[snapshotName] as Record<string, unknown>;
+      snapshot.sourceCommand = "tampered source command";
+
+      assert.throws(
+        () => parseFrozenLegacyArchitectureProvenance(tampered),
+        new RegExp(`frozen legacy capabilities\\.${snapshotName} snapshot anchor mismatch for sourceCommand`),
+      );
+    }
+  });
+
   it("requires an exported direct-const factory call carrying the exact isolated values", () => {
     withFixture((root) => {
       assert.deepEqual(fixtureViolations(root), []);
@@ -171,8 +185,8 @@ describe("operational isolation", () => {
 
       // Mention without invocation.
       write(root, "src/cli.ts", [
-        `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
+        `import { ${config.exportName} } from "./backend/app/config/runtime-isolation.js";`,
+        'import { startRebuildRuntime } from "./backend/app/composition/runtime-composition.js";',
         `export const unused = [${config.exportName}, startRebuildRuntime];`,
         "",
       ].join("\n"));
@@ -181,8 +195,8 @@ describe("operational isolation", () => {
 
       // A call hidden inside the wrong exported function is not the declared runner.
       write(root, "src/cli.ts", [
-        `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
+        `import { ${config.exportName} } from "./backend/app/config/runtime-isolation.js";`,
+        'import { startRebuildRuntime } from "./backend/app/composition/runtime-composition.js";',
         `export function main(): void { startRebuildRuntime({ isolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));
@@ -191,8 +205,8 @@ describe("operational isolation", () => {
 
       // The wrong binding argument path.
       write(root, "src/cli.ts", [
-        `import { ${config.exportName} } from "./config/runtime-isolation.js";`,
-        'import { startRebuildRuntime } from "./backend/app/runtime-composition.js";',
+        `import { ${config.exportName} } from "./backend/app/config/runtime-isolation.js";`,
+        'import { startRebuildRuntime } from "./backend/app/composition/runtime-composition.js";',
         `export function runCli(): void { startRebuildRuntime({ notIsolation: ${config.exportName} }); }`,
         "",
       ].join("\n"));
@@ -205,7 +219,7 @@ describe("operational isolation", () => {
       assert.deepEqual(fixtureViolations(root), []);
       const source = readFileSync(join(root, "src/cli.ts"), "utf8")
         .replace('export function runCli(): void {', 'export function runCli(admission: RuntimeAdmission): void { admission.assertLive();');
-      const admitted = 'import type { RuntimeAdmission } from "./infra/runtime-control/admission.js";\n' + source;
+      const admitted = 'import type { RuntimeAdmission } from "./backend/storage/admission/admission.js";\n' + source;
       write(root, "src/backend/storage/admission/admission.ts", "export interface RuntimeAdmission { assertLive(): void; }\n");
       write(root, "src/cli.ts", admitted);
       assert.deepEqual(fixtureViolations(root), []);
@@ -213,7 +227,7 @@ describe("operational isolation", () => {
         admitted.replace('admission: RuntimeAdmission', 'arbitrary: RuntimeAdmission'),
         admitted.replace('admission: RuntimeAdmission', 'admission: unknown'),
         admitted.replace('admission: RuntimeAdmission', 'admission: RuntimeAdmission, extra: unknown'),
-        admitted.replace('./infra/runtime-control/admission.js', './wrong-admission.js'),
+        admitted.replace('./backend/storage/admission/admission.js', './wrong-admission.js'),
         admitted.replace('admission.assertLive();', ''),
         admitted.replace('admission.assertLive();', 'admission.assertLive("unchecked");'),
         admitted.replace('import type { RuntimeAdmission }', 'import type { Other as RuntimeAdmission }'),

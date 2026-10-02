@@ -53,17 +53,17 @@ const FROZEN_PROVENANCE_ANCHORS = {
     commit: "9d19e4141d57617e2bf895e21e34a5bd8f15047c",
     discoveredPaths: {
       name: "legacy-capability-discovered-paths",
-      sourceCommand: "jq -r '[.entries[].sourcePaths[]] | sort[]' docs/rebuild/migrations/legacy/legacy-capabilities.json",
+      sourceCommand: "jq -r '[.entries[].sourcePaths[]] | sort[]' config/legacy-capabilities.json",
       contentAddress: "sha256:1701fb3ec3dec90acdf16b8b4f8b5c7c70f2181a57e4c157216e3bfb861560e8",
     },
     sourcePaths: {
       name: "legacy-capability-source-paths",
-      sourceCommand: "jq -r '[.entries[].sourcePaths[]] | sort[]' docs/rebuild/migrations/legacy/legacy-capabilities.json",
+      sourceCommand: "jq -r '[.entries[].sourcePaths[]] | sort[]' config/legacy-capabilities.json",
       contentAddress: "sha256:1701fb3ec3dec90acdf16b8b4f8b5c7c70f2181a57e4c157216e3bfb861560e8",
     },
     legacyPaths: {
       name: "legacy-capability-evidence-paths",
-      sourceCommand: "jq -r '[.entries[].sourcePaths[], \"src/services/timecard/index.ts\"] | sort[]' docs/rebuild/migrations/legacy/legacy-capabilities.json",
+      sourceCommand: "jq -r '[.entries[].sourcePaths[], \"src/services/timecard/index.ts\"] | sort[]' config/legacy-capabilities.json",
       contentAddress: "sha256:bd390da0640f495998f5ab29c456dbde0587ed773c22a40ce91e6495ccf581fc",
     },
   },
