@@ -225,7 +225,7 @@ it("resets report pagination when search changes while keeping the selected work
     search?.dispatchEvent(new Event("input", { bubbles: true }));
   });
 
-  expect(document.body.textContent).toContain("Archived runs and their retained workflow data");
+  expect(document.querySelector('nav[aria-label="Archive path"] [aria-current="page"]')?.textContent).toBe(H_REPORT.workflow);
   const lastQuery = calls.savedArchiveIndex.mock.lastCall?.[0];
   expect(lastQuery).toMatchObject({ search: "Morgan" });
   expect(lastQuery).not.toHaveProperty("after");

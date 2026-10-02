@@ -30,9 +30,9 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
   const selectedItem = sectionItems.find(item => item.key === activeSection);
   const dashboardVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.dashboard);
   const workflowVersion = report.runtimeVersion === undefined ? "Not recorded" : formatRuntimeVersion(report.runtimeVersion.workflow);
-  return <article aria-label="Saved archive report" className={`${dsText.body} min-w-0 space-y-[26px]`}>
+  return <article aria-label="Saved archive report" className="min-w-0 space-y-[20px] text-body">
     {requestedSection !== activeSection && <p role="alert">This view is no longer shown. Choose a section below.</p>}
-    <dl className={cn(dsText.meta, "flex flex-wrap gap-x-[32px] gap-y-[var(--ds-space-snug)] border-b border-[color:var(--ds-border)] pt-[18px] pb-[21px] [&>div]:grid [&>div]:gap-[7px] [&_dt]:text-[10.5px] [&_dt]:leading-[15.225px] [&_dd]:text-[12px] [&_dd]:leading-[17.4px]")}>
+    <dl className="m-0 flex flex-wrap gap-x-[28px] gap-y-[12px] border-b border-[color:var(--ds-border)] pb-[16px] text-caption [&>div]:grid [&>div]:gap-[4px] [&_dt]:text-[color:var(--ds-fg-muted)] [&_dd]:text-body">
       <div><dt>Dashboard version</dt><dd className="m-0 text-[color:var(--ds-fg)]">{dashboardVersion}</dd></div>
       <div><dt>Workflow version</dt><dd className="m-0 text-[color:var(--ds-fg)]">{workflowVersion}</dd></div>
 
@@ -40,22 +40,22 @@ export function SavedArchiveReport({ report, deletion, section, onSection }: { r
       <div><dt>Outcome</dt><dd className="m-0 text-[color:var(--ds-fg)]">{savedOutcomeLabel(report.outcome)}</dd></div>
       <div><dt>Retained files</dt><dd className="m-0 text-[color:var(--ds-fg)]">{report.files.length}</dd></div>
     </dl>
-    <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] gap-[22px] min-[1200px]:grid-cols-[185px_minmax(0,1fr)] min-[1200px]:gap-[30px]">
-      <nav ref={sectionNavRef} aria-label="Run sections" className={cn("flex min-w-0 flex-col gap-[var(--ds-space-tight)] md:border-r md:border-[color:var(--ds-border)] md:pr-[var(--ds-space-cozy)]", sectionItems.length > 10 && "max-h-[max(160px,min(480px,calc(100vh-420px)))] overflow-y-auto [&>button]:shrink-0")}>{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border-0 px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}</nav>
-      <div className="min-w-0 space-y-[22px]"><h2 className={cn(dsText.title, "!text-[18px] !leading-[26.1px]")}>{selectedItem?.label}</h2>
+    <div className="grid min-w-0 grid-cols-[160px_minmax(0,1fr)] items-start gap-[20px] min-[1200px]:grid-cols-[180px_minmax(0,1fr)] min-[1200px]:gap-[24px]">
+      <nav ref={sectionNavRef} aria-label="Run sections" className="sticky top-[16px] flex max-h-[max(160px,calc(100vh-180px))] min-w-0 flex-col gap-[var(--ds-space-tight)] overflow-y-auto border-r border-[color:var(--ds-border)] pr-[var(--ds-space-cozy)] [&>button]:shrink-0">{sectionItems.map(item => <Button key={item.key} variant={activeSection === item.key ? "secondary" : "ghost"} aria-label={item.label} aria-current={activeSection === item.key ? "page" : undefined} className={cn("min-h-[var(--ds-h-bar)] w-full min-w-0 justify-start whitespace-normal break-words border-0 px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-left [overflow-wrap:anywhere]")} onClick={() => { if (onSection === undefined) setActive({ runId: report.runId, section: item.key }); else onSection(item.key); }}>{item.label}{item.key === report.sections.length + 1 && <span aria-hidden className="ml-auto tabular-nums">{report.files.length}</span>}</Button>)}</nav>
+      <div className="flex min-w-0 flex-col gap-[16px]"><h2 className="m-0 text-section">{selectedItem?.label}</h2>
 
-    {selectedItem?.kind === "facts" && <div className="flex flex-col gap-[24px]">{archiveWorkflowGroups(report).filter(group => group.kind !== "files" && group.kind !== "logs").map(group => <section key={group.key} className="flex flex-col gap-[12px]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>{group.label}</h3>
-    {group?.kind === "summary" && <ArchiveFieldGroup title="Run summary" showHeading={false}><ArchiveFieldRows columns="one" rows={group.values?.map(cell => ({ label: cell.label,
+    {selectedItem?.kind === "facts" && <div className="flex flex-col gap-[20px]">{archiveWorkflowGroups(report).filter(group => group.kind !== "files" && group.kind !== "logs").map(group => <section key={group.key} className="flex flex-col gap-[10px]"><h3 className="m-0 text-heading">{group.label}</h3>
+    {group?.kind === "summary" && <ArchiveFieldGroup title="Run summary" showHeading={false}><ArchiveFieldRows rows={group.values?.map(cell => ({ label: cell.label,
       value: cell.label === "Queued" || cell.label === "Completed" ? (typeof cell.value === "string" && Number.isFinite(Date.parse(cell.value)) ? <SavedArchiveTime value={cell.value} /> : <ArchiveStructuredValue value={cell.value} />)
         : cell.label === "Total elapsed" && typeof cell.value === "number" ? <span title="Includes queued and waiting time">{formatArchiveElapsed(cell.value)}</span> : <ArchiveStructuredValue value={cell.value} /> })) ?? []} /></ArchiveFieldGroup>}
     {group?.kind === "facts" && <ArchiveFieldGroup title={group.label} showHeading={false}>
-      {(group.values?.length ?? 0) > 0 && <ArchiveFieldRows columns="one" rows={group.values!.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />}
+      {(group.values?.length ?? 0) > 0 && <ArchiveFieldRows rows={group.values!.map(cell => ({ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }))} />}
       {group.sections?.map((section, index) => section.kind === "unavailable" ? <p key={index} className="m-[var(--ds-space-cozy)]">{section.reason}</p>
         : section.kind === "text" ? <p key={index} className="m-[var(--ds-space-cozy)] whitespace-pre-wrap">{section.text}</p>
           : section.kind === "table" ? <div key={index} className="overflow-x-auto"><ArchiveTable label={group.label}><THead><TR>{section.columns.map((column, n) => <TH key={n}>{column}</TH>)}</TR></THead><TBody>{section.rows.map((row, n) => <TR key={n}>{row.map((cell, m) => <TD key={m}><ArchiveStructuredValue value={cell} /></TD>)}</TR>)}</TBody></ArchiveTable></div> : null)}
     </ArchiveFieldGroup>}
-    {group?.kind === "input" && group.value !== undefined && <ArchiveFieldGroup title={group.label} showHeading={false}><ArchiveFieldRows columns="one" rows={archiveDisplayRows(group.value)} /></ArchiveFieldGroup>}
-    {group?.kind === "settings" && <ArchiveFieldGroup title="Settings" showHeading={false}><ArchiveFieldRows columns="one" rows={group.values?.flatMap(cell => cell.label === "Captured settings" && cell.value !== null && typeof cell.value === "object" && !Array.isArray(cell.value) && Object.keys(cell.value).length > 0
+    {group?.kind === "input" && group.value !== undefined && <ArchiveFieldGroup title={group.label} showHeading={false}><ArchiveFieldRows rows={archiveDisplayRows(group.value)} /></ArchiveFieldGroup>}
+    {group?.kind === "settings" && <ArchiveFieldGroup title="Settings" showHeading={false}><ArchiveFieldRows rows={group.values?.flatMap(cell => cell.label === "Captured settings" && cell.value !== null && typeof cell.value === "object" && !Array.isArray(cell.value) && Object.keys(cell.value).length > 0
       ? archiveDisplayRows(cell.value) : [{ label: cell.label, value: <ArchiveStructuredValue value={cell.value} /> }]) ?? []} /></ArchiveFieldGroup>}
     </section>)}</div>}
     {selectedItem?.kind === "files" && <ArchiveFieldGroup title="Retained files" ariaLabel="Retained attachments" showHeading={false}>
