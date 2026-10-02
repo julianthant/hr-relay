@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -28,12 +29,14 @@ function disconnectedRequests(page: Page) {
 }
 async function capture(page: Page, info: TestInfo, name: string) {
   await info.attach(`${name}.png`, { body: await page.screenshot(), contentType: "image/png" });
-  await info.attach(`${name}.a11y.yml`, { body: await page.locator("body").ariaSnapshot(), contentType: "text/yaml" });
+  const tree = await page.locator("body").ariaSnapshot();
+  info.annotations.push({ type: `a11y-attachment-sha256:${name}.a11y.yml`, description: createHash("sha256").update(tree).digest("hex") });
+  await info.attach(`${name}.a11y.yml`, { body: tree, contentType: "text/yaml" });
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const size = `${theme.attribute}-${width}`;
-  test(`compact canonical navbar and local controls @ ${size}`, async ({ page }, info) => {
+  test(`compact canonical navbar and local controls @ ${size}`, { annotation: ["navbar", "navbar-search", "navbar-calendar"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -121,7 +124,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  test(`notification filters, pinned gaps and local actions @ ${size}`, async ({ page }, info) => {
+  test(`notification filters, pinned gaps and local actions @ ${size}`, { annotation: [{ type: "required-a11y-evidence", description: `notifications-normal-${size}.a11y.yml` }] }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -191,7 +194,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
     } finally { await server.close(); }
   });
 
-  test(`notification empty, loading, unavailable and ping states @ ${size}`, async ({ page }, info) => {
+  test(`notification empty, loading, unavailable and ping states @ ${size}`, { annotation: ["notifications-empty", "notifications-loading", "notifications-unavailable", "notification-ping"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {

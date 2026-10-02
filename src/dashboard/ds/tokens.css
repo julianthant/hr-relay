@@ -439,6 +439,17 @@
   --ds-space-snug: 6px;
   --ds-space-base: 8px;
   --ds-space-cozy: 12px;
+  --ds-queue-info-bg: color-mix(in srgb, var(--ui-info) 12%, transparent);
+  --ds-queue-info-border: color-mix(in srgb, var(--ui-info) 28%, transparent);
+  --ds-queue-danger-bg: color-mix(in srgb, var(--ui-danger) 12%, transparent);
+  --ds-queue-danger-border: color-mix(in srgb, var(--ui-danger) 28%, transparent);
+  --ds-space-queue-top: 14px;
+  --ds-tracking-brand: 0.035em;
+  --ds-w-queue-counter: 30px;
+  --ds-h-queue-member-head: 28px;
+  --ds-h-queue-member-line: 29px;
+  --ds-h-queue-member-well: calc(var(--ds-h-queue-member-head) + 5 * var(--ds-h-queue-member-line));
+  --ds-h-queue-member-well-open: calc(var(--ds-h-queue-member-head) + 20 * var(--ds-h-queue-member-line));
   --ds-space-loose: 16px;
   --ds-space-section: 24px;
   --ds-space-page: 32px;

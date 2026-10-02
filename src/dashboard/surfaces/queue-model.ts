@@ -508,7 +508,7 @@ export function visibleRunIds(
   nowIso: string = new Date(0).toISOString(),
 ): string[] {
   const { top, membersOf } = partition(surfaces);
-  const { batchByRun, displayTop, itemByRunId } = queueBatchLayout(top, sort, nowIso);
+  const { displayTop, itemByRunId } = queueItemLayout(top);
   const ids: string[] = [];
   const addAttempts = (surface: QueueSurfaceWire): void => {
     const item = itemByRunId.get(String(surface.runId));
@@ -517,16 +517,11 @@ export function visibleRunIds(
   };
   for (const key of BAND_ORDER) {
     const band = sortQueueBand(
-      displayTop.filter((surface) => (batchByRun.get(surface.runId)?.band ?? bandOf(dsStatusOf(surface.status))) === key),
+      displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
       sort,
       nowIso,
     );
     for (const surface of band) {
-      const batch = batchByRun.get(surface.runId);
-      if (batch !== undefined) {
-        for (const row of batch.members) addAttempts(row);
-        continue;
-      }
       addAttempts(surface);
       const memberGroups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);
       for (const member of orderMembers(memberGroups.map((group) => group.representative) as MemberSurfaceWire[])) {
@@ -604,20 +599,11 @@ export function queueBatches(rows: readonly QueueSurfaceWire[]): readonly QueueB
   });
 }
 
-/** One layout shared by rendering and keyboard traversal. */
-export function queueBatchLayout(top: readonly QueueSurfaceWire[], sort: QueueSortKey, nowIso: string) {
+/** Logical items stay separate regardless of the served session's grouping preference. */
+export function queueItemLayout(top: readonly QueueSurfaceWire[]) {
   const itemGroups = groupQueueAttempts(top);
   const itemByRunId = new Map(itemGroups.flatMap((group) =>
     group.attempts.map((attempt) => [String(attempt.runId), group] as const)));
-  const representatives = itemGroups.map((group) => group.representative);
-  const batches = queueBatches(representatives).map((batch) => ({ ...batch,
-    members: sortQueueBand(batch.members, sort, nowIso), history: sortQueueBand(batch.history, sort, nowIso),
-  }));
-  const grouped = batches.filter((batch) => batch.groupInQueue && batch.members.length > 1);
-  const batchByRun = new Map(grouped.flatMap((batch) => batch.members.map((row) => [row.runId, batch] as const)));
-  const flatBatchByFirst = new Map(batches.filter((batch) => !batch.groupInQueue && batch.members.length > 1).map((batch) => [batch.representative.runId, batch]));
-  const displayTop = representatives.filter((row) =>
-    !batchByRun.has(row.runId) || batchByRun.get(row.runId)?.representative.runId === row.runId,
-  );
-  return { batchByRun, flatBatchByFirst, displayTop, itemGroups, itemByRunId };
+  const displayTop = itemGroups.map((group) => group.representative);
+  return { displayTop, itemGroups, itemByRunId };
 }
