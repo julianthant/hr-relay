@@ -191,6 +191,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const requests = surfaceRequests(page);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
+      await expect(surface.getByRole("heading", { name: "Person Lookup · EID 10001573", exact: true })).toBeVisible();
+      await page.getByRole("button", { name: "Minimise the Workflow Panel to an icon", exact: true }).click();
+      await page.locator(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`).click();
+      await expect(surface.getByRole("heading", { name: "Person Lookup · Battistessa, Johnnie", exact: true })).toBeVisible();
+      await expect(surface).toContainText("Searching UCPath for Battistessa, Johnnie");
+      await expect(surface.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button")).toHaveCount(4);
+      await page.locator(`[data-demo-row-id="${FIXTURE_IDS.failedRun}"]`).click();
+      await expect(surface.getByRole("heading", { name: "Person Lookup · EID 10555001", exact: true })).toBeVisible();
+      await expect(surface).not.toContainText("Searching UCPath for Battistessa, Johnnie");
+      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("separation");
       await expect(surface.getByRole("heading", { name: "Separations · Alex Morgan", exact: true })).toBeVisible();
       await expect(surface.locator("header").first().locator(":scope > span.text-caption")).toHaveCount(0);
       await expect(surface.getByRole("heading", { name: "Reconcile dates", exact: true })).toHaveCount(0);
@@ -249,7 +259,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("save and submit");
       const formShot = surface.getByRole("button", { name: "Enlarge screenshot captured at 09:32:38", exact: true });
       await formShot.scrollIntoViewIfNeeded();
-      expect((await formShot.boundingBox())!.height).toBe(212);
+      expect((await formShot.boundingBox())!.height).toBe(146);
       await expect(formShot.locator("img")).toHaveJSProperty("naturalHeight", 1050);
       await formShot.click();
       const viewer = page.getByRole("dialog", { name: "UCPath · Form after Save and Submit", exact: true });

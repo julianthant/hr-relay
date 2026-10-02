@@ -16,7 +16,7 @@ export function LogTimeline({ stages, onJump }: { stages: readonly LogTimelineSt
             className="group flex w-full flex-col gap-1 rounded-sm bg-transparent px-0.5 py-1 text-left enabled:cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ui-info">
             <span className={cn("flex min-w-0 items-center gap-1.5 text-caption", style.color)}><span aria-hidden className={cn("size-1.5 shrink-0 rounded-full", stage.state === "pending" ? "border border-ui-stroke-control" : "bg-current")} /><span className="truncate">{stage.label}</span></span>
             <span aria-hidden className={cn("block h-2.5 w-full rounded-sm", style.bar, stage.state === "completed" && "group-hover:brightness-90 group-focus-visible:brightness-90")} />
-            {stage.state !== "pending" && <span className={cn("text-caption tabular-nums", stage.state === "completed" ? "font-data text-ui-muted" : style.color)}>{stage.state === "completed" ? stage.durationLabel ?? "Not measured" : style.label}</span>}
+            {stage.state !== "pending" && (stage.state !== "completed" || stage.durationLabel !== undefined) && <span className={cn("text-caption tabular-nums", stage.state === "completed" ? "font-data text-ui-muted" : style.color)}>{stage.state === "completed" ? stage.durationLabel : style.label}</span>}
           </button></Tooltip>
         </li>;
       })}

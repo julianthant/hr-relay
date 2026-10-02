@@ -3,7 +3,7 @@ import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, Minus, Monitor, 
 import { Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import type { LogScreenshot } from "./log-feed-model.js";
-import { captureGeometry, captureKindLabel, captureLoadProblem, type CaptureMode } from "./log-screenshots-model.js";
+import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
 import "./log-presentation.css";
 
 function CaptureImage({ screenshot, className, style, eager = false, onFailure, retryable = false }: { screenshot: LogScreenshot; className?: string; style?: CSSProperties; eager?: boolean; onFailure?: () => void; retryable?: boolean }) {
@@ -11,8 +11,12 @@ function CaptureImage({ screenshot, className, style, eager = false, onFailure, 
   const [attempt, setAttempt] = useState(0);
   if (problem) return <div role="alert" className="log-image-error"><ImageOff aria-hidden className="size-4" /><span>{problem}</span>{retryable && <Button size="sm" variant="secondary" onClick={() => { setProblem(undefined); setAttempt(value => value + 1); }}>Retry screenshot</Button>}</div>;
   return <img key={attempt} src={screenshot.src} alt={screenshot.alt} width={screenshot.width} height={screenshot.height} loading={eager ? "eager" : "lazy"} className={className} style={style} onError={() => { setProblem("Screenshot could not be loaded."); onFailure?.(); }} onLoad={event => {
-    const failure = captureLoadProblem(screenshot, { width: event.currentTarget.naturalWidth, height: event.currentTarget.naturalHeight });
-    if (failure) { setProblem(failure); onFailure?.(); }
+    const element = event.currentTarget;
+    void captureSourceDimensions(screenshot.src).then(actual => {
+      if (!element.isConnected) return;
+      const failure = captureLoadProblem(screenshot, actual);
+      if (failure) { setProblem(failure); onFailure?.(); }
+    }, () => { if (element.isConnected) { setProblem("Screenshot could not be loaded."); onFailure?.(); } });
   }} />;
 }
 function CapturePreview({ screenshot, onChoose }: { screenshot: LogScreenshot; onChoose: (button: HTMLButtonElement) => void }) {

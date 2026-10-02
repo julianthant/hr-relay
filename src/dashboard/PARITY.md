@@ -26,6 +26,11 @@ earlier completed stages retain their state and durations, future stages are gra
 “Upcoming” text, and only the affected
 stage/substep changes color. Focused dark/light 1024/1440 interaction and accessibility checks cover
 these approved changes. Reference screenshots have not been refrozen; backend wiring remains deferred.
+Logs defaults to the selected queue row's served context; choosing another row changes its name,
+status, message and pipeline and resets any explicit sample selection. Fictional action histories remain
+in the sample selector. Single previews have a 128px image area and at most 360px width; browser
+previews use 96px image areas. Dimension validation measures the detached decoded source, retaining
+real mismatches and decode failures instead of rejecting a scaled preview.
 
 ## Ruled deviations from the rebuild-demo
 

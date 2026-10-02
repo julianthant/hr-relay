@@ -11,6 +11,8 @@ import { WorkflowExplorer } from "../../../src/dashboard/surfaces/explorer.js";
 import { LogSample } from "../../../src/dashboard/surfaces/logs/log-sample.js";
 import { separationLogs } from "../../../src/dashboard/surfaces/logs/log-fixture.js";
 import { visualLogSteps } from "../../../src/dashboard/surfaces/log-feed-model.js";
+import { selectedLogPresentation } from "../../../src/dashboard/surfaces/logs/log-selection-model.js";
+import { FIXTURE_DAY_WIRE, FIXTURE_IDS } from "../../parity/helpers/fixture-queue.js";
 
 const noop = () => {};
 describe("frontend presentation producers", () => {
@@ -94,6 +96,27 @@ describe("frontend presentation producers", () => {
     assert.ok(!steps.some(step => step.title === "Build separation plan" || step.title === "Reconcile dates"));
     assert.ok(steps.some(step => step.entries.some(entry => entry.kind === "click" && entry.label === "Save and Submit")));
     assert.equal(steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "decision" ? entry.decision.screenshots ?? [] : entry.kind === "note" ? [] : entry.screenshots ?? []).length, 16);
+  });
+  it("updates selected-run context without inventing action history or unmeasured durations", () => {
+    const row = FIXTURE_DAY_WIRE.queueSurfaces.find(item => item.runId === FIXTURE_IDS.runningRun);
+    assert.ok(row);
+    const running = selectedLogPresentation({ row, workflowLabel: "Person Lookup" });
+    assert.equal(running.title, "Person Lookup · Battistessa, Johnnie");
+    assert.equal(running.status, "Running");
+    assert.match(JSON.stringify(running.steps), /Searching UCPath for Battistessa, Johnnie/u);
+    assert.doesNotMatch(JSON.stringify(running.steps), /Alex Morgan|screenshots|Save and Submit/u);
+    assert.ok(running.timeline.every(stage => stage.durationLabel === undefined));
+    const changed = selectedLogPresentation({ workflowLabel: "Person Lookup", row: {
+      ...row, liveMessage: { state: "present", value: "Could not click Search" }, status: "failed",
+      pipeline: [{ ...row.pipeline[0], state: "done", durationSec: 0 }, { ...row.pipeline[1], state: "failed" }, { ...row.pipeline[2], state: "pending" }, { ...row.pipeline[3], state: "skipped" }],
+    } });
+    assert.equal(changed.status, "Failed");
+    assert.match(JSON.stringify(changed.steps), /Could not click Search/u);
+    assert.doesNotMatch(JSON.stringify(changed.steps), /Searching UCPath for/u);
+    assert.equal(changed.timeline[0].durationLabel, "0s");
+    assert.deepEqual(changed.timeline.map(stage => stage.state), ["completed", "failed", "pending", "skipped"]);
+    assert.equal(changed.timeline[1].stepId, row.pipeline[1].id);
+    assert.ok(changed.timeline.slice(2).every(stage => stage.stepId === undefined));
   });
   it("binds classified captures to the filled fields, submission and matching person", () => {
     for (const step of visualLogSteps(separationLogs)) for (const entry of step.entries) {

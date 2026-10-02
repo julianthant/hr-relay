@@ -17,3 +17,11 @@ export function captureGeometry(capture: Pick<LogScreenshot, "width" | "height">
 export function captureLoadProblem(capture: LogScreenshot, actual: { width: number; height: number }): string | undefined {
   return actual.width === capture.width && actual.height === capture.height ? undefined : `Screenshot dimensions differ: expected ${capture.width} × ${capture.height}, received ${actual.width} × ${actual.height}.`;
 }
+
+/** Measure the decoded source independently of its rendered preview. */
+export async function captureSourceDimensions(src: string): Promise<{ width: number; height: number }> {
+  const image = new Image();
+  image.src = src;
+  await image.decode();
+  return { width: image.naturalWidth, height: image.naturalHeight };
+}

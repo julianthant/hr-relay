@@ -12,7 +12,10 @@ log-block examples, required-only continuation forms, ordinary follow-up logs, n
 indented fitted notices and timestamps in the log rail. The image workspace uses a thumbnail sidebar,
 zoom, rotation and comparison, closes on outside click and retries explicit load failures. The timeline
 retains completed stages and grays future stages without visible “Upcoming” text; only the affected
-portion changes state/color.
+portion changes state/color. The selected queue row now supplies its subject, status, attempt, current
+message and pipeline to Logs; fictional action histories remain explicit sample choices. Inline image
+areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
+measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
 Backend classifiers and failure/resolve wiring remain deferred.
 Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
 

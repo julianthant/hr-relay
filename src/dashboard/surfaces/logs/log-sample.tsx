@@ -4,13 +4,15 @@ import { LogPanel } from "../log-panel.js";
 import { decisionActionResult, type LogDecisionAction, type LogDecisionAnswer } from "../log-decision-model.js";
 import type { LogStep } from "../log-feed-model.js";
 import { decisionScenarios, previewScenarios } from "./log-fixture.js";
+import { selectedLogPresentation, type LogSelection } from "./log-selection-model.js";
 
-/** Explicit fictional data, independent of the selected queue run's stored record. */
-export function LogSample() {
-  const [scenarioId, setScenarioId] = useState<string>("separation");
+/** Selected queue context and explicitly chosen fictional design examples. */
+export function LogSample({ selection }: { selection?: LogSelection }) {
+  const [scenarioId, setScenarioId] = useState<string>(selection ? "selected" : "separation");
   const [steps, setSteps] = useState<readonly LogStep[]>(previewScenarios[0].steps);
   const scenarios = [...previewScenarios, ...decisionScenarios];
-  const scenario = scenarios.find(item => item.id === scenarioId);
+  const selected = selection ? selectedLogPresentation(selection) : undefined;
+  const scenario = scenarioId === "selected" && selected ? { ...selected, id: "selected", label: "Selected run", subject: "" } : scenarios.find(item => item.id === scenarioId);
   if (!scenario) throw new Error("log-sample-scenario-missing");
   const decide = (id: string, action: LogDecisionAction, answer: LogDecisionAnswer) => {
     const result = decisionActionResult(action, answer);
@@ -23,6 +25,6 @@ export function LogSample() {
       return result.continues ? [{ ...entry, decision: { ...entry.decision, actions: undefined, footer: result.title } }, event] : [entry, event];
     }) })));
   };
-  return <LogPanel key={scenario.id} title={`Separations · ${scenario.subject}`} status={scenario.status} steps={steps} timeline={scenario.timeline} onDecision={decide}
-    toolbar={<Select aria-label="Logs sample data" variant="toolbar" value={scenarioId} onChange={event => { const next = scenarios.find(item => item.id === event.target.value); if (!next) throw new Error("log-sample-scenario-missing"); setScenarioId(next.id); setSteps(next.steps); }}>{scenarios.map(item => <option key={item.id} value={item.id}>Sample data · {item.label}</option>)}</Select>} />;
+  return <LogPanel key={scenario.id} title={scenarioId === "selected" && selected ? selected.title : `Separations · ${scenario.subject}`} status={scenario.status} steps={scenarioId === "selected" ? scenario.steps : steps} timeline={scenario.timeline} onDecision={scenarioId === "selected" ? undefined : decide}
+    toolbar={<Select aria-label="Logs sample data" variant="toolbar" value={scenarioId} onChange={event => { if (event.target.value === "selected" && selected) { setScenarioId("selected"); return; } const next = scenarios.find(item => item.id === event.target.value); if (!next) throw new Error("log-sample-scenario-missing"); setScenarioId(next.id); setSteps(next.steps); }}>{selected && <option value="selected">Selected run</option>}{scenarios.map(item => <option key={item.id} value={item.id}>Sample data · {item.label}</option>)}</Select>} />;
 }

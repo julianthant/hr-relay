@@ -2,7 +2,7 @@
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import { LogScreenshots } from "../../../src/dashboard/surfaces/log-screenshots.js";
 import type { LogScreenshot } from "../../../src/dashboard/surfaces/log-feed-model.js";
 
@@ -13,6 +13,7 @@ let root: Root | undefined;
 afterEach(async () => {
   await act(async () => root?.unmount());
   root = undefined;
+  vi.unstubAllGlobals();
   document.body.replaceChildren();
 });
 const captures: readonly LogScreenshot[] = [
@@ -61,9 +62,10 @@ describe("classified log screenshot viewer", () => {
     assert.equal(document.querySelector("img"), null);
     await click("Retry screenshot");
     assert.ok(document.querySelector("img"));
-    assert.equal(document.querySelector('[role="alert"]'), null);
+    assert.equal(document.querySelector('[role="alert"]') === null, true);
   });
   it("rejects declared-dimension mismatches and leaves other captures intact", async () => {
+    vi.stubGlobal("Image", class { src = ""; naturalWidth = 400; naturalHeight = 400; decode() { return Promise.resolve(); } });
     await mount();
     const image = document.querySelector("img");
     assert.ok(image);
@@ -71,6 +73,26 @@ describe("classified log screenshot viewer", () => {
     await act(async () => image.dispatchEvent(new Event("load")));
     assert.equal(document.querySelectorAll('[role="alert"]').length, 1);
     assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /expected 850 × 1050, received 400 × 400/u);
+    assert.equal(document.querySelectorAll("img").length, 1);
+  });
+  it("validates source dimensions independently of a scaled SVG's displayed metrics", async () => {
+    vi.stubGlobal("Image", class { src = ""; naturalWidth = 850; naturalHeight = 1050; decode() { return Promise.resolve(); } });
+    await mount([captures[0]]);
+    const image = document.querySelector("img");
+    assert.ok(image);
+    Object.defineProperties(image, { naturalWidth: { value: 487 }, naturalHeight: { value: 602 } });
+    await act(async () => image.dispatchEvent(new Event("load")));
+    assert.equal(document.querySelector('[role="alert"]') === null, true);
+    assert.ok(document.querySelector("img"));
+  });
+  it("refuses a source decode failure even when displayed dimensions match", async () => {
+    vi.stubGlobal("Image", class { src = ""; decode() { return Promise.reject(new Error("decode-failed")); } });
+    await mount();
+    const image = document.querySelector("img");
+    assert.ok(image);
+    Object.defineProperties(image, { naturalWidth: { value: 850 }, naturalHeight: { value: 1050 } });
+    await act(async () => image.dispatchEvent(new Event("load")));
+    assert.match(document.querySelector('[role="alert"]')?.textContent ?? "", /Screenshot could not be loaded/u);
     assert.equal(document.querySelectorAll("img").length, 1);
   });
   it("has no capture controls for an empty group", async () => {

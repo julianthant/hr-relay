@@ -1312,12 +1312,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               />}
 
             {route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
-              <LogSample key={route.run} />
+              <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
                 title={route.run === undefined ? "No run open" : "Run unavailable"}
-                description={route.run === undefined ? "Select a run from the queue to open the sample logs." : `Run ${route.run} is not in the loaded queue for ${day}. Select a run from this day.`}
+                description={route.run === undefined ? "Select a run from the queue to open its logs." : `Run ${route.run} is not in the loaded queue for ${day}. Select a run from this day.`}
               /></PanelBody></Panel>
             )}
             </div>

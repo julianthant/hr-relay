@@ -22,8 +22,11 @@ ceremony. The shared renderer does not invent a generic approve command or decis
 `ActivityReport` supplies fictional data to `ActivityView` through `ActivityViewState`; `WorkflowExplorer`
 supplies `ExplorerTimeline`; the run panel mounts `LogSample` through `LogPanel`, `LogFeed` and
 `LogTimeline`; and `SessionPanel` feeds `SessionsView` through `SessionsViewState`. Local fictional
-producers replace the connected presentation paths while backend services and contracts remain
-available. Queue, Activity and Explorer share `ActionBar`/`ActionBarRow`. Explorer has no back control
+producers supply the detailed design examples while backend services and contracts remain
+available. Logs defaults to the selected queue row's served subject, status, attempt, current message
+and pipeline; it updates with the selection and queue projection. This context does not infer browser
+action history or screenshots. A queue selection resets any explicitly chosen fictional sample, while
+the sample selector retains all approved examples. Queue, Activity and Explorer share `ActionBar`/`ActionBarRow`. Explorer has no back control
 or `onBack` prop; shell navigation exits it.
 
 Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
@@ -46,13 +49,16 @@ screenshot label. Filled-field groups show their supplied fields; Submit/Save ca
 form; person checks show the candidate record. A Kuali action contains only Kuali captures. The local
 sample supplies 16 fictional captures, including complete tall forms and verified result pages.
 The operator approved the revised log blocks and image workspace on 2026-10-02. Single capture
-previews use a 188px image area and at most 600px width; browser groups use three compact 124px
-image areas. Multiple forms use two preview columns. Forms preview their top and open at readable
+previews use a 128px image area and at most 360px width; browser groups use three compact 96px
+image areas with at most 900px group width. Multiple forms use two preview columns capped at 760px
+group width. Forms preview their top and open at readable
 width with scrolling. The viewer offers Fit width, Whole image and 100%, zoom, quarter-turn rotation,
 keyboard navigation and two-capture comparison. Multiple captures appear in a left thumbnail sidebar.
 The viewer preserves capture order, names the selected system and action, bounds Previous/Next,
 and returns focus to its trigger after Escape, Close or outside dismissal. Missing bytes and dimension
 mismatches have distinct explicit alerts; Retry reloads the affected capture without replacing evidence.
+Dimension validation uses the detached decoded source, independently of preview layout; a genuine
+declared-size mismatch or decode failure still refuses the capture.
 Capture classifications and viewer grouping remain frontend presentation inputs, not a backend wire
 or capture producer.
 
@@ -67,7 +73,9 @@ Escape closes an open calendar while retaining its continuation dialog. Same-run
 ordinary log entries outside the block; local continuation retains its screenshots. These controls
 change fictional examples only; connected resolution and failure authority remain deferred.
 The compact timeline is directly above the logs: equal-width 10px bars, small state dots and labels, and
-explicit fictional durations. A decision retains the complete five-stage pipeline and earlier completed
+explicit fictional durations. Selected queue context retains its supplied pipeline states, including gray
+skipped/cancelled stages, and shows only supplied durations; missing completed durations have no
+visible placeholder. A decision retains the complete five-stage pipeline and earlier completed
 states and durations. Later stages remain gray and unavailable for jumping, without visible “Upcoming”
 text; only the affected stage
 and substep change state/color. Completed, active and failed bars are solid, waiting is hatched and
