@@ -1,8 +1,8 @@
 # Backend, unit tests and confirmed Logs connection
 
 Status: Phase 1, its startup reconciliation prerequisite and Phase 2 are accepted locally on
-2026-10-01; the operator-approved layout polish has passed code verification and is closing locally
-before Phases 3–5, which remain proposed. This descriptive
+2026-10-01; the operator-approved layout polish is accepted locally on 2026-10-02.
+Phases 3–5 remain proposed. This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -366,7 +366,8 @@ Real process boot, DB recovery and external-write behavior remain deferred compl
 
 ## Layout polish — Finish the approved structure before Phase 3
 
-**Status:** code verified; final ledger correction and local commit closure pending. Authorized by
+**Status:** accepted locally on 2026-10-02 at
+`3e3a0a5c310905aa52d29616d26c6dee1e981605`. Authorized by
 the operator on 2026-10-01. Entry candidate:
 `7e237bd7c3d0a45952e38c49f6d9be75057d08ef`, branch `codex/logs-backend` in the assigned continuation
 worktree. Deployment ID: `backend-layout-polish-20261001`. This is a structural continuation of
@@ -525,7 +526,7 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 | --- | --- | --- |
 | 1 — Test ownership and unit execution | Accepted locally | `a46d792273af908dd9bfd29d6f5eb19b874a319e`; focused checks and independent preservation verification below; broad checks deferred |
 | 2 — Backend modules and reviewed units | Accepted locally | Code candidate `2a1bad93b14b9b17bbccb7e69dc7974dfcf0e3f7`; exact mappings, focused checks and independent combined-candidate preservation verification below |
-| Layout polish — Approved final source/test homes | Code verified; local closure pending | Frozen code SHA-256 `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`; entry `7e237bd7` |
+| Layout polish — Approved final source/test homes | Accepted locally | `3e3a0a5c310905aa52d29616d26c6dee1e981605`; frozen code SHA-256 `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`; entry `7e237bd7` |
 | 3 — Confirmed action/step API | Proposed | Requires Phase 2 and layout polish |
 | 4 — Ordered worker streams | Proposed | Requires Phase 3 |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
@@ -1114,6 +1115,43 @@ Complex-suite redesign, retirement and execution review; real persistence/proces
 acceptance; full coverage; push, merge, worktree cleanup and Phases 3–5 remain deferred to explicit
 operator direction. This acceptance launches none of them.
 
+### Layout polish acceptance — 2026-10-02
+
+Accepted code candidate: `3e3a0a5c310905aa52d29616d26c6dee1e981605`, branch
+`codex/logs-backend`, in the assigned continuation worktree. Parent:
+`7e237bd7c3d0a45952e38c49f6d9be75057d08ef`. All 4,225 accepted dirty paths were staged
+exactly; the cached whitespace check passed, the instruction twins match, and status was clean
+after the local commit. No push or merge occurred. The [current structure](../../reference/codebase-structure.md)
+is the canonical source/test layout; earlier phase diagrams describe historical inputs.
+
+The [candidate manifest](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/candidate-code-hashes.json)
+binds 1,757 code/config files to SHA-256
+`a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`; the pre-stage check
+found zero mismatches. Exact source, tooling and test maps account for the moves and approved
+retirements. Independent import/AST checks found zero unresolved or misbound imports; critical
+write blocks, the approved Logs renderer, 36 coverage-floor pairs and retained timeouts survive.
+
+The corrected [final test ledger](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/implementation/test-map-final.json)
+has SHA-256 `005abca25e166e9538839277198a8f95e4b9dbab2524ccd853a38d610d71efb1`.
+It accounts for 619 current test sources and 5,954 literal callbacks: 2,292 unit, 2,928
+integration and 734 architecture. Of 6,360 baseline callbacks, 5,952 remain or were adapted;
+408 were retired within the operator-approved scope, including 49 UI-catalog cases. Two new
+unit callbacks complete the current total. The immutable baseline and import handoff are unchanged.
+
+The full unit run collected 2,478 expanded cases: 2,419 passed and 59 failed across 14 files.
+The [independent failure crosswalk](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-01/backend-layout-polish/verification/unit-final-failure-crosswalk-a65.json)
+accounts for all 59 baseline failures. Lint, manifest/store-catalog/roadmap checks and the web
+build passed. Typecheck retains 72 baseline diagnostics and zero new diagnostics. Six approved
+source-only guards produced 80 passes and one existing image-loading finding in the unchanged
+Logs renderer. No assertion or scanner was weakened to accept these failures.
+
+Parity/scenario suites and UI-catalog wiring are retired as authorized. Production scenario
+evidence remains unavailable: scenario-dependent Explorer edits remain refused, and dry-run
+scenario requests fail before environment admission or browser launch. Synthetic unit sources
+do not provide production evidence. Integration, persistence, process, sockets, browsers, full
+coverage and future scenario design remain unrun. Phase 3 is ready for a separate operator-launched
+chat; this acceptance does not start it or grant production/Electron acceptance.
+
 ## Prompts for fresh chats
 
 The [startup reconciliation prerequisite](backend-continuation-reconciliation.md) is accepted locally
@@ -1199,7 +1237,9 @@ Use Heavy route only: read ~/.codex/codex_workflow/heavy_route.md and follow it 
 Do not use /astra-orchestrator, /luna-worker or other worker-adapter skills.
 Read current instructions, docs/README.md and
 docs/rebuild/plans/phase-3/backend-and-unit-tests.md. Verify accepted Phase 2 and the subsequent
-layout-polish candidate. Use the current workflow-kit/models/rules/workflows/backend homes.
+layout-polish candidate 3e3a0a5c310905aa52d29616d26c6dee1e981605 and its subsequent
+acceptance-documentation commit. Preserve newer changes; do not reset the checkout.
+Use the current workflow-kit/models/rules/workflows/backend homes.
 Execute only Phase 3: the shared confirmed action/step contract and execution-context API.
 Implement distinct read, fill/readback, interaction, protected submit and verification meanings.
 Use exact frozen run/action/attempt/worker/system/session/step ownership and explicit timestamps.
