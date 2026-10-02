@@ -80,17 +80,41 @@ export const separationLogs: readonly LogStep[] = [
 export function logTimelineSample(scenario: string): readonly LogTimelineStage[] {
   if (!["separation", "reading", "waiting", "failed", "empty"].includes(scenario)) throw new Error("log-timeline-sample-missing");
   const stages = [
-    { id: "request", label: "Read request", stepId: "find-document", time: "09:31:00", durationLabel: "14s" },
-    { id: "employee", label: "Verify employee", stepId: "search-person", time: "09:31:14", durationLabel: "11s" },
-    { id: "timecard", label: "Read timecard", stepId: "timecard", time: "09:31:25", durationLabel: "44s" },
-    { id: "termination", label: "File termination", stepId: "pending", time: "09:32:09", durationLabel: "1m 9s" },
-    { id: "document", label: "Finalize document", stepId: "finalize", time: "09:33:18", durationLabel: "18s" },
+    { id: "request", label: "Read request", stepId: "find-document", time: "09:31:00", durationLabel: "14s", substeps: [
+      { id: "find-document", label: "Find the Kuali action", durationLabel: "6s" },
+      { id: "read-document", label: "Read separation document", durationLabel: "5s" },
+      { id: "plan", label: "Build separation plan", durationLabel: "3s" },
+    ] },
+    { id: "employee", label: "Verify employee", stepId: "search-person", time: "09:31:14", durationLabel: "11s", substeps: [
+      { id: "search-person", label: "Search employee name", durationLabel: "5s" },
+      { id: "read-job", label: "Read Workforce Job Summary", durationLabel: "6s" },
+    ] },
+    { id: "timecard", label: "Read timecard", stepId: "timecard", time: "09:31:25", durationLabel: "44s", substeps: [
+      { id: "timecard", label: "Find and read the timecard", durationLabel: "16s" },
+      { id: "dates", label: "Reconcile dates", durationLabel: "28s" },
+    ] },
+    { id: "termination", label: "File termination", stepId: "pending", time: "09:32:09", durationLabel: "1m 9s", substeps: [
+      { id: "pending", label: "Read pending terminations", durationLabel: "4s" },
+      { id: "existing", label: "Check for an existing termination", durationLabel: "4s" },
+      { id: "file", label: "File termination", durationLabel: "24s" },
+      { id: "verify-termination", label: "Verify termination", durationLabel: "37s" },
+    ] },
+    { id: "document", label: "Finalize document", stepId: "finalize", time: "09:33:18", durationLabel: "18s", substeps: [
+      { id: "finalize", label: "Finalize Kuali document", durationLabel: "14s" },
+      { id: "verify-document", label: "Verify saved document", durationLabel: "4s" },
+    ] },
   ];
   return stages.map((stage, index) => {
     const state: LogTimelineStage["state"] = scenario === "empty" || ((scenario === "reading" || scenario === "waiting") && index > 2) ? "pending"
       : scenario === "reading" && index === 2 ? "active" : scenario === "waiting" && index === 2 ? "waiting"
         : scenario === "failed" && index === 4 ? "failed" : "completed";
-    return state === "pending" ? { id: stage.id, label: stage.label, state } : { ...stage, durationLabel: state === "completed" ? stage.durationLabel : undefined, state };
+    const substeps = stage.substeps.map((substep, substepIndex) => {
+      const substepState: LogTimelineStage["state"] = state === "completed" ? "completed" : state === "pending" ? "pending"
+        : state === "failed" ? substepIndex === stage.substeps.length - 1 ? "failed" : "completed"
+          : substepIndex === 0 ? state : "pending";
+      return { id: substep.id, label: substep.label, state: substepState, ...(substepState === "completed" ? { durationLabel: substep.durationLabel } : {}) };
+    });
+    return state === "pending" ? { id: stage.id, label: stage.label, state, substeps } : { ...stage, substeps, durationLabel: state === "completed" ? stage.durationLabel : undefined, state };
   });
 }
 

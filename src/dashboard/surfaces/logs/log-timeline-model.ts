@@ -1,10 +1,20 @@
+export type LogTimelineState = "completed" | "active" | "waiting" | "failed" | "pending";
+
+export type LogTimelineSubstep = Readonly<{
+  id: string;
+  label: string;
+  state: LogTimelineState;
+  durationLabel?: string;
+}>;
+
 export type LogTimelineStage = Readonly<{
   id: string;
   label: string;
-  state: "completed" | "active" | "waiting" | "failed" | "pending";
+  state: LogTimelineState;
   time?: string;
   durationLabel?: string;
   stepId?: string;
+  substeps: readonly LogTimelineSubstep[];
 }>;
 
 export const LOG_TIMELINE_STYLES = {
