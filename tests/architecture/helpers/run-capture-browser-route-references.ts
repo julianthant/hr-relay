@@ -5,7 +5,7 @@ import { ArtifactIdSchema, RunIdSchema } from "../../../src/domain/ids.js";
 import { RunDetailSectionResponseSchema, RunDetailWireSchema } from "../../../src/domain/dashboard/run-detail.js";
 import {
   CAPTURE_BASE_URL, captureButton, captureDialog, mountCaptureApp, pressCaptureControl,
-} from "../../unit/dashboard/fixtures/run-captures-app-fixture.js";
+} from "../../helpers/dashboard/run-captures-app-fixture.js";
 import type { ClientRouteReference } from "./wire-connectivity.js";
 
 export interface RunCaptureBrowserProbe {

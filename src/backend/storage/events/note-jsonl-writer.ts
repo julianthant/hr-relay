@@ -10,7 +10,7 @@ import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
 import { localDatePart } from "../../../domain/clock.js";
 import { ClassifiedDiagnosticValueSchema } from "../../../domain/redaction.js";
-import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../events/types.js";
+import { NoteLevelSchema, NoteWireSchema, browserActionMessage, type NoteFieldWire, type NoteWire } from "../../../domain/events/types.js";
 import type { BrowserAction } from "../../systems/browser-shared/action-notes.js";
 import { DeclaredActionOccurrenceSchema } from "../../../domain/task-provenance.js";
 import { assertNoteWithinRunScope } from "../../../domain/run/note-scope.js";

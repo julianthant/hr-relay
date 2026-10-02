@@ -15,8 +15,8 @@ import { manualClock } from "../../../src/domain/clock.js";
 import { canonicalJsonStringify } from "../../../src/domain/canonical-json.js";
 import { RunRecordSchema, type RunRecord } from "../../../src/domain/run/record.js";
 import { createCrossDateSearchService } from "../../../src/backend/runs/dashboard/queries/search.js";
-import { runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
-import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
+import { runRecordOf } from "../../helpers/backend/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "../search/helpers/cross-date-search-harness.js";
 import { SANITIZED_CROSS_DATE_SEARCH_CORPUS } from "../../fixtures/cross-date-search-corpus.js";
 import { separationsDescriptor } from "../../helpers/registered-workflows.js";
 

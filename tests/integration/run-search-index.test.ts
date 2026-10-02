@@ -1,6 +1,6 @@
 import { deriveDiagnosticContentDigest } from "../../src/domain/trust/diagnostic-capture.js";
 import { DiagnosticBundleSchema } from "../../src/domain/trust/diagnostic.js";
-import { foundationFixture, failure, terminalizeFixtureFailure, HASH, NOW } from "../unit/database-foundation/fixtures.js";
+import { foundationFixture, failure, terminalizeFixtureFailure, HASH, NOW } from "../helpers/database-foundation/fixtures.js";
 import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
@@ -14,7 +14,7 @@ import { DatabaseSync } from "node:sqlite";
 import { it, vi } from "vitest";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { runRecordOf } from "../unit/server/helpers/dashboard-harness.js";
+import { runRecordOf } from "../helpers/backend/dashboard-harness.js";
 import { createCrossDateSearchService } from "../../src/backend/runs/dashboard/queries/search.js";
 
 function fixture() {

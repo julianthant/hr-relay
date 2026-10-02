@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { promisify } from "node:util";
-import type { FictionalFormDriver } from "../../unit/fixtures/plan1-browser-operation.js";
+import type { FictionalFormDriver } from "./plan1-browser-operation.js";
 
 const execute = promisify(execFile);
 

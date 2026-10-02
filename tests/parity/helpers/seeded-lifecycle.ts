@@ -1,5 +1,5 @@
 import { buildRunResult } from "../../../src/backend/runs/run-result.js";
-import { browserSessionSpanPath,workerSpanPath } from "../../../src/core/span-emitter.js";
+import { browserSessionSpanPath,workerSpanPath } from "../../../src/backend/logs/span-emitter.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { ReadActiveStatus } from "../../../src/domain/contracts/person-lookup/read-active-status.js";
 import {

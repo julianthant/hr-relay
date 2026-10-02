@@ -8,7 +8,7 @@ import type { RunRecordService } from "../run-record-service.js";
  * screen and a receipt they export from a terminal are the same derivation
  * over the same rows. A second assembly would be a second answer.
  *
- * It lives in `src/server/` for the same reason `compose.ts` does: it resolves
+ * It lives in `src/backend/` for the same reason `compose.ts` does: it resolves
  * the run's descriptor from the composition root's registry, which sits ABOVE
  * `core` in the layer matrix.
  */

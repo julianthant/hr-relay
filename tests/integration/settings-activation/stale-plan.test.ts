@@ -7,7 +7,7 @@ import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER } from "../../fixtures/intake-kernel-seams.js";
 import { UNWIRED_ARCHIVE_SNAPSHOTS } from "../../fixtures/archive-fixtures.js";
 import { singleAppliedRunId } from "../../fixtures/operator-command-fixtures.js";
-import { settingsFixture } from "../../unit/settings-activation/fixture.js";
+import { settingsFixture } from "./helpers/fixture.js";
 
 it("refuses stale reviewed plans atomically, freshly confirms current settings and preserves accepted replay", () => {
   const f = settingsFixture();

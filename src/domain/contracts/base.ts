@@ -19,7 +19,7 @@ import {
   assertContractBoundarySchema,
   assertSchemaOwnsPath,
   sealDeclarativeMetadata,
-} from "../../validation/contract-boundary.js";
+} from "../validation/contract-boundary.js";
 import { assertTaskOperationDeclaration } from "../workflow/operation-display.js";
 import type { TaskOperationDeclaration } from "../workflow/operation-display.js";
 import {
@@ -42,7 +42,7 @@ export type {
   TaskId,
   TaskStoreId,
 } from "../ids.js";
-export { auditContractBoundarySchema } from "../../validation/contract-boundary.js";
+export { auditContractBoundarySchema } from "../validation/contract-boundary.js";
 
 export const TaskEffectSchema = z.enum(["read", "prepare", "commit"]);
 export const TaskErrorCodeSchema = z.string().regex(

@@ -28,7 +28,7 @@ import { defineWorkflowRole } from "../../../src/domain/workflow/module-role.js"
 import { buildBootstrap, type BootstrapQueryDeps } from "../../../src/backend/runs/dashboard/queries/bootstrap.js";
 import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js";
 import { fixtureDescriptor } from "../../fixtures/descriptor-fixtures.js";
-import { AT, makeWorld, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";
+import { AT, makeWorld, type DashboardWorld } from "../../helpers/backend/dashboard-harness.js";
 
 type BackupSummary = ReturnType<BootstrapQueryDeps["backupSummary"]>;
 

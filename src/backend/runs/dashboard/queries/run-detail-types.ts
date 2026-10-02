@@ -8,7 +8,7 @@ import type { FailureRecord } from "../../../../domain/trust/failure.js";
 import type { RunCheckpointRecord } from "../../../../domain/workflow/checkpoint.js";
 import type { WriteIntentRecord } from "../../../../domain/write-safety.js";
 import type { AuthorityDatabase, AuthorityRepositories } from "../../../storage/sqlite/authority-database.js";
-import type { ProofShape } from "../../../../validation/proof-shape.js";
+import type { ProofShape } from "../../../../domain/validation/proof-shape.js";
 import type { RunQueueProjection } from "../projectors/run-queue-projection.js";
 import type { DiagnosticBundleQueryDeps } from "./diagnostic-bundle.js";
 import type { ItemAttemptHistoryRequest, ItemAttemptHistoryResponse } from "../../../../domain/dashboard/item-attempt-history.js";

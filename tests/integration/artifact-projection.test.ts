@@ -1,6 +1,6 @@
 import { RuntimeAdmission } from "../../src/backend/storage/admission/admission.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
-import { generatedUpdateId, pendingGeneratedUpdateIds } from "../../src/core/generated-artifact-projection.js";
+import { generatedUpdateId, pendingGeneratedUpdateIds } from "../../src/backend/logs/generated-artifact-projection.js";
 import { createContentAddressedArtifactWriter } from "../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**

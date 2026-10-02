@@ -1,7 +1,7 @@
 import { it } from "vitest";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import assert from 'node:assert/strict';
-import { foundationFixture, id, HASH, NOW } from '../../unit/database-foundation/fixtures.js';
+import { foundationFixture, id, HASH, NOW } from '../../helpers/database-foundation/fixtures.js';
 import { personLookupDescriptor } from '../../helpers/registered-workflows.js';
 import { RunRecordSchema } from '../../../src/domain/run/record.js';
 import { RunCheckpointRecordSchema } from '../../../src/domain/workflow/checkpoint.js';

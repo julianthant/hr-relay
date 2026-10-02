@@ -36,7 +36,7 @@ import type { AnyWorkflowDescriptor } from "../../../../base/workflow.js";
 import type { AnyWorkflowDefinition } from "../../../../base/workflow-definition.js";
 import type { RegisteredTaskStore } from "../../../../base/store.js";
 import { ContractFieldPathSchema } from "../../../../domain/contracts/base.js";
-import { contractSchemaLeaves } from "../../../../validation/contract-boundary.js";
+import { contractSchemaLeaves } from "../../../../domain/validation/contract-boundary.js";
 import type { AnyTaskContract } from "../../../../domain/contracts/base.js";
 import type { Clock } from "../../../../domain/clock.js";
 import { z } from "zod";

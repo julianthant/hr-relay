@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { NOW, id } from "../../unit/database-foundation/fixtures.js";
+import { savedHttpFixture } from "./helpers/fixtures.js";
+import { NOW, id } from "../../helpers/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { createRunLifecycleStorage, lifecycleSourceDigest } from "../../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";

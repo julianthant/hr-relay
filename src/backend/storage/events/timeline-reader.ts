@@ -1,5 +1,5 @@
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
-import type { TimelineEventRecord, TimelineRepository } from "../../../events/timeline.js";
+import type { TimelineEventRecord, TimelineRepository } from "../../../domain/events/timeline.js";
 import type { EventStreamLine } from "./jsonl-streams.js";
 
 /** Shared cursor paging for BFF, scenarios and recovery, under one read snapshot. */

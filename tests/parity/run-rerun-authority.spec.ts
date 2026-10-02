@@ -2,7 +2,7 @@ import { createHash } from "node:crypto";
 import { test, expect, type Page } from "@playwright/test";
 import { startRunRerunServer, type RunRerunServer } from "./helpers/run-rerun-server.js";
 import { gotoAppState } from "./helpers/app-driver.js";
-import { absentProbeEvidence } from "../unit/fixtures/write-sequencer-fixtures.js";
+import { absentProbeEvidence } from "./helpers/write-sequencer-fixtures.js";
 import { EidSchema } from "../../src/domain/ids.js";
 import { deriveIdempotencyKeyDigest } from "../../src/domain/write-safety.js";
 import { StartCommandRequestSchema } from "../../src/domain/commands.js";

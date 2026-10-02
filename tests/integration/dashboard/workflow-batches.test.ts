@@ -7,7 +7,7 @@ import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../../src/doma
 import { QueuePanel, type QueueHandlers } from "../../../src/dashboard/surfaces/queue.js";
 import { RunSessionRecordSchema } from "../../../src/domain/run/session.js";
 import { applyDashboardDayPatch } from "../../../src/dashboard/client/day-state.js";
-import { makeWorld, queuedEventOf, runRecordOf, taskEventsOf, uuidOf as runUuidOf, instantOffsetOf, DAY as PROJECTION_DAY } from "../../unit/server/helpers/dashboard-harness.js";
+import { makeWorld, queuedEventOf, runRecordOf, taskEventsOf, uuidOf as runUuidOf, instantOffsetOf, DAY as PROJECTION_DAY } from "../../helpers/backend/dashboard-harness.js";
 import { queueBatches, visibleRunIds } from "../../../src/dashboard/surfaces/queue-model.js";
 import { FIXTURE_DAY, FIXTURE_DAY_WIRE, FIXTURE_NOW, uuidOf } from "../../parity/helpers/fixture-day.js";
 

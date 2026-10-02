@@ -4,10 +4,10 @@ import { sha256Hex } from "../../../src/domain/sha256.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
 import { DatabaseSync } from "node:sqlite";
-import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
+import { summaryFixture } from "./helpers/fixtures.js";
 import { activityReportCsv } from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { id, NOW } from "../../unit/database-foundation/fixtures.js";
+import { id, NOW } from "../../helpers/database-foundation/fixtures.js";
 
 it("serves selected Queue rows and Activity without enumerating canonical history", () => {
   const f = summaryFixture();

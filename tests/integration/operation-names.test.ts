@@ -91,7 +91,7 @@ function supportedFixture() {
   const f = fixture();
   rmSync(f.path);
   const facts = z.record(z.string().regex(/^[a-z_]+$/u), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))).parse(
-    JSON.parse(readFileSync(new URL("../unit/fixtures/migrated-operations.json", import.meta.url), "utf8")));
+    JSON.parse(readFileSync(new URL("./fixtures/migration/migrated-operations.json", import.meta.url), "utf8")));
   const raw = new DatabaseSync(f.path);
   try {
     raw.exec("PRAGMA foreign_keys=OFF");

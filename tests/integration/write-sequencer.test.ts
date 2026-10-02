@@ -1,4 +1,4 @@
-import { reconstructConfirmedOperation } from "../../src/events/confirmed-operation.js";
+import { reconstructConfirmedOperation } from "../../src/domain/events/confirmed-operation.js";
 import { descriptorRuntimeNodes } from "../../src/base/workflow.js";
 import { personLookupDescriptor, separationsDescriptor } from "../helpers/registered-workflows.js";
 import { RunClaimTokenSchema } from "../../src/backend/storage/sqlite/run-store-contracts.js";

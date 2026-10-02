@@ -1,7 +1,7 @@
 import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../src/domain/provider-accounting.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { foundationFixture, NOW, id } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, NOW, id } from "../../helpers/database-foundation/fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
@@ -181,7 +181,7 @@ it("public display identity does not encode a changed protected value or its der
 });
 
 
-import { generic } from "../../unit/provider-accounting/fixtures.js";
+import { generic } from "../provider-accounting/helpers/fixtures.js";
 it("captures generic provider requests and their allocated usage without unrelated shared accounting", () => {
   const f = foundationFixture();
   try {

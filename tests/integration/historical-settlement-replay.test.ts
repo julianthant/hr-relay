@@ -44,7 +44,7 @@ it("replays an actual released settlement after conversion without rewriting its
     const original=readFileSync(path);
     await assert.rejects(upgradeStorage({stateRoot:root,processLockRoot:join(root,"locks"),environmentFile:join(root,".env"),plan:false},clock),/authority-below-floor/u);
     assert.deepEqual(readFileSync(path),original);
-    restoreRetainedFixture(path,new URL("../unit/fixtures/migrated-settlement.json",import.meta.url));
+    restoreRetainedFixture(path,new URL("./fixtures/migration/migrated-settlement.json",import.meta.url));
     assert.deepEqual(journal(),before);
     await backupStoppedAuthority(root, clock);
     assert.equal((await upgradeStorage({ stateRoot: root, processLockRoot: join(root, "locks"), environmentFile: join(root, ".env"), plan: false }, clock)).state, "converted");

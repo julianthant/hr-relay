@@ -18,8 +18,8 @@
  * fold throws `ProjectionDegradedError`, the one arm the wire marks retryable.
  * Everything else is a 500 with its real message, exactly as before.
  *
- * These live at `src/server/` rather than under `dashboard/` because the trust
- * receipt service (`src/server/trust/`) is one of the producers the route maps,
+ * These live at `src/backend/` rather than under `dashboard/` because the trust
+ * receipt service (`src/backend/runs/trust/`) is one of the producers the route maps,
  * and a shared refusal vocabulary that only half the server can import is the
  * same defect one directory down.
  */

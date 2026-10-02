@@ -6,8 +6,8 @@ import { z } from "zod";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { FingerprintSchema, IsoInstantSchema } from "../../../domain/ids.js";
 import { LedgerEntrySchema } from "../../../domain/ledger.js";
-import { SpanEventWireSchema, type SpanEventWire } from "../../../events/types.js";
-import { TimelineAppendSchema, type TimelineAppend } from "../../../events/timeline.js";
+import { SpanEventWireSchema, type SpanEventWire } from "../../../domain/events/types.js";
+import { TimelineAppendSchema, type TimelineAppend } from "../../../domain/events/timeline.js";
 import type { VerifiedBackup } from "../sqlite/backup-service.js";
 
 const SourceFileSchema = z.strictObject({

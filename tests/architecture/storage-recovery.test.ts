@@ -44,7 +44,7 @@ import { deriveSchemaHash } from "../../src/domain/schema-bound-value.js";
 import { TerminalAuthorizationRecordSchema } from "../../src/domain/run/terminal-authorization.js";
 import { RunCheckpointRecordSchema } from "../../src/domain/workflow/checkpoint.js";
 import { createSpanJsonlWriter } from "../../src/backend/storage/events/span-jsonl-writer.js";
-import { SpanEventWireSchema } from "../../src/events/types.js";
+import { SpanEventWireSchema } from "../../src/domain/events/types.js";
 import { createTimelineRepository } from "../../src/backend/storage/sqlite/timeline-repository.js";
 import { AuthorityDatabase as RealAuthorityDatabase } from "../../src/backend/storage/sqlite/authority-database.js";
 import { inspectSpanAuthorityCorpusReadOnly } from "../../src/backend/storage/sqlite/storage-doctor.js";
@@ -90,7 +90,7 @@ import {
   VERSION_BUMP_APPLICATION,
   VERSION_PLAN_ROW,
 } from "../fixtures/archive-fixtures.js";
-import { failureDetailWireFixture } from "../unit/fixtures/trust-wire-fixtures.js";
+import { failureDetailWireFixture } from "../helpers/trust/trust-wire-fixtures.js";
 import {
   CURRENT_AUTHORITY_SCHEMA_VERSION,
   NORMAL_AUTHORITY_SCHEMA_VERSION,

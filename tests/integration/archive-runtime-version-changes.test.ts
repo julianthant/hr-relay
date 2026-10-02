@@ -6,7 +6,7 @@ import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { QueueSurfaceWireSchema } from "../../src/domain/dashboard/projection.js";
 import { RunIdSchema } from "../../src/domain/ids.js";
 import { createRunLifecycleStorage } from "../../src/backend/storage/sqlite/lifecycle-storage.js";
-import { foundationFixture, id, NOW } from "../unit/database-foundation/fixtures.js";
+import { foundationFixture, id, NOW } from "../helpers/database-foundation/fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { ARCHIVED_RUN_WITH_SECTIONS } from "../fixtures/archive-fixtures.js";
 import type { ArchiveRunSnapshot } from "../../src/backend/runs/archive/archive-service.js";

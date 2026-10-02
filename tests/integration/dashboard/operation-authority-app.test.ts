@@ -1,6 +1,6 @@
 import { manualClock } from "../../../src/domain/clock.js";
 import { sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
-import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
+import { createDiagnosticCaptureService } from "../../../src/backend/logs/trust/diagnostic-capture.js";
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import assert from "node:assert/strict";
 import { afterAll, beforeAll, describe, it } from "vitest";

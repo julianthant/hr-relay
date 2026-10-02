@@ -3,8 +3,8 @@ import { it } from "vitest";
 
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { SavedArchiveIndexWireSchema, SavedArchiveGroupsWireSchema, SavedRuntimeVersionIndexWireSchema } from "../../../src/domain/dashboard/archive.js";
-import { id, NOW } from "../../unit/database-foundation/fixtures.js";
-import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
+import { id, NOW } from "../../helpers/database-foundation/fixtures.js";
+import { savedHttpFixture } from "./helpers/fixtures.js";
 
 it("serves a reviewed workflow bump, applies its exact command and filters the saved report", async () => {
   const f = savedHttpFixture({ registeredRuntimeVersion: true });

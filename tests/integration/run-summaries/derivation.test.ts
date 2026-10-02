@@ -4,7 +4,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { deriveRunSummary, deriveCanonicalPerson } from "../../../src/backend/runs/run-summary.js";
 import { TERMINAL_SEPARATIONS_RUN, TERMINAL_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
-import { foundationFixture } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture } from "../../helpers/database-foundation/fixtures.js";
 
 it("measures enqueue-to-end duration and keeps unknown warnings explicit", () => {
   const run=TERMINAL_SEPARATIONS_RUN;
@@ -37,7 +37,7 @@ it("uses the local enqueue day across a UTC boundary without changing the instan
   }finally{if(prior===undefined)delete process.env.TZ;else process.env.TZ=prior;f.dispose();}
 });
 
-import { cleanReceiptOf,receiptWithWarningsOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { cleanReceiptOf,receiptWithWarningsOf } from "../../helpers/backend/dashboard-harness.js";
 it("keeps withheld receipt warnings unavailable and distinguishes clean from warned modern receipts",()=>{
   const run=TERMINAL_SEPARATIONS_RUN;
   const source={run,result:TERMINAL_SEPARATIONS_RESULT,failure:null,resolution:null,cursor:0,startedAt:null,queueTitle:null,children:[],dependencyRunIds:[]};

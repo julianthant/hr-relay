@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { performance } from "node:perf_hooks";
 import { DatabaseSync, StatementSync } from "node:sqlite";
-import { foundationFixture, id } from "../unit/database-foundation/fixtures.js";
+import { foundationFixture, id } from "../helpers/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 
 const empty=()=>({statements:0,returnedRows:0,summaryRows:0,summaryWrites:0,sourceReconstruction:0});

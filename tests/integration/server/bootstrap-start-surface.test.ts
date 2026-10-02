@@ -36,7 +36,7 @@ import { projectStartSteps } from "../../../src/backend/runs/start/step-selectio
 import { INTAKE_PROJECTIONS } from "../../../src/backend/app/control/workflow-registry.js";
 import { WORKFLOW_DESCRIPTORS } from "../../../src/workflows/descriptor-registry.js";
 import { FixtureReadReceipt } from "../../fixtures/descriptor-fixtures.js";
-import { AT, makeWorld, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";
+import { AT, makeWorld, type DashboardWorld } from "../../helpers/backend/dashboard-harness.js";
 import { healthyDashboardPreflightReport } from "../../fixtures/preflight-seams.js";
 import {
   AUDITING_FORM,

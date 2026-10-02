@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "vitest";
 import { archiveFixture } from "../helpers/archive-transfer/fixtures.js";
-import { id, NOW } from "../unit/database-foundation/fixtures.js";
+import { id, NOW } from "../helpers/database-foundation/fixtures.js";
 import { CommandRequestSchema } from "../../src/domain/commands.js";
 import { createRunLifecycleStorage } from "../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";

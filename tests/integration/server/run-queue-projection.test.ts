@@ -45,7 +45,7 @@ import {
   uuidOf,
   workerLeaseOf,
   type DashboardWorld,
-} from "../../unit/server/helpers/dashboard-harness.js";
+} from "../../helpers/backend/dashboard-harness.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { personLookupDescriptor, separationsDescriptor } from "../../helpers/registered-workflows.js";
 

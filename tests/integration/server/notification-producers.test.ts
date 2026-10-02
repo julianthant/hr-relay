@@ -11,7 +11,7 @@ import { createNotificationHealthObserver, readNotificationHealth } from "../../
 import { createNotificationInbox } from "../../../src/backend/runs/notifications/inbox.js";
 import { sequentialIdFactory, QUEUED_RUN, WORKER_START_REQUEST } from "../../fixtures/phase1f-run-fixtures.js";
 import type { RunRecord } from "../../../src/domain/run/record.js";
-import { failureRecordOf, cleanReceiptOf, runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { failureRecordOf, cleanReceiptOf, runRecordOf } from "../../helpers/backend/dashboard-harness.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { dirname, join } from "node:path";

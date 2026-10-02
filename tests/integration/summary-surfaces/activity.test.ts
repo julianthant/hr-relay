@@ -14,8 +14,8 @@ import { ActivityBody, ActivityReport } from "../../../src/dashboard/surfaces/ac
 import { createDashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
-import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { id } from "../../unit/database-foundation/fixtures.js";
+import { summaryFixture } from "../served-database-surfaces/helpers/fixtures.js";
+import { id } from "../../helpers/database-foundation/fixtures.js";
 import { activityReportCsv } from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import {
   activityPeopleEvidenceItems,

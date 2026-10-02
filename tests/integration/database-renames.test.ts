@@ -134,7 +134,7 @@ describe("seven database table renames", () => {
     assert.throws(() => open(f.path), /upgrade-required/u);
     await assert.rejects(f.upgrade(),/authority-below-floor/u);
     assert.deepEqual(readFileSync(f.path),original);
-    restoreRetainedFixture(f.path,new URL("../unit/fixtures/migrated-database-renames.json",import.meta.url));
+    restoreRetainedFixture(f.path,new URL("./fixtures/migration/migrated-database-renames.json",import.meta.url));
     await f.backup(); await f.upgrade();
     const db = open(f.path);
     try {
@@ -213,7 +213,7 @@ describe("seven database table renames", () => {
   it("rolls back a populated stopped conversion, settles once after commit, and preserves backup sources", async () => {
     const f = fixture();
     await assert.rejects(f.upgrade(),/authority-below-floor/u);
-    restoreRetainedFixture(f.path,new URL("../unit/fixtures/migrated-database-renames.json",import.meta.url));
+    restoreRetainedFixture(f.path,new URL("./fixtures/migration/migrated-database-renames.json",import.meta.url));
     const before = inspectAuthorityBackupReadOnly(f.path);
     const journal = rows(f.path, "database_upgrades");
     const tallies = rows(f.path, "deleted_runs");

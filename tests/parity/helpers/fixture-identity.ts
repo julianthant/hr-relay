@@ -2,7 +2,7 @@ import { descriptorSetHash } from "../../../src/backend/app/dashboard/compose.js
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 
-/* ── identity helpers (aligned with tests/unit/server/helpers/dashboard-harness.ts) ── */
+/* ── identity helpers (aligned with tests/helpers/backend/dashboard-harness.ts) ── */
 
 export function uuidOf(seed: number): string {
   const digits = String(seed).padStart(12, "0");

@@ -2,8 +2,8 @@ import { ConfigSnapshotRecordSchema } from "../../domain/config/snapshot.js";
 import { SETTINGS_CATALOG } from "../../domain/config/catalog.js";
 import { sha256Hex } from "../../domain/sha256.js";
 import type { ProviderAccountingStorage } from "../../base/provider-accounting.js";
-import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "../../core/generated-artifact-projection.js";
-import { timelineCheckpointReference } from "../../events/timeline.js";
+import { commitGeneratedCheckpoint, generatedUpdateId, pendingGeneratedUpdateIds, projectGeneratedUpdates } from "../logs/generated-artifact-projection.js";
+import { timelineCheckpointReference } from "../../domain/events/timeline.js";
 import { localDatePart } from "../../domain/clock.js";
 import { retainedRunProtectedBindings } from "../../domain/protected-input.js";
 import { readRunCheckpoint } from "./run-checkpoint-reader.js";
@@ -143,8 +143,8 @@ import {
   runSpanPath,
   taskSpanPath,
   type SpanEmitter,
-} from "../../core/span-emitter.js";
-import { redactObservedDataPoints } from "../../core/observed-data.js";
+} from "../logs/span-emitter.js";
+import { redactObservedDataPoints } from "../logs/observed-data.js";
 import { createTaskProvenanceCollector } from "../runs/task-provenance.js";
 import { RunResultRecordSchema } from "../../domain/run/result.js";
 import { createDeclaredActionBinder } from "./operation-action-binding.js";

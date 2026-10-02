@@ -5,11 +5,11 @@ import { describe, it } from "vitest";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { failureResolutionCapability } from "../../../src/backend/runs/failure-resolution.js";
 import { readTimelineRecords } from "../../../src/backend/storage/events/timeline-reader.js";
-import { TimelineAppendSchema } from "../../../src/events/timeline.js";
+import { TimelineAppendSchema } from "../../../src/domain/events/timeline.js";
 import { deriveWriteBindingProofDigest } from "../../../src/domain/write-safety.js";
 import { WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT } from "../../fixtures/phase1c-contract-fixtures.js";
-import { resolutionFixture, resolutionKernel, resolutionCommand } from "../../unit/failure-resolution/fixtures.js";
-import { NOW, failure, terminalizeFixtureFailure, id } from "../../unit/database-foundation/fixtures.js";
+import { resolutionFixture, resolutionKernel, resolutionCommand } from "../../helpers/failure-resolution/fixtures.js";
+import { NOW, failure, terminalizeFixtureFailure, id } from "../../helpers/database-foundation/fixtures.js";
 
 function snapshot(f: ReturnType<typeof resolutionFixture>) {
   const sql = new DatabaseSync(f.path);
@@ -207,9 +207,9 @@ describe("D actual HTTP admission", () => {
     } finally { f.dispose(); }
   });
 });
-import { resolutionApp } from "../../unit/failure-resolution/fixtures.js";
+import { resolutionApp } from "../../helpers/failure-resolution/fixtures.js";
 
-import { resolutionPeer } from "../../unit/failure-resolution/fixtures.js";
+import { resolutionPeer } from "../../helpers/failure-resolution/fixtures.js";
 it("two independent OS processes compete for one annotation version and exactly one commits", async () => {
   const f = resolutionFixture(); const peers = [resolutionPeer(f.path), resolutionPeer(f.path)];
   try {

@@ -8,7 +8,7 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import { createArtifactSinkProjector, ArtifactSinkBusyError, type ArtifactSinkProjectorOptions } from "../../../src/backend/storage/artifacts/artifact-sink-projector.js";
 import { createXlsxRetentionSink, type PublicationFaultPoint } from "../../../src/backend/storage/artifacts/xlsx-retention-sink.js";
 import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
-import { foundationFixture, update, id, NOW } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, update, id, NOW } from "../../helpers/database-foundation/fixtures.js";
 
 async function fixture() {
   const f = foundationFixture();

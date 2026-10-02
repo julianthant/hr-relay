@@ -8,7 +8,7 @@ import { it } from "vitest";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
-import { foundationFixture, id, NOW } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, id, NOW } from "../../helpers/database-foundation/fixtures.js";
 import { storageRecoveryFixture } from "../helpers/storage-recovery-fixture.js";
 
 function removeRuntimeIndexes(path: string): void {

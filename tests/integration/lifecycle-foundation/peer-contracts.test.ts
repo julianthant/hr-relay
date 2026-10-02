@@ -3,11 +3,11 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
-import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
+import { failure, terminalizeFixtureFailure } from "../../helpers/database-foundation/fixtures.js";
 import assert from "node:assert/strict";
 import { join } from "node:path";
 import { describe, it } from "vitest";
-import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, NOW, HASH, id } from "../../helpers/database-foundation/fixtures.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
 import { projectArchiveReport, readArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";

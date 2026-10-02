@@ -9,7 +9,7 @@ import {
   createCrossDateSearchService,
   type CrossDateSearchQueryService,
 } from "../../../src/backend/runs/dashboard/queries/search.js";
-import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
+import { insertMeasuredSearchRun } from "../search/helpers/cross-date-search-harness.js";
 
 const CLOCK = manualClock(new Date("2026-08-28T16:00:00.000Z"));
 

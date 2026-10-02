@@ -18,7 +18,7 @@
  */
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import type { SpanOutcomeWire } from "../../../src/events/types.js";
+import type { SpanOutcomeWire } from "../../../src/domain/events/types.js";
 import { deriveRunStatus, taskStateOf } from "../../../src/backend/runs/run-status.js";
 import { buildRunDetail } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import type { RunDetailDescriptorView } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
@@ -32,7 +32,7 @@ import {
   taskEventsOf,
   uuidOf,
   type DashboardWorld,
-} from "../../unit/server/helpers/dashboard-harness.js";
+} from "../../helpers/backend/dashboard-harness.js";
 
 const worlds: DashboardWorld[] = [];
 

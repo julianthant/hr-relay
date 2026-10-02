@@ -8,7 +8,7 @@ import { join } from "node:path";
 import { afterEach, describe, it, vi } from "vitest";
 import { rebuildRuntimeIsolation } from "../../src/config/runtime-isolation.js";
 import { manualClock } from "../../src/domain/clock.js";
-import { SpanEventWireSchema } from "../../src/events/types.js";
+import { SpanEventWireSchema } from "../../src/domain/events/types.js";
 import { createSpanJsonlWriter } from "../../src/backend/storage/events/span-jsonl-writer.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";

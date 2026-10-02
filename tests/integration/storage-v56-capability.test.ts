@@ -74,7 +74,7 @@ function proof(f: ReturnType<typeof fixture>) {
 }
 
 function seedSettingsHistory(path: string): void {
-  const fixture = JSON.parse(readFileSync(new URL("../unit/fixtures/migrated-settings.json", import.meta.url), "utf8")) as {
+  const fixture = JSON.parse(readFileSync(new URL("./fixtures/migration/migrated-settings.json", import.meta.url), "utf8")) as {
     tables: Record<string, Record<string, string | number | null>[]>;
   };
   const database = new DatabaseSync(path);

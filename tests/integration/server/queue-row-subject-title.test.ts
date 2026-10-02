@@ -29,7 +29,7 @@ import {
   runRecordOf,
   uuidOf,
   type DashboardWorld,
-} from "../../unit/server/helpers/dashboard-harness.js";
+} from "../../helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const worlds: DashboardWorld[] = [];

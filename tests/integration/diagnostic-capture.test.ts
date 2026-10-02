@@ -29,13 +29,13 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import {
   createDiagnosticCaptureService,
   type DiagnosticCaptureService,
-} from "../../src/services/trust/diagnostic-capture.js";
-import { createDiagnosticRetentionSweep } from "../../src/services/trust/diagnostic-retention.js";
+} from "../../src/backend/logs/trust/diagnostic-capture.js";
+import { createDiagnosticRetentionSweep } from "../../src/backend/logs/trust/diagnostic-retention.js";
 import {
   classifiedFailureFields,
   createRunDiagnosticCapture,
   operatorRequestedCapture,
-} from "../../src/services/trust/run-diagnostic-capture.js";
+} from "../../src/backend/logs/trust/run-diagnostic-capture.js";
 import { HASH_A, HASH_B, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory, RUN_ID, WORKER_ID, WORKFLOW_ID } from "../fixtures/phase1f-run-fixtures.js";
 import {

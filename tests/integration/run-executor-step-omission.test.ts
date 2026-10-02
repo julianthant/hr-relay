@@ -1,5 +1,5 @@
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
-import { timelineCheckpointReference } from "../../src/events/timeline.js";
+import { timelineCheckpointReference } from "../../src/domain/events/timeline.js";
 import { testRunLifecycle } from "../fixtures/run-lifecycle-fixtures.js";
 /**
  * D307 — the executor under step omission.
@@ -18,7 +18,7 @@ import { defineTask } from "../../src/base/task.js";
 import { defineWorkflowDescriptor, type AnyWorkflowDescriptor } from "../../src/base/workflow.js";
 import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
-import { taskSpanPath } from "../../src/core/span-emitter.js";
+import { taskSpanPath } from "../../src/backend/logs/span-emitter.js";
 import { defineTaskContract } from "../../src/domain/contracts/base.js";
 import { NodeIdSchema, ScenarioIdSchema, TraceIdSchema, taskId } from "../../src/domain/ids.js";
 import type { RunRecord } from "../../src/domain/run/record.js";

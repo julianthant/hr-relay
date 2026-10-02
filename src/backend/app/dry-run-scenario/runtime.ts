@@ -32,7 +32,7 @@ import { RunDryRunPreviewResultSchema } from "../../../domain/run/result.js";
 import { deriveSchemaHash } from "../../../domain/schema-bound-value.js";
 import { IdentityApprovalResultSchema } from "../../../domain/separations/identity-approval.js";
 import type { DryRunScenarioAnyCase } from "../../../domain/trust/dry-run-scenario.js";
-import { SpanEventWireSchema } from "../../../events/types.js";
+import { SpanEventWireSchema } from "../../../domain/events/types.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import { createTimelineEmitter } from "../../storage/events/timeline-emitter.js";
 import { AuthorityDatabase } from "../../storage/sqlite/index.js";

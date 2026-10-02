@@ -9,7 +9,7 @@ import {
   DashboardTopicPatchSchema,
   DashboardTopicSnapshotSchema,
 } from "../../../../src/domain/dashboard/subscription.js";
-import { failureDetailWireFixture, receiptWireFixture } from "../../fixtures/trust-wire-fixtures.js";
+import { failureDetailWireFixture, receiptWireFixture } from "../../../helpers/trust/trust-wire-fixtures.js";
 
 const RUN_1 = "11111111-1111-4111-8111-111111111111";
 const RUN_2 = "22222222-2222-4222-8222-222222222222";

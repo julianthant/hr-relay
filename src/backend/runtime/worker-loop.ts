@@ -66,7 +66,7 @@ import {
   ExecutorSpanEventSchema,
   workerSpanPath,
   type SpanEmitter,
-} from "../../core/span-emitter.js";
+} from "../logs/span-emitter.js";
 import {
   withBoundRunConfigFingerprint,
   WorkerSessionManager,

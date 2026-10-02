@@ -27,7 +27,7 @@ import {
   NoteWireSchema as NoteAtRestSchema,
   projectNoteForOperator,
   type SpanEventWire,
-} from "../../../../events/types.js";
+} from "../../../../domain/events/types.js";
 import type { RunFoldRecord } from "../projectors/run-queue-projection.js";
 import { deterministicUuid } from "../../support.js";
 import { sha256Hex } from "../../../../domain/sha256.js";

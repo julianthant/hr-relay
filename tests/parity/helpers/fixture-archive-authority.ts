@@ -21,7 +21,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transp
 import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { archiveFixture } from "../../helpers/archive-transfer/fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
-import { id } from "../../unit/database-foundation/fixtures.js";
+import { id } from "../../helpers/database-foundation/fixtures.js";
 import { FIXTURE_ARCHIVE_EVIDENCE_BYTES } from "./fixture-archive-evidence.js";
 import { FIXTURE_DAY } from "./fixture-identity.js";
 import { PARITY_DIST_DIR } from "./bundle.js";

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
-import { id } from "../../unit/database-foundation/fixtures.js";
+import { id } from "../../helpers/database-foundation/fixtures.js";
 
 it.each(["canonical disposition", "saved report", "other retained attachment"] as const)(
   "keeps %s readable when one retained attachment is missing", operation => {
@@ -37,7 +37,7 @@ it.each(["canonical disposition", "saved report", "other retained attachment"] a
   },
 );
 
-import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
+import { savedHttpFixture } from "./helpers/fixtures.js";
 import { startDashboardHttpServer } from "../../../src/backend/transports/dashboard/http-server.js";
 import { SavedArchiveDetailWireSchema, SavedArchiveIndexWireSchema, ArchivedCaptureResourceWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { readArchiveReport } from "../../../src/backend/runs/dashboard/queries/archive-reports.js";

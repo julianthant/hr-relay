@@ -60,7 +60,7 @@ the CAS `conflict`) must be exercised (D253), and a feature that changes what an
 RUN needs a T3 pair as well, not just a T2.
 
 - `dashboard/separations/` — the first feature (2026-08-27). `world.ts` is its shared composition:
-  `src/server/dashboard/compose.ts` minus the clock, the id factory and the process edges (worker
+  `src/backend/app/dashboard/compose.ts` minus the clock, the id factory and the process edges (worker
   supervisor, write sequencer, intake parser), each of those wired to **throw** rather than no-op.
   Three files split by what they observe — the start/queue/timeline composition
   (`run-projection`), the gate chain and both refusal arms (`identity-gate`), and the parked-gate

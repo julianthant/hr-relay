@@ -9,9 +9,9 @@ import { hasProtectedTransactionInput } from "../../../domain/protected-input.js
 import { ActivityLedgerBlockSchema } from "../../../domain/dashboard/activity.js";
 import { resolveLedgerLine, unresolvedLedgerLine, type LedgerLinePointer } from "../../../domain/archive/ledger-resolution.js";
 import { ArchivedTransactionsSchema } from "../../../domain/archive/model.js";
-import { reconstructConfirmedOperation } from "../../../events/confirmed-operation.js";
-import type { TimelineRepository, HistoricalOperationSource } from "../../../events/timeline.js";
-import { TimelineEventRecordSchema } from "../../../events/timeline.js";
+import { reconstructConfirmedOperation } from "../../../domain/events/confirmed-operation.js";
+import type { TimelineRepository, HistoricalOperationSource } from "../../../domain/events/timeline.js";
+import { TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
 import { WriteIntentRecordSchema, WriteAttemptRecordSchema } from "../../../domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";
 import type { LifecycleSourceSnapshot } from "../../../domain/archive/lifecycle-source.js";

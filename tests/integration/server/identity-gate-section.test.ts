@@ -32,7 +32,7 @@ import {
 } from "../../../src/domain/workflow/checkpoint.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../../src/domain/workflow/build-manifest.js";
 import { deriveStableUuid } from "../../../src/domain/identifiers.js";
-import { timelineCheckpointReference } from "../../../src/events/timeline.js";
+import { timelineCheckpointReference } from "../../../src/domain/events/timeline.js";
 import { descriptorRuntimeNodes } from "../../../src/base/workflow.js";
 import { separationsIdentityCheckModule } from "../../../src/backend/app/control/step-proof-modules.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
@@ -49,7 +49,7 @@ import {
   runRecordOf,
   uuidOf,
   type DashboardWorld,
-} from "../../unit/server/helpers/dashboard-harness.js";
+} from "../../helpers/backend/dashboard-harness.js";
 import { noSeparationWritePlan } from "../../../src/domain/separations/write-plan.js";
 import {
   FIXTURE_IDENTITY_GATE,

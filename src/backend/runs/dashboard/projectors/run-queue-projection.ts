@@ -71,7 +71,7 @@ import {
   projectFailureForOperator,
   type FailureRecord,
 } from "../../../../domain/trust/failure.js";
-import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../../events/types.js";
+import { SpanEventWireSchema, type RunQueuedWire, type SpanEventWire } from "../../../../domain/events/types.js";
 import type { RunCheckpointRecord } from "../../../../domain/workflow/checkpoint.js";
 import type { WorkerLeaseRecord } from "../../../../domain/run/worker.js";
 import type { RunSessionRecord } from "../../../../domain/run/session.js";
@@ -80,7 +80,7 @@ import { queueRowActions } from "./queue-row-actions.js";
 import { resolveSubjectTitle } from "./run-subject-title.js";
 import { workerCardOf, type WorkerBrowserFold } from "./worker-cards.js";
 import type { EventStreamLine } from "../../../storage/events/jsonl-streams.js";
-import type { TimelineRepository } from "../../../../events/timeline.js";
+import type { TimelineRepository } from "../../../../domain/events/timeline.js";
 import { readTimelineRecords, timelineSpanLocation } from "../../../storage/events/timeline-reader.js";
 import { browserSessionOfSpanPath, nodeIdOfTaskSpanPath } from "../../support.js";
 import { deriveRunStatus, foldCategoryState, panelKindOf, taskStateOf, type TaskExecutionState } from "../../run-status.js";

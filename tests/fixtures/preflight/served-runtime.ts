@@ -6,7 +6,7 @@ import { RuntimeAdmission } from "../../../src/backend/storage/admission/admissi
 import { composeRuntimePreflight } from "../../../src/backend/app/preflight/runtime-admission.js";
 import { createRuntimePreflightRunners } from "../../../src/backend/app/preflight/runtime-runners.js";
 import { createPreflightAuthority } from "../../../src/domain/preflight.js";
-import { createPreflightReportService } from "../../../src/server/preflight/report-service.js";
+import { createPreflightReportService } from "../../../src/backend/runtime/preflight/report-service.js";
 import { createTimeoutDeadlineScheduler } from "../../../src/backend/runtime/scheduling/timeout-deadline-scheduler.js";
 import { initialSettingsFileRecord, settingsRuntimeIdentity } from "../../../src/domain/config/settings.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";

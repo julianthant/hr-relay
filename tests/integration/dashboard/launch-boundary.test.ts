@@ -11,7 +11,7 @@ import type { DashboardApp } from "../../../src/backend/transports/dashboard/rou
 import { composeDataQueries } from "../../../src/backend/app/dashboard/compose/data.js";
 import { mappedTransactionHarness, rerunValuesHarness, rerunValuesDeps } from "../../fixtures/rerun-values-fixtures.js";
 import { absentProbeEvidence } from "../../fixtures/write-sequencer-fixtures.js";
-import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
+import { makeWorld } from "../../helpers/backend/dashboard-harness.js";
 
 const disposers: (() => void)[] = [];
 afterEach(() => { for (const dispose of disposers.splice(0)) dispose(); });

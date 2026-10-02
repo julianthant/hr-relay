@@ -3,7 +3,7 @@ import { FingerprintSchema, RunIdSchema } from "../../../src/domain/ids.js";
 import { ArchiveFileReferenceSchema } from "../../../src/domain/archive/report.js";
 import { createHash } from "node:crypto";
 import assert from "node:assert/strict";
-import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, NOW, HASH, id } from "../database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { createCommandKernel, type CommandKernelDependencies } from "../../../src/backend/runs/command-kernel.js";

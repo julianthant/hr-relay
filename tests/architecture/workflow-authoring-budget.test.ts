@@ -45,7 +45,7 @@
  *       identities and are allowed beside it. AST, never text, so a comment
  *       mentioning `flow(` passes.
  *   (c) WORKFLOW-KEYED GENERIC ADAPTER (D316). Under `src/dashboard/**`,
- *       `src/server/**` and `src/services/**` (tests excluded), any string
+ *       `src/backend/app/**`, `src/backend/transports/**`, `src/backend/runtime/**` and `src/backend/logs/**` and `src/services/**` (tests excluded), any string
  *       literal EQUAL to a registered workflow id is refused unless it is in a
  *       closed `(file, workflow id)` allowlist whose every entry cites the
  *       decision that site's own comments name. The refusal reports the
@@ -127,7 +127,7 @@ const SEAM_PREFIXES = ["src/workflows/", "src/domain/workflow/"] as const;
 const WORKFLOWS_ROOT = "src/workflows/";
 /** Arm (c)'s roots: the generic surfaces D316 forbids branching by workflow id. */
 const GENERIC_ROOTS = [
-  "src/dashboard/", "src/server/", "src/services/", "src/backend/app/", "src/backend/transports/",
+  "src/dashboard/", "src/backend/app/", "src/backend/transports/", "src/backend/runtime/", "src/backend/logs/", "src/services/",
   "src/backend/runs/dashboard/", "src/backend/runs/activity-person-pseudonym-backfill/",
   "src/backend/runs/exports/", "src/backend/runs/trust/", "src/backend/runs/start/",
   "src/backend/runs/archive/", "src/backend/runs/notifications/", "src/backend/runs/explain/",

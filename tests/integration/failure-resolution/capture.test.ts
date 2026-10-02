@@ -5,7 +5,7 @@ import { describe, it } from "vitest";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { buildTrustSection } from "../../../src/backend/runs/dashboard/queries/run-trust.js";
 import { projectFailureResolution } from "../../../src/backend/runs/dashboard/queries/failure-resolution.js";
-import { resolutionFixture, resolutionCommand, resolutionReadDeps } from "../../unit/failure-resolution/fixtures.js";
+import { resolutionFixture, resolutionCommand, resolutionReadDeps } from "../../helpers/failure-resolution/fixtures.js";
 
 describe("D capture identity and served resolution", () => {
   it("preserves populated receipt/failure/completion bytes and digest while projecting current protected notes", () => {
@@ -71,7 +71,7 @@ it("corrupt protected annotation JSON fails by name without echoing private text
 import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { projectArchiveReport } from "../../../src/backend/storage/sqlite/archive-records.js";
-import { NOW } from "../../unit/database-foundation/fixtures.js";
+import { NOW } from "../../helpers/database-foundation/fixtures.js";
 
 it("withholds protected resolution notes throughout production archive capture while retaining private evidence", () => {
   const f = resolutionFixture();

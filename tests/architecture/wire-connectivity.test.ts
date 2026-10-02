@@ -49,7 +49,7 @@ import { z } from "zod";
 import { ArchivedRunDetailWireSchema } from "../../src/domain/dashboard/archive.js";
 import { FIXTURE_ARCHIVE_EVIDENCE_CAPTURE, FIXTURE_ARCHIVE_EVIDENCE_RUN } from "../parity/helpers/fixture-archive-evidence.js";
 import { savedArchiveBrowserRouteReferences, archiveBrowserRouteReferences, type ArchiveBrowserProbe } from "./helpers/archive-browser-route-references.js";
-import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../unit/dashboard/fixtures/run-captures-app-fixture.js";
+import { CAPTURE_RUN_A, CAPTURE_RUN_B, CAPTURE_ARTIFACT_A, CAPTURE_ARTIFACT_B, CAPTURE_BASE_URL, captureDetail, captureImage, captureButton, pressCaptureControl, mountCaptureApp } from "../helpers/dashboard/run-captures-app-fixture.js";
 import { runCaptureBrowserRouteReferences, type RunCaptureBrowserProbe } from "./helpers/run-capture-browser-route-references.js";
 import { ActionCommandKeySchema } from "../../src/domain/dashboard/actions.js";
 import {
@@ -74,7 +74,7 @@ import {
   runRecordOf,
   uuidOf,
   type DashboardWorld,
-} from "../unit/server/helpers/dashboard-harness.js";
+} from "../helpers/backend/dashboard-harness.js";
 import { REPO_ROOT } from "./helpers/guard-files.js";
 import {
   armField,

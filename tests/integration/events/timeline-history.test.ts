@@ -2,7 +2,7 @@ import { createTransactionHistory } from "../../../src/backend/storage/sqlite/tr
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { currentAtomicWriteFixture, atomicWriteCheckpoint, seedAtomicWriteOwner } from "../../helpers/timeline-write-fixture.js";
 import { ATOMIC_WRITE_COMMIT as HISTORICAL_ATOMIC_WRITE_COMMIT, WRITE_INTENT_ATTEMPTING, WRITE_ATTEMPT, UUID_5, UUID_6, LEDGER_PAYLOAD, SPAN_OUTBOX_PAYLOAD } from "../../fixtures/phase1c-contract-fixtures.js";
-import { reconstructConfirmedOperation } from "../../../src/events/confirmed-operation.js";
+import { reconstructConfirmedOperation } from "../../../src/domain/events/confirmed-operation.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { spawnSync } from "node:child_process";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
@@ -13,7 +13,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { afterEach, describe, expect, it } from "vitest";
-import { TimelineAppendSchema } from "../../../src/events/timeline.js";
+import { TimelineAppendSchema } from "../../../src/domain/events/timeline.js";
 import { FingerprintSchema } from "../../../src/domain/ids.js";
 import { createTimelineRepository, TIMELINE_EVENT_INDEX_DDL, TIMELINE_EVENT_TABLE_DDL } from "../../../src/backend/storage/sqlite/timeline-repository.js";
 import { inspectTimelineSources, preserveTimelineSources, readPreservedTimelineSources,

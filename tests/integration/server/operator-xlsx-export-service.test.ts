@@ -15,7 +15,7 @@ import { createContentAddressedArtifactWriter } from "../../../src/backend/stora
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createOperatorXlsxExportService } from "../../../src/backend/runs/exports/operator-xlsx-export-service.js";
 import { createCrossDateSearchService } from "../../../src/backend/runs/dashboard/queries/search.js";
-import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
+import { insertMeasuredSearchRun } from "../search/helpers/cross-date-search-harness.js";
 
 const EXPORT_ID = "00020002-0002-4002-8002-000200020002";
 const RUN_ID = "00010001-0001-4001-8001-000100010001";

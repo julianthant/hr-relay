@@ -53,7 +53,7 @@ import {
   uuidOf,
   DAY,
   type DashboardWorld,
-} from "../unit/server/helpers/dashboard-harness.js";
+} from "../helpers/backend/dashboard-harness.js";
 import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 
 const COUNT_FIELDS = new Set(["monthCounts", "workflowCounts", "statusCounts"]);

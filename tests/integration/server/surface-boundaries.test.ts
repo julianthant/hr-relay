@@ -10,7 +10,7 @@ import { composeQueueSummaries } from "../../../src/backend/app/dashboard/compos
 import { registerActivityRoutes } from "../../../src/backend/transports/dashboard/routes/activity.js";
 import { failureStatus } from "../../../src/backend/transports/dashboard/routes/failure-status.js";
 import type { DashboardApp } from "../../../src/backend/transports/dashboard/routes/api-types.js";
-import { foundationFixture, id, NOW } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, id, NOW } from "../../helpers/database-foundation/fixtures.js";
 
 /** Real SQLite summary consumers through their independently composed HTTP/read ports. */
 describe("composed Activity and Queue boundaries", () => {

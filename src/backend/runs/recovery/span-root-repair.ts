@@ -6,7 +6,7 @@ import type { Clock } from "../../../domain/clock.js";
 import { systemClock } from "../../../domain/clock.js";
 import { FingerprintSchema, RunIdSchema, WorkflowIdSchema } from "../../../domain/ids.js";
 import { localDatePart } from "../../../domain/clock.js";
-import { SpanEventWireSchema } from "../../../events/types.js";
+import { SpanEventWireSchema } from "../../../domain/events/types.js";
 import { readTimelineRecords } from "../../storage/events/timeline-reader.js";
 import { lifecycleCommandId } from "../../../domain/identifiers.js";
 import { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";

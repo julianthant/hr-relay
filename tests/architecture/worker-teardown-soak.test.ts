@@ -32,7 +32,7 @@ import {
   type BrowserSessionCloseProof,
   type WorkerBrowserSessionFactory,
 } from "../../src/backend/runtime/worker-sessions.js";
-import type { ExecutorSpanEvent, SpanEmitter } from "../../src/core/span-emitter.js";
+import type { ExecutorSpanEvent, SpanEmitter } from "../../src/backend/logs/span-emitter.js";
 import { manualClock } from "../../src/domain/clock.js";
 import {
   BrowserSessionIdSchema,

@@ -15,7 +15,7 @@ import type { RunCheckpointRecord } from "../../../domain/workflow/checkpoint.js
 import { RerunValueMappingsSchema } from "../../../domain/workflow/rerun-values.js";
 import { TransactionOutcomeSchema } from "../../../domain/write-safety-primitives.js";
 import type { AuthorityDatabase } from "../../storage/sqlite/authority-database.js";
-import { rerunTargetAccepts } from "../../../validation/rerun-values.js";
+import { rerunTargetAccepts } from "../../../domain/validation/rerun-values.js";
 
 export interface RerunValuesDependencies {
   readonly reader: { read(runId: string): RunExistence };

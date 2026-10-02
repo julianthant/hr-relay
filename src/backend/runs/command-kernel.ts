@@ -106,7 +106,7 @@ import { evaluateNodeCondition } from "../../domain/workflow/node-condition.js";
 import { findGateDecision } from "../../domain/trust/gate-decisions.js";
 import { JsonValueSchema, type JsonValue } from "../../domain/canonical-json.js";
 import { BUILD_MANIFEST, resolveTaskImplFingerprint } from "../../domain/workflow/build-manifest.js";
-import { timelineCheckpointReference } from "../../events/timeline.js";
+import { timelineCheckpointReference } from "../../domain/events/timeline.js";
 import { readRunCheckpoint } from "../runtime/run-checkpoint-reader.js";
 import type { WriteIntentRecord } from "../../domain/write-safety.js";
 import type { AuthorityRepositories } from "../storage/sqlite/authority-database.js";

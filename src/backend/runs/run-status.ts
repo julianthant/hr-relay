@@ -1,6 +1,6 @@
 import type { QueueStatusSchema } from "../../domain/dashboard/projection.js";
 import type { RunRecord } from "../../domain/run/record.js";
-import type { RunQueuedWire } from "../../events/types.js";
+import type { RunQueuedWire } from "../../domain/events/types.js";
 import type { z } from "zod";
 
 export type RunQueueStatus = z.infer<typeof QueueStatusSchema>;

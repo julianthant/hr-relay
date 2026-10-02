@@ -7,7 +7,7 @@ import type {
   RunDetailDataOriginView,
   RunDetailWriteContractView,
 } from "../../../runs/dashboard/queries/run-detail.js";
-import { describeProofShape } from "../../../../validation/proof-shape.js";
+import { describeProofShape } from "../../../../domain/validation/proof-shape.js";
 import type { RegisteredTaskStore } from "../../../../base/store.js";
 
 /**

@@ -7,7 +7,7 @@ import { join } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
 import { historicalFixture, withHistoricalAuthority } from "./helpers/historical-fixtures.js";
-import { NOW, id } from "../../unit/database-foundation/fixtures.js";
+import { NOW, id } from "../../helpers/database-foundation/fixtures.js";
 import { backupStoppedAuthority, upgradeStorage } from "../../helpers/synthetic-storage-admission.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";

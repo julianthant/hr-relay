@@ -1,9 +1,9 @@
 import type { DatabaseSync } from "node:sqlite";
-import { SpanEventWireSchema } from "../../../events/types.js";
+import { SpanEventWireSchema } from "../../../domain/events/types.js";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { TimelineAppendSchema, TimelineEventRecordSchema, TimelinePageRequestSchema,
-  timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../events/timeline.js";
+  timelineAppendContent, type TimelineEventRecord, type TimelineRepository } from "../../../domain/events/timeline.js";
 
 export const TIMELINE_EVENT_TABLE_DDL = `
   CREATE TABLE timeline_events (

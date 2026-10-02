@@ -30,7 +30,7 @@ import {
   executeClaimedRun,
   type RunExecutorDependencies,
 } from "../../src/backend/runtime/run-executor.js";
-import { taskSpanPath, ExecutorSpanEventSchema } from "../../src/core/span-emitter.js";
+import { taskSpanPath, ExecutorSpanEventSchema } from "../../src/backend/logs/span-emitter.js";
 import type { WorkerSessionManager } from "../../src/backend/runtime/worker-sessions.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { EXECUTABLE_SCENARIO_IDS } from "../../src/domain/workflow/scenario-execution.js";
@@ -55,7 +55,7 @@ import { AuthorityDatabase as SyntheticAuthorityDatabase } from "../helpers/synt
 import { readEventStreamLines } from "../../src/backend/storage/events/jsonl-streams.js";
 import { createNoteJsonlWriter } from "../../src/backend/storage/events/note-jsonl-writer.js";
 import { recordBrowserAction, runDeclaredAction } from "../../src/backend/systems/browser-shared/action-notes.js";
-import { NoteWireSchema } from "../../src/events/types.js";
+import { NoteWireSchema } from "../../src/domain/events/types.js";
 import { ucpathStore } from "../../src/backend/systems/ucpath/store.js";
 import { ucpathDriver } from "../../src/backend/systems/ucpath/driver-declaration.js";
 import { ucpathSession } from "../../src/backend/systems/ucpath/session-provider.js";

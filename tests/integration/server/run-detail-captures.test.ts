@@ -33,7 +33,7 @@ import {
 } from "../../../src/backend/runs/dashboard/queries/run-detail.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RGBA_PNG_BASE64 } from "../../fixtures/diagnostic-image-fixtures.js";
-import { makeWorld, queuedEventOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { makeWorld, queuedEventOf, uuidOf } from "../../helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 const cleanups: (() => void)[] = [];

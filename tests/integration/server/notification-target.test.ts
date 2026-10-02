@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createNotificationTargetQuery } from "../../../src/backend/runs/dashboard/queries/notifications.js";
-import { notificationRecordOf, runRecordOf, failureRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { notificationRecordOf, runRecordOf, failureRecordOf } from "../../helpers/backend/dashboard-harness.js";
 
 describe("notification destinations", () => {
   it("resolves the canonical run date, checks actor, and refuses a deletion between lookups", () => {

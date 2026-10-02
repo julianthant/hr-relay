@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { it } from "vitest";
-import { foundationFixture, admission, id } from "../../unit/provider-accounting/fixtures.js";
+import { foundationFixture, admission, id } from "./helpers/fixtures.js";
 import { createGenericProviderAccounting, inspectGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { AuthorityDatabase, AuthorityDatabaseOpenModeSchema, inspectHistoricalAuthorityInvariants } from "../../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";

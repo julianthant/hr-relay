@@ -30,10 +30,10 @@ function repositoryMutator(declaration: ts.Declaration | undefined): boolean {
 
 function audit(extraSource?: string): readonly string[] {
   // Scan every core helper: moving a forbidden call into another core module cannot hide it.
-  const roots = gitVisibleFiles(["src/core", "src/server/worker", "src/backend/runtime"])
+  const roots = gitVisibleFiles(["src/backend/runtime", "src/backend/runs"])
     .filter((file) => file.endsWith(".ts") && !["src/backend/runs/command-kernel.ts", "src/backend/runs/run-fan-out.ts"].includes(file));
   roots.push("src/backend/app/dashboard/compose.ts");
-  const fixture = resolve(REPO_ROOT, "src/core/worker-mutator-proof.ts");
+  const fixture = resolve(REPO_ROOT, "src/backend/runtime/worker-mutator-proof.ts");
   const options: ts.CompilerOptions = { target: ts.ScriptTarget.ESNext, module: ts.ModuleKind.NodeNext,
     moduleResolution: ts.ModuleResolutionKind.NodeNext, strict: true, skipLibCheck: true };
   const host = ts.createCompilerHost(options);
@@ -84,7 +84,7 @@ describe("worker-loop-writes-only-through-the-service", () => {
 
   it("detects a relocated helper and aliased repository mutators", () => {
     const violations = audit(`
-      import type { AuthorityRepositories, AuthorityDatabase } from "../infra/sqlite/authority-database.js";
+      import type { AuthorityRepositories, AuthorityDatabase } from "../storage/sqlite/authority-database.js";
       export function relocated(repositories: AuthorityRepositories, database: AuthorityDatabase) {
         repositories.runs.transition({});
         const resume = repositories.runs.resume;

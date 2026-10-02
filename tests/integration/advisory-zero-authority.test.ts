@@ -22,7 +22,7 @@ import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
 import { ADVISORY_ANSWER_SCHEMA_HASH } from "../../src/domain/trust/advisory.js";
 import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
 import type { AuthorityDatabase } from "../../src/backend/storage/sqlite/index.js";
-import { produceFailureTriageAdvisory } from "../../src/services/trust/advisory.js";
+import { produceFailureTriageAdvisory } from "../../src/backend/logs/trust/advisory.js";
 import {
   ADVISORY_NOW,
   MAXIMAL_FAILURE,

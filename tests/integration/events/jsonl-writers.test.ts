@@ -9,12 +9,12 @@ import { appendFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, truncateS
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { afterEach, describe, it } from "vitest";
-import { ObservedDataPointSchema } from "../../../src/core/span-emitter.js";
+import { ObservedDataPointSchema } from "../../../src/backend/logs/span-emitter.js";
 import { localDatePart, manualClock, type Clock } from "../../../src/domain/clock.js";
 import { RedactedFieldSchema } from "../../../src/domain/redaction.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { DeclaredActionOccurrenceSchema } from "../../../src/domain/task-provenance.js";
-import { NoteWireSchema, SpanEventWireSchema, projectNoteForOperator } from "../../../src/events/types.js";
+import { NoteWireSchema, SpanEventWireSchema, projectNoteForOperator } from "../../../src/domain/events/types.js";
 import {
   appendEventStreamLine,
   listEventStreamFiles,

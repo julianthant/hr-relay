@@ -11,7 +11,7 @@ import type { Config } from "../../../src/domain/config/schema.js";
 import { manualClock } from "../../../src/domain/clock.js";
 import { OrdinaryPathValidationError, validateOrdinaryPathChanges } from "../../../src/backend/runs/dashboard/commands/ordinary-path-validator.js";
 import { selectActiveRunSettings } from "../../../src/backend/runs/run-settings.js";
-import { settingsFixture } from "../../unit/settings-activation/fixture.js";
+import { settingsFixture } from "../settings-activation/helpers/fixture.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { vi.restoreAllMocks(); syncBuiltinESMExports(); for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });

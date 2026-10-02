@@ -1,4 +1,4 @@
-import { createPreflightReportService } from "../../../server/preflight/report-service.js";
+import { createPreflightReportService } from "../../runtime/preflight/report-service.js";
 import { composeRuntimePreflight, type RuntimePreflight } from "../preflight/runtime-admission.js";
 import type { RuntimePreflightRunnerFactory } from "../preflight/runtime-runners.js";
 import { PreflightAdmissionRefusal } from "../../../domain/preflight-admission.js";
@@ -152,7 +152,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../transports/dashboard/
 import { DASHBOARD_LAUNCH_NONCE_ENV } from "../../transports/dashboard/frontend-owner.js";
 import { startDashboardHttpServer, type DashboardHttpServer } from "../../transports/dashboard/http-server.js";
 import { createAdvisoryProviderClient } from "../../runs/provider-admission.js";
-import { produceFailureTriageAdvisory } from "../../../services/trust/advisory.js";
+import { produceFailureTriageAdvisory } from "../../logs/trust/advisory.js";
 import { createGeminiAdvisoryAdapter } from "../../processing/providers/gemini-advisory.js";
 import { createProviderPool } from "../../processing/providers/provider-pool.js";
 import { createTimeoutDeadlineScheduler } from "../../runtime/scheduling/timeout-deadline-scheduler.js";

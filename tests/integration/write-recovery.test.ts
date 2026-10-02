@@ -1,4 +1,4 @@
-import { reconstructConfirmedOperation } from "../../src/events/confirmed-operation.js";
+import { reconstructConfirmedOperation } from "../../src/domain/events/confirmed-operation.js";
 import { lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";
 import { executeSequencedWriteCommit } from "../../src/backend/runtime/write-sequencer.js";
 import { PositiveIntSchema } from "../../src/domain/ids.js";

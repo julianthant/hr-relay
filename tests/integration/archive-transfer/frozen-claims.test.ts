@@ -11,7 +11,7 @@ import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admissio
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";
-import { admission } from "../../unit/provider-accounting/fixtures.js";
+import { admission } from "../provider-accounting/helpers/fixtures.js";
 import { createGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
 
@@ -81,7 +81,7 @@ for (const published of [false,true]) it(`supports an admitted older claim with 
   } finally { f.dispose(); }
 });
 
-import { foundationFixture, id, NOW, HASH } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, id, NOW, HASH } from "../../helpers/database-foundation/fixtures.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
 import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";

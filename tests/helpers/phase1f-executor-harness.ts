@@ -1,6 +1,6 @@
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
 import { readTimelineRecords } from "../../src/backend/storage/events/timeline-reader.js";
-import { ExecutorSpanEventSchema } from "../../src/core/span-emitter.js";
+import { ExecutorSpanEventSchema } from "../../src/backend/logs/span-emitter.js";
 import type { ProtectedInputBinding } from "../../src/domain/protected-input.js";
 /**
  * Shared Phase-1f interpreter harness: a real temp-file AuthorityDatabase, a
@@ -34,7 +34,7 @@ import type {
 import type {
   ExecutorSpanEvent,
   SpanEmitter,
-} from "../../src/core/span-emitter.js";
+} from "../../src/backend/logs/span-emitter.js";
 import {
   WorkerSessionManager,
   type BrowserSessionCloseProof,

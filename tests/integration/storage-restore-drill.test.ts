@@ -89,7 +89,7 @@ import {
 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
 import { sqliteRunReader } from "../helpers/canonical-run-reader.js";
-import { makeWorld } from "../unit/server/helpers/dashboard-harness.js";
+import { makeWorld } from "../helpers/backend/dashboard-harness.js";
 
 const CLOCK = manualClock(new Date(NOW));
 const CommandIdentitySchema = z.object({ commandId: z.string().min(1) });

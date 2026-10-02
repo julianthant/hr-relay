@@ -6,7 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { createTimelineEmitter } from "../../src/backend/storage/events/timeline-emitter.js";
-import { SpanEventWireSchema } from "../../src/events/types.js";
+import { SpanEventWireSchema } from "../../src/domain/events/types.js";
 import { AuthorityDatabase, syntheticStateRoot } from "../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../src/backend/storage/sqlite/runtime-process-locks.js";

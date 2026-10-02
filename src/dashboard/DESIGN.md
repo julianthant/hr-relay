@@ -19,7 +19,7 @@ Three adaptations for a reader in THIS tree (a third was undisclosed until Track
   - "one import (`demo-ui.tsx`)" is `src/dashboard/ds/ui.tsx` here (not `ui.ts` — the barrel is a
     `.tsx` file). The rule is unchanged: surfaces import the barrel, never `ds/*` directly.
   - the guards this document says are enforced live in
-    `tests/unit/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
+    `tests/architecture/helpers/ratchet-arms.ts` as the `frontend-tailwind-compliance` arm,
     not in a file of their own. Precisely: legacy's arm ran four checks (reduced-motion coverage,
     the z-index scale, image loading discipline, palette/hex); this port dropped three and shipped
     only palette/hex, and this document went on asserting "guard enforced" for the reduced-motion

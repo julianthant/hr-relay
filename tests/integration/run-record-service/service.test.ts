@@ -1,7 +1,7 @@
 import { historicalArchiveAuthority } from "../helpers/historical-archive-authority.js";
 import { CanonicalRelaunchRequestSchema } from "../../../src/backend/storage/sqlite/run-store-contracts.js";
 import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
-import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
+import { makeWorld } from "../../helpers/backend/dashboard-harness.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../../src/domain/ids.js";
 import { createTimelineEmitter } from "../../../src/backend/storage/events/timeline-emitter.js";
 import { runQueuedSpanEvent } from "../../../src/backend/runs/dashboard/commands/run-queued-span.js";
@@ -410,7 +410,7 @@ const RaceEventSchema = z.discriminatedUnion("type", [
 ]);
 
 function raceConnection(data: unknown) {
-  const worker = new Worker(new URL("../../unit/run-record-service/race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
+  const worker = new Worker(new URL("./helpers/race-worker.ts", import.meta.url), { workerData: data, execArgv: ["--import", "tsx"] });
   const events = on(worker, "message");
   return {
     worker,

@@ -26,7 +26,7 @@ import {
   queuedEventOf,
   taskEventsOf,
   uuidOf,
-} from "../unit/server/helpers/dashboard-harness.js";
+} from "../helpers/backend/dashboard-harness.js";
 import { personLookupWorkflow } from "../../src/workflows/person-lookup/workflow.js";
 import { separationsDescriptor } from "../helpers/registered-workflows.js";
 

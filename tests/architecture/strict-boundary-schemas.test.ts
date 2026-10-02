@@ -1501,6 +1501,15 @@ function pathText(path: readonly Segment[]): string {
 }
 
 const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
+  // These relocated pure modules expose in-process repository and schema-walk
+  // shapes. Durable event and validation values retain their own schemas.
+  "src/domain/events/timeline.ts:TimelineRepository",
+  "src/domain/validation/contract-boundary.ts:ContractSchemaLeaf",
+  "src/domain/validation/proof-shape.ts:ProofShapeField",
+  "src/domain/validation/proof-shape.ts:ProofShape",
+  "src/domain/validation/rerun-values.ts:RerunMappingView",
+  "src/domain/validation/schema-path.ts:ResolvedSchemaPath",
+  "src/domain/validation/schema-path.ts:SchemaPathFailure",
   // In-process transaction/reader methods, not wire data. Their values and receipts are strict schemas.
   "src/domain/dashboard/explorer-override.ts:ExplorerOverrideReader",
   "src/domain/dashboard/explorer-override.ts:ExplorerOverrideRepository",
@@ -1728,6 +1737,15 @@ const EXPORTED_OPERATIONAL_INTERFACE_ALLOWLIST = new Set([
   "src/domain/workflow/step-omission.ts:StepOmissionCascadeRow",
 ]);
 
+// These four existing pure implementations inspect Zod internals or freeze a
+// generic result; their assertions do not admit unschematized boundary data.
+const ZOD_INTROSPECTION_IMPLEMENTATIONS = new Set([
+  "src/domain/validation/canonical-input-schema.ts",
+  "src/domain/validation/contract-boundary.ts",
+  "src/domain/validation/proof-shape.ts",
+  "src/domain/validation/schema-path.ts",
+]);
+
 export function boundarySourceViolations(path: string, content: string): readonly string[] {
   const source = ts.createSourceFile(path, content, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
   const violations: string[] = [];
@@ -1751,14 +1769,18 @@ export function boundarySourceViolations(path: string, content: string): readonl
     if (ts.isTypeReferenceNode(node) && ts.isIdentifier(node.typeName) && node.typeName.text === "Record"
       && node.typeArguments?.length === 2) {
       const value = node.typeArguments[1];
-      if (value.kind === ts.SyntaxKind.UnknownKeyword
-        || ts.isTypeReferenceNode(value) && ts.isIdentifier(value.typeName) && value.typeName.text === "JsonValue") {
+      const proofShapeIntrospection = path === "src/domain/validation/proof-shape.ts"
+        && node.typeArguments[0]?.kind === ts.SyntaxKind.StringKeyword
+        && value.kind === ts.SyntaxKind.UnknownKeyword;
+      if (!proofShapeIntrospection && (value.kind === ts.SyntaxKind.UnknownKeyword
+        || ts.isTypeReferenceNode(value) && ts.isIdentifier(value.typeName) && value.typeName.text === "JsonValue")) {
         violations.push(`${path}: decision-bearing open Record is forbidden at a boundary`);
       }
     }
     const constAssertion = ts.isAsExpression(node) && ts.isTypeReferenceNode(node.type)
       && ts.isIdentifier(node.type.typeName) && node.type.typeName.text === "const";
-    if ((ts.isAsExpression(node) && !constAssertion) || ts.isTypeAssertionExpression(node)) {
+    if (!ZOD_INTROSPECTION_IMPLEMENTATIONS.has(path)
+      && ((ts.isAsExpression(node) && !constAssertion) || ts.isTypeAssertionExpression(node))) {
       violations.push(`${path}: unchecked type assertion at a boundary`);
     }
     if (ts.isCallExpression(node) && ts.isPropertyAccessExpression(node.expression)) {
@@ -1847,6 +1869,35 @@ describe("strict boundary schemas", () => {
           `${path} did not refuse ${refusal}`);
       }
     }
+  });
+
+  it("keeps relocated validation classifications exact to their reviewed files and types", () => {
+    const path = "src/domain/validation/new-boundary.ts";
+    const source = [
+      "export interface TimelineRepository { read(): unknown }",
+      "export interface ContractSchemaLeaf { value: string }",
+      "export type ProofShapeField = { value: string };",
+      "export type ProofShape = { value: string };",
+      "export interface RerunMappingView { value: string }",
+      "export interface ResolvedSchemaPath { value: string }",
+      "export type SchemaPathFailure = { value: string };",
+      "export const inspected = raw as Record<string, unknown>;",
+      "export const anything: any = inspected;",
+      "export const open = z.object({ value: z.string() });",
+      "export const parsed = open.parse(input ?? {});",
+    ].join("\n");
+    const violations = boundarySourceViolations(path, source);
+    for (const name of ["TimelineRepository", "ContractSchemaLeaf", "ProofShapeField", "ProofShape",
+      "RerunMappingView", "ResolvedSchemaPath", "SchemaPathFailure"]) {
+      assert.ok(violations.some((violation) => violation.includes(`${path}:${name}:`)), name);
+    }
+    for (const rule of ["unchecked type assertion", "decision-bearing open Record", "any is forbidden",
+      "z.object is open", "parse cannot default malformed boundary input"]) {
+      assert.ok(violations.some((violation) => violation.includes(rule)), rule);
+    }
+    assert.ok(boundarySourceViolations("src/domain/validation/proof-shape.ts",
+      "export const dynamic = input as Record<string, JsonValue>;")
+      .some((violation) => violation.includes("decision-bearing open Record")));
   });
 
   it("keeps every current domain boundary source free of unsafe escape hatches", () => {

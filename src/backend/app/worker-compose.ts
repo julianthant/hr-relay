@@ -87,11 +87,11 @@ import {
 import { hostAwareResolutionEnvironment } from "../../domain/secrets.js";
 import { probePrimaryDisplay } from "./host/primary-display.js";
 import { createContentAddressedArtifactWriter } from "../storage/artifacts/content-addressed-artifact-writer.js";
-import { createDiagnosticCaptureService } from "../../services/trust/diagnostic-capture.js";
+import { createDiagnosticCaptureService } from "../logs/trust/diagnostic-capture.js";
 import {
   createRunBrowserScreenshotCapture,
   createRunDiagnosticCapture,
-} from "../../services/trust/run-diagnostic-capture.js";
+} from "../logs/trust/run-diagnostic-capture.js";
 import { withCurrentSettings, createCredentialSecretSource, readSettings, requireCurrentSettings } from "../runtime/settings/settings-runtime.js";
 import { createTimelineEmitter } from "../storage/events/timeline-emitter.js";
 import { createNoteJsonlWriter } from "../storage/events/note-jsonl-writer.js";

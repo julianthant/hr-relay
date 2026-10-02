@@ -1,7 +1,7 @@
 import { historicalFixture, withHistoricalAuthority } from "./helpers/historical-fixtures.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { NOW } from "../../unit/database-foundation/fixtures.js";
+import { NOW } from "../../helpers/database-foundation/fixtures.js";
 import { ARCHIVE_RELAUNCH } from "../../fixtures/archive-fixtures.js";
 import { createRunLifecycleStorage } from "../../../src/backend/storage/run-lifecycle-storage.js";
 import { convertHistoricalArchives } from "../../../src/backend/storage/archive-transfer.js";

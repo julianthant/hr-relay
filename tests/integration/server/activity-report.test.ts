@@ -39,7 +39,7 @@ import {
   runRecordOf as runRecordBase,
   uuidOf,
   type DashboardWorld,
-} from "../../unit/server/helpers/dashboard-harness.js";
+} from "../../helpers/backend/dashboard-harness.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
 
 /** C completion contract: projection fixtures still carry a valid terminal settlement. */

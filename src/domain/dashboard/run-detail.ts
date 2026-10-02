@@ -52,7 +52,7 @@ import {
 } from "./primitives.js";
 import { QueueStatusSchema } from "./projection.js";
 import { RunOperationStructureWireSchema } from "./operation-structure.js";
-import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../../events/types.js";
+import { NoteFieldWireSchema, ObservedDataPointWireSchema } from "../events/types.js";
 
 export const RunIdentityWireSchema = z.strictObject({
   runId: RunIdSchema,

@@ -1,7 +1,7 @@
 import { createRunLifecycleStorage } from "../helpers/lifecycle-storage.js";
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, NOW, HASH, id } from "../../helpers/database-foundation/fixtures.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
@@ -148,8 +148,8 @@ it("cannot resurrect an explicitly deleted member while resuming a partially pub
   } finally { f.dispose(); }
 });
 
-import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
-import { resolutionCommand } from "../../unit/failure-resolution/fixtures.js";
+import { failure, terminalizeFixtureFailure } from "../../helpers/database-foundation/fixtures.js";
+import { resolutionCommand } from "../../helpers/failure-resolution/fixtures.js";
 
 it("fences production annotations during an applying transfer and preserves exact replay after reopening", () => {
   const f = archiveFixture();
@@ -232,7 +232,7 @@ for (const step of ["readPendingReport", "saveReport"] as const) it(`requires ar
   } finally { f.dispose(); }
 });
 
-import { admission } from "../../unit/provider-accounting/fixtures.js";
+import { admission } from "../provider-accounting/helpers/fixtures.js";
 import { createGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
 import { GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";

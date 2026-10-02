@@ -6,7 +6,7 @@ import {
   OperationSourceRequestSchema, OperationSourceResponseSchema, requireOperationSourceDeclaration,
   type OperationSourceResponse,
 } from "../../../../domain/dashboard/operation-structure.js";
-import { NoteWireSchema } from "../../../../events/types.js";
+import { NoteWireSchema } from "../../../../domain/events/types.js";
 import { readEventStreamSlice, scopedEventStreamFiles } from "../../../storage/events/jsonl-streams.js";
 import { ArchivedRunRecordSchema, authenticArchivedRunContent } from "../../../../domain/archive/model.js";
 import { RunResultRecordSchema } from "../../../../domain/run/result.js";

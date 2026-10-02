@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { writeFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { describe, it } from "vitest";
-import { foundationFixture, NOW, HASH, id } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture, NOW, HASH, id } from "../../helpers/database-foundation/fixtures.js";
 import { ArchiveDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { sealArchiveReport } from "../../../src/domain/archive/report.js";
 
@@ -42,7 +42,7 @@ import { createRunLifecycleStorage } from "../../../src/backend/storage/run-life
 import { backupLifecyclePair, restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";
 import { captureArchiveReport } from "../../../src/backend/storage/archive/report-capture.js";
 import { transferArchiveReport } from "../../../src/backend/storage/archive-transfer.js";
-import { failure, terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
+import { failure, terminalizeFixtureFailure } from "../../helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { RecoveryStopProofStore } from "../../../src/backend/storage/sqlite/recovery-stop-proof.js";
 import { observeRuntimeLockSnapshot } from "../../../src/backend/storage/sqlite/runtime-process-locks.js";

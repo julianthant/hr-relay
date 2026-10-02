@@ -33,7 +33,7 @@ import { flow } from "../../src/base/flow.js";
 import { defineWorkflowDescriptor } from "../../src/base/workflow.js";
 import { deriveGateResultCheckpointFingerprint } from "../../src/backend/runs/command-kernel.js";
 import { executeClaimedRun, type RunExecutorDependencies } from "../../src/backend/runtime/run-executor.js";
-import { taskSpanPath } from "../../src/core/span-emitter.js";
+import { taskSpanPath } from "../../src/backend/logs/span-emitter.js";
 import { CrmReadOnboardingRecord } from "../../src/domain/contracts/crm/read-onboarding-record.js";
 import { ReadActiveStatus } from "../../src/domain/contracts/person-lookup/read-active-status.js";
 import { SearchPersonOrg } from "../../src/domain/contracts/ucpath/search-person-org.js";

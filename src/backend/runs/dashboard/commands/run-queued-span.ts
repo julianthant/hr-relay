@@ -1,7 +1,7 @@
 import type { ActorId } from "../../../../domain/ids.js";
 import type { RunRecord } from "../../../../domain/run/record.js";
-import type { SpanEventWire } from "../../../../events/types.js";
-import { runSpanPath } from "../../../../core/span-emitter.js";
+import type { SpanEventWire } from "../../../../domain/events/types.js";
+import { runSpanPath } from "../../../logs/span-emitter.js";
 
 type RunQueuedSpanEvent = Omit<Extract<SpanEventWire, { readonly t: "run.queued" }>, "pid">;
 

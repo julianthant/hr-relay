@@ -13,7 +13,7 @@ import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { SpanAuthorityReconciliationWireSchema } from "../../src/domain/dashboard/storage.js";
 import { NOW, UUID_1, UUID_2, UUID_3, UUID_4, UUID_5, UUID_6, UUID_7 } from "../fixtures/phase1c-contract-fixtures.js";
 import { QUEUED_RUN } from "../fixtures/phase1f-run-fixtures.js";
-import { DAY, makeWorld, queuedEventOf, uuidOf } from "../unit/server/helpers/dashboard-harness.js";
+import { DAY, makeWorld, queuedEventOf, uuidOf } from "../helpers/backend/dashboard-harness.js";
 
 const roots: string[] = [];
 const clock = manualClock(new Date(NOW));

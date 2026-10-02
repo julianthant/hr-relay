@@ -20,32 +20,12 @@ import { gitVisibleFiles, REPO_ROOT } from "./helpers/guard-files.js";
 
 const UNIT_ONLY_ROOTS = ["tests/unit/fixtures/", "tests/unit/helpers/"];
 const ARCHITECTURE_HELPERS_ROOT = "tests/architecture/helpers/";
-const COMPAT_ARCHITECTURE_HELPERS_ROOT = "tests/unit/architecture/helpers/";
-/**
- * The cross-tier importers of architecture helpers that tests/fixtures/README.md records. They
- * predate D341 and use a compatibility export while scenario sources remain unchanged; any other importer,
- * or a recorded one that disappears, fails here so the README never understates the consumers.
- */
-const RECORDED_ARCHITECTURE_HELPER_IMPORTS: readonly { importer: string; module: string }[] = [
-  { importer: "tests/fixtures/intake-workflow-fixture.ts", module: "tests/unit/architecture/helpers/descriptor-fixtures" },
-  { importer: "tests/scenario/fixture-graph.scenario.test.ts", module: "tests/unit/architecture/helpers/descriptor-fixtures" },
-  { importer: "tests/scenario/operator-lifecycle.walk.test.ts", module: "tests/unit/architecture/helpers/descriptor-fixtures" },
-];
-const RECORDED_PARITY_COMPAT_IMPORTS: readonly { importer: string; module: string }[] = [
-  { importer: "tests/parity/helpers/fixture-native-operation.ts", module: "tests/unit/fixtures/plan1-browser-operation" },
-  { importer: "tests/parity/helpers/fixture-operation-authority.ts", module: "tests/unit/fixtures/plan1-separation-operation" },
-  { importer: "tests/parity/helpers/fixture-operation-authority.ts", module: "tests/unit/fixtures/plan1-browser-operation" },
-  { importer: "tests/parity/helpers/fixture-operation-authority.ts", module: "tests/unit/fixtures/plan1-browser-operation" },
-  { importer: "tests/parity/helpers/fixture-operation-authority.ts", module: "tests/unit/fixtures/plan1-operation-workflows" },
-  { importer: "tests/parity/helpers/fixture-operation-authority.ts", module: "tests/unit/fixtures/workflow-definition-fixtures" },
-  { importer: "tests/parity/helpers/run-rerun-server.ts", module: "tests/unit/fixtures/run-launch-fixtures" },
-  { importer: "tests/parity/run-rerun-authority.spec.ts", module: "tests/unit/fixtures/write-sequencer-fixtures" },
-];
 const SHARED_RESOURCE_HARNESSES = new Set([
   "tests/fixtures/preflight/corpus.ts",
   "tests/helpers/synthetic-storage-admission.ts",
   "tests/helpers/admission-fixture.ts",
   "tests/helpers/storage/transaction-history-fixture.ts",
+  "tests/helpers/backend/dashboard-harness.ts",
 ]);
 const SHARED_ROOTS = ["tests/fixtures", "tests/helpers"];
 const CROSS_TIER_ROOTS = ["tests/scenario", "tests/integration", "tests/parity", "tests/fixtures", "tests/helpers", "tests/process-fixtures", "scripts", "src"];
@@ -81,6 +61,7 @@ const DEFERRED_CAPABILITIES = [
   { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/config/credential-store.js", symbol: "createCredentialStore" },
   { importer: "tests/helpers/synthetic-storage-admission.ts", module: "src/backend/storage/config/credential-test-data-migration.js", symbol: "migrateTestDataFromCredentials" },
   { importer: "tests/helpers/storage/transaction-history-fixture.ts", module: "node:sqlite", symbol: "DatabaseSync" },
+  { importer: "tests/helpers/backend/dashboard-harness.ts", module: "node:sqlite", symbol: "DatabaseSync" },
   { importer: "tests/fixtures/preflight/corpus.ts", module: "playwright", symbol: "chromium" },
 ] as const;
 const PROCESS_ENTRYPOINTS = [
@@ -212,33 +193,17 @@ describe("D341 test-data ownership", () => {
         if (UNIT_ONLY_ROOTS.some((root) => resolved.startsWith(root))) observed.push({ importer: path, module: resolved.replace(/\.js$/u, "") });
       }
     }
-    const key = (entry: { importer: string; module: string }) => `${entry.importer} -> ${entry.module}`;
-    assert.deepEqual(observed.map(key).toSorted(), RECORDED_PARITY_COMPAT_IMPORTS.map(key).toSorted(),
-      "cross-tier imports must resolve through the exact parity compatibility exports");
-    for (const { module } of RECORDED_PARITY_COMPAT_IMPORTS) {
-      const stem = module.split("/").at(-1);
-      assert.ok(stem);
-      assert.equal(readFileSync(join(REPO_ROOT, `${module}.ts`), "utf8"),
-        `// Compatibility for unchanged browser parity sources.\nexport * from "../../fixtures/${stem}.js";\n`);
-    }
+    assert.deepEqual(observed, [], "cross-tier code must use shared fixture homes");
   });
 
-  it("cross-tier imports of architecture helpers are exactly the recorded set", () => {
-    const observed: { importer: string; module: string }[] = [];
+  it("cross-tier imports use shared architecture helpers", () => {
+    assert.ok(sourceFiles(CROSS_TIER_ROOTS).length > 0);
     for (const path of sourceFiles(CROSS_TIER_ROOTS)) {
       for (const { resolved } of importsOf(path)) {
         if (resolved.startsWith(ARCHITECTURE_HELPERS_ROOT)) {
           assert.fail(`${path} imports an architecture-owned helper directly: ${resolved}`);
         }
-        if (resolved.startsWith(COMPAT_ARCHITECTURE_HELPERS_ROOT)) observed.push({ importer: path, module: resolved.replace(/\.js$/u, "") });
       }
-    }
-    const key = (entry: { importer: string; module: string }) => `${entry.importer} -> ${entry.module}`;
-    assert.deepEqual(observed.map(key).toSorted(), RECORDED_ARCHITECTURE_HELPER_IMPORTS.map(key).toSorted(),
-      "record the importer in tests/fixtures/README.md and RECORDED_ARCHITECTURE_HELPER_IMPORTS, or drop the stale record");
-    const readme = readFileSync(join(REPO_ROOT, "tests/fixtures/README.md"), "utf8");
-    for (const entry of RECORDED_ARCHITECTURE_HELPER_IMPORTS) {
-      assert.ok(readme.includes(entry.importer), `tests/fixtures/README.md must name ${entry.importer}`);
     }
   });
 

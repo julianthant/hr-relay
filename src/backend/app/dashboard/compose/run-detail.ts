@@ -36,7 +36,7 @@ export function createOperatorRunDetail(input: Pick<RunDetailQueryDeps, "stateRo
        * The descriptor itself, plus the gate view the identity-gate section
        * needs. The gate facts are DERIVED from the runtime graph here rather
        * than in the query, for the same reason the receipt service lives here:
-       * `src/server/dashboard/queries` never reaches the descriptor builders,
+       * `src/backend/runs/dashboard/queries` never reaches the descriptor builders,
        * and a query that re-derived a schema hash would be a second copy of the
        * descriptor's identity.
        */

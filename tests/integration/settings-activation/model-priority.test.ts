@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, it } from "vitest";
 import { readSettings } from "../../../src/backend/runtime/settings/settings-runtime.js";
-import { settingsFixture } from "../../unit/settings-activation/fixture.js";
+import { settingsFixture } from "./helpers/fixture.js";
 
 const close: Array<() => void> = [];
 afterEach(() => { for (const cleanup of close.splice(0).reverse()) cleanup(); });

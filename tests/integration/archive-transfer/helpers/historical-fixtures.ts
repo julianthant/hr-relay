@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { renameSync, chmodSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
-import { foundationFixture, NOW } from "../../../unit/database-foundation/fixtures.js";
+import { foundationFixture, NOW } from "../../../helpers/database-foundation/fixtures.js";
 import { ledgerCommitFixture } from "../../../fixtures/ledger-projection-fixtures.js";
 import { atomicWriteCheckpoint } from "../../../helpers/timeline-write-fixture.js";
 import { ARCHIVED_RUN, ARCHIVE_RELAUNCH, VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../../fixtures/archive-fixtures.js";

@@ -30,7 +30,7 @@ import { archivedRunReferenceFingerprint } from "../../../src/domain/archive/mod
 import { archiveQueryDeps } from "../../fixtures/archive-seams.js";
 import { VERSION_PLAN_ROW, VERSION_BUMP_APPLICATION } from "../../fixtures/archive-fixtures.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { AT, DAY, makeWorld, queuedEventOf, runRecordOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { AT, DAY, makeWorld, queuedEventOf, runRecordOf, uuidOf } from "../../helpers/backend/dashboard-harness.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });

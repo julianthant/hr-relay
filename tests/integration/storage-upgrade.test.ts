@@ -1,4 +1,4 @@
-import { TimelineEventRecordSchema } from "../../src/events/timeline.js";
+import { TimelineEventRecordSchema } from "../../src/domain/events/timeline.js";
 import { storageTree } from "./helpers/storage-recovery-fixture.js";
 import { readAppSettings } from "../../src/backend/storage/sqlite/settings-storage.js";
 import { LOCAL_OPERATOR_ACTOR_ID } from "../../src/domain/ids.js";
@@ -76,7 +76,7 @@ function read(f: ReturnType<typeof fixture>) {
 /** Exact synthetic migrated output captured before removing the settings importer. */
 function seedRetainedSettings(path: string): void {
   const { tables } = z.object({ tables: z.record(z.string(), z.array(z.record(z.string(), z.union([z.string(), z.number(), z.null()])))) }).parse(
-    JSON.parse(readFileSync(new URL("../unit/fixtures/migrated-settings.json", import.meta.url), "utf8")));
+    JSON.parse(readFileSync(new URL("./fixtures/migration/migrated-settings.json", import.meta.url), "utf8")));
   const database = new DatabaseSync(path);
   try {
     for (const table of ["commands", "command_audits", "app_settings"]) for (const row of tables[table] ?? []) {
@@ -545,7 +545,7 @@ describe("T1 retained timeline after stopped importer expiry", () => {
     });
   it.each([46, 47, 48])("preserves exact migrated multi-day events through supported v%s conversion and replay", async version => {
     const f = timelineImportFixture(version);
-    const retained = z.object({ events: z.array(TimelineEventRecordSchema) }).parse(JSON.parse(readFileSync(new URL("../unit/fixtures/migrated-timeline.json", import.meta.url), "utf8"))).events;
+    const retained = z.object({ events: z.array(TimelineEventRecordSchema) }).parse(JSON.parse(readFileSync(new URL("./fixtures/migration/migrated-timeline.json", import.meta.url), "utf8"))).events;
     const raw = new DatabaseSync(f.path);
     try {
       for (const record of retained) raw.prepare(`INSERT INTO timeline_events(cursor,record_key,workflow,run_id,worker_id,retention_date,retention_class,record_json,created_at)

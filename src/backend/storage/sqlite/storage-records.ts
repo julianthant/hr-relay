@@ -13,7 +13,7 @@ import { AppSettingsSchema } from "../../../domain/config/app-settings.js";
 import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../../domain/provider-accounting.js";
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../domain/generated-artifact.js";
 import { ImportedArtifactSchema } from "../../../domain/intake/imported-artifact.js";
-import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../../events/timeline.js";
+import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
 import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../../domain/commands-history.js";
 import { z } from "zod";
 import { DuoCeremonyLeaseRecordSchema } from "../../../domain/duo-ceremony-lease.js";

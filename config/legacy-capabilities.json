@@ -1041,8 +1041,8 @@
       "verificationEvidence": [
         "legacy-source-present:src/services/llm",
         "src/domain/trust/advisory.ts",
-        "src/services/trust/advisory.ts",
-        "tests/unit/architecture/ai-advisory-no-authority.test.ts"
+        "src/backend/logs/trust/advisory.ts",
+        "tests/architecture/ai-advisory-no-authority.test.ts"
       ],
       "status": "open"
     },
@@ -1209,12 +1209,12 @@
       "disposition": {
         "kind": "open",
         "milestone": "workflow-admission-backlog",
-        "reason": "There is no `storage clean`. The retention machinery exists — createDiagnosticRetentionSweep in src/services/trust/diagnostic-retention.ts, plus the bundle purge in the authority database, which deliberately leaves content-addressed bytes alone and reports unreferenced artifact ids instead of deleting them — but NO command invokes it and it is referenced only from tests. Ref workflow-model §1.6.3 requires behavioural CLI fixtures and help output for the maintenance family before cutover."
+        "reason": "There is no `storage clean`. The retention machinery exists — createDiagnosticRetentionSweep in src/backend/logs/trust/diagnostic-retention.ts, plus the bundle purge in the authority database, which deliberately leaves content-addressed bytes alone and reports unreferenced artifact ids instead of deleting them — but NO command invokes it and it is referenced only from tests. Ref workflow-model §1.6.3 requires behavioural CLI fixtures and help output for the maintenance family before cutover."
       },
       "ownerMilestone": "workflow-admission-backlog",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/clean-tracker.ts",
-        "src/services/trust/diagnostic-retention.ts"
+        "src/backend/logs/trust/diagnostic-retention.ts"
       ],
       "status": "open"
     },
@@ -1378,16 +1378,16 @@
       "disposition": {
         "kind": "replaced",
         "milestone": "2i",
-        "replacement": "src/services/trust/advisory.ts",
+        "replacement": "src/backend/logs/trust/advisory.ts",
         "differencesAccepted": "Legacy triage was an ops SCRIPT that read a run and prompted a model. The rebuild's failure triage is a dashboard POST behind an explicit button — never a run-detail section, which would spend a provider budget every time an operator opened a failed run — assembled from the failure record's leaves each through the one redactValue under a declared (classification, transform) pair, admitted under D112 against the SUBJECT run, and rendered with provider/model/template/digest plus the standing 'not evidence, changes nothing' sentence. `summary` and `causeChain.summary` are sensitive-hr/drop because they are error.message verbatim. There is no CLI path."
       },
       "ownerMilestone": "2i",
       "verificationEvidence": [
         "legacy-source-present:src/scripts/ops/triage-failure.ts",
-        "src/services/trust/advisory.ts",
+        "src/backend/logs/trust/advisory.ts",
         "src/backend/runs/dashboard/queries/advisory.ts",
         "src/dashboard/surfaces/advisory.tsx",
-        "tests/unit/architecture/ai-advisory-no-authority.test.ts"
+        "tests/architecture/ai-advisory-no-authority.test.ts"
       ],
       "status": "implemented"
     },

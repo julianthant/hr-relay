@@ -49,7 +49,7 @@ import { personLookupDescriptor } from "../helpers/registered-workflows.js";
 /* ── the declared shape ──────────────────────────────────────────────────── */
 
 /**
- * The fixture's declared volume. `tests/unit/server/dashboard-perf-fixture-shape.test.ts`
+ * The fixture's declared volume. `tests/integration/server/dashboard-perf-fixture-shape.test.ts`
  * asserts the seeded world matches this exactly, so a silent drift in the
  * seeder cannot quietly change what a baseline number is a number OF.
  *

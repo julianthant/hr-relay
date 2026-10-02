@@ -74,7 +74,7 @@ run coverage without this task's compiler/linter contention. Guard additions/ret
 | Workflow/task | `ref task-contract`, `ref workflow-model`, `ref stores` (derived; code wins), [authoring guide](docs/rebuild/guides/workflow-authoring.md) |
 | Run, settings, upgrade | `ref dashboard-surfaces` D330/D332, `ref clock-config-secrets` D331/D332, `ref guards-and-tests` §5.2, active phase bindings |
 | Worker, browser, external write | `ref execution-and-sessions`, `ref write-safety`, relevant store instructions |
-| Dashboard, BFF, CLI | `src/dashboard/AGENTS.md`, `src/server/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`, `ref operator-trust`; use `/ui` for frontend work |
+| Dashboard, BFF, CLI | `src/dashboard/AGENTS.md`, `src/backend/AGENTS.md`, `ref frontend-backend-integration`, `ref dashboard-surfaces`, `ref operator-trust`; use `/ui` for frontend work |
 | Intake, OCR, Edit Data | `ref data-intake-and-edit-data` |
 | Tests/guards | `ref guards-and-tests`; `tests/scenario/AGENTS.md` for scenarios |
 | Known failure/lesson | Search `ref lessons` and the module's linked ledger by seam/decision |

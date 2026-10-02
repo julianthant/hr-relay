@@ -6,8 +6,8 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it, vi } from "vitest";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { queryQueueSummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
-import { summaryFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { id } from "../../unit/database-foundation/fixtures.js";
+import { summaryFixture } from "../served-database-surfaces/helpers/fixtures.js";
+import { id } from "../../helpers/database-foundation/fixtures.js";
 import {
   QueueSurfaceWireSchema,
   type QueueSurfaceWire,

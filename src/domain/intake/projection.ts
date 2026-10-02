@@ -39,7 +39,7 @@ import {
 } from "../ids.js";
 import { deriveSchemaHash } from "../schema-bound-value.js";
 import { sha256Hex } from "../sha256.js";
-import { isSchemaPathFailure, resolveSchemaPath, type SchemaPathFailure } from "../../validation/schema-path.js";
+import { isSchemaPathFailure, resolveSchemaPath, type SchemaPathFailure } from "../validation/schema-path.js";
 import { CanonicalFieldIdSchema, isFactoryDefinedCanonicalField } from "../fields/registry.js";
 import type { CanonicalField, CanonicalFieldId } from "../fields/registry.js";
 

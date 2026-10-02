@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { it } from "vitest";
 import { deriveCanonicalPerson } from "../../../src/backend/runs/run-summary.js";
 import { TERMINAL_SEPARATIONS_RUN,TERMINAL_SEPARATIONS_RESULT } from "../fixtures/activity-person-pseudonym-fixtures.js";
-import { foundationFixture } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture } from "../../helpers/database-foundation/fixtures.js";
 import { queryQueueSummaries,queryActivitySummaries } from "../../../src/backend/runs/dashboard/queries/run-summaries.js";
 
 it("refuses each canonical identity mismatch with a sanitized error",()=>{
@@ -25,8 +25,8 @@ it("serializes only safe Queue facts and aggregate Activity values",()=>{
 
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 import { CURRENT_SEPARATIONS_RESULT,activityPersonPseudonymResultRecord,seedSeparationsRunAuthority } from "../fixtures/activity-person-pseudonym-fixtures.js";
-import { id,NOW } from "../../unit/database-foundation/fixtures.js";
-import { makeWorld } from "../../unit/server/helpers/dashboard-harness.js";
+import { id,NOW } from "../../helpers/database-foundation/fixtures.js";
+import { makeWorld } from "../../helpers/backend/dashboard-harness.js";
 it("deduplicates people across days and computes the lower selected median, matching the retained projector",()=>{
   const f=foundationFixture(),world=makeWorld();try{
     const identities=new Map<string,ReturnType<typeof deriveCanonicalPerson>>();

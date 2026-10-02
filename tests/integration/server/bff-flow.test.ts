@@ -110,7 +110,7 @@ import { createSoloRequestIdentityCheckpoint } from "../../../src/backend/transp
 import type { RequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { RequestIdentityRefusedError } from "../../../src/backend/runs/refusals.js";
 import type { ArtifactBytesQueryDeps } from "../../../src/backend/runs/dashboard/queries/artifact-bytes.js";
-import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
+import { createDiagnosticCaptureService } from "../../../src/backend/logs/trust/diagnostic-capture.js";
 import { activityReportCsv } from "../../../src/backend/runs/dashboard/queries/activity-export.js";
 import { activityReportCaveats } from "../../../src/domain/dashboard/activity.js";
 import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
@@ -129,8 +129,8 @@ import {
 import { HASH_B, UUID_4 } from "../../fixtures/phase1c-contract-fixtures.js";
 import { RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
-import { AT, DAY, traceOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
-import { insertMeasuredSearchRun } from "../../unit/server/helpers/cross-date-search-harness.js";
+import { AT, DAY, traceOf, uuidOf } from "../../helpers/backend/dashboard-harness.js";
+import { insertMeasuredSearchRun } from "../search/helpers/cross-date-search-harness.js";
 import { NO_INTAKE_PROJECTIONS, UNSTORED_CONFIG_IDENTITY, UNWIRED_INTAKE_PARSER, UNWIRED_INTAKE_SERVICE } from "../../fixtures/intake-kernel-seams.js";
 import { resolveConfigWithProvenance } from "../../../src/backend/app/config/resolve.js";
 import { explorerQueryDeps, uiCatalogQueryDeps } from "../../fixtures/explorer-seams.js";

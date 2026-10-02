@@ -22,7 +22,7 @@ import { createAdvisoryProviderClient } from "../../src/backend/runs/provider-ad
 import { ADVISORY_ANSWER_SCHEMA_HASH } from "../../src/domain/trust/advisory.js";
 import { createDeterministicProviderHarness } from "../../src/backend/processing/providers/deterministic-provider.js";
 import { createProviderPool } from "../../src/backend/processing/providers/provider-pool.js";
-import { produceFailureTriageAdvisory } from "../../src/services/trust/advisory.js";
+import { produceFailureTriageAdvisory } from "../../src/backend/logs/trust/advisory.js";
 import {
   ADVISORY_NOW,
   MAXIMAL_FAILURE,

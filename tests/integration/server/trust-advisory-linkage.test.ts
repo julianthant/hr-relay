@@ -11,8 +11,8 @@ import { buildTrustSection } from "../../../src/backend/runs/dashboard/queries/r
 import { SectionUnavailableError, TargetNotFoundError } from "../../../src/backend/runs/refusals.js";
 import { HASH_A } from "../../fixtures/phase1c-contract-fixtures.js";
 import { VALID_TRIAGE_ADVICE } from "../fixtures/advisory-fixtures.js";
-import { uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
-import { trustWorld} from "../../unit/server/helpers/trust-authority-fixture.js";
+import { uuidOf } from "../../helpers/backend/dashboard-harness.js";
+import { trustWorld} from "../trust/helpers/trust-authority-fixture.js";
 
 const worlds: ReturnType<typeof trustWorld>[] = [];
 afterEach(() => { for (const world of worlds.splice(0).reverse()) world.dispose(); });

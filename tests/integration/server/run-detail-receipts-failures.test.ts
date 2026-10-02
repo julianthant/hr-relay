@@ -10,7 +10,7 @@ import { createServerVerifiedArtifactReader } from "../../../src/backend/storage
 import { buildReceiptFailureSection } from "../../../src/backend/runs/dashboard/queries/run-detail/receipts-failures.js";
 import { DiagnosticBundleCorruptError } from "../../../src/backend/runs/refusals.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
-import { trustWorld } from "../../unit/server/helpers/trust-authority-fixture.js";
+import { trustWorld } from "../trust/helpers/trust-authority-fixture.js";
 
 const worlds: ReturnType<typeof trustWorld>[] = [];
 afterEach(() => { for (const world of worlds.splice(0).reverse()) world.dispose(); });

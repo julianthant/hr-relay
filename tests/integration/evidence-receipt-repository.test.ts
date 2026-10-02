@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { describe, it } from "vitest";
 import { manualClock } from "../../src/domain/clock.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
-import { cleanReceiptOf, runRecordOf, uuidOf } from "../unit/server/helpers/dashboard-harness.js";
+import { cleanReceiptOf, runRecordOf, uuidOf } from "../helpers/backend/dashboard-harness.js";
 
 describe("evidence receipt repository", () => {
   it("filters multiple real SQLite receipt rows by exact run with stable cardinality", () => {

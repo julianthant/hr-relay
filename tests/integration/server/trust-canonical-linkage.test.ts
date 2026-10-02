@@ -12,8 +12,8 @@ import { explainRunFrom } from "../../../src/backend/app/explain-compose.js";
 import { SectionUnavailableError, TargetNotFoundError } from "../../../src/backend/runs/refusals.js";
 import { seedPersonLookupExitRun } from "../../fixtures/receipt-run-fixtures.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
-import { uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
-import { trustWorld, foldTrustGate } from "../../unit/server/helpers/trust-authority-fixture.js";
+import { uuidOf } from "../../helpers/backend/dashboard-harness.js";
+import { trustWorld, foldTrustGate } from "../trust/helpers/trust-authority-fixture.js";
 
 const worlds: ReturnType<typeof trustWorld>[] = [];
 function fixture() { const value = trustWorld(); worlds.push(value); return value; }

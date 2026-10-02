@@ -8,8 +8,8 @@ import { LedgerPartitionRecordSchema, LedgerProjectionRecordSchema, deriveLedger
 import { WriteAttemptRecordSchema, WriteIntentRecordSchema } from "../../../domain/write-safety.js";
 import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";
 import { lifecycleCommandId } from "../../../domain/identifiers.js";
-import { HistoricalOperationSourceSchema } from "../../../events/timeline.js";
-import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../events/confirmed-operation.js";
+import { HistoricalOperationSourceSchema } from "../../../domain/events/timeline.js";
+import { confirmedOperationTimeline, reconstructConfirmedOperation } from "../../../domain/events/confirmed-operation.js";
 import { historicalLedgerSources } from "../events/timeline-import.js";
 import { AtomicWriteCommitInputSchema } from "./write-commit-contracts.js";
 import type { DatabaseSync } from "node:sqlite";

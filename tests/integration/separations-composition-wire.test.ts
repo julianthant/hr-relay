@@ -49,7 +49,7 @@ import {
   runRecordOf,
   uuidOf,
   type DashboardWorld,
-} from "../unit/server/helpers/dashboard-harness.js";
+} from "../helpers/backend/dashboard-harness.js";
 import { separationsDescriptor } from "../helpers/registered-workflows.js";
 
 const CLOCK = manualClock(new Date(NOW));

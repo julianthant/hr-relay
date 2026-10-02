@@ -1,7 +1,7 @@
 import { createTrustRunReader } from "../../src/backend/runs/trust/canonical-reader.js";
 import { buildTrustSection } from "../../src/backend/runs/dashboard/queries/run-trust.js";
-import { makeWorld } from "../unit/server/helpers/dashboard-harness.js";
-import { foldTrustGate } from "../unit/server/helpers/trust-authority-fixture.js";
+import { makeWorld } from "../helpers/backend/dashboard-harness.js";
+import { foldTrustGate } from "./trust/helpers/trust-authority-fixture.js";
 import { SectionUnavailableError } from "../../src/backend/runs/refusals.js";
 import { RunRecordService } from "../../src/backend/runs/run-record-service.js";
 import { lifecycleCommandId } from "../../src/backend/runs/run-record-service.js";

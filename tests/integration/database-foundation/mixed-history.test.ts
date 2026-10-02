@@ -23,13 +23,13 @@ import { ProviderAdmissionRecordSchema,ProviderBudgetCounterSchema } from "../..
 import { admitOcrExtraction } from "../../../src/domain/ocr/extraction.js";
 import { KnowledgeRecordSchema,FixRecordSchema } from "../../../src/domain/trust/knowledge.js";
 import { OperatorXlsxExportEvidenceSchema,OPERATOR_XLSX_MEDIA_TYPE } from "../../../src/domain/dashboard/xlsx-export.js";
-import { session,manifest } from "../../unit/database-foundation/import-fixtures.js";
-import { NOW,HASH,id,update } from "../../unit/database-foundation/fixtures.js";
+import { session,manifest } from "./helpers/import-fixtures.js";
+import { NOW,HASH,id,update } from "../../helpers/database-foundation/fixtures.js";
 const clock=manualClock(new Date(NOW));
 const RowsSchema=z.object({rows:z.record(z.string(),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))});
 function fixture(){
  const root=mkdtempSync(join(tmpdir(),"foundation-mixed-"));const stateRoot=join(root,".tracker");mkdirSync(stateRoot);for(const file of ["package.json","package-lock.json"])copyFileSync(join(process.cwd(),file),join(root,file));
- const saved=RowsSchema.parse(JSON.parse(readFileSync(new URL("../../unit/run-completion-fixtures/schema40-failure.json",import.meta.url),"utf8")));
+ const saved=RowsSchema.parse(JSON.parse(readFileSync(new URL("../fixtures/run-completion/schema40-failure.json",import.meta.url),"utf8")));
  const path=join(stateRoot,"state.db");const db=new DatabaseSync(path);db.exec("PRAGMA foreign_keys=OFF");
  for(const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=40))for(const sql of migration.statements)db.exec(sql);
  for(const [table,rows] of Object.entries(saved.rows))for(const original of rows){const row={...original};

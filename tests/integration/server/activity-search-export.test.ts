@@ -34,7 +34,7 @@ import { createDashboardTransport } from "../../../src/dashboard/client/transpor
 import { verifySelectionDownload } from "../../../src/dashboard/client/selection-download.js";
 import { DashboardClientError } from "../../../src/dashboard/client/errors.js";
 import { activityPresetRange, type ActivityRangePreset } from "../../../src/dashboard/surfaces/activity-model.js";
-import { runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { runRecordOf } from "../../helpers/backend/dashboard-harness.js";
 
 const cleanup:(()=>void)[]=[];
 afterEach(()=>{for(const dispose of cleanup.splice(0))dispose();});

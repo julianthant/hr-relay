@@ -6,7 +6,7 @@ import { DatabaseSync } from "node:sqlite";
 import { describe,it } from "vitest";
 import { inspectHistoricalAuthorityInvariants } from "../../helpers/synthetic-storage-admission.js";
 import { inspectAuthorityBackupReadOnly } from "../../helpers/synthetic-storage-admission.js";
-import { foundationFixture,generic,legacyRequest,historicalFixture,id,NOW } from "../../unit/provider-accounting/fixtures.js";
+import { foundationFixture,generic,legacyRequest,historicalFixture,id,NOW } from "./helpers/fixtures.js";
 
 describe("P provider accounting integrity",()=>{
  for(const active of [0,1])it(`accepts mixed kinds with ${active} legacy reservations; rejects genuine legacy corruption`,()=>{
@@ -32,8 +32,8 @@ describe("P provider accounting integrity",()=>{
 });
 
 import { createGenericProviderAccounting,inspectGenericProviderAccounting } from "../../../src/backend/storage/sqlite/provider-accounting.js";
-import { admission } from "../../unit/provider-accounting/fixtures.js";
-import { failure,terminalizeFixtureFailure } from "../../unit/database-foundation/fixtures.js";
+import { admission } from "./helpers/fixtures.js";
+import { failure,terminalizeFixtureFailure } from "../../helpers/database-foundation/fixtures.js";
 const done=(n=100)=>({requestId:id(n),expectedVersion:1,now:NOW,state:"settled",usage:[{meter:"requests",quantity:{kind:"measured",value:1}}],reason:null});
 describe("P generic provider policy",()=>{
  it("round-trips two vendors/credentials, keyless and unknown attribution, model/shared/application scopes and distinct meters",()=>{
@@ -132,7 +132,7 @@ describe("P concurrency and historical conversion",()=>{
    const cases=[100,101].map(n=>({...admission(f,n),budgets:admission(f,n).budgets.map(b=>({...b,windows:b.windows.map(w=>({...w,limit:{...w.limit,value:1}}))}))}));
    const ready:Promise<void>[]=[];const results:Promise<z.infer<typeof RaceResult>>[]=[];const exits:Promise<void>[]=[];
    for(const request of cases){
-    const child=fork(new URL("../../unit/provider-accounting/race-process.ts",import.meta.url),[],{execArgv:["--import","tsx"],stdio:["ignore","ignore","pipe","ipc"]});children.push(child);
+    const child=fork(new URL("./helpers/race-process.ts",import.meta.url),[],{execArgv:["--import","tsx"],stdio:["ignore","ignore","pipe","ipc"]});children.push(child);
     let stderr="";child.stderr?.on("data",(chunk:Buffer)=>{stderr+=chunk.toString();});
     ready.push(new Promise((resolve,reject)=>{child.on("message",(m:unknown)=>{if(z.object({state:z.literal("ready")}).safeParse(m).success)resolve();});child.on("error",reject);child.on("exit",code=>{if(code!==0)reject(new Error(`race child failed ${code}: ${stderr}`));});}));
     results.push(new Promise((resolve,reject)=>{child.on("message",(m:unknown)=>{const result=RaceResult.safeParse(m);if(result.success)resolve(result.data);});child.on("error",reject);child.on("exit",code=>{if(code!==0)reject(new Error(`race child failed ${code}: ${stderr}`));});}));
@@ -168,7 +168,7 @@ describe("P concurrency and historical conversion",()=>{
    const expired=storageTree(f.input.stateRoot);
    for(const plan of [true,false])await assert.rejects(upgradeStorage({...f.input,plan},f.clock),/authority-below-floor.*original compatible release/u);
    assert.deepEqual(storageTree(f.input.stateRoot),expired);
-   const pinned=z.object({rows:z.record(z.string().regex(/^[a-z_]+$/u),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))}).parse(JSON.parse(readFileSync(new URL("../../unit/fixtures/migrated-provider.json",import.meta.url),"utf8")));
+   const pinned=z.object({rows:z.record(z.string().regex(/^[a-z_]+$/u),z.array(z.record(z.string(),z.union([z.string(),z.number(),z.null()]))))}).parse(JSON.parse(readFileSync(new URL("../fixtures/migration/migrated-provider.json",import.meta.url),"utf8")));
    f.raw.close();copyFileSync(f.historicalPath,join(f.input.stateRoot,"retired-source.sqlite"));rmSync(f.historicalPath);f.reopenRaw();
    for(const migration of SQLITE_MIGRATIONS.filter(m=>m.version<=46))for(const sql of migration.statements)f.raw.exec(sql);
    for(const [table,rows]of Object.entries(pinned.rows))for(const row of rows){const columns=Object.keys(row);f.raw.prepare(`INSERT INTO ${table}(${columns.join(",")}) VALUES(${columns.map(()=>"?").join(",")})`).run(...Object.values(row));}

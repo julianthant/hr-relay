@@ -6,7 +6,7 @@ import { z } from "zod";
 import { readPreservedTimelineSources } from "../events/timeline-import.js";
 import { readPreservedGeneratedSources } from "../sqlite/generated-conversion.js";
 import { ArtifactRefSchema } from "../../../domain/artifacts.js";
-import { NoteWireSchema, SpanEventWireSchema } from "../../../events/types.js";
+import { NoteWireSchema, SpanEventWireSchema } from "../../../domain/events/types.js";
 import type { RuntimeAdmission } from "../admission/admission.js";
 import type { RuntimeRelocationOperation } from "../admission/admission.js";
 import type { RuntimePair } from "../admission/installation.js";

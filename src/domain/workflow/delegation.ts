@@ -24,7 +24,7 @@ import type { DelegationEdgeId, Fingerprint, ItemId, RunId } from "../ids.js";
 import type { DelegationPolicy } from "./delegation-policy.js";
 import { DelegationPolicySchema } from "./delegation-policy.js";
 import type { AnyWorkflowRef, ChildRunOutcome } from "./graph.js";
-import { parseAsSchemaOutput } from "../../validation/schema-parse.js";
+import { parseAsSchemaOutput } from "../validation/schema-parse.js";
 
 /** One planned child: its stable item id and the exact input that produced it. */
 export interface PlannedChild<Target extends AnyWorkflowRef> {

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { foundationFixture,id,NOW } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture,id,NOW } from "../../helpers/database-foundation/fixtures.js";
 
 it("publishes creation and presentation atomically, excluding heartbeats and rolled-back notifications",()=>{
   const f=foundationFixture();try {
@@ -66,7 +66,7 @@ it("consumes relevant timeline cursors transactionally and exact replay does not
   }finally{f.dispose();}
 });
 
-import { receiptWithWarningsOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { receiptWithWarningsOf } from "../../helpers/backend/dashboard-harness.js";
 it("updates receipt facts exactly once and cancellation filtering uses the same current snapshot",()=>{
   const f=foundationFixture();try{
     f.db.refreshRunSummaries();const run=f.run;

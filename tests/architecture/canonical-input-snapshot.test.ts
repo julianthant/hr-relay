@@ -30,7 +30,7 @@ import {
   defineCanonicalInputSnapshotMigration,
   migrateCanonicalInputSnapshot,
 } from "../../src/domain/workflow/checkpoint.js";
-import { auditCanonicalInputSchema } from "../../src/validation/canonical-input-schema.js";
+import { auditCanonicalInputSchema } from "../../src/domain/validation/canonical-input-schema.js";
 import { fixtureDescriptor } from "../fixtures/descriptor-fixtures.js";
 
 const HASH_OLD = FingerprintSchema.parse("1".repeat(64));

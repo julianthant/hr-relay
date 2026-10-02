@@ -19,7 +19,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { workflowProjections } from "../../src/base/workflow.js";
 import { RunIdSchema } from "../../src/domain/ids.js";
-import { fixtureChildItemId, fixtureDescriptor } from "../unit/architecture/helpers/descriptor-fixtures.js";
+import { fixtureChildItemId, fixtureDescriptor } from "../helpers/architecture/descriptor-fixtures.js";
 import { FIXTURE_GRAPH_CLAIMS } from "./coverage-claims.js";
 import { walkDescriptor } from "./helpers/pure-walk.js";
 

@@ -13,7 +13,7 @@ import {
   queuedEventOf,
   uuidOf,
   type DashboardWorld,
-} from "../../unit/server/helpers/dashboard-harness.js";
+} from "../../helpers/backend/dashboard-harness.js";
 
 const worlds: DashboardWorld[] = [];
 function world(): DashboardWorld {

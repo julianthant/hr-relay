@@ -25,7 +25,7 @@ import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/dashboa
 import type { RunDetailQueryDeps } from "../../../src/backend/runs/dashboard/queries/run-detail-types.js";
 import type { RequestIdentityCheckpoint } from "../../../src/backend/transports/dashboard/request-identity.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { makeWorld, runRecordOf, uuidOf, type DashboardWorld } from "../../unit/server/helpers/dashboard-harness.js";
+import { makeWorld, runRecordOf, uuidOf, type DashboardWorld } from "../../helpers/backend/dashboard-harness.js";
 import { RunRecordSchema } from "../../../src/domain/run/record.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);

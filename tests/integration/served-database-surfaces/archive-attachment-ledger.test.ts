@@ -4,7 +4,7 @@ import { createHash } from 'node:crypto';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { archiveFixture, attachFile } from '../../helpers/archive-transfer/fixtures.js';
-import { id, NOW } from '../../unit/database-foundation/fixtures.js';
+import { id, NOW } from '../../helpers/database-foundation/fixtures.js';
 import { ledgerCommitFixture } from '../../fixtures/ledger-projection-fixtures.js';
 import { atomicWriteCheckpoint } from '../../helpers/timeline-write-fixture.js';
 import { createTransactionHistory } from '../../../src/backend/storage/sqlite/transaction-history.js';

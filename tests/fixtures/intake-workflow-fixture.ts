@@ -14,7 +14,7 @@ import { CANONICAL_FIELDS } from "../../src/domain/fields/registry.js";
 import { defineIntakeProjection } from "../../src/domain/intake/projection.js";
 import { defineCanonicalInput } from "../../src/domain/workflow/canonical-input.js";
 import { STANDARD_WORKFLOW_ACTIONS } from "../../src/domain/workflow/presentation.js";
-import { FixtureReadReceipt } from "../unit/architecture/helpers/descriptor-fixtures.js";
+import { FixtureReadReceipt } from "../helpers/architecture/descriptor-fixtures.js";
 
 export const INTAKE_FIXTURE_WORKFLOW_ID = "intake-fixture";
 

@@ -22,7 +22,7 @@ import { createCommandKernel, type CommandKernelDependencies } from "../../../sr
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { claimWithPreflight, preflightSessionFactory } from "../../../src/backend/app/preflight/worker-admission.js";
-import { createPreflightReportService } from "../../../src/server/preflight/report-service.js";
+import { createPreflightReportService } from "../../../src/backend/runtime/preflight/report-service.js";
 import { PreflightAdmissionRefusal } from "../../../src/domain/preflight-admission.js";
 import { healthyRuntimePreflightRunners, createPreflightHarness } from "../../fixtures/preflight-seams.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

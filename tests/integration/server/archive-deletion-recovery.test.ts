@@ -5,8 +5,8 @@ import { startDashboardHttpServer } from "../../../src/backend/transports/dashbo
 import { CommandResultSchema } from "../../../src/domain/commands.js";
 import { SavedArchiveDetailWireSchema } from "../../../src/domain/dashboard/archive.js";
 import { lifecycleCommandId } from "../../../src/domain/identifiers.js";
-import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { id } from "../../unit/database-foundation/fixtures.js";
+import { savedHttpFixture } from "../served-database-surfaces/helpers/fixtures.js";
+import { id } from "../../helpers/database-foundation/fixtures.js";
 
 const cleanups: Array<() => Promise<void> | void> = [];
 afterEach(async () => {

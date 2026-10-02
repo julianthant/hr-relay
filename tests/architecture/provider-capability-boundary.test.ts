@@ -59,7 +59,7 @@ const PROVIDER_CLIENT_TYPE_OWNERS: ReadonlySet<string> = new Set([
   // inherit. It still obtains its client from the kernel
   // (`createAdvisoryProviderClient`) — this entry lets it declare what it was
   // handed, not mint one.
-  "src/services/trust/advisory.ts",
+  "src/backend/logs/trust/advisory.ts",
 ]);
 const ADMITTED_CLIENT_MINT_CALLERS: ReadonlySet<string> = new Set([
   "src/backend/runs/provider-admission.ts",

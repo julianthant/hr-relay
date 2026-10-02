@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { it } from "vitest";
-import { savedHttpFixture } from "../../unit/served-database-surfaces/fixtures.js";
-import { id, HASH, NOW } from "../../unit/database-foundation/fixtures.js";
+import { savedHttpFixture } from "./helpers/fixtures.js";
+import { id, HASH, NOW } from "../../helpers/database-foundation/fixtures.js";
 import { RunRecordService } from "../../../src/backend/runs/run-record-service.js";
 import { fanOutQueuedRuns, type FanOutEnvelope } from "../../../src/backend/runs/run-fan-out.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";

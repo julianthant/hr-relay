@@ -6,7 +6,7 @@ import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js"
 import { GenericProviderRequestSchema,GenericProviderUsageSchema } from "../../../src/domain/provider-accounting.js";
 import { ArtifactRefSchema } from "../../../src/domain/artifacts.js";
 import { CommandResultSchema } from "../../../src/domain/commands.js";
-import { foundationFixture,failure,terminalizeFixtureFailure,update,NOW,HASH,id } from "../../unit/database-foundation/fixtures.js";
+import { foundationFixture,failure,terminalizeFixtureFailure,update,NOW,HASH,id } from "../../helpers/database-foundation/fixtures.js";
 function generic(f:ReturnType<typeof foundationFixture>){
  const scope={id:"synthetic-provider/model",kind:"provider-model"};
  const tracking={startedAt:NOW,coverage:"complete-since-start",evidence:"caller-supplied"};

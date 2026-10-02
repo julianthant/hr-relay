@@ -11,7 +11,7 @@ import { readFile } from "node:fs/promises";
 import { createServer, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { extname, join, normalize } from "node:path";
-import { launchHarness } from "../../unit/fixtures/run-launch-fixtures.js";
+import { launchHarness } from "./run-launch-fixtures.js";
 import { createRunQueueProjection } from "../../../src/backend/runs/dashboard/projectors/run-queue-projection.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";

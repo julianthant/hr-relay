@@ -62,12 +62,12 @@ export const RuntimeConsumerSpecSchema = z.strictObject({
   owner: z.string().regex(/^src\/[a-z0-9/_-]+$/),
 });
 export const RUNTIME_CONSUMERS = deepFreeze(RuntimeConsumerSpecSchema.array().parse([
-  { id: "runtime-composition", kind: "composition", owner: "src/core" },
+  { id: "runtime-composition", kind: "composition", owner: "src/backend/app" },
   { id: "system-driver", kind: "driver", owner: "src/backend/systems" },
   { id: "provider-adapter", kind: "adapter", owner: "src/backend/processing/providers" },
   { id: "workflow-enqueue", kind: "command", owner: "src/control" },
-  { id: "dashboard-startup", kind: "composition", owner: "src/server" },
-  { id: "settings-health", kind: "projection", owner: "src/server/dashboard" },
+  { id: "dashboard-startup", kind: "composition", owner: "src/backend/app" },
+  { id: "settings-health", kind: "projection", owner: "src/backend/runs/dashboard" },
   { id: "cli-doctor", kind: "projection", owner: "src/cli" },
   { id: "test-login", kind: "command", owner: "src/control" },
   { id: "authority-storage", kind: "storage", owner: "src/infra/sqlite" },

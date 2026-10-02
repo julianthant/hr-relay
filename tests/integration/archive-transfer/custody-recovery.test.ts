@@ -3,7 +3,7 @@ import { existsSync, readFileSync, renameSync, rmSync, writeFileSync } from "nod
 import { dirname, join } from "node:path";
 import { it } from "vitest";
 import { archiveFixture, attachFile } from "../../helpers/archive-transfer/fixtures.js";
-import { id, NOW } from "../../unit/database-foundation/fixtures.js";
+import { id, NOW } from "../../helpers/database-foundation/fixtures.js";
 import { AuthorityDatabase } from "../../helpers/synthetic-storage-admission.js";
 import { backupStoppedAuthority } from "../../helpers/synthetic-storage-admission.js";
 import { restoreLifecyclePair, verifyLifecyclePair } from "../../helpers/synthetic-storage-admission.js";

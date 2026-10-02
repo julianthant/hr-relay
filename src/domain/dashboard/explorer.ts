@@ -24,7 +24,7 @@
  * a decompiled approximation of what the function does.
  */
 import { z } from "zod";
-import { ContractSchemaLeafKindSchema } from "../../validation/contract-boundary.js";
+import { ContractSchemaLeafKindSchema } from "../validation/contract-boundary.js";
 import { canonicalJsonStringify } from "../canonical-json.js";
 import { ContractFieldPathSchema, TaskErrorCodeSchema } from "../contracts/base.js";
 import {

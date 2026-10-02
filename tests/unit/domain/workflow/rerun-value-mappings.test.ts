@@ -4,7 +4,7 @@ import { describe, it } from "vitest";
 import { z } from "zod";
 import { descriptorRuntimeNodes } from "../../../../src/base/workflow.js";
 import { RerunValueMappingSchema } from "../../../../src/domain/workflow/rerun-values.js";
-import { rerunTargetAccepts, validateRerunValueMappings, rerunSourceFieldSchema } from "../../../../src/validation/rerun-values.js";
+import { rerunTargetAccepts, validateRerunValueMappings, rerunSourceFieldSchema } from "../../../../src/domain/validation/rerun-values.js";
 import { eidMapping, mappedReadDescriptor } from "../../../fixtures/rerun-values-fixtures.js";
 import { writeFixtureDescriptor } from "../../../fixtures/write-sequencer-fixtures.js";
 

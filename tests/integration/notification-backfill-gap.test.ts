@@ -25,7 +25,7 @@ import {
   DAY,
   makeWorld as makeDashboardWorld,
   queuedEventOf,
-} from "../unit/server/helpers/dashboard-harness.js";
+} from "../helpers/backend/dashboard-harness.js";
 
 const GAP = {
   kind: "backfill-gap",

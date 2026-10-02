@@ -4,7 +4,7 @@ import {
   assertCompiledWorkflowOperationDisplay,
   type WorkflowOperationDisplay,
 } from "../domain/workflow/operation-display.js";
-import { validateRerunValueMappings } from "../validation/rerun-values.js";
+import { validateRerunValueMappings } from "../domain/validation/rerun-values.js";
 import { retainedRunProtectedBindings } from "../domain/protected-input.js";
 import { ProtectedInputDeclarationSchema, type ProtectedInputBinding, type ProtectedInputDeclaration } from "../domain/protected-input.js";
 /**
@@ -119,7 +119,7 @@ import {
   assertContractBoundarySchema,
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
-} from "../validation/contract-boundary.js";
+} from "../domain/validation/contract-boundary.js";
 import type {
   AnyNodeEntry,
   BuiltFlow,

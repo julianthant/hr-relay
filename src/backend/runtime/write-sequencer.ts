@@ -1,4 +1,4 @@
-import { reconstructConfirmedOperation } from "../../events/confirmed-operation.js";
+import { reconstructConfirmedOperation } from "../../domain/events/confirmed-operation.js";
 import { retainedRunProtectedBindings, hasProtectedTransactionInput } from "../../domain/protected-input.js";
 import { valueFreeProtectedData } from "../../domain/protected-input.js";
 import { isFreshOccurrenceProof } from "./repeat-proof.js";
@@ -113,9 +113,9 @@ import {
 } from "../storage/sqlite/write-commit-contracts.js";
 import type { SessionNeed } from "../../domain/session.js";
 import type { MonotonicDeadlineScheduler } from "./deadline-scheduler.js";
-import type { SpanEmitter } from "../../core/span-emitter.js";
-import { ExecutorSpanEventSchema } from "../../core/span-emitter.js";
-import { redactObservedDataPoints } from "../../core/observed-data.js";
+import type { SpanEmitter } from "../logs/span-emitter.js";
+import { ExecutorSpanEventSchema } from "../logs/span-emitter.js";
+import { redactObservedDataPoints } from "../logs/observed-data.js";
 import { withBrowserActionBinding } from "../systems/browser-shared/action-notes.js";
 import type { BrowserActionBinder } from "../systems/browser-shared/action-notes.js";
 import { WriteParkedError } from "./run-executor.js";

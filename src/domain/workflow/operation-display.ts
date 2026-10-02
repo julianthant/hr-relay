@@ -24,7 +24,7 @@ import type { BrowserSystemId } from "../ids.js";
 import {
   assertSchemaOffersPath,
   assertSchemaOwnsPath,
-} from "../../validation/contract-boundary.js";
+} from "../validation/contract-boundary.js";
 
 export const OPERATION_DISPLAY_FORMAT_VERSION = 1 as const;
 

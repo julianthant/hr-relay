@@ -67,7 +67,7 @@ describe("synthetic database fixture admission import boundary", () => {
     const closure = valueClosure(narrowHelper);
     for (const required of ["src/backend/storage/sqlite/authority-database.ts", "src/backend/storage/sqlite/archive-database.ts", "src/backend/storage/admission/admission.ts"]) assert.ok(closure.has(required), required);
     assert.deepEqual(forbiddenReach(closure), []);
-    const harness = valueClosure("tests/unit/server/helpers/dashboard-harness.ts");
+    const harness = valueClosure("tests/helpers/backend/dashboard-harness.ts");
     assert.ok(harness.has(narrowHelper));
     assert.deepEqual(forbiddenReach(harness), []);
   });

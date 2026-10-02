@@ -22,7 +22,7 @@ import { afterEach, it, vi } from "vitest";
 import { requireLifecycleApplied } from "../../../src/backend/runs/run-record-service.js";
 import { selectRunRuntime } from "../../../src/backend/runs/run-settings.js";
 import { ConfigSnapshotRecordSchema } from "../../../src/domain/config/snapshot.js";
-import { settingsFixture } from "../../unit/settings-activation/fixture.js";
+import { settingsFixture } from "./helpers/fixture.js";
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const close of cleanups.splice(0).reverse()) close(); vi.restoreAllMocks(); });
 function fixture(isolateBrowser = false) { const f = settingsFixture(isolateBrowser); cleanups.push(f.close); return f; }

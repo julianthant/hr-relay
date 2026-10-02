@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { NoteWireSchema, projectNoteForOperator } from "../../../events/types.js";
+import { NoteWireSchema, projectNoteForOperator } from "../../../domain/events/types.js";
 import { hasProtectedTransactionInput, retainedRunProtectedBindings, valueFreeProtectedData } from "../../../domain/protected-input.js";
 import { DiagnosticAttachmentStorageRecordSchema } from "../sqlite/storage-records.js";
 import { ArchiveReportSectionSchema, sealArchiveReport, type ArchiveReport, type ArchiveReportCell } from "../../../domain/archive/report.js";

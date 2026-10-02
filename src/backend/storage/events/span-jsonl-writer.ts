@@ -30,7 +30,7 @@
 import { z } from "zod";
 import type { Clock } from "../../../domain/clock.js";
 import { localDatePart } from "../../../domain/clock.js";
-import { SpanEventWireSchema, type SpanEventWire } from "../../../events/types.js";
+import { SpanEventWireSchema, type SpanEventWire } from "../../../domain/events/types.js";
 import { appendEventStreamLine } from "./jsonl-streams.js";
 
 export interface SpanJsonlWriterDeps {

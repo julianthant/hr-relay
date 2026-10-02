@@ -32,7 +32,7 @@ import {
   DiagnosticBundleCorruptError,
   TargetNotFoundError,
 } from "../../../src/backend/runs/refusals.js";
-import { createDiagnosticCaptureService } from "../../../src/services/trust/diagnostic-capture.js";
+import { createDiagnosticCaptureService } from "../../../src/backend/logs/trust/diagnostic-capture.js";
 import { HASH_A, HASH_B, NOW } from "../../fixtures/phase1c-contract-fixtures.js";
 import { personLookupQueuedRun } from "../../helpers/phase1f-executor-harness.js";
 import { RUN_ID, sequentialIdFactory } from "../../fixtures/phase1f-run-fixtures.js";

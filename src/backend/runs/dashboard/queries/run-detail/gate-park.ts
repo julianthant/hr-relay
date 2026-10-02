@@ -32,7 +32,7 @@ import { deriveSchemaHash } from "../../../../../domain/schema-bound-value.js";
 import { deriveStableUuid, lifecycleCommandId } from "../../../../../domain/identifiers.js";
 import { canonicalJsonStringify } from "../../../../../domain/canonical-json.js";
 import { readRunCheckpoint } from "../../../../runtime/run-checkpoint-reader.js";
-import { timelineCheckpointReference } from "../../../../../events/timeline.js";
+import { timelineCheckpointReference } from "../../../../../domain/events/timeline.js";
 
 /**
  * D237 — what a SETTLED gate's panel says: approved or rejected, by whom, when.

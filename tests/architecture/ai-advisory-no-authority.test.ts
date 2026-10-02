@@ -68,14 +68,14 @@ import { REPO_ROOT, walkFiles } from "./helpers/guard-files.js";
 const ADVISORY_ROOTS = [
   "src/domain/trust/advisory.ts",
   "src/domain/dashboard/advisory.ts",
-  "src/services/trust/advisory.ts",
+  "src/backend/logs/trust/advisory.ts",
   "src/backend/processing/providers/gemini-advisory.ts",
   "src/backend/runs/dashboard/queries/advisory.ts",
 ] as const;
 
 /** Anything that can move durable authority. Prefix match. */
 const AUTHORITY_WRITERS = [
-  "src/infra/sqlite/",
+  "src/backend/storage/sqlite/",
   "src/backend/runtime/run-executor.ts",
   "src/backend/runtime/worker-loop.ts",
   "src/backend/runs/command-kernel.ts",
@@ -84,20 +84,20 @@ const AUTHORITY_WRITERS = [
   "src/backend/runtime/write-recovery.ts",
   "src/backend/runs/evidence-receipt.ts",
   "src/backend/runtime/run-failure.ts",
-  "src/services/trust/diagnostic-capture.ts",
-  "src/services/notifications/",
-  "src/infra/ledger/",
-  "src/server/dashboard/commands/",
+  "src/backend/logs/trust/diagnostic-capture.ts",
+  "src/backend/runs/notifications/",
+  "src/backend/storage/ledger/",
+  "src/backend/runs/dashboard/commands/",
   "src/backend/app/dashboard/compose.ts",
   "src/backend/app/worker-compose.ts",
-  "src/control/",
+  "src/backend/app/control/",
 ] as const;
 
 /** The command family, which may never import an advisory module. */
 const COMMAND_FAMILY = [
   "src/domain/commands.ts",
   "src/backend/runs/command-kernel.ts",
-  "src/server/dashboard/commands/",
+  "src/backend/runs/dashboard/commands/",
 ] as const;
 
 /* ── the import walker (bundled specifiers only) ─────────────────────────── */
@@ -216,13 +216,13 @@ describe("ai-advisory-no-authority — the module graph", () => {
         writeFileSync(absolute, body);
       };
       // ① an advisory module that reaches a writer, three hops down.
-      write("src/domain/trust/advisory.ts", 'import { helper } from "../../services/trust/helper.js";\nexport const a = helper;\n');
-      write("src/services/trust/helper.ts", 'import { db } from "../../infra/sqlite/authority-database.js";\nexport const helper = db;\n');
+      write("src/domain/trust/advisory.ts", 'import { helper } from "../../backend/logs/trust/helper.js";\nexport const a = helper;\n');
+      write("src/backend/logs/trust/helper.ts", 'import { db } from "../../storage/sqlite/authority-database.js";\nexport const helper = db;\n');
       write("src/backend/storage/sqlite/authority-database.ts", "export const db = 1;\n");
       // ② a command module that imports the advisory.
       write("src/domain/commands.ts", 'import { a } from "./trust/advisory.js";\nexport const c = a;\n');
       const issues = auditAdvisoryAuthorityEdge(root).join("\n");
-      assert.match(issues, /advisory reaches authority writer src\/infra\/sqlite\/authority-database\.ts/u);
+      assert.match(issues, /advisory reaches authority writer src\/backend\/storage\/sqlite\/authority-database\.ts/u);
       assert.match(issues, /advisory\.ts -> .*helper\.ts -> .*authority-database\.ts/u);
       assert.match(issues, /command-family module src\/domain\/commands\.ts imports advisory module/u);
     } finally {

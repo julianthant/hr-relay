@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { archiveFixture, attachFile } from '../../helpers/archive-transfer/fixtures.js';
-import { id, NOW } from '../../unit/database-foundation/fixtures.js';
+import { id, NOW } from '../../helpers/database-foundation/fixtures.js';
 import { createRunLifecycleStorage } from '../../../src/backend/storage/run-lifecycle-storage.js';
 import { projectArchiveReport } from '../../../src/backend/runs/dashboard/queries/archive-reports.js';
 

@@ -5,7 +5,7 @@ import { join } from "node:path";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { FailureRecordSchema } from "../../src/domain/trust/failure.js";
-import { failureRecordOf } from "../unit/server/helpers/dashboard-harness.js";
+import { failureRecordOf } from "../helpers/backend/dashboard-harness.js";
 import { manualClock } from "../../src/domain/clock.js";
 import { projectReceiptForOperator } from "../../src/domain/trust/evidence.js";
 import { ArchivedRunContentSchema } from "../../src/domain/archive/model.js";

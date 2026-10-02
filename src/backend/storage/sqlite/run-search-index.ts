@@ -2,7 +2,7 @@ import type { DatabaseSync } from "node:sqlite";
 import { z } from "zod";
 import { canonicalJsonStringify } from "../../../domain/canonical-json.js";
 import { searchPartitionDay } from "../../../domain/dashboard/search-calendar.js";
-import { TimelineEventRecordSchema } from "../../../events/timeline.js";
+import { TimelineEventRecordSchema } from "../../../domain/events/timeline.js";
 import { ActorIdSchema } from "../../../domain/ids.js";
 import { RunRecordSchema, type RunRecord } from "../../../domain/run/record.js";
 import { RunCheckpointRecordSchema } from "../../../domain/workflow/checkpoint.js";

@@ -29,7 +29,7 @@ import {
   SpanEventWireSchema,
   type RunQueuedWire,
   type SpanEventWire,
-} from "../../../events/types.js";
+} from "../../../domain/events/types.js";
 import { AuthorityDatabase } from "./authority-database.js";
 import { inspectAuthorityUpgradeStatus } from "./upgrade-status.js";
 import { requireRuntimeAdmission, type RuntimeAdmission } from "../admission/admission.js";

@@ -4,7 +4,7 @@ import { randomUUID } from "node:crypto";
 import { startSeededServer } from "./seeded-bff.js";
 import type { ParityBundleProof } from "./bundle.js";
 import { personLookupDescriptor } from "../../helpers/registered-workflows.js";
-import { runRecordOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { runRecordOf } from "../../helpers/backend/dashboard-harness.js";
 import { createContentAddressedArtifactWriter } from "../../../src/backend/storage/artifacts/content-addressed-artifact-writer.js";
 import { createTransactionHistory } from "../../../src/backend/storage/sqlite/transaction-history.js";
 import { composeActivity } from "../../../src/backend/app/dashboard/compose/activity.js";

@@ -7,7 +7,7 @@ import { transferArchiveReport } from "../../../src/backend/storage/archive-tran
 import { createRunLifecycleStorage } from "../../../src/backend/storage/sqlite/lifecycle-storage.js";
 import { createItemAttemptHistoryQuery } from "../../../src/backend/runs/dashboard/queries/item-attempt-history.js";
 import { sqliteRunReader } from "../../helpers/canonical-run-reader.js";
-import { makeWorld, runRecordOf, traceOf, uuidOf } from "../../unit/server/helpers/dashboard-harness.js";
+import { makeWorld, runRecordOf, traceOf, uuidOf } from "../../helpers/backend/dashboard-harness.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });

@@ -24,7 +24,7 @@
  * the same reason `FIXTURE_PARKED_WRITE` copies its pair: that function is not
  * exported and takes an authority `RunRecord` this adapter has none of. The
  * copy is PINNED to the server's by
- * `tests/unit/server/identity-gate-section.test.ts`, because a copy nobody
+ * `tests/integration/server/identity-gate-section.test.ts`, because a copy nobody
  * compares is a reference that documents last month's copy.
  */
 import {

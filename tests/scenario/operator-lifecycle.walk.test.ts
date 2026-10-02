@@ -97,7 +97,7 @@ import {
   defineIntakeFixtureDescriptor,
   intakeFixtureProjection,
 } from "../fixtures/intake-workflow-fixture.js";
-import { FixtureReadReceipt } from "../unit/architecture/helpers/descriptor-fixtures.js";
+import { FixtureReadReceipt } from "../helpers/architecture/descriptor-fixtures.js";
 import { CONFIG_SNAPSHOT, HASH_B, HASH_C, NOW, UUID_1 } from "../fixtures/phase1c-contract-fixtures.js";
 import { sequentialIdFactory } from "../fixtures/phase1f-run-fixtures.js";
 import {

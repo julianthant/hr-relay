@@ -13,7 +13,7 @@
  *
  * So a canonical-input schema must be **transform-free**: no `.default()`,
  * `.catch()`, `.transform()`, `.preprocess()`, `.pipe()`, or `z.coerce.*`
- * anywhere in its graph. `src/validation/canonical-input-schema.ts` proves that
+ * anywhere in its graph. `src/domain/validation/canonical-input-schema.ts` proves that
  * mechanically; this module proves the round-trip
  * `input → canonicalInput → identical value` at descriptor construction, so a
  * canonical schema that drifts from its ingress schema fails loud at build
@@ -21,8 +21,8 @@
  */
 import type { z } from "zod";
 import { canonicalJsonStringify } from "../canonical-json.js";
-import { auditContractBoundarySchema } from "../../validation/contract-boundary.js";
-import { auditCanonicalInputSchema } from "../../validation/canonical-input-schema.js";
+import { auditContractBoundarySchema } from "../validation/contract-boundary.js";
+import { auditCanonicalInputSchema } from "../validation/canonical-input-schema.js";
 
 /**
  * A validation-only view of `z.output<InputSchema>`.

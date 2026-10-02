@@ -1,6 +1,6 @@
 import { createRunLifecycleStorage, LifecycleSourceSnapshotSchema } from "../../src/backend/storage/run-lifecycle-storage.js";
 import { ArchivedTransactionsSchema } from "../../src/domain/archive/model.js";
-import { HistoricalOperationSourceSchema } from "../../src/events/timeline.js";
+import { HistoricalOperationSourceSchema } from "../../src/domain/events/timeline.js";
 import { AuthorityDatabase } from "../helpers/synthetic-storage-admission.js";
 import { RunRecordSchema } from "../../src/domain/run/record.js";
 import { fixtureUuid } from "../fixtures/ledger-projection-fixtures.js";
