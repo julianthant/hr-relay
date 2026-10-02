@@ -1,5 +1,5 @@
 export type SessionWorkerState = "running" | "starting" | "idle" | "waiting" | "paused" | "failed";
-export type SessionControl = "pause" | "resume" | "retry" | "stop";
+export type SessionControl = "pause" | "resume" | "retry" | "stop" | "remove";
 export type SessionNode = Readonly<{ id: string; label: string; state: "completed" | "active" | "pending" | "waiting" | "paused" | "failed" }>;
 export type SessionWorker = Readonly<{
   id: string;

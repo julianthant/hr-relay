@@ -35,7 +35,12 @@ export function sessionsSample(scenario: string): SessionsViewState {
 }
 export function previewSessionControl(data: SessionsViewState, id: string, control: SessionControl): SessionsViewState {
   if (data.state !== "ready") throw new Error("sessions-preview-not-ready");
-  if (!data.workers.some(worker => worker.id === id)) throw new Error("sessions-preview-worker-missing");
+  const target = data.workers.find(worker => worker.id === id);
+  if (!target) throw new Error("sessions-preview-worker-missing");
+  if (control === "remove") {
+    if (target.state !== "idle") throw new Error("sessions-preview-remove-invalid");
+    return { state: "ready", workers: data.workers.filter(worker => worker.id !== id) };
+  }
   return { state: "ready", workers: data.workers.map(worker => {
     if (worker.id !== id) return worker;
     if (control === "stop") return { id: worker.id, label: worker.label, workflow: worker.workflow, action: "Ready for the next run", state: "idle", browsers: [] };
