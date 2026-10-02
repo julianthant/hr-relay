@@ -32,9 +32,15 @@ interface Capture {
   readonly physicalSessionId?: string;
   readonly bind?: BrowserActionBinder;
   readonly executingAction?: Readonly<{ kind: BrowserActionKind; targetId: string }>;
+  readonly onBoundAction?: (action: BrowserAction) => void;
 }
 
 const scope = new AsyncLocalStorage<Capture>();
+
+export function currentBrowserActionSessionId(): string | undefined {
+  const capture = scope.getStore();
+  return capture?.state.active === true ? capture.physicalSessionId : undefined;
+}
 
 /** Record a completed browser gesture with its static control id and entered value. */
 export function recordBrowserAction(kind: BrowserActionKind, targetId: string, value?: string | boolean): void {
@@ -48,7 +54,9 @@ export function recordBrowserAction(kind: BrowserActionKind, targetId: string, v
     ...(value === undefined ? {} : { value }),
     ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
   };
-  capture.actions.push(capture.bind === undefined ? action : capture.bind(action));
+  const bound = capture.bind === undefined ? action : capture.bind(action);
+  capture.actions.push(bound);
+  capture.onBoundAction?.(bound);
 }
 
 /** Attach the current manager lease identity without opening a second telemetry scope. */
@@ -80,8 +88,9 @@ export async function withBrowserActionNotes<T>(
   clock: Clock,
   operation: () => Promise<T>,
   drain: (actions: readonly BrowserAction[]) => void,
+  onBoundAction?: (action: BrowserAction) => void,
 ): Promise<T> {
-  const capture: Capture = { clock, actions: [], state: { active: true } };
+  const capture: Capture = { clock, actions: [], state: { active: true }, onBoundAction };
   return scope.run(capture, async () => {
     try {
       return await operation();
@@ -106,13 +115,15 @@ export async function runDeclaredAction<T>(
     return result;
   }
   const record = (state: BrowserAction["state"], value?: JsonValue): void => {
-    capture.actions.push(capture.bind!({
+    const bound = capture.bind!({
       kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
       at: capture.clock.now().toISOString(), state,
       ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
       ...(state === "failed" ? { reason: "callback-failed" as const } : {}),
       ...(value === undefined ? {} : { declaredValue: value }),
-    }));
+    });
+    capture.actions.push(bound);
+    capture.onBoundAction?.(bound);
   };
   record("started");
   let result: T;
@@ -130,12 +141,14 @@ export async function runDeclaredAction<T>(
     });
     const verification = capture.actions.at(-1)?.operation;
     if (verification === undefined || verification.logicalActionId !== confirmation.id || verification.state !== "completed") throw new Error("declared-action-confirmation-identity-missing");
-    capture.actions.push(capture.bind({ kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
+    const bound = capture.bind({ kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
       at: capture.clock.now().toISOString(), state: "confirmed",
       confirmation: { verificationActionId: verification.logicalActionId, verificationOccurrence: verification.occurrence, verifiedAt: capture.actions.at(-1)!.at },
       ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
       ...(observedValue === undefined ? {} : { declaredValue: observedValue }),
-    }));
+    });
+    capture.actions.push(bound);
+    capture.onBoundAction?.(bound);
   }
   return result;
 }
@@ -147,9 +160,11 @@ export function recordDeclaredActionNotRun(
 ): void {
   const capture = scope.getStore();
   if (capture?.state.active !== true || capture.bind === undefined) return;
-  capture.actions.push(capture.bind({
+  const bound = capture.bind({
     kind: action.kind, targetId: action.targetId, declaredActionId: action.id,
     at: capture.clock.now().toISOString(), state: "not-run", reason,
     ...(capture.physicalSessionId === undefined ? {} : { physicalSessionId: capture.physicalSessionId }),
-  }));
+  });
+  capture.actions.push(bound);
+  capture.onBoundAction?.(bound);
 }

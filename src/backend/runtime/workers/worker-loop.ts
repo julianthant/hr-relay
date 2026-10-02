@@ -49,6 +49,8 @@ import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artif
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import type { RunBrowserScreenshotCapture } from "../../../workflow-kit/diagnostics.js";
 import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import { createConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
+import type { ConfirmedActionEvent } from "../../../models/events/confirmed-action.js";
 import type { GateSourceRuntime } from "../gates/gate-source-runtime.js";
 import type { MonotonicDeadlineScheduler } from "../scheduling/deadline-scheduler.js";
 import {
@@ -125,6 +127,8 @@ export interface WorkerLoopDependencies {
   readonly log: TaskLogger;
   /** Run messages and browser actions; transaction callbacks stay outside this sink. */
   readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
+  /** Phase 3 publication handoff; Phase 4 supplies a persistent transport adapter. */
+  readonly confirmedActionAppend?: (event: ConfirmedActionEvent) => void;
   /** Stop claiming and shut the worker down; the active run finishes first. */
   readonly stopSignal: AbortSignal;
   /**
@@ -253,6 +257,15 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
     ? undefined
     : FingerprintSchema.parse(deps.configFingerprint);
   const { emitter, clock } = deps;
+  const confirmedActionPublisher = createConfirmedActionPublisher({
+    workerId, streamId: deps.ids.uuid(), clock, capacity: 256,
+    append: deps.confirmedActionAppend,
+    onHealth: health => {
+      if (health.state !== "healthy") deps.log.warn("confirmed action publication unhealthy", {
+        state: health.state, pending: health.pending, diagnosticFailure: health.diagnosticFailure,
+      });
+    },
+  });
   const workerPath = workerSpanPath(workflowId, workerId);
   const instant = (): string => clock.now().toISOString();
   const emit = (event: Readonly<Record<string, unknown>>): void => {
@@ -401,6 +414,7 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
             scheduler: deps.scheduler,
             taskDeadlineMs,
             log: deps.log,
+            confirmedActionPublisher,
             ...(deps.taskNotes === undefined ? {} : { taskNotes: deps.taskNotes }),
             ...(deps.checkpointMigrations === undefined ? {} : { checkpointMigrations: deps.checkpointMigrations }),
             ...(deps.canonicalInputMigrations === undefined
@@ -430,6 +444,11 @@ export async function runWorkerLoop(deps: WorkerLoopDependencies): Promise<Worke
       }
     }
   } finally {
+    const publication = confirmedActionPublisher.close();
+    if (publication.pending > 0) {
+      try { deps.log.warn("confirmed action publication closed with pending events", { pending: publication.pending }); }
+      catch { /* Health remains queryable through the publisher; shutdown still owns session closure. */ }
+    }
     await sessions.closeAll("worker-stop");
     emit({ t: "span.ended", kind: "worker", workerId, spanPath: workerPath, outcome: "done" });
   }

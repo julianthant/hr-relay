@@ -223,6 +223,7 @@ export function createDeclaredActionBinder(input: DeclaredActionBinderInput): (a
 
   let sequence = 0;
   return (observed: BrowserAction): BrowserAction => {
+    if (observed.operation !== undefined) throw new Error("declared-action-already-bound-reuse");
     sequence += 1;
     const declared = findAction(actions, observed, invocation.operation.page);
     if (declared === undefined) {

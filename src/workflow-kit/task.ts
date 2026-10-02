@@ -18,7 +18,9 @@ import type {
 import { RetryPolicySchema, SessionNeedSchema } from "../models/sessions/session.js";
 import type { RetryPolicy, SessionNeed } from "../models/sessions/session.js";
 import type { MutationCapability } from "../models/ui/driver.js";
-import type { DataPoint } from "../rules/workflow/task-provenance.js";
+import type { DataPoint, DeclaredActionOccurrence } from "../rules/workflow/task-provenance.js";
+import type { JsonValue } from "../rules/validation/canonical-json.js";
+import type { WorkflowOperationDisplaySnapshot } from "../models/workflow/operation-display-snapshot.js";
 import { TaskError } from "./errors.js";
 
 export interface BrowserDriver {
@@ -93,6 +95,34 @@ export interface TaskLogger {
   readonly warn: (message: string, fields?: Readonly<Record<string, string | number | boolean>>) => void;
 }
 
+export type ConfirmedActionRef = Readonly<{ id: string; targetId: string }>;
+export type ConfirmedOutcomeReference = WorkflowOperationDisplaySnapshot["invocations"][number]["outcomes"][number]["when"]["value"];
+export type ConfirmedVerification = Readonly<{
+  action: ConfirmedActionRef;
+  purpose: "read-validation" | "readback" | "interaction-effect" | "saved-effect";
+  observe: () => Promise<JsonValue>;
+  matches: (observed: JsonValue) => boolean;
+}>;
+export type ConfirmedOutcomeObservation = Readonly<{ state: "value"; value: JsonValue }>
+  | Readonly<{ state: "empty" }>
+  | Readonly<{ state: "unavailable" }>;
+export type ConfirmedOutcomeVerification = Readonly<{
+  action: ConfirmedActionRef;
+  purpose: "read-validation";
+  observe: () => Promise<unknown>;
+  matches: (observed: ConfirmedOutcomeObservation) => boolean;
+}>;
+export interface ConfirmedTaskActions {
+  read<T extends JsonValue>(action: ConfirmedActionRef, perform: () => Promise<T>, verification: ConfirmedVerification): Promise<T>;
+  fill(action: ConfirmedActionRef, expected: JsonValue, perform: () => Promise<unknown>, readback: ConfirmedVerification): Promise<void>;
+  click(action: ConfirmedActionRef, perform: () => Promise<unknown>, verification: ConfirmedVerification): Promise<void>;
+  keypress(action: ConfirmedActionRef, perform: () => Promise<unknown>, verification: ConfirmedVerification): Promise<void>;
+  verify(verification: ConfirmedVerification & Readonly<{ purpose: "read-validation" }>): Promise<JsonValue>;
+  confirmOutcome(reference: ConfirmedOutcomeReference, verification: ConfirmedOutcomeVerification): Promise<ConfirmedOutcomeObservation>;
+  result(): Readonly<{ version: 1; state: "selected"; stepOccurrence: string; caseId: string; label: string; source: DeclaredActionOccurrence }>
+    | Readonly<{ version: 1; state: "unavailable" | "ambiguous" | "no-match"; stepOccurrence: string }>;
+}
+
 export interface TaskCtxCommon<Codes extends readonly string[]> {
   readonly signal: AbortSignal;
   readonly log: TaskLogger;
@@ -103,6 +133,8 @@ export interface TaskCtxCommon<Codes extends readonly string[]> {
   ) => never;
   /** Executor-owned, strict task-output provenance collection (D115). */
   readonly recordData: (point: DataPoint | readonly DataPoint[]) => void;
+  /** Present for complete frozen operation displays; legacy invocations have no structured action proof. */
+  readonly confirmed?: ConfirmedTaskActions;
 }
 
 export type PureTaskCtx<Codes extends readonly string[]> = TaskCtxCommon<Codes>;

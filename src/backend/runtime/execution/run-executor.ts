@@ -46,7 +46,7 @@ import type { ContentAddressedArtifactWriter } from "../../../workflow-kit/artif
 import type { RunDiagnosticCapture } from "../../../workflow-kit/diagnostics.js";
 import { TaskError, wrapUnhandledTaskError } from "../../../workflow-kit/errors.js";
 import type { ProviderAdmissionRepository, ProviderClient } from "../../../workflow-kit/providers.js";
-import type { AnyTask, TaskLogger } from "../../../workflow-kit/task.js";
+import type { AnyTask, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import {
   descriptorRuntimeNodes,
@@ -65,6 +65,9 @@ import type { AnyReadTaskContract } from "../../../models/task/task-contract.js"
 import type { GateResultRecord } from "../../../models/workflow/gates.js";
 import type { IdFactory } from "../../../rules/identity/identifiers.js";
 import type { NoteJsonlWriter } from "../../storage/events/note-jsonl-writer.js";
+import type { ConfirmedActionPublisher } from "../../logs/confirmed-action-publisher.js";
+import { createConfirmedInvocation } from "../../logs/confirmed-invocation.js";
+import { publishConfirmedSubmit } from "../../logs/confirmed-submit.js";
 import {
   withBrowserActionBinding,
   withBrowserActionNotes,
@@ -186,6 +189,11 @@ export interface WriteSequencerContext {
   readonly scope: RuntimeScope;
   readonly dryRun: boolean;
   readonly signal: AbortSignal;
+  /** Synchronous in-memory handoff after beat ⑦; consumers publish after the sequencer returns. */
+  readonly onDurableCommit?: (proof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }>) => void;
+  readonly onSavedEffectVerified?: (proof: Readonly<{ proofDigest: string }>) => void;
+  readonly onDiagnosticDeliveryFailure?: () => void;
+  readonly confirmedForRole?: (role: "probe" | "prepare" | "verify", taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
   readonly operationReadBinder?: (role: "probe" | "verify", taskId: string, parsedInput: unknown) => BrowserActionBinder;
   /** Pure completed-gesture binders; persistence remains outside the write fence. */
   readonly operationActionBinders?: Readonly<{
@@ -325,6 +333,7 @@ export interface RunExecutorDependencies {
   readonly log: TaskLogger;
   /** Optional production sink for task messages and browser actions. */
   readonly taskNotes?: Pick<NoteJsonlWriter, "emitRunLog" | "emitRunAction">;
+  readonly confirmedActionPublisher?: ConfirmedActionPublisher;
   readonly checkpointMigrations?: readonly CheckpointMigration[];
   readonly canonicalInputMigrations?: readonly CanonicalInputSnapshotMigration[];
   readonly writeSequencer?: WriteSequencer;
@@ -1177,9 +1186,11 @@ export async function executeClaimedRun(
         if (checkpoint === undefined || checkpoint.runId !== source.identity.runId || checkpoint.claimGeneration !== source.identity.claimGeneration
           || checkpoint.provenance.some((fact) => (fact.path === path || path.startsWith(`${fact.path}.`)) && fact.source !== "live")) actionSources.delete(key);
       }
-      const declaredActionBinder = operationDisplaySnapshot === undefined
+      const registeredSystem = need === undefined ? undefined : task.driver?.system;
+      if (need !== undefined && registeredSystem === undefined) throw new Error("confirmed-action-registered-driver-missing");
+      const confirmedInvocation = operationDisplaySnapshot === undefined
         ? undefined
-        : createDeclaredActionBinder({
+        : createConfirmedInvocation({ binding: {
           snapshot: operationDisplaySnapshot,
           runId,
           attempt: envelope.attempt,
@@ -1196,7 +1207,13 @@ export async function executeClaimedRun(
           ...(envelope.parent === undefined
             ? {}
             : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+        }, clock, publisher: deps.confirmedActionPublisher, traceId: envelope.traceId,
+          ...(registeredSystem === undefined
+            ? { headlessSystem: contract.id.startsWith("workflow:") ? "workflow" as const : "service" as const }
+            : { registeredDriverSystem: registeredSystem }),
+          ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
         });
+      const declaredActionBinder = confirmedInvocation?.binder;
       const collector = createTaskProvenanceCollector({
         descriptor,
         canonicalInput,
@@ -1324,6 +1341,7 @@ export async function executeClaimedRun(
           throw new TaskError(contract.id, code, message, options);
         },
         recordData: collector.recordData,
+        ...(confirmedInvocation?.actions === undefined ? {} : { confirmed: confirmedInvocation.actions }),
       } as const;
 
       const declaredProviders = contract.providers ?? [];
@@ -1371,7 +1389,7 @@ export async function executeClaimedRun(
       let raw: unknown;
       try {
         if (need === undefined) {
-          raw = await withBrowserActionNotes(clock, () => raceAbortable(
+          raw = await (confirmedInvocation?.withNotes ?? ((operation, drain) => withBrowserActionNotes(clock, operation, drain)))(() => raceAbortable(
             Promise.resolve().then(() => withBrowserActionBinding(declaredActionBinder,
               () => run({ input: parsedInput, ctx: { ...ctxCommon, ...ctxExtras } }))),
             controller.signal, contract.id,
@@ -1383,8 +1401,7 @@ export async function executeClaimedRun(
               `run ${runId} resolved no ${need.system} instance at enqueue, and ${contract.id} needs one`,
             );
           }
-          raw = await withBrowserActionNotes(
-            clock,
+          raw = await (confirmedInvocation?.withNotes ?? ((operation, drain) => withBrowserActionNotes(clock, operation, drain)))(
             () => raceAbortable(
               deps.sessions.withDriver(need, instanceSelection, controller.signal, (driver) => raceAbortable(
                 Promise.resolve().then(() => withBrowserActionBinding(
@@ -1910,8 +1927,17 @@ export async function executeClaimedRun(
             ));
           }
           const transactionScope = scopeFor(node.dependsOn);
-          const operationReadBinder = operationDisplaySnapshot === undefined ? undefined
-            : (role: "probe" | "verify", taskId: string, parsedInput: unknown): BrowserActionBinder => createDeclaredActionBinder({
+          const committedGestures: BrowserAction[] = [];
+          const savedVerifications: BrowserAction[] = [];
+          const roleInvocations = new Map<string, ReturnType<typeof createConfirmedInvocation>>();
+          const confirmedRole = (role: "probe" | "prepare" | "verify", taskId: string, parsedInput: unknown) => {
+            if (operationDisplaySnapshot === undefined) return undefined;
+            const key = `${role}/${taskId}`;
+            const previous = roleInvocations.get(key);
+            if (previous !== undefined) return previous;
+            const registeredDriverSystem = taskIndex.get(taskId)?.driver?.system;
+            if (registeredDriverSystem === undefined) throw new Error(`confirmed-${role}-registered-driver-missing`);
+            const invocation = createConfirmedInvocation({ binding: {
               snapshot: operationDisplaySnapshot, runId, attempt: envelope.attempt,
               claimGeneration: claim.claimGeneration, taskAttempt: 1,
               nodeId: String(node.id), taskId, contractRole: role,
@@ -1920,28 +1946,26 @@ export async function executeClaimedRun(
               ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
               runInput: canonicalInput, outputs, configurationValues,
               ...(envelope.parent === undefined ? {} : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
+            }, clock, publisher: deps.confirmedActionPublisher, traceId: envelope.traceId,
+              registeredDriverSystem,
+              ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
             });
+            roleInvocations.set(key, invocation);
+            return invocation;
+          };
+          const operationReadBinder = operationDisplaySnapshot === undefined ? undefined
+            : (role: "probe" | "verify", taskId: string, parsedInput: unknown): BrowserActionBinder => {
+              const bind = confirmedRole(role, taskId, parsedInput)!.observingBinder;
+              return note => {
+                const bound = bind(note);
+                if (role === "verify" && bound.kind === "verified" && bound.operation?.state === "completed") savedVerifications.push(bound);
+                return bound;
+              };
+            };
           const operationActionBinders = operationDisplaySnapshot === undefined
             ? undefined
             : {
-              prepare: createDeclaredActionBinder({
-                snapshot: operationDisplaySnapshot,
-                runId,
-                attempt: envelope.attempt,
-                claimGeneration: claim.claimGeneration,
-                taskAttempt: 1,
-                nodeId: String(node.id),
-                taskId: node.prepare.uses.id,
-                contractRole: "prepare",
-                parsedInput: JsonValueSchema.parse(node.prepare.bind(transactionScope)),
-                protectedBindings: retainedRunProtectedBindings(initial),
-                sources: actionSources, childSources,
-                ...(descriptor.operationDisplay?.capability === "complete" ? { transforms: descriptor.operationDisplay.transforms } : {}),
-                runInput: canonicalInput, outputs, configurationValues,
-                ...(envelope.parent === undefined
-                  ? {}
-                  : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
-              }),
+              prepare: confirmedRole("prepare", node.prepare.uses.id, node.prepare.bind(transactionScope))!.observingBinder,
               commit: createDeclaredActionBinder({
                 snapshot: operationDisplaySnapshot,
                 runId,
@@ -1961,6 +1985,14 @@ export async function executeClaimedRun(
                   : { childInvocation: { parentRunId: envelope.parent.runId, edgeId: envelope.parent.edgeId } }),
               }),
             };
+          const trackedBinders = operationActionBinders === undefined ? undefined : {
+            ...operationActionBinders,
+            commit: (note: BrowserAction): BrowserAction => {
+              const bound = operationActionBinders.commit(note);
+              if (bound.kind === "clicked" && bound.operation?.state === "completed") committedGestures.push(bound);
+              return bound;
+            },
+          };
           /**
            * D210 — the preview arm (ref task-contract §6.2). A dry run reaches the
            * transaction node, runs the sequencer's REAL prepare-only arm (zero
@@ -1979,7 +2011,8 @@ export async function executeClaimedRun(
                 scope: transactionScope,
                 dryRun: true,
                 signal: input.signal,
-                ...(operationActionBinders === undefined ? {} : { operationActionBinders }),
+                confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
+                ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
                 ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
               }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions)));
             } catch (error) {
@@ -2000,12 +2033,19 @@ export async function executeClaimedRun(
             return settlePreview(node, preview);
           }
           try {
+            let durableCommitProof: Readonly<{ writeIntentId: string; confirmedAt: string; proofDigest: string }> | undefined;
+            let savedEffectProof: Readonly<{ proofDigest: string; verifiers: readonly BrowserAction[] }> | undefined;
             const raw = await withBrowserActionNotes(clock, () => deps.writeSequencer!.executeTransaction({
               descriptor, node, run: getRun(), claim,
               scope: transactionScope,
               dryRun: envelope.dryRun,
               signal: input.signal,
-              ...(operationActionBinders === undefined ? {} : { operationActionBinders }),
+              confirmedForRole: (role, taskId, parsedInput) => confirmedRole(role, taskId, parsedInput)?.actions,
+              onDurableCommit: proof => { durableCommitProof = proof; },
+              onSavedEffectVerified: proof => { savedEffectProof = { proofDigest: proof.proofDigest,
+                verifiers: [...savedVerifications] }; },
+              onDiagnosticDeliveryFailure: () => { deps.confirmedActionPublisher?.reportAppendFailure(); },
+              ...(trackedBinders === undefined ? {} : { operationActionBinders: trackedBinders }),
                 ...(operationReadBinder === undefined ? {} : { operationReadBinder }),
             }), (actions) => drainBrowserActions(runSpanIdentity.spanPath, actions));
             const OutcomeSchema = z.strictObject({
@@ -2050,6 +2090,25 @@ export async function executeClaimedRun(
               );
             }
             checkpointRecords.set(String(node.id), record);
+            if (storedOutcome.disposition === "committed" && storedOutcome.proofSource === "normal-output"
+              && deps.confirmedActionPublisher !== undefined && operationDisplaySnapshot !== undefined) {
+              const system = taskIndex.get(node.commit.uses.id)?.driver?.system;
+              if (system === undefined) throw new Error("confirmed-submit-registered-driver-missing");
+              const verifierTaskId = node.commit.uses.writeSafety.completion.kind === "receipt"
+                ? undefined : node.commit.uses.writeSafety.completion.verify.taskId;
+              try { publishConfirmedSubmit({
+                publisher: deps.confirmedActionPublisher,
+                snapshot: operationDisplaySnapshot,
+                system, commitTaskId: node.commit.uses.id, verifierTaskId,
+                commits: committedGestures, verifiers: savedEffectProof?.verifiers ?? [],
+                verifiedProofDigest: savedEffectProof?.proofDigest,
+                durable: durableCommitProof, checkpointNodeId: String(node.id),
+                checkpointProofDigest: sha256Hex(canonicalJsonStringify(storedOutcome.proof.value)),
+                traceId: envelope.traceId,
+                ...(initial.sessionId === undefined ? {} : { runSessionId: initial.sessionId }),
+              }); }
+              catch { deps.confirmedActionPublisher.reportProgramError(); }
+            }
           } catch (error) {
             if (error instanceof RunAbandonedError) throw error;
             if (error instanceof WriteParkedError) {

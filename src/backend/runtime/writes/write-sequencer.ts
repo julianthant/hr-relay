@@ -4,6 +4,7 @@ import { valueFreeProtectedData } from "../../../models/write-safety/protected-i
 import { isFreshOccurrenceProof } from "../gates/repeat-proof.js";
 import { readRunCheckpoint } from "../checkpoints/run-checkpoint-reader.js";
 import { decideDurableIntent } from "../policies/durable-intent.js";
+import { runMandatorySavedVerification, completeProtectedWrite } from "./mandatory-saved-verification.js";
 /**
  * The Phase-1f fenced write sequencer — ref write-safety §3's seven-beat kernel write
  * sequence (D111), the D117 transaction-node semantics of ref workflow-model §3.1, and the
@@ -34,7 +35,7 @@ import { decideDurableIntent } from "../policies/durable-intent.js";
  */
 import { z } from "zod";
 import { TaskError } from "../../../workflow-kit/errors.js";
-import type { AnyTask, BrowserDriver, TaskLogger } from "../../../workflow-kit/task.js";
+import type { AnyTask, BrowserDriver, TaskLogger, ConfirmedTaskActions } from "../../../workflow-kit/task.js";
 import type { TaskStoreRegistry } from "../../../workflow-kit/task-registry.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../../rules/validation/canonical-json.js";
@@ -579,6 +580,7 @@ export async function executeIdempotencyProbe(
     signal: AbortSignal;
     onRecord?: (taskId: TaskId, batch: BoundedTaskRecordBatch) => void;
     actionBinderForInput?: (taskId: string, parsedInput: unknown) => BrowserActionBinder;
+    confirmedForInput?: (taskId: string, parsedInput: unknown) => ConfirmedTaskActions | undefined;
   }>,
 ): Promise<z.output<ReturnType<typeof probeVerdictSchema>>> {
   const { commitContract } = input;
@@ -606,9 +608,11 @@ export async function executeIdempotencyProbe(
   const raw = await deps.sessions.withDriver(need, input.instance, input.signal, async (driver) => {
     const { raw: output } = await invokeBoundedTask(deps, probeRef.taskId, input.signal, (innerSignal, recordData) => {
       const run = RunnableTaskSchema.parse(probeTask.impl.run);
+      const confirmed = input.confirmedForInput?.(probeRef.taskId, probeInput);
       return withBrowserActionBinding(input.actionBinderForInput?.(probeRef.taskId, probeInput), () => run({
         input: probeInput,
-        ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver },
+        ctx: { ...taskCtx(probeRef.taskId, innerSignal, recordData, deps.log), driver,
+          ...(confirmed === undefined ? {} : { confirmed }) },
       }));
     }, input.onRecord === undefined ? undefined : (batch) => input.onRecord?.(probeRef.taskId, batch));
     return output;
@@ -902,12 +906,30 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
   }
 
   type TransactionTaskRole = "probe" | "prepare" | "commit" | "verify";
+  type BufferedCommitLog = Readonly<{ level: keyof TaskLogger; message: string; fields?: Readonly<Record<string, string | number | boolean>> }>;
+
+  function reportDiagnosticFailure(context: WriteSequencerContext): void {
+    try { context.onDiagnosticDeliveryFailure?.(); } catch { /* diagnostic health is non-authoritative */ }
+  }
 
   const taskCtxCommon = (
     taskId: TaskId,
     signal: AbortSignal,
     recordData: (point: DataPoint | readonly DataPoint[]) => void,
-  ) => taskCtx(taskId, signal, recordData, deps.log);
+    context?: WriteSequencerContext,
+    role?: "prepare" | "verify",
+    parsedInput?: unknown,
+    bufferedLogs?: BufferedCommitLog[],
+  ) => ({ ...taskCtx(taskId, signal, recordData, bufferedLogs === undefined ? context === undefined ? deps.log : {
+    debug(message, fields) { try { deps.log.debug(message, fields); } catch { reportDiagnosticFailure(context); } },
+    info(message, fields) { try { deps.log.info(message, fields); } catch { reportDiagnosticFailure(context); } },
+    warn(message, fields) { try { deps.log.warn(message, fields); } catch { reportDiagnosticFailure(context); } },
+  } : {
+    debug(message, fields) { bufferedLogs.push({ level: "debug", message, ...(fields === undefined ? {} : { fields }) }); },
+    info(message, fields) { bufferedLogs.push({ level: "info", message, ...(fields === undefined ? {} : { fields }) }); },
+    warn(message, fields) { bufferedLogs.push({ level: "warn", message, ...(fields === undefined ? {} : { fields }) }); },
+  }), ...(context !== undefined && role !== undefined && context.confirmedForRole !== undefined
+    ? { confirmed: context.confirmedForRole(role, taskId, parsedInput) } : {}) });
 
   function transactionTaskSpanPath(context: WriteSequencerContext, role: TransactionTaskRole): string {
     return `${TraceIdSchema.parse(context.run.envelope.traceId)}/${String(context.node.id)}/${role}`;
@@ -918,6 +940,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     role: TransactionTaskRole,
     taskId: TaskId,
     batch: BoundedTaskRecordBatch,
+    deliverySafe = false,
   ): void {
     const envelope = context.run.envelope;
     const trace = TraceIdSchema.parse(envelope.traceId);
@@ -932,7 +955,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     const points: readonly RecordedDataPoint[] = Object.freeze(batch.points.map((point) =>
       RecordedDataPointSchema.parse({ ...point, execution, recordedAt: batch.recordedAt })));
     const redacted = redactObservedDataPoints(taskId, points);
-    deps.emitter.emit(ExecutorSpanEventSchema.parse({
+    const event = ExecutorSpanEventSchema.parse({
       t: "data.observed",
       ts: batch.recordedAt,
       workflow: context.descriptor.id,
@@ -945,7 +968,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       taskId,
       observedAt: batch.recordedAt,
       points: redacted,
-    }));
+    });
+    if (deliverySafe) {
+      try { deps.emitter.emit(event); }
+      catch { reportDiagnosticFailure(context); }
+    } else deps.emitter.emit(event);
   }
 
   const invokeTransactionTask = (
@@ -959,7 +986,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     taskId,
     signal,
     run,
-    (batch) => emitObservedBatch(context, role, taskId, batch),
+    (batch) => emitObservedBatch(context, role, taskId, batch, role === "verify"),
   );
 
   function resolvedInstanceFor(context: WriteSequencerContext, system: string): string {
@@ -1088,11 +1115,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     role: TransactionTaskRole,
     event: "span.started" | "span.ended",
     outcome?: "done" | "failed",
+    deliverySafe = false,
   ): void {
     const envelope = context.run.envelope;
     const trace = TraceIdSchema.parse(envelope.traceId);
     const spanPath = transactionTaskSpanPath(context, role);
-    deps.emitter.emit(ExecutorSpanEventSchema.parse({
+    const span = ExecutorSpanEventSchema.parse({
       t: event,
       kind: "task",
       ts: instant(),
@@ -1103,7 +1131,11 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       spanPath,
       parentSpanPath: trace,
       ...(event === "span.started" ? { name: role } : { outcome: outcome ?? "done" }),
-    }));
+    });
+    if (deliverySafe) {
+      try { deps.emitter.emit(span); }
+      catch { reportDiagnosticFailure(context); }
+    } else deps.emitter.emit(span);
   }
 
   function failureMessage(error: unknown): string {
@@ -1165,6 +1197,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         signal: context.signal,
         onRecord: (taskId, batch) => emitObservedBatch(context, "probe", taskId, batch),
         actionBinderForInput: context.operationReadBinder === undefined ? undefined : (taskId, parsedInput) => context.operationReadBinder!("probe", taskId, parsedInput),
+        confirmedForInput: context.confirmedForRole === undefined ? undefined : (taskId, parsedInput) => context.confirmedForRole!("probe", taskId, parsedInput),
       });
       emitTaskSpan(context, "probe", "span.ended", "done");
       return verdict;
@@ -1512,7 +1545,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
     try {
       const verifyTask = requireTask(completion.verify.taskId, `${completion.kind} verifier`);
       const verifyInput: unknown = verifyTask.contract.input.parse(input.commitInput);
-      emitTaskSpan(input.context, "verify", "span.started");
+      emitTaskSpan(input.context, "verify", "span.started", undefined, true);
       verifySpanStarted = true;
       const { raw } = await invokeTransactionTask(
         input.context,
@@ -1523,12 +1556,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           const run = RunnableTaskSchema.parse(verifyTask.impl.run);
           return withBrowserActionBinding(input.context.operationReadBinder?.("verify", completion.verify.taskId, verifyInput), () => run({
             input: verifyInput,
-            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData), driver: input.driver },
+            ctx: { ...taskCtxCommon(completion.verify.taskId, innerSignal, recordData, input.context, "verify", verifyInput), driver: input.driver },
           }));
         },
       );
       verdict = probeVerdictSchema(completion.proofSchema).parse(verifyTask.contract.output.parse(raw));
-      emitTaskSpan(input.context, "verify", "span.ended", "done");
+      emitTaskSpan(input.context, "verify", "span.ended", "done", true);
     } catch (error) {
       const preserved = verifySpanStarted
         ? preserveTaskFailure(input.context, "verify", error)
@@ -1990,10 +2023,12 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       readonly outputValue: JsonValue;
     }
 
-    let leased: LeasedCommitResult;
-    let retainedIntent: AttemptingIntent | undefined;
-    try {
-      leased = await deps.sessions.withTransactionDriver(
+    return await completeProtectedWrite({
+      performCommitAndVerify: async () => {
+        let leased: LeasedCommitResult;
+        let retainedIntent: AttemptingIntent | undefined;
+        try {
+          leased = await deps.sessions.withTransactionDriver(
         need,
         instance,
         context.signal,
@@ -2014,7 +2049,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
               const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
               return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
                 input: prepareInput,
-                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
+                ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver },
               }));
             },
           );
@@ -2154,6 +2189,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         /* beat ⑤ — the external commit under the minted capability */
         const capability = mintMutationCapability(fenced.generation, fenced.bindingProofDigest);
         const bufferedCommitObservations: BoundedTaskRecordBatch[] = [];
+        const bufferedCommitLogs: BufferedCommitLog[] = [];
         let commitSettlement:
           | Readonly<{ state: "done"; raw: unknown }>
           | Readonly<{ state: "failed"; error: unknown }>;
@@ -2165,7 +2201,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(commitTask.impl.run);
             return withBrowserActionBinding(context.operationActionBinders?.commit, () => runImpl({
               input: commitInput,
-              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData), driver, mutation: capability },
+              ctx: { ...taskCtxCommon(commitContract.id, innerSignal, recordData, context, undefined, undefined, bufferedCommitLogs), driver, mutation: capability },
             }));
           },
           (batch) => bufferedCommitObservations.push(batch),
@@ -2197,6 +2233,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           // commit callback has already settled. A task may legally record a
           // staged/page fact before it calls its driver: buffering keeps that
           // record-time callback from stranding a fenced-but-unclicked write.
+          for (const entry of bufferedCommitLogs) deps.log[entry.level](entry.message, entry.fields);
           deps.emitter.emit(deferredFenceEvent);
           for (const batch of bufferedCommitObservations) {
             emitObservedBatch(context, "commit", commitContract.id, batch);
@@ -2239,13 +2276,6 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             combined,
           );
         }
-        if (emissionFailure !== undefined) {
-          throw postFenceTaskFailure(
-            `${commitContract.id} settled after the fence, then its observation writer threw`,
-            "post-fence-observation-exception",
-            emissionFailure.error,
-          );
-        }
         if (commitSettlement.state === "failed") {
           throw postFenceTaskFailure(
             `${commitContract.id} threw after the fence`,
@@ -2258,13 +2288,17 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         const rawCommitOutput = commitSettlement.raw;
 
         /* beat ⑥ — capture/verify on the retained transaction page */
-        const captured = await captureProof({
-          context,
-          commitContract,
-          commitInput,
-          driver,
-          rawCommitOutput,
-          intent: fenced,
+        const captured = await runMandatorySavedVerification({
+          ...(emissionFailure === undefined ? {} : { diagnosticFailure: emissionFailure.error }),
+          diagnosticIsProgramFailure: containsSchemaFailure,
+          reportDeliveryFailure: () => reportDiagnosticFailure(context),
+          verifySavedEffect: () => captureProof({ context, commitContract, commitInput, driver,
+            rawCommitOutput, intent: fenced }),
+          onProgramFailure: error => { throw postFenceTaskFailure(
+            `${commitContract.id} post-settlement observation failed schema validation after saved-effect verification`,
+            "post-fence-commit-and-observation-exception",
+            error,
+          ); },
         });
         if (!isFreshOccurrenceProof(fenced, envelope, {
           schemaHash: deriveSchemaHash(commitContract.writeSafety.completion.proofSchema, "output"), value: captured.proofValue,
@@ -2272,6 +2306,10 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
           throw new PostFenceWriteFailure({ writeIntentId: fenced.writeIntentId, generation: fenced.generation,
             intentVersion: fenced.version, parkCode: "unknown", message: "new occurrence has only its earlier receipt; completion is unknown",
             authorityReason: authorityReason(context.run, "post-click-verifier-unknown", "proof", captured.proofValue) });
+        }
+        if (commitContract.writeSafety.completion.kind !== "receipt") {
+          try { context.onSavedEffectVerified?.({ proofDigest: sha256Hex(canonicalJsonStringify(captured.proofValue)) }); }
+          catch { reportDiagnosticFailure(context); }
         }
         return { intent: fenced, proofValue: captured.proofValue, outputValue: captured.outputValue };
         },
@@ -2313,7 +2351,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
         // committed / observed-present reuses its proof; anything else refuses.
         const winner = error.existing;
         if (winner.status === "committed" || winner.status === "observed-present") {
-          return reuseDurableIntent(context, commitContract, winner);
+          return { state: "existing" as const, result: reuseDurableIntent(context, commitContract, winner) };
         }
         throw new Error(
           `write fence for ${idempotencyKeyDigestReference(keyDigest, hasProtectedTransactionInput(context.run))} lost the race to intent `
@@ -2324,38 +2362,46 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
       }
       throw error;
     }
-
-    /* beat ⑦ — ONE outer authority transaction over the whole bundle */
-    const settlement = buildCommittedSettlement({
-      descriptor: context.descriptor,
-      nodeId: String(node.id),
-      run,
-      intent: leased.intent,
-      commitContract,
-      operator,
-      implFingerprint: resolveImplFingerprint(commitContract.id),
-      proofSource: "normal-output",
-      proofValue: leased.proofValue,
-      outputValue: leased.outputValue,
-      confirmedAt: instant(),
-      ids: deps.ids,
-    });
-    executeSequencedWriteCommit(
-      deps.authority,
-      {
-        run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
-        checkpoint: settlement.checkpoint,
-        commit: settlement.commit,
+        return { state: "new" as const, proof: leased };
       },
-      { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
-      deps.hooks,
-    );
-    return {
-      disposition: "committed",
-      proofSource: "normal-output",
-      output: settlement.outcome.output.value,
-      proof: settlement.outcome.proof.value,
-    };
+      settleVerified: proof => {
+        /* beat ⑦ — ONE outer authority transaction over the whole bundle */
+        const committed = buildCommittedSettlement({
+          descriptor: context.descriptor,
+          nodeId: String(node.id),
+          run,
+          intent: proof.intent,
+          commitContract,
+          operator,
+          implFingerprint: resolveImplFingerprint(commitContract.id),
+          proofSource: "normal-output",
+          proofValue: proof.proofValue,
+          outputValue: proof.outputValue,
+          confirmedAt: instant(),
+          ids: deps.ids,
+        });
+        executeSequencedWriteCommit(
+          deps.authority,
+          {
+            run: { runId: envelope.runId, expectedVersion: currentRunVersion(context), claim: context.claim },
+            checkpoint: committed.checkpoint,
+            commit: committed.commit,
+          },
+          { kind: "advance-running", claim: context.claim, claimedAt: claimedAtFor(context), port: deps.lifecycle },
+          deps.hooks,
+        );
+        if (committed.outcome.disposition !== "committed") throw new Error("committed-settlement-disposition-mismatch");
+        return { committed, confirmedAt: committed.outcome.confirmedAt };
+      },
+      onSettled: (settled, proof) => context.onDurableCommit?.({
+        writeIntentId: proof.intent.writeIntentId,
+        confirmedAt: settled.confirmedAt,
+        proofDigest: sha256Hex(canonicalJsonStringify(settled.committed.outcome.proof.value)),
+      }),
+      reportDeliveryFailure: () => reportDiagnosticFailure(context),
+      projectSettled: settled => ({ disposition: "committed" as const, proofSource: "normal-output" as const,
+        output: settled.committed.outcome.output.value, proof: settled.committed.outcome.proof.value }),
+    });
   }
 
   /**
@@ -2562,7 +2608,7 @@ export function createWriteSequencer(deps: WriteSequencerDependencies): Producti
             const runImpl = RunnableTaskSchema.parse(prepareTask.impl.run);
             return withBrowserActionBinding(context.operationActionBinders?.prepare, () => runImpl({
               input: prepareInput,
-              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData), driver },
+              ctx: { ...taskCtxCommon(prepareContract.id, innerSignal, recordData, context, "prepare", prepareInput), driver },
             }));
           },
         );
