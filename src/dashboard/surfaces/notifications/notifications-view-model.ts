@@ -37,26 +37,6 @@ export function projectNotifications(rows: readonly NotificationWire[], nowIso: 
   };
 }
 
-export function createCompletionPingFeed() {
-  const seen = new Map<string, string>();
-  let connected = false;
-  return {
-    update(rows: readonly NotificationWire[], live: boolean): string | undefined {
-      const baseline = !connected || !live;
-      connected = live;
-      let candidate: string | undefined;
-      for (const row of rows) {
-        const prior = seen.get(row.notificationId);
-        seen.set(row.notificationId, row.publicationId);
-        if (!baseline && row.kind === "notification" && row.trigger === "verified-done"
-          && row.channel === "inbox" && prior !== row.publicationId && candidate === undefined) {
-          candidate = row.notificationId;
-        }
-      }
-      return candidate;
-    },
-  };
-}
 export const NOTIFICATION_VIEW_FILTERS: readonly { id: NotificationFilter; label: string }[] = [
   { id: "all", label: "All" }, { id: "unread", label: "Unread" }, { id: "attention", label: "Needs attention" }, { id: "snoozed", label: "Snoozed" },
 ];

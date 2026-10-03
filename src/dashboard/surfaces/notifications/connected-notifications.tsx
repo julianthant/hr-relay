@@ -5,9 +5,9 @@ import { settleCommandResult } from "../../app/command-result.js";
 import type { OpenNotification } from "../../state/notification-navigation.js";
 import { useNotificationClient } from "../../state/notification-client.js";
 import { NOTIFICATION_DELIVERY_LABELS, useNotificationDelivery } from "../../state/use-notification-delivery.js";
-import { createCompletionPingFeed, projectNotifications, type NotificationFilter } from "./notifications-view-model.js";
-import { createFailureToastFeed, failedRunToastDescription } from "./notification-feedback-model.js";
-import { NotificationPing, NotificationsView } from "./notifications-view.js";
+import { projectNotifications, type NotificationFilter } from "./notifications-view-model.js";
+import { createNotificationToastFeed, notificationRowsForActor, notificationToastPresentation } from "./notification-feedback-model.js";
+import { NotificationsView } from "./notifications-view.js";
 
 export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, dayState, refresh, onOpenNotification }: {
   rows: readonly NotificationWire[]; actorId: string; day: string; nowIso: string; connected: boolean;
@@ -24,45 +24,46 @@ export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, 
   const [filter, setFilter] = useState<NotificationFilter>("all");
   const [notice, setNotice] = useState("");
   const [observation, setObservation] = useState("");
-  const [pingId, setPingId] = useState<string | undefined>();
-  const pingFeed = useRef(createCompletionPingFeed());
-  const failureFeed = useRef(createFailureToastFeed());
-  const activeFailureToasts = useRef(new Map<string, string>());
-  const failureContext = useRef(identity.current.version);
-  const currentRows = useRef(rows);
-  currentRows.current = rows;
+  const toastFeed = useRef(createNotificationToastFeed());
+  const activePublicationToasts = useRef(new Map<string, string>());
+  const toastContext = useRef(identity.current.version);
+  const scopedRows = useMemo(() => notificationRowsForActor(rows, actorId), [rows, actorId]);
+  const currentRows = useRef(scopedRows);
+  currentRows.current = scopedRows;
   const state = useMemo(() => dayState === "failed" ? { state: "unavailable" as const, reason: "The day snapshot is unavailable." }
     : dayState === "loading" ? { state: "loading" as const } : projectNotifications(rows, nowIso), [dayState, rows, nowIso]);
   useEffect(() => {
-    const next = pingFeed.current.update(rows, connected);
-    if (next !== undefined) setPingId(next);
-  }, [rows, connected]);
-
-  useEffect(() => {
-    if (failureContext.current !== identity.current.version) {
-      for (const toastId of activeFailureToasts.current.values()) dismiss(toastId);
-      activeFailureToasts.current.clear();
-      failureFeed.current.reset();
-      failureContext.current = identity.current.version;
-      setPingId(undefined);
+    if (toastContext.current !== identity.current.version) {
+      for (const toastId of activePublicationToasts.current.values()) dismiss(toastId);
+      activePublicationToasts.current.clear();
+      toastFeed.current.reset();
+      toastContext.current = identity.current.version;
     }
-    const current = new Set<string>(rows.map(row => row.publicationId));
-    for (const [publicationId, toastId] of activeFailureToasts.current) {
-      if (!current.has(publicationId)) { dismiss(toastId); activeFailureToasts.current.delete(publicationId); }
+    const current = new Set<string>(scopedRows.map(row => row.publicationId));
+    for (const [publicationId, toastId] of activePublicationToasts.current) {
+      if (!current.has(publicationId)) { dismiss(toastId); activePublicationToasts.current.delete(publicationId); }
     }
     const version = identity.current.version;
-    const candidates = failureFeed.current.update(rows, connected && dayState === "loaded");
+    const candidates = toastFeed.current.update(scopedRows, connected && dayState === "loaded");
     for (const row of candidates) {
       const publicationId = row.publicationId;
-      const toastId = toast({ tone: "danger", title: "Run failed", description: failedRunToastDescription(row),
-        action: { label: "Open failure", onAction: () => {
-          if (identity.current.version !== version || !currentRows.current.some(entry => entry.kind === "notification" && entry.publicationId === publicationId && entry.notificationId === row.notificationId && entry.actorId === actorId && entry.sourceEvent?.state === "available" && entry.sourceEvent.kind === "run-failed")) return;
+      const eventKind = row.sourceEvent?.state === "available" ? row.sourceEvent.kind : undefined;
+      const presentation = notificationToastPresentation(row);
+      const toastId = toast({ tone: presentation.tone, title: presentation.title, description: presentation.description,
+        ...(presentation.action === undefined ? {} : { action: { label: presentation.action, onAction: () => {
+          if (identity.current.version !== version || !currentRows.current.some(entry => entry.kind === "notification" && entry.publicationId === publicationId && entry.notificationId === row.notificationId && entry.actorId === actorId && entry.sourceEvent?.state === "available" && entry.sourceEvent.kind === eventKind)) return;
           onOpenNotification(row.notificationId, () => {}, message => { if (identity.current.version === version) setNotice(message); });
-        } },
+        } } }),
       });
-      activeFailureToasts.current.set(publicationId, toastId);
+      activePublicationToasts.current.set(publicationId, toastId);
     }
-  }, [rows, actorId, day, client, connected, dayState, toast, dismiss, onOpenNotification]);
+  }, [scopedRows, actorId, day, client, connected, dayState, toast, dismiss, onOpenNotification]);
+
+  useEffect(() => () => {
+    identity.current.version += 1;
+    for (const toastId of activePublicationToasts.current.values()) dismiss(toastId);
+    activePublicationToasts.current.clear();
+  }, [dismiss]);
 
   useEffect(() => {
     if (!open) return;
@@ -92,10 +93,8 @@ export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, 
       refresh();
     }, (error: unknown) => { if (identity.current.version !== version) return; setNotice(error instanceof Error ? error.message : String(error)); refresh(); });
   };
-  const ping = state.state === "ready" ? state.items.find(item => item.id === pingId && item.tone === "positive") : undefined;
   return <><NotificationsView state={state} filter={filter} onFilter={setFilter} open={open} onOpenChange={setOpen}
     onControl={control} onOpen={item => onOpenNotification(item.id, () => setOpen(false), setNotice)}
     notice={[notice, observation, delivery.state === "delivery-failed" ? NOTIFICATION_DELIVERY_LABELS[delivery.state] : ""].filter(Boolean).join(" ")}
-    desktopStatus={NOTIFICATION_DELIVERY_LABELS[delivery.state]} onEnable={delivery.enable} />
-    {ping !== undefined && <NotificationPing item={ping} onClose={() => setPingId(undefined)} onOpen={() => { setPingId(undefined); setOpen(true); }} />}</>;
+    desktopStatus={NOTIFICATION_DELIVERY_LABELS[delivery.state]} onEnable={delivery.enable} /></>;
 }

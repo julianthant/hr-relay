@@ -51,3 +51,15 @@ it("runs one recovery action and dismisses its card", async () => {
   assert.equal(action.mock.calls.length, 1);
   assert.equal(document.querySelector('[data-ds-toast-state]'), null);
 });
+
+it("auto-dismisses the approved success and warning chips after their default timer", async () => {
+  await mount();
+  vi.useFakeTimers();
+  await act(async () => {
+    controls.toast({ tone: "success", title: "Verified completion" });
+    controls.toast({ tone: "warning", title: "Repeating failure" });
+  });
+  assert.equal(document.querySelectorAll('[data-ds-toast-state="chip"]').length, 2);
+  await act(async () => { vi.advanceTimersByTime(3_000); });
+  assert.equal(document.querySelectorAll('[data-ds-toast-state]').length, 0);
+});

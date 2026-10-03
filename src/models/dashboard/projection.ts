@@ -816,6 +816,7 @@ export function notificationWireOf(
       title: notificationTitle(record.trigger),
       state: "pinned",
       occurredAt: record.lastSeenAt,
+      sourceEvent: sourceEvent ?? { state: "unavailable" },
     });
   }
   const severity = record.trigger === "failed" || record.trigger === "write-parked"
@@ -912,6 +913,7 @@ const BackfillGapNotificationWireSchema = z.strictObject({
   title: z.literal("Notification history is incomplete"),
   state: z.literal("pinned"),
   occurredAt: IsoInstantSchema,
+  sourceEvent: NotificationSourceEventWireSchema.optional(),
 });
 
 export const NotificationWireSchema = z.discriminatedUnion("kind", [
