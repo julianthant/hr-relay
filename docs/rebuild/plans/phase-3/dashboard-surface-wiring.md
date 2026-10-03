@@ -192,11 +192,17 @@ Bind `SessionsView`/`SessionTimeline` through the existing producer. Bind Add wo
 
 Project registered definitions into the existing `FlowStep`/source/branch inputs. Preserve systems-first declaration order, named steps/substeps, branch/rejoin/parallel structure, field provenance and stable source identities. Use the existing source panel and disclosure/comment components. Do not restore the retired registered-definition renderer.
 
+**Operator scope addition — 2026-10-03:** improve the shared workflow-kit authoring/compiler seam so future registered definitions can feed the Explorer through the same validated projection. Keep ordered declarations and typed dependency references authoritative; avoid per-workflow renderer branches or a second hand-maintained workflow graph. This addition does not authorize authoring new workflows, changing execution policy, a live overlay, or new visible components/states.
+
+**Operator presentation clarification — 2026-10-03:** input-prop wiring is allowed. The operator subsequently allowed adding/removing component instances and editing layout while reusing the same existing component set and design. Existing label slots distinguish registered definition/hypothetical previews from fictional examples; no new component design is authorized. For definitions without decision choices, omit the existing Preview paths control rather than inventing a jump target. Definitions with choices retain that control and their declared branch target. This supersedes the initial fixed-layout constraint only where W6 wiring requires it; it does not authorize an unrelated redesign.
+
 Current registered execution workflows and fictional Onboarding/Emergency Contact previews are distinct. Keep unimplemented examples explicitly preview-only until their workflow authoring is separately completed; do not manufacture executable registration. Retired scenario files remain unavailable metadata, not test evidence. No live-run overlay or expanded workflow authoring is included.
 
 **Units:** descriptor-to-timeline literal mapping; systems-first order; stable step/field IDs; branch/rejoin/parallel paths; source refusal; descriptor-bound overrides; preview choice cannot claim an actual run outcome or command availability.
 
-**Outcome:** existing ExplorerTimeline displays real registered definitions and truthful preview/source states while keeping its approved layout and interactions.
+**Outcome:** existing ExplorerTimeline displays real registered definitions and truthful preview/source states using the approved component design and interactions, with the operator-authorized instance/layout adjustments.
+
+**Execution state — 2026-10-03:** the root accepts the focused W6 source candidate `2bf4ccaa7628679c3670cc848dd4d672c3f9124e` under deployment ID `w6-explorer-20261003` in the assigned `codex/logs-backend` worktree. Entry was `32c608c542741d7acecc8c43512a4756318821cd`; accepted W0 `6ab7f06d2cf8792c330dbf1bcc212a38af4b8fdd` is an ancestor. Peer source advances through `1db0e1b363dacd82ee56386d427e77814868660b` precede the isolated W6 range. The existing documentation/evidence exception for absent `agent_docs/` remains accepted. The receipt below owns source provenance, checks, operator answers and remaining obligations. Contract/authoring documentation and the isolated documentation commit complete this package's local handoff; branch integration, push, cleanup and subsequent packages remain operator-owned and were not authorized here.
 
 ### W7 — Finish Queue integration and cross-surface selection
 
@@ -345,6 +351,30 @@ W0 is accepted under the operator's selected-presentation integration authorizat
 contract decisions, surviving assertion mapping, preserved presentation source and deferred
 obligations when that package is actually completed. Planning or unit-only evidence does not
 prove live browser, storage, process, visual, or release acceptance.
+
+### W6 acceptance — 2026-10-03
+
+The accepted local implementation range is `1db0e1b363dacd82ee56386d427e77814868660b..2bf4ccaa7628679c3670cc848dd4d672c3f9124e`: feature `5b1e1d4c39e89e445378004e19b6be38bb2c867c`, affected guard repair `43925f1162d1ef28d35f0a107304ab821da030fd`, and preview/proof repair `2bf4ccaa7628679c3670cc848dd4d672c3f9124e`. The complete 17-path source inventory is [candidate-sha256.txt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-explorer-w6/implementation/candidate-sha256.txt), aggregate SHA-256 `53c75d85b16cbafe4b9650e801f720280c7622aad62af243f048a75bfe0dc5b2`. Exact-path commits exclude peer source and documentation edits. No branch integration, push or cleanup was performed.
+
+The approved presentation checkout `/Users/julianhein/.codex/worktrees/b6c7/hr-automation-rebuild` was reverified at `2d2dd9c6a6ca38980da2f59be79c1b53a9a182fc`. Its five selected Explorer consumers retain the W0 selected source bytes from `3d0b0d17c325d3e984f26d5c520b1a9b77b76f20`; this is a content comparison, not an ancestry claim. Its 167-line `explorer-mock-fixtures.ts` was copied byte-identically with SHA-256 `a32410b54ad57d4d83b37f4fa873b6f6a5aff7a6f1665d8a504f7514a2003983`. Onboarding and Emergency Contact preserve their steps, sources, typed choices and preview-only identities. Fictional Separations is excluded from the workflow rail and does not substitute for the registered definition.
+
+`workflowExplorerDeclaration` derives ordered groups, entries, node/task identities and typed dependencies from the compiled definition. The producer validates definition/descriptor identity, timeline order/content and complete graph coverage, then serves a closed compiled/unavailable `definitionPreview` and systems in first-use order. Future compiled workflows use that shared projection without an Explorer renderer map. The adapter preserves declared steps, branch/parallel/rejoin facts, stable field/source IDs and hypothetical choices. Values remain declaration-only; an operation source jump requires one exact displayed producer. Missing, ambiguous and retired sources stay explicit. Both current registered execution workflows retain legacy operation capability because they do not declare complete operation display; the adapter does not invent action detail. Generic complete-operation behavior is proven synthetically, not by live workflow acceptance.
+
+The existing `ExplorerTimeline`, source panel, disclosure/comment and design-system components drive the surface. The operator approved input-prop wiring and subsequently allowed adding/removing component instances and editing layout using those same components. Registered slots say “Definition preview” and “Registered workflow · hypothetical preview”; fictional labels remain unchanged. Branchless definitions omit Preview paths; declared choices retain their exact jump target. Loading, failure, missing selection and unavailable definition use existing components. Workflow selection and Version registry callbacks are connected; Version registry opens Archive Versions. No new Explorer toast event or notification-panel policy was introduced. The retired registered renderer/catalog, new executable workflows, live overlays, Logs producers, Run/Rerun, spreadsheets, live HR and Electron remain excluded.
+
+Independent W6-R1 review returned PASS for all 17 candidate paths. Independent W6-T1 verification reproduced the focused checks at the same commit and confirmed unchanged source hashes before/after. Exact commands and receipts are in [verification/receipt.md](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-explorer-w6/verification/receipt.md):
+
+| Check | Result |
+| --- | --- |
+| `npm run test -- --project unit` with the four named compiler/query/preview-model/preview-host files | 44/44 passed |
+| `npm run test -- --project architecture` with compile-integrity, authoring-budget, wire-boundary and refresh-boundary files | 61/61 passed |
+| `npx eslint` on all 16 changed TypeScript/TSX source/test files, `--max-warnings 0` | Passed |
+| `npm run build:manifest:check`; `npm run stores:catalog:check` | Current |
+| `npm run web:build`; source `git diff --check` | Passed; bundle chunk-size advisory only |
+
+Retained compiler/query and guard assertions, negative controls, test membership, coverage floors and timeouts were preserved. New literal assertions cover declaration order/identities, descriptor-definition refusal, complete/legacy action facts, exact/zero/multiple source anchors, branch/parallel choices and headless/mixed systems. Host assertions cover fictional source/choice behavior, workflow and Version registry callbacks, fictional A→B→A reset and earlier-client late-response isolation. Registered selection uses the same component key `${workflowId}:${descriptorHash}`; there is no dedicated registered A→B→A host assertion. The authoring-budget repair changes only stale retired fixture exemptions/current harness and backend paths, with its inventory hash updated; no predicate or assertion was weakened.
+
+Remaining obligations: root typecheck stays red with 72 diagnostic lines across 22 files (56 normalized unique), byte-identical baseline/final, none on W6 paths. The independent guard-manifest rerun has 7 passes and 2 failures in peer Logs/Settings catch-default/reviewed-source checks, outside this candidate. Those owners and phase exit retain repair authority; W6 does not claim a green full repository. A mistaken first verifier command broadened the unit selection; its failing receipt is retained and excluded from this verdict. Only the corrected focused command supports W6 acceptance. Browser/visual, complex tests, full coverage and phase-exit gates, live operation display, controlled writes, release acceptance, integration, push and cleanup remain unrun. Logs production stays with W8. No sibling or next package was launched.
 
 ### W0 acceptance — 2026-10-02
 

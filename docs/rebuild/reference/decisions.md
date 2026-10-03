@@ -5,6 +5,17 @@ current operator amendments below; no earlier number is reused.
 
 ## Operator amendments
 
+**W6 Explorer definition projection (operator-approved 2026-10-03):** Explorer uses one generic
+ordered projection of a compiled definition, with descriptor identity, timeline order/content and
+complete graph coverage checked; no second graph or workflow-specific renderer map is maintained.
+Systems follow first-use order. Complete operation-display declarations are optional; absent
+declarations remain explicit legacy/unavailable capability. A source jump requires one exact
+displayed producer; missing, ambiguous and retired anchors remain unavailable. Choices are
+hypothetical, not run state; branchless definitions omit `Preview paths`. Existing Explorer
+components/design are reused; input props, component instances and layout may change, with no new
+component design. Owner: [workflow-model §1.6](workflow-model.md#16-workflow-definition--the-one-authoring-seam-d311d317d329-2026-09-04); local package evidence:
+[W6 acceptance](../plans/phase-3/dashboard-surface-wiring.md#w6-acceptance--2026-10-03).
+
 **D366 — Notification event and local action feedback (operator-approved 2026-10-03):** all eight
 declared backend notification kinds receive a durable panel row and compact in-app chip under the
 approved policy. Ordinary events use canonical committed publication evidence; backfill gaps use

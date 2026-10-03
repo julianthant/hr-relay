@@ -52,6 +52,14 @@ metadata; they are not evidence that tests ran. Everything else a workflow needs
 | `docs/rebuild/migrations/<id>.md` (the dated record) | `src/workflow-kit/validation/generated-build-manifest.ts` (`npm run build:manifest`) and the `ref stores` §2 task catalog (`npm run stores:catalog`) |
 | a new reusable **task** (contract + implementation in the owning store) only when §2's table says BUILD | checkpoints, replay, retry, recovery (resume / restart), gate parking, the write sequencer's fences, receipts, semantic logs, screenshots, notifications, Archive — inherited by every compiled workflow with no per-workflow glue |
 
+Normal compiled registration supplies `workflowExplorerDeclaration` and its closed
+`definitionPreview` compiled/unavailable contract. Maintain ordered definitions and typed references,
+plus optional `operationDisplay`; do not create an Explorer mapping. Keep descriptor identity and
+full graph coverage intact. Systems derive in first-use order, and omitted `operationDisplay`
+remains explicitly legacy/unavailable. Source jumps require one exact displayed producer. Branch
+choices are hypothetical, and branchless definitions have no `Preview paths` control; neither
+declares run progress.
+
 **There is no other authoring path.** `src/workflow-kit/workflow-definition.ts` is the one seam. A
 `descriptor.ts`, `module.ts`, `nodes.ts`, `node-ids.ts` or `omission.ts` beside a main `workflow.ts`,
 or a `step.ts` outside a declared `steps/<step>/` folder, is refused by `workflow-layout`; a `defineWorkflowDescriptor(` / `flow(` /

@@ -1221,6 +1221,20 @@ refactor. The rejected alternatives are keeping the current multi-file assembly 
 API, or replacing the proven runtime with a second workflow engine. The first preserves the cost;
 the second spends write-safety evidence to solve an authoring problem.
 
+**Explorer definition projection (W6, operator-approved 2026-10-03).** Normal compiled registration
+feeds `workflowExplorerDeclaration` and its closed `definitionPreview` compiled/unavailable
+contract. Authors maintain the ordered definition and typed references, plus optional
+`operationDisplay`; they add no second workflow graph or Explorer renderer map. The producer
+requires the descriptor compiled from that definition and refuses identity, timeline
+content/order, or complete graph-coverage mismatches. It derives displayed systems in first-use
+order. Omitted `operationDisplay` remains explicit legacy/unavailable capability, never inferred
+detail. A source jump resolves only through one exact displayed producer; missing, ambiguous or
+retired anchors stay unavailable. Definition choices are hypothetical and confer no run state or
+execution authority. Branchless definitions omit `Preview paths`; declared choices retain their
+exact target. The approved adapter reuses existing Explorer components/design, with input-prop,
+component-instance and layout changes allowed; it adds no component design. See the [W6 decision](decisions.md#operator-amendments)
+and [acceptance](../plans/phase-3/dashboard-surface-wiring.md#w6-acceptance--2026-10-03).
+
 #### 1.6.1 The simplicity budget and explicit entry algebra (D312/D315/D316, 2026-09-02)
 
 **Current authoring/testing amendment — operator-approved 2026-10-02.** D312's four-artifact
