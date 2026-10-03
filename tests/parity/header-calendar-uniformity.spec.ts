@@ -11,6 +11,13 @@ async function calendarStyle(picker: Locator) {
   });
 }
 
+async function controlStyle(control: Locator) {
+  return control.evaluate(el => {
+    const style = getComputedStyle(el);
+    return { background: style.backgroundColor, border: style.borderColor, width: style.borderWidth, radius: style.borderRadius, height: style.height };
+  });
+}
+
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`global single and range calendars across Navbar, Activity and Archive @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     ensureParityBundle();
@@ -38,6 +45,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole('combobox', { name: 'Report period' }).selectOption('custom');
       const start = page.getByRole('button', { name: /^Choose start date range/u });
       const end = page.getByRole('button', { name: /^Choose end date range/u });
+      const controls = page.getByRole('group', { name: 'Custom report range', exact: true }).locator('.date-input-group');
+      const buttonStyle = await controlStyle(page.getByRole('button', { name: 'Export report', exact: true }));
+      expect(await controlStyle(controls.first())).toEqual(buttonStyle);
+      expect(await controlStyle(controls.last())).toEqual(buttonStyle);
+      const header = page.getByRole('banner').locator('.ds-date-navigation');
+      expect(await controlStyle(header)).toEqual(buttonStyle);
+      await expect(header.locator('.date-input-group')).toHaveCSS('border-width', '0px');
+      await expect(header.locator('.date-input-group')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      const startDay = controls.first().getByRole('spinbutton', { name: /^day, Start/u });
+      await startDay.focus();
+      await expect(controls.first()).toHaveCSS('box-shadow', /0px 0px 0px 2px/u);
       await start.click();
       const range = page.getByRole('dialog', { name: 'Select report dates', exact: true });
       await expect(range).toHaveCSS('opacity', '1');
@@ -86,6 +104,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await fromDay.press('0');
       await expect(fromDay).toHaveText('30');
       await expect(page.locator('.ds-date-picker[data-invalid="true"]')).toHaveCount(2);
+      const invalid = page.locator('.ds-date-picker[data-invalid="true"] .date-input-group').first();
+      expect((await controlStyle(invalid)).border).not.toBe(buttonStyle.border);
       const validFilters = ArchiveBrowseStateSchema.parse(JSON.parse(new URL(page.url()).searchParams.get('archiveBrowse')!)).filters;
       expect(validFilters.from! <= validFilters.to!).toBe(true);
       await from.click();

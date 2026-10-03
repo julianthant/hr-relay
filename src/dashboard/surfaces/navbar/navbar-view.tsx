@@ -58,10 +58,10 @@ export function NavbarSearch({ data, onResult }: { data: NavbarData; onResult: (
 export function NavbarCalendar({ data }: { data: NavbarData }) {
   const [day, setDay] = useState(data.today);
   const count = data.counts[day];
-  return <div className="flex h-8 shrink-0 items-center rounded-md border border-ui-stroke bg-ui-canvas p-px">
+  return <div className="ds-date-navigation flex h-8 shrink-0 items-center border p-px">
     <button type="button" aria-label="Previous day" title="Previous day" className={cn(iconButton, "size-7")} onClick={() => setDay(navbarShiftDay(day, -1))}><ChevronLeft aria-hidden className="size-3.5" /></button>
     <DatePicker label="Dashboard date" triggerLabel="Choose date" hideLabel required value={day} onChange={next => { if (next !== "" && next <= data.today) setDay(next); }} max={data.today}
-      className="w-36.5 [&_.date-input-group]:h-7 [&_.date-input-group__input]:px-1.5 [&_.date-input-group__input]:py-0 [&_.date-input-group__input]:text-body"
+      className="ds-date-picker--embedded w-36.5 [&_.date-input-group]:h-7 [&_.date-input-group__input]:px-1.5 [&_.date-input-group__input]:py-0 [&_.date-input-group__input]:text-body"
       footer={choose => <div className="mt-3 flex items-center justify-between border-t border-ui-stroke pt-2"><span className="text-caption text-ui-muted">Dates through {navbarDayLabel(data.today)}</span><Button size="sm" variant="ghost" onClick={() => choose(data.today)}>Today</Button></div>} />
     <span title={count === undefined ? "Run count unavailable" : `${count} runs`} className="mx-1 min-w-4.5 rounded bg-ui-table px-1 text-center text-caption tabular-nums text-ui-info">{count ?? "—"}</span>
     <button type="button" aria-label="Next day" title="Next day" disabled={day >= data.today} className={cn(iconButton, "size-7")} onClick={() => setDay(navbarShiftDay(day, 1))}><ChevronRight aria-hidden className="size-3.5" /></button>

@@ -43,8 +43,10 @@ Separations preview, including source returns, identity/review stops, duplicate 
 branches. All three begin with declared browser systems; contact authentication remains after packet
 review. Onboarding puts Hire type in step 2, with eleven ordered steps and corresponding source links
 and stops. Single dates render the shared HeroUI DatePicker with its default Calendar; every range
-uses the documented two-month RangeCalendar. Both retain HeroUI geometry, editable date segments,
-suffix calendar icons and the product palette. Activity endpoints appear only for Custom; either
+uses the documented two-month RangeCalendar. Calendar interiors retain HeroUI geometry; date fields
+retain editable segments and suffix icons with DS button borders, radius, heights and neutral colors.
+The Navbar date composite shares one exterior. Focus and invalid states remain visible. Both calendars
+share the product palette. Activity endpoints appear only for Custom; either
 endpoint opens the centered shared range picker, and the second date commits without footer controls.
 Archive and Search retain open-ended field entry.
 Spreadsheet Settings uses connected tabs with a sliding selection surface and reduced-motion support.
@@ -84,7 +86,7 @@ the exact authored settings object and original attempt history; it adds a pendi
 without a command or Rerun dialog. Archive/Delete are local and reload restores the original queue.
 Local queue counts differ deliberately from served day/rail counts after a mock action. Existing
 served footer commands and recovery outcomes retain their wiring. Run input adopts the approved
-Parsed input layout without changing parsing or launch contracts.
+Parsed input layout without the Examples strip, preserving descriptor validation, parsing and launch contracts.
 
 Focused model, launch regression, dark/light 1024/1440 interaction, accessibility, lint and build
 checks cover this integration. Existing frozen visual references and backend command acceptance

@@ -59,7 +59,8 @@ command-recovery feedback retain their wiring and assurances.
 
 Run input follows the approved Design 1 frame: a concise descriptor-derived input label, parser
 guidance and a framed Parsed input list with ordered entries and per-entry run counts. The existing
-Options/Steps/Rerun layouts, parsing, source binding and live launch contracts remain unchanged.
+Examples strip is removed; descriptor examples retain their validation contract. Options/Steps/Rerun
+layouts, parsing, source binding and live launch contracts remain unchanged.
 
 Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
 `RecordTable` renders confirmed transactions and evidence coverage beneath it in the left column, with
@@ -90,8 +91,10 @@ transport and commands remain unmounted. Loading, empty and failed resources rem
 The 2026-10-03 calendar instruction selects two shared HeroUI compositions from the supplied
 Calendar, RangeCalendar and DatePicker references: the default DatePicker with Calendar for every
 single date, and the documented two-month RangeCalendar for every range. Preserve HeroUI's default
-geometry, editable date segments, suffix calendar icon, year selector and keyboard behavior; bind
-both to the same product palette. The shared popup host retains the existing Radix focus and layer
+calendar geometry, editable date segments, suffix calendar icon, year selector and keyboard behavior.
+Date fields use the surrounding DS buttons' radius, border, height and neutral colors, including hover;
+the Navbar's date, arrows and count share one exterior without a nested field border. Keep visible focus
+and invalid states. Both calendars use the same product palette. The shared popup host retains Radix focus and layer
 handling so date fields also work inside Run dialogs. Surface-specific calendar styling and old date buttons are removed.
 Navbar and form dates use DatePicker. Activity, Archive and Search ranges use DateRangeInput; either
 endpoint opens the same centered range picker and completing the second date updates both values
@@ -3894,11 +3897,12 @@ knows no workflow. Everything workflow-shaped reaches it as a declaration — `s
 (the parser spec, placeholder, constants and examples), `input`, `summary` and `enqueue`, four
 fields on the descriptor.
 
-**What it shows.** Four rows, in the demo's own order: the workflow-setup block (the descriptor's
+**What it shows.** The workflow-setup block (the descriptor's
 own `summary` sentence, drawn as prose and omitted entirely when the descriptor declares none), the
-typed box with its derived value-noun, separator phrase and parser sentence, the `Examples` row of
-buttons that fill the box with **exact** text, and *What this will create* — the proposed run(s) the
-server planned, never a client-side guess. Beside them the shared settings: queue behaviour,
+typed box with its derived value-noun, separator phrase and parser sentence, an ordered Parsed input
+list, and *What this will create* — the proposed run(s) the server planned, never a client-side guess.
+The presentation amendment above removes the Examples strip while retaining descriptor validation.
+Beside them the shared settings: queue behaviour,
 priority and dry run. Destination is not a decision this form owns.
 
 **What it commands.** `POST /api/v1/start-plans` to plan; the `start` command family, consuming the
@@ -3921,8 +3925,8 @@ owns capacity selection, the three-worker cap, replay and post-enqueue uncertain
   `allow-parallel` and get `reject-active`. The declared value is drawn read-only with its reason,
   over a label table that states what the planner DOES rather than what the arm's name suggests
   (D251).
-- **No fabricated example.** Absent `examples[]` renders no row. Nothing invents a sample
-  identifier.
+- **No example controls.** Descriptor examples remain validated data; the modal does not render
+  an Examples strip or invent a sample identifier.
 
 **D293 — preserve the Options and conditional Steps screens; remove only per-start destination
 (2026-08-31; final operator correction, implemented and integration-proven).** D284 keeps its later sole

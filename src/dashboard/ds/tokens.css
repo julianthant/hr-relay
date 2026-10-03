@@ -2080,17 +2080,54 @@ body[data-demo-theme="light"] {
   font-family: var(--ds-font-mono);
 }
 
-/* Both calendar compositions use HeroUI geometry and the shared product palette. */
+/* HeroUI calendar geometry; date fields share the surrounding control treatment. */
 .ds-date-picker {
-  --foreground: var(--ui-primary);
-  --muted: var(--ui-muted);
-  --field: var(--ui-field);
-  --field-foreground: var(--ui-primary);
-  --field-placeholder: var(--ui-muted);
-  --field-hover: var(--ui-hover);
-  --focus: var(--ui-info);
+  --foreground: var(--ds-control-fg);
+  --muted: var(--ds-fg-muted);
+  --field: var(--ds-control-bg);
+  --field-foreground: var(--ds-control-fg);
+  --field-placeholder: var(--ds-fg-muted);
+  --field-hover: var(--ds-control-bg-hover);
+  --field-focus: var(--ds-control-bg);
+  --field-shadow: none;
+  --field-border-width: 1px;
+  --field-border: var(--ds-border-strong);
+  --field-border-hover: var(--ds-border-strong);
+  --field-border-focus: var(--ds-focus-ring);
+  --focus: var(--ds-focus-ring);
   --accent: var(--ui-info);
   --accent-foreground: var(--ds-accent-fg);
+}
+
+.ds-date-picker .date-input-group {
+  height: var(--ds-h-md);
+  background: var(--field);
+  color: var(--field-foreground);
+  border-width: var(--field-border-width);
+  border-radius: var(--ds-radius-md);
+  --tw-shadow: 0 0 #0000;
+}
+
+@media (hover: hover) {
+  .ds-date-picker .date-input-group:hover:not(:focus-within):not([data-disabled="true"]) {
+    background: var(--field-hover);
+  }
+}
+
+.ds-date-picker--toolbar .date-input-group {
+  height: var(--ds-h-toolbar);
+}
+
+.ds-date-navigation {
+  background: var(--ds-control-bg);
+  border-color: var(--ds-border-strong);
+  border-radius: var(--ds-radius-md);
+}
+
+.ds-date-picker--embedded {
+  --field: transparent;
+  --field-hover: transparent;
+  --field-border-width: 0px;
 }
 
 .ds-calendar {

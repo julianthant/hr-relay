@@ -581,26 +581,6 @@ function TypedInput({
 }) {
   return (
     <div className="flex flex-col gap-[var(--ds-space-snug)]">
-      {/* D250 — each button types the descriptor's own declared text, verbatim.
-          `defineWorkflowDescriptor` has already proved it parses AND satisfies
-          the workflow's input schema, so a click can never fill the box with
-          something the plan refuses. A surface declaring none draws no row. */}
-      {surface.examples !== undefined && (
-        <div className="flex flex-wrap items-center gap-[var(--ds-space-snug)]">
-          <SectionLabel>Examples</SectionLabel>
-          {surface.examples.map((example) => (
-            <Button
-              key={example.key}
-              size="sm"
-              variant="outline"
-              title={example.note}
-              onClick={() => onText(example.text)}
-            >
-              {example.label}
-            </Button>
-          ))}
-        </div>
-      )}
       <Field
         // D250 — both halves are DERIVED from the parser spec, so the box cannot
         // describe a rule it does not apply.

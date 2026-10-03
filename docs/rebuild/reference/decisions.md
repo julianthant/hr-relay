@@ -33,7 +33,9 @@ systems first as Separations does; Onboarding gives Hire type its own second ste
 source links and stops across eleven steps. Contact authentication remains after packet review. The
 2026-10-03 calendar instruction selects the supplied HeroUI default DatePicker/Calendar for single
 dates and the documented two-month RangeCalendar for every range. Both share the product palette
-and default editable date fields with suffix calendar icons; surface-specific calendar styling and old
+and editable date fields with suffix calendar icons. Field exteriors match the shared DS buttons'
+radius, border, height and neutral colors; the Navbar date composite has one exterior. Focus and invalid
+states remain visible. Calendar interiors retain HeroUI geometry; surface-specific calendar styling and old
 date buttons are removed. Either range endpoint opens the same centered picker; the second date
 commits both values without footer controls. Activity shows endpoints only for Custom. Archive uses
 paired report fields, compact rows and distinct loading/empty/error states. Inline image
@@ -46,7 +48,8 @@ actions; Select enters bulk mode with checkbox/count/Delete/Archive/Retry/X cont
 These new actions are local mocks: Retry retains the exact authored mock settings, adds a queued
 attempt and never opens Rerun or sends a runtime command. Local counts reflect the latest mock attempt;
 served rail/day counts and existing row-footer commands/recovery feedback retain their contracts.
-Run input uses the approved ordered Parsed input frame; launch parsing and authority remain unchanged.
+Run input uses the approved ordered Parsed input frame without an Examples strip; descriptor example
+validation, launch parsing and authority remain unchanged.
 Archive search has one focus ring; shell navigation supplies the Archive, Explorer and Activity names
 without repeated toolbar titles. Archive's mounted original-layout mock is owned by D348 below.
 Backend classifiers and failure/resolve wiring remain deferred.

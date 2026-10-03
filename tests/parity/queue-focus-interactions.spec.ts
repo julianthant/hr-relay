@@ -105,6 +105,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await start.click();
       const run = page.getByRole('dialog', { name: 'Start a run', exact: true });
       await expect(run.getByRole('heading', { name: 'Run input', exact: true })).toBeVisible();
+      await expect(run.getByText('Examples', { exact: true })).toHaveCount(0);
+      await expect(run.getByRole('button', { name: 'One EID', exact: true })).toHaveCount(0);
+      await expect(run.getByRole('button', { name: 'An EID and a name', exact: true })).toHaveCount(0);
       await run.getByRole('textbox', { name: 'employee IDs', exact: true }).fill('10873698; Fictional, Morgan');
       const parsed = run.getByRole('region', { name: 'Parsed input', exact: true });
       await expect(parsed).toContainText('2 runs');
