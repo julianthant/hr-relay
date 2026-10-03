@@ -14,7 +14,7 @@
 import assert from "node:assert/strict";
 import { act, createElement, type ReactElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, describe, it } from "vitest";
+import { afterEach, describe, it, vi } from "vitest";
 import type { DashboardClient, SubscriptionState } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientError } from "../../../../../src/dashboard/client/errors.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
@@ -44,20 +44,24 @@ let mounted: Root | undefined;
 afterEach(() => {
   mounted?.unmount();
   mounted = undefined;
+  vi.useRealTimers();
 });
 
 interface Driver {
   /** The hook's latest return value. */
   readonly latest: () => DashboardDayState;
+  readonly subscriptions: () => number;
   onDay(day: DashboardDayWire): Promise<void>;
   onState(state: SubscriptionState): Promise<void>;
 }
 
-async function mountHook(): Promise<Driver> {
+async function mountHook(nowIso?: string): Promise<Driver> {
   let deliverDay: ((day: DashboardDayWire) => void) | undefined;
   let deliverState: ((state: SubscriptionState) => void) | undefined;
+  let subscriptions = 0;
   const served = {
     subscribeDay: (input: Parameters<DashboardClient["subscribeDay"]>[0]) => {
+      subscriptions += 1;
       deliverDay = input.onDay;
       deliverState = input.onState;
       return { close: (): void => undefined };
@@ -74,7 +78,7 @@ async function mountHook(): Promise<Driver> {
 
   let observed: DashboardDayState | undefined;
   function Probe(): ReactElement {
-    observed = useDashboardDay(DAY);
+    observed = useDashboardDay(DAY, nowIso);
     return createElement("div");
   }
 
@@ -93,6 +97,7 @@ async function mountHook(): Promise<Driver> {
 
   return {
     latest: () => require(observed, "rendered"),
+    subscriptions: () => subscriptions,
     onDay: async (day) => {
       const deliver = require(deliverDay, "subscribed");
       await act(async () => { deliver(day); });
@@ -135,4 +140,22 @@ describe("useDashboardDay — a stopped subscription", () => {
     assert.equal(day.value, EMPTY_DAY);
     assert.deepEqual(connection, { state: "stopped" });
   });
+});
+
+it("refreshes the one day resource at a server-projected snooze expiry", async () => {
+  vi.useFakeTimers();
+  const driver = await mountHook("2026-08-03T17:00:00.000Z");
+  const row = { kind: "notification", channel: "ping", count: 1, publicationId: "a".repeat(64),
+    trigger: "failed", readState: "unread", notificationId: "11111111-1111-4111-8111-111111111111",
+    actorId: "local-operator", severity: "error", title: "Run failed", context: { state: "unavailable" },
+    state: "snoozed", snoozedUntil: "2026-08-03T18:00:00.000Z", occurredAt: "2026-08-03T16:00:00.000Z", revision: 2 };
+  await driver.onDay(DashboardDayWireSchema.parse({ ...EMPTY_DAY, notifications: [row] }));
+  await act(async () => { await vi.advanceTimersByTimeAsync(3_599_999); });
+  assert.equal(driver.subscriptions(), 1);
+  await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+  assert.equal(driver.subscriptions(), 2);
+  await driver.onDay(DashboardDayWireSchema.parse({ ...EMPTY_DAY, notifications: [{ ...row, state: "unread", snoozedUntil: undefined }] }));
+  assert.equal(driver.latest().day.state, "loaded");
+  await act(async () => { await vi.advanceTimersByTimeAsync(3_600_000); });
+  assert.equal(driver.subscriptions(), 2);
 });

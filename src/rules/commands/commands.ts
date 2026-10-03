@@ -110,6 +110,7 @@ export const CommandActionSchema = z.enum([
   "notification-read",
   "notification-unread",
   "notification-snooze",
+  "notification-unsnooze",
   "apply-explorer-edit",
 ]);
 
@@ -492,8 +493,7 @@ export const GateCommandRequestSchema = z.strictObject({
 });
 
 export const NotificationCommandRequestSchema = z.discriminatedUnion("type", [
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read", "notification-unread"]), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }) }),
-  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.literal("notification-snooze"), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }), payload: z.strictObject({ until: IsoInstantSchema }) }),
+  z.strictObject({ ...CommandEnvelopeFields, family: z.literal("notification"), type: z.enum(["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]), target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }) }),
 ]);
 
 /** D283: the sole durable Explorer edit door; validation remains a read-only route. */
@@ -938,7 +938,7 @@ const COMMAND_ACTIONS_BY_FAMILY = {
   "version-archive": ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"],
   run: ["retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-write-present", "resolve-write-absent"],
   gate: ["resolve-gate"],
-  notification: ["notification-read", "notification-unread", "notification-snooze"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
   explorer: ["apply-explorer-edit"],
 } as const satisfies Record<z.infer<typeof CommandFamilySchema>, readonly z.infer<typeof CommandActionSchema>[]>;
 
@@ -971,7 +971,7 @@ export const COMMAND_FAMILY_REGISTRY = deepFreeze(CommandFamilyRegistrySchema.pa
   { family: "version-archive", actions: ["plan-version-bump", "apply-version-bump", "plan-runtime-version", "apply-runtime-version", "delete-archived-run"] },
   { family: "run", actions: ["retry", "restart", "cancel", "bump", "rename", "archive", "delete", "resolve-write-present", "resolve-write-absent"] },
   { family: "gate", actions: ["resolve-gate"] },
-  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze"] },
+  { family: "notification", actions: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"] },
   { family: "explorer", actions: ["apply-explorer-edit"] },
 ]));
 

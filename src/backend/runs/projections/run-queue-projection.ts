@@ -1,6 +1,7 @@
 import type { WorkerBrowserObservation, WorkerControlRecord } from "../../../models/run/worker-control.js";
 import type { RunRecordService } from "../lifecycle/run-record-service.js";
 import { canonicalRunChildren, listCanonicalRuns } from "../queries/canonical-runs.js";
+import { notificationDisplayContext } from "../queries/notification-display.js";
 import { retainedRunProtectedBindings } from "../../../models/write-safety/protected-input.js";
 /**
  * THE run/queue projection — the single server-side read model every surface
@@ -190,6 +191,7 @@ export interface RunQueueProjectionDeps {
   readonly authority: {
     /** 2i-B: the durable inbox rows the day wire serves. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+    listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     /**
      * D248: the Session Panel's card set. Two reads, because the panel answers
      * two questions — every worker that EXISTS right now (`listLive`), and the
@@ -1756,7 +1758,11 @@ export class RunQueueProjection {
         plannedAt: pool.plannedAt,
       })),
       notifications: this.#deps.authority.listNotifications(LOCAL_OPERATOR_ACTOR_ID)
-        .map((record) => notificationWireOf(record, this.#deps.clock.nowMs()))
+        .map((record) => notificationWireOf(record, this.#deps.clock.nowMs(), notificationDisplayContext(record, {
+          read: id => this.#deps.reader.read(id),
+          descriptor: id => this.#deps.descriptors.resolve(id),
+          checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
+        })))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
     });
   }

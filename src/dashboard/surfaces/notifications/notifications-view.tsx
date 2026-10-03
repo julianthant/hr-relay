@@ -1,5 +1,5 @@
 import { Bell, Check, CheckCheck, ChevronDown, CircleAlert, Clock3, Info, Mail, ShieldAlert, X } from "lucide-react";
-import { useRef } from "react";
+import { useLayoutEffect, useRef } from "react";
 import { Popover, PopoverClose, PopoverContent, PopoverTrigger, Skeleton, dsFocus, dsLayer } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { NOTIFICATION_VIEW_FILTERS, notificationView, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
@@ -25,19 +25,25 @@ function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; 
   </li>;
 }
 
-export function NotificationsView({ state, filter, onFilter, open, onOpenChange, onControl, onOpen, notice, onEnable }: {
+export function NotificationsView({ state, filter, onFilter, open, onOpenChange, onControl, onOpen, notice, desktopStatus, onEnable }: {
   state: NotificationsState; filter: NotificationFilter; onFilter: (filter: NotificationFilter) => void;
   open: boolean; onOpenChange: (open: boolean) => void; onControl: (id: string, control: NotificationControl) => void;
-  onOpen: (item: NotificationItem) => void; notice: string; onEnable: () => void;
+  onOpen: (item: NotificationItem) => void; notice: string; desktopStatus: string; onEnable: () => void;
 }) {
   const view = notificationView(state, filter);
   const surface = useRef<HTMLDivElement>(null);
+  const pendingFocus = useRef<HTMLElement | null>(null);
+  useLayoutEffect(() => {
+    const focused = pendingFocus.current;
+    if (focused !== null && !focused.isConnected) {
+      surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus();
+      pendingFocus.current = null;
+    }
+  }, [state, filter]);
   const control = (id: string, action: NotificationControl) => {
     const focused = document.activeElement;
+    pendingFocus.current = focused instanceof HTMLElement ? focused : null;
     onControl(id, action);
-    window.requestAnimationFrame(() => {
-      if (focused instanceof HTMLElement && !focused.isConnected) surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus();
-    });
   };
   return <Popover open={open} onOpenChange={onOpenChange}>
     <PopoverTrigger asChild><button type="button" aria-label={view.unread === undefined ? state.state === "loading" ? "Notifications loading" : "Notifications unavailable" : `Notifications, ${view.unread} unread`} title="Notifications" className={cn(iconButton, "relative", open && "bg-ui-table text-ui-primary")}><Bell aria-hidden className="size-4" />{view.unread !== undefined && view.unread > 0 && <span aria-hidden className="absolute right-1.5 top-1 size-1.5 rounded-full border border-ui-panel bg-ui-info" />}{state.state === "unavailable" && <span aria-hidden className="absolute right-1 top-1 size-1.5 rounded-full bg-ui-warning" />}</button></PopoverTrigger>
@@ -52,7 +58,7 @@ export function NotificationsView({ state, filter, onFilter, open, onOpenChange,
         </>}
       </div>
       {notice && <p role="status" className="m-0 shrink-0 border-t border-ui-stroke px-4 py-2 text-body text-ui-secondary">{notice}</p>}
-      <footer className="flex shrink-0 items-center justify-between border-t border-ui-stroke bg-ui-table px-4 py-2.5"><span className="text-body text-ui-secondary">Desktop pings off</span><button type="button" className={cn("rounded-md border border-ui-stroke-control bg-ui-panel px-2.5 py-1 text-body font-medium text-ui-primary hover:bg-ui-hover", dsFocus)} onClick={onEnable}>Enable</button></footer>
+      <footer className="flex shrink-0 items-center justify-between border-t border-ui-stroke bg-ui-table px-4 py-2.5"><span className="text-body text-ui-secondary">{desktopStatus}</span><button type="button" className={cn("rounded-md border border-ui-stroke-control bg-ui-panel px-2.5 py-1 text-body font-medium text-ui-primary hover:bg-ui-hover", dsFocus)} onClick={onEnable}>Enable</button></footer>
     </PopoverContent>
   </Popover>;
 }

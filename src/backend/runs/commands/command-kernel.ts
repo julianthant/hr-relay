@@ -152,7 +152,7 @@ const PHASE1_ACTIVE = {
   ],
   gate: ["resolve-gate"],
   // 2i-B: the notification inbox lifecycle over D134/D138's durable rows.
-  notification: ["notification-read", "notification-unread", "notification-snooze"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
   // D170 (2i-E1): the five non-enqueue intake arms over the durable session.
   // D171 (2i-E2) adds the sixth: the manifest commit and the run fan-out.
   intake: [
@@ -1179,6 +1179,9 @@ function executeNotification(
   request: NotificationCommand,
   now: string,
 ): CommandApplication {
+  if (request.target.actorId !== request.requestedBy) {
+    reject(request, "invalid-state", "notification target actor does not match the admitted command actor");
+  }
   const current = repositories.notifications.get(request.target.notificationId);
   if (current === undefined) {
     reject(request, "target-not-found", `notification ${request.target.notificationId} does not exist`);
@@ -1205,9 +1208,9 @@ function executeNotification(
       + `(you loaded ${String(request.target.expectedVersion)}); reload the inbox`,
     );
   }
-  if (request.type === "notification-snooze" && Date.parse(request.payload.until) <= Date.parse(now)) {
-    reject(request, "invalid-state", "a snooze must end in the future");
-  }
+  const snoozeUntil = request.type === "notification-snooze"
+    ? new Date(Date.parse(now) + 3_600_000).toISOString()
+    : undefined;
   repositories.notifications.updateState({
     notificationId: request.target.notificationId,
     expectedVersion: current.version,
@@ -1216,9 +1219,11 @@ function executeNotification(
       : request.type === "notification-unread"
         ? "unread"
         : current.status,
-    snooze: request.type === "notification-snooze"
-      ? { state: "snoozed", until: request.payload.until }
-      : current.snooze,
+    snooze: snoozeUntil !== undefined
+      ? { state: "snoozed", until: snoozeUntil }
+      : request.type === "notification-unsnooze"
+        ? { state: "not-snoozed" }
+        : current.snooze,
     updatedAt: now,
   });
   const target: TargetReference = { family: "notification", notificationId: request.target.notificationId };

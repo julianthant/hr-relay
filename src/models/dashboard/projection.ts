@@ -800,6 +800,7 @@ export const WorkerCardWireSchema = z.strictObject({
 export function notificationWireOf(
   record: z.infer<typeof NotificationRecordSchema>,
   nowMs: number,
+  context?: NotificationDisplayContext,
 ): z.infer<typeof NotificationWireSchema> {
   if (record.trigger === "backfill-gap") {
     return NotificationWireSchema.parse({
@@ -834,8 +835,10 @@ export function notificationWireOf(
     readState: record.status,
     publicationId: sha256Hex(`notification-publication:${record.notificationId}:${String(record.count)}:${record.lastSeenAt}`),
     state: snoozed ? "snoozed" : record.status,
+    ...(snoozed && record.snooze.state === "snoozed" ? { snoozedUntil: record.snooze.until } : {}),
     occurredAt: record.lastSeenAt,
     revision: record.version,
+    context: context ?? { state: "unavailable" },
     ...(link === undefined ? {} : { link: link.kind === "storage" ? { kind: "storage" } : link }),
   });
 }
@@ -851,6 +854,14 @@ const NotificationLinkWireSchema = z.discriminatedUnion("kind", [
   z.strictObject({ kind: z.literal("storage") }),
 ]);
 
+export const NotificationDisplayContextSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), workflow: z.string().min(1), subject: z.string().min(1) }),
+  z.strictObject({ state: z.literal("workflow-only"), workflow: z.string().min(1) }),
+  z.strictObject({ state: z.literal("unavailable") }),
+  z.strictObject({ state: z.literal("not-applicable") }),
+]);
+export type NotificationDisplayContext = z.infer<typeof NotificationDisplayContextSchema>;
+
 const StandardNotificationWireSchema = z.strictObject({
   kind: z.literal("notification"),
   channel: z.enum(["ping", "inbox"]),
@@ -863,8 +874,10 @@ const StandardNotificationWireSchema = z.strictObject({
   severity: z.enum(["info", "warning", "error"]),
   title: z.string().min(1),
   state: z.enum(["unread", "read", "snoozed"]),
+  snoozedUntil: IsoInstantSchema.optional(),
   occurredAt: IsoInstantSchema,
   revision: RowRevisionSchema,
+  context: NotificationDisplayContextSchema,
   link: NotificationLinkWireSchema.optional(),
 });
 
@@ -884,7 +897,11 @@ const BackfillGapNotificationWireSchema = z.strictObject({
 export const NotificationWireSchema = z.discriminatedUnion("kind", [
   StandardNotificationWireSchema,
   BackfillGapNotificationWireSchema,
-]);
+]).superRefine((row, context) => {
+  if (row.kind === "notification" && (row.state === "snoozed") !== (row.snoozedUntil !== undefined)) {
+    context.addIssue({ code: "custom", path: ["snoozedUntil"], message: "snoozed state requires its server expiry hint" });
+  }
+});
 
 /**
  * The per-workflow worker POOL declaration (D269, ref execution-and-sessions §11.5)

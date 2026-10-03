@@ -98,6 +98,7 @@ export interface AuthorityFake {
   /** 2i-B: the durable inbox rows the day wire serves, keyed by actor. */
   readonly notifications: NotificationRecord[];
   listNotifications(actorId: string): readonly NotificationRecord[];
+  listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
   /** D179/D80: the archived-run set the projection excludes, once, for every surface. */
   readonly archived: Set<string>;
   isArchived(runId: string): boolean;
@@ -165,6 +166,7 @@ export function authorityFake(): AuthorityFake {
       checkpoints.get(checkpointKey(workflowId, itemId, nodeId)),
     notifications,
     listNotifications: (actorId) => notifications.filter((record) => record.actorId === actorId),
+    listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => [...checkpoints.values()].filter(row => row.workflowId === workflowId && row.itemId === itemId && row.nodeId === nodeId && row.attempt === attempt),
     archived,
     isArchived: (runId) => archived.has(runId),
     failures,

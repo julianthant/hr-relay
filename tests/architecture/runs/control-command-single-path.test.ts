@@ -136,7 +136,7 @@ const EXPECTED_ACTIVE = {
   ],
   gate: ["resolve-gate"],
   // 2i-B: the inbox lifecycle activated over D134/D138's durable rows.
-  notification: ["notification-read", "notification-unread", "notification-snooze"],
+  notification: ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"],
   // D170: the five non-enqueue intake arms activated over the durable session.
   // D171 activated the sixth — the manifest mint plus the run fan-out — so the
   // intake family is now wholly active.
@@ -565,6 +565,6 @@ describe("control-command-single-path", () => {
 
   it("notification stays read/unread/snooze", () => {
     const notification = COMMAND_FAMILY_REGISTRY.find(({ family }) => family === "notification");
-    assert.deepEqual(notification?.actions, ["notification-read", "notification-unread", "notification-snooze"]);
+    assert.deepEqual(notification?.actions, ["notification-read", "notification-unread", "notification-snooze", "notification-unsnooze"]);
   });
 });

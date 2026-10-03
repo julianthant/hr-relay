@@ -5,7 +5,7 @@ import { routeForDay, routeForStartedRun } from "./date-state-model.js";
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
 import { createWorkerCommandDispatch } from "./worker-command-dispatch.js";
-import { navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
+import { createNotificationNavigationIdentity, navigateNotification, type OpenNotification } from "../state/notification-navigation.js";
 import { PanelRight } from "lucide-react";
 import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
 import { CapabilityAvailabilitySchema,type CapabilityAvailability } from "../../rules/validation/absence.js";
@@ -324,7 +324,7 @@ function LoadedApp({
   /** Refused command answers are local, bounded reading context; the durable
    * audit remains the server's authority. Applied answers toast instead. */
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
-  const { actorId, nowIso, today, day, dateError, dayResource, connection, dayWire, detail } =
+  const { actorId, nowIso, today, day, dateError, dayResource, connection, dayWire, detail, refreshDay } =
     useConsumerAuthority(boot, route, detailNonce);
   const selection = shellSelection(route, day, dayWire, detail);
   const detailValue = selection.state === "ready" ? selection.detail : undefined;
@@ -390,6 +390,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const bulkIdsRef = useRef(bulkIds);
   bulkIdsRef.current = bulkIds;
   const client = useDashboardClient();
+  const notificationIdentity = useRef(createNotificationNavigationIdentity(route, client));
+  notificationIdentity.current.update(route, client);
   const { toast } = useToasts();
 
   const workflowLabelOf = useCallback(
@@ -570,7 +572,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   );
 
   const openNotification = useCallback<OpenNotification>((id, opened, refused) => {
+    const selection = notificationIdentity.current.start();
     void navigateNotification({ lookup: () => client.notificationTarget(id), guard: leaveSettings, refused,
+      isCurrent: () => notificationIdentity.current.isCurrent(selection),
       open: target => {
         const base = routeForCrossDateSearchResult(route, { runId: "", partitionDay: day });
         if (target.kind === "storage") setRoute({ ...base, run: undefined, section: undefined, settings: "storage" });
@@ -1252,6 +1256,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         notifications={dayNotifications}
         onOpenNotification={openNotification}
         notificationConnected={connection.state === "live" && dayWire !== undefined}
+        refreshNotifications={refreshDay}
         actorId={actorId}
         nowIso={nowIso}
         storage={boot.storage}

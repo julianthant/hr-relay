@@ -21,7 +21,7 @@ it("keeps the approved Activity action hierarchy and loading control state", () 
 it("keeps the approved Notifications trigger states with identical supplied data", () => {
   const base = { filter: "all" as const, open: false, onFilter: () => undefined,
     onOpenChange: () => undefined, onControl: () => undefined,
-    onOpen: () => undefined, notice: "", onEnable: () => undefined };
+    onOpen: () => undefined, notice: "", desktopStatus: "Desktop pings off", onEnable: () => undefined };
   const loading = renderToStaticMarkup(createElement(NotificationsView, { ...base, state: { state: "loading" } }));
   const ready = renderToStaticMarkup(createElement(NotificationsView, { ...base,
     state: { state: "ready", items: [], pinned: [] } }));

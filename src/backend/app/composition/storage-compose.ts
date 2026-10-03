@@ -322,6 +322,7 @@ function rebuildStagedProjections(
         ledger: createTransactionHistory(staged.authority),
         authority: {
           listNotifications: (actorId) => staged.authority.notifications.listByActor(actorId),
+          listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => staged.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
           listLiveWorkerLeases: () => staged.authority.workerLeases.listLive(),
           getWorkerLease: (workerId) => staged.authority.workerLeases.get(workerId),
           listWorkerPools: () => staged.authority.workerPools.list(),

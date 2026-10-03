@@ -132,9 +132,7 @@ describe("notification lifecycle arms", () => {
       links: [],
     }));
 
-    const result = kernel.execute(command("notification-snooze", 1, {
-      payload: { until: "2026-07-31T19:00:00.000Z" },
-    }));
+    const result = kernel.execute(command("notification-snooze", 1));
 
     assert.equal(result.state, "rejected");
     if (result.state === "rejected") assert.equal(result.code, "policy-refused");
@@ -172,22 +170,19 @@ describe("notification lifecycle arms", () => {
     assert.equal(database.authority.notifications.get(UUID_7)?.status, "unread");
   });
 
-  it("snoozes preserving the read state, and refuses a snooze that ends in the past", () => {
+  it("snoozes for one backend-clock hour, preserving read state, then unsnoozes", () => {
     const { database, kernel } = harness();
     database.authority.notifications.create(record({ status: "read", version: 1 }));
 
-    const snoozed = kernel.execute(command("notification-snooze", 1, {
-      payload: { until: "2026-07-31T19:00:00.000Z" },
-    }));
+    const snoozed = kernel.execute(command("notification-snooze", 1));
     assert.equal(snoozed.state, "applied");
     const row = database.authority.notifications.get(UUID_7);
     assert.equal(row?.status, "read");
-    assert.deepEqual(row?.snooze, { state: "snoozed", until: "2026-07-31T19:00:00.000Z" });
+    assert.deepEqual(row?.snooze, { state: "snoozed", until: "2026-07-31T18:01:00.000Z" });
 
-    const past = kernel.execute(command("notification-snooze", 2, {
-      payload: { until: NOW },
-    }));
-    assert.equal(past.state, "rejected");
+    assert.throws(() => kernel.execute(command("notification-snooze", 2, { payload: { until: NOW } })));
+    assert.equal(kernel.execute(command("notification-unsnooze", 2)).state, "applied");
+    assert.deepEqual(database.authority.notifications.get(UUID_7)?.snooze, { state: "not-snoozed" });
   });
 
   it("rejects a stale version and a foreign actor", () => {
@@ -203,7 +198,7 @@ describe("notification lifecycle arms", () => {
       target: { notificationId: UUID_7, actorId: "other-operator", expectedVersion: 1 },
     });
     assert.equal(foreign.state, "rejected");
-    if (foreign.state === "rejected") assert.match(foreign.message, /belongs to/u);
+    if (foreign.state === "rejected") assert.match(foreign.message, /target actor does not match/u);
   });
 });
 

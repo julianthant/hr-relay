@@ -152,6 +152,7 @@ export async function startSeededServer(
     ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: (actorId: string) => database.authority.notifications.listByActor(actorId),
+      listNotificationCheckpoints: (workflowId: string, itemId: string, nodeId: string, attempt: number) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),

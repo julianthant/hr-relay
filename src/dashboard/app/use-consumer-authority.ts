@@ -14,10 +14,10 @@ export function useConsumerAuthority(boot: Pick<FrontendBootstrapWire, "actor" |
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
   const dateError = dateSelection.state === "valid" ? undefined : dateSelection.reason === "future"
     ? `Date ${day} is after Today (${today}).` : `Invalid date: ${day || "(empty)"}.`;
-  const { day: dayResource, connection } = useDashboardDay(dateSelection.state === "valid" ? day : undefined);
+  const { day: dayResource, connection, refresh: refreshDay } = useDashboardDay(dateSelection.state === "valid" ? day : undefined, nowIso);
   const dayWire = dayResource.state === "loaded" && dayResource.value.day === day ? dayResource.value : undefined;
   const servedRowRevision = dayWire?.queueSurfaces.find((row) => String(row.runId) === route.run)?.rowRevision;
   const detail = useRunDetail(dateSelection.state === "valid" ? route.run : undefined, detailNonce,
     servedRowRevision, dateSelection.state === "valid" ? day : undefined);
-  return { actorId: boot.actor.id, nowIso, today, day, dateError, dayResource, connection, dayWire, detail };
+  return { actorId: boot.actor.id, nowIso, today, day, dateError, dayResource, connection, dayWire, detail, refreshDay };
 }

@@ -10,7 +10,6 @@ Siren,
 TriangleAlert
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import { systemClock } from "../../rules/time/clock.js";
 import { settleCommandResult } from "../app/command-result.js";
 import { BareButton, Badge,Button,Chip,Drawer,DrawerContent,DrawerTrigger,EmptyState,MetaLine,Refusal,dsFocus,dsIcon,dsMotion,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -91,21 +90,18 @@ export function NotificationBell({
   }, [client, open]);
 
   const issue = (
-    type: "notification-read" | "notification-unread" | "notification-snooze",
+    type: "notification-read" | "notification-unread" | "notification-snooze" | "notification-unsnooze",
     entry: OrdinaryNotificationRowWire,
   ): void => {
     setCommandError(null);
     client.executeCommand({
       commandId: crypto.randomUUID(),
-      requestedAt: systemClock.now().toISOString(),
+      requestedAt: nowIso,
       requestedBy: actorId,
       source: "notification-bell",
       family: "notification",
       type,
       target: { notificationId: entry.notificationId, actorId, expectedVersion: entry.revision },
-      ...(type === "notification-snooze"
-        ? { payload: { until: new Date(systemClock.nowMs() + 3_600_000).toISOString() } }
-        : {}),
     }).then((result) => {
       // D253 — a notification row carries its own `revision`, so a bell action
       // races the fold that marks the row unread again. Branching on `rejected`
@@ -240,7 +236,7 @@ export function NotificationBell({
                     nowIso={nowIso}
                     onRead={() =>
                       issue(entry.readState === "unread" ? "notification-read" : "notification-unread", entry)}
-                    onSnooze={() => issue("notification-snooze", entry)}
+                    onSnooze={() => issue(entry.state === "snoozed" ? "notification-unsnooze" : "notification-snooze", entry)}
                     onOpen={() => {
                       if (entry.link === undefined) return;
                       setCommandError(null);
@@ -336,20 +332,14 @@ function NotificationRow({
         >
           {unread ? "Mark read" : "Mark unread"}
         </Button>
-        {/* THE UN-SNOOZE ARM KEEPS ITS PLACE AND SAYS WHY IT CANNOT FIRE. The
-            kernel serves `notification-snooze` and no inverse, so a live
-            Un-snooze here would 422 on click. Hiding the control instead —
-            what this surface used to do — moves every button beside it the
-            moment a row snoozes. */}
         <Button
           size="sm"
           variant="ghost"
           icon={<Clock aria-hidden className={dsIcon.sm} />}
-          disabled={snoozing}
-          title={snoozing ? "Snooze expires automatically" : undefined}
+          title={snoozing ? "Unsnooze" : "Snooze for one hour"}
           onClick={onSnooze}
         >
-          {snoozing ? "Snoozed" : "Snooze 1h"}
+          {snoozing ? "Unsnooze" : "Snooze 1h"}
         </Button>
       </div>
     </article>

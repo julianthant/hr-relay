@@ -441,6 +441,7 @@ const KERNEL_ONLY_COMMANDS: Readonly<Record<string, string>> = {
   "notification-read": "the inbox targets a notification row; the bell owns these three",
   "notification-unread": "notification target, not a run row",
   "notification-snooze": "notification target, not a run row",
+  "notification-unsnooze": "notification target, not a run row",
   "plan-version-bump": "D179's archive planning surface targets the application/workflow scope",
   "apply-version-bump": "archive scope target, not a run row",
   "plan-runtime-version": "Archive runtime version planning targets selected workflows or the dashboard",

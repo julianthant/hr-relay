@@ -173,6 +173,7 @@ function surface(): Surface {
     ledger: createTransactionHistory(database.authority),
     authority: {
       listNotifications: () => [],
+      listNotificationCheckpoints: () => [],
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId: string) => database.authority.workerLeases.get(workerId),
       listWorkerPools: () => database.authority.workerPools.list(),
