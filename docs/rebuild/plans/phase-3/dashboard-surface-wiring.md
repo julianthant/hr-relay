@@ -1,6 +1,6 @@
 # Existing dashboard components: backend lifecycle and wiring plan
 
-Status: W0 accepted locally on 2026-10-02. W1 is operator-launched on 2026-10-02; W2–W7 remain proposed and unlaunched. Remove, Snooze and superseded Settings save meanings below are operator-approved.
+Status: W0 and W1 accepted locally on 2026-10-02. W2–W7 remain proposed and unlaunched. Remove, Snooze and superseded Settings save meanings below are operator-approved.
 
 This is supporting, unnumbered work for the [backend and unit-test initiative](backend-and-unit-tests.md). That plan continues to own confirmed Logs and its Phases 3–5. This document owns the proposed Settings, Notifications, Activity, Archive, Sessions, Explorer, and Queue wiring packages. It does not assign roadmap task numbers or grant release, freeze, cutover, or Electron admission.
 
@@ -394,9 +394,11 @@ Deployment ID: `w1-settings-2026-10-02`. Scope is W1 only in the assigned
 `9bbc323632784058fd1e7def7d72e47547f4935f`; accepted W0 `6ab7f06d2cf8792c330dbf1bcc212a38af4b8fdd`
 and backend Phase 3 `0dff920a102186b3218dbf549b79003b9f3e458e` are ancestors.
 The final independent candidate uses peer base `5e0f69ad19ceeec509321f5ee7b448e223c6859c`.
-Source commitment is pending the Logs peer's shared `compose.ts` hold release; no partial W1
-source commit is accepted. The existing project documents and external evidence owner continue
-to replace the absent `agent_docs/` framework.
+Accepted source commit: `5db5a75793ce4b274234028ab3aada9550f491cd`, parent
+`547141a03ef457d04c537438314c3b61f1c08ce5`. D365 and this package's pending verification receipt
+were committed together at `6dbcfee62168772b6783b2e6eb4f04c1e720aae3`. The [peer release record](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/commit/hold-release.md)
+confirms the exact `compose.ts` patch release before source mutation. The existing project documents
+and external evidence owner continue to replace the absent `agent_docs/` framework.
 
 The approved presentation source was reverified at
 `c3998ec263dc7e6bcb20470ab6a32d60a04eff23`, branch `codex/activity-ui-polish`, in
@@ -454,7 +456,13 @@ peer commit before the repaired candidate was verified.
 Independent W1-V3 returned scoped PASS on the final frozen candidate; its
 [report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/verification-repair/report.md)
 and [exact commands](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/verification-repair/commands.txt)
-bind results and limits. The focused unit command was:
+bind results and limits. The [source commit receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/commit/commit-receipt.md)
+records exact 21-path commitment, matching committed/indexed candidate hashes and passed whitespace
+checks. The intervening base changes were the D365 documentation and two peer-owned Logs stream
+paths; none overlaps W1's source inputs. The [peer preservation record](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/commit/peer-preservation.txt)
+records unchanged index/worktree hashes for all four captured peer-dirty paths. Tests were not
+rerun for the identical W1 inputs; these receipts do not certify the advanced shared branch's
+broader gates. The focused unit command was:
 
 ```sh
 npm run test:unit -- tests/unit/dashboard/surfaces/settings-command-transaction.test.ts tests/unit/dashboard/surfaces/settings-lifecycle.test.ts tests/unit/dashboard/surfaces/settings-read-order.test.ts tests/unit/backend/app/config/resolve/settings-catalog-projection.test.ts tests/unit/backend/app/config/resolve/settings-facts.test.ts tests/unit/dashboard/client/index/settings-editor-surface.test.ts
@@ -467,7 +475,7 @@ npm run test:unit -- tests/unit/dashboard/surfaces/settings-command-transaction.
 | `npm run build:manifest:check`; `npm run stores:catalog:check` | Both passed. No generated workflow/store input changed. |
 | `npm run web:build` | Passed; Vite's existing >500 kB chunk advisory remains. |
 | `npm run test:architecture -- tests/architecture/runs/control-command-single-path.test.ts tests/architecture/storage/sqlite-settings-authority.test.ts` | Failed: 10 passed, 2 failed. The existing relocation restore command-audit access and synthetic retired-module negative-control failure were reproduced from immutable W1 entry. Neither assertion nor failure is waived. |
-| `npm run typecheck` | Failed, exit 2, 58 unique normalized diagnostics on the final peer-based candidate. No added W1-attributable diagnostic. Two additions versus the earlier repaired candidate are peer-owned Logs-test TS18048 errors for `item.event` and `secondBatch.event`; this does not establish whole-branch acceptance. |
+| `npm run typecheck` | Failed, exit 2, 58 unique normalized diagnostics on the frozen independent candidate based on `5e0f69a`. No added W1-attributable diagnostic. Two additions versus the earlier repaired candidate are peer-owned Logs-test TS18048 errors for `item.event` and `secondBatch.event`. This gate was not rerun after the peer's stream repair; the advanced shared branch is not certified. |
 
 Retained test membership, assertions, isolation, coverage floors and timeouts remain.
 The six mechanically adapted retained files keep their respective test/assertion counts:
@@ -484,6 +492,6 @@ live HR and Electron checks remain unrun for later operator discussion. Failed a
 typecheck gates retain their separate owners and must pass at their required broader gate.
 No catalog, retired renderer or retired scenario/parity suite was restored.
 
-W1's scoped implementation and verification are ready; exact source commitment remains blocked
-only by the shared-file hold. W2–W7 remain unlaunched and require separate operator launch.
+W1 is complete and accepted locally for its assigned implementation, focused verification and exact
+source commitment. W2–W7 remain unlaunched and require separate operator launch.
 No push, branch merge, worktree cleanup, live operation or release admission is authorized here.
