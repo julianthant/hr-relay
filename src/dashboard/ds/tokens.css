@@ -2080,14 +2080,45 @@ body[data-demo-theme="light"] {
   font-family: var(--ds-font-mono);
 }
 
-.ds-hero-calendar {
-  margin-inline: auto;
-  --accent: var(--ds-fg);
-  --accent-foreground: var(--ds-surface-1);
-  --muted: var(--ds-fg-muted);
-  --default: var(--ds-surface-3);
-  --default-foreground: var(--ds-fg);
-  color: var(--ds-fg);
+/* Both calendar compositions use HeroUI geometry and the shared product palette. */
+.ds-date-picker {
+  --foreground: var(--ui-primary);
+  --muted: var(--ui-muted);
+  --field: var(--ui-field);
+  --field-foreground: var(--ui-primary);
+  --field-placeholder: var(--ui-muted);
+  --field-hover: var(--ui-hover);
+  --focus: var(--ui-info);
+  --accent: var(--ui-info);
+  --accent-foreground: var(--ds-accent-fg);
+}
+
+.ds-calendar {
+  --accent: var(--ui-info);
+  --accent-foreground: var(--ds-accent-fg);
+  --accent-hover: var(--ui-info);
+  --accent-soft: var(--ui-hover);
+  --accent-soft-foreground: var(--ui-primary);
+  --accent-soft-hover: var(--ui-table);
+  --muted: var(--ui-muted);
+  --default: var(--ui-hover);
+  --default-foreground: var(--ui-primary);
+  --focus: var(--ui-info);
+  color: var(--ui-primary);
+}
+
+.ds-calendar-popover {
+  background: var(--ui-panel);
+  color: var(--ui-primary);
+  border: 0;
+  border-radius: min(32px, calc(var(--radius) * 2.5));
+  box-shadow: var(--overlay-shadow);
+  font-family: var(--ds-font-ui);
+}
+
+.ds-range-calendar {
+  width: 34rem;
+  max-width: none;
 }
 
 .ds-date-popover {
@@ -2112,38 +2143,9 @@ body[data-demo-theme="light"] {
   color: var(--ds-fg-faint);
 }
 
-/* Activity uses a report-only blue range; other date controls keep the shared neutral mapping. */
 :root {
   --ds-activity-period-width: 9.5rem;
-  --ds-activity-calendar-endpoint-bg: #2563eb;
-  --ds-activity-calendar-endpoint-fg: #ffffff;
-  --ds-activity-calendar-endpoint-hover: #1d4ed8;
-  --ds-activity-calendar-range-bg: #dbeafe;
-  --ds-activity-calendar-range-hover: #bfdbfe;
-  --ds-activity-calendar-focus: #2563eb;
   --ds-activity-chart-bar: #849db7;
-}
-
-[data-demo-theme="dark"],
-:root[data-demo-theme="dark"],
-body[data-demo-theme="dark"] {
-  --ds-activity-calendar-endpoint-bg: #93c5fd;
-  --ds-activity-calendar-endpoint-fg: #172033;
-  --ds-activity-calendar-endpoint-hover: #bfdbfe;
-  --ds-activity-calendar-range-bg: color-mix(in srgb, #3b82f6 24%, var(--ds-surface-1));
-  --ds-activity-calendar-range-hover: color-mix(in srgb, #3b82f6 36%, var(--ds-surface-1));
-  --ds-activity-calendar-focus: #60a5fa;
-}
-
-[data-demo-theme="light"],
-:root[data-demo-theme="light"],
-body[data-demo-theme="light"] {
-  --ds-activity-calendar-endpoint-bg: #2563eb;
-  --ds-activity-calendar-endpoint-fg: #ffffff;
-  --ds-activity-calendar-endpoint-hover: #1d4ed8;
-  --ds-activity-calendar-range-bg: #dbeafe;
-  --ds-activity-calendar-range-hover: #bfdbfe;
-  --ds-activity-calendar-focus: #2563eb;
 }
 
 .activity-report-period [data-slot="native-select-wrapper"] {
@@ -2157,82 +2159,6 @@ body[data-demo-theme="light"] {
 
 .activity-report-period [data-slot="native-select-wrapper"] select {
   width: 100%;
-}
-
-.activity-range-calendar {
-  --accent: var(--ds-activity-calendar-endpoint-bg);
-  --accent-foreground: var(--ds-activity-calendar-endpoint-fg);
-  --accent-hover: var(--ds-activity-calendar-endpoint-hover);
-  --accent-soft: var(--ds-activity-calendar-range-bg);
-  --accent-soft-foreground: var(--ds-fg);
-  --accent-soft-hover: var(--ds-activity-calendar-range-hover);
-  --focus: var(--ds-activity-calendar-focus);
-  --ds-focus-ring: var(--ds-activity-calendar-focus);
-}
-
-.activity-range-popover {
-  background: var(--ds-surface-1);
-  border-color: var(--ds-border);
-}
-
-.activity-range-calendar .range-calendar__header {
-  min-block-size: var(--ds-h-lg);
-}
-
-.activity-range-calendar .range-calendar__nav-button,
-.activity-range-calendar .range-calendar__cell-button {
-  inline-size: var(--ds-h-lg);
-  block-size: var(--ds-h-lg);
-  min-inline-size: var(--ds-h-lg);
-  min-block-size: var(--ds-h-lg);
-}
-
-.activity-range-calendar .range-calendar__heading {
-  font-size: var(--ds-text-ui);
-  line-height: var(--ds-lh-ui);
-  color: var(--ds-fg);
-}
-
-.activity-range-calendar .range-calendar__cell [role="button"][data-selection-start="true"],
-.activity-range-calendar .range-calendar__cell [role="button"][data-selection-end="true"] {
-  background-color: var(--ds-activity-calendar-endpoint-bg);
-  color: var(--ds-activity-calendar-endpoint-fg);
-}
-
-.activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]) {
-  background-color: var(--ds-activity-calendar-range-bg);
-  color: var(--ds-fg);
-}
-
-.activity-range-calendar .range-calendar__cell [role="button"][data-selected="true"]:not([data-selection-start="true"]):not([data-selection-end="true"]):hover {
-  background-color: var(--ds-activity-calendar-range-hover);
-}
-
-.activity-range-calendar .range-calendar__cell[data-today="true"] .range-calendar__cell-button,
-.activity-range-calendar .activity-range-calendar-report-today .range-calendar__cell-button {
-  outline: 1px solid var(--ds-activity-calendar-endpoint-bg);
-  outline-offset: 2px;
-}
-
-.activity-range-calendar :is(button, [role="button"]):is(:focus-visible, [data-focus-visible="true"]) {
-  outline: var(--ds-focus-ring-w) solid var(--ds-activity-calendar-focus);
-  outline-offset: var(--ds-focus-ring-offset);
-}
-
-button.activity-range-apply:not(:disabled) {
-  background: var(--ds-activity-calendar-endpoint-bg);
-  border-color: var(--ds-activity-calendar-endpoint-bg);
-  color: var(--ds-activity-calendar-endpoint-fg);
-}
-
-button.activity-range-apply:not(:disabled):hover {
-  background: var(--ds-activity-calendar-endpoint-hover);
-  border-color: var(--ds-activity-calendar-endpoint-hover);
-}
-
-button.activity-range-apply:focus-visible {
-  outline: var(--ds-focus-ring-w) solid var(--ds-activity-calendar-focus);
-  outline-offset: var(--ds-focus-ring-offset);
 }
 
 .activity-workflow-table th {

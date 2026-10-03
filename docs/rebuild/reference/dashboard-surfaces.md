@@ -33,7 +33,10 @@ A blocked-write row selects a separately labelled Separations sample, rather tha
 operation in Person Lookup. The selector's **Selected run · queue facts** view renders only the served
 subject, status, attempt, current message and pipeline, without inferred actions, captures or durations.
 A queue selection resets the sample selection and local decisions. The selector retains all approved
-examples. Queue, Activity and Explorer share `ActionBar`/`ActionBarRow`. Explorer has no back control
+examples. Queue, Archive, Activity and Explorer share the compact `OperationsToolbarRow` geometry
+(50px row with 12px horizontal padding); the takeover pages use `OperationsToolbar`. Archive search
+has one focus ring on its shared input group. Shell navigation owns the Archive, Explorer and Activity
+names, so their toolbars do not repeat those titles. Explorer has no back control
 or `onBack` prop; shell navigation exits it.
 
 Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
@@ -59,12 +62,21 @@ Hire type in its own second step; all eleven steps, source links and preview sto
 Contact names UCPath first and authenticates only after packet review. These chips declare session
 needs; they do not report launched or authenticated sessions.
 
-Archive retains served report identities, route joins and command boundaries. Wide reports pair
-retained fields, compact metadata and table rows, and keep section navigation sticky. Workflow groups
-use compact summaries and filters. Loading skeletons, empty results and failed reads are distinct;
-failed reads retain their error and offer read retry and navigation controls. The replacement Archive
-and matching Dashboard, Explorer and Activity toolbars are awaiting artboard selection. The requested
-rebuild retains a similar folder layout; it does not authorize implementing an unselected toolbar design.
+Archive's mounted presentation follows the original-layout fictional mock in D348 below. Its retained
+transport and commands remain unmounted. Loading, empty and failed resources remain distinct.
+
+The 2026-10-03 calendar instruction selects two shared HeroUI compositions from the supplied
+Calendar, RangeCalendar and DatePicker references: the default DatePicker with Calendar for every
+single date, and the documented two-month RangeCalendar for every range. Preserve HeroUI's default
+geometry, editable date segments, suffix calendar icon, year selector and keyboard behavior; bind
+both to the same product palette. The shared popup host retains the existing Radix focus and layer
+handling so date fields also work inside Run dialogs. Surface-specific calendar styling and old date buttons are removed.
+Navbar and form dates use DatePicker. Activity, Archive and Search ranges use DateRangeInput; either
+endpoint opens the same centered range picker and completing the second date updates both values
+and closes it. Activity's Start/End fields appear only for Custom. Range pickers have no footer or
+Cancel/Apply controls. Text-entry dates preserve their required format and invalid drafts; Archive
+preserves inclusive UTC day boundaries and open-ended range filters. Invalid range drafts remain
+visibly invalid without publishing a reversed route; keyboard dismissal restores the originating field.
 
 Logs keeps its approved field tables, click rows, search/copy/latest controls
 and action-associated screenshots. Its Completed header is hidden while unfinished and failure states remain.
@@ -139,8 +151,8 @@ date navigation, notifications, theme and Settings; preflight
 is removed. `TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
 `NotificationsState` to `NotificationsView`. The connected search/date renderers are retired. Search,
 date and notification examples use local fixtures: navigation and delivery placeholders invoke no API,
-command, browser permission or OS delivery path. The navbar uses the shared DS Calendar used by
-DateInput; Activity keeps its range-selection variant of the same calendar design. Date limits, day
+command, browser permission or OS delivery path. The navbar uses the shared DatePicker described above.
+Date limits, day
 navigation, counts and Today remain local fixture behavior. Settings retains its separate existing preflight read.
 
 The 370px notification popover keeps its heading, filters and footer fixed while the message list scrolls.
@@ -431,7 +443,7 @@ cross-referenced rather than re-litigated.
 redesign and requested a polished mock of the original Archive. The app's Archive takeover now
 mounts a local fictional dataset instead of the Archive read/command client. Preserve the original
 dashboard-version groups, full-width workflow folders, filter strip and complete report with section
-navigation. A single compact toolbar replaces the separate Current/version-history header rows;
+navigation. The shared compact operations toolbar replaces the separate Current/version-history header rows;
 it holds search, matching count, subtle dashboard version, mock identification and Plan a bump.
 Archive navigation is the only Archive label. Reports open as full pages. Dashboard version,
 workflow version, archived date, outcome and retained-file count live once in Workflow details;

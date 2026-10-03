@@ -1,6 +1,7 @@
-import { useState, type ReactNode } from "react";
+import { type ReactNode } from "react";
 import { BarChart3, ChevronDown, Download, Info } from "lucide-react";
-import { ActionBar, ActionBarRow, Button, IconButton, Popover, PopoverContent, PopoverTrigger, Select, Skeleton, TakeoverFrame } from "../../ds/ui.js";
+import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, Select, Skeleton, TakeoverFrame } from "../../ds/ui.js";
+import { OperationsToolbar } from '../operations-toolbar.js';
 import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "../activity-model.js";
 import { ActivityRange } from "./activity-range.js";
 import { ActivityVolume } from "./activity-volume.js";
@@ -64,18 +65,18 @@ function Performance({ report }: { report: ActivitySummary }) {
   ]} /></section>;
 }
 
-export function ActivityView({ data, range, today, period, onPreset, onRange, onExport, sampleControl, notice }: {
+export function ActivityView({ data, range, period, onPreset, onRange, onExport, sampleControl, notice }: {
   data: ActivityViewState; range: ActivityDateRange; today: string; period: ActivityDatePreset;
   onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
   onExport: (format: "csv" | "xlsx") => void; sampleControl?: ReactNode; notice?: string;
 }) {
-  const [rangeOpen, setRangeOpen] = useState(false);
   return <TakeoverFrame label="Activity report" className="ui-theme-scope bg-ui-canvas font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
-    <ActionBar className="mx-3 mt-3 bg-ui-panel"><ActionBarRow label="Activity actions"><BarChart3 aria-hidden className="size-4 shrink-0 text-ui-muted" /><h1 className="m-0 text-heading">Activity</h1><span className="ml-1 border-l border-ui-stroke pl-3"><ActivityRange range={range} today={today} open={rangeOpen} onOpenChange={setRangeOpen} onApply={onRange} /></span><div className="ml-auto flex shrink-0 items-center gap-2">{sampleControl}
-      <Select aria-label="Report period" variant="toolbar" value={period} onChange={event => { const preset = event.target.value as ActivityDatePreset; if (preset === "custom") setRangeOpen(true); else onPreset(preset); }}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select>
+    <OperationsToolbar label="Activity actions"><div className="max-w-[220px] shrink-0">{sampleControl}</div><div className="ml-auto flex shrink-0 items-center gap-2">
+      {period === "custom" && <ActivityRange range={range} onApply={onRange} />}
+      <Select aria-label="Report period" variant="toolbar" value={period} onChange={event => { const preset = event.target.value as ActivityDatePreset; onPreset(preset); }}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select>
       <Popover><PopoverTrigger asChild><Button size="toolbar" variant="secondary" disabled={data.state !== "loaded"} icon={<Download aria-hidden className="size-3.5" />}>Export report<ChevronDown aria-hidden className="size-3" /></Button></PopoverTrigger><PopoverContent title="Export report" hideTitle hideClose align="end" width="sm" className="ui-theme-scope bg-ui-panel font-ui text-ui-primary"><div className="flex flex-col gap-1"><Button variant="ghost" className="justify-start" onClick={() => onExport("csv")}>CSV</Button><Button variant="ghost" className="justify-start" onClick={() => onExport("xlsx")}>Excel workbook</Button></div><p className="mb-0 mt-3 text-caption text-ui-muted">Exports will be connected during backend integration.</p></PopoverContent></Popover>
       <Popover><PopoverTrigger asChild><IconButton label="How this report is counted" size="sm" icon={<Info aria-hidden className="size-3.5" />} /></PopoverTrigger><PopoverContent title="How this report is counted" align="end" width="md" className="ui-theme-scope bg-ui-panel font-ui text-ui-primary"><p className="mt-0 text-body text-ui-secondary">Run outcomes are counted by their start date in the selected period. Outstanding means running or waiting. The failure rate uses terminal runs.</p><p className="mb-0 text-body text-ui-secondary">Median duration uses measured terminal runs. Confirmed transactions use receipt dates and remain separate from run totals. Dates use {data.state === "loaded" ? data.report.timeZone : "the report time zone"}.</p></PopoverContent></Popover>
-    </div></ActionBarRow></ActionBar>
+    </div></OperationsToolbar>
     {notice && <p role="status" className="mx-3 mb-0 mt-2 text-body text-ui-secondary">{notice}</p>}
     <div className="m-3 min-h-0 flex-1 overflow-y-auto rounded-xl border border-ui-stroke bg-ui-canvas p-6" aria-busy={data.state === "loading" || undefined}>
       {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 grid grid-cols-2 items-start gap-6"><div className="flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><Transactions report={data.report} /><Coverage report={data.report} /></div><div className="flex min-w-0 flex-col gap-6"><ActivityVolume volume={data.report.volume} /><Performance report={data.report} /></div></div></> : data.state === "loading" ? <div role="status" aria-label="Loading activity report"><div className="grid grid-cols-4 gap-4">{[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-24 rounded-lg min-[1151px]:h-32" />)}</div><Skeleton className="mt-6 h-64 rounded-lg" /></div> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}

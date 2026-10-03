@@ -68,6 +68,7 @@ import {
   ContextMenuTrigger,
   CountBadge,
   DateInput,
+  DateRangeInput,
   Disclosure,
   MetaLine,
   Refusal,
@@ -815,6 +816,7 @@ function FormsSection() {
   const [corrected, setCorrected] = useState("07/16/2026");
   const [proposed, setProposed] = useState("07/18/2026");
   const [date, setDate] = useState("2026-07-16");
+  const [dateRange, setDateRange] = useState({ from: "2026-07-16", to: "2026-07-23" });
   const [timeout, setTimeout] = useState("45");
   const [keys, setKeys] = useState([
     { id: "ucpath-primary", label: "UCPath API", value: "sk_specimen_primary_428", role: "Primary" },
@@ -921,7 +923,8 @@ function FormsSection() {
             <Field label="Note for the receipt" description="Why this run was started" orientation="horizontal">
               <Textarea rows={2} placeholder="Add a note…" />
             </Field>
-            <DateInput label="Start date" value={date} onChange={setDate} inline />
+            <DateInput label="Start date" value={date} onChange={setDate} className="w-64" />
+            <DateRangeInput label="Choose specimen date range" value={dateRange} onChange={setDateRange} className="w-90" />
           </FormGroup>
         </BodySection>
 

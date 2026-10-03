@@ -641,6 +641,7 @@ const POPOVER_ORIGIN = "origin-[var(--radix-popover-content-transform-origin)]";
  * exists for a screen reader, it just does not take a line.
  */
 export function PopoverContent({
+  id,
   title,
   description,
   side = "bottom",
@@ -652,6 +653,7 @@ export function PopoverContent({
   surfaceRef,
   children,
 }: {
+  id?: string;
   title: string;
   description?: ReactNode;
   side?: DsPopoverSide;
@@ -667,6 +669,7 @@ export function PopoverContent({
   return (
     <PopoverPrimitive.Portal>
       <PopoverSurface
+        id={id}
         title={title}
         description={description}
         side={side}
@@ -695,6 +698,7 @@ export function PopoverContent({
  * same terms as Dialog and Drawer: while it is open its toast cards go inert.
  */
 function PopoverSurface({
+  id,
   title,
   description,
   side,
@@ -706,6 +710,7 @@ function PopoverSurface({
   surfaceRef,
   children,
 }: {
+  id?: string;
   title: string;
   description?: ReactNode;
   side: DsPopoverSide;
@@ -730,6 +735,7 @@ function PopoverSurface({
       aria-label={title}
     >
       <FloatingSurface
+        id={id}
         ref={surfaceRef}
         className={cn(
           POPOVER_WIDTH[width],

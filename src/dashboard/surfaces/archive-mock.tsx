@@ -1,7 +1,8 @@
-import { ArrowLeft, ChevronRight, Download, Folder, Layers3, Search } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
-import { Badge, Button, DateInput, Dialog, DialogContent, Input, PageHeading, PanelToolbar, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { Badge, Button, DateRangeInput, Dialog, DialogContent, PageHeading, Popover, PopoverContent, PopoverTrigger, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { OperationsToolbar } from './operations-toolbar.js';
 import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { MockArchiveReport } from './archive-mock-report.js';
@@ -44,7 +45,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   onBrowse(next.data, mode);
  };
  return <section aria-label="Archive mock" className="mock-archive ds-body-overlay flex min-h-0 flex-1 flex-col bg-[var(--ds-surface-page)]">
-  <div className="mock-archive-toolbar-inset"><PanelToolbar label="Archive controls" variant="body" className="mock-archive-toolbar">
+  <OperationsToolbar label="Archive controls">
    {folder === null && report === undefined && !invalid && !unavailable ? <>
     <ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />
     <span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>
@@ -59,7 +60,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
    </Popover>}
    <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
    </div>
-  </PanelToolbar></div>
+  </OperationsToolbar>
   <div className="min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]">
    <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable in the mock" message="Choose a fresh mock scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
@@ -79,8 +80,9 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
        <label className="mock-archive-field"><span>Search reports</span><ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} /></label>
        <label className="mock-archive-field"><span>Dashboard version</span><Select value={folder.dashboardKey} onChange={event => onFolder({ ...folder, dashboardKey: event.target.value })}>{['1.3', '1.2', 'unrecorded'].map(key => <option key={key} value={key}>{key === 'unrecorded' ? 'Not recorded' : key}</option>)}</Select></label>
        <label className="mock-archive-field"><span>Workflow</span><Select value={folder.workflow} onChange={event => onFolder({ ...folder, workflow: event.target.value })}>{MOCK_ARCHIVE_WORKFLOWS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</Select></label>
-       <DateInput label="Completed from (UTC)" value={browsing.filters.from?.slice(0, 10) ?? ''} max={browsing.filters.to?.slice(0, 10)} onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value) })} />
-       <DateInput label="Completed through (UTC)" value={browsing.filters.to?.slice(0, 10) ?? ''} min={browsing.filters.from?.slice(0, 10)} onChange={value => updateFilters({ ...browsing.filters, to: mockArchiveDateBoundary(value, true) })} />
+       <DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
+        value={{ from: browsing.filters.from?.slice(0, 10) ?? '', to: browsing.filters.to?.slice(0, 10) ?? '' }}
+        onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />
       </div>
       <div className="mock-archive-table-wrap"><MockArchiveRunTable rows={rows} onSelection={onSelection} /></div>
       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}
@@ -99,7 +101,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
 }
 
 function ArchiveMockSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
- return <div className="mock-archive-search"><Search aria-hidden className={dsIcon.sm} /><Input aria-label="Search saved reports" placeholder="Name, ID, document or field…" value={value} onChange={event => onChange(event.target.value)} /></div>;
+ return <SearchInput type="text" className="mock-archive-search" aria-label="Search saved reports" placeholder="Name, ID, document or field…" value={value} onChange={event => onChange(event.target.value)} onClear={() => onChange('')} />;
 }
 
 function MockVersionFolders({ rows, onFolder }: { rows: readonly MockArchiveRun[]; onFolder: (folder: MockArchiveFolder) => void }) {

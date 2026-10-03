@@ -16,14 +16,14 @@ function surfaceRequests(page: Page): string[] {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`shared dashboard, Activity and Explorer action bar @ ${theme.attribute} ${width}`, async ({ page }) => {
+  test(`shared Dashboard, Archive, Activity and Explorer action bar @ ${theme.attribute} ${width}`, async ({ page }) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       const dimensions: unknown[] = [];
-      for (const [path, label] of [[`/?day=${FIXTURE_DAY}`, "Queue actions"], ["/?activity=", "Activity actions"], ["/?explore=fixture-ui-explorer", "Explorer actions"]]) {
+      for (const [path, label] of [[`/?day=${FIXTURE_DAY}`, "Queue actions"], ["/?activity=", "Activity actions"], ["/?explore=fixture-ui-explorer", "Explorer actions"], ["/?archive=", "Archive controls"]]) {
         await page.goto(`${server.baseUrl}${path}`);
         const bar = page.getByRole("group", { name: label, exact: true });
         await expect(bar).toBeVisible();
@@ -38,9 +38,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await bar.getByRole("button", { name: "Select", exact: true }).click();
           await expect(page.getByRole("button", { name: /^Select all \d+ in view$/ })).toHaveCount(0);
         }
+        if (label === "Archive controls") {
+          const search = bar.getByRole("textbox", { name: "Search saved reports" });
+          await search.focus();
+          const focus = await search.evaluate(node => ({ input: getComputedStyle(node).outlineStyle, group: getComputedStyle(node.parentElement!).outlineStyle }));
+          expect(focus).toEqual({ input: "none", group: "solid" });
+          await search.fill("Rivera");
+          await expect(bar).toContainText("2 matching reports");
+          await bar.getByRole("button", { name: "Clear search", exact: true }).click();
+          await expect(bar).toContainText("30 matching reports");
+        }
+        if (label === "Explorer actions") await expect(page.getByRole("heading", { name: "Explorer", exact: true })).toHaveCount(0);
       }
       expect(dimensions[1]).toEqual(dimensions[0]);
       expect(dimensions[2]).toEqual(dimensions[0]);
+      expect(dimensions[3]).toEqual(dimensions[0]);
     } finally { await server.close(); }
   });
 
@@ -144,7 +156,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await bars.first().hover();
       await expect(chart.getByRole("tooltip")).toContainText("0 runs");
       await surface.getByRole("combobox", { name: "Report period" }).selectOption("this-week");
-      await surface.getByRole("heading", { name: "Activity", exact: true }).click();
+      await surface.getByRole("heading", { name: "Workflow outcomes", exact: true }).click();
+      await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(4);
       expect((await metrics.boundingBox())!.height).toBeLessThan(130);
@@ -526,39 +539,59 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-test("Activity custom dates apply only on confirmation; dismissals restore focus", async ({ page }) => {
+test("Activity Custom dates share a centered two-month calendar; the second date applies and dismissals restore focus", async ({ page }) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     const requests = surfaceRequests(page);
     await page.goto(`${server.baseUrl}/?activity=`);
     const period = page.getByRole("combobox", { name: "Report period" });
+    const start = page.getByRole("button", { name: /^Choose start date range/u });
+    const end = page.getByRole("button", { name: /^Choose end date range/u });
+    await expect(start).toHaveCount(0);
+    await expect(end).toHaveCount(0);
     await period.selectOption("custom");
     const calendar = page.getByRole("dialog", { name: "Select report dates", exact: true });
-    await expect(calendar).toBeVisible();
-    await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
-    await expect(calendar.getByRole("button", { name: "Apply range" })).toBeDisabled();
-    await expect(page).toHaveURL(/activity=$/);
-    await calendar.getByRole("button", { name: /Saturday, September 26, 2026/ }).click();
-    await calendar.getByRole("button", { name: "Cancel", exact: true }).click();
-    await expect(page).toHaveURL(/activity=$/);
-    const trigger = page.getByRole("button", { name: /Select report dates:/ });
-    await expect(trigger).toBeFocused();
-    await trigger.click();
-    await page.keyboard.press("Escape");
-    await expect(trigger).toBeFocused();
-    await trigger.click();
-    await page.getByRole("heading", { name: "Activity", exact: true }).click();
     await expect(calendar).toHaveCount(0);
-    await expect(trigger).toBeFocused();
-    await trigger.click();
+    await start.click();
+    await expect(calendar).toBeVisible();
+    await expect(calendar.getByRole("grid")).toHaveCount(2);
+    await expect(calendar.getByRole("heading", { name: "September 2026", exact: true, includeHidden: true })).toBeVisible();
+    await expect(calendar.getByRole("heading", { name: "October 2026", exact: true, includeHidden: true })).toBeVisible();
+    await expect(calendar.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
+    await expect(calendar.getByRole("button", { name: "Apply range", exact: true })).toHaveCount(0);
+    const pair = (await page.getByRole("group", { name: "Custom report range", exact: true }).boundingBox())!;
+    const popup = (await calendar.boundingBox())!;
+    expect(popup.width).toBeGreaterThan(pair.width);
+    expect(Math.abs(popup.x + popup.width / 2 - pair.x - pair.width / 2)).toBeLessThanOrEqual(1);
+    await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
+    await expect(calendar).toBeVisible();
+    await expect(page).toHaveURL(/activity=$/);
+    await page.keyboard.press("Escape");
+    await expect(page).toHaveURL(/activity=$/);
+    await expect(start).toBeFocused();
+    await end.click();
+    await page.keyboard.press("Escape");
+    await expect(end).toBeFocused();
+    await end.click();
+    const outside = (await page.getByRole("heading", { name: "Workflow outcomes", exact: true }).boundingBox())!;
+    await page.mouse.click(outside.x + outside.width / 2, outside.y + outside.height / 2);
+    await expect(calendar).toHaveCount(0);
+    await expect(end).toBeFocused();
+    await end.click();
     await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
     await calendar.getByRole("button", { name: /Saturday, September 26, 2026/ }).click();
-    await calendar.getByRole("button", { name: "Apply range" }).click();
+    await expect(calendar).toHaveCount(0);
+    await expect(end).toBeFocused();
     await expect(page).toHaveURL(/activity=2026-09-25\.\.2026-09-26/);
+    const fields = page.getByRole("group", { name: "Custom report range", exact: true });
+    await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("25");
+    await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
     await expect(period).toHaveValue("custom");
     await expect(page.getByLabel("Activity summary")).toContainText("of 18 runs");
     await period.selectOption("today");
+    await expect(start).toHaveCount(0);
+    await expect(end).toHaveCount(0);
     await expect(page.getByLabel("Activity summary")).toContainText("of 9 runs");
     expect(requests).toEqual([]);
   } finally { await server.close(); }

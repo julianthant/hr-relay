@@ -4,7 +4,7 @@ import type { SavedArchiveDeletionStatusWire,SavedArchiveIndexWire,SavedArchiveQ
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
 import { ArchiveReportCellSchema, type ArchiveReportCell } from "../../domain/archive/report.js";
 import { settleCommandResult } from "../app/command-result.js";
-import { Badge,Button,ButtonLink,DateInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
+import { Badge,Button,ButtonLink,DateRangeInput,Dialog,DialogBody,DialogContent,DialogFooter,DialogTrigger,Disclosure,dsIcon,dsText,Input,PageHeader,Panel,PanelBody,PanelHeader,Select,Table,TBody,TD,TH,THead,TR,Textarea } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { useArchiveClient as useDashboardClient } from "../state/archive-client.js";
 import { archiveFileRelationships,archiveWorkflowGroups,readableArchiveLabel,savedCommandEnvelope,savedDateFilterSummary,savedDownload,savedFilterQuery,savedOutcomeLabel,savedPlanRequest,useSavedResource,visibleArchiveSections } from "./archive-report-model.js";
@@ -237,7 +237,13 @@ export function SavedArchiveWorkspace({ selection, view, actorId, onSelection, o
             </div>
             <Disclosure summaryClassName={cn(dsText.meta, "text-[color:var(--ds-fg-secondary)]")} summary={<>Date filters{dateFilterSummary !== "" && <span className="ml-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">Active: {dateFilterSummary}</span>}</>}>
               <div className="mt-[var(--ds-space-base)] grid grid-cols-1 gap-[var(--ds-space-base)] min-[840px]:grid-cols-2">
-                {([ ["from", "Completed from (UTC)"], ["to", "Completed through (UTC)"], ["capturedFrom", "Captured from (UTC)"], ["capturedTo", "Captured through (UTC)"]] as const).map(([key, label]) => <DateInput key={key} label={label} value={query[key]?.slice(0, 10) ?? ""} onChange={date => filter(key, date === "" ? "" : `${date}${key === "to" || key === "capturedTo" ? "T23:59:59.999Z" : "T00:00:00.000Z"}`)} />)}
+                {([ ["from", "to", "Completed"], ["capturedFrom", "capturedTo", "Captured"]] as const).map(([from, to, label]) => <DateRangeInput key={from} label={`${label} date range`} fromLabel={`${label} from (UTC)`} toLabel={`${label} through (UTC)`} className="min-[840px]:col-span-2"
+                  value={{ from: query[from]?.slice(0, 10) ?? "", to: query[to]?.slice(0, 10) ?? "" }} onChange={dates => {
+                    const next = { ...query }; delete next.after;
+                    if (dates.from) next[from] = `${dates.from}T00:00:00.000Z`; else delete next[from];
+                    if (dates.to) next[to] = `${dates.to}T23:59:59.999Z`; else delete next[to];
+                    changeQuery(next);
+                  }} />)}
               </div>
             </Disclosure>
             <Button type="button" variant="secondary" onClick={() => changeQuery({ limit: 50 })}>Clear filters</Button>

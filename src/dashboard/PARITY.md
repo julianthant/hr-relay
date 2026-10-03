@@ -42,7 +42,11 @@ Explorer adds fictional Onboarding and Emergency Contact paths to the existing
 Separations preview, including source returns, identity/review stops, duplicate handling and dry-run
 branches. All three begin with declared browser systems; contact authentication remains after packet
 review. Onboarding puts Hire type in step 2, with eleven ordered steps and corresponding source links
-and stops. The navbar renders the shared DateInput calendar design; Activity retains its range variant.
+and stops. Single dates render the shared HeroUI DatePicker with its default Calendar; every range
+uses the documented two-month RangeCalendar. Both retain HeroUI geometry, editable date segments,
+suffix calendar icons and the product palette. Activity endpoints appear only for Custom; either
+endpoint opens the centered shared range picker, and the second date commits without footer controls.
+Archive and Search retain open-ended field entry.
 Spreadsheet Settings uses connected tabs with a sliding selection surface and reduced-motion support.
 The Focus Archive replacement was rejected on 2026-10-03. Focused desktop dark/light interaction checks
 cover the changes; frozen reference screenshots remain unchanged. Mock workflows are presentation only and cannot start runs.
@@ -57,11 +61,13 @@ once; the separate report metadata strip is removed. Workflow fields join detail
 Subject fields. The separate Fields navigation entry is removed; its old section links open details.
 Steps becomes Logs using the shared LogPanel, timeline, field/action rows, saved failure blocks,
 capture workspace and search/copy/latest controls. Historical logs expose no continuation actions.
-A compact search/action toolbar replaces the Current/version-history heading rows.
+The compact operations toolbar replaces the Current/version-history heading rows and shares its
+geometry with Dashboard, Explorer and Activity. Search has one focus ring. Archive, Explorer and
+Activity do not repeat their shell navigation titles in their toolbars.
 The original bump modal retains selected/all
 workflow scopes and inline review, with no runtime write. Archive transport and commands are
-unmounted. Other app surfaces keep their existing wiring. The shared DateInput calendar now passes
-its selected value, bounds and change callback to the calendar.
+unmounted. Other app surfaces keep their existing wiring. Shared single-date and range controls pass
+their selected values, bounds and change callbacks to the calendars; invalid text drafts remain visible.
 
 Focused mock behavior, component-boundary, lint/build and desktop browser checks apply. Existing
 served-Archive browser/reference assertions remain unchanged as future reconnection acceptance;

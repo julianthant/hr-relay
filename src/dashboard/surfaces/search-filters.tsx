@@ -1,5 +1,5 @@
 import { CrossDateSearchScopeSchema, CrossDateSearchStateFacetSchema, CrossDateSearchShapeFacetSchema, CrossDateSearchSystemFacetSchema } from "../../domain/dashboard/search.js";
-import { Button, DateInput, Disclosure, Field, Input, Select, dsText } from "../ds/ui.js";
+import { Button, DateRangeInput, Disclosure, Field, Input, Select, dsText } from "../ds/ui.js";
 import type { SearchFilterDraft } from "./search-filters-model.js";
 
 export function SearchFilters({value,onChange}:{value:SearchFilterDraft;onChange:(value:SearchFilterDraft)=>void}) {
@@ -7,8 +7,7 @@ export function SearchFilters({value,onChange}:{value:SearchFilterDraft;onChange
   return <Disclosure className="mt-[var(--ds-space-base)]" summaryClassName={dsText.ui} summary={`Filters · ${Object.values(value).filter(Boolean).length} selected`}>
     <div className="grid grid-cols-3 gap-[var(--ds-space-base)] py-[var(--ds-space-base)]">
       <Field label="Search field"><Select value={value.scope} onChange={event=>set("scope",event.target.value)}><option value="">All metadata</option>{CrossDateSearchScopeSchema.options.filter(scope=>scope!=="all").map(scope=><option key={scope} value={scope}>{scope}</option>)}</Select></Field>
-      <DateInput label="From" value={value.from} onChange={next=>set("from",next)}/>
-      <DateInput label="To" value={value.to} onChange={next=>set("to",next)}/>
+      <DateRangeInput label="Search date range" fromLabel="From" toLabel="To" className="col-span-2" value={{ from: value.from, to: value.to }} onChange={next => onChange({ ...value, ...next })} />
       <Field label="Workflow ID"><Input value={value.workflow} onChange={event=>set("workflow",event.target.value)} placeholder="Any workflow"/></Field>
       <Field label="Subject name"><Input value={value.subject} maxLength={160} onChange={event=>set("subject",event.target.value)} placeholder="Declared name"/></Field>
       <Field label="Actor"><Input value={value.actor} onChange={event=>set("actor",event.target.value)} placeholder="Recorded actor"/></Field>

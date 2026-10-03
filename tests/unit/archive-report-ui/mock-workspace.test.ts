@@ -117,7 +117,7 @@ it('the shared date calendar changes its field, closes and respects its bounds',
  const changed = vi.fn();
  await act(async () => root.render(createElement(DateInput, { label: 'Completed from', value: '2026-09-23', min: '2026-09-22', max: '2026-09-25', onChange: changed })));
  await click(button('Choose completed from date'));
- const dates = [...document.querySelectorAll<HTMLElement>('.ds-hero-calendar [role="button"]')];
+ const dates = [...document.querySelectorAll<HTMLElement>('.ds-calendar [role="button"]')];
  const day = (label: string) => dates.find(item => item.getAttribute('aria-label')?.startsWith(label))!;
  expect(day('Monday, September 21, 2026').getAttribute('aria-disabled')).toBe('true');
  await click(day('Thursday, September 24, 2026'));

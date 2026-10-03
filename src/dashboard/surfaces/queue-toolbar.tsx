@@ -50,7 +50,6 @@ import { cn } from "../lib/utils.js";
 import type { BulkRunCommandOutcome } from "../../domain/commands.js";
 import {
   ActionBar,
-  ActionBarRow,
   BareButton,
   Button,
   Dialog,
@@ -68,6 +67,7 @@ import {
   dsText,
 } from "../ds/ui.js";
 import { toolbarControl } from "./shell-model.js";
+import { OperationsToolbarRow } from './operations-toolbar.js';
 import { QUEUE_SORTS, type QueueSortKey } from "./queue-model.js";
 import {
   BULK_RESULT_OUTCOMES,
@@ -247,7 +247,7 @@ export function QueueToolbar({
 
   return (
     <ActionBar className={className}>
-      <ActionBarRow label="Queue actions">
+      <OperationsToolbarRow label="Queue actions">
         {leading}
         {runStart}
         {(leading !== undefined || runStart !== undefined) && (
@@ -302,7 +302,7 @@ export function QueueToolbar({
           )}
           Select
         </BareButton>
-      </ActionBarRow>
+      </OperationsToolbarRow>
 
       {/* SELECT MODE IS A MODE, so it gets its own band rather than six more
           controls shoved into a bar already carrying three groups. It exists

@@ -11,7 +11,7 @@ export function ActivityReport({ range, onRange }: { range: string; onRange: (ra
   const [notice, setNotice] = useState("");
   const resolved = useMemo(() => parseActivityRange(range || activityRangeValue(ACTIVITY_SAMPLE_RANGE), ACTIVITY_SAMPLE_TODAY), [range]);
   const data = useMemo(() => resolved.refusal ? { state: "unavailable" as const, reason: resolved.refusal } : activitySample(resolved, scenario), [resolved, scenario]);
-  if (resolved.refusal) return <TakeoverFrame label="Activity report" className="ui-theme-scope bg-ui-canvas p-6 font-ui text-ui-primary"><h1 className="text-section">Activity</h1><p role="alert" className="text-body text-ui-danger">{resolved.refusal} Requested: {range}</p></TakeoverFrame>;
+  if (resolved.refusal) return <TakeoverFrame label="Activity report" className="ui-theme-scope bg-ui-canvas p-6 font-ui text-ui-primary"><h1 className="text-section">Report unavailable</h1><p role="alert" className="text-body text-ui-danger">{resolved.refusal} Requested: {range}</p></TakeoverFrame>;
   const period = choice?.range === range ? choice.value : activityPresetOf(resolved, ACTIVITY_SAMPLE_TODAY);
   return <ActivityView data={data} range={resolved} today={ACTIVITY_SAMPLE_TODAY} period={period}
     onRange={next => { const value = activityRangeValue(next); setChoice({ range: value, value: "custom" }); setNotice(""); onRange(value); }}

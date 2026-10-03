@@ -31,12 +31,18 @@ facts view retains only served facts. Local sample decisions update the affected
 append ordinary log events. Explorer adds Onboarding and Emergency Contact mocks, listing browser
 systems first as Separations does; Onboarding gives Hire type its own second step and renumbers
 source links and stops across eleven steps. Contact authentication remains after packet review. The
-navbar uses the shared DateInput calendar design, alongside Activity’s range-selection variant. Archive uses
+2026-10-03 calendar instruction selects the supplied HeroUI default DatePicker/Calendar for single
+dates and the documented two-month RangeCalendar for every range. Both share the product palette
+and default editable date fields with suffix calendar icons; surface-specific calendar styling and old
+date buttons are removed. Either range endpoint opens the same centered picker; the second date
+commits both values without footer controls. Activity shows endpoints only for Custom. Archive uses
 paired report fields, compact rows and distinct loading/empty/error states. Inline image
 areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
-Replacement Archive and matching Dashboard, Explorer and Activity toolbar artboards await selection;
-those replacements have not been implemented. Backend classifiers and failure/resolve wiring remain deferred.
+The approved compact operations toolbar is shared by Dashboard, Archive, Explorer and Activity.
+Archive search has one focus ring; shell navigation supplies the Archive, Explorer and Activity names
+without repeated toolbar titles. Archive's mounted original-layout mock is owned by D348 below.
+Backend classifiers and failure/resolve wiring remain deferred.
 Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
 
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**
@@ -210,7 +216,7 @@ minor-archives-nothing rule for new changes. The 2026-10-03 presentation amendme
 mounted Archive with a polished original-layout mock using fictional local data and actions;
 the backend implementation remains retained and unmounted. Report metadata is consolidated once
 in Workflow details, without the separate strip. Workflow fields also live in details; Steps becomes
-the shared Logs panel. One compact search/action toolbar replaces the two heading rows. This changes
+the shared Logs panel. The shared compact operations toolbar replaces the two heading rows. This changes
 presentation, not version authority. Owners:
 [dashboard-surfaces D348](dashboard-surfaces.md#d348--dashboard-and-workflow-runtime-versions-2026-09-24),
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).

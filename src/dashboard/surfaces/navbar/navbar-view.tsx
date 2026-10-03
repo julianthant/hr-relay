@@ -1,7 +1,6 @@
-import { parseDate } from "@internationalized/date";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Moon, Search, Settings, Sun, X } from "lucide-react";
-import { Button, Calendar, Popover, PopoverClose, PopoverContent, PopoverTrigger, dsFocus, type DemoTheme } from "../../ds/ui.js";
+import { ArrowLeft, ArrowRight, ChevronLeft, ChevronRight, Moon, Search, Settings, Sun, X } from "lucide-react";
+import { Button, DatePicker, Popover, PopoverClose, PopoverContent, PopoverTrigger, dsFocus, type DemoTheme } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
 import type { ShellView, ShellViewSelection } from "../top-bar-model.js";
@@ -58,18 +57,13 @@ export function NavbarSearch({ data, onResult }: { data: NavbarData; onResult: (
 
 export function NavbarCalendar({ data }: { data: NavbarData }) {
   const [day, setDay] = useState(data.today);
-  const [open, setOpen] = useState(false);
   const count = data.counts[day];
-  const choose = (next: string) => { setDay(next); setOpen(false); };
   return <div className="flex h-8 shrink-0 items-center rounded-md border border-ui-stroke bg-ui-canvas p-px">
     <button type="button" aria-label="Previous day" title="Previous day" className={cn(iconButton, "size-7")} onClick={() => setDay(navbarShiftDay(day, -1))}><ChevronLeft aria-hidden className="size-3.5" /></button>
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild><button type="button" aria-label="Choose date" className={cn("flex h-7 items-center gap-1.5 rounded px-1.5 text-body hover:bg-ui-hover", dsFocus)}><CalendarDays aria-hidden className="size-3.5 text-ui-secondary" /><span>{navbarDayLabel(day)}</span><span title={count === undefined ? "Run count unavailable" : `${count} runs`} className="min-w-4.5 rounded bg-ui-table px-1 text-center text-caption tabular-nums text-ui-info">{count ?? "—"}</span></button></PopoverTrigger>
-      <PopoverContent title="Choose date" hideTitle hideClose align="end" className="ds-date-popover w-auto [&>div]:p-0">
-        <Calendar label="Choose dashboard date" value={parseDate(day)} maxValue={parseDate(data.today)} autoFocus onChange={date => choose(date.toString())} />
-        <div className="flex items-center justify-between border-t border-ui-stroke px-3 py-2"><span className="text-caption text-ui-muted">Dates through {navbarDayLabel(data.today)}</span><Button size="sm" variant="ghost" onClick={() => choose(data.today)}>Today</Button></div>
-      </PopoverContent>
-    </Popover>
+    <DatePicker label="Dashboard date" triggerLabel="Choose date" hideLabel required value={day} onChange={next => { if (next !== "" && next <= data.today) setDay(next); }} max={data.today}
+      className="w-36.5 [&_.date-input-group]:h-7 [&_.date-input-group__input]:px-1.5 [&_.date-input-group__input]:py-0 [&_.date-input-group__input]:text-body"
+      footer={choose => <div className="mt-3 flex items-center justify-between border-t border-ui-stroke pt-2"><span className="text-caption text-ui-muted">Dates through {navbarDayLabel(data.today)}</span><Button size="sm" variant="ghost" onClick={() => choose(data.today)}>Today</Button></div>} />
+    <span title={count === undefined ? "Run count unavailable" : `${count} runs`} className="mx-1 min-w-4.5 rounded bg-ui-table px-1 text-center text-caption tabular-nums text-ui-info">{count ?? "—"}</span>
     <button type="button" aria-label="Next day" title="Next day" disabled={day >= data.today} className={cn(iconButton, "size-7")} onClick={() => setDay(navbarShiftDay(day, 1))}><ChevronRight aria-hidden className="size-3.5" /></button>
   </div>;
 }
