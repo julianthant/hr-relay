@@ -135,7 +135,8 @@ Inventory actual mock handlers and current production call sites. For each event
 | Notification Read, Unread, Snooze and Unsnooze confirmed | Approved compact-chip acknowledgement | No new alert | Operator confirmed all four controls on 2026-10-03; the existing row state changes remain authoritative. |
 | Notification-control server refusal / revision conflict | Approved compact chip plus current notice | No new alert | Operator confirmed on 2026-10-03. |
 | Notification-control result unknown after dispatch | Truthful approved compact chip plus current notice | No new alert | Operator confirmed on 2026-10-03; do not claim no effect or automatically retry. |
-| Settings refusal / revision conflict; unconfirmed / unknown Settings result | Awaiting operator answer; preserve current inline feedback | No new alert added | These two questions remain open. No popup is inferred from the confirmed-save policy. |
+| Settings server refusal / revision conflict | Approved compact-chip-only feedback; no inline command-refusal message | No new alert | Operator confirmed chip-only Settings refusals on 2026-10-03; existing draft, authority and recovery controls remain. Binding verification is recorded in the continuation below. |
+| Unconfirmed / unknown Settings result | Truthful approved compact chip plus existing recovery warning | No new alert | Operator confirmed on 2026-10-03; preserve recovery controls and do not claim saved, failed or no effect. Binding verification is recorded in the continuation below. |
 | Other mocked feedback: general commands, identity / Park resolution, export, worker controls, archive actions, intake/import or later features | Ask before changing each actual unsettled event | Ask before changing membership | No blanket policy. Existing accepted behavior is preserved; later-feature callbacks remain with their owners. |
 
 Use one explicit, tested feedback policy for declared event kinds and confirmed command/publication results. Temporary action feedback stays transient and does not automatically create an inbox record. Persistent alerts are derived/published by the existing backend notification owner, committed before delivery and served through the existing day resource. Keep command-attempt and notification-publication identities distinct so a local response and later stream event do not produce two copies of the same intended feedback.
@@ -744,8 +745,10 @@ byte-identical in the sealed candidate, combined HEAD and working tree. Further 
 edits and both plan modifications remain uncommitted. W2a checks bind to the sealed candidate;
 this audit does not establish a passing gate for the combined peer tree.
 
-**Pending policies and continuation:** Settings server refusal / revision conflict and unconfirmed /
-unknown save outcomes await the operator's answers and retain their current inline feedback.
+**Policies and continuation:** unconfirmed / unknown Settings save outcomes are approved for a
+truthful compact chip plus their current recovery warning. The operator has confirmed chip-only
+Settings server refusal / revision-conflict feedback; its accepted binding is recorded in the
+continuation below. Accepted-but-superseded saves retain their distinct existing conflict behavior.
 General-command, identity / Park, export, worker, Archive, intake/import and other mock events were
 inventoried in the evidence above but receive no new blanket policy or binding. Run accepted/started
 is confirmed toast-only; its actual Run/Rerun callback remains deferred. Later Ws bind their own
@@ -789,10 +792,103 @@ regeneration of `docs/roadmap/index.html` from the isolated staged inputs. Its d
 limited to `p2-2g` wording; no node state, ownership, schedule or peer input changed. Peer plan and
 decision-index hunks remain excluded from W2a staging.
 
-The current continuation is the two
-unanswered Settings policies and later owners' explicit feature admissions; approved binding
-acceptance does not complete unresolved events or unbound mocks. Complex persistence/restart/SSE,
+The Settings continuation below records the final approved policies and accepted bindings. Later
+owners' explicit feature admissions remain necessary; this acceptance does not complete deferred
+events or unbound mocks. Complex persistence/restart/SSE,
 live HR, browser/OS/visual/performance/full-coverage and phase-exit obligations remain deferred under
 the existing cadence. No release, freeze, cutover or Electron admission is granted. Logs, Run/Rerun
 and spreadsheet work remain excluded. No push, merge, peer cleanup or next-package launch was
 authorized or performed.
+
+### W2a Settings feedback continuation — 2026-10-03
+
+Deployment ID: `w2a-settings-feedback-20261003`. The prior approved bindings and source/check receipt
+above remain accepted. The operator confirmed chip-only Settings refusal feedback: definite server
+refusals and revision conflicts use the existing compact danger chip, with no inline command-refusal
+message or new inbox alert. Drafts, read/authority signals, recovery controls, exact-attempt semantics
+and accepted-but-superseded behavior remain distinct. Pre-dispatch field validation does not gain a
+blanket toast policy. No command outcome is inferred from its displayed text.
+
+**Accepted source:** W2AS-X1's initial ten-path Settings change is
+`6e7c379f6f5eff85f0234ea6461c70ea9ff337ab`, from verified entry
+`72780c3699bc9de10f2d4ee081d3cdba27734e3b`. The locally accepted repaired candidate is
+`3e50d101f08c083ccff5787e7cc49ee6f1fb7870`, with parent
+`9880b0a76fe84ac88959c8fd1346e6d941db3e51` including intervening peer commits. The repair changes
+only the existing feedback renderer and its unit: chip-backed refusal keeps an operable standalone
+Retry edit control while hiding command-refusal copy. Typed matching rejected/conflict results
+produce closed actor/command/save-kind/outcome receipts; drafts, private values and raw server text
+do not enter chips. Ordinary, protected and provider paths retain stale-incarnation isolation,
+delivery-failure isolation and deduplication. No panel publication or approved toast-renderer change
+occurs. Accepted-but-superseded, unknown and local validation behavior remains distinct.
+
+[W2AS-R1 source review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-feedback-settings-w2a/review/W2AS-R1.md)
+finds no remaining blocker in the repaired candidate.
+[W2AS-V1 independent verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-feedback-settings-w2a/verification/W2AS-V1-report.md)
+records fresh plain Git exports and exact source/check inputs:
+
+- The nine-file Settings selection passes **96/96**; the independent, verification-only real-page
+  adapter asset passes **1/1**, proving one danger chip, retained Retry edit, no private inline copy,
+  deduplication and actor-change dismissal. That extra asset is evidence outside the committed source.
+- Scoped ESLint passes on all ten changed source/test paths and the verification asset. Manifest,
+  store-catalog and canonical bundle checks pass. Existing assertions, membership, timers and
+  timeouts remain retained; no broad gate is inferred from these focused results.
+- Fresh entry, repair-parent and candidate typechecks each exit **2** with **72** byte-identical
+  diagnostics, SHA-256 `132eb6be9ddb24a1b6a15a7f0c74ea515498dde0aaf652e6a173de304cc7cb95`.
+  Typecheck remains failed and unwaived. This is the current-entry comparison, not the earlier W2
+  receipt's diagnostic hash.
+- Each isolated export retains all **2,206** tracked blobs with zero mismatches after checks.
+  The shared checkout advanced to peer `7ceb7dd6d8eff10a721a04551dcc2388a8299022`; its index was
+  clean and two peer plan edits remained. Passing evidence binds to the immutable source candidate,
+  not the combined moving peer tree.
+
+**Final accepted Settings source:** the operator confirmed a truthful compact chip plus the existing
+recovery warning for unconfirmed saves, with no new panel alert. Source
+`f5fbfb49994e6231a04bf0acba6dc4645d89b02b` adds that binding from entry
+`7ceb7dd6d8eff10a721a04551dcc2388a8299022`. The locally accepted repaired candidate is
+`8cb10a13ce2d9b2bdb293e608f107d009b0e3eeb`, parent `f5fbfb499`; its two-path repair dismisses the
+exact prior unknown chip before Saved, refused or conflict replacement delivery, including when the
+replacement emitter throws. The matching closed receipt uses only actor, save kind and exact
+command ID, with an unconfirmed phase in the deduplication identity. The persistent danger chip is
+`Save unconfirmed`, manually dismissed, with closed kind-specific recovery copy and no target/action.
+Ordinary/protected controllers bind current typed authority uncertainty, post-dispatch unknown and
+unconfirmed readback; provider keys also bind identity-bound pending recovery. Existing inline
+warning, retained draft and exact-attempt controls remain; pre-dispatch validation, stale scopes and
+accepted-but-superseded behavior stay distinct. No unknown write is automatically retried or called
+saved, failed or without effect.
+
+[W2AS-R1 final source review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-feedback-settings-w2a/review/W2AS-R1-unknown.md)
+finds no remaining blocker. The fresh
+[W2AS-V1 final verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-feedback-settings-w2a/verification/W2AS-V1-unknown-report.md)
+passes **102/102** units in the same nine-file selection plus **1/1** evidence-only real-page unknown
+adapter check. The page check retains the inline warning and Retry exact attempt, reuses the command
+ID without another chip, excludes private server text and dismisses on section/actor change. Scoped
+lint, manifest, store-catalog and bundle checks pass. Fresh entry, parent and final typechecks each
+exit **2** with the same **72** diagnostics and SHA-256 recorded above; this remains failed and
+unwaived. Each of the three exact exports retains all **2,206** tracked blobs with zero mismatches.
+At verification, the owned checkout was at `8cb10a13`, index clean, with four plan/reference/index
+files modified and unstaged; checks did not run in that mutable tree.
+
+The approved compact-toast segment remains byte-identical across owner toast commit `e9332b520`,
+approved presentation `2d2dd9c6`, current presentation HEAD `15f2c0b` and its working file, accepted
+backend and current backend: **12,401 bytes**, SHA-256
+`8f9a5f18319634a4a5595dab2de87c4dd9391b0e38d84acecd77ae2e3e05ca37`. The canonical W2a receipt
+and independent W2A-V1 presentation receipt confirm the approved candidate; later whole-file
+presentation additions are outside the toast segment and remain preserved. Exact proof is in
+`W2AS-X1-unknown-report.md` and `unknown-presentation-source-proof.json` at the evidence owner.
+
+**Completion and obligations:** all operator policies for the admitted W2a bindings are settled,
+and the final Settings binding is locally accepted. Existing D366 owns both Settings policy
+ratifications, with the matching decision-index amendment in the same documentation commit.
+[The documentation/check handoff](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-feedback-settings-w2a/W2AS-X1-docs-check-ready.md)
+records the exact three-path partial stage: this owner's W2a policy/receipt/Settings continuation,
+D366's normative surface amendment and its decision-index entry. Staged whitespace, unique
+decision/anchors, links and source/receipt consistency pass. Entry and staged-candidate roadmap
+checks pass with no generated change; both exports retain all 2,206 paths and differ only in those
+three documents. All ten owned source/test paths remain equal to accepted `8cb10a13`, HEAD and
+working bytes, so source verification is reused for unchanged inputs. Peer working hashes and
+unrelated plan/index hunks remain preserved outside the stage. The receipt carries the final Git
+identity and refreshed documentation checks at closure. The evidence owner is
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-03/dashboard-feedback-settings-w2a/`.
+The scope exclusions, preserved assertions and deferred complex/live/visual/coverage/phase-exit
+obligations above remain in force. Later-feature callbacks remain with their owners. No push,
+merge, peer cleanup or next-package launch is authorized.

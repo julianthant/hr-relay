@@ -6571,16 +6571,18 @@ which retain their existing owners.
 
 <a id="w2a-feedback-policy-2026-10-03"></a>
 
-**W2a approved feedback policy — D366 (2026-10-03; approved binding subset locally accepted at
-`1db0e1b363dacd82ee56386d427e77814868660b`).** Two Settings refusal/unknown policies and unsettled
-feature events remain open, and unbound mocks are not complete. The exact approved presentation source is commit
+**W2a approved feedback policy — D366 (2026-10-03; initial approved bindings locally accepted at
+`1db0e1b363dacd82ee56386d427e77814868660b`; admitted Settings feedback bindings locally accepted at
+`8cb10a13ce2d9b2bdb293e608f107d009b0e3eeb`).** Deferred feature events and unbound mocks remain
+open. The exact approved
+presentation source is commit
 `2d2dd9c6a6ca38980da2f59be79c1b53a9a182fc`, `src/dashboard/ds/primitives-overlay.tsx`, SHA-256
 `aab66434a861abc0e923cd14d44c4a4f09155bb9196a926737b2d51679ec0bc4`. Reuse its compact-chip
 `ToastProvider` / `ToastViewport` / `ToastCard`, including expansion, focus, timers and dismissal;
 the backend colored-rail variant is not the approved source. Danger chips remain until manual
 dismissal. This policy does not claim that every callback or mock is bound.
 
-| Event | Confirmed in-app feedback | Target and identity |
+| Event | In-app feedback | Target and identity |
 |---|---|---|
 | `run-failed` | Durable panel row + danger chip | Existing guarded failure lookup; manual dismissal; actor-scoped publication ID. |
 | `subject-mismatch` | Its own durable panel row + danger chip, even alongside `run-failed` | Existing guarded failure lookup; manual dismissal; separate publication ID. |
@@ -6591,14 +6593,18 @@ dismissal. This policy does not claim that every callback or mock is bound.
 | `storage-degraded` | Durable panel row + warning chip | Existing guarded Storage lookup; 3 seconds; publication ID. This does not admit a missing publisher. |
 | `backfill-gap` | Pinned durable warning + danger chip | No target or fabricated action; manual chip dismissal; pin and retention remain immutable. |
 | Ordinary Settings, protected credential and provider-key save confirmed | Chip title `Saved` / `Already saved` with closed description `Settings saved` / `Credential settings saved` / `Provider keys saved`; preserve existing inline status, no new panel alert | Receipt binds only `actorId`, `commandId`, kind (`ordinary` / `protected` / `provider-key`) and `replayed`; replay selects `Already saved`. Require matching result and authoritative readback; 3 seconds. No draft/private values, action or activation claim. |
+| Settings definite server refusal / revision conflict | Approved compact danger chip; retain the existing standalone `Retry edit` control and draft/recovery state, with no inline command-refusal copy or new panel alert | Closed local receipt: `actorId`, `commandId`, `kind` (`ordinary` / `protected` / `provider-key`) and `outcome` (`refused` / `conflict`). No target or chip action; manual dismissal, receipt-scoped dedupe and stale actor/client/incarnation isolation. |
+| Unconfirmed / unknown Settings save result | Persistent danger chip titled `Save unconfirmed` beside the existing recovery warning and exact-attempt retry control; manual dismissal; no new panel alert | Receipt contains only `actorId`, `commandId` and `kind` (`ordinary` / `protected` / `provider-key`); dedupe by actor/kind/command plus the unconfirmed phase. No target/action; use the closed kind-specific recovery description and make no success/failure/no-effect claim. Trigger only for the current exact attempt's actual unconfirmed outcome: typed `authority-uncertain` / `authority-unjournaled`, post-dispatch unknown or unconfirmed authoritative readback; provider also supports identity-bound pending recovery. Source/check evidence is in the [W2a Settings continuation](../plans/phase-3/dashboard-surface-wiring.md#w2a-settings-feedback-continuation--2026-10-03). |
 | Read, Unread, Snooze and Unsnooze confirmed | Success acknowledgement; no new panel alert or chip action | Matching applied command ID and exact notification target; 3 seconds; control scope + command ID + outcome. Stream state changes do not repeat it. |
 | Notification-control refusal or revision conflict | Danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. |
 | Notification-control result unknown after dispatch, including target mismatch | Truthful danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. No automatic retry, success claim or no-effect claim. |
 
-Local save chips require both the matching result and authoritative readback; provider feedback also
-requires the current incarnation, including identity-bound pending recovery. Ordinary notification
-chips derive only from declared kinds in canonical committed publication metadata and validate
-actor, row, trigger and dedupe fingerprint; `backfill-gap` uses its explicit pinned-wire provenance.
+Confirmed-save chips require both the matching result and authoritative readback. Provider
+confirmed-save feedback also requires the current incarnation, including identity-bound pending
+recovery. A later definite saved/refused/conflict result settles the exact prior unknown before
+replacement delivery; delivery failure does not restore it. Ordinary notification chips derive only
+from declared kinds in canonical committed publication metadata and validate actor, row, trigger and
+dedupe fingerprint; `backfill-gap` uses its explicit pinned-wire provenance.
 Publication IDs, source
 occurrences, folded rows, command attempts, row revisions and the provider's local sequential toast
 IDs are distinct. Older rows without publication metadata remain unavailable;
@@ -6606,8 +6612,9 @@ initial snapshots, reconnect/replay, read-only revisions and active Snooze do no
 Actor, day, client, selection or unmount invalidation closes stale chips and invalidates their
 actions. Popup delivery failure never removes the durable row.
 
-Settings refusal/revision conflict and unconfirmed/unknown save outcomes remain unresolved: preserve
-current inline feedback and add no panel alert. General commands, identity/Park resolution, export,
+The refusal chip policy applies only to definitive server refusal/conflict results; local validation
+and accepted-but-superseded saves retain their existing distinct behavior. General commands,
+identity/Park resolution, export,
 worker controls, Archive, intake/import and later feature events get no blanket policy. Run
 accepted/started is toast-only after confirmed acceptance; its Run/Rerun callback remains deferred.
 Later packages bind their own callbacks. OS delivery, permission and status remain W2-owned.

@@ -21,14 +21,25 @@ declared backend notification kinds receive a durable panel row and compact in-a
 approved policy. Ordinary events use canonical committed publication evidence; backfill gaps use
 explicit pinned-wire provenance and stay pinned, while subject-mismatch is a separate publication.
 Confirmed Settings saves and notification controls receive result-bound local feedback
-without creating inbox rows. Settings refusal/conflict and unconfirmed/unknown outcomes remain
-unresolved; Run accepted/started is toast-only with its callback deferred, and other unsettled events
-have no blanket policy. W2's Snooze, Unsnooze, dedupe/replay, commit-before-delivery and OS contracts
-remain. Exact approved source provenance, event targets and identities are in
+without creating inbox rows. Definite Settings server refusal/conflict uses the approved compact
+danger chip with no inline command-refusal copy or new panel alert; its closed receipt binds
+`actorId`, `commandId`, save `kind` and `outcome`, with manual dismissal, scoped deduplication and
+stale isolation. Unconfirmed/unknown Settings saves receive a persistent danger chip titled `Save
+unconfirmed` alongside the current recovery warning and exact-attempt retry, with no panel alert or
+success/failure/no-effect claim. Its receipt contains only `actorId`, `commandId` and `kind`, deduped
+by actor/kind/command plus unconfirmed phase; it has no target/action. Only typed
+`authority-uncertain` / `authority-unjournaled`, post-dispatch unknown or unconfirmed authoritative
+readback can trigger it; provider saves also support identity-bound pending recovery.
+Run accepted/started is toast-only with its callback deferred, and other unsettled
+events have no blanket policy. W2's Snooze, Unsnooze, dedupe/replay, commit-before-delivery and OS
+contracts remain. Exact approved source provenance, event targets and identities are in
 [§2.6](dashboard-surfaces.md#w2a-publication-policy-2026-10-03) and
-[§9.6](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03). The approved binding subset is
-locally accepted at `1db0e1b363dacd82ee56386d427e77814868660b`; two Settings policies and unbound
-events remain open. Execution state is owned by the [W2a receipt](../plans/phase-3/dashboard-surface-wiring.md#w2a-execution-receipt--2026-10-03).
+[§9.6](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03). The initial approved binding subset is
+locally accepted at `1db0e1b363dacd82ee56386d427e77814868660b`; admitted Settings feedback bindings
+are locally accepted at `8cb10a13ce2d9b2bdb293e608f107d009b0e3eeb`. Source/check evidence is in the
+main-owned [W2a Settings continuation](../plans/phase-3/dashboard-surface-wiring.md#w2a-settings-feedback-continuation--2026-10-03).
+Deferred and unbound later events remain open. Execution state is owned by the
+[W2a receipt](../plans/phase-3/dashboard-surface-wiring.md#w2a-execution-receipt--2026-10-03).
 
 **D365 — Accepted Settings save superseded before readback (operator-approved W1, 2026-10-02):**
 an authenticated accepted save followed by a later saved revision clears submission uncertainty,
