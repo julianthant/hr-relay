@@ -39,6 +39,8 @@ import {
   Pencil,
   RotateCcw,
   Search,
+  Check,
+  Archive,
   Trash2,
   X,
 } from "lucide-react";
@@ -474,6 +476,8 @@ export function RowContextMenu({
   rowLabel,
   onAction = NOOP_ACTION,
   children,
+  onSelectRow,
+  onPreviewAction,
 }: {
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
@@ -481,9 +485,11 @@ export function RowContextMenu({
   rowLabel: string;
   onAction?: DashboardActionHandler;
   children: ReactNode;
+  onSelectRow?: () => void;
+  onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
 }) {
   const items = actionsAt(actions, "menu");
-  if (items.length === 0) return <>{children}</>;
+  if (items.length === 0 && onSelectRow === undefined && onPreviewAction === undefined) return <>{children}</>;
   const navigate = items.filter((a) => a.kind === "navigation");
   const commands = items.filter((a) => a.kind === "command" && a.intent !== "destructive");
   const destructive = items.filter((a) => a.kind === "command" && a.intent === "destructive");
@@ -493,7 +499,13 @@ export function RowContextMenu({
     <ContextMenu>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
       <ContextMenuContent label={`Commands for ${rowLabel}`}>
-        {groups.map((group, i) => (
+        {onSelectRow !== undefined && <ContextMenuItem icon={<Check className={dsIcon.sm} />} onSelect={onSelectRow}>Select</ContextMenuItem>}
+        {onPreviewAction !== undefined ? <>
+          <ContextMenuSeparator className="my-1 h-px bg-ui-stroke" />
+          <ContextMenuItem icon={<RotateCcw className={dsIcon.sm} />} onSelect={() => onPreviewAction('retry')}>Retry</ContextMenuItem>
+          <ContextMenuItem icon={<Archive className={dsIcon.sm} />} onSelect={() => onPreviewAction('archive')}>Archive</ContextMenuItem>
+          <ContextMenuItem icon={<Trash2 className={dsIcon.sm} />} tone="destructive" onSelect={() => onPreviewAction('delete')}>Delete</ContextMenuItem>
+        </> : groups.map((group, i) => (
           <Fragment key={i}>
             {i > 0 && <ContextMenuSeparator className={cn("my-[var(--ds-space-tight)] h-px", dsBorder.subtle, "border-t")} />}
             {group.map((a) => (

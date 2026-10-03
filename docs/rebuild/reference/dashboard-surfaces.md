@@ -39,6 +39,28 @@ has one focus ring on its shared input group. Shell navigation owns the Archive,
 names, so their toolbars do not repeat those titles. Explorer has no back control
 or `onBack` prop; shell navigation exits it.
 
+The approved Focus toolbar is mounted in the Dashboard: an icon-only Workflow Panel launcher and
+blue Start a run control stay on the left; All statuses and sort stay on the right. Frequent
+All/Needs you/Running filters occupy the queue header and align with its cards. Double-click,
+right-click and Shift+F10 open the row menu, whose Select item enters selection and includes that
+row. Selection replaces the filter header with a visible-row checkbox, count, Delete/Archive/Retry
+and an X exit. Escape exits selection and restores row focus; removal restores the launch control.
+There is no toolbar Select, Done or Clear control. The Workflow Panel remains 280px wide and its
+launcher/Start a run controls remain outside the panel's changing modes.
+
+These new queue menu and selection actions are explicitly local mocks. Each record retains authored
+mock settings; Retry reuses the exact settings object to add a queued attempt, with fresh identities
+and pending steps, without opening Rerun or issuing a command. Original attempts remain in history.
+Archive retains the removed local records; Delete removes them. The local queue filters/counts fold
+the latest mock attempt per item, while the Workflow Panel and Navbar retain served day counts.
+Reload or a changed day/source resets local changes. This is not a reconstruction of a runtime launch
+envelope or proof of live Retry/Archive/Delete contracts. Existing served row-footer commands and
+command-recovery feedback retain their wiring and assurances.
+
+Run input follows the approved Design 1 frame: a concise descriptor-derived input label, parser
+guidance and a framed Parsed input list with ordered entries and per-entry run counts. The existing
+Options/Steps/Rerun layouts, parsing, source binding and live launch contracts remain unchanged.
+
 Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
 `RecordTable` renders confirmed transactions and evidence coverage beneath it in the left column, with
 shared `text-body` values (12px / 18px, weight 400). The adaptive chart and Run performance table sit

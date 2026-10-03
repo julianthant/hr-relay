@@ -33,10 +33,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           return { height: node.getBoundingClientRect().height, padding: row.paddingInline, gap: row.gap, radius: frame.borderRadius, border: frame.borderTopWidth };
         }));
         if (label === "Queue actions") {
-          await bar.getByRole("button", { name: "Select", exact: true }).click();
-          await expect(page.getByRole("button", { name: /^Select all \d+ in view$/ })).toBeVisible();
-          await bar.getByRole("button", { name: "Select", exact: true }).click();
-          await expect(page.getByRole("button", { name: /^Select all \d+ in view$/ })).toHaveCount(0);
+          const launcher = bar.getByRole("button", { name: /^Workflow Panel/ });
+          if (await launcher.getAttribute("aria-expanded") === "true") await launcher.click();
+          await page.locator('[data-demo-row-id]').first().dblclick();
+          await page.getByRole("menuitem", { name: "Select", exact: true }).click();
+          await expect(page.getByRole("checkbox", { name: "Select all visible runs", exact: true })).toBeVisible();
+          await page.getByRole("button", { name: "Exit selection", exact: true }).click();
+          await expect(page.getByRole("checkbox", { name: "Select all visible runs", exact: true })).toHaveCount(0);
         }
         if (label === "Archive controls") {
           const search = bar.getByRole("textbox", { name: "Search saved reports" });

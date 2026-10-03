@@ -46,6 +46,7 @@ import {
   dsSize,
   dsSurface,
   dsText,
+  openContextMenuFor,
 } from "../ds/ui.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import { isTerminalQueueStatus } from "../../domain/dashboard/projection.js";
@@ -140,6 +141,9 @@ export interface QueueHandlers {
   onOpenRoster?: (runId: string) => void;
   /** add/remove a row from the bulk target set */
   onToggleBulk?: (runId: string) => void;
+  onSelectBulk?: (runId: string) => void;
+  onExitSelection?: () => void;
+  onPreviewAction?: (action: 'retry' | 'archive' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
   onToggleChecked?: (runId: string) => void;
   /**
@@ -957,9 +961,19 @@ export function QueueRow({
         target={target}
         rowLabel={queueRowTitle(surface)}
         {...(onAction === undefined ? {} : { onAction })}
+        {...(handlers.onSelectBulk === undefined ? {} : { onSelectRow: () => handlers.onSelectBulk?.(surface.runId) })}
+        {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'archive' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
       >
         <div
-          onClick={() => handlers.onSelect(surface.runId)}
+          onClick={event => {
+            if (event.detail > 1) return;
+            if (state.selectMode === true) handlers.onToggleBulk?.(surface.runId);
+            else handlers.onSelect(surface.runId);
+          }}
+          onDoubleClick={event => {
+            if ((event.target as HTMLElement).closest('button, input, a') !== null) return;
+            event.preventDefault(); openContextMenuFor(event.currentTarget);
+          }}
           role="button"
           tabIndex={0}
           aria-pressed={selected}
@@ -977,9 +991,14 @@ export function QueueRow({
             // Nested controls keep native Enter/Space activation. Only the
             // focused row itself uses those keys to open its detail.
             if (event.target !== event.currentTarget) return;
+            if (event.key === 'ContextMenu' || (event.key === 'F10' && event.shiftKey)) {
+              event.preventDefault(); openContextMenuFor(event.currentTarget); return;
+            }
+            if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); return; }
             if (event.key === "Enter" || event.key === " ") {
               event.preventDefault();
-              handlers.onSelect(surface.runId);
+              if (state.selectMode === true) handlers.onToggleBulk?.(surface.runId);
+              else handlers.onSelect(surface.runId);
             }
           }}
           className={cn(
@@ -1212,6 +1231,7 @@ export const QueuePanel = memo(function QueuePanel({
   isToday = false,
   filter,
   sort = "attention",
+  header,
 }: {
   /** the day's flat queue projection, already scoped to this panel's workflow */
   surfaces: readonly QueueSurfaceWire[];
@@ -1234,6 +1254,7 @@ export const QueuePanel = memo(function QueuePanel({
   filter?: QueueFilterScope;
   /** the toolbar's ordering control; the default passes the projection through */
   sort?: QueueSortKey;
+  header?: ReactNode;
 }) {
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
@@ -1276,6 +1297,7 @@ export const QueuePanel = memo(function QueuePanel({
   return (
     <section
       aria-label="Queue"
+      onKeyDown={event => { if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); } }}
       className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}
     >
       {/*
@@ -1289,7 +1311,7 @@ export const QueuePanel = memo(function QueuePanel({
         question no other surface answers when the Workflow Panel is reduced to
         an icon.
       */}
-      <div
+      {header ?? <div
         className={cn(
           "flex shrink-0 items-center border-b",
           dsSize.hBar,
@@ -1299,7 +1321,7 @@ export const QueuePanel = memo(function QueuePanel({
         )}
       >
         <h2 className={cn(dsText.title, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>{panelLabel}</h2>
-      </div>
+      </div>}
       {/* ONE scrolling region, and its track runs the panel's full height. */}
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {/* Empty is a STATE: what would be here, why it is not, and what to do

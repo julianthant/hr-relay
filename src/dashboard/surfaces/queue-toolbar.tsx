@@ -238,12 +238,6 @@ export function QueueToolbar({
   className?: string;
 }) {
   const allSelected = visibleIds.length > 0 && selectedCount === visibleIds.length;
-  const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
-  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
-  const assurance = useMemo(
-    () => vector === undefined ? undefined : bulkClosingAssurance(vector),
-    [vector],
-  );
 
   return (
     <ActionBar className={className}>
@@ -442,6 +436,21 @@ export function QueueToolbar({
         auto-dismisses would take a partial result off the screen before it was
         read.
       */}
+      <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={onDismissBulkOutcome} onSelectRun={onSelectRun} />
+    </ActionBar>
+  );
+}
+
+export function BulkCommandFeedback({ bulkOutcome, onDismissBulkOutcome, onSelectRun }: {
+  bulkOutcome: BulkBatchOutcome | null; onDismissBulkOutcome: () => void; onSelectRun: (runId: string) => void;
+}) {
+  const vector = bulkOutcome?.response.state === "vector" ? bulkOutcome.response : undefined;
+  const buckets = useMemo(() => vector === undefined ? undefined : bulkResultCounts(vector), [vector]);
+  const assurance = useMemo(
+    () => vector === undefined ? undefined : bulkClosingAssurance(vector),
+    [vector],
+  );
+  return <>
       {bulkOutcome !== null && (
         <div
           className={cn(
@@ -592,6 +601,5 @@ export function QueueToolbar({
           )}
         </div>
       )}
-    </ActionBar>
-  );
+  </>;
 }

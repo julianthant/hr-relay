@@ -74,6 +74,22 @@ served-Archive browser/reference assertions remain unchanged as future reconnect
 this mock is not evidence that those authority journeys pass. Full repository gates and deliberate
 reference replacement remain with 3.1.19.
 
+## Focus queue integration (2026-10-03)
+
+The approved Focus toolbar and queue-header filters replace the mounted legacy QueueToolbar.
+Launcher and Start a run stay left; All statuses/sort stay right. Double/right-click and Shift+F10
+open row actions; Select includes the row and replaces filters with checkbox/count/Delete/Archive/
+Retry/X controls. Escape restores focus. New menu/bulk actions are labelled local mocks. Retry keeps
+the exact authored settings object and original attempt history; it adds a pending queued attempt
+without a command or Rerun dialog. Archive/Delete are local and reload restores the original queue.
+Local queue counts differ deliberately from served day/rail counts after a mock action. Existing
+served footer commands and recovery outcomes retain their wiring. Run input adopts the approved
+Parsed input layout without changing parsing or launch contracts.
+
+Focused model, launch regression, dark/light 1024/1440 interaction, accessibility, lint and build
+checks cover this integration. Existing frozen visual references and backend command acceptance
+remain unchanged; their broad acceptance and deliberate refreeze stay with 3.1.19.
+
 ## Ruled deviations from the rebuild-demo
 
 One shell affordance has no demo counterpart and STAYS, ruled by **D272 item 3**

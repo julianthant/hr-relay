@@ -48,9 +48,11 @@ type QueueSurfaceWire,
 } from "../surfaces/queue-model.js";
 import {
 ConfirmBulkCommandDialog,
-QueueToolbar,
+BulkCommandFeedback,
 type PendingBulkCommand,
 } from "../surfaces/queue-toolbar.js";
+import { FocusQueueHeader, FocusQueueToolbar } from '../surfaces/queue-focus.js';
+import { queuePreviewCounts, useQueuePreview, type QueueMockAction } from '../surfaces/queue-preview-model.js';
 import { QueuePanel,type QueueFilterScope,type QueueHandlers,type QueueViewState } from "../surfaces/queue.js";
 import { RenameRunDialog,type PendingRename } from "../surfaces/run-identity.js";
 import { RunStartButton } from "../surfaces/run-start.js";
@@ -58,17 +60,15 @@ import { SessionPanel } from "../surfaces/session-panel.js";
 import {
 DASHBOARD_MAIN_REGION_ID
 } from "../surfaces/settings-model.js";
-import { activeCount,activeStatusWords,parseWorkflows,useSelectedWorkflow,useWorkflowPanelMode,workflowStatusCounts,type StatusBucket } from "../surfaces/shell-model.js";
-import { StatusFilters,WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
+import { activeCount,activeStatusWords,parseWorkflows,useSelectedWorkflow,useWorkflowPanelMode,type StatusBucket } from "../surfaces/shell-model.js";
+import { WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
 import { type ShellView } from "../surfaces/top-bar-model.js";
 import { TopBar } from "../surfaces/top-bar.js";
 import {
 bulkSubjectsOf,
-bulkUnavailableIds,
 composeBulkRunCommand,
-planBulkVerbs,
 type BulkBatchOutcome,
 type BulkVerbPlan,
 } from "./bulk-dispatch.js";
@@ -301,7 +301,8 @@ function LoadedApp({
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
-  const selectedRow = dayWire?.queueSurfaces.find(row => String(row.runId) === route.run);
+  const previewQueue = useQueuePreview(dayWire?.queueSurfaces, day);
+  const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
   const activeWorkflowId = selectedRow?.workflowId ?? chosenWorkflowId;
   const launch = useRunLaunch(route.start, DASHBOARD_MAIN_REGION_ID);
   const openStart = launch.openStart;
@@ -369,9 +370,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (dayWire === undefined) return [];
-    const scoped = dayWire.queueSurfaces.filter((s) => s.workflowId === activeWorkflowId);
+    const scoped = previewQueue.rows.filter((s) => s.workflowId === activeWorkflowId);
     return filterQueueSurfaces(scoped, filter);
-  }, [dayWire, activeWorkflowId, filter]);
+  }, [dayWire, previewQueue.rows, activeWorkflowId, filter]);
 
   const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
   /**
@@ -382,21 +383,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    */
   const dayActive = activeCount(dayWire?.statusCounts ?? []);
 
-  /**
-   * THE STATUS BAND'S OWN SCOPE (R4-1) — the ACTIVE workflow's served
-   * per-status counts, read straight out of R2's `workflowCounts` array.
-   *
-   * The band was handed `dayWire.statusCounts`, which the projection folds
-   * across every workflow in the day, while the queue below it renders ONE
-   * workflow — so `Failed 3` could sit above a queue with no failures. The fix
-   * is a re-point, not a client-side fold: `shell.tsx:1-17` refuses counting
-   * rows here by name, and D81's one count path is the reason. `dayCount` above
-   * is deliberately left alone — the panel launcher is a DIFFERENT quantity
-   * (day-wide across workflows), exactly as the demo has it.
-   */
+  /** Local mock counts follow the latest attempt; served day/rail counts keep their own scope. */
   const scopedStatusCounts = useMemo(
-    () => workflowStatusCounts(dayWire?.workflowCounts ?? [], activeWorkflowId),
-    [dayWire, activeWorkflowId],
+    () => queuePreviewCounts(previewQueue.rows, activeWorkflowId),
+    [previewQueue.rows, activeWorkflowId],
   );
 
   /**
@@ -493,56 +483,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       leaveSettings(() => setRoute({ ...routeForCrossDateSearchResult(route, {runId, partitionDay: day}), section: "logs" }));
     },
     [route, setRoute, day, leaveSettings],
-  );
-
-  /**
-   * D235 — WHAT THE SELECTION CAN DO, from the rows' OWN served descriptors.
-   *
-   * The rows are taken from `surfaces` and not from `bulkIds` alone: an id in
-   * the selection whose row has left the day (a filter changed, the day rolled)
-   * has no served `actions[]`, so nothing may be sent for it against a version
-   * nobody currently serves.
-   *
-   * It used to drop out of every plan THERE — the filter below removed it and
-   * no count downstream ever mentioned it again, so `Cancel 3 · 1 skipped`
-   * could sit under `6 selected` with two rows accounted for nowhere. That is
-   * the omission this repo's fail-loud rule forbids: not sent, and not
-   * disclosed either. The WHOLE selection now travels into `planBulkVerbs`,
-   * which returns those ids as its own `unavailable` bucket, and the strip, the
-   * confirm dialog and the result band each say so in their own words.
-   */
-  const bulkCandidateRows = useMemo(
-    () =>
-      surfaces
-        .filter((surface) => bulkIds.has(String(surface.runId)))
-        .map((surface) => ({
-          runId: String(surface.runId),
-          // The SAME `displayName ?? title` fold the row itself draws, shared
-          // rather than repeated: a confirm dialog naming a run something other
-          // than the row above it is a dialog about a different run.
-          title: queueRowTitle(surface),
-          actions: surface.actions,
-        })),
-    [bulkIds, surfaces],
-  );
-
-  const bulkSelectedIds = useMemo(() => [...bulkIds], [bulkIds]);
-
-  const bulkPlans = useMemo(() => {
-    if (!selectMode || bulkIds.size === 0) return [];
-    return planBulkVerbs(bulkCandidateRows, bulkSelectedIds);
-  }, [selectMode, bulkIds, bulkCandidateRows, bulkSelectedIds]);
-
-  /**
-   * The unavailable bucket read on its OWN, because the strip needs it in the
-   * one case no plan survives to carry it: a selection whose rows have all left
-   * the day offers no verb, so `bulkPlans` is empty and there is no plan to ask.
-   * Without this the band would print "none of the 2 selected rows serves
-   * Cancel or Retry" about rows whose `actions[]` nobody ever read.
-   */
-  const bulkUnavailable = useMemo(
-    () => (selectMode && bulkIds.size > 0 ? bulkUnavailableIds(bulkCandidateRows, bulkSelectedIds) : []),
-    [selectMode, bulkIds, bulkCandidateRows, bulkSelectedIds],
   );
 
   /**
@@ -916,10 +856,41 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     if (settlement.kind === "refused") throw new Error(settlement.message);
   }, [boot.actor.id, client, nowIso]);
 
+  const selectionOrigin = useRef<string | null>(null);
+  const exitQueueSelection = useCallback(() => {
+    onSelectMode(false);
+    onBulkIds(new Set());
+    queueMicrotask(() => {
+      const row = selectionOrigin.current === null ? null : document.querySelector<HTMLElement>(`[data-demo-row-id="${CSS.escape(selectionOrigin.current)}"]`);
+      (row ?? document.getElementById(RUN_START_DOOR_ID))?.focus({ preventScroll: true });
+    });
+  }, [onSelectMode, onBulkIds]);
+  const runPreviewAction = useCallback((action: QueueMockAction, ids: readonly string[]) => {
+    if (ids.length === 0) return;
+    selectionOrigin.current = ids[0] ?? null;
+    let retriedIds: readonly string[];
+    try { retriedIds = previewQueue.apply(action, ids, nowIso); }
+    catch (caught) {
+      toast({ tone: 'danger', title: 'Mock action unavailable', description: caught instanceof Error ? caught.message : String(caught) });
+      return;
+    }
+    if (action === 'retry') selectionOrigin.current = retriedIds[0] ?? null;
+    exitQueueSelection();
+    toast({ tone: 'success', title: `${ids.length} mock ${ids.length === 1 ? 'run' : 'runs'} ${action === 'retry' ? 'queued' : action === 'archive' ? 'archived' : 'deleted'}`, description: action === 'retry' ? 'Original mock settings retained. No runtime run was started.' : 'Local preview only. Reload restores the queue.' });
+    if (route.run !== undefined && ids.includes(route.run)) setRoute({ ...route, run: action === 'retry' ? retriedIds[0] : undefined });
+  }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute]);
+
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
       onSelect: selectRun,
+      onSelectBulk: runId => {
+        selectionOrigin.current = runId;
+        onSelectMode(true);
+        onBulkIds(new Set([...bulkIds, runId]));
+      },
+      onExitSelection: exitQueueSelection,
+      onPreviewAction: runPreviewAction,
       /*
         LIVE. `actionsOf` at the call site reads the row's own served
         `actions[]`, so every control the server describes routes through
@@ -963,7 +934,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         selectRun(String(link.runId));
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId, onSelectMode, exitQueueSelection, runPreviewAction],
   );
 
   const keyboardOrder = useMemo(
@@ -1184,35 +1155,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               else dispatchBulk(retained.plan, { recovery: retained });
             }}
           />
-          <QueueToolbar
-            className="mx-[var(--ds-shell-inset)] mt-[var(--ds-shell-inset)]"
+          <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={() => setBulkOutcome(null)} onSelectRun={selectRun} />
+          <FocusQueueToolbar
             sort={sort}
             onSort={onSort}
-            selectMode={selectMode}
-            onSelectMode={(on) => {
-              onSelectMode(on);
-              if (!on) onBulkIds(new Set());
-            }}
-            selectedCount={bulkIds.size}
-            visibleIds={selectableIds}
-            onSelectAll={() => onBulkIds(new Set(selectableIds))}
-            onClearSelection={() => onBulkIds(new Set())}
-            bulkPlans={bulkPlans}
-            bulkUnavailable={bulkUnavailable}
-            onBulk={(plan) => {
-              const inFlightKey = `bulk:${plan.verb}`;
-              const existingUncertain = uncertainCommands.current.get(inFlightKey);
-              if (existingUncertain !== undefined) {
-                setPendingRecovery(inFlightKey);
-                return;
-              }
-              const commandId = crypto.randomUUID();
-              const requestedAt = nowIso;
-              setPendingBulk({ plan, commandId, requestedAt });
-            }}
-            bulkOutcome={bulkOutcome}
-            onDismissBulkOutcome={() => setBulkOutcome(null)}
-            onSelectRun={selectRun}
+            active={filter}
+            counts={scopedStatusCounts}
+            onFilter={onFilter}
             leading={dayWire === undefined ? null :
               <WorkflowPanelToggle
                 mode={panelMode.mode}
@@ -1250,9 +1199,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 surface are untouched.
               */
               <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
-            }
-            filters={
-              dayWire === undefined ? null : <StatusFilters statusCounts={scopedStatusCounts} active={filter} onSelect={onFilter} />
             }
           />
 
@@ -1316,6 +1262,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 day={day}
                 isToday={day === today}
                 sort={sort}
+                header={<FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
+                  selecting={selectMode} selectedCount={bulkIds.size}
+                  allSelected={selectableIds.length > 0 && selectableIds.every(id => bulkIds.has(id))}
+                  someSelected={selectableIds.some(id => bulkIds.has(id))}
+                  onSelectAll={checked => onBulkIds(checked ? new Set([...bulkIds, ...selectableIds]) : new Set([...bulkIds].filter(id => !selectableIds.includes(id))))}
+                  onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])} />}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
 

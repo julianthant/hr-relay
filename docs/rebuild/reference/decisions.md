@@ -40,6 +40,13 @@ paired report fields, compact rows and distinct loading/empty/error states. Inli
 areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
 The approved compact operations toolbar is shared by Dashboard, Archive, Explorer and Activity.
+The Dashboard mounts the Focus layout: icon-only launcher and Start a run left, All statuses/sort
+right, frequent filters aligned inside the queue header. Double/right-click and Shift+F10 open row
+actions; Select enters bulk mode with checkbox/count/Delete/Archive/Retry/X controls and Escape exit.
+These new actions are local mocks: Retry retains the exact authored mock settings, adds a queued
+attempt and never opens Rerun or sends a runtime command. Local counts reflect the latest mock attempt;
+served rail/day counts and existing row-footer commands/recovery feedback retain their contracts.
+Run input uses the approved ordered Parsed input frame; launch parsing and authority remain unchanged.
 Archive search has one focus ring; shell navigation supplies the Archive, Explorer and Activity names
 without repeated toolbar titles. Archive's mounted original-layout mock is owned by D348 below.
 Backend classifiers and failure/resolve wiring remain deferred.

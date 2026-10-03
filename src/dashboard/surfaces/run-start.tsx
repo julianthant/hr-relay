@@ -41,7 +41,6 @@ import type { CommandResult } from "../../domain/commands.js";
 import { settleCommandResult } from "../app/command-result.js";
 import {
   inputRunParserLabel,
-  inputRunSeparatorLabel,
   inputRunValueNoun,
   parseInputRunText,
   toRawSubmission,
@@ -605,9 +604,8 @@ function TypedInput({
       <Field
         // D250 — both halves are DERIVED from the parser spec, so the box cannot
         // describe a rule it does not apply.
-        label={`${inputRunValueNoun(surface.parser)} — ${inputRunSeparatorLabel(surface.parser)}`}
+        label={inputRunValueNoun(surface.parser)}
         description={inputRunParserLabel(surface.parser)}
-        hint={`${String(preview.entries.length)} parsed`}
         error={preview.problem}
       >
         <Textarea
@@ -624,22 +622,23 @@ function TypedInput({
       </Field>
 
       {preview.entries.length > 0 && (
-        <ul className="flex flex-col gap-[var(--ds-space-hair)]">
+        <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
+          <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? 'run' : 'runs'}</Badge></div>
+        <ul className="overflow-hidden rounded-md border border-ui-stroke divide-y divide-ui-stroke">
           {preview.entries.map((entry) => (
             <li
               key={entry.index}
               className={cn(
-                "flex min-w-0 items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)] py-[var(--ds-space-hair)]",
-                dsRadius.sm,
-                "bg-[var(--ds-surface-2)]",
+                "flex min-w-0 items-center gap-2 bg-ui-table px-[10px] py-2",
               )}
             >
-              <span className={cn(dsText.micro, dsText.nums, dsFg.faint)}>{entry.index + 1}</span>
-              <span className={cn(dsText.body, "min-w-0 flex-1 truncate", dsFg.base)}>{entry.sourceText}</span>
-              <span className={cn(dsText.meta, dsFg.muted)}>{entry.fields[0].field}</span>
+              <span className="text-body">{entry.index + 1}.</span>
+              <span className="min-w-0 flex-1 truncate font-mono text-caption">{entry.sourceText}</span>
+              <span className="text-caption text-ui-muted">1 run</span>
             </li>
           ))}
         </ul>
+        </section>
       )}
     </div>
   );
@@ -1262,7 +1261,7 @@ export function RunStartDialog({
             )}
 
             <section className="flex flex-col gap-1">
-              <h3 className="text-heading font-semibold">{currentStage === "Options" ? "Run options" : currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow?.label ?? "No workflow"}</h3>
+              <h3 className="text-heading font-semibold">{currentStage === "Options" ? "Run options" : currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow === undefined ? "No workflow" : "Run input"}</h3>
               {currentStage === "Options" && <p className="text-body text-ui-secondary">Set how this work enters the queue.</p>}
               {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Required steps stay included. Optional steps may be omitted."}</p>}
               {currentStage === "Values" && <p className="text-body text-ui-secondary">Review the input and values this rerun will use.</p>}

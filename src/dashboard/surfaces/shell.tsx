@@ -3,9 +3,8 @@ Eye,
 LayoutDashboard,
 Minus,
 PanelLeft,
-PanelLeftClose,
-PanelLeftOpen,
-PictureInPicture2
+  PictureInPicture2,
+LayoutPanelLeft
 } from "lucide-react";
 import { useCallback,useEffect,useMemo,useRef,useState,type ComponentType,type ReactElement,type SVGProps } from "react";
 import { BareButton, IconButton,Tooltip,dsBorder,dsElev,dsFocus,dsIcon,dsLayer,dsMotion,dsRadius,dsSize,dsSurface,dsText } from "../ds/ui.js";
@@ -80,25 +79,7 @@ function WorkflowPanelControls({ mode, onMode }: PanelModeProps) {
 }
 
 
-/**
- * The launcher, and the one control present in all three modes.
- *
- * ONE NUMBER, AND IT IS THE DEMAND. It carries ACTIVE — queued + running + cancelling —
- * across EVERY workflow on the selected day, the same quantity as the rail's
- * orange `active` column summed down its length, so the collapsed badge and the
- * open list cannot disagree. It used to carry the day's row TOTAL, which lit
- * the amber on an idle day and is a number nobody acts on.
- *
- * The demo derived both from a row array; here they are read off the day's
- * served `statusCounts`, which is day-scoped across workflows and therefore
- * gives `queued + running + cancelling` exactly — no second fold, no second corpus (D81).
- *
- * The scope survives in the tooltip and the accessible name, both of which say
- * the count spans every workflow, and the control carries the workflow's 2-char
- * code — the prefix of every one of its trace ids — so it is never an anonymous
- * glyph. At zero the number dims rather than vanishing, so the action bar does
- * not reflow every time the day goes idle.
- */
+/** Icon-only launcher; served day demand stays in its accessible name and tooltip. */
 export function WorkflowPanelToggle({
   mode,
   onMode,
@@ -125,14 +106,12 @@ export function WorkflowPanelToggle({
       type="button"
       aria-expanded={showing}
       aria-controls={mode === "floating" ? WORKFLOW_PANEL_ID : undefined}
-      // The count goes in the LABEL, not only in the badge: an `aria-label`
-      // replaces a button's contents outright, so the number was being
-      // announced to nobody — the thing this control exists to carry.
       aria-label={`Workflow Panel — ${activeWorkflowLabel}${showing ? `, ${WORKFLOW_PANEL_MODE_LABEL[mode]}` : ", minimised"}. ${scope}`}
-      title={`Workflow Panel — ${activeWorkflowLabel} (${activeWorkflowCode})\n${scope}\nThe Status Bar's Needs you pill is attention, not this count\nw cycles floating · icon · sidebar`}
+      title={`Workflow Panel — ${activeWorkflowLabel} (${activeWorkflowCode})\n${scope}\nw cycles floating · icon · sidebar`}
       onClick={() => onMode(showing ? "icon" : "floating")}
       className={cn(
         toolbarControl(),
+        "w-8 justify-center !px-0",
         dsMotion.fast,
         "active:translate-y-px",
         showing
@@ -140,30 +119,7 @@ export function WorkflowPanelToggle({
           : cn(dsBorder.strong, dsSurface.card, "text-[color:var(--ds-fg-muted)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]"),
       )}
     >
-      {showing ? (
-        <PanelLeftClose aria-hidden className={dsIcon.sm} />
-      ) : (
-        <PanelLeftOpen aria-hidden className={dsIcon.sm} />
-      )}
-      <span className={dsText.nums}>{activeWorkflowCode}</span>
-      {/* The rule separates the panel you are IN from a count that belongs to
-          the whole day. It sits on the control's OWN surface, where
-          `--ds-border` against a white card is not a line anybody sees. */}
-      <span aria-hidden className={cn("mx-[var(--ds-space-hair)] h-4 w-px shrink-0", "bg-[var(--ds-border-loud)]")} />
-      {/* ACTIVE (queued + running + cancelling) across every workflow — same orange as the
-          rail's left column, and the same total when you add that column down. */}
-      <span
-        className={cn(
-          dsText.nums,
-          "shrink-0 tabular-nums",
-          dsMotion.base,
-          dayActive > 0
-            ? "font-semibold text-[color:var(--ds-status-waiting-fg)]"
-            : "text-[color:var(--ds-fg-faint)]",
-        )}
-      >
-        {dayActive}
-      </span>
+      <LayoutPanelLeft aria-hidden className={dsIcon.sm} />
     </BareButton>
   );
 }
