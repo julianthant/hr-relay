@@ -2581,8 +2581,8 @@ messages. Every durable notification links to a run/failure/gate/command/storage
 only actions currently authorized by the server projection. Reading/snoozing affects the
 notification, never the underlying run or failure.
 
-That list is the POLICY. §6.3 says which of it a producer actually fires today, and it is two of
-seven.
+That list is the POLICY. §6.3 records the older discovery-base producer coverage; the later W2/W2a
+implementation and feedback status is owned by [dashboard-surfaces D366](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03).
 
 ### 6.1 The fold is an UPDATE, and that is not a weakened ledger (D134)
 
@@ -2635,7 +2635,7 @@ suppresses delivery only: it never flips status, and marking read never clears a
 
 ---
 
-### 6.3 As-built — the closed vocabulary, the two publishers, and the five arms with no producer
+### 6.3 Historical as-built at discovery base — the closed vocabulary, two publishers, and five arms with no producer
 
 <!-- roadmap: p2-2g -->
 
@@ -2811,7 +2811,8 @@ can reach today.
 19. Content-addressed immutable artifacts and idempotent outbox-based mutable projections.
 20. Append-only span/note streams and server-side queue/timeline/session projections.
 21. Durable actor-keyed typed notifications with read/unread state and optional snooze
-    **[no OS delivery exists; two of seven triggers have a producer — §6.3]**.
+    **[at the 2026-08-20 discovery checkpoint: no OS delivery was wired and two of seven triggers
+    had a producer — historical §6.3; later W2 status is recorded in dashboard-surfaces]**.
 22. Structured failure records and automatic redacted diagnostic bundles.
 23. Per-run evidence receipts showing inputs, observations, decisions, actions, verification,
     output, reuse, and uncertainty.

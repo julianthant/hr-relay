@@ -1,9 +1,23 @@
-# `reference/decisions.md` — the decision ledger (D1–D365, 2026-07-17 → 2026-10-02)
+# `reference/decisions.md` — the decision ledger (D1–D366, 2026-07-17 → 2026-10-03)
 
-The numbered decision history through D362 remains unchanged. D363–D365 are recorded in the
+The numbered decision history through D362 remains unchanged. D363–D366 are recorded in the
 current operator amendments below; no earlier number is reused.
 
 ## Operator amendments
+
+**D366 — Notification event and local action feedback (operator-approved 2026-10-03):** all eight
+declared backend notification kinds receive a durable panel row and compact in-app chip under the
+approved policy. Ordinary events use canonical committed publication evidence; backfill gaps use
+explicit pinned-wire provenance and stay pinned, while subject-mismatch is a separate publication.
+Confirmed Settings saves and notification controls receive result-bound local feedback
+without creating inbox rows. Settings refusal/conflict and unconfirmed/unknown outcomes remain
+unresolved; Run accepted/started is toast-only with its callback deferred, and other unsettled events
+have no blanket policy. W2's Snooze, Unsnooze, dedupe/replay, commit-before-delivery and OS contracts
+remain. Exact approved source provenance, event targets and identities are in
+[§2.6](dashboard-surfaces.md#w2a-publication-policy-2026-10-03) and
+[§9.6](dashboard-surfaces.md#w2a-feedback-policy-2026-10-03). The approved binding subset is
+locally accepted at `1db0e1b363dacd82ee56386d427e77814868660b`; two Settings policies and unbound
+events remain open. Execution state is owned by the [W2a receipt](../plans/phase-3/dashboard-surface-wiring.md#w2a-execution-receipt--2026-10-03).
 
 **D365 — Accepted Settings save superseded before readback (operator-approved W1, 2026-10-02):**
 an authenticated accepted save followed by a later saved revision clears submission uncertainty,

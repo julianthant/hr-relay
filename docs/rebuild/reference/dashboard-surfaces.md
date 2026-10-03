@@ -2856,11 +2856,29 @@ it is not an assertion that the newly required code or proof already exists.
   notification boundaries; never private archive source JSON, arbitrary diagnostics, captured fields
   or secrets. Resolve targets at open time against current lifecycle authority.
 
-**Current baseline at `9f9dfe3566084e165bd508ae8b66dc3ebe325010`:** only `gate-opened` and
+**Historical pre-W2 baseline at `9f9dfe3566084e165bd508ae8b66dc3ebe325010`:** only `gate-opened` and
 `backfill-gap` have production callers. The storage-health module is present but D322 retired its
 caller; the other five event kinds are unwired. The historical checklist/table below records earlier
 builds and does not establish current publication coverage. §9.6's dated amendment owns the UI and
 browser delivery behavior; ref operator-trust §6 owns receipt, replay and lifecycle constraints.
+
+<a id="w2a-publication-policy-2026-10-03"></a>
+
+**W2a approved publication policy — D366 (2026-10-03; approved binding subset locally accepted at
+`1db0e1b363dacd82ee56386d427e77814868660b`).** The policy covers all eight declared event kinds
+(`run-failed`, `subject-mismatch`, `repeating-failure`,
+`verified-done`, `gate-opened`, `write-parked`, `storage-degraded`, `backfill-gap`): ordinary kinds
+derive a durable panel row and compact in-app chip from canonical committed publication evidence;
+`backfill-gap` uses its explicit pinned-wire provenance and keeps its immutable row.
+`subject-mismatch` is its own publication even when a failed-run publication also exists. The
+accepted storage coverage includes disk-space, WAL-growth, integrity-check, backup and lease-expiry
+concerns. Retired `outbox-stalled` remains unpublished; no absent publisher is admitted. Durable rows
+commit before delivery. Source occurrence, folded row, command attempt and wire publication remain
+distinct identities; publication identity is separate from row revision, and local action feedback
+never publishes toast text as an inbox event. W2's
+backend-clock one-hour Snooze, explicit Unsnooze, independent read/snooze state, pin/fold/replay
+rules, and existing OS routing and permission behavior remain in force. The exact in-app mapping
+and its pending/unbound cases are owned by §9.6.
 
 
 <!-- roadmap: p2-2g -->
@@ -2871,7 +2889,7 @@ browser delivery behavior; ref operator-trust §6 owns receipt, replay and lifec
 - [x] D222 — the first production publisher: the backup-health watch, on state TRANSITIONS only
 - [x] D262 — the second: the open-operator-gate watch over `runs.listParkedAtGate()`, with `link` moved onto the wire
 - [x] A46 — the third: an unreplayable historical SSE cursor commits one durable, permanently pinned backfill-gap Refusal before the replacement snapshot is served (`68dea43a`)
-- [ ] FIVE of the eight trigger arms have no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces
+- [ ] At the 2026-08-25 A46 checkpoint, five of the eight trigger arms had no publisher — `run-failed`, `subject-mismatch`, `write-parked`, `repeating-failure`, `verified-done` (below); each belongs to the surface or slice that owns the state it announces. This is historical coverage, not the W2/W2a status.
 > 2026-08-25 | track-f A46 | verified against src/domain/notification-triggers.ts, src/services/notifications/{inbox,storage-health,gate-park,backfill-gap}.ts, src/server/dashboard/subscriptions/dashboard-stream.ts and src/domain/dashboard/projection.ts; left: the five unpublished arms
 <!-- /roadmap-status -->
 
@@ -2890,7 +2908,7 @@ best-effort; a failed toast never loses the unread inbox item. Snooze suppresses
 expiry without changing read state. Notification text uses redacted arguments and links to the
 evidence/failure/run — never raw secrets or captured form contents.
 
-**The trigger union, and which arms anything actually publishes.** `NotificationTriggerEventSchema`
+**Historical pre-W2 publisher inventory (A46, 2026-08-25; base `9f9dfe3566084e165bd508ae8b66dc3ebe325010`): trigger union and publisher coverage then.** `NotificationTriggerEventSchema`
 (`src/domain/notification-triggers.ts`) has eight arms; `projectNotificationTrigger` maps each onto
 its D79b channel, severity and title, and that routing is implemented exactly as §9.6 states it.
 Three arms have a production publisher:
@@ -6551,6 +6569,49 @@ which retain their existing owners.
   unchanged; verified-done remains inbox-only for OS delivery. This amendment adds no component or
   visual state.
 
+<a id="w2a-feedback-policy-2026-10-03"></a>
+
+**W2a approved feedback policy — D366 (2026-10-03; approved binding subset locally accepted at
+`1db0e1b363dacd82ee56386d427e77814868660b`).** Two Settings refusal/unknown policies and unsettled
+feature events remain open, and unbound mocks are not complete. The exact approved presentation source is commit
+`2d2dd9c6a6ca38980da2f59be79c1b53a9a182fc`, `src/dashboard/ds/primitives-overlay.tsx`, SHA-256
+`aab66434a861abc0e923cd14d44c4a4f09155bb9196a926737b2d51679ec0bc4`. Reuse its compact-chip
+`ToastProvider` / `ToastViewport` / `ToastCard`, including expansion, focus, timers and dismissal;
+the backend colored-rail variant is not the approved source. Danger chips remain until manual
+dismissal. This policy does not claim that every callback or mock is bound.
+
+| Event | Confirmed in-app feedback | Target and identity |
+|---|---|---|
+| `run-failed` | Durable panel row + danger chip | Existing guarded failure lookup; manual dismissal; actor-scoped publication ID. |
+| `subject-mismatch` | Its own durable panel row + danger chip, even alongside `run-failed` | Existing guarded failure lookup; manual dismissal; separate publication ID. |
+| `repeating-failure` | Durable panel row + warning chip at the third distinct matching failure | Existing guarded failure lookup; 3 seconds; publication ID. |
+| `verified-done` | Durable panel row + success chip replacing the green in-app Ping | Existing guarded run lookup; 3 seconds; publication ID. OS delivery remains inbox-only. |
+| `gate-opened` | Durable panel row + warning chip | Existing guarded run lookup; 3 seconds; publication ID. |
+| `write-parked` | Durable panel row + truthful danger chip | Existing guarded run lookup; manual dismissal; publication ID. Unknown writes are not asserted as failure or no effect. |
+| `storage-degraded` | Durable panel row + warning chip | Existing guarded Storage lookup; 3 seconds; publication ID. This does not admit a missing publisher. |
+| `backfill-gap` | Pinned durable warning + danger chip | No target or fabricated action; manual chip dismissal; pin and retention remain immutable. |
+| Ordinary Settings, protected credential and provider-key save confirmed | Chip title `Saved` / `Already saved` with closed description `Settings saved` / `Credential settings saved` / `Provider keys saved`; preserve existing inline status, no new panel alert | Receipt binds only `actorId`, `commandId`, kind (`ordinary` / `protected` / `provider-key`) and `replayed`; replay selects `Already saved`. Require matching result and authoritative readback; 3 seconds. No draft/private values, action or activation claim. |
+| Read, Unread, Snooze and Unsnooze confirmed | Success acknowledgement; no new panel alert or chip action | Matching applied command ID and exact notification target; 3 seconds; control scope + command ID + outcome. Stream state changes do not repeat it. |
+| Notification-control refusal or revision conflict | Danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. |
+| Notification-control result unknown after dispatch, including target mismatch | Truthful danger chip plus current notice; no new panel alert | Existing panel row; manual dismissal; control scope + command ID + outcome. No automatic retry, success claim or no-effect claim. |
+
+Local save chips require both the matching result and authoritative readback; provider feedback also
+requires the current incarnation, including identity-bound pending recovery. Ordinary notification
+chips derive only from declared kinds in canonical committed publication metadata and validate
+actor, row, trigger and dedupe fingerprint; `backfill-gap` uses its explicit pinned-wire provenance.
+Publication IDs, source
+occurrences, folded rows, command attempts, row revisions and the provider's local sequential toast
+IDs are distinct. Older rows without publication metadata remain unavailable;
+initial snapshots, reconnect/replay, read-only revisions and active Snooze do not redeliver chips.
+Actor, day, client, selection or unmount invalidation closes stale chips and invalidates their
+actions. Popup delivery failure never removes the durable row.
+
+Settings refusal/revision conflict and unconfirmed/unknown save outcomes remain unresolved: preserve
+current inline feedback and add no panel alert. General commands, identity/Park resolution, export,
+worker controls, Archive, intake/import and later feature events get no blanket policy. Run
+accepted/started is toast-only after confirmed acceptance; its Run/Rerun callback remains deferred.
+Later packages bind their own callbacks. OS delivery, permission and status remain W2-owned.
+
 An explicit gesture in the drawer enables desktop notifications. Silent Ping delivery uses the
 Notifications API only while the dashboard is open and only after durable publication. Inbox-only
 rows never produce OS toasts. Same-origin Web Locks elect one tab owner; initial baseline, reload,
@@ -6573,7 +6634,7 @@ rows for this actor. Nothing about it is a toast: a desktop notification is a de
 and the row is the record, so an inbox item exists whether or not anything was ever displayed by the
 operating system.
 
-**Routing, ratified (D79b + D86), plus A46's safety arm.** **failed · gate-waiting · write-parked ·
+**Historical routing at the 2026-09-14 baseline (D79b + D86), plus A46's safety arm.** **failed · gate-waiting · write-parked ·
 repeating · storage · backfill-gap** → **Ping**; **verified-done** → **Inbox only for OS delivery**.
 The backfill gap also enters the permanently pinned safety lane. Pings are silent. The ordinary
 lifecycle is deliberately slimmed from five states
@@ -6620,7 +6681,7 @@ about the server's clock, so the row ages against the one calibrated `nowIso` §
 distributes — a browser whose wall clock is off would otherwise age an alert against a time nobody
 else believes.
 
-**As-built, and the three absences the surface is honest about.**
+**Historical as-built at the 2026-09-14 baseline, and the three absences the surface recorded.**
 
 1. **Five of the eight trigger arms have no publisher.** Three production paths publish:
    `storage-health.ts` (`storage-degraded`, D222), `gate-park.ts` (`gate-opened`, D262), and the

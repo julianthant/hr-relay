@@ -4,6 +4,8 @@ Status: W0, W1 and W2 accepted locally on 2026-10-02. W3–W7 remain proposed an
 
 This is supporting, unnumbered work for the [backend and unit-test initiative](backend-and-unit-tests.md). That plan continues to own confirmed Logs and its Phases 3–5. This document owns the proposed Settings, Notifications, Activity, Archive, Sessions, Explorer, and Queue wiring packages. It does not assign roadmap task numbers or grant release, freeze, cutover, or Electron admission.
 
+Toast follow-up — 2026-10-03: the operator launched W2a after accepted W2 and confirmed the compact-chip design and the event policies recorded below. Its execution receipt owns source/check acceptance and unresolved choices. The operator's ask-before-assuming rule applies to W2a and every later W package.
+
 ## Outcome and constraints
 
 Connect the approved components to authoritative backend data and commands while making each backend feature's saved-state and recovery lifecycle straightforward to follow.
@@ -113,6 +115,38 @@ Replace `notificationsSample`/`updateNotification` in the producer. Keep `Notifi
 **Units:** wire-to-view declared/missing context; pin under every filter; fold/read/snooze independence; stale command refusal; exact replay; unsnooze; duration/expiry; late target response; duplicate publication delivery; failed delivery leaves unread durable evidence in the service model.
 
 **Outcome:** existing rows and controls consume real inbox state, target navigation and delivery results without local optimistic authority.
+
+### W2a — Wire approved toast feedback and decide notification-panel membership
+
+**Dependency:** accepted W2; exact approved mock/component provenance; explicit per-event routing decisions before dependent implementation. This follow-up preserves W2's accepted source/check receipt and does not broaden it retroactively.
+
+Inventory actual mock handlers and current production call sites. For each event record its source, confirmation condition, toast component/copy/tone/action, dismissal timing, panel membership, canonical target, duplicate identity and owning feature. Distinguish a request accepted/queued from an actually running or completed workflow. Do not scan a toast's text to decide whether to create a notification row.
+
+| Event | In-app toast | Notification panel | Decision status |
+| --- | --- | --- | --- |
+| Run request accepted / run started | Yes; wording must match the confirmed backend state | No | Operator-specified; the Start Run example closes its modal after acceptance. Its feature callback remains deferred to Run/Rerun admission. |
+| Run failed | Approved compact-chip popup | Yes | Operator confirmed panel + compact-chip popup on 2026-10-03. Reuse the approved danger state; do not recolor the fixed green completion Ping. |
+| Subject mismatch | Separate approved compact-chip popup | Yes | Operator confirmed panel + a separate popup on 2026-10-03; the related failed-run popup remains a distinct intended event. |
+| Repeating failure | Approved compact-chip popup | Yes | Operator confirmed panel + popup on 2026-10-03. |
+| Verified run completion | Approved compact-chip popup | Yes | Operator confirmed panel + popup on 2026-10-03; replace the green Ping producer with the approved compact chip. |
+| Operator gate opened / write parked / storage health | Approved compact-chip popup | Yes | Operator confirmed panel + popup for each declared event kind on 2026-10-03, including all listed storage concerns. This does not revive absent publishers. |
+| Notification-history gap | Approved compact-chip popup | Pinned | Operator confirmed pinned panel + popup on 2026-10-03; permanent retention and immutable pin remain. |
+| Settings save confirmed by matching command result and authoritative readback: ordinary settings, protected credentials, provider keys | Approved compact chip plus existing inline Saved / Already saved | No new alert | Operator confirmed all three save paths on 2026-10-03. This confirms persistence, not activation readiness. |
+| Notification Read, Unread, Snooze and Unsnooze confirmed | Approved compact-chip acknowledgement | No new alert | Operator confirmed all four controls on 2026-10-03; the existing row state changes remain authoritative. |
+| Notification-control server refusal / revision conflict | Approved compact chip plus current notice | No new alert | Operator confirmed on 2026-10-03. |
+| Notification-control result unknown after dispatch | Truthful approved compact chip plus current notice | No new alert | Operator confirmed on 2026-10-03; do not claim no effect or automatically retry. |
+| Settings refusal / revision conflict; unconfirmed / unknown Settings result | Awaiting operator answer; preserve current inline feedback | No new alert added | These two questions remain open. No popup is inferred from the confirmed-save policy. |
+| Other mocked feedback: general commands, identity / Park resolution, export, worker controls, archive actions, intake/import or later features | Ask before changing each actual unsettled event | Ask before changing membership | No blanket policy. Existing accepted behavior is preserved; later-feature callbacks remain with their owners. |
+
+Use one explicit, tested feedback policy for declared event kinds and confirmed command/publication results. Temporary action feedback stays transient and does not automatically create an inbox record. Persistent alerts are derived/published by the existing backend notification owner, committed before delivery and served through the existing day resource. Keep command-attempt and notification-publication identities distinct so a local response and later stream event do not produce two copies of the same intended feedback.
+
+Reuse the exact approved toast presentation and existing provider infrastructure. Verify which mock renderer owns the approved appearance: the existing DS Toast supports four tones, whereas `NotificationPing` is fixed to a positive completion state. Do not substitute an older renderer, recolor the green Ping, extract a new visible component or invent error/loading/action states without the operator's design decision. Preserve existing dismissal, focus, keyboard and overlay behavior.
+
+Bind approved, already-admitted operation callbacks, keeping authoritative acceptance/refusal/uncertainty results. Leave unstarted feature callbacks to their W package; leave Start/Rerun and spreadsheet actions to their separately admitted work. Backend failure/gate/storage/completion events use the shared inbox and explicit delivery policy. Document how a new system/workflow supplies canonical state or a declared typed trigger; it does not need a separate toast store or an arbitrary text publisher.
+
+**Units:** confirmed versus refused/unknown action feedback; exactly-once callback/dismissal for a bound accepted command; toast-only events produce no inbox publication; durable events retain their row if popup delivery fails; duplicate result/publication/reconnect isolation; stale actor/run/attempt responses; pure policy rejection for unregistered event kinds; existing supported toast dismiss/action behavior. Use fixed IDs/clocks, controlled promises and in-memory ports. Run focused units, lint and affected static/generated/bundle checks; complex/live/visual checks remain deferred.
+
+**Outcome:** the approved toast renderer is driven by real results for the admitted bindings, and every implemented event has an operator-approved toast/panel policy. The receipt lists unresolved decisions, deferred design states and later feature bindings explicitly. A policy inventory alone is not proof that every mock callback is connected.
 
 ### W3 — Connect Activity metrics, ranges and both exports
 
@@ -231,6 +265,31 @@ with explicit Unsnooze, using the backend clock. Replace sample producers/callba
 NotificationsView and NotificationPing. Preserve pin/fold/actor/revision/replay
 and commit-before-delivery semantics. Bind target navigation and existing delivery
 permission/status. Keep the popover, controls and focus behavior unchanged.
+```
+
+### W2a follow-up prompt
+
+```text
+Execute W2a only after accepted W2: inventory the approved mocked toast components
+and actual event callbacks, then connect approved feedback for admitted features.
+Run accepted/started is toast-only. Failed runs appear in the notification panel;
+ask me about their in-app popup and approved visual state. For every other event
+whose toast/panel behavior I have not specified, ask me and wait before wiring
+that event. Do not infer membership from a mock or silently choose a default.
+Preserve current accepted behavior while a proposed change is unresolved.
+Record each event's confirmed source, toast/panel policy, target, dismissal and
+dedup identity. Reuse the exact approved toast design/provider. A missing tone or
+visible state is separate operator design work, not permission to redesign.
+Use canonical backend notification publication for persistent alerts and confirmed
+command results for local feedback; do not persist all toast text or add a second
+inbox. Prevent duplicate response/stream/replay feedback and preserve truthful
+refusal/unknown outcomes, stale-selection isolation and commit-before-delivery.
+Bind only already-admitted features; later Ws bind their own callbacks. Run/Rerun
+and spreadsheet design/implementation remain deferred to their owners.
+Add focused public policy/controller/adapter units, lint and affected static/
+generated/bundle checks. No complex/live/visual tests. Record approved policies
+and source/check evidence at the existing owners. No push, merge, peer cleanup
+or next-package launch. Do not claim unbound mocks or unresolved events completed.
 ```
 
 ### W3 prompt
@@ -568,3 +627,142 @@ W2 is complete under this focused local acceptance. No release, freeze, cutover 
 is granted. Logs, Run/Rerun, spreadsheet redesign and live HR are outside this package. No push,
 branch merge, worktree cleanup or subsequent package was authorized or launched; the operator owns
 the next launch and later gate/design decisions.
+
+## W2a execution receipt — 2026-10-03
+
+Deployment ID: `w2a-feedback-20261002`. W2a's approved bindings are accepted locally after W2 at
+`a2d9bc0b830106d032f0b44289dd205f8b02ff9b` in the same owned `codex/logs-backend`
+worktree. The goal is approved feedback for admitted events through the existing toast provider
+and canonical inbox. This receipt owns the current goal, decisions and continuation state;
+the absent `agent_docs/` framework does not create a second documentation owner.
+
+Independent inventory lanes W2A-E1 and W2A-E2 agree on the actual failed-run publisher, durable
+panel row, missing in-app failed-run binding, and separate subject-mismatch publication. Their
+source and callback evidence is retained at
+[ui-mock.md](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/inventory/ui-mock.md)
+and [callback-authority.md](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/inventory/callback-authority.md).
+No checks or implementation claims come from those read-only inventories.
+
+The approved presentation candidate was reverified at
+`2d2dd9c6a6ca38980da2f59be79c1b53a9a182fc`. Its compact-chip `ToastProvider` /
+`ToastViewport` / `ToastCard` lives in `src/dashboard/ds/primitives-overlay.tsx`, SHA-256
+`aab66434a861abc0e923cd14d44c4a4f09155bb9196a926737b2d51679ec0bc4`.
+The backend's older colored-rail variant is not the approved source. Presentation peer preview
+files are preserved and excluded from approval evidence. Danger chips remain until manual
+dismissal; expansion, action dismissal, focus restoration and overlay inert behavior come from
+that exact approved implementation.
+
+**Confirmed policies:** run accepted/started is toast-only, with its actual Run/Rerun callback
+deferred to that owner. All eight declared backend kinds (`run-failed`, `subject-mismatch`,
+`repeating-failure`, `verified-done`, `gate-opened`, `write-parked`, `storage-degraded` and
+`backfill-gap`) are panel + compact-chip popup; backfill gaps retain their pinned rows.
+The storage decision explicitly covers the declared disk-space, WAL-growth, integrity-check,
+backup, stalled-lease and stalled-outbox concerns without admitting an absent or retired publisher.
+Subject mismatch gets its own popup even when the same failure
+also produces a failed-run popup. Completion replaces the green Ping producer. Canonical persistent alerts
+commit before delivery. Local feedback requires a confirmed command result and does not publish
+toast text to the inbox. Source occurrence, folded row, command attempt and wire publication
+identities remain distinct.
+
+**Confirmed local policies:** ordinary Settings, protected credential and provider-key saves get
+a compact chip plus the existing inline Saved / Already saved status only after matching command
+results and authoritative readback. Read, Unread, Snooze and Unsnooze get a compact-chip
+acknowledgement after a matching applied result. Notification-control server refusal or revision
+conflict and post-dispatch unknown outcomes get a truthful danger chip plus the current notice.
+None of these local outcomes publishes a new panel alert.
+
+| Implemented event | Confirmed source and policy | Target | Dismissal and feedback identity |
+| --- | --- | --- | --- |
+| `run-failed` | Canonical committed notification publication; panel + danger chip | Existing guarded failure lookup | Manual dismissal; actor-scoped notification publication ID. |
+| `subject-mismatch` | Separate canonical publication; panel + separate danger chip | Existing guarded failure lookup | Manual dismissal; its own publication ID, even alongside a failed-run chip. |
+| `repeating-failure` | Canonical threshold publication at the third distinct failure; panel + warning chip | Existing guarded failure lookup | Three seconds; its own publication ID. |
+| `verified-done` | Canonical verified receipt publication; panel + success chip replacing the green in-app Ping producer | Existing guarded run lookup | Three seconds; publication ID. Existing OS delivery remains inbox-only. |
+| `gate-opened` | Canonical gate publication; panel + warning chip | Existing guarded run lookup | Three seconds; publication ID. |
+| `write-parked` | Canonical parked-write publication; panel + truthful danger chip | Existing guarded run lookup | Manual dismissal; publication ID. An unknown write is not a confirmed failure or no effect. |
+| `storage-degraded` | Declared canonical storage publication; panel + warning chip | Existing guarded Storage lookup | Three seconds; publication ID. The policy does not admit an absent publisher. |
+| `backfill-gap` | Explicit pinned-wire provenance; retained pinned panel warning + danger chip | None; no fabricated action | Manual chip dismissal; publication ID. Panel pin and retention remain immutable. |
+| Ordinary Settings saved | Exact ordinary command result plus authoritative readback; success chip + inline status, no new panel alert | None | Three seconds; actor + save kind + command ID. |
+| Protected credentials saved | Exact private-store command result plus authoritative readback; success chip + inline status, no new panel alert | None | Three seconds; actor + save kind + command ID; no private values in feedback. |
+| Provider key saved | Exact provider command result plus authoritative readback, including bound pending recovery; success chip + inline status, no new panel alert | None | Three seconds; actor + save kind + command ID; no key values in feedback. |
+| Read / Unread / Snooze / Unsnooze confirmed | Matching applied command ID and exact notification target; success acknowledgement, no new panel alert | Existing panel row; no new chip action | Three seconds; control scope + command ID + outcome. Stream state changes do not acknowledge the command again. |
+| Notification-control refusal / conflict | Matching server refusal; danger chip + current notice, no new panel alert | Existing panel row; no new chip action | Manual dismissal; control scope + command ID + outcome. |
+| Notification-control unknown | Post-dispatch rejection or mismatched result; truthful danger chip + current notice, no new panel alert | Existing panel row; no new chip action | Manual dismissal; control scope + command ID + outcome. No automatic retry or no-effect claim. |
+
+The source-to-chip model accepts only declared kinds from canonical committed publication metadata.
+It validates actor, row, trigger and dedupe fingerprint; legitimate older rows without metadata stay
+explicitly unavailable. Initial snapshots, reconnects, replay, read-only revisions and active Snooze
+do not redeliver chips. Actor, day, client, selection or unmount invalidation dismisses obsolete chips
+and invalidates their actions. Existing target rechecks and the dirty-Settings navigation guard remain.
+The exact provider controls expansion, focus, timers and action dismissal; its local sequential toast
+ID is not a publication or command identity. Popup failure does not remove durable inbox evidence.
+
+**Accepted source candidate:** `1db0e1b363dacd82ee56386d427e77814868660b`,
+with local commits `7cf5255e0fecefff056d50a77cb84b6dd27e5525` (publication provenance and
+approved toast source), `32c608c542741d7acecc8c43512a4756318821cd` (eight backend events),
+`4d18b958a678570202d2f2997e2da6e716e0344b` (confirmed local feedback), and
+`1db0e1b363dacd82ee56386d427e77814868660b` (test-only real-provider prerequisites).
+The last repair preserves assertions, test membership, timers and timeouts. Source and scripts
+trees and package/build inputs are unchanged by that repair. Concurrent W6 Explorer edits and the
+two mixed peer plan files are preserved; verification uses a plain immutable Git export under the
+existing evidence directory, without another worktree or repository.
+
+The [read-only peer handoff audit](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/implementation/peer-handoff-audit.md)
+observed combined HEAD `43925f1162d1ef28d35f0a107304ab821da030fd` on `codex/logs-backend`,
+with a clean index. W2a candidate `1db0e1b36` is its ancestor. The subsequent Explorer and guard
+commits touch 13 paths disjoint from all 31 W2a-owned source/test paths; every W2a path remains
+byte-identical in the sealed candidate, combined HEAD and working tree. Further peer Explorer/test
+edits and both plan modifications remain uncommitted. W2a checks bind to the sealed candidate;
+this audit does not establish a passing gate for the combined peer tree.
+
+**Pending policies and continuation:** Settings server refusal / revision conflict and unconfirmed /
+unknown save outcomes await the operator's answers and retain their current inline feedback.
+General-command, identity / Park, export, worker, Archive, intake/import and other mock events were
+inventoried in the evidence above but receive no new blanket policy or binding. Run accepted/started
+is confirmed toast-only; its actual Run/Rerun callback remains deferred. Later Ws bind their own
+callbacks. Unresolved events and unbound mocks are not completed.
+
+W2A-X1's [implementation receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/implementation/W2A-X1-report.md)
+and [repair provenance](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/implementation/repair-candidate-provenance.md)
+record exact source/check inputs. [W2A-R1 review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/review/W2A-R1.md)
+finds no source blocker at the repaired candidate and confirms unchanged retained assertions,
+membership, timers and timeouts. [W2A-V2 independent verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/verification-repair/W2A-V2.md)
+passes on a fresh plain export of that exact commit:
+
+- The 19-file focused unit selection passes **161/161** tests, including all seven real-provider
+  Settings harnesses and the public notification policy/controller/adapters.
+- The existing focused canonical notification-producer selection passes **16/16**, covering the
+  five active storage concerns and confirming retired `outbox-stalled` remains unpublished. This
+  is isolated producer evidence, not admission for a stalled-outbox publisher or complex/live work.
+- Dashboard wire-boundary and notification-durability checks pass **20/20** across two files.
+- Scoped ESLint passes over all 31 source/test paths changed from accepted W2.
+- Fresh manifest and store-catalog checks pass; canonical `npm run web:build` passes. An exploratory
+  build with an output-directory override failed the build-identity plugin's expected path and is
+  not the accepted build command. No source/config repair or weakened check was used.
+- Fresh `npm run typecheck` exits **2** with **72** diagnostics, byte-identical to the accepted W2
+  baseline, SHA-256 `9db4ff998b0f734b42213d6921250f79f0c0dfc0107f1d214231b3044abb7a2c`.
+  This gate remains failed and unwaived; no new compared diagnostic is present.
+
+V2's source/config integrity comparison records 2,201 unchanged files plus the unchanged dependency
+symlink and 45 expected build artifacts added in the export. No check ran in the mutable peer tree.
+The earlier broad wire-connectivity selection retains 46 failing names among W2's 47 baseline
+failures, and the unchanged command-result sibling selection retains 2 failures / 14 passes. Neither
+is claimed passed. Source input equality permits attribution of earlier receipts, but V2 reran the
+affected architecture, bundle and generated checks on the isolated candidate.
+
+The [D366 notification policy](../../reference/dashboard-surfaces.md#w2a-feedback-policy-2026-10-03)
+and decision index ratify the confirmed policies together. The
+[documentation/generated check receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-feedback-w2a/implementation/W2A-X1-docs-check-ready.md)
+records exact W2a staging in the mixed plan and references, unique D366/anchors, passing staged
+whitespace and affected roadmap checks, and 31 unchanged W2a source/test paths at combined HEAD
+`2bf4ccaa7628679c3670cc848dd4d672c3f9124e`. The two dated historical notification claims required
+regeneration of `docs/roadmap/index.html` from the isolated staged inputs. Its derived change is
+limited to `p2-2g` wording; no node state, ownership, schedule or peer input changed. Peer plan and
+decision-index hunks remain excluded from W2a staging.
+
+The current continuation is the two
+unanswered Settings policies and later owners' explicit feature admissions; approved binding
+acceptance does not complete unresolved events or unbound mocks. Complex persistence/restart/SSE,
+live HR, browser/OS/visual/performance/full-coverage and phase-exit obligations remain deferred under
+the existing cadence. No release, freeze, cutover or Electron admission is granted. Logs, Run/Rerun
+and spreadsheet work remain excluded. No push, merge, peer cleanup or next-package launch was
+authorized or performed.
