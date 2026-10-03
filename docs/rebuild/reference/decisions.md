@@ -1,10 +1,12 @@
 # `reference/decisions.md` — the decision ledger (D1–D360, 2026-07-17 → 2026-09-30)
 
 **D296/D298 presentation amendment — 2026-10-02:** the approved Design 1 Run/Rerun frame uses
-aligned step checkboxes, inline prior outcomes, styled choices and segmented controls. Confirmed
+aligned step checkboxes, inline prior-outcome labels, styled choices and segmented controls. Confirmed
 starts close to a toast; source binding, repeat-write warnings and unknown-submission recovery remain.
 Spreadsheet registration moves out of Run into Settings → Spreadsheets by type, initially Roster,
-with per-sheet mappings and searches across multiple named fields. Import closes to a toast.
+with per-sheet mappings and searches across multiple named fields. Its workspace uses the available
+center width with contained table scrolling, separate field groups and a compact type card. Peer
+controls in each row share a height. Import closes to a toast.
 The registry and attachment choices are session-only fictional mocks; they do not read/save files,
 generate updated copies or start people from spreadsheet rows. Existing live launch and backend
 intake authority remain. Owner:

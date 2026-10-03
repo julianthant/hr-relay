@@ -272,7 +272,28 @@ export const ROSTER_FIELD_GROUPS = [
   { name: "Other", fields: ROSTER_FIELDS.slice(29) },
 ] as const;
 export const MOCK_ROSTER_ROWS: readonly Readonly<Record<string, string>>[] = [
-  { "Legal name": "Jordan Lee", "Preferred name": "Jordan", Email: "jordan.lee@example.com", PID: "DEMO-PID-001", TSN: "DEMO-TSN-001", "Employee ID": "DEMO-1042", "Work location": "Sample dining hall", "Start date": "10/19/2026", "Offer accepted": "Yes", "Background cleared": "Yes", "Entered in UCPath": "Yes", "Transaction number": "DEMO-TXN-001", Hired: "Yes" },
-  { "Legal name": "Alex Morgan", "Preferred name": "Alex", Email: "alex.morgan@example.com", PID: "DEMO-PID-002", TSN: "DEMO-TSN-002", "Employee ID": "DEMO-1043", "Work location": "Sample market", "Start date": "10/19/2026", "Offer accepted": "Yes", "Background cleared": "Yes", "Entered in UCPath": "Yes", "Transaction number": "DEMO-TXN-002", Hired: "Yes" },
-  { "Legal name": "Taylor Chen", "Preferred name": "Taylor", Email: "taylor.chen@example.com", PID: "DEMO-PID-003", TSN: "DEMO-TSN-003", "Employee ID": "", "Work location": "Sample café", "Start date": "10/19/2026", "Offer accepted": "Yes", "Background cleared": "Pending", "Entered in UCPath": "", Hired: "" },
+  {
+    "Legal name": "Jordan Lee", "Preferred name": "Jordan", Email: "jordan.lee@example.com",
+    Phone: "(202) 555-0101", PID: "DEMO-PID-001", TSN: "DEMO-TSN-001", "Employee ID": "DEMO-1042",
+    "College of residence": "Sample college", "Supervisor email": "manager@example.com", "Supervisor name": "Casey Reed",
+    "Work location": "Sample dining hall", "Position number": "DEMO-POS-001", "Start date": "10/19/2026",
+    "Offer accepted": "Yes", "Campus forms pending": "No", "Background terms accepted": "Yes", "Background entered": "09/28/2026",
+    "Background cleared": "Yes", "Entered in UCPath": "Yes", "Transaction number": "DEMO-TXN-001", "Ready for payroll approval": "Yes",
+  },
+  {
+    "Legal name": "Alex Morgan", "Preferred name": "Alex", Email: "alex.morgan@example.com",
+    Phone: "(202) 555-0102", PID: "DEMO-PID-002", TSN: "DEMO-TSN-002", "Employee ID": "DEMO-1043",
+    "College of residence": "Sample college", "Supervisor email": "manager@example.com", "Supervisor name": "Casey Reed",
+    "Work location": "Sample market", "Position number": "DEMO-POS-002", "Start date": "10/19/2026",
+    "Offer accepted": "Yes", "Campus forms pending": "No", "Background terms accepted": "Yes", "Background entered": "09/28/2026",
+    "Background cleared": "Yes", "Entered in UCPath": "Yes", "Transaction number": "DEMO-TXN-002", "Ready for payroll approval": "Yes",
+  },
+  {
+    "Legal name": "Taylor Chen", "Preferred name": "Taylor", Email: "taylor.chen@example.com",
+    Phone: "(202) 555-0103", PID: "DEMO-PID-003", TSN: "DEMO-TSN-003", "Employee ID": "",
+    "College of residence": "Sample college", "Supervisor email": "manager@example.com", "Supervisor name": "Casey Reed",
+    "Work location": "Sample café", "Position number": "DEMO-POS-003", "Start date": "10/19/2026",
+    "Offer accepted": "Yes", "Campus forms pending": "Yes", "Background terms accepted": "Yes", "Background entered": "09/28/2026",
+    "Background cleared": "Pending",
+  },
 ];

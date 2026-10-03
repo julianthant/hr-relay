@@ -8,7 +8,7 @@ afterEach(resetSpreadsheetMocks);
 describe("type-based mock spreadsheet registration", () => {
   it("searches every mapped identifier and data field without choosing one match key", () => {
     const record = file(); const sheet = record.sheets[0].name;
-    for (const query of ["Jordan Lee", "DEMO-PID-001", "DEMO-1042", "jordan.lee@example.com", "Sample dining hall"]) {
+    for (const query of ["Jordan Lee", "DEMO-PID-001", "DEMO-1042", "jordan.lee@example.com", "(202) 555-0101", "Sample dining hall"]) {
       const rows = searchMockSpreadsheet(record, sheet, query);
       assert.equal(rows.length, 1, query); assert.equal(rows[0]["Legal name"], "Jordan Lee");
     }

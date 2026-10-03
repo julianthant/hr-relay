@@ -159,6 +159,7 @@ import { Panel, PanelHeader, Button, StatusPill, dsText } from "../demo-ui";
 - **One import**: `demo-ui.tsx`. Never import from `ds/*` directly.
 - **Compose primitives.** If a primitive is missing a variant you need, add it
   *in the primitive*, so every surface inherits it. Never fork one locally.
+- **Align peer controls.** Buttons, pickers and inputs sharing a control row use the same height.
 - **Never write a literal value** for colour, size, radius, shadow or duration.
   Shared semantic palette values belong in `ds/dashboard-theme.css`; DS tokens
   and component geometry belong in `ds/tokens.css`. See

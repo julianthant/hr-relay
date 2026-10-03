@@ -6696,14 +6696,22 @@ parity references for all three.
 
 The operator approved Design 1 with subsequent control, step-row and spreadsheet revisions.
 Run and Rerun share an 880×628 desktop frame: Run has a workflow rail, Rerun a source rail.
-Checkboxes align with their titles; prior step outcomes are plain colored text beside the title.
+Checkboxes align with their titles; prior step outcomes use compact status labels beside the title.
+The source-history note stays at the bottom of the Rerun rail. Date popovers anchor to the input field.
+Peer controls in a row use the same height; spreadsheet Settings tabs retain their underline without
+a hover background.
 Options use styled workbook choices, segmented priority/browser controls and compact fixed facts.
 Rerun keeps source-bound values and repeat-write confirmation. A confirmed applied start closes the
 dialog and emits a toast; unknown or refused submissions retain recovery.
 
 Spreadsheet registration is separate, at Settings → Spreadsheets, organized by spreadsheet type.
 The initial type is Roster. Registered files, type definitions and per-sheet column mappings are
-inspectable; search covers multiple mapped fields, including names and identifiers. The import
+inspectable; search covers multiple mapped fields, including names and identifiers. Spreadsheets use
+the available center-pane width outside the ordinary Settings content cap, with horizontal table
+scrolling when columns exceed that space. The search note stays on one line. Roster field groups are
+separate sections with distinct Field and Source column headings; the type card keeps one description.
+Preview tables use the approved fictional records and their source row numbers, with borders around
+the table's content rather than unused vertical space. The import
 dialog has Mapping/Preview views, a 148px sheet rail, 32px mapping controls and the shared calendar
 where a date is requested. Import closes directly to a success/failure toast, without a Ready page.
 Reference use and generating an updated copy are the intended defaults, not per-import toggles.

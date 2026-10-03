@@ -293,7 +293,7 @@ export function SettingsPage({
       </nav>
 
       <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
-        <DsBodyScope className="settings-tab-body flex flex-col gap-[var(--ds-space-page)]">
+        <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]", activeId === "spreadsheets" && "max-w-none!")}>
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && activeId !== "spreadsheets"
           && activeId !== SETTINGS_PREFLIGHT_SECTION_ID

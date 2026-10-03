@@ -3,7 +3,7 @@ import { parseDate, type CalendarDate } from "@internationalized/date";
 import { useState } from "react";
 import { cn } from "../lib/utils.js";
 import { Input } from "./primitives-form.js";
-import { Popover, PopoverContent, PopoverTrigger } from "./primitives-overlay.js";
+import { Popover, PopoverAnchor, PopoverContent, PopoverTrigger } from "./primitives-overlay.js";
 import { dsFocus, dsFocusWithin, dsLayer, dsText } from "./tokens.js";
 
 function dateValue(value: string | undefined): CalendarDate | null {
@@ -61,6 +61,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
       className={cn("ds-date-picker min-w-0", inline && "ds-date-picker--inline", textEntry && "ds-date-picker--text", className)}
     >
       <Label className={cn("ds-date-label", dsText.meta, "whitespace-nowrap font-medium text-[color:var(--ds-fg-secondary)]", textEntry && "sr-only")}>{label}</Label>
+      <PopoverAnchor asChild>
       <DateField.Group className={cn(
         "h-[var(--ds-h-md)] min-w-0 rounded-[var(--ds-radius-md)] border",
         "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-2)] text-[color:var(--ds-fg)]",
@@ -81,6 +82,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
           </PopoverTrigger>
         </DateField.Suffix>
       </DateField.Group>
+      </PopoverAnchor>
       <PopoverContent title={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} hideTitle hideClose className={cn("ds-date-popover w-auto [&>div]:p-0", dsLayer.modal)}>
         <HeroCalendar aria-label={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} className="ds-hero-calendar" isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen}>
           <HeroCalendar.Header>

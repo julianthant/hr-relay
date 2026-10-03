@@ -12,6 +12,7 @@ import { ArrowLeft, ArrowRight, Check, Keyboard, Play, Search } from "lucide-rea
 import { cn } from "../lib/utils.js";
 import {
   BareButton,
+  Badge,
   Banner,
   Button,
   Checkbox,
@@ -1226,11 +1227,11 @@ export function RunStartDialog({
         className="launch-design launch-dialog max-w-[min(calc(100vw-32px),880px)] h-[min(calc(100dvh-32px),628px)] max-h-[calc(100dvh-32px)]"
       >
         <div className="flex min-h-0 flex-1">
-          {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} /> : <aside aria-label="Source run" className="launch-workflow-rail shrink-0 border-r border-ui-stroke p-3 pt-[18px]">
+          {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} /> : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
             <SectionLabel>Source run</SectionLabel>{rerunSource?.label && <h3 className="mt-4 text-heading font-semibold">{rerunSource.label}</h3>}
             {snapshot !== null && <><p className="mt-[6px] break-all font-mono text-caption text-ui-secondary">{rerunSource?.traceId ?? snapshot.source.runId}</p>
               <dl className="mt-[18px] space-y-[14px] text-caption"><div><dt className="text-ui-muted">Workflow</dt><dd className="mt-1">{workflow?.label} · {versionTag(snapshot.source.descriptorVersion)}</dd></div><div><dt className="text-ui-muted">Outcome</dt><dd className={cn("mt-1", snapshot.source.outcome === "done" ? "text-ui-positive" : snapshot.source.outcome === "failed" ? "text-ui-danger" : "text-ui-secondary")}>{snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted"}</dd></div><div><dt className="text-ui-muted">Progress</dt><dd className="mt-1">{snapshot.steps.filter(step => step.state === "completed").length} / {snapshot.steps.length} steps completed</dd></div></dl></>}
-            <p className="mt-5 border-t border-ui-stroke pt-[14px] text-caption text-ui-muted">This creates a new run. The source keeps its original history.</p>
+            <p className="mt-auto border-t border-ui-stroke pt-[14px] text-caption text-ui-muted">This creates a new run. The source keeps its original history.</p>
           </aside>}
 
           <div className="flex min-w-0 flex-1 flex-col">
@@ -1366,13 +1367,14 @@ export function RunStartDialog({
                       const control = step.control;
                       const forcedBy = forcedByStep.get(step.key) ?? [];
                       const row = omissionRows.find((candidate) => candidate.step === step.key);
+                      const sourceState = snapshot?.steps.find(entry => entry.key === step.key)?.state;
                       return (
                         <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2">
-                          <div className="flex items-start gap-[var(--ds-space-base)]">
+                          <div className="flex items-center gap-[var(--ds-space-base)]">
                             <Checkbox checked={selected} disabled={control.state === "required" || forcedBy.length > 0 || (control.state === "omittable" && multiSubject && selected)}
                               onCheckedChange={next => toggleStep(step.key, next === true)} label={step.label} className="[&_.ds-checkbox-label]:font-semibold"
                               title={control.state === "required" ? control.reason : undefined} />
-                            {isRerun && snapshot !== null && <span className="launch-step-status" data-status={snapshot.steps.find(entry => entry.key === step.key)?.state}>{snapshot.steps.find(entry => entry.key === step.key)?.state === "completed" ? "Completed" : snapshot.steps.find(entry => entry.key === step.key)?.state === "failed" ? "Failed" : "Not started"}</span>}
+                            {isRerun && snapshot !== null && <Badge tone={sourceState === "completed" ? "success" : sourceState === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={sourceState}>{sourceState === "completed" ? "Completed" : sourceState === "failed" ? "Failed" : "Not started"}</Badge>}
                           </div>
                           {control.state === "required" && <span className="sr-only">{isRerun && snapshot?.steps.find(entry => entry.key === step.key)?.state === "completed" ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason}</span>}
                           {(forcedBy.length > 0 || (control.state === "omittable" && (multiSubject || !selected))) && <p className="pl-[calc(1rem+var(--ds-space-base))] text-caption text-[color:var(--ds-fg-muted)]">{forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.` : multiSubject ? multiSubjectOmissionReason : "Use saved or entered values instead."}</p>}

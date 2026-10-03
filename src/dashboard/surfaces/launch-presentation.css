@@ -111,6 +111,12 @@
 .spreadsheet-workspace > nav button[aria-pressed="true"] {
   @apply border-b-2 border-b-ui-info text-ui-primary;
 }
+.spreadsheet-workspace > nav button:hover {
+  @apply bg-transparent;
+}
+.spreadsheet-detail-tools .ds-choice-picker > button {
+  @apply h-8;
+}
 
 .spreadsheet-dialog .spreadsheet-mapping-row .ds-choice-picker > button {
   @apply h-8 text-caption;
