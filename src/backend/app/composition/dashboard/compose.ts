@@ -569,9 +569,15 @@ async function composeDashboardRuntimeStartup(
   const bootConfig = (() => {
     const persistedSettings = database.withAuthorityTransaction((repositories) => {
       const activeRuntime = repositories.runtimeConfig.get();
+      const hasSettingsHistory = repositories.settingsCurrent.hasHistory();
+      const savedSettings = repositories.settingsCurrent.get();
       const persisted = readSettings(repositories);
-      if (activeRuntime === undefined && repositories.runtimeConfig.hasHistory()) {
+      if (activeRuntime === undefined && (hasSettingsHistory || repositories.runtimeConfig.hasHistory())) {
         throw new Error("dashboard settings/runtime authority is missing despite durable revision evidence");
+      }
+      if (savedSettings === undefined && (hasSettingsHistory
+        || (activeRuntime !== undefined && activeRuntime.settingsRevision > 1))) {
+        throw new Error("dashboard settings authority is missing despite durable revision evidence");
       }
       return persisted;
     });
