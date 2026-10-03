@@ -83,3 +83,23 @@ it("unconfirmed Settings chips are truthful, deduplicated and dismissed by exact
   const failed = createSettingsSaveFeedback(() => { throw new Error("toast failed"); }, () => {});
   assert.equal(failed.publishUnconfirmed(receipt, "actor"), "delivery-failed");
 });
+
+it("known Settings outcomes settle the exact unknown chip even when replacement delivery fails", () => {
+  for (const outcome of ["saved", "refused", "conflict"] as const) {
+    const dismissed: string[] = []; let emits = 0;
+    const feed = createSettingsSaveFeedback(() => {
+      emits += 1;
+      if (emits > 1) throw new Error("resolved chip failed");
+      return "unknown-chip";
+    }, id => dismissed.push(id));
+    const receipt = { actorId: "actor", commandId, kind: "ordinary" as const };
+    assert.equal(feed.publishUnconfirmed(receipt, "actor"), "delivered");
+    const result = outcome === "saved"
+      ? feed.publish({ ...receipt, replayed: false }, "actor")
+      : feed.publishRefusal({ ...receipt, outcome }, "actor");
+    assert.equal(result, "delivery-failed");
+    assert.deepEqual(dismissed, ["unknown-chip"]);
+    feed.reset();
+    assert.deepEqual(dismissed, ["unknown-chip"]);
+  }
+});

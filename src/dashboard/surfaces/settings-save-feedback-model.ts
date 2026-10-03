@@ -49,18 +49,19 @@ export function createSettingsSaveFeedback(emit: (tone: "success" | "danger", ti
     reset() { for (const id of active) dismiss(id); active.clear(); unknown.clear(); seen.clear(); },
     publish(receipt: ConfirmedSettingsSave, actorId: string): "delivered" | "duplicate" | "stale" | "delivery-failed" {
       if (receipt.actorId !== actorId) return "stale";
+      settleUnknown(receipt);
       const key = `${receipt.actorId}:${receipt.kind}:${receipt.commandId}:saved`;
       if (seen.has(key)) return "duplicate";
       const title = receipt.replayed ? "Already saved" : "Saved";
       const description = receipt.kind === "ordinary" ? "Settings saved." : receipt.kind === "protected" ? "Credential settings saved." : "Provider keys saved.";
       try { active.add(emit("success", title, description)); }
       catch { return "delivery-failed"; }
-      settleUnknown(receipt);
       seen.add(key);
       return "delivered";
     },
     publishRefusal(receipt: DefinitiveSettingsRefusal, actorId: string): "delivered" | "duplicate" | "stale" | "delivery-failed" {
       if (receipt.actorId !== actorId) return "stale";
+      settleUnknown(receipt);
       const key = `${receipt.actorId}:${receipt.kind}:${receipt.commandId}:${receipt.outcome}`;
       if (seen.has(key)) return "duplicate";
       const subject = receipt.kind === "ordinary" ? "Settings" : receipt.kind === "protected" ? "Credentials" : "Provider keys";
@@ -70,7 +71,6 @@ export function createSettingsSaveFeedback(emit: (tone: "success" | "danger", ti
         : "The save was refused. Review your retained edit before retrying.";
       try { active.add(emit("danger", title, description)); }
       catch { return "delivery-failed"; }
-      settleUnknown(receipt);
       seen.add(key);
       return "delivered";
     },
