@@ -66,15 +66,15 @@
  *       because a harness id is never a path segment (D265 rule 3): UNDER
  *       `src/workflows/` a file belongs to the registered FOLDER it sits in
  *       (`workflowSourceFolder`, longest folder prefix), so
- *       `separations/identity-check/module.ts` is the harness's budget and not
+ *       `separations/steps/identity-check/extra.ts` is the harness's budget and not
  *       the composition's; everywhere else a whole directory segment or the
  *       basename stem that equals a registered id, or begins with one followed
  *       by `-`, `_` or `.`, attributes to the LONGEST such id — so
  *       `tests/scenario/separations-kuali-read.scenario.test.ts` belongs to the
  *       harness, and `separations-extra/` and `separations_extra.md` stay
- *       `separations`'s budget instead of escaping it. Two closed
- *       exemptions, each citing its authority, and one closed pre-canonical
- *       structural-scenario allowlist; both are staleness-checked the same way.
+ *       `separations`'s budget instead of escaping it. One production artifact
+ *       exemption and one closed pre-canonical structural-scenario allowlist;
+ *       both are staleness-checked.
  *
  * All four arms are ONE pure function of `(registered workflows, one tree of
  * sources and file paths, three closed allowlists)` —
@@ -337,7 +337,7 @@ function literalContext(literal: ts.StringLiteralLike): string {
  *   - UNDER `src/workflows/`: the owner is the registered FOLDER the file sits
  *     in, taken from `workflowSourceFolder` — the ONE folder-from-role
  *     derivation (D265 arm d), never rebuilt here by interpolation. The
- *     LONGEST folder prefix wins, so `separations/identity-check/module.ts` is
+ *     LONGEST folder prefix wins, so `separations/steps/identity-check/extra.ts` is
  *     the harness's budget and not the composition's, even though the
  *     composition's folder contains it. D265 rule 3 puts a harness INSIDE the
  *     step it proves and leaves its id out of the path entirely, so the name
@@ -637,12 +637,6 @@ const ARTIFACT_EXEMPTIONS: readonly ArtifactExemptionEntry[] = [
       "D312 — a supplement to docs/rebuild/migrations/separations.md rather than a second migration doc; the budget item "
       + "is the migration record, and this is the same record's overflow.",
   },
-  {
-    path: "tests/scenario/dashboard/separations/",
-    reason:
-      "ref guards-and-tests §10.11/§10.12 — T2/T3 dashboard proofs, which §1.6.1 admits beside the four-artifact "
-      + "budget because a genuinely new DASHBOARD capability is not reuse-only workflow authoring.",
-  },
 ] as const;
 
 function auditedWorkflowSources(): readonly RegisteredWorkflowSource[] {
@@ -852,7 +846,7 @@ const FIXTURES: readonly BudgetFixture[] = [
       files["src/workflows/solo/workflow.ts"] =
         fixtureWorkflowFile("solo", "const composed = composeWorkflowModule(soloWorkflow, stores);\n");
     }),
-    expected: /calls composeWorkflowModule\(\): stores are composed only at src\/backend\/app\/control\/workflow-registry\.ts/,
+    expected: /calls composeWorkflowModule\(\): stores are composed only at src\/backend\/app\/registries\/workflow-registry\.ts/,
   },
   {
     name: "two-defineWorkflow-calls-in-one-workflow-file",
@@ -893,7 +887,7 @@ const FIXTURES: readonly BudgetFixture[] = [
     arm: "c",
     files: withFiles((files) => { files[PAIR_EXACT_ENTRY.file] = SOLO_BRANCH + COMBO_BRANCH; }),
     genericIdAllowlist: [PAIR_EXACT_ENTRY],
-    expected: /src\/backend\/app\/dashboard\/compose\.ts:2 names workflow "combo" as an equality comparison in a generic surface/,
+    expected: /src\/backend\/app\/composition\/dashboard\/compose\.ts:2 names workflow "combo" as an equality comparison in a generic surface/,
   },
   {
     // Pair-exactness, half two: the allowlisted workflow id, a different file.
@@ -1105,7 +1099,7 @@ describe("workflow-authoring-budget — the retired path stays dead and D312's b
     // Inside `src/workflows/` the harness id is NOT in the path: only the
     // registered FOLDER can say whose budget a file beside its workflow.ts is.
     assert.equal(
-      attributeWorkflowArtifact("src/workflows/separations/identity-check/module.ts", workflows),
+      attributeWorkflowArtifact("src/workflows/separations/steps/identity-check/extra.ts", workflows),
       "separations-identity-check",
     );
     assert.equal(attributeWorkflowArtifact("src/workflows/separations/module.ts", workflows), "separations");
