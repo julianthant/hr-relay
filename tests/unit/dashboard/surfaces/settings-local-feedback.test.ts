@@ -176,10 +176,13 @@ it("provider server revision conflict emits a chip receipt and keeps the edit", 
 
 it("server-refusal inline copy is suppressed while local validation and unknown recovery remain", async () => {
   const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
-  const render = async (save: Parameters<typeof SettingsSaveFeedback>[0]["save"]) => act(async () => root.render(createElement(SettingsSaveFeedback, { save, retry: () => {}, retryConflict: () => {} })));
+  const retryConflict = vi.fn();
+  const render = async (save: Parameters<typeof SettingsSaveFeedback>[0]["save"]) => act(async () => root.render(createElement(SettingsSaveFeedback, { save, retry: () => {}, retryConflict })));
   try {
     await render({ state: "refused", feedback: "chip", message: "server refusal", code: "not-editable" });
-    assert.equal(host.textContent, "");
+    assert.equal(host.textContent, "Retry edit");
+    await act(async () => host.querySelector("button")?.click());
+    assert.equal(retryConflict.mock.calls.length, 1);
     await render({ state: "conflict", feedback: "chip", message: "server revision conflict" });
     assert.equal(host.textContent, "Retry edit");
     await render({ state: "refused", message: "Check the draft values. No request was sent." });
