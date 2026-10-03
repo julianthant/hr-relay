@@ -13,8 +13,8 @@ type Change = Readonly<{ ordinal: number; kind: "day"; change: RunQueueProjectio
   | Readonly<{ ordinal: number; kind: "log"; event: ConfirmedActionEvent }>;
 type Subscriber = {
   day?: string; runId: string; authority: RunRecord; fingerprint: string; queue: CompositeStreamEnvelope[];
-  waiter?: (value: CompositeStreamEnvelope | undefined) => void; closed: boolean; resetPending: boolean;
-  deliveredOrdinal: number;
+  waiter?: (value: CompositeStreamEnvelope | undefined) => void; closed: boolean; resetPending: boolean; initializing: boolean;
+  deliveredOrdinal: number; error?: string;
 };
 
 function afterDayCut(message: CompositeStreamEnvelope, dayCut: number): boolean {
@@ -60,7 +60,6 @@ export class RunLogsStreamHub {
   #recovering = false;
   #lastError: string | undefined;
   #dayError: string | undefined;
-  #deliveryError: string | undefined;
   #parsedLines = 0;
   #bytesRead = 0;
 
@@ -72,11 +71,28 @@ export class RunLogsStreamHub {
     this.#dispose = deps.projection.onChange(change => this.#dayChange(change));
   }
 
-  stats(): Readonly<{ parsedLines: number; bytesRead: number; ordinal: number; subscribers: number; retained: number; degraded: boolean; recovering: boolean; lastError?: string }> {
+  stats(): Readonly<{ parsedLines: number; bytesRead: number; ordinal: number; subscribers: number; retained: number;
+    degraded: boolean; recovering: boolean; lastError?: string; subscriberError?: Readonly<{ runId: string; error: string }> }> {
+    const failedSubscriber = [...this.#subscribers].find(subscriber => subscriber.error !== undefined);
     return { parsedLines: this.#parsedLines, ordinal: this.#ordinal, subscribers: this.#subscribers.size,
       retained: this.#ring.length, degraded: this.#degraded, recovering: this.#recovering,
       bytesRead: this.#bytesRead,
-      ...(this.#lastError === undefined ? {} : { lastError: this.#lastError }) };
+      ...(this.#lastError === undefined ? {} : { lastError: this.#lastError }),
+      ...(failedSubscriber?.error === undefined ? {} : { subscriberError: { runId: failedSubscriber.runId,
+        error: failedSubscriber.error } }) };
+  }
+
+  #healthState(): "live" | "recovering" | "degraded" {
+    return this.#degraded ? "degraded" : this.#recovering ? "recovering" : "live";
+  }
+
+  #publishHealthTransition(previous: "live" | "recovering" | "degraded"): void {
+    const state = this.#healthState();
+    if (state === previous) return;
+    for (const subscriber of this.#subscribers) {
+      if (subscriber.initializing || subscriber.resetPending) continue;
+      this.#push(subscriber, this.#control(subscriber, "health", { state }));
+    }
   }
 
   #cursor(subscriber: Subscriber, ordinal = this.#ordinal): string {
@@ -177,12 +193,14 @@ export class RunLogsStreamHub {
 
   #deliver(change: Change): void {
     for (const subscriber of this.#subscribers) {
+      if (subscriber.resetPending) continue;
       try {
         const message = change.kind === "day" ? this.#dayEnvelope(subscriber, change) : this.#logEnvelope(subscriber, change);
         if (message?.source === "control" && message.type === "reset-required") this.#resetSubscriber(subscriber, "generation-changed");
         else if (message !== undefined) this.#push(subscriber, message);
       } catch (error) {
-        this.#deliveryError = error instanceof Error ? error.message : String(error);
+        const detail = error instanceof Error ? error.message : String(error);
+        subscriber.error = detail;
         this.#resetSubscriber(subscriber, "generation-changed");
       }
     }
@@ -210,19 +228,26 @@ export class RunLogsStreamHub {
   /** Polling is source-of-truth recovery; a process-local wakeup only calls this sooner. */
   poll(): void {
     if (this.#closed) return;
+    const previousHealth = this.#healthState();
     try {
-      this.#deliveryError = undefined;
       for (const subscriber of this.#subscribers) {
-        const current = this.#deps.readRun(subscriber.runId);
-        if (current === undefined || current.disposition !== "live") {
+        if (subscriber.resetPending) continue;
+        try {
+          const current = this.#deps.readRun(subscriber.runId);
+          if (current === undefined || current.disposition !== "live") {
+            this.#resetSubscriber(subscriber, "generation-changed");
+          } else if (current.run.envelope.runId !== subscriber.runId
+            || current.run.envelope.traceId !== subscriber.authority.envelope.traceId
+            || current.run.envelope.contractFingerprint !== subscriber.authority.envelope.contractFingerprint
+            || current.run.envelope.attempt < subscriber.authority.envelope.attempt) {
+            this.#resetSubscriber(subscriber, "generation-changed");
+          } else {
+            subscriber.authority = current.run;
+          }
+        } catch (error) {
+          const detail = error instanceof Error ? error.message : String(error);
+          subscriber.error = detail;
           this.#resetSubscriber(subscriber, "generation-changed");
-        } else if (current.run.envelope.runId !== subscriber.runId
-          || current.run.envelope.traceId !== subscriber.authority.envelope.traceId
-          || current.run.envelope.contractFingerprint !== subscriber.authority.envelope.contractFingerprint
-          || current.run.envelope.attempt < subscriber.authority.envelope.attempt) {
-          this.#resetSubscriber(subscriber, "generation-changed");
-        } else {
-          subscriber.authority = current.run;
         }
       }
       const tail = this.#deps.store.tail(this.#cursors);
@@ -254,12 +279,14 @@ export class RunLogsStreamHub {
       }
       this.#cursors = tail.cursors;
       this.#recovering = tail.hasMore;
-      this.#degraded = this.#dayError !== undefined || this.#deliveryError !== undefined;
-      this.#lastError = this.#deliveryError ?? this.#dayError;
+      this.#degraded = this.#dayError !== undefined;
+      this.#lastError = this.#dayError;
+      this.#publishHealthTransition(previousHealth);
     } catch (error) {
       this.#degraded = true;
+      this.#recovering = false;
       this.#lastError = error instanceof Error ? error.message : String(error);
-      for (const subscriber of this.#subscribers) this.#push(subscriber, this.#control(subscriber, "health", { state: "degraded" }));
+      this.#publishHealthTransition(previousHealth);
     }
   }
 
@@ -274,7 +301,7 @@ export class RunLogsStreamHub {
     if (existence === undefined || existence.disposition !== "live") throw new Error("run-logs-live-run-unavailable");
     const canonical = selectedDay === undefined ? `run-logs:${runId}` : `dashboard-day:${selectedDay},run-logs:${runId}`;
     const subscriber: Subscriber = { ...(selectedDay === undefined ? {} : { day: selectedDay }), runId, authority: existence.run,
-      fingerprint: sha256Hex(canonical), queue: [], closed: false, resetPending: false,
+      fingerprint: sha256Hex(canonical), queue: [], closed: false, resetPending: false, initializing: true,
       deliveredOrdinal: this.#ordinal };
     this.#subscribers.add(subscriber);
     try {
@@ -328,6 +355,7 @@ export class RunLogsStreamHub {
       initial.push(this.#control(subscriber, "health", { state: this.#degraded ? "degraded"
         : this.#recovering ? "recovering" : "live" }, initialWatermark));
       subscriber.deliveredOrdinal = initialWatermark;
+      subscriber.initializing = false;
       if (initial.length > this.#retention + 4) throw new Error("run-logs-initial-envelope-bound");
       return Object.freeze({
         initial: Object.freeze(initial),
@@ -341,6 +369,10 @@ export class RunLogsStreamHub {
               const currentReset = this.#control(subscriber, "reset-required", { reason: queued.reason });
               this.#closeSubscriber(subscriber);
               return Promise.resolve(currentReset);
+            }
+            if (queued.source === "control" && queued.type === "health") {
+              if (queued.state === undefined) throw new Error("run-logs-health-state-missing");
+              return Promise.resolve(this.#control(subscriber, "health", { state: queued.state }));
             }
             if (queued.source !== "control") subscriber.deliveredOrdinal = Number(queued.transportCursor.slice(queued.transportCursor.lastIndexOf(":") + 1));
             return Promise.resolve(queued);
