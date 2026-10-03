@@ -7259,8 +7259,10 @@ surface did not send is unreachable rather than hidden.
 **The Workflow Panel has three modes**, persisted and cycled with `w`: **floating** (default — a
 window over the panel region, costing no column; Escape or an outside click dismisses it to `icon`),
 **icon** (nothing drawn over the content; the launcher carries the current workflow's 2-char code and
-the day's whole `Needs you` count across every panel), and **sidebar** (docked, 200px, always
-visible). Which panel you are in stays readable in all three because the Queue Panel is titled by its
+the day's whole `Needs you` count across every panel), and **sidebar** (docked, 280px, always
+visible). Floating and docked modes share the 280px width token. The dashboard's panel launcher and
+Start a run stay fixed in the full-width toolbar; docking changes only the content below it.
+Which panel you are in stays readable in all three because the Queue Panel is titled by its
 workflow. **One scrolling region per panel**: a panel's scroll track runs its full height, and a
 header, an outcome line or a tab bar that must stay put is a *sticky* block inside that one region,
 never a band stacked outside it. Queue rows are fixed at `--ds-h-row` — no surface invents a row

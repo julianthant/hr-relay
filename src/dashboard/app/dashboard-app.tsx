@@ -1065,6 +1065,17 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     });
   }, [route, setRoute]);
 
+  const dockedWorkflowPanel = panelMode.mode === "sidebar" && dayWire !== undefined ? (
+    <WorkflowSidebar
+      mode={panelMode.mode}
+      onMode={panelMode.setMode}
+      workflows={workflows}
+      counts={dayWire.workflowCounts}
+      activeWorkflowId={activeWorkflowId}
+      onActive={selectWorkflow}
+    />
+  ) : null;
+
   return (
     // NOT the theme root any more (D272 item 2): the app root moved above both
     // providers so the toast viewport inherits its custom properties, and this
@@ -1129,16 +1140,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         />
 
         <div className="flex min-h-0 flex-1">
-          {panelMode.mode === "sidebar" && dayWire !== undefined && (
-            <WorkflowSidebar
-              mode={panelMode.mode}
-              onMode={panelMode.setMode}
-              workflows={workflows}
-              counts={dayWire?.workflowCounts ?? []}
-              activeWorkflowId={activeWorkflowId}
-              onActive={selectWorkflow}
-            />
-          )}
+          {takeover !== "none" && dockedWorkflowPanel}
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
@@ -1294,7 +1296,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             covering the bars above them — it had been absolutely positioned
             against the viewport and was clipping the status-filter row.
           */}
-          <div className="relative min-h-0 flex-1">
+          <div className="flex min-h-0 flex-1">
+            {dockedWorkflowPanel}
+            <div className="relative min-h-0 min-w-0 flex-1">
             <div className="grid h-full grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)] gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)]">
               {dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
@@ -1343,6 +1347,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 onActive={selectWorkflow}
               />
             )}
+            </div>
           </div>
           </>
           </DashboardTakeovers>

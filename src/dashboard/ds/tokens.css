@@ -630,7 +630,7 @@
      go missing mid-refactor — chips now fill/wrap in the band instead of
      truncating at half the title column. */
   --ds-w-row-link-max: calc(50% - var(--ds-w-row-indent) / 2 - var(--ds-space-cozy));
-  --ds-w-rail: 200px; /* the workflow rail */
+  --ds-w-rail: 280px; /* the workflow rail */
   /* The queue and the run's CONTEXT RAIL are equal resting side panels. 376px
      is slightly wider than the former 348px context rail while leaving the
      centre log panel as the largest column at every three-panel breakpoint.

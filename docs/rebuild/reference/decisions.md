@@ -214,8 +214,9 @@ minor-archives-nothing rule for new changes. Owners:
 The Workflow Panel remembers the last selected workflow across page visits and refreshes in local
 browser storage. A stored ID absent from the served workflow list falls back to the first served
 workflow. Remove the rail's `active │ all` heading while keeping each workflow's `active │ all`
-count pair. The toolbar's day-wide active count, status filters, queue projection and panel
-display-mode preference remain. Owner:
+count pair. Floating and docked modes share a 280px width; docking leaves the dashboard toolbar's
+launch controls fixed (operator amendment, 2026-10-02). The toolbar's day-wide active count, status
+filters, queue projection and panel display-mode preference remain. Owner:
 [dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
