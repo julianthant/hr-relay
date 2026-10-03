@@ -4013,6 +4013,11 @@ preserving D313's modal authority, D308 deletion, and every write-safety fence.
    problem rather than a second box. `ref workflow-model` and `docs/rebuild/migrations/separations.md` own
    the derivation; this section owns only the consequence for the box.
 
+**2026-10-02 presentation amendment:** the approved Run/Rerun design and
+[spreadsheet registration](#run-rerun-and-spreadsheet-presentation-amendment--2026-10-02)
+replace D296/D298's spreadsheet entry inside Run. The served intake capability and backend contracts
+remain; the Settings registry is explicitly mocked.
+
 **D296 — the launcher has TWO methods, and the second one is the intake's only door
 (2026-09-01).** A workflow whose MODULE declares an intake projection is spreadsheet-capable — the
 same fact `command-kernel.ts` refuses an intake commit by (*"declares no intake projection; it is
@@ -6686,6 +6691,29 @@ one LOOKS like and what it refuses to draw.
 parity references for all three.
 
 #### 9.7.1 The intake workspace (2i-E3, D173)
+
+##### Run, Rerun and spreadsheet presentation amendment — 2026-10-02
+
+The operator approved Design 1 with subsequent control, step-row and spreadsheet revisions.
+Run and Rerun share an 880×628 desktop frame: Run has a workflow rail, Rerun a source rail.
+Checkboxes align with their titles; prior step outcomes are plain colored text beside the title.
+Options use styled workbook choices, segmented priority/browser controls and compact fixed facts.
+Rerun keeps source-bound values and repeat-write confirmation. A confirmed applied start closes the
+dialog and emits a toast; unknown or refused submissions retain recovery.
+
+Spreadsheet registration is separate, at Settings → Spreadsheets, organized by spreadsheet type.
+The initial type is Roster. Registered files, type definitions and per-sheet column mappings are
+inspectable; search covers multiple mapped fields, including names and identifiers. The import
+dialog has Mapping/Preview views, a 148px sheet rail, 32px mapping controls and the shared calendar
+where a date is requested. Import closes directly to a success/failure toast, without a Ready page.
+Reference use and generating an updated copy are the intended defaults, not per-import toggles.
+Importing a roster does not start people from its rows.
+
+The approved implementation uses session-only fictional spreadsheet data. It does not parse or save
+the chosen file, persist registration, attach a workbook to a live run, or generate an updated copy.
+Run/Rerun retain their existing live plan/start authority. D296/D298's Run-modal spreadsheet entry is
+superseded for this presentation; existing intake schemas, services and durable-session contracts are
+not retired by the mock registry. Full dashboard acceptance and reference refreezing remain 3.1.19.
 
 **2026-09-14 approved presentation amendment:**
 [3.1.9.6](../plans/phase-3/3.1-finish-the-dashboard/task-9-6-finish-intake-surfaces.md#approved-execution-brief--2026-09-14)

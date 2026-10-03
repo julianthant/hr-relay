@@ -974,22 +974,19 @@ export function useToasts(): ToastContextValue {
   return ctx;
 }
 
-const TOAST_TONE: Record<DsToastTone, { icon: typeof Info; accent: string; tint: string }> = {
-  info: { icon: Info, accent: "text-[color:var(--ds-info-fg)]", tint: "border-l-[color:var(--ds-info-fg)]" },
+const TOAST_TONE: Record<DsToastTone, { icon: typeof Info; accent: string }> = {
+  info: { icon: Info, accent: "text-[color:var(--ds-info-fg)]" },
   success: {
     icon: CheckCircle2,
     accent: "text-[color:var(--ds-success-fg)]",
-    tint: "border-l-[color:var(--ds-success-fg)]",
   },
   warning: {
     icon: CircleAlert,
     accent: "text-[color:var(--ds-status-waiting-fg)]",
-    tint: "border-l-[color:var(--ds-status-waiting-fg)]",
   },
   danger: {
     icon: TriangleAlert,
     accent: "text-[color:var(--ds-danger)]",
-    tint: "border-l-[color:var(--ds-danger)]",
   },
 };
 
@@ -1137,9 +1134,8 @@ function ToastCard({
 
   const shell = cn(
     inert ? "pointer-events-none" : "pointer-events-auto",
-    "border border-l-[length:var(--ds-border-w-rail)]",
+    "border",
     "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
-    spec.tint,
     dsRadius.md,
     dsElev.mid,
     dsMotion.enter,

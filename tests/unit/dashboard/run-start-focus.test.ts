@@ -8,7 +8,7 @@ import { RUN_START_DOOR_ID } from "../../../src/dashboard/app/dashboard-app-mode
 import { createDashboardClient, type DashboardClient } from "../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
 import { createFixtureBff } from "../../parity/helpers/fixture-bff.js";
-import { FIXTURE_INTAKE_MAPPING } from "../../parity/helpers/fixture-intake.js";
+import { resetSpreadsheetMocks } from "../../../src/dashboard/surfaces/spreadsheet-mock-model.js";
 import { FIXTURE_DAY_WIRE } from "../../parity/helpers/fixture-queue.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -16,6 +16,7 @@ Reflect.set(globalThis, "ResizeObserver", class { observe() {} unobserve() {} di
 let root: Root | undefined;
 afterEach(async () => {
   await act(async () => root?.unmount()); root = undefined;
+  resetSpreadsheetMocks();
   document.body.replaceChildren(); localStorage.clear(); window.history.replaceState(null, "", "/");
 });
 async function settle() { await act(async () => { await new Promise(resolve => setTimeout(resolve, 35)); }); }
@@ -57,35 +58,28 @@ for (const launch of ["external button", "keyboard shortcut"] as const) {
   }
 }
 
-async function upload() {
+it("spreadsheet import is a Settings destination and leaves the Run launch focus intact", async () => {
+  let uploads = 0;
+  await mount({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } });
   await click(button("Start a run"));
-  await click(button("Import a spreadsheet"));
-  const input=document.querySelector('input[type="file"]'); assert.ok(input);
-  const file=new File(["fixture"],"fixture.csv",{type:"text/csv"});
-  Object.defineProperty(file,"arrayBuffer",{value:() => Promise.resolve(new ArrayBuffer(7))});
-  Object.defineProperty(input,"files",{configurable:true,value:{length:1,item:(index:number) => index === 0 ? file : null}});
-  await act(async () => input.dispatchEvent(new Event("change",{bubbles:true})));
-  await settle();
-}
-it("successful Intake handoff keeps arrival focus, and the next Run dismissal restores its door",async () => {
-  await mount({uploadIntakeFile:async () => ({state:"created",session:FIXTURE_INTAKE_MAPPING})});
-  await upload();
-  const intake=document.querySelector('section[aria-label="Spreadsheet intake"]'); assert.ok(intake);
-  assert.ok(document.activeElement === intake,"dialog cleanup must preserve Intake arrival focus");
-  assert.equal(new URLSearchParams(location.search).get("intake"),FIXTURE_INTAKE_MAPPING.intakeSessionId);
-  await click(button("Close"));
-  assert.ok(document.activeElement === button("Start a run"));
-  await click(button("Start a run")); await key("Escape");
-  assert.ok(document.activeElement === button("Start a run"),"a previous handoff must not suppress the next dismissal");
+  assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
+  await key("Escape"); assert.ok(document.activeElement === button("Start a run"));
+  await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert.ok(link);
+  await click(link);
+  await click(button("Import spreadsheet"));
+  await click(button("Import roster"));
+  assert.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+  assert.ok(document.body.textContent?.includes("Roster imported"));
+  assert.equal(uploads, 0); assert.equal(new URLSearchParams(location.search).has("intake"), false);
 });
-it.each(["Cancel","Escape","Close"])("a late accepted upload after %s neither steals restored focus nor reopens Intake",async dismissal => {
-  let resolve: ((result: Awaited<ReturnType<DashboardClient["uploadIntakeFile"]>>) => void) | undefined;
-  await mount({uploadIntakeFile:() => new Promise(done => {resolve=done;})});
-  await upload(); assert.ok(resolve,"upload reached the client");
-  if(dismissal === "Escape") await key("Escape"); else await click(button(dismissal));
-  assert.ok(document.activeElement === button("Start a run"));
-  await act(async () => resolve?.({state:"created",session:FIXTURE_INTAKE_MAPPING})); await settle();
-  assert.ok(document.querySelector('section[aria-label="Spreadsheet intake"]') === null);
-  assert.equal(new URLSearchParams(location.search).has("intake"),false);
-  assert.ok(document.activeElement === button("Start a run"));
+it.each(["Cancel", "Escape", "Close"])("standalone spreadsheet import: %s closes without registering or starting a run", async dismissal => {
+  await mount(); await click(button("Settings"));
+  const link = [...document.querySelectorAll("a")].find(node => node.textContent?.trim() === "Spreadsheets"); assert.ok(link); await click(link);
+  const before = document.querySelector('section[aria-label="Spreadsheets"]')?.textContent;
+  await click(button("Import spreadsheet"));
+  if (dismissal === "Escape") await key("Escape"); else await click(button(dismissal));
+  assert.equal(document.querySelectorAll('[role="dialog"]').length, 0);
+  assert.equal(document.querySelector('section[aria-label="Spreadsheets"]')?.textContent, before);
+  assert.equal(new URLSearchParams(location.search).has("intake"), false);
 });

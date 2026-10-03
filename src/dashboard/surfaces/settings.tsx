@@ -1,3 +1,4 @@
+import { SpreadsheetsSettings } from "./spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
 import {
@@ -63,6 +64,7 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   keyboard: KeyboardIcon,
   "ui-catalog": BookMarked,
   unrendered: CircleAlert,
+  spreadsheets: Table2,
 };
 
 
@@ -293,6 +295,7 @@ export function SettingsPage({
       <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <DsBodyScope className="settings-tab-body flex flex-col gap-[var(--ds-space-page)]">
         {editor.editor.state === "failed" && !activeSettingsEditorSection
+          && activeId !== "spreadsheets"
           && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
           && activeId !== SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
           <Banner tone="danger" title="Editable settings unavailable">
@@ -313,6 +316,7 @@ export function SettingsPage({
             The server listed no settings sections and this build contributes none.
           </Banner>
         )}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
         {/* The catalog remains a Help destination inside the Settings page. */}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_UI_CATALOG_SECTION_ID && (

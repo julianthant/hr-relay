@@ -29,6 +29,7 @@ import {
   Card,
   CardBody,
   Checkbox,
+  DateInput,
   Field,
   Input,
   KeyValueList,
@@ -79,9 +80,8 @@ export function RunFlagChips({
  * One sub-selection, rendered the same way for every workflow that declares
  * one. In 1i the only sub-selections a descriptor declares are its input
  * surface's parser CONSTANTS — fields the panel contributes to every entry at
- * a value the workflow fixes. The operator's 2026-09-01 ruling makes all Run
- * Options values use the same field shell; the disabled state and visible
- * reason keep "you may not change this" legible without clicking it.
+ * a value the workflow fixes. Fixed values and their reasons remain readable
+ * without presenting an editable control.
  *
  * The operator-variable arm (a served option list) has no 1i wire counterpart —
  * declaring one here would mean inventing a contract the server never sends —
@@ -91,36 +91,9 @@ export function StartChoiceControl({ constant, reason }: { constant: SurfaceFiel
   return <LockedFact label={constant.field} value={surfaceValueLabel(constant)} reason={reason} />;
 }
 
-/**
- * A value the operator may not change, with the reason ON SCREEN (C48/C81,
- * D272 item 9 — `ref dashboard-surfaces` §10).
- *
- * A disabled native select preserves the same control geometry as the editable
- * Priority and Browser mode fields while making the fixed state semantic. The
- * reason remains on screen because a tooltip is unavailable to touch and to
- * the keyboard.
- *
- * It is ONE component because there were two of these and they were already
- * drifting: the sub-selection had the label span and the active-run policy had
- * a hand-rolled copy of it. Two near-identical renderings are two things that
- * happen to agree today (`src/dashboard/CLAUDE.md`, 2026-08-26).
- */
-export function LockedFact({
-  label,
-  value,
-  reason,
-}: {
-  label: string;
-  value: string;
-  reason: string;
-}) {
-  return (
-    <Field label={label} description={reason} disabled>
-      <Select disabled className="disabled:cursor-not-allowed disabled:opacity-70">
-        <option value={value}>{value}</option>
-      </Select>
-    </Field>
-  );
+/** Fixed workflow facts use plain read-only values rather than disabled controls. */
+export function LockedFact({ label, value, reason }: { label: string; value: string; reason: string }) {
+  return <div><span className={cn(dsText.meta, "font-medium", dsFg.secondary)}>{label}</span><p className={cn(dsText.body, "mt-[var(--ds-space-tight)]", dsFg.base)}>{value}</p><p className={cn(dsText.meta, "mt-[var(--ds-space-tight)]", dsFg.muted)}>{reason}</p></div>;
 }
 
 /**
@@ -158,18 +131,20 @@ export function StartFlagControl({
 export function PlanPreview({
   plan,
   className,
+  compact = false,
 }: {
   plan: StartPlanResponse;
   className?: string;
+  compact?: boolean;
 }) {
   return (
     <section className={cn("flex flex-col gap-[var(--ds-space-base)]", className)}>
-      <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
+      {!compact && <div className="flex flex-wrap items-center gap-[var(--ds-space-base)]">
         <span className={cn(dsText.ui, "font-semibold", dsFg.base)}>
           {plan.planned.length === 1 ? "1 run" : `${String(plan.planned.length)} runs`}
         </span>
         <RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />
-      </div>
+      </div>}
 
       {plan.planned.length === 0 ? (
         <Well>
@@ -458,6 +433,8 @@ export function StepOmissionFactsForm({
   errors,
   onChange,
   onTouch,
+  previous,
+  compact = false,
 }: {
   step: string;
   form: StepOmissionForm;
@@ -466,6 +443,8 @@ export function StepOmissionFactsForm({
   errors: Readonly<Record<string, string>>;
   onChange: (fieldKey: string, next: StepOmissionFactDraft) => void;
   onTouch: (fieldKey: string) => void;
+  previous?: Readonly<Record<string, { value: string; onUse: () => void }>>;
+  compact?: boolean;
 }) {
   if (form.fields.length === 0) {
     return (
@@ -478,17 +457,19 @@ export function StepOmissionFactsForm({
     <fieldset className="grid min-w-0 grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
       {/* The legend NAMES the group, so a screen reader landing inside it
           knows which omitted step these boxes stand in for. */}
-      <legend className={cn(dsText.meta, "font-medium", dsFg.secondary)}>
+      <legend className={cn(dsText.meta, "font-medium", dsFg.secondary, compact && "sr-only")}>
         {`What this run reads instead of ${step}`}
       </legend>
       {form.fields.map((field) => {
         const value = draft[field.key];
         const error = errors[field.key] ?? null;
         const help = field.help;
+        const saved = previous?.[field.key];
+        const savedControl = saved && <div className="mt-[5px] flex items-center justify-between gap-2 text-caption text-ui-muted"><span>{compact ? "Previous" : "Saved"} <span className="tabular-nums">{saved.value}</span></span><Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${step} · ${field.label}`} onClick={saved.onUse}>Use previous</Button></div>;
         if (field.kind === "boolean") {
           return (
+            <div key={field.key}>
             <Checkbox
-              key={field.key}
               checked={value === true}
               onCheckedChange={(next) => {
                 onTouch(field.key);
@@ -497,6 +478,8 @@ export function StepOmissionFactsForm({
               label={field.label}
               {...(help === undefined ? {} : { description: help })}
             />
+            {savedControl}
+            </div>
           );
         }
         const text = typeof value === "string" ? value : "";
@@ -524,6 +507,7 @@ export function StepOmissionFactsForm({
                   <option key={option} value={option}>{option}</option>
                 ))}
               </Select>
+              {savedControl}
             </Field>
           );
         }
@@ -536,19 +520,20 @@ export function StepOmissionFactsForm({
                 onBlur={() => onTouch(field.key)}
                 onChange={(event) => onChange(field.key, event.target.value)}
               />
+              {savedControl}
             </Field>
           );
         }
         return (
           <Field key={field.key} {...commonField}>
-            <Input
+            {field.kind === "us-date" ? <DateInput label={field.label} textEntry textDateFormat="MM/DD/YYYY" value={text} onChange={next => { onTouch(field.key); onChange(field.key, next); }} /> : <Input
               value={text}
-              {...(field.kind === "us-date" ? { placeholder: "MM/DD/YYYY", inputMode: "numeric" as const } : {})}
               {...(field.kind === "eid" ? { placeholder: "12345678", inputMode: "numeric" as const } : {})}
               {...(field.kind === "integer" ? { inputMode: "numeric" as const } : {})}
               onBlur={() => onTouch(field.key)}
               onChange={(event) => onChange(field.key, event.target.value)}
-            />
+            />}
+            {savedControl}
           </Field>
         );
       })}

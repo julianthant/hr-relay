@@ -1,3 +1,4 @@
+import "./launch-presentation.css";
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
 import { Input as HeroInput } from "@heroui/react";
 import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
@@ -5,69 +6,9 @@ import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-
 import { candidateText, defaultRerunSteps, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
 import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "../app/run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "../app/run-launch-model.js";
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx — and re-ported
- * region by region from hr-automation@1bffbd65 for the 2026-08-13 detail
- * fidelity pass (docs/plans/2026-08-13-detail-fidelity-audit.md, R8).
- *
- * **The** Start Run surface — 1i's typed method, wired to the real start
- * protocol (ref frontend-backend-integration §5.1):
- *
- *   1. the descriptor's own input surface decides the door exists; a workflow
- *      that declares none renders the served absence, not empty scaffolding;
- *   2. the operator types into the descriptor's placeholder, and the
- *      descriptor's own parser spec previews exactly how that text splits;
- *   3. `POST /start-plans` returns the exact proposed runs, the refusals, and a
- *      short-lived plan token bound to every fingerprint;
- *   4. the operator CONFIRMS, and one `start-run` command consumes that token
- *      idempotently;
- *   5. the queue changes only from the authoritative projection. This surface
- *      never inserts a row, never turns a status, and stops at "applied".
- *
- * Nothing here knows a workflow: every input, constant and system is read off
- * props the app composed from the descriptor/bootstrap projections, so a
- * workflow registered tomorrow gets a correct dialog for free — and one whose
- * start capability is absent is not offered rather than offered and broken.
- *
- * The picker is the demo's, over the SERVED catalogue: the boot document's
- * workflows plus each descriptor's declared input surface are
- * all the list, the grouping, the filter, the selection and the
- * "{n} not startable" count need. (An earlier header claimed the picker waited
- * on a bootstrap start-capability projection. That was wrong — R8 finding 12.)
- *
- * Deferred with their owning slices, and omitted rather than faked: the upload
- * and bare start methods (2h), presets, preflight/doctor results, and
- * per-system host lines.
- *
- * **The peer-method TABS are back, because there are now two methods** (D296).
- * D251 recorded them as "not applicable, not deferred" — the demo draws them
- * only at `methods.length > 1` and this tree had one method kind, so no tabs
- * WAS the demo-faithful rendering of one method and a strip over a set of one
- * would have been D186's sample-of-one. That reading has not changed; the SET
- * has. A module that declares an intake projection is spreadsheet-capable
- * (`command-kernel.ts`'s own words), the boot document now serves that fact as
- * `start.spreadsheetIntake`, and a workflow carrying it has two ways in. The
- * strip still draws only when the set is larger than one, from the same
- * condition, so a workflow with no projection renders exactly what it does
- * today. `uploadRun` is still declared by nothing and still absent.
- *
- * The spreadsheet method IS the intake's dropzone (D298). D296 shipped it as a
- * paragraph over an `Open the intake…` primary; the paragraph described the
- * zone that was one click away, and the primary's only job was to reach it. The
- * zone is now the panel: the drop uploads, the session opens, and this dialog
- * closes on `?intake=<sessionId>` with the file already read. The footer keeps
- * `Cancel` alone. Mapping, per-row review and the enqueue stay in the workspace
- * (D170/D173) — a durable session that takes minutes is not a modal's job.
- *
- * That is what the queue toolbar's `Import spreadsheet` button stood in for
- * until this existed, and D296 deletes it — a takeover with two doors was the
- * duplicate-door problem D295 ruled on for the catalog. D298 leaves ONE door:
- * `?intake=` is now always a session id, because the workspace's own empty
- * upload page is gone with the sentinel that addressed it.
- */
+/** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ArrowRight, FileSpreadsheet, Keyboard, Play, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Keyboard, Play, Search } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   BareButton,
@@ -80,13 +21,14 @@ import {
   DialogFooter,
   EmptyState,
   Field,
+  Input,
   KeyValueList,
   MetaLine,
   SectionLabel,
-  Select,
+  ChoicePicker,
+  SegmentedChoice,
   Textarea,
   Well,
-  dsElev,
   dsFg,
   dsFocus,
   dsIcon,
@@ -122,23 +64,18 @@ import {
   PlanPreview,
   PlanRefusals,
   RunFlagChips,
-  StartChoiceControl,
-  StartFlagControl,
   StepOmissionFactsForm,
 } from "./run-start-kit.js";
-import { surfaceValueLabel } from "./run-start-kit-model.js";
-import { SpreadsheetIntake } from "./intake-upload.js";
+import { useSpreadsheetMocks } from "./spreadsheet-mock-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
-  START_METHOD_LABEL,
   foldStepOmissionFacts,
   forcedStepOmissions,
   initialStepOmissionDraft,
   omittedStepViews,
   startRequestFingerprint,
   toggleStepSelection,
-  type StartMethod,
   type BrowserMode,
   type StartPriority,
   type StepOmissionDraft,
@@ -225,29 +162,10 @@ export interface RunStartWorkflow {
     | { readonly state: "present"; readonly surface: InputRunSurface }
     | { readonly state: "absent"; readonly reason: string };
   /**
-   * Whether the MODULE declares an intake projection (D296) — served on the
-   * boot document's start block, never inferred from a workflow id. It is the
-   * same fact the kernel refuses an intake commit by, so the dialog cannot
-   * offer a door the server would close.
+   * Retained served intake capability. Spreadsheet registration lives in
+   * Settings and is not a Run input method.
    */
   readonly spreadsheetIntake: boolean;
-}
-
-/**
- * The methods this workflow actually offers, in the demo's own order (typed
- * first) — derived from declarations, never a fixed pair.
- *
- * A workflow with no typed-input surface still has a spreadsheet door if its
- * module declares a projection, and the dialog's absent state belongs to the
- * TYPED method rather than to the dialog: the intake workspace parses rows
- * through the descriptor's own input schema, so it needs no typed surface.
- */
-function startMethodsOf(workflow: RunStartWorkflow | undefined): readonly StartMethod[] {
-  if (workflow === undefined) return ["typed"];
-  return [
-    ...(workflow.inputRun.state === "present" ? (["typed"] as const) : []),
-    ...(workflow.spreadsheetIntake ? (["spreadsheet"] as const) : []),
-  ];
 }
 
 /** startable IS "declares a typed-input surface" — there is no second gate */
@@ -487,14 +405,9 @@ function PickerRow({
           : cn("hover:bg-[var(--ds-surface-2)]", node.harness === undefined ? dsFg.secondary : dsFg.muted),
       )}
     >
+      {workflow.code !== undefined && <span className="w-4 shrink-0 text-caption text-ui-muted">{workflow.code}</span>}
       <span className="min-w-0 flex-1 truncate">{workflow.label}</span>
       {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
-      {/* Served or nothing — see `RunStartWorkflow.code`. */}
-      {workflow.code !== undefined && (
-        <span className={cn(dsText.micro, dsText.nums, selected ? dsFg.muted : dsFg.faint)}>
-          {workflow.code}
-        </span>
-      )}
     </BareButton>
   );
 }
@@ -514,23 +427,24 @@ function WorkflowPicker({
 }) {
   const [query, setQuery] = useState("");
   const [showBlocked, setShowBlocked] = useState(false);
+  const [showSummary, setShowSummary] = useState(false);
   const groups = useMemo(() => pickerGroups(workflows.filter(isStartable), query), [workflows, query]);
   const blocked = useMemo(() => workflows.filter((workflow) => !isStartable(workflow)), [workflows]);
   const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
 
   return (
-    <div className="flex w-[204px] shrink-0 flex-col border-r border-[color:var(--ds-border)]">
-      <div className="box-content flex h-[var(--ds-h-sm)] shrink-0 items-center border-b border-[color:var(--ds-border)] px-[var(--ds-space-base)] py-[var(--ds-space-cozy)]">
+    <div className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke">
+      <div className="shrink-0 px-3 pt-[18px] pb-3">
         {/* A plain labelled input rather than SearchInput: this filters a short
             list, so a clear affordance would cost a control for a state one
             keystroke undoes. */}
-        <label className="flex min-w-0 items-center gap-[var(--ds-space-snug)]">
+        <label className="launch-workflow-search flex min-w-0 items-center gap-2">
           <Search aria-hidden className={cn(dsIcon.sm, "shrink-0", dsFg.muted)} />
           <span className="sr-only">Filter workflows</span>
           <HeroInput
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Filter"
+            placeholder="Find workflow…"
             className={cn(
               "min-w-0 flex-1 border-none bg-transparent p-0 outline-none",
               dsText.ui,
@@ -540,7 +454,7 @@ function WorkflowPicker({
         </label>
       </div>
 
-      <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto p-[var(--ds-space-base)]">
+      <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
         {groups.length === 0 ? (
           <p className={cn(dsText.meta, dsFg.muted)}>No workflow matches “{query}”.</p>
         ) : (
@@ -556,6 +470,7 @@ function WorkflowPicker({
         )}
       </nav>
 
+      {workflows.find(entry => entry.workflowId === value)?.summary && <div className="mx-3 mb-4 border-t border-ui-stroke pt-3 text-caption text-ui-secondary"><p className={showSummary ? "" : "line-clamp-3"}>{workflows.find(entry => entry.workflowId === value)?.summary}</p><button type="button" className="mt-1 text-caption text-ui-muted hover:text-ui-primary" aria-expanded={showSummary} onClick={() => setShowSummary(current => !current)}>{showSummary ? "Less" : "More"}</button></div>}
       {/* Not offered, and it says WHY. A workflow that simply vanishes from a
           picker teaches the operator the list is arbitrary.
 
@@ -730,73 +645,6 @@ function TypedInput({
 }
 
 // ---------------------------------------------------------------------------
-// The peer methods — how you are starting it (D296)
-// ---------------------------------------------------------------------------
-
-const METHOD_ICON: Readonly<Record<StartMethod, ReactNode>> = Object.freeze({
-  typed: <Keyboard aria-hidden className={dsIcon.sm} />,
-  spreadsheet: <FileSpreadsheet aria-hidden className={dsIcon.sm} />,
-});
-
-/**
- * Ported from the demo's `MethodTabs` (`DemoRunStart.tsx:277-324`) — markup,
- * roles, label and treatment verbatim, over this tree's two-arm method set.
- *
- * It is a `tablist` and not a segmented radio group because that is what the
- * demo chose and the choice is already made; what the two arms select is which
- * of the two INPUT surfaces below it renders, which is a tab panel's own job.
- */
-function MethodTabs({
-  methods,
-  value,
-  onChange,
-}: {
-  methods: readonly StartMethod[];
-  value: StartMethod;
-  onChange: (next: StartMethod) => void;
-}) {
-  return (
-    <div
-      role="tablist"
-      aria-label="How to start this run"
-      className={cn(
-        "inline-flex items-center gap-[var(--ds-space-hair)] p-[var(--ds-space-hair)]",
-        dsRadius.md,
-        "bg-[var(--ds-surface-2)]",
-      )}
-    >
-      {methods.map((method) => {
-        const selected = method === value;
-        return (
-          <BareButton
-            key={method}
-            type="button"
-            role="tab"
-            aria-selected={selected}
-            onClick={() => onChange(method)}
-            className={cn(
-              "inline-flex cursor-pointer items-center gap-[var(--ds-space-snug)]",
-              "h-[var(--ds-h-md)] px-[var(--ds-space-cozy)]",
-              dsRadius.sm,
-              dsText.ui,
-              dsFocus,
-              dsMotion.fast,
-              "active:translate-y-px",
-              selected
-                ? cn("bg-[var(--ds-surface-overlay)] font-semibold", dsFg.base, dsElev.low)
-                : cn(dsFg.muted, "hover:text-[color:var(--ds-fg)]"),
-            )}
-          >
-            {METHOD_ICON[method]}
-            {START_METHOD_LABEL[method]}
-          </BareButton>
-        );
-      })}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // The dialog
 // ---------------------------------------------------------------------------
 
@@ -842,7 +690,6 @@ export function RunStartDialog({
   panelWorkflowId,
   actorId,
   onApplied,
-  onOpenIntake,
   onCloseAutoFocus,
   rerunSource,
 }: {
@@ -854,7 +701,7 @@ export function RunStartDialog({
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
   actorId: string;
-  onApplied?: (workflowId: string) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   /**
    * D296's handoff: close this dialog and open the intake workspace ON THIS
    * WORKFLOW. The dialog names the workflow rather than assuming the panel's,
@@ -883,7 +730,8 @@ export function RunStartDialog({
 
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
   const [currentStage, setCurrentStage] = useState<RunStartStage>("Input");
-  const [method, setMethod] = useState<StartMethod>("typed");
+  const [workbookId, setWorkbookId] = useState("");
+  const spreadsheetMocks = useSpreadsheetMocks();
   const initialWorkflow = workflows.find((entry) => entry.workflowId === defaultWorkflowId(workflows, panelWorkflowId));
   const [customizeSteps, setCustomizeSteps] = useState(false);
   const [selectedStepKeys, setSelectedStepKeys] = useState<string[]>(() =>
@@ -931,7 +779,7 @@ export function RunStartDialog({
     // The method is a property of the workflow's own declarations, so it resets
     // with everything else: carrying `spreadsheet` onto a workflow whose module
     // declares no projection would select a tab that is not drawn.
-    setMethod("typed");
+    setWorkbookId("");
     const nextWorkflow = workflows.find((entry) => entry.workflowId === next);
     setSelectedStepKeys(nextWorkflow?.steps.filter(({ includedByDefault }) => includedByDefault).map(({ key }) => key) ?? []);
     setStepDrafts({});
@@ -955,7 +803,7 @@ export function RunStartDialog({
     catch (caught) { setRecoveryError(caught instanceof Error ? caught.message : String(caught)); }
     if (rerunSource !== undefined) {
       setCurrentStage("Steps"); setCustomizeSteps(true);
-      void launchService.openRerun(rerunSource).then((response) => {
+      void launchService.openRerun({ runId: rerunSource.runId, expectedVersion: rerunSource.expectedVersion }).then((response) => {
         if (launchInstance.current !== instance) return;
         if (response.state === "refused") { setSourceError(`Rerun unavailable: ${response.code}`); return; }
         const sourceWorkflow = workflows.find((entry) => entry.workflowId === response.snapshot.source.workflow);
@@ -974,21 +822,7 @@ export function RunStartDialog({
   const inputRun = workflow?.inputRun ?? NO_WORKFLOW_SELECTED;
   const supportsDryRun = inputRun.state === "present" && inputRun.surface.supportsDryRun === true;
   const dryRun = supportsDryRun && dryRunRequested;
-  /**
-   * D296 — the served method set, and the arm the dialog is on.
-   *
-   * `method` is state so the tabs can move it, but `activeMethod` is what
-   * everything below reads: a selected arm this workflow does not offer is
-   * unrepresentable rather than merely unlikely, which is the same rule
-   * `reconcileRunStartStage` applies to a stage that stopped existing.
-   */
-  const methods = useMemo(() => startMethodsOf(workflow), [workflow]);
-  const activeMethod: StartMethod = methods.includes(method) ? method : (methods[0] ?? "typed");
-  const isHandoff = activeMethod === "spreadsheet";
-  const launchStages = useMemo(
-    () => runStartStages(customizeSteps, activeMethod, isRerun),
-    [customizeSteps, activeMethod, isRerun],
-  );
+  const launchStages = useMemo(() => runStartStages(customizeSteps, "typed", isRerun), [customizeSteps, isRerun]);
 
   useEffect(() => {
     setCurrentStage((current) => reconcileRunStartStage(launchStages, current));
@@ -1087,11 +921,7 @@ export function RunStartDialog({
     }
   }, [inputRun, text]);
 
-  const constants = inputRun.state === "present" ? (inputRun.surface.parser.constants ?? []) : [];
-  const stepControlledFields = new Set(
-    workflow?.steps.flatMap((step) => step.control.state === "selectable" ? [step.control.inputField] : []) ?? [],
-  );
-  const visibleConstants = constants.filter((constant) => !stepControlledFields.has(String(constant.field)));
+
 
   const submitPlan = useCallback(async (): Promise<void> => {
     if (!isRerun && preview.entries.length === 0) return;
@@ -1158,7 +988,13 @@ export function RunStartDialog({
       // Durable recovery remains available even if this launch closed or changed.
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setResult(next);
-      if (settleCommandResult(next).kind === "applied") onApplied?.(command.target.workflowId);
+      if (settleCommandResult(next).kind === "applied") {
+        dismissLaunchRecovery(window.sessionStorage, command);
+        finalRequest.current = null; setRecovery(null); setPlan(null); setResult(null); setBusy(false);
+        onApplied?.(command.target.workflowId, plan?.planned.length);
+        onOpenChange(false);
+        ++launchInstance.current;
+      }
     } catch (caught) {
       if (requestFingerprintRef.current !== dispatchedFor || launchInstance.current !== instance) return;
       setError(caught instanceof Error ? caught.message : String(caught));
@@ -1166,7 +1002,7 @@ export function RunStartDialog({
       sending.current = false;
       if (launchInstance.current === instance) setBusy(false);
     }
-  }, [launchService, onApplied]);
+  }, [launchService, onApplied, onOpenChange, plan]);
   const confirmStart = useCallback(async (): Promise<void> => {
     if (plan === null || sending.current || recoveryError !== null) return;
     if (finalRequest.current === null || finalRequest.current.target.startPlanId !== plan.startPlanId) {
@@ -1244,16 +1080,8 @@ export function RunStartDialog({
   };
   const previousStage = adjacentRunStartStage(launchStages, currentStage, "previous");
   const nextStage = adjacentRunStartStage(launchStages, currentStage, "next");
-  const optionChanges = [
-    ...(priority === "bulk" ? ["Priority: Bulk"] : []),
-    ...(dryRun ? ["Dry run: On"] : []),
-    `Browser: ${browserMode === "headless" ? "Headless" : "Headed"}`,
-    `Browser screenshots: ${captureBrowserScreenshots ? "On" : "Off"}`,
-  ];
   const inputSummary = preview.entries.map((entry) => entry.sourceText).join(", ");
-  const valuesSummary = visibleConstants.length === 0
-    ? "No manual values"
-    : visibleConstants.map((constant) => `${constant.field}: ${surfaceValueLabel(constant)}`).join(" · ");
+
 
   const changeCustomizeSteps = useCallback((next: boolean) => {
     setCustomizeSteps(next);
@@ -1377,19 +1205,45 @@ export function RunStartDialog({
     }
   }, [onOpenChange, result, recovery]);
 
+  const copyOmittedValue = (step: string, index: number) => {
+    const candidate = snapshot?.values[index];
+    const row = omissionRows.find(entry => entry.step === step);
+    if (!row || !candidate || candidate.state !== "available") throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
+    const field = row.form.fields.find(entry => entry.key === candidate.targetFieldPath);
+    if (!field) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
+    const draft = typeof candidate.value === "boolean" ? candidate.value : Array.isArray(candidate.value) ? candidate.value.map((value: unknown) => candidateText(JsonValueSchema.parse(value))).join("\n") : candidateText(candidate.value);
+    setStepDrafts(current => ({ ...current, [step]: { ...(current[step] ?? initialStepOmissionDraft(row.form)), [field.key]: draft } }));
+    setCopiedOmissions(current => ({ ...current, [index]: true }));
+  };
+
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
-        size="lg"
+        size="xl"
         title={isRerun ? "Rerun" : "Start a run"}
-        description={<span className="sr-only">Choose a workflow, configure its start, review the server plan, and confirm.</span>}
-        className="h-[min(86dvh,720px)]"
+        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : `New work · ${workflow?.label ?? "Choose workflow"}`}
+        className="launch-design launch-dialog max-w-[min(calc(100vw-32px),880px)] h-[min(calc(100dvh-32px),628px)] max-h-[calc(100dvh-32px)]"
       >
         <div className="flex min-h-0 flex-1">
-          {!isRerun && <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} />}
+          {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} /> : <aside aria-label="Source run" className="launch-workflow-rail shrink-0 border-r border-ui-stroke p-3 pt-[18px]">
+            <SectionLabel>Source run</SectionLabel>{rerunSource?.label && <h3 className="mt-4 text-heading font-semibold">{rerunSource.label}</h3>}
+            {snapshot !== null && <><p className="mt-[6px] break-all font-mono text-caption text-ui-secondary">{rerunSource?.traceId ?? snapshot.source.runId}</p>
+              <dl className="mt-[18px] space-y-[14px] text-caption"><div><dt className="text-ui-muted">Workflow</dt><dd className="mt-1">{workflow?.label} · {versionTag(snapshot.source.descriptorVersion)}</dd></div><div><dt className="text-ui-muted">Outcome</dt><dd className={cn("mt-1", snapshot.source.outcome === "done" ? "text-ui-positive" : snapshot.source.outcome === "failed" ? "text-ui-danger" : "text-ui-secondary")}>{snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted"}</dd></div><div><dt className="text-ui-muted">Progress</dt><dd className="mt-1">{snapshot.steps.filter(step => step.state === "completed").length} / {snapshot.steps.length} steps completed</dd></div></dl></>}
+            <p className="mt-5 border-t border-ui-stroke pt-[14px] text-caption text-ui-muted">This creates a new run. The source keeps its original history.</p>
+          </aside>}
 
-          <DialogBody className="@container flex flex-1 flex-col gap-[var(--ds-space-section)]">
+          <div className="flex min-w-0 flex-1 flex-col">
+            <ol aria-label="Run configuration path" className="launch-stagebar">
+              {launchStages.map((stage, index) => {
+                const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));
+                return <li key={stage.label} aria-current={stage.label === currentStage ? "step" : undefined} className="flex items-center gap-2">
+                  <span aria-hidden className="launch-stage-marker" data-current={stage.label === currentStage || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check className="size-3" /> : stage.number}</span>
+                  <span className={cn("text-body", stage.label === currentStage ? "font-semibold" : "text-ui-secondary")}>{stage.label}</span>
+                </li>;
+              })}
+            </ol>
+          <DialogBody className="launch-content @container">
             {isRerun && snapshot === null && sourceError === null && <p role="status">Loading source…</p>}
             {sourceError !== null && <Banner tone="danger" title="Rerun unavailable">{sourceError}</Banner>}
             {recoveryError !== null && <Banner tone="danger" title="Submission recovery unavailable">{recoveryError}</Banner>}
@@ -1406,65 +1260,18 @@ export function RunStartDialog({
               <Banner tone="danger" title="The request did not complete">{error}</Banner>
             )}
 
-            <ol
-              aria-label="Run configuration path"
-              className="-mx-[var(--ds-space-loose)] flex flex-wrap items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border)] px-[var(--ds-space-loose)] pb-[var(--ds-space-cozy)]"
-            >
-              {launchStages.map((stage, index) => (
-                <li key={stage.label} aria-current={stage.label === currentStage ? "step" : undefined} className="flex items-center gap-[var(--ds-space-base)]">
-                  <span
-                    aria-hidden
-                    className={cn(
-                      "flex size-[var(--ds-h-sm)] shrink-0 items-center justify-center",
-                      dsRadius.pill,
-                      dsText.micro,
-                      dsText.nums,
-                      stage.label === currentStage
-                        ? "bg-[var(--ds-accent)] text-[color:var(--ds-accent-fg)]"
-                        : "bg-[var(--ds-surface-3)]",
-                      stage.label !== currentStage && dsFg.muted,
-                    )}
-                  >
-                    {stage.number}
-                  </span>
-                  <span className={cn(dsText.ui, stage.label === currentStage ? "font-semibold" : dsFg.muted)}>
-                    {stage.label}
-                  </span>
-                  {index < launchStages.length - 1 && <ArrowRight aria-hidden className={cn(dsIcon.sm, dsFg.faint)} />}
-                </li>
-              ))}
-            </ol>
-
-            <section className="flex flex-col gap-[var(--ds-space-snug)]">
-              <h3 className={cn(dsText.section, "min-w-0 font-semibold", dsFg.base)}>
-                {workflow?.label ?? "No workflow"}
-              </h3>
-              {workflow?.summary !== undefined && currentStage === "Input" && (
-                <p className={cn(dsText.body, dsFg.secondary, "max-w-[74ch]")}>{workflow.summary}</p>
-              )}
+            <section className="flex flex-col gap-1">
+              <h3 className="text-heading font-semibold">{currentStage === "Options" ? "Run options" : currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow?.label ?? "No workflow"}</h3>
+              {currentStage === "Options" && <p className="text-body text-ui-secondary">Set how this work enters the queue.</p>}
+              {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Required steps stay included. Optional steps may be omitted."}</p>}
+              {currentStage === "Values" && <p className="text-body text-ui-secondary">Review the input and values this rerun will use.</p>}
             </section>
 
             <div className="flex min-w-0 flex-col gap-[var(--ds-space-loose)]">
               {(currentStage === "Input" || currentStage === "Values") && (
                 <section aria-label={isRerun ? "Values" : "Input"} className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)]">
-                  {/* The demo's own condition, verbatim: a strip over a set of
-                      one is D186's sample-of-one, so a workflow whose module
-                      declares no intake projection draws no tabs at all and
-                      renders exactly what it rendered before D296. */}
-                  {!isRerun && methods.length > 1 && (
-                    <MethodTabs methods={methods} value={activeMethod} onChange={setMethod} />
-                  )}
-                  {isHandoff ? (
-                    <SpreadsheetIntake
-                      workflowId={workflowId}
-                      workflowLabel={workflow?.label ?? workflowId}
-                      onOpened={(intakeSessionId) => {
-                        closeAndReset(false);
-                        onOpenIntake(workflowId, intakeSessionId);
-                      }}
-                    />
-                  ) : inputRun.state === "present" ? (
-                    <TypedInput
+                  {inputRun.state === "present" ? (
+                    isRerun && snapshot?.values.some(candidate => candidate.state === "available" && candidate.targetStepKey === undefined && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) ? null : <TypedInput
                       surface={inputRun.surface}
                       workflowId={workflowId}
                       text={text}
@@ -1484,38 +1291,26 @@ export function RunStartDialog({
                   )}
                   {isRerun && snapshot !== null && (
                     <section aria-label="Previous values" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                      <SectionLabel>Previous values</SectionLabel>
                       {snapshot.values.length === 0 && <p className={cn(dsText.body, dsFg.muted)}>No reusable values recorded.</p>}
+                      <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
                       {snapshot.values.map((candidate, index) => {
-                        const label = candidate.targetStepKey === undefined ? candidate.label : `${stepLabel(candidate.targetStepKey)} · ${candidate.label}`;
-                        const omitted = candidate.targetStepKey !== undefined && !selectedStepKeys.includes(candidate.targetStepKey);
-                        return <div key={`${candidate.nodeId}:${candidate.fieldPath}:${label}`} className="flex flex-col gap-[var(--ds-space-base)]">
-                          <span className={dsText.ui}>{label}</span>
-                          {candidate.state === "unavailable" ? <span className={cn(dsText.meta, dsFg.muted)}>{`Unavailable: ${candidate.reason}`}</span> : <>
-                            <span className={cn(dsText.body, "break-words")}>{candidateText(candidate.value)}</span>
-                            <Button size="sm" variant="secondary" disabled={candidate.targetStepKey !== undefined && !omitted} onClick={() => {
-                              if (candidate.targetStepKey === undefined) setValueDrafts((current) => ({ ...current, [index]: { text: candidateText(candidate.value), copied: true } }));
-                              else {
-                                const step = candidate.targetStepKey;
-                                const form = workflow?.steps.find((entry) => entry.key === step)?.control;
-                                if (form?.state !== "omittable") throw new Error("RERUN_OMISSION_TARGET_UNAVAILABLE");
-                                const field = form.form.fields.find((entry) => entry.key === candidate.targetFieldPath);
-                                if (field === undefined) throw new Error("RERUN_OMISSION_FIELD_UNAVAILABLE");
-                                const draft = typeof candidate.value === "boolean" ? candidate.value
-                                  : Array.isArray(candidate.value) ? candidate.value.map((value: unknown) => candidateText(JsonValueSchema.parse(value))).join("\n") : candidateText(candidate.value);
-                                setStepDrafts((current) => ({ ...current, [step]: { ...(current[step] ?? initialStepOmissionDraft(form.form)), [field.key]: draft } }));
-                                setCopiedOmissions((current) => ({ ...current, [index]: true }));
-                              }
-                            }}>{`Copy ${label}`}</Button>
-                            {candidate.targetStepKey === undefined && valueDrafts[index] !== undefined && <Field label={`New ${label}`}>
-                              <Textarea rows={2} value={valueDrafts[index].text} onChange={(event) => setValueDrafts((current) => ({ ...current, [index]: { text: event.target.value, copied: false } }))} />
-                              <Button size="sm" variant="ghost" onClick={() => setValueDrafts((current) => ({ ...current, [index]: { text: "", copied: false } }))}>{`Clear ${label}`}</Button>
-                            </Field>}
-                          </>}
+                        if (candidate.targetStepKey !== undefined) return null;
+                        const label = candidate.label;
+                        return <div key={`${candidate.nodeId}:${candidate.fieldPath}`} className="min-w-0">
+                          {candidate.state === "available" && <Field label={label}><Input className="h-9" value={valueDrafts[index]?.text ?? ""} onChange={event => setValueDrafts(current => ({ ...current, [index]: { text: event.target.value, copied: false } }))} /></Field>}
+                          <div className="mt-[var(--ds-space-tight)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)] text-caption">
+                            <span className="min-w-0 break-words text-[color:var(--ds-fg-muted)]">{candidate.state === "available" ? `Saved ${candidateText(candidate.value)}` : `Unavailable: ${candidate.reason}`}</span>
+                            {candidate.state === "available" && <Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${label}`} onClick={() => setValueDrafts(current => ({ ...current, [index]: { text: candidateText(candidate.value), copied: true } }))}>Use previous</Button>}
+                          </div>
                         </div>;
                       })}
-                      {omissionRows.map((row) => <StepOmissionFactsForm key={row.step} step={row.label} form={row.form} draft={row.draft}
-                        errors={visibleFactErrors(row)} onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={(field) => touchFact(row.step, field)} />)}
+                      </div>
+                      {omissionRows.map(row => <div key={row.step} className="border-t border-ui-stroke pt-4">
+                        <div className="mb-4 flex items-start justify-between gap-3"><div><h4 className="mb-[3px] text-body font-semibold">{row.form.fields.every(field => field.kind === "us-date") ? "Timecard dates" : row.label}</h4><p className="text-caption text-ui-muted">This step is skipped. Supply its values to continue.</p></div>{snapshot.values.some(candidate => candidate.targetStepKey === row.step && candidate.state === "available") && <Button variant="secondary" size="sm" onClick={() => snapshot.values.forEach((candidate, index) => { if (candidate.targetStepKey === row.step && candidate.state === "available") copyOmittedValue(row.step, index); })}>Use all previous</Button>}</div>
+                        <StepOmissionFactsForm compact step={row.label} form={row.form} draft={row.draft} errors={visibleFactErrors(row)}
+                          onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={field => touchFact(row.step, field)}
+                          previous={Object.fromEntries(snapshot.values.flatMap((candidate, index) => candidate.targetStepKey === row.step && candidate.state === "available" ? [[candidate.targetFieldPath, { value: candidateText(candidate.value), onUse: () => copyOmittedValue(row.step, index)  }]] : []))} />
+                      </div>)}
                     </section>
                   )}
                 </section>
@@ -1537,44 +1332,22 @@ export function RunStartDialog({
               )}
 
               {currentStage === "Options" && (
-                <section aria-label="Options" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <div className="flex flex-col gap-[var(--ds-space-loose)]">
-                    <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
-                      {!isRerun && <Checkbox
-                        checked={customizeSteps}
-                        onCheckedChange={(next) => changeCustomizeSteps(next === true)}
-                        label="Customize steps"
-                        description="Review the workflow and change any optional steps. Required steps stay locked."
-                      />}
-                      {supportsDryRun && (
-                        <StartFlagControl label="Dry run" checked={dryRun} onChange={setDryRunRequested} />
-                      )}
-                      <StartFlagControl
-                        label="Capture browser screenshots"
-                        checked={captureBrowserScreenshots}
-                        onChange={setCaptureBrowserScreenshots}
-                      />
-                    </div>
-                    <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
-                      {visibleConstants.map((constant) => (
-                        <StartChoiceControl key={constant.field} constant={constant} reason="Fixed by this workflow." />
-                      ))}
-                      {workflow !== undefined && (
-                        <LockedFact label="Active-run policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} />
-                      )}
-                      <Field label="Priority" description="Bulk work yields whenever interactive work needs the browser.">
-                        <Select value={priority} onChange={(event) => setPriority(event.target.value === "bulk" ? "bulk" : "interactive")}>
-                          <option value="interactive">Interactive</option>
-                          <option value="bulk">Bulk</option>
-                        </Select>
-                      </Field>
-                      <Field label="Browser mode">
-                        <Select value={browserMode} onChange={(event) => setBrowserMode(event.target.value === "headed" ? "headed" : "headless")}>
-                          <option value="headless">Headless</option>
-                          <option value="headed">Headed</option>
-                        </Select>
-                      </Field>
-                    </div>
+                <section aria-label="Options" className="flex flex-col gap-[14px]">
+                  <div className="launch-flags">
+                    {!isRerun && <Checkbox checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} label="Customize steps" description="Choose optional steps." />}
+                    {supportsDryRun && <Checkbox checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Stop before submission." />}
+                    <Checkbox checked={captureBrowserScreenshots} onCheckedChange={next => setCaptureBrowserScreenshots(next === true)} label="Capture screenshots" description="Keep browser captures." />
+                  </div>
+                  <div>
+                    <ChoicePicker label="Workbook · Optional" value={workbookId} onChange={setWorkbookId} options={[{ value: "", label: "None" }, ...spreadsheetMocks.files.map(file => ({ value: file.id, label: file.name, description: "Mock spreadsheet" }))]} />
+                    <p className="mt-[5px] text-caption text-ui-muted">Choose an already imported workbook for reference or results. Mock selection for now.</p>
+                  </div>
+                  <div className="launch-options-grid">
+                    <div><SegmentedChoice label="Priority" value={priority} onChange={setPriority} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /><p className="mt-[5px] text-caption text-ui-muted">Bulk work yields to interactive runs.</p></div>
+                    <div><SegmentedChoice label="Browser mode" value={browserMode} onChange={setBrowserMode} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} /><p className="mt-[5px] text-caption text-ui-muted">{browserMode === "headed" ? "Open visible browser windows." : "Run browsers in the background."}</p></div>
+                  </div>
+                  <div className="launch-fixed-facts">
+                    {workflow && <><LockedFact label="Active policy" value={ENQUEUE_POLICY_MEANING[workflow.enqueue]} reason={ENQUEUE_POLICY_REASON} /><LockedFact label="Workflow version" value={versionTag(workflow.version)} reason="Fixed by the selected workflow." /></>}
                   </div>
                 </section>
               )}
@@ -1582,56 +1355,34 @@ export function RunStartDialog({
               {currentStage === "Steps" && workflow !== undefined && (
                 <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
                   <div className="flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)]">
-                    <h4 id="run-start-steps" className={cn(dsText.title, "font-semibold", dsFg.base)}>Steps</h4>
+                    <h4 id="run-start-steps" className="sr-only">Steps</h4>
                     <span className={cn(dsText.meta, dsText.nums, dsFg.muted)}>
                       {selectedStepKeys.length} of {workflow.steps.length} included
                     </span>
                   </div>
-                  <ul className="divide-y divide-[color:var(--ds-border)] border-y border-[color:var(--ds-border)]">
+                  <ul className="overflow-hidden rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] divide-y divide-[color:var(--ds-border)]">
                     {workflow.steps.map((step) => {
                       const selected = selectedStepKeys.includes(step.key);
                       const control = step.control;
                       const forcedBy = forcedByStep.get(step.key) ?? [];
                       const row = omissionRows.find((candidate) => candidate.step === step.key);
                       return (
-                        <li key={step.key} className="flex min-w-0 flex-col gap-[var(--ds-space-base)] py-[var(--ds-space-cozy)]">
-                          <Checkbox
-                            checked={selected}
-                            /* A required step never moves; a step another
-                               omission forces out never moves WHILE that
-                               omission stands, because the planner refuses the
-                               pair and a checkbox that undoes nothing is a lie
-                               about what this screen can do. */
-                            disabled={
-                              control.state === "required"
-                              || forcedBy.length > 0
-                              || (control.state === "omittable" && multiSubject && selected)
-                            }
-                            onCheckedChange={(next) => toggleStep(step.key, next === true)}
-                            label={step.label}
-                            description={
-                              control.state === "required"
-                                ? (isRerun && snapshot?.steps.find((entry) => entry.key === step.key)?.state === "completed"
-                                  ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason)
-                                : forcedBy.length > 0
-                                  ? `Omitted with ${stepLabels(forcedBy)}.`
-                                  : control.state === "omittable"
-                                    ? multiSubject
-                                      ? multiSubjectOmissionReason
-                                      : isRerun && selected && snapshot?.steps.find((entry) => entry.key === step.key)?.state === "completed"
-                                        && control.forces.some((key) => selectedStepKeys.includes(key))
-                                        ? "Completed in the source; needed by another included step. Leaving it out also omits the dependent steps."
-                                        : "Optional — leave it out and type what the rest of the run would have read."
-                                    : "Optional for this workflow."
-                            }
-                          />
+                        <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2">
+                          <div className="flex items-start gap-[var(--ds-space-base)]">
+                            <Checkbox checked={selected} disabled={control.state === "required" || forcedBy.length > 0 || (control.state === "omittable" && multiSubject && selected)}
+                              onCheckedChange={next => toggleStep(step.key, next === true)} label={step.label} className="[&_.ds-checkbox-label]:font-semibold"
+                              title={control.state === "required" ? control.reason : undefined} />
+                            {isRerun && snapshot !== null && <span className="launch-step-status" data-status={snapshot.steps.find(entry => entry.key === step.key)?.state}>{snapshot.steps.find(entry => entry.key === step.key)?.state === "completed" ? "Completed" : snapshot.steps.find(entry => entry.key === step.key)?.state === "failed" ? "Failed" : "Not started"}</span>}
+                          </div>
+                          {control.state === "required" && <span className="sr-only">{isRerun && snapshot?.steps.find(entry => entry.key === step.key)?.state === "completed" ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason}</span>}
+                          {(forcedBy.length > 0 || (control.state === "omittable" && (multiSubject || !selected))) && <p className="pl-[calc(1rem+var(--ds-space-base))] text-caption text-[color:var(--ds-fg-muted)]">{forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.` : multiSubject ? multiSubjectOmissionReason : "Use saved or entered values instead."}</p>}
                           {control.state === "omittable" && control.forces.length > 0 && (
                             <p className={cn(dsText.meta, dsFg.muted, "pl-[calc(1rem+var(--ds-space-base))]")}>
                               {`Also omits: ${stepLabels(control.forces)}`}
                             </p>
                           )}
                           {row !== undefined && !isRerun && (
-                            <div className="ml-[calc(1rem+var(--ds-space-base))] border-l-2 border-[color:var(--ds-border)] pl-[var(--ds-space-cozy)]">
+                            <div className="ml-[calc(1rem+var(--ds-space-base))] rounded-[var(--ds-radius-md)] bg-[var(--ds-surface-2)] p-[var(--ds-space-cozy)]">
                               <StepOmissionFactsForm
                                 step={row.label}
                                 form={row.form}
@@ -1651,46 +1402,23 @@ export function RunStartDialog({
 
               {currentStage === "Confirm" && plan !== null && (
                 <section aria-labelledby="run-start-confirm" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <div className="flex flex-wrap items-center justify-between gap-[var(--ds-space-base)]">
-                    <h4 id="run-start-confirm" className={cn(dsText.title, "font-semibold", dsFg.base)}>Confirm</h4>
-                    <RunFlagChips dryRun={plan.dryRun} priority={plan.priority} />
+                  <div className="rounded-[7px] border border-ui-stroke bg-ui-table p-[14px]">
+                    <div className="flex items-center justify-between gap-3"><h4 id="run-start-confirm" className="text-body font-semibold">{plan.planned.length} {plan.planned.length === 1 ? "run" : "runs"} ready to queue</h4><RunFlagChips dryRun={plan.dryRun} priority={plan.priority} /></div>
+                    <p className="mt-[6px] text-body text-ui-secondary">{isRerun ? "A new run linked to the source." : "One run for each accepted entry."}</p>
                   </div>
-                  <Well className="p-[var(--ds-space-cozy)]">
-                    <KeyValueList
-                      className="grid-cols-[max-content_minmax(0,1fr)] [&_dd]:overflow-visible [&_dd]:whitespace-normal [&_dd]:break-words [&_dd]:text-clip"
-                      items={[
-                        { key: "Workflow", value: workflow?.label ?? plan.workflowId },
-                        { key: "Input", value: inputSummary || (isRerun ? "Entered values" : inputSummary) },
-                        { key: "Creates", value: plan.planned.length === 1 ? "1 run" : `${String(plan.planned.length)} runs` },
-                        {
-                          key: "Steps",
-                          value: customizeSteps ? (
-                            /* D307 — this is the operator's OWN confirmation of
-                               what they typed, so it names the step and the
-                               field LABELS with their values. It is not a wire:
-                               nothing here is sent, and the same facts leave the
-                               browser once, in `stepOmissions`. */
-                            <span className="flex flex-col gap-[var(--ds-space-tight)]">
-                              <span>{`${String(selectedStepKeys.length)} of ${String(workflow?.steps.length ?? 0)} included`}</span>
-                              {omissionRows.length > 0 && (
-                                <span className={cn(dsText.meta, dsFg.secondary)}>
-                                  {`Omitted: ${omissionRows.map((row) => row.label).join(", ")}`}
-                                </span>
-                              )}
-                              {omissionRows.map((row) => (
-                                <span key={row.step} className={cn(dsText.meta, dsFg.secondary)}>
-                                  {`${row.label} — ${stepOmissionFactsSummary(row)}`}
-                                </span>
-                              ))}
-                            </span>
-                          ) : "Default workflow",
-                        },
-                        { key: "Values", value: isRerun && snapshot !== null ? Object.entries(valueDrafts).map(([index, draft]) => `${snapshot.values[Number(index)].targetFieldPath}: ${draft.text}`).join(" · ") || valuesSummary : valuesSummary },
-                        { key: "Options", value: optionChanges.length > 0 ? optionChanges.join(" · ") : "Defaults retained" },
-                        { key: "Safety", value: workflow === undefined ? "Workflow unavailable" : ENQUEUE_POLICY_MEANING[workflow.enqueue] },
-                      ]}
-                    />
-                  </Well>
+                  <dl className="grid grid-cols-[110px_minmax(0,1fr)] gap-x-5 gap-y-[11px] text-body">
+                    {[
+                      { key: "Workflow", value: `${workflow?.label ?? plan.workflowId} · ${versionTag(plan.expectedVersion)}` },
+                      { key: "Input", value: inputSummary || Object.values(valueDrafts).map(draft => draft.text).filter(Boolean).join(", ") },
+                      ...(isRerun && snapshot ? [{ key: "Source", value: rerunSource?.traceId ?? snapshot.source.runId }] : []),
+                      { key: "Steps", value: `${selectedStepKeys.length} / ${workflow?.steps.length ?? 0} included${omissionRows.length ? ` · Omitted: ${omissionRows.map(row => row.label).join(", ")}` : ""}` },
+                      ...omissionRows.map(row => ({ key: row.form.fields.every(field => field.kind === "us-date") ? "Entered dates" : row.label, value: stepOmissionFactsSummary(row) })),
+                      ...(workbookId ? [{ key: "Workbook", value: `${spreadsheetMocks.files.find(file => file.id === workbookId)?.name ?? "Unavailable"} · mock selection` }] : []),
+                      { key: "Queue", value: plan.priority === "interactive" ? "Interactive" : "Bulk" },
+                      { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots ${captureBrowserScreenshots ? "on" : "off"}` },
+                      { key: "Dry run", value: plan.dryRun ? "On" : "Off" },
+                    ].map(({ key, value }) => <div key={key} className="contents"><dt className="text-ui-muted">{key}</dt><dd className={cn("min-w-0 break-words", (key === "Input" || key === "Source") && "font-mono")}>{value}</dd></div>)}
+                  </dl>
                   {omissionMismatch && (
                     <Banner tone="danger" title="This plan does not describe the steps you omitted">
                       {`You omitted ${sentOmittedSteps.length === 0 ? "no steps" : sentOmittedSteps.join(", ")}; the plan came back omitting `
@@ -1698,12 +1426,16 @@ export function RunStartDialog({
                         + "Go back and plan the run again — this plan would start a different run."}
                     </Banner>
                   )}
-                  <PlanPreview plan={plan} />
+                  <details className="rounded-md border border-ui-stroke px-3 py-2">
+                    <summary className="cursor-pointer text-caption text-ui-secondary">View {plan.planned.length} accepted {plan.planned.length === 1 ? "entry" : "entries"}</summary>
+                    <PlanPreview plan={plan} compact className="mt-3" />
+                  </details>
                   <PlanRefusals refused={plan.refused} />
                 </section>
               )}
             </div>
           </DialogBody>
+          </div>
         </div>
 
         <DialogFooter
@@ -1716,9 +1448,7 @@ export function RunStartDialog({
                 // runs of one workflow started a descriptor bump apart, and
                 // this dialog is the last screen before one is enqueued.
                 workflow === undefined ? undefined : `${workflow.label} ${versionTag(workflow.version)}`,
-                isHandoff
-                  ? undefined
-                  : currentStage === "Input"
+                currentStage === "Input"
                   ? blockedReason ?? undefined
                   : currentStage === "Steps"
                   ? stepsBlockedReason ?? undefined
@@ -1730,20 +1460,13 @@ export function RunStartDialog({
           }
         >
           {currentStage !== "Warning" && previousStage !== null && (
-            <Button variant="secondary" onClick={() => setCurrentStage(previousStage)}>Back</Button>
+            <Button variant="ghost" icon={<ArrowLeft aria-hidden className="size-3" />} onClick={() => setCurrentStage(previousStage)}>Back</Button>
           )}
           <Button variant="secondary" onClick={() => currentStage === "Warning" ? setCurrentStage("Steps") : closeAndReset(false)}>
             Cancel
           </Button>
           {currentStage === "Warning" && warning !== null ? (
             <Button variant="primary" onClick={() => { setAcknowledgment(warning.rerun.warningDigest); setPlan(null); setCurrentStage("Values"); }}>Confirm</Button>
-          ) : isHandoff ? (
-            /* D298 — the spreadsheet arm has NO primary. Its one act is the
-               drop, and the button that used to sit here only led to the zone
-               that is now on screen. A primary beside a dropzone is either a
-               second way to do the same thing or a dead control; `Cancel`
-               alone is the honest footer. */
-            null
           ) : currentStage === "Confirm" && plan !== null ? (
             <Button
               variant="primary"
@@ -1758,10 +1481,11 @@ export function RunStartDialog({
             <Button
               variant="primary"
               loading={busy}
+              iconAfter={<ArrowRight aria-hidden className="size-[14px]" />}
               disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (preview.problem !== null || preview.entries.length > 1)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
               onClick={() => void advance()}
             >
-              Next
+              {nextStage === "Confirm" ? "Preview plan" : "Next"}
             </Button>
           )}
         </DialogFooter>
@@ -1791,7 +1515,7 @@ export function RunStartSurfaces({
   workflows: readonly RunStartWorkflow[];
   panelWorkflowId: string;
   actorId: string;
-  onApplied?: (workflowId: string) => void;
+  onApplied?: (workflowId: string, count?: number) => void;
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;

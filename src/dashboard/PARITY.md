@@ -55,7 +55,7 @@ decision rather than as drift, and the site carries the same citation in code.
 | Deviation | Where | Why it stays | Rejected |
 |---|---|---|---|
 | **Escape-clear in day search** — a first `Escape` clears a non-empty query; a second closes the dialog (ledger 1 A16) | `surfaces/day-search.tsx` | Clearing is the cheaper correction and the second press still reaches the dialog, so nothing the demo's Escape does is unavailable here | B — remove both for exactness |
-| ~~**`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141)~~ | ~~`app/dashboard-app.tsx`~~ | **DISCHARGED by D296 (2026-09-01), not overruled.** It stayed because "the demo reaches intake from inside the Run Modal and `RunStartSurfaces` serves no such handoff" — and the row named its own expiry. The modal grew the handoff, so the button is deleted and the Input stage's `Import a spreadsheet` method is the intake's one door — and since D298 that method IS the intake's dropzone, so the one door opens on the zone itself | B — remove both for exactness · **C — build the Run-Modal handoff first (LANDED)** |
+| ~~**`Import spreadsheet` in the toolbar's left group** (ledger 1 A174 / B141)~~ | ~~`app/dashboard-app.tsx`~~ | **DISCHARGED by D296 (2026-09-01).** The 2026-10-02 operator amendment replaces D296/D298's Run-modal entry with Settings → Spreadsheets, organized by type. The new registry/import flow is explicitly mocked; backend intake contracts remain. See ref dashboard-surfaces §9.7.1. | B — remove both for exactness · **C — build the Run-Modal handoff first (LANDED)** |
 
 Three more are ruled by **D273 items 5–6** (`ref dashboard-surfaces` §"D273 — run detail"; the
 sheet is ledger 2, `docs/plans/2026-08-21-03a-fidelity-2-run-detail.md` §R-C). Same rule: each site

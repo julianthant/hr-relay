@@ -5,6 +5,7 @@ import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, describe, it } from "vitest";
 import { DashboardClientProvider } from "../../../src/dashboard/state/client-context.js";
+import { ToastProvider } from "../../../src/dashboard/ds/ui.js";
 import { RunLaunchHost } from "../../../src/dashboard/app/run-launch.js";
 import { defaultRerunSteps } from "../../../src/dashboard/surfaces/run-start-rerun-model.js";
 import { useRunLaunch } from "../../../src/dashboard/app/run-launch-model.js";
@@ -27,6 +28,7 @@ function setup() { const h = launchHarness(); cleanup.push(h.dispose); return h;
 type Harness = ReturnType<typeof setup>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
+  if (name === "Next" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";
   const matches = [...document.querySelectorAll("button")].filter((node) => (node.textContent?.trim() === name || node.getAttribute("aria-label") === name));
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }
@@ -50,7 +52,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
   const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher() { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
-    createElement(RunLaunchHost, { controller, workflows, panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } })); }
+    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, workflows, panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Launcher) })));
   button("Rerun source").focus(); await press("Rerun source");
@@ -71,12 +73,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await press("Next"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
     await press("Copy Employee ID"); await press("Copy Previous transaction");
-    await fill(field("New Previous transaction"), "edited memo");
+    await fill(field("Previous transaction"), "edited memo");
     await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
-    assert.match(text(), /Confirm/u); const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
+    assert.match(text(), /Review the plan/u); const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(submitted.submissions, [{ eid: "10812345", memo: "edited memo" }]);
     assert.deepEqual(submitted.rerunSource?.copiedFrom, [{ nodeId: "read", fieldPath: "eid", targetFieldPath: "eid" }]);
-    assert.equal(h.queueRoots.length, 1); await press("Start dry run"); assert.match(text(), /Start applied/u);
+    assert.equal(h.queueRoots.length, 1); await press("Start dry run"); assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Rerun started/u);
     const queued = h.queueRoots.at(-1); assert.ok(queued); assert.notEqual(queued.runId, source.envelope.runId);
     const run = h.database.authority.runs.get(queued.runId); assert.ok(run); assert.equal(run.envelope.dryRun, true);
     const priorCommits = h.world.events.filter((event) => event === "commit").length;
@@ -90,8 +92,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await act(async () => { checkbox("Check employee").click(); checkbox("File transaction").click(); });
     const before = h.authoritySnapshot(); await press("Next"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before);
-    await press("Copy Employee ID"); await press("Clear Employee ID"); assert.equal(field("New Employee ID").value, "");
-    await fill(field("New Employee ID"), "10812346"); await press("Copy Check employee · Checked employee ID");
+    await press("Copy Employee ID"); await fill(field("Employee ID"), ""); assert.equal(field("Employee ID").value, "");
+    await fill(field("Employee ID"), "10812346"); await press("Copy Check employee · Checked employee ID");
     await fill(field("Checked employee ID"), ""); await press("Next"); assert.ok(document.querySelector('[aria-label="Values"]'));
     await fill(field("Checked employee ID"), "10812346"); await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
@@ -134,7 +136,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.loseResponse(); await press("Start dry run"); assert.match(text(), /lost response/u); const roots = h.queueRoots;
     await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
     await mount(h, source); assert.match(text(), /needs readback/u); await press("Replay exact submission");
-    assert.match(text(), /already applied/iu); assert.deepEqual(h.queueRoots, roots);
+    assert.equal(document.querySelector('[role="dialog"]'), null); assert.match(text(), /Run submission confirmed/u); assert.deepEqual(h.queueRoots, roots);
   });
   it("a changed business key renews the exact warning while an edited memo preserves it", async () => {
     const h = setup(); const source = await h.completeSource();
@@ -144,7 +146,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10812346|fixture-termination") } });
     assert.equal((await h.execute(other)).state, "done");
     await mount(h, source); await press("Next"); await press("Confirm"); await press("Copy Employee ID");
-    await fill(field("New Employee ID"), "10812346"); await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
+    await fill(field("Employee ID"), "10812346"); await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
     assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'));
     assert.equal(h.finalCommands.length, 0); assert.equal(h.queueRoots.length, 2);
     const first = StartPlanRequestSchema.parse(h.submissions.at(-1)); await press("Confirm");

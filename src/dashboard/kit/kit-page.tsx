@@ -105,6 +105,8 @@ import {
   LockedValue,
   SectionLabel,
   Select,
+  ChoicePicker,
+  SegmentedChoice,
   Separator,
   Skeleton,
   Spinner,
@@ -820,6 +822,10 @@ function FormsSection() {
   ]);
   const [pendingKey, setPendingKey] = useState<string | null>(null);
   const [fallbackOpen, setFallbackOpen] = useState(false);
+  const [launchControlsOpen, setLaunchControlsOpen] = useState(false);
+  const [workbook, setWorkbook] = useState("none");
+  const [browserMode, setBrowserMode] = useState<"headed" | "headless">("headed");
+  const [launchDate, setLaunchDate] = useState("07/16/2026");
   const [priorities, setPriorities] = useState<DsRankedItem[]>([
     { id: "ucpath", label: "UCPath", description: "Primary connection", role: "Primary" },
     { id: "hrms", label: "Legacy HRMS", description: "Fallback connection", role: "Fallback" },
@@ -869,6 +875,19 @@ function FormsSection() {
 
         <BodySection title="Connection settings">
           <FormGroup label="Connection settings">
+            <Field label="Launch controls" orientation="horizontal">
+              <Button variant="secondary" onClick={() => setLaunchControlsOpen(true)}>Open launch controls</Button>
+              <Dialog open={launchControlsOpen} onOpenChange={setLaunchControlsOpen}>
+                <DialogContent title="Launch controls">
+                  <DialogBody className="flex flex-col gap-[var(--ds-space-cozy)]">
+                    <ChoicePicker label="Workbook" value={workbook} options={[{ value: "none", label: "None" }, { value: "sample-roster", label: "Sample roster", description: "Fictional workbook" }]} onChange={setWorkbook} />
+                    <SegmentedChoice label="Browser mode" value={browserMode} options={[{ value: "headed", label: "Headed" }, { value: "headless", label: "Headless" }]} onChange={setBrowserMode} />
+                    <Field label="Last day worked"><DateInput label="Last day worked" value={launchDate} onChange={setLaunchDate} textEntry textDateFormat="MM/DD/YYYY" /></Field>
+                  </DialogBody>
+                  <DialogFooter><Button variant="secondary" onClick={() => setLaunchControlsOpen(false)}>Close controls</Button></DialogFooter>
+                </DialogContent>
+              </Dialog>
+            </Field>
             <Field label="Employee ID" description="9 digits, no dashes" required orientation="horizontal">
               <Input placeholder="100844120" defaultValue="100844120" />
             </Field>

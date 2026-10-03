@@ -32,7 +32,8 @@ export type SettingsNavIcon =
   | "capabilities"
   | "keyboard"
   | "ui-catalog"
-  | "unrendered";
+  | "unrendered"
+  | "spreadsheets";
 
 
 /**
@@ -165,6 +166,7 @@ export function buildSettingsNav(
     clientEntry("general", "General", "general"),
     clientEntry("performance", "Performance", "performance"),
     clientEntry("paths", "Paths", "paths"),
+    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("routes", "Routes", "routes"),
     clientEntry("providers", "Provider budgets & models", "performance"),
     clientEntry("credentials", "Credentials", "general"),

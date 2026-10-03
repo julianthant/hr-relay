@@ -11,7 +11,7 @@ import type { WorkflowBootstrapPrimitive } from "../surfaces/shell-model.js";
 import { RUN_START_DOOR_ID, restoreDashboardTakeoverFocus } from "./dashboard-app-model.js";
 import type { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
 import type { z } from "zod";
-export type RerunLaunchSource = z.infer<typeof RerunValuesRequestSchema>;
+export type RerunLaunchSource = z.infer<typeof RerunValuesRequestSchema> & { readonly label?: string; readonly traceId?: string };
 
 /** The host owns focus transfer, independently of date/history and Settings state. */
 export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {

@@ -806,7 +806,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const runAction = useCallback(
     (action: ActionDescriptorWire, target: ActionTarget, source: "queue" | "run-detail" = "queue"): void => {
       if (action.kind === "navigation") {
-        if (action.navigate.kind === "rerun") openRerun(RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }));
+        if (action.navigate.kind === "rerun") {
+          const row = dayWire?.queueSurfaces.find(entry => String(entry.runId) === target.runId);
+          openRerun({ ...RerunValuesRequestSchema.parse({ runId: target.runId, expectedVersion: action.navigate.expectedVersion }),
+            ...(row === undefined ? {} : { label: row.title, traceId: String(row.traceId) }) });
+        }
         else if (action.navigate.runId !== undefined) selectRun(action.navigate.runId);
         return;
       }
