@@ -37,16 +37,31 @@ real mismatches and decode failures instead of rejecting a scaled preview.
 
 ## Archive polish and Explorer workflow mocks (2026-10-02)
 
-Archive keeps served report identities and commands while using paired retained fields on wide screens,
-compact metadata and rows, sticky report-section navigation and distinct loading/empty/error states
-with read-retry controls. Explorer adds fictional Onboarding and Emergency Contact paths to the existing
+Archive's mounted presentation is superseded by the 2026-10-03 original-layout mock below.
+Explorer adds fictional Onboarding and Emergency Contact paths to the existing
 Separations preview, including source returns, identity/review stops, duplicate handling and dry-run
 branches. All three begin with declared browser systems; contact authentication remains after packet
 review. Onboarding puts Hire type in step 2, with eleven ordered steps and corresponding source links
 and stops. The navbar renders the shared DateInput calendar design; Activity retains its range variant.
 Spreadsheet Settings uses connected tabs with a sliding selection surface and reduced-motion support.
-Replacement Archive and toolbar artboards await selection. Focused desktop dark/light interaction checks
+The Focus Archive replacement was rejected on 2026-10-03. Focused desktop dark/light interaction checks
 cover the changes; frozen reference screenshots remain unchanged. Mock workflows are presentation only and cannot start runs.
+
+## Archive original-layout mock (2026-10-03)
+
+The operator rejected the Focus Archive redesign. The app now mounts a visibly fictional local mock
+of the original layout: dashboard-version groups, workflow folders, full filter strip, compact run
+table and full-page reports with section navigation. Search and downloads use the exact local
+selection. Workflow details owns dashboard/workflow versions, archived date, outcome and file count
+once; the separate report metadata strip is removed. The original bump modal retains selected/all
+workflow scopes and inline review, with no runtime write. Archive transport and commands are
+unmounted. Other app surfaces keep their existing wiring. The shared DateInput calendar now passes
+its selected value, bounds and change callback to the calendar.
+
+Focused mock behavior, component-boundary, lint/build and desktop browser checks apply. Existing
+served-Archive browser/reference assertions remain unchanged as future reconnection acceptance;
+this mock is not evidence that those authority journeys pass. Full repository gates and deliberate
+reference replacement remain with 3.1.19.
 
 ## Ruled deviations from the rebuild-demo
 

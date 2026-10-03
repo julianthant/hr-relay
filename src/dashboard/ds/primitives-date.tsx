@@ -113,7 +113,8 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
       </DateField.Group>
       </PopoverAnchor>
       <PopoverContent title={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} hideTitle hideClose className={cn("ds-date-popover w-auto [&>div]:p-0", dsLayer.modal)}>
-        <Calendar label={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} />
+        <Calendar label={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} value={selected} onChange={setDate}
+          minValue={dateValue(min) ?? undefined} maxValue={dateValue(max) ?? undefined} />
       </PopoverContent>
     </DatePicker>
     </Popover>

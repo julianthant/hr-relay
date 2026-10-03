@@ -427,6 +427,19 @@ cross-referenced rather than re-litigated.
 
 ### D348 — dashboard and workflow runtime versions (2026-09-24)
 
+**Mounted presentation amendment — 2026-10-03:** the operator rejected the Focus Archive
+redesign and requested a polished mock of the original Archive. The app's Archive takeover now
+mounts a local fictional dataset instead of the Archive read/command client. Preserve the original
+dashboard-version groups, full-width workflow folders, filter strip and complete report with section
+navigation. The current version remains subtle in the heading bar; Archive navigation is the only
+Archive label. Search stays in the content header. Reports open as full pages. Dashboard version,
+workflow version, archived date, outcome and retained-file count live once in Workflow details;
+the separate report metadata strip is removed. Plan a bump keeps the original selected-workflow /
+all-workflow modal and inline review. Downloads contain fictional local records and files; completing
+bump review changes no runtime version. Backend authority and its retained implementation below are
+unchanged and unmounted; reconnecting and proving them is separate future work. The mounted mock
+must remain visibly identified, route-owned and free of Archive queries or commands.
+
 The operator approved an Archive redesign with independent **dashboard** and **workflow** runtime
 version counters. Both use `major.minor` display and durable run identity. They are distinct from
 the package/build semver, integer descriptor version and contract fingerprint, which continue to
