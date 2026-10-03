@@ -40,9 +40,10 @@ Current homes and dependency direction are in the [codebase structure map](../..
    a second Explorer graph, or an Explorer renderer map. The required registry edits in guide §3
    still apply.
 
-   `operationDisplay` is optional. When declared, the compiled display combines task-owned action
-   trees with workflow-declared values and source bindings; omission stays explicitly legacy or
-   unavailable, never inferred. A source jump resolves only to one exact displayed producer;
+   `operationDisplay` is optional. When declared, it reuses task-owned operations, action trees,
+   and value/source slots; the workflow adds occurrence bindings and composition-specific outcomes
+   only. Omission stays explicitly legacy or unavailable, never inferred. A source jump resolves
+   only to one exact displayed producer;
    missing, ambiguous, and retired sources stay unavailable. Branch and condition choices are
    hypothetical. The definition preview does not claim run state, actual outcomes or values,
    commands, or a live overlay. Keep original fictional examples preview-only. See
