@@ -100,7 +100,11 @@ export function readTestDataShared(
   return parseTestDataSharedConfig(readJsonDocument(configPath, TEST_DATA_CONFIG_PATH), configPath, manifests);
 }
 
-const COMMITTED_CONFIG_PATH = fileURLToPath(new URL(`../../../../${TEST_DATA_CONFIG_PATH}`, import.meta.url));
+const COMMITTED_CONFIG_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  "../../../../",
+  TEST_DATA_CONFIG_PATH,
+);
 /** The checked-in shared data of THIS checkout, parsed and frozen at module load. */
 export const TEST_DATA: TestDataShared = parseTestDataSharedConfig(
   readJsonDocument(COMMITTED_CONFIG_PATH, TEST_DATA_CONFIG_PATH),

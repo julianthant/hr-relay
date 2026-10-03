@@ -1,5 +1,7 @@
 import { ProtectedInputBindingsSchema } from "../../../models/write-safety/protected-input.js";
 import { readFileSync } from "node:fs";
+import { dirname, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { z } from "zod";
 import { deepFreeze } from "../../../rules/validation/immutability.js";
 import {
@@ -486,7 +488,11 @@ export function readTestTargetRegistry(
 const committedRegistryInput: unknown = testTargetRegistryMember(
   JSON.parse(
     readFileSync(
-      new URL(`../../../../${TEST_DATA_CONFIG_PATH}`, import.meta.url),
+      resolve(
+        dirname(fileURLToPath(import.meta.url)),
+        "../../../../",
+        TEST_DATA_CONFIG_PATH,
+      ),
       "utf8",
     ),
   ),
