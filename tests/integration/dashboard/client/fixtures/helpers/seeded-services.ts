@@ -26,6 +26,8 @@ import { createCrossDateSearchService } from "../../../../../../src/backend/runs
 import { createSoloRequestIdentityCheckpoint } from "../../../../../../src/backend/transports/http/request-identity.js";
 import { createDashboardApp } from "../../../../../../src/backend/transports/http/routes/api.js";
 import { createDashboardStreamHub } from "../../../../../../src/backend/transports/http/subscriptions/dashboard-stream.js";
+import { RunLogsStreamHub } from "../../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
+import { createRunLogStreamStore } from "../../../../../../src/backend/logs/run-log-stream.js";
 import { createReceiptService } from "../../../../../../src/backend/runs/trust/receipt-service.js";
 import { createItemAttemptHistoryQuery } from "../../../../../../src/backend/runs/queries/item-attempt-history.js";
 import { archiveQueryDeps,archiveSnapshots } from "../../../../../support/fixtures/archive-seams.js";
@@ -150,6 +152,11 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     plannedBy: "local-operator",
   });
   const hub = createDashboardStreamHub({ projection, backfillGaps: UNOBSERVED_BACKFILL_GAP_NOTIFIER });
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+    readRun: runId => {
+      const result = runReader.read(runId);
+      return result.state === "present" ? { disposition: result.disposition, run: result.run } : undefined;
+    } });
 
   const app = createDashboardApp({
     requestIdentity: createSoloRequestIdentityCheckpoint({
@@ -212,6 +219,7 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
     commands,
     startPlans,
     hub,
+    runLogsHub,
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
@@ -247,5 +255,5 @@ export function composeSeededServices({ database, clock, stateRoot, root, projec
   });
 
 
-return { app, hub };
+return { app, hub, runLogsHub };
 }

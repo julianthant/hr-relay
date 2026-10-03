@@ -6,6 +6,8 @@ import {captureArchiveReport} from "../../../../../../src/backend/storage/archiv
 import {transferArchiveReport} from "../../../../../../src/backend/storage/archive/archive-transfer.js";
 import { RunIdSchema } from "../../../../../../src/rules/identity/ids.js";
 import { sqliteRunReader } from "../../../../../support/helpers/canonical-run-reader.js";
+import { createRunLogStreamStore } from "../../../../../../src/backend/logs/run-log-stream.js";
+import { RunLogsStreamHub } from "../../../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { CommandResultSchema, markSettingsCommand } from "../../../../../../src/rules/commands/commands.js";
 import { singleAppliedRunId } from "../../../../../support/fixtures/operator-command-fixtures.js";
 import { seedSyntheticRuntimeConfig } from "../../../../../support/fixtures/operator-command-fixtures.js";
@@ -436,6 +438,12 @@ function harness(options: {
     ...(options.maxPending === undefined ? {} : { maxPending: options.maxPending }),
   });
   cleanups.push(() => hub.close());
+  const runLogsHub = new RunLogsStreamHub({ projection, store: createRunLogStreamStore(stateRoot),
+    readRun: runId => {
+      const result = runDetailDeps.runReader.read(runId);
+      return result.state === "present" ? { disposition: result.disposition, run: result.run } : undefined;
+    } });
+  cleanups.push(() => runLogsHub.close());
   const preflight = createPreflightHarness(clock, HASH_B, options.preflightBeforeRun, options.preflightScheduler);
 
 
@@ -519,6 +527,7 @@ function harness(options: {
     ...(options.advisory === undefined ? {} : { advisory: options.advisory }),
     ...(options.explorerEdits === undefined ? {} : { explorerEdits: options.explorerEdits }),
     hub,
+    runLogsHub,
     // D274 item 6 — the read-only Settings status sections read the SAME
     // resolved config and descriptor tuple this harness composes everything else
     // from, so nothing on that page can be true here and false in production.
