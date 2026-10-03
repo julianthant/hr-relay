@@ -1,9 +1,17 @@
-# `reference/decisions.md` — the decision ledger (D1–D364, 2026-07-17 → 2026-10-02)
+# `reference/decisions.md` — the decision ledger (D1–D365, 2026-07-17 → 2026-10-02)
 
-The numbered decision history through D362 remains unchanged. D363 and D364 are recorded in the
+The numbered decision history through D362 remains unchanged. D363–D365 are recorded in the
 current operator amendments below; no earlier number is reused.
 
 ## Operator amendments
+
+**D365 — Accepted Settings save superseded before readback (operator-approved W1, 2026-10-02):**
+an authenticated accepted save followed by a later saved revision clears submission uncertainty,
+retains the draft for review, and shows current saved values through the existing conflict state.
+It never automatically resubmits or claims the retained edit is currently saved. Actual uncertainty
+and mismatched evidence retain the immutable exact-attempt retry. Separate authority and confirmation
+rules remain. Owner: [Settings recovery](clock-config-secrets.md#d365--accepted-settings-save-superseded-before-readback--2026-10-02);
+execution/evidence: [W1](../plans/phase-3/dashboard-surface-wiring.md#w1--make-settings-lifecycle-clear-then-wire-confirmed-readback).
 
 **D364 — Confirmed action and declared step-result v1 (approved Phase 3, 2026-10-02):**
 complete frozen task invocations expose the exact `ctx.confirmed` API; published facts bind exact

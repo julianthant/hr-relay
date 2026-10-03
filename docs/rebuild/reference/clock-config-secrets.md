@@ -2079,6 +2079,24 @@ production run projects the production routes without changing its stored
 fingerprint. Historical test-instance runs refuse execution. No missing or
 corrupt saved settings may fall back to defaults.
 
+### D365 — Accepted Settings save superseded before readback · 2026-10-02
+
+An authenticated accepted command and a later saved revision are a settled save that has been
+superseded, not an unresolved submission. The Settings editor clears that command's submission
+uncertainty, retains the operator's draft for review, and presents the current saved values through
+its existing conflict state. It does not claim that the retained draft is currently saved and never
+automatically resubmits it. A new write requires the operator to review and retry the retained edit
+against current authority.
+
+A missing or mismatched receipt, failed readback, or unverifiable authority remains unconfirmed
+and retains the immutable exact-attempt retry. Revision order alone cannot authenticate a receipt,
+and an opaque provider source token has no ordering semantics. Ordinary settings, credentials and
+provider keys retain their separate authority, replay and confirmation rules. This decision changes
+the supported recovery classification, not the approved components or layout; a new visible state
+requires separate operator design work.
+
+Implementation and check evidence belong to [W1](../plans/phase-3/dashboard-surface-wiring.md#w1--make-settings-lifecycle-clear-then-wire-confirmed-readback).
+
 ### D346 — Settings values on the local operator surface · 2026-09-24
 
 The independent protected store remains the authority for credentials and

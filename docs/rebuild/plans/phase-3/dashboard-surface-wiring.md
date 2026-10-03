@@ -1,6 +1,6 @@
 # Existing dashboard components: backend lifecycle and wiring plan
 
-Status: W0 accepted locally on 2026-10-02. W1–W7 remain proposed and unlaunched. Remove and Snooze meanings below are operator-approved.
+Status: W0 accepted locally on 2026-10-02. W1 is operator-launched on 2026-10-02; W2–W7 remain proposed and unlaunched. Remove, Snooze and superseded Settings save meanings below are operator-approved.
 
 This is supporting, unnumbered work for the [backend and unit-test initiative](backend-and-unit-tests.md). That plan continues to own confirmed Logs and its Phases 3–5. This document owns the proposed Settings, Notifications, Activity, Archive, Sessions, Explorer, and Queue wiring packages. It does not assign roadmap task numbers or grant release, freeze, cutover, or Electron admission.
 
@@ -43,7 +43,7 @@ Activity XLSX was verified separately from the CSV client: `src/dashboard/client
 
 1. **Idle worker Remove — approved:** retire the exact owned idle worker and reduce that workflow's desired pool size. Keep the card until retirement is confirmed. Preserve run/history records and peer workers. This is not a local hide preference.
 2. **Notification Snooze — approved:** snooze for one hour, with an explicit Unsnooze command. The current backend requires a future `until` instant and has no operator unsnooze command. Use the backend's clock and preserve the independent read state.
-3. **Superseded Settings save:** proposed behavior is distinguish accepted-but-superseded from unresolved submission, retain the draft for review, and show current saved values separately. Never automatically resubmit. Ratify the behavior before changing the existing conservative assertion; any needed new visual state belongs to separate design work.
+3. **Superseded Settings save — approved 2026-10-02 (D365):** distinguish an authenticated accepted-but-superseded save from unresolved submission. Clear submission uncertainty, retain the draft for review, and show current saved values through the existing conflict presentation. Never automatically resubmit. Actual uncertainty and mismatched readback retain the immutable exact-attempt retry and its conservative assertions. The [Settings contract](../../reference/clock-config-secrets.md#d365--accepted-settings-save-superseded-before-readback--2026-10-02) owns this behavior; any needed new visual state belongs to separate operator design work.
 
 Explorer remains a workflow definition/reference and hypothetical branch preview. Selected-run execution progress belongs to its separately selected run source, including the Logs initiative. This plan does not add a live overlay or restore the retired registered-definition UI.
 
@@ -386,3 +386,104 @@ Continuation: W0 is complete locally. The next feature package requires its own 
 W1–W7 producer work and the named design dependencies are not implicitly authorized. No push,
 branch merge, worktree cleanup, live HR operation, complex-suite execution or release admission
 occurred. The failed repository gates remain failed and retain their separate owners.
+
+### W1 verification and local acceptance — 2026-10-02
+
+Deployment ID: `w1-settings-2026-10-02`. Scope is W1 only in the assigned
+`hr-worktree-logs-backend` worktree on `codex/logs-backend`. Entry was
+`9bbc323632784058fd1e7def7d72e47547f4935f`; accepted W0 `6ab7f06d2cf8792c330dbf1bcc212a38af4b8fdd`
+and backend Phase 3 `0dff920a102186b3218dbf549b79003b9f3e458e` are ancestors.
+The final independent candidate uses peer base `5e0f69ad19ceeec509321f5ee7b448e223c6859c`.
+Source commitment is pending the Logs peer's shared `compose.ts` hold release; no partial W1
+source commit is accepted. The existing project documents and external evidence owner continue
+to replace the absent `agent_docs/` framework.
+
+The approved presentation source was reverified at
+`c3998ec263dc7e6bcb20470ab6a32d60a04eff23`, branch `codex/activity-ui-polish`, in
+`/Users/julianhein/.codex/worktrees/b6c7/hr-automation-rebuild`. Its untracked structure draft
+remains outside authority. W1 uses `/ui`'s existing-consumer wiring route: all six retained
+Settings TSX files are byte-identical to W1 entry. Prior W0 differences from that presentation
+source are recorded separately; W1 changes models and lifecycle wiring behind `SettingsPage`,
+without changing its forms, layout or visible components.
+
+#### Lifecycle and recovery delivered
+
+`readSettings` owns genuine virgin admission and refuses a missing current row when ordinary
+command/audit or advanced runtime history remains. It authenticates saved command and audit
+identity. `readBootSettings` first consumes that ordinary read, then refuses absent active runtime
+when a saved revision above 1 or snapshot history remains; it performs no replacement write.
+Composition calls it inside the existing authority transaction. The runtime reader now accepts
+caller-owned repositories, and configuration reads are explicit rather than transactional getters.
+
+The command kernel retains validation, identity admission, independent private commit,
+journal/application/audit/current/snapshot/activation, SQLite commit and provider-confirmation
+ordering. Its ordinary snapshot read follows identity admission and precedes insertion of its own
+journal row; exact replay does not repeat that new read. Ordinary authority remains atomic;
+credentials and provider keys retain independent commit/reconciliation and uncertainty rules.
+New-run selection consumes the active snapshot, while retained runs keep their original snapshot
+and fingerprint checks.
+
+Latest request and client-incarnation identity govern read settlements, including A → B → A,
+stale provider success/failure and old command callbacks after reconnection. Composite readback
+preserves the distinct ordinary, credential and provider identities. An opaque provider source
+token cannot establish order by itself.
+
+The operator ratified [D365](../../reference/clock-config-secrets.md#d365--accepted-settings-save-superseded-before-readback--2026-10-02):
+authenticated accepted-but-superseded ordinary/provider saves clear submission uncertainty,
+retain the draft for review and show current saved values through the existing conflict state.
+They never automatically resubmit. Unresolved or mismatched evidence retains immutable exact-attempt
+retry. Protected superseded behavior was not widened. D346's local authenticated credential/provider
+display authority remains in force.
+
+#### Exact source and verification evidence
+
+Evidence owner:
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/`.
+The [21-path ownership list](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/implementation/owned-paths-final.txt)
+and [final candidate binding](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/verification-repair/candidate-binding.txt)
+identify the inputs. The final owned-path manifest SHA-256 is
+`291a2a09f7a4b2d8aba6cd481b2ecaff13c7ba4d112efecdc3db7a6891e329dc`.
+The sole intended composition patch is
+[compose-settings-boot-read.patch](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/repair/compose-settings-boot-read.patch),
+SHA-256 `4c97425e1c8f7326d19948fe43b79c3cb4dfcb4213c627e0fc92b27a2ea3a8a0`;
+its candidate `compose.ts` is `f75cea1d8929377b788906ec20e3af4671a750ad1061849dca24214c862b7f3c`.
+Earlier guard-deletion patches are superseded and are not acceptance inputs. Peer commit
+`529e42d9a2c04781e13109e9a73dd2ba98f98b29` restored guards inadvertently included in an earlier
+peer commit before the repaired candidate was verified.
+
+Independent W1-V3 returned scoped PASS on the final frozen candidate; its
+[report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/verification-repair/report.md)
+and [exact commands](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/verification-repair/commands.txt)
+bind results and limits. The focused unit command was:
+
+```sh
+npm run test:unit -- tests/unit/dashboard/surfaces/settings-command-transaction.test.ts tests/unit/dashboard/surfaces/settings-lifecycle.test.ts tests/unit/dashboard/surfaces/settings-read-order.test.ts tests/unit/backend/app/config/resolve/settings-catalog-projection.test.ts tests/unit/backend/app/config/resolve/settings-facts.test.ts tests/unit/dashboard/client/index/settings-editor-surface.test.ts
+```
+
+| Check | Final W1 evidence and outcome |
+| --- | --- |
+| Focused public-behavior units above | 6 files, 55 cases passed with fixed clocks/IDs, in-memory ports and deferred promises. Real kernel tests cover first save, replay, stale/missing refusal, ordinary rollback and independent private-store uncertainty. Boot-reader tests prove refusal and zero replacement writes through in-memory repositories. |
+| Scoped ESLint, `--max-warnings 0` | All owned TS/TSX paths passed before repair; the three repaired inputs passed fresh lint. Unchanged inputs are hash-bound in the final candidate. |
+| `npm run build:manifest:check`; `npm run stores:catalog:check` | Both passed. No generated workflow/store input changed. |
+| `npm run web:build` | Passed; Vite's existing >500 kB chunk advisory remains. |
+| `npm run test:architecture -- tests/architecture/runs/control-command-single-path.test.ts tests/architecture/storage/sqlite-settings-authority.test.ts` | Failed: 10 passed, 2 failed. The existing relocation restore command-audit access and synthetic retired-module negative-control failure were reproduced from immutable W1 entry. Neither assertion nor failure is waived. |
+| `npm run typecheck` | Failed, exit 2, 58 unique normalized diagnostics on the final peer-based candidate. No added W1-attributable diagnostic. Two additions versus the earlier repaired candidate are peer-owned Logs-test TS18048 errors for `item.event` and `secondBatch.event`; this does not establish whole-branch acceptance. |
+
+Retained test membership, assertions, isolation, coverage floors and timeouts remain.
+The six mechanically adapted retained files keep their respective test/assertion counts:
+12/50, 14/68, 33/214, 3/24, 3/16 and 62/483. Their
+[preservation evidence](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-settings-w1/verification-repair/retained-input-checks.txt)
+also binds the six unchanged Settings TSX inputs. Integration fixtures were adapted only for the
+explicit API and were not executed. No guard membership was added or retired.
+
+#### Remaining obligations and continuation
+
+The in-memory unit proof does not prove disk atomicity, process boot or restart. Full boot,
+integration/durability, actual SSE convergence, browser/visual, performance, coverage, OS delivery,
+live HR and Electron checks remain unrun for later operator discussion. Failed architecture and
+typecheck gates retain their separate owners and must pass at their required broader gate.
+No catalog, retired renderer or retired scenario/parity suite was restored.
+
+W1's scoped implementation and verification are ready; exact source commitment remains blocked
+only by the shared-file hold. W2–W7 remain unlaunched and require separate operator launch.
+No push, branch merge, worktree cleanup, live operation or release admission is authorized here.
