@@ -52,7 +52,10 @@ export const MOCK_ARCHIVE_VERSIONS = SavedRuntimeVersionIndexWireSchema.parse({
     revision: 1, dashboard: { major: 1, minor: 4 }, changes: [],
     workflows: MOCK_ARCHIVE_WORKFLOWS.map(row => ({ workflowId: row.id, label: row.label, version: { major: 1, minor: Number(row.version.split('.')[1]) } })),
 });
-export const MOCK_ARCHIVE_REPORT_SECTIONS = ['Workflow details', 'Workflow fields', 'Steps', 'Saved settings', 'Retained files'] as const;
+export const MOCK_ARCHIVE_REPORT_SECTIONS = [
+    { id: 0, label: 'Workflow details' }, { id: 2, label: 'Logs' },
+    { id: 3, label: 'Saved settings' }, { id: 4, label: 'Retained files' },
+] as const;
 const people = ['Jordan Lee', 'Alex Morgan', 'Taylor Chen', 'Casey Reed', 'Sam Rivera', 'Morgan Blake', 'Avery Jones', 'Riley Park', 'Drew Ellis', 'Jamie Brooks', 'Sofia Hernández-Williams', 'Quinn Lane', 'Rowan Bell', 'Skyler Kim', 'Charlie Reed', 'Cameron Davis'];
 const locations = ['Seventh College dining', 'Sixth College market', 'Warren College dining', 'Campus café'];
 export const MOCK_ARCHIVE_RUNS: readonly MockArchiveRun[] = Array.from({ length: 30 }, (_, index) => {

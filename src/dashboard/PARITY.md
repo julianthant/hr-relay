@@ -53,7 +53,12 @@ The operator rejected the Focus Archive redesign. The app now mounts a visibly f
 of the original layout: dashboard-version groups, workflow folders, full filter strip, compact run
 table and full-page reports with section navigation. Search and downloads use the exact local
 selection. Workflow details owns dashboard/workflow versions, archived date, outcome and file count
-once; the separate report metadata strip is removed. The original bump modal retains selected/all
+once; the separate report metadata strip is removed. Workflow fields join details without repeating
+Subject fields. The separate Fields navigation entry is removed; its old section links open details.
+Steps becomes Logs using the shared LogPanel, timeline, field/action rows, saved failure blocks,
+capture workspace and search/copy/latest controls. Historical logs expose no continuation actions.
+A compact search/action toolbar replaces the Current/version-history heading rows.
+The original bump modal retains selected/all
 workflow scopes and inline review, with no runtime write. Archive transport and commands are
 unmounted. Other app surfaces keep their existing wiring. The shared DateInput calendar now passes
 its selected value, bounds and change callback to the calendar.

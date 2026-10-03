@@ -431,10 +431,16 @@ cross-referenced rather than re-litigated.
 redesign and requested a polished mock of the original Archive. The app's Archive takeover now
 mounts a local fictional dataset instead of the Archive read/command client. Preserve the original
 dashboard-version groups, full-width workflow folders, filter strip and complete report with section
-navigation. The current version remains subtle in the heading bar; Archive navigation is the only
-Archive label. Search stays in the content header. Reports open as full pages. Dashboard version,
+navigation. A single compact toolbar replaces the separate Current/version-history header rows;
+it holds search, matching count, subtle dashboard version, mock identification and Plan a bump.
+Archive navigation is the only Archive label. Reports open as full pages. Dashboard version,
 workflow version, archived date, outcome and retained-file count live once in Workflow details;
-the separate report metadata strip is removed. Plan a bump keeps the original selected-workflow /
+the separate report metadata strip is removed. Workflow fields join Workflow details without
+duplicating Subject fields. The separate Fields navigation entry is removed. Steps becomes Logs,
+using the shared LogPanel, timeline, action/field rows, saved failure blocks, screenshot workspace,
+search, copy and latest-action controls. Historical logs offer no continuation commands. Old Fields
+section links open Workflow details; remaining section identities stay stable.
+Plan a bump keeps the original selected-workflow /
 all-workflow modal and inline review. Downloads contain fictional local records and files; completing
 bump review changes no runtime version. Backend authority and its retained implementation below are
 unchanged and unmounted; reconnecting and proving them is separate future work. The mounted mock

@@ -209,7 +209,9 @@ unproven historical versions stay explicitly unknown. This supersedes D274 item 
 minor-archives-nothing rule for new changes. The 2026-10-03 presentation amendment replaces the
 mounted Archive with a polished original-layout mock using fictional local data and actions;
 the backend implementation remains retained and unmounted. Report metadata is consolidated once
-in Workflow details, without the separate strip. This changes presentation, not version authority. Owners:
+in Workflow details, without the separate strip. Workflow fields also live in details; Steps becomes
+the shared Logs panel. One compact search/action toolbar replaces the two heading rows. This changes
+presentation, not version authority. Owners:
 [dashboard-surfaces D348](dashboard-surfaces.md#d348--dashboard-and-workflow-runtime-versions-2026-09-24),
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 

@@ -1,7 +1,7 @@
 import { ArrowLeft, ChevronRight, Download, Folder, Layers3, Search } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
-import { Badge, Button, DateInput, Dialog, DialogContent, Input, PageHeader, PageHeading, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { Badge, Button, DateInput, Dialog, DialogContent, Input, PageHeading, PanelToolbar, Popover, PopoverContent, PopoverTrigger, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
 import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { MockArchiveReport } from './archive-mock-report.js';
@@ -44,7 +44,13 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   onBrowse(next.data, mode);
  };
  return <section aria-label="Archive mock" className="mock-archive ds-body-overlay flex min-h-0 flex-1 flex-col bg-[var(--ds-surface-page)]">
-  <PageHeader title={`Current · ${MOCK_ARCHIVE_CURRENT}`} badge={<Badge tone="neutral">Mock · fictional data</Badge>} actions={<>
+  <div className="mock-archive-toolbar-inset"><PanelToolbar label="Archive controls" variant="body" className="mock-archive-toolbar">
+   {folder === null && report === undefined && !invalid && !unavailable ? <>
+    <ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />
+    <span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>
+    {filtered && <Button size="toolbar" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}
+   </> : <Button size="toolbar" variant="ghost" icon={<ArrowLeft className={dsIcon.sm} />} onClick={recover}>Version history</Button>}
+   <div className="mock-archive-toolbar-actions"><span className="mock-archive-toolbar-version">Dashboard {MOCK_ARCHIVE_CURRENT}</span><Badge tone="neutral">Mock · fictional data</Badge>
    {(folder !== null || report !== undefined) && !unavailable && !invalid && <Popover open={exportOpen} onOpenChange={setExportOpen}>
     <PopoverTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></PopoverTrigger>
     <PopoverContent title="Export fictional reports" align="end" className="ds-body-scope ds-body-overlay !w-[280px] !bg-[var(--ds-surface-overlay)]">
@@ -52,15 +58,14 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
     </PopoverContent>
    </Popover>}
    <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
-  </>} />
+   </div>
+  </PanelToolbar></div>
   <div className="min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]">
    <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable in the mock" message="Choose a fresh mock scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable in the mock" message="This preview contains fictional runs only. Choose a mock workflow to browse its reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
      : report ? <MockArchiveReport run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
      : folder === null ? <>
-      <PageHeading title="Version history" description="Retained runs, grouped by the version that produced them." actions={<ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />} />
-      <p className="mock-archive-overview-meta">{rows.length} matching reports · {MOCK_ARCHIVE_WORKFLOWS.length} workflows{filtered && <Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}</p>
       <MockVersionFolders rows={rows} onFolder={onFolder} />
      </> : <>
       <nav aria-label="Archive breadcrumbs" className="mock-archive-breadcrumbs"><Button variant="ghost" size="sm" onClick={recover}>Version history</Button><ChevronRight aria-hidden className={dsIcon.sm} /><span>{folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}`}</span><ChevronRight aria-hidden className={dsIcon.sm} /><span className="text-[color:var(--ds-fg)]">{scope[0].workflowLabel}</span></nav>

@@ -37,6 +37,7 @@ function capture(system: string, label: string, time: string, kind: NonNullable<
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="850" height="${height}" viewBox="0 0 850 ${height}"><rect width="850" height="${height}" fill="#f3f5f7"/><rect width="850" height="34" fill="#263d63"/><g font-family="Arial"><text x="20" y="23" fill="white" font-size="13">FICTIONAL SAMPLE · ${escapeXml(system)}</text><rect x="20" y="50" width="810" height="${height - 70}" rx="4" fill="white" stroke="#cbd0d7"/><text x="38" y="81" fill="#253348" font-size="19">${escapeXml(label)}</text>${content}${formEnd}</g></svg>`;
   return { src: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`, width: 850, height, system, label, time, kind, alt: `Fictional ${system} ${label} · sample data` };
 }
+export { capture as logSampleCapture };
 const at = (seconds: number) => `09:${String(40 + Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 function fields(id: string, seconds: number, title: string, rows: readonly CaptureRow[], kind: LogField["kind"] = "read", screenshot?: LogScreenshot, result?: string): LogEntry {
   return { id, kind: "fields", title, fields: rows.map(([label, value], index) => ({ id: `${id}-${index}`, time: at(seconds), kind, label, value })), ...(screenshot ? { screenshots: [screenshot] } : {}), ...(result ? { result } : {}) };

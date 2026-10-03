@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveScope } from '../../../src/dashboard/surfaces/archive-mock-model.js';
 import { ArchiveBrowseStateSchema } from '../../../src/dashboard/app/archive-route-model.js';
+import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive-mock-logs-model.js';
+import { logPlainText } from '../../../src/dashboard/surfaces/log-feed-model.js';
 
 describe('local Archive mock', () => {
  it('uses distinct fictional identities, several versions and all sample outcomes', () => {
@@ -53,5 +55,31 @@ describe('local Archive mock', () => {
   expect(mockArchiveExport(rows, 'csv')).toContain('"Lee, ""Jordan"""');
   expect(mockArchiveExport(rows, 'csv').split('\r\n')).toHaveLength(2);
   expect(JSON.parse(mockArchiveExport(rows, 'json'))).toEqual({ mock: true, records: rows });
+ });
+ it('keeps saved log actions, captures and timeline aligned with every report outcome', () => {
+  for (const run of MOCK_ARCHIVE_RUNS) {
+   const logs = mockArchiveLogs(run);
+   expect(logs.timeline).toHaveLength(run.steps.length);
+   expect(logs.steps).toHaveLength(run.steps.filter(step => step.status !== 'notStarted').length);
+   expect(logPlainText(logs.steps)).toContain(run.person);
+   expect(logPlainText(logs.steps)).toContain(run.employeeId);
+   for (const stage of logs.timeline) {
+    if (stage.state === 'pending') expect(stage.stepId).toBeUndefined();
+    else expect(logs.steps.some(step => step.id === stage.stepId)).toBe(true);
+   }
+   const events = logs.steps.flatMap(step => step.entries);
+   const decisions = events.filter(entry => entry.kind === 'decision');
+   expect(decisions).toHaveLength(run.outcome === 'failed' || run.outcome === 'doneWarnings' ? 1 : 0);
+   for (const entry of decisions) if (entry.kind === 'decision') expect(entry.decision.actions).toBeUndefined();
+   for (const entry of events) if (entry.kind === 'fields') {
+    const capture = decodeURIComponent(entry.screenshots![0].src);
+    expect(capture).toContain('FICTIONAL SAMPLE');
+    expect(capture).toContain(run.employeeId);
+   }
+   const timestamps = events.flatMap(entry => entry.kind === 'fields' ? entry.fields.map(field => field.time) : [entry.time]);
+   expect([...timestamps].sort()).toEqual(timestamps);
+   expect(timestamps.at(-1)).toBe(new Date(run.completed).toISOString().slice(11, 19));
+   if (run.outcome === 'cancelled') expect(logPlainText(logs.steps)).toContain('Remaining steps were not started');
+  }
  });
 });

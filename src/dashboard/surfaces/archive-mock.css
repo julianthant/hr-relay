@@ -6,10 +6,10 @@
  background: var(--ds-surface-page);
 }
 .mock-archive .ds-page-heading { align-items: center; }
-.mock-archive-overview-meta {
- display: flex; align-items: center; gap: 12px;
- margin: 14px 0 24px; color: var(--ds-fg-muted); font-size: 12px;
-}
+.mock-archive-toolbar-inset { padding: var(--ds-shell-inset) var(--ds-shell-inset) 0; }
+.mock-archive-toolbar { min-height: 52px; gap: 14px; padding: 8px 12px; }
+.mock-archive-toolbar-count, .mock-archive-toolbar-version { color: var(--ds-fg-muted); font-size: 12px; white-space: nowrap; }
+.mock-archive-toolbar-actions { display: flex; flex-shrink: 0; align-items: center; gap: 12px; margin-left: auto; }
 .mock-archive-search {
  display: flex; align-items: center; gap: 8px;
  width: 310px; height: 34px; min-width: 0; padding: 0 10px;
@@ -56,6 +56,8 @@
 .mock-archive-run-number { display: block; margin-top: 5px; color: var(--ds-fg-muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 .mock-archive-table-footer { display: flex; align-items: center; gap: 16px; min-height: 40px; margin-top: 12px; color: var(--ds-fg-muted); font-size: 12px; }
 .mock-archive-report-layout { display: grid; grid-template-columns: 180px minmax(0,1fr); align-items: start; gap: 28px; margin-top: 24px; padding-top: 24px; border-top: 1px solid var(--ds-border); }
+.mock-archive-log-panel { display: flex; min-width: 0; height: clamp(320px, calc(100dvh - 360px), 720px); }
+.mock-archive-log-panel > section { flex: 1; }
 .mock-archive-report-nav { position: sticky; top: 0; display: flex; flex-direction: column; gap: 5px; }
 .mock-archive-section-button { width: 100%; height: 36px; justify-content: flex-start; padding: 0 12px; color: var(--ds-fg-secondary); font-size: 13px; font-weight: 400; }
 .mock-archive-section-button[aria-current] { background: var(--ds-surface-2); color: var(--ds-fg); font-weight: 600; }
