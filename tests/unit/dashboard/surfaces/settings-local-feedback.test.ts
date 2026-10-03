@@ -8,7 +8,7 @@ import { DashboardClientProvider } from "../../../../src/dashboard/state/client-
 import { useProtectedSettings } from "../../../../src/dashboard/surfaces/settings-protected-model.js";
 import { useProviderKeys } from "../../../../src/dashboard/surfaces/settings-provider-model.js";
 import { SettingsSaveFeedback } from "../../../../src/dashboard/surfaces/settings-feedback.js";
-import type { ConfirmedSettingsSave, DefinitiveSettingsRefusal } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
+import type { ConfirmedSettingsSave, DefinitiveSettingsRefusal, UnconfirmedSettingsSave } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
 import { EditableSettingsWireSchema } from "../../../../src/models/dashboard/settings-editor.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../src/models/config/provider-keys.js";
 import { fixtureSettingsDocument } from "../../../support/fixtures/dashboard/fixture-settings.js";
@@ -46,6 +46,31 @@ it("protected save reports confirmed only after exact readback, without credenti
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
+it("protected accepted result without authoritative readback emits unconfirmed and keeps exact retry", async () => {
+  const initial = fixtureSettingsDocument();
+  if (initial.protectedSettings.state !== "available") throw new Error("fixture unavailable");
+  const entries = { ...initial.protectedSettings.readback.entries, ucpathUserId: {
+    present: true as const, valueId: receiptId, updatedAt: "2026-10-02T12:00:00.000Z",
+  } };
+  const onUnconfirmedSave = vi.fn<(receipt: UnconfirmedSettingsSave) => void>();
+  const client = { executeCommand: async (command: { commandId: string }) => ({ state: "applied", commandId: command.commandId,
+    affectedTargets: [{ family: "protected-settings", revision: 2 }], restartRequired: false, revision: 2, entries }) } as unknown as DashboardClient;
+  let model: ReturnType<typeof useProtectedSettings> | undefined;
+  function Probe() { model = useProtectedSettings({ actorId: "local-operator", readReady: true, document: initial,
+    refresh: async () => initial, onUnconfirmedSave }); return null; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })));
+    await act(async () => model?.update("ucpathUserId", "private-example"));
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 1300)); });
+    assert.equal(model?.save.state, "unconfirmed");
+    assert.equal(model?.locked, true);
+    assert.equal(model?.dirtyCount, 1);
+    assert.deepEqual(onUnconfirmedSave.mock.calls[0]?.[0], { actorId: "local-operator", commandId: onUnconfirmedSave.mock.calls[0]?.[0].commandId, kind: "protected" });
+    assert.equal(JSON.stringify(onUnconfirmedSave.mock.calls).includes("private-example"), false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
 it("provider save reports confirmed only after matching receipt, token, and readback", async () => {
   const base = fixtureSettingsDocument();
   const provider = (revision: number, sourceVersionToken: string, value: string) => EditableSettingsWireSchema.parse({ ...base, providerKeys: {
@@ -71,6 +96,30 @@ it("provider save reports confirmed only after matching receipt, token, and read
     assert.equal(onConfirmedSave.mock.calls.length, 1);
     assert.equal(onConfirmedSave.mock.calls[0]?.[0].kind, "provider-key");
     assert.equal(JSON.stringify(onConfirmedSave.mock.calls).includes("private-provider-example"), false);
+  } finally { await act(async () => root.unmount()); host.remove(); }
+});
+
+it("pending provider recovery uncertainty emits one bound command receipt and keeps recovery", async () => {
+  const base = fixtureSettingsDocument();
+  const pendingCommandId = "11111111-1111-4111-8111-111111111111";
+  const pendingDocument = EditableSettingsWireSchema.parse({ ...base, providerKeys: {
+    state: "pending", providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision: 1, sourceVersionToken: A,
+    slots: {}, activeSlots: {}, parentSlotNames: [], fileSlotNamesAtBoot: [], bootFileRevision: 1,
+    bootFileSourceVersionToken: A, overriddenSlots: [], restartRequired: true,
+    pending: { commandId: pendingCommandId, writeId: "22222222-2222-4222-8222-222222222222", receiptId },
+  } });
+  const onUnconfirmedSave = vi.fn<(receipt: UnconfirmedSettingsSave) => void>();
+  const client = { retryProviderKeys: async () => { throw new Error("private diagnostic"); } } as unknown as DashboardClient;
+  let model: ReturnType<typeof useProviderKeys> | undefined;
+  function Probe() { model = useProviderKeys({ actorId: "local-operator", readReady: true, document: pendingDocument,
+    refresh: async () => pendingDocument, onUnconfirmedSave }); return null; }
+  const host = document.createElement("div"); document.body.append(host); const root = createRoot(host);
+  try {
+    await act(async () => root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })));
+    await act(async () => model?.retryPending());
+    assert.equal(model?.save.state, "unconfirmed");
+    assert.deepEqual(onUnconfirmedSave.mock.calls[0]?.[0], { actorId: "local-operator", commandId: pendingCommandId, kind: "provider-key" });
+    assert.equal(JSON.stringify(onUnconfirmedSave.mock.calls).includes("private diagnostic"), false);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });
 
@@ -189,5 +238,6 @@ it("server-refusal inline copy is suppressed while local validation and unknown 
     assert.match(host.textContent ?? "", /Check the draft values/u);
     await render({ state: "unconfirmed", message: "The write may have taken effect." });
     assert.match(host.textContent ?? "", /The write may have taken effect/u);
+    assert.match(host.textContent ?? "", /Retry exact attempt/u);
   } finally { await act(async () => root.unmount()); host.remove(); }
 });

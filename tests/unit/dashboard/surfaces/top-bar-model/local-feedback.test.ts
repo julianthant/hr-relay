@@ -67,3 +67,19 @@ it("settings server refusals use persistent danger chips, distinct command outco
   const failing = createSettingsSaveFeedback(() => { throw new Error("toast failed"); }, () => {});
   assert.equal(failing.publishRefusal({ actorId: "actor", commandId, kind: "ordinary", outcome: "refused" }, "actor"), "delivery-failed");
 });
+
+it("unconfirmed Settings chips are truthful, deduplicated and dismissed by exact recovery", () => {
+  const emitted: string[] = []; const dismissed: string[] = [];
+  const feed = createSettingsSaveFeedback((tone, title, description) => { emitted.push(`${tone}: ${title}: ${description}`); return String(emitted.length); }, id => dismissed.push(id));
+  const receipt = { actorId: "actor", commandId, kind: "ordinary" as const };
+  assert.equal(feed.publishUnconfirmed(receipt, "actor"), "delivered");
+  assert.equal(feed.publishUnconfirmed(receipt, "actor"), "duplicate");
+  assert.equal(feed.publishUnconfirmed({ ...receipt, actorId: "other" }, "actor"), "stale");
+  assert.deepEqual(emitted, ["danger: Save unconfirmed: Settings save could not be confirmed. Use the existing recovery control."]);
+  assert.equal(feed.publish({ ...receipt, replayed: true }, "actor"), "delivered");
+  assert.deepEqual(dismissed, ["1"]);
+  assert.equal(feed.publishUnconfirmed(receipt, "actor"), "duplicate");
+  feed.reset(); assert.deepEqual(dismissed, ["1", "2"]);
+  const failed = createSettingsSaveFeedback(() => { throw new Error("toast failed"); }, () => {});
+  assert.equal(failed.publishUnconfirmed(receipt, "actor"), "delivery-failed");
+});

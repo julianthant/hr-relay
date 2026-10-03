@@ -11,14 +11,14 @@ import { useProviderKeys } from "./settings-provider-model.js";
 import { useStorageRelocation } from "./settings-relocation-model.js";
 import { beforeEffectRefusal, checkedSettingsResult, ordinaryReadbackState, settingsRefusal, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { coupledSettingsLeaves, draftError, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
-import { deliverDefinitiveSettingsRefusal, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal } from "./settings-save-feedback-model.js";
+import { deliverDefinitiveSettingsRefusal, deliverUnconfirmedSettingsSave, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal, type UnconfirmedSettingsSave } from "./settings-save-feedback-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
 export type { SettingsSaveState } from "./settings-attempt-model.js";
 export type { PreflightRerunState } from "./settings-preflight-model.js";
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
-export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void; onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void }>) {
+export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void; onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void; onUnconfirmedSave?: (receipt: UnconfirmedSettingsSave) => void }>) {
   const client = useSettingsClient();
   const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
   const activeIncarnation = useRef(incarnation);
@@ -65,8 +65,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     void refresh().catch((error: unknown) => { if (active && error instanceof Error && error.message !== "settings-read-superseded" && current.current === undefined) setEditor({ state: "failed", message: "Settings could not be read. Try again." }); });
     return () => { active = false; readGeneration.current += 1; };
   }, [refresh]);
-  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave, onDefinitiveRefusal: input.onDefinitiveRefusal });
-  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave, onDefinitiveRefusal: input.onDefinitiveRefusal });
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave, onDefinitiveRefusal: input.onDefinitiveRefusal, onUnconfirmedSave: input.onUnconfirmedSave });
+  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave, onDefinitiveRefusal: input.onDefinitiveRefusal, onUnconfirmedSave: input.onUnconfirmedSave });
   const relocationEditor = useStorageRelocation({ actorId: input.actorId });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -128,6 +128,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
         const uncertain = uncertainSettingsCode(result.code);
         setSave({ state: uncertain ? "unconfirmed" : "refused", ...(!uncertain && { feedback: "chip" as const }), code: result.code, message: settingsRefusal(result.code) });
         if (!uncertain) deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "ordinary", outcome: "refused" });
+        else deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: command.requestedBy, commandId: command.commandId, kind: "ordinary" });
         return;
       }
       if (result.state !== "applied" && result.state !== "already-applied") throw new Error("settings-result-unconfirmed");
@@ -146,6 +147,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       if (attemptIncarnation !== activeIncarnation.current) return;
       const refused = beforeEffectRefusal(error); if (refused) pending.current = undefined;
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your draft is retained." : "The settings write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
+      if (!refused) deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: command.requestedBy, commandId: command.commandId, kind: "ordinary" });
     } finally { busy.current = false; }
     if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };

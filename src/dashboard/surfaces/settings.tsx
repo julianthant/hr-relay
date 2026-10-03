@@ -200,12 +200,12 @@ export function SettingsPage({
   const settingsClient = useSettingsClient();
   const feedback = useMemo(() => createSettingsSaveFeedback((tone, title, description) =>
     toast({ tone, title, description }), dismiss), [toast, dismiss]);
-  const feedbackScope = useRef({ actorId, client: settingsClient, version: 0, active: true });
-  if (feedbackScope.current.actorId !== actorId || feedbackScope.current.client !== settingsClient) {
-    feedbackScope.current = { actorId, client: settingsClient, version: feedbackScope.current.version + 1, active: true };
+  const feedbackScope = useRef({ actorId, client: settingsClient, section, version: 0, active: true });
+  if (feedbackScope.current.actorId !== actorId || feedbackScope.current.client !== settingsClient || feedbackScope.current.section !== section) {
+    feedbackScope.current = { actorId, client: settingsClient, section, version: feedbackScope.current.version + 1, active: true };
   }
   const feedbackVersion = feedbackScope.current.version;
-  useEffect(() => { feedback.reset(); }, [actorId, settingsClient, feedback]);
+  useEffect(() => { feedback.reset(); }, [actorId, settingsClient, section, feedback]);
   useEffect(() => {
     feedbackScope.current.active = true;
     return () => { feedbackScope.current.active = false; feedbackScope.current.version += 1; feedback.reset(); };
@@ -218,7 +218,11 @@ export function SettingsPage({
     if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
     feedback.publishRefusal(receipt, actorId);
   }, [actorId, feedback, feedbackVersion]);
-  const editor = useEditableSettings({ actorId, descriptorFingerprint, onConfirmedSave, onDefinitiveRefusal });
+  const onUnconfirmedSave = useCallback((receipt: Parameters<typeof feedback.publishUnconfirmed>[0]) => {
+    if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
+    feedback.publishUnconfirmed(receipt, actorId);
+  }, [actorId, feedback, feedbackVersion]);
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onConfirmedSave, onDefinitiveRefusal, onUnconfirmedSave });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);

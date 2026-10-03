@@ -7,7 +7,7 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, settingsRefusal, type SettingsSaveState } from "./settings-attempt-model.js";
-import { deliverDefinitiveSettingsRefusal, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal } from "./settings-save-feedback-model.js";
+import { deliverDefinitiveSettingsRefusal, deliverUnconfirmedSettingsSave, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal, type UnconfirmedSettingsSave } from "./settings-save-feedback-model.js";
 
 type Slot = (typeof ProviderKeySlotSchema.options)[number];
 type DraftOperation = { readonly kind: "set"; readonly raw: string; readonly added?: true } | { readonly kind: "clear" };
@@ -55,6 +55,7 @@ export function useProviderKeys(input: {
   refresh: () => Promise<EditableSettingsWire>;
   onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void;
   onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void;
+  onUnconfirmedSave?: (receipt: UnconfirmedSettingsSave) => void;
 }) {
   const client = useSettingsClient();
   const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
@@ -123,6 +124,7 @@ export function useProviderKeys(input: {
         const uncertain = pending.current !== undefined;
         setSave({ state: uncertain ? "unconfirmed" : "refused", ...(!uncertain && { feedback: "chip" as const }), code: result.code, message: settingsRefusal(result.code) });
         if (!uncertain) deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "provider-key", outcome: "refused" });
+        else deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: command.requestedBy, commandId: command.commandId, kind: "provider-key" });
         return;
       }
       const document = await input.refresh();
@@ -143,6 +145,7 @@ export function useProviderKeys(input: {
       if (refused) pending.current = undefined;
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "provider-admission-refused" : undefined,
         message: refused ? "The provider request was refused before execution. Your edit is retained." : "The provider write could not be confirmed. Retry the exact attempt; your edit is retained." });
+      if (!refused) deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: command.requestedBy, commandId: command.commandId, kind: "provider-key" });
     } finally { busy.current = false; }
     if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };
@@ -188,7 +191,12 @@ export function useProviderKeys(input: {
       if (!confirms(result, document, keys.pending.commandId)) throw new Error("provider-recovery-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setSave({ state: "applied", replayed: result.state === "already-applied" });
       confirmed = { actorId: input.actorId, commandId: keys.pending.commandId, kind: "provider-key", replayed: result.state === "already-applied" };
-    } catch { if (attemptIncarnation === activeIncarnation.current) setSave({ state: "unconfirmed", message: "The pending provider write could not be confirmed. Retry the bound recovery attempt." }); }
+    } catch {
+      if (attemptIncarnation === activeIncarnation.current) {
+        setSave({ state: "unconfirmed", message: "The pending provider write could not be confirmed. Retry the bound recovery attempt." });
+        deliverUnconfirmedSettingsSave(input.onUnconfirmedSave, { actorId: input.actorId, commandId: keys.pending.commandId, kind: "provider-key" });
+      }
+    }
     finally { busy.current = false; }
     if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };

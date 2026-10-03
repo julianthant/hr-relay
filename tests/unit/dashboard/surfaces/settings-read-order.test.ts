@@ -7,7 +7,7 @@ import type { DashboardClient } from "../../../../src/dashboard/client/index.js"
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings-editor-model.js";
 import { useProviderKeys } from "../../../../src/dashboard/surfaces/settings-provider-model.js";
-import type { ConfirmedSettingsSave, DefinitiveSettingsRefusal } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
+import type { ConfirmedSettingsSave, DefinitiveSettingsRefusal, UnconfirmedSettingsSave } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../src/models/config/provider-keys.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "../../../support/fixtures/dashboard/fixture-settings.js";
@@ -203,6 +203,53 @@ it("ordinary server rejection emits a closed chip receipt without confirming a s
   } finally { host.remove(); }
 });
 
+it("ordinary authority uncertainty keeps exact retry and emits a closed unconfirmed receipt", async () => {
+  const onUnconfirmedSave = vi.fn<(receipt: UnconfirmedSettingsSave) => void>();
+  let commands = 0;
+  const client = { editableSettings: async () => fixtureSettingsDocument(),
+    applySettings: async (command: { commandId: string }) => { commands += 1; return { state: "rejected", commandId: command.commandId,
+      code: "authority-uncertain", message: "private server diagnostic" }; },
+    preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
+  } as unknown as DashboardClient;
+  let editor: ReturnType<typeof useEditableSettings> | undefined;
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onUnconfirmedSave }); return null; }
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
+    await act(async () => { editor?.update("actor.label", "retained"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    assert.equal(editor?.save.state, "unconfirmed");
+    assert.equal(editor?.locked, true);
+    assert.equal(editor?.dirtyCount, 1);
+    assert.deepEqual(onUnconfirmedSave.mock.calls[0]?.[0], { actorId: "local-operator", commandId: onUnconfirmedSave.mock.calls[0]?.[0].commandId, kind: "ordinary" });
+    assert.equal(JSON.stringify(onUnconfirmedSave.mock.calls).includes("private server diagnostic"), false);
+    await act(async () => editor?.retry());
+    assert.equal(commands, 2);
+    assert.equal(onUnconfirmedSave.mock.calls[1]?.[0].commandId, onUnconfirmedSave.mock.calls[0]?.[0].commandId);
+  } finally { host.remove(); }
+});
+
+it("ordinary post-dispatch unknown emits no result-text claim and preserves recovery", async () => {
+  const onUnconfirmedSave = vi.fn<(receipt: UnconfirmedSettingsSave) => void>();
+  const client = { editableSettings: async () => fixtureSettingsDocument(),
+    applySettings: async () => { throw new Error("private transport diagnostic"); },
+    preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
+  } as unknown as DashboardClient;
+  let editor: ReturnType<typeof useEditableSettings> | undefined;
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onUnconfirmedSave }); return null; }
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
+    await act(async () => { editor?.update("actor.label", "retained"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    assert.equal(editor?.save.state, "unconfirmed");
+    assert.equal(editor?.locked, true);
+    assert.equal(editor?.dirtyCount, 1);
+    assert.equal(onUnconfirmedSave.mock.calls.length, 1);
+    assert.equal(JSON.stringify(onUnconfirmedSave.mock.calls).includes("private transport diagnostic"), false);
+  } finally { host.remove(); }
+});
+
 it("keeps a superseded provider draft unlocked and never resubmits it", async () => {
   const initial = EditableSettingsWireSchema.parse({ ...fixtureSettingsDocument(), providerKeys: {
     state: "available", providerSchemaHash: PROVIDER_KEYS_SCHEMA_HASH, revision: 1, sourceVersionToken: A,
@@ -242,6 +289,7 @@ it("keeps an exact attempt uncertain when its old client result settles after A 
   const accepted = fixtureSettingsDocument({ actor: { label: "accepted" } }, 2);
   let submissions = 0;
   let attemptId = "";
+  const onUnconfirmedSave = vi.fn<(receipt: UnconfirmedSettingsSave) => void>();
   const clientA = { editableSettings: async () => fixtureSettingsDocument(),
     applySettings: async (command: { commandId: string }) => { submissions += 1; attemptId = command.commandId; return oldResult.promise; },
     preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
@@ -250,7 +298,7 @@ it("keeps an exact attempt uncertain when its old client result settles after A 
     preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
   } as unknown as DashboardClient;
   let editor: ReturnType<typeof useEditableSettings> | undefined;
-  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A }); return null; }
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onUnconfirmedSave }); return null; }
   const host = document.createElement("div"); document.body.append(host);
   const render = async (client: DashboardClient) => act(async () => {
     if (root === undefined) root = createRoot(host);
@@ -269,5 +317,6 @@ it("keeps an exact attempt uncertain when its old client result settles after A 
     assert.equal(editor?.save.state, "unconfirmed");
     assert.equal(editor?.dirtyCount, 1);
     assert.equal(editor?.editor.state, "loaded");
+    assert.equal(onUnconfirmedSave.mock.calls.length, 0);
   } finally { host.remove(); }
 });
