@@ -7,6 +7,7 @@ import { compositeEventStreamBody } from "../../../../src/backend/transports/htt
 import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
+import type { EventStreamFileCursor } from "../../../../src/backend/storage/events/jsonl-streams.js";
 import type { RunLogTail } from "../../../../src/backend/logs/run-log-stream.js";
 
 const RUN = "11111111-1111-4111-8111-111111111111";
@@ -201,6 +202,92 @@ describe("confirmed run log composite stream", () => {
     isolated.hub.poll();
     assert.equal(isolated.hub.stats().ordinal, 1);
     stale.close(); fresh.close(); isolated.hub.close();
+  });
+
+  it("uses one authority-scoped snapshot, bounded tail batches and no idle parse or dispatch", async () => {
+    const listeners: Array<(change: RunQueueProjectionChange) => void> = [];
+    const projection = {
+      onChange(listener: (change: RunQueueProjectionChange) => void) { listeners.push(listener); return () => {}; },
+      cursor: () => "pc:1", generation: () => 1,
+      buildDashboardDayWire: () => { throw new Error("unexpected-dashboard-day-snapshot"); },
+    } as unknown as RunQueueProjection;
+    const authority = { envelope: { runId: RUN, traceId: "fpo-120000-0002",
+      contractFingerprint: HASH, attempt: 1 } } as RunRecord;
+    const firstCursor = new Map<string, EventStreamFileCursor>([
+      ["notes/onboarding/2026-10-02.jsonl", { bytesConsumed: 64, linesConsumed: 2 }],
+    ]);
+    const secondCursor = new Map<string, EventStreamFileCursor>([
+      ["notes/onboarding/2026-10-02.jsonl", { bytesConsumed: 96, linesConsumed: 3 }],
+    ]);
+    const emptyCursor = new Map<string, EventStreamFileCursor>();
+    const tails: RunLogTail[] = [
+      { events: [], cursors: emptyCursor, pruned: false, parsedLines: 0, bytesRead: 0, hasMore: false },
+      { events: [], cursors: emptyCursor, pruned: false, parsedLines: 0, bytesRead: 0, hasMore: false },
+      { events: [event("stream-a", 1), event("stream-b", 1)], cursors: firstCursor,
+        pruned: false, parsedLines: 2, bytesRead: 64, hasMore: true },
+      { events: [event("stream-a", 2)], cursors: secondCursor,
+        pruned: false, parsedLines: 1, bytesRead: 32, hasMore: false },
+      { events: [], cursors: secondCursor, pruned: false, parsedLines: 0, bytesRead: 0, hasMore: false },
+    ];
+    const tailInputs: ReadonlyMap<string, EventStreamFileCursor>[] = [];
+    const snapshots: RunRecord[] = [];
+    let tailCalls = 0;
+    let authorityReads = 0;
+    let dispatched = 0;
+    const hub = new RunLogsStreamHub({ projection, generation: () => GENERATION,
+      readRun: runId => {
+        authorityReads += 1;
+        return runId === RUN ? { disposition: "live", run: authority } : undefined;
+      },
+      store: {
+        tail(cursors) {
+          tailInputs.push(cursors);
+          const batch = tails[tailCalls];
+          if (batch === undefined) throw new Error("unexpected-run-log-tail-call");
+          tailCalls += 1;
+          return batch;
+        },
+        snapshot(run) {
+          snapshots.push(run);
+          return { events: [], hasEarlier: false, parsedLines: 5 };
+        },
+      } });
+
+    const connection = hub.connect({ runId: RUN });
+    assert.equal(connection.initial.filter(item => item.source === "run-logs" && item.type === "snapshot").length, 1);
+    assert.deepEqual(snapshots, [authority]);
+    assert.equal(tailCalls, 2);
+    assert.equal(authorityReads, 2);
+    assert.deepEqual([hub.stats().parsedLines, hub.stats().bytesRead, hub.stats().ordinal], [5, 0, 0]);
+
+    hub.poll();
+    assert.deepEqual([tailCalls, authorityReads], [3, 3]);
+    assert.equal(tailInputs[2]?.size, 0);
+    assert.equal(hub.stats().recovering, true);
+    const firstBatch = await Promise.all([connection.next(), connection.next()]);
+    assert.deepEqual(firstBatch.map(item => item?.source === "run-logs" ? item.event.eventId : undefined),
+      ["stream-a/1", "stream-b/1"]);
+    dispatched += firstBatch.filter(item => item?.source === "run-logs").length;
+    assert.deepEqual([hub.stats().parsedLines, hub.stats().bytesRead, hub.stats().ordinal], [7, 64, 2]);
+
+    hub.poll();
+    assert.deepEqual([tailCalls, authorityReads], [4, 4]);
+    assert.equal(tailInputs[3], firstCursor);
+    assert.equal(hub.stats().recovering, false);
+    const secondBatch = await connection.next();
+    assert.equal(secondBatch?.source === "run-logs" ? secondBatch.event.eventId : undefined, "stream-a/2");
+    dispatched += secondBatch?.source === "run-logs" ? 1 : 0;
+    assert.deepEqual([hub.stats().parsedLines, hub.stats().bytesRead, hub.stats().ordinal], [8, 96, 3]);
+
+    hub.poll();
+    assert.deepEqual([tailCalls, authorityReads], [5, 5]);
+    assert.equal(tailInputs[4], secondCursor);
+    assert.deepEqual([hub.stats().parsedLines, hub.stats().bytesRead, hub.stats().ordinal], [8, 96, 3]);
+    assert.deepEqual([snapshots.length, dispatched], [1, 3]);
+    assert.ok(tails.every(batch => batch.events.length <= 2 && batch.parsedLines <= 2
+      && batch.bytesRead <= 256 * 1024));
+    connection.close();
+    hub.close();
   });
 
   it("refuses a sequence gap and conflicting replay while preserving a distinct restart stream", () => {
