@@ -198,8 +198,8 @@ export function SettingsPage({
 }) {
   const { toast, dismiss } = useToasts();
   const settingsClient = useSettingsClient();
-  const feedback = useMemo(() => createSettingsSaveFeedback((title, description) =>
-    toast({ tone: "success", title, description }), dismiss), [toast, dismiss]);
+  const feedback = useMemo(() => createSettingsSaveFeedback((tone, title, description) =>
+    toast({ tone, title, description }), dismiss), [toast, dismiss]);
   const feedbackScope = useRef({ actorId, client: settingsClient, version: 0, active: true });
   if (feedbackScope.current.actorId !== actorId || feedbackScope.current.client !== settingsClient) {
     feedbackScope.current = { actorId, client: settingsClient, version: feedbackScope.current.version + 1, active: true };
@@ -214,7 +214,11 @@ export function SettingsPage({
     if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
     feedback.publish(receipt, actorId);
   }, [actorId, feedback, feedbackVersion]);
-  const editor = useEditableSettings({ actorId, descriptorFingerprint, onConfirmedSave });
+  const onDefinitiveRefusal = useCallback((receipt: Parameters<typeof feedback.publishRefusal>[0]) => {
+    if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
+    feedback.publishRefusal(receipt, actorId);
+  }, [actorId, feedback, feedbackVersion]);
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onConfirmedSave, onDefinitiveRefusal });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);

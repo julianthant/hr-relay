@@ -38,14 +38,32 @@ it("deduplicates control outcomes per command and scope and dismisses obsolete c
 
 it("settings save chips carry only closed save facts, and adapter failures do not change confirmation", () => {
   const emitted: string[] = []; const dismissed: string[] = [];
-  const feed = createSettingsSaveFeedback((title, description) => { emitted.push(`${title}: ${description}`); return String(emitted.length); }, id => dismissed.push(id));
+  const feed = createSettingsSaveFeedback((tone, title, description) => { emitted.push(`${tone}: ${title}: ${description}`); return String(emitted.length); }, id => dismissed.push(id));
   for (const kind of ["ordinary", "protected", "provider-key"] as const) {
     assert.equal(feed.publish({ actorId: "actor", commandId, kind, replayed: false }, "actor"), "delivered");
     assert.equal(feed.publish({ actorId: "actor", commandId, kind, replayed: false }, "actor"), "duplicate");
   }
-  assert.deepEqual(emitted, ["Saved: Settings saved.", "Saved: Credential settings saved.", "Saved: Provider keys saved."]);
+  assert.deepEqual(emitted, ["success: Saved: Settings saved.", "success: Saved: Credential settings saved.", "success: Saved: Provider keys saved."]);
   assert.equal(feed.publish({ actorId: "other", commandId, kind: "ordinary", replayed: false }, "actor"), "stale");
   feed.reset(); assert.deepEqual(dismissed, ["1", "2", "3"]);
   const failing = createSettingsSaveFeedback(() => { throw new Error("toast failed"); }, () => {});
   assert.equal(failing.publish({ actorId: "actor", commandId, kind: "ordinary", replayed: true }, "actor"), "delivery-failed");
+});
+
+it("settings server refusals use persistent danger chips, distinct command outcomes and scope", () => {
+  const emitted: string[] = []; const dismissed: string[] = [];
+  const feed = createSettingsSaveFeedback((tone, title, description) => { emitted.push(`${tone}: ${title}: ${description}`); return String(emitted.length); }, id => dismissed.push(id));
+  for (const kind of ["ordinary", "protected", "provider-key"] as const) {
+    assert.equal(feed.publishRefusal({ actorId: "actor", commandId, kind, outcome: "refused" }, "actor"), "delivered");
+    assert.equal(feed.publishRefusal({ actorId: "actor", commandId, kind, outcome: "refused" }, "actor"), "duplicate");
+    assert.equal(feed.publishRefusal({ actorId: "actor", commandId, kind, outcome: "conflict" }, "actor"), "delivered");
+  }
+  assert.equal(feed.publishRefusal({ actorId: "other", commandId, kind: "ordinary", outcome: "refused" }, "actor"), "stale");
+  assert.equal(emitted.length, 6);
+  assert.ok(emitted.every(item => item.startsWith("danger:")));
+  assert.ok(emitted.some(item => item.includes("Settings not saved")));
+  assert.ok(emitted.some(item => item.includes("Provider keys changed")));
+  feed.reset(); assert.deepEqual(dismissed, ["1", "2", "3", "4", "5", "6"]);
+  const failing = createSettingsSaveFeedback(() => { throw new Error("toast failed"); }, () => {});
+  assert.equal(failing.publishRefusal({ actorId: "actor", commandId, kind: "ordinary", outcome: "refused" }, "actor"), "delivery-failed");
 });

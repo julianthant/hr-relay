@@ -11,14 +11,14 @@ import { useProviderKeys } from "./settings-provider-model.js";
 import { useStorageRelocation } from "./settings-relocation-model.js";
 import { beforeEffectRefusal, checkedSettingsResult, ordinaryReadbackState, settingsRefusal, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { coupledSettingsLeaves, draftError, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
-import type { ConfirmedSettingsSave } from "./settings-save-feedback-model.js";
+import { deliverDefinitiveSettingsRefusal, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal } from "./settings-save-feedback-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
 export type { SettingsSaveState } from "./settings-attempt-model.js";
 export type { PreflightRerunState } from "./settings-preflight-model.js";
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
-export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void }>) {
+export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void; onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void }>) {
   const client = useSettingsClient();
   const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
   const activeIncarnation = useRef(incarnation);
@@ -65,8 +65,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     void refresh().catch((error: unknown) => { if (active && error instanceof Error && error.message !== "settings-read-superseded" && current.current === undefined) setEditor({ state: "failed", message: "Settings could not be read. Try again." }); });
     return () => { active = false; readGeneration.current += 1; };
   }, [refresh]);
-  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave });
-  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave });
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave, onDefinitiveRefusal: input.onDefinitiveRefusal });
+  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave, onDefinitiveRefusal: input.onDefinitiveRefusal });
   const relocationEditor = useStorageRelocation({ actorId: input.actorId });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -118,13 +118,17 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       if (attemptIncarnation !== activeIncarnation.current) return;
       if (result.state === "conflict") {
         pending.current = undefined;
-        try { await refresh(); setSave({ state: "conflict", message: "Settings changed. Current values are refreshed beside your retained edit. Review them before retrying." }); }
-        catch { setSave({ state: "conflict", message: "Settings changed, but current values could not be read. Refresh before retrying the retained edit." }); }
+        try { await refresh(); if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Settings changed. Current values are refreshed beside your retained edit. Review them before retrying." }); }
+        catch { if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Settings changed, but current values could not be read. Refresh before retrying the retained edit." }); }
+        deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "ordinary", outcome: "conflict" });
         return;
       }
       if (result.state === "rejected") {
         if (!uncertainSettingsCode(result.code)) pending.current = undefined;
-        setSave({ state: uncertainSettingsCode(result.code) ? "unconfirmed" : "refused", code: result.code, message: settingsRefusal(result.code) }); return;
+        const uncertain = uncertainSettingsCode(result.code);
+        setSave({ state: uncertain ? "unconfirmed" : "refused", ...(!uncertain && { feedback: "chip" as const }), code: result.code, message: settingsRefusal(result.code) });
+        if (!uncertain) deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "ordinary", outcome: "refused" });
+        return;
       }
       if (result.state !== "applied" && result.state !== "already-applied") throw new Error("settings-result-unconfirmed");
       const document = await refresh();

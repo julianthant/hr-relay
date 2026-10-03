@@ -13,7 +13,7 @@ export type SettingsSaveState =
   | { readonly state: "idle" }
   | { readonly state: "saving" }
   | { readonly state: "applied"; readonly replayed: boolean }
-  | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string };
+  | { readonly state: "refused" | "conflict" | "unconfirmed"; readonly message: string; readonly code?: string; readonly feedback?: "chip" };
 export function checkedSettingsResult(command: SettingsAttempt, input: unknown): CommandResult {
   const result = CommandResultSchema.safeParse(input);
   if (!result.success || result.data.commandId !== command.commandId || result.data.state === "confirmation-required") throw new Error("settings-result-unconfirmed");

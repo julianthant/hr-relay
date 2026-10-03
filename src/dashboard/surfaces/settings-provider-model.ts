@@ -7,7 +7,7 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, settingsRefusal, type SettingsSaveState } from "./settings-attempt-model.js";
-import type { ConfirmedSettingsSave } from "./settings-save-feedback-model.js";
+import { deliverDefinitiveSettingsRefusal, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal } from "./settings-save-feedback-model.js";
 
 type Slot = (typeof ProviderKeySlotSchema.options)[number];
 type DraftOperation = { readonly kind: "set"; readonly raw: string; readonly added?: true } | { readonly kind: "clear" };
@@ -54,6 +54,7 @@ export function useProviderKeys(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined;
   refresh: () => Promise<EditableSettingsWire>;
   onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void;
+  onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void;
 }) {
   const client = useSettingsClient();
   const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
@@ -112,13 +113,16 @@ export function useProviderKeys(input: {
       if (result.commandId !== command.commandId) throw new Error("provider-result-identity");
       if (result.state === "conflict") {
         pending.current = undefined;
-        try { await input.refresh(); setSave({ state: "conflict", message: "Provider keys changed. Review the refreshed saved values before retrying your retained edit." }); }
-        catch { setSave({ state: "conflict", message: "Provider keys changed, but saved values could not be read. Refresh before retrying." }); }
+        try { await input.refresh(); if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Provider keys changed. Review the refreshed saved values before retrying your retained edit." }); }
+        catch { if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Provider keys changed, but saved values could not be read. Refresh before retrying." }); }
+        deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "provider-key", outcome: "conflict" });
         return;
       }
       if (result.state === "rejected") {
         if (result.code !== "authority-uncertain" && result.code !== "authority-unjournaled") pending.current = undefined;
-        setSave({ state: pending.current === undefined ? "refused" : "unconfirmed", code: result.code, message: settingsRefusal(result.code) });
+        const uncertain = pending.current !== undefined;
+        setSave({ state: uncertain ? "unconfirmed" : "refused", ...(!uncertain && { feedback: "chip" as const }), code: result.code, message: settingsRefusal(result.code) });
+        if (!uncertain) deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "provider-key", outcome: "refused" });
         return;
       }
       const document = await input.refresh();

@@ -7,7 +7,7 @@ import type { DashboardClient } from "../../../../src/dashboard/client/index.js"
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings-editor-model.js";
 import { useProviderKeys } from "../../../../src/dashboard/surfaces/settings-provider-model.js";
-import type { ConfirmedSettingsSave } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
+import type { ConfirmedSettingsSave, DefinitiveSettingsRefusal } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../src/models/config/provider-keys.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "../../../support/fixtures/dashboard/fixture-settings.js";
@@ -100,6 +100,7 @@ it("keeps a superseded ordinary draft unlocked and never resubmits it", async ()
   let reads = 0;
   let submissions = 0;
   const onConfirmedSave = vi.fn<(receipt: ConfirmedSettingsSave) => void>();
+  const onDefinitiveRefusal = vi.fn<(receipt: DefinitiveSettingsRefusal) => void>();
   const client = { editableSettings: async () => ++reads === 1 ? fixtureSettingsDocument() : later,
     applySettings: async (command: { commandId: string }) => {
       submissions += 1;
@@ -108,7 +109,7 @@ it("keeps a superseded ordinary draft unlocked and never resubmits it", async ()
     }, preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
   } as unknown as DashboardClient;
   let editor: ReturnType<typeof useEditableSettings> | undefined;
-  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onConfirmedSave }); return null; }
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onConfirmedSave, onDefinitiveRefusal }); return null; }
   const host = document.createElement("div"); document.body.append(host);
   try {
     await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
@@ -119,6 +120,7 @@ it("keeps a superseded ordinary draft unlocked and never resubmits it", async ()
     assert.equal(editor?.locked, false);
     assert.equal(editor?.dirtyCount, 1);
     assert.equal(onConfirmedSave.mock.calls.length, 0);
+    assert.equal(onDefinitiveRefusal.mock.calls.length, 0);
     if (editor?.editor.state !== "loaded") throw new Error("settings editor did not load");
     assert.equal(editor.editor.document.revision, 3);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 850)); });
@@ -147,6 +149,57 @@ it("emits one ordinary save receipt only after matching result and persisted rea
     assert.equal(onConfirmedSave.mock.calls.length, 1);
     assert.deepEqual(onConfirmedSave.mock.calls[0]?.[0], { actorId: "local-operator", commandId: onConfirmedSave.mock.calls[0]?.[0].commandId,
       kind: "ordinary", replayed: false });
+  } finally { host.remove(); }
+});
+
+it("ordinary server revision conflict emits one chip receipt after refresh and keeps the edit", async () => {
+  const current = fixtureSettingsDocument({ actor: { label: "other" } }, 2);
+  let reads = 0;
+  const onDefinitiveRefusal = vi.fn<(receipt: DefinitiveSettingsRefusal) => void>();
+  const client = { editableSettings: async () => ++reads === 1 ? fixtureSettingsDocument() : current,
+    applySettings: async (command: { commandId: string }) => ({ state: "conflict", commandId: command.commandId,
+      currentVersion: 2, message: "private server diagnostic" }),
+    preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
+  } as unknown as DashboardClient;
+  let editor: ReturnType<typeof useEditableSettings> | undefined;
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onDefinitiveRefusal }); return null; }
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
+    await act(async () => { editor?.update("actor.label", "retained"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    assert.equal(editor?.save.state, "conflict");
+    assert.equal(editor?.save.state === "conflict" ? editor.save.feedback : undefined, "chip");
+    assert.equal(editor?.dirtyCount, 1);
+    assert.equal(editor?.editor.state, "loaded");
+    assert.deepEqual(onDefinitiveRefusal.mock.calls[0]?.[0], { actorId: "local-operator", commandId: onDefinitiveRefusal.mock.calls[0]?.[0].commandId,
+      kind: "ordinary", outcome: "conflict" });
+    assert.equal(JSON.stringify(onDefinitiveRefusal.mock.calls).includes("private server diagnostic"), false);
+  } finally { host.remove(); }
+});
+
+it("ordinary server rejection emits a closed chip receipt without confirming a save", async () => {
+  const onDefinitiveRefusal = vi.fn<(receipt: DefinitiveSettingsRefusal) => void>(() => { throw new Error("toast delivery failed"); });
+  const onConfirmedSave = vi.fn<(receipt: ConfirmedSettingsSave) => void>();
+  const client = { editableSettings: async () => fixtureSettingsDocument(),
+    applySettings: async (command: { commandId: string }) => ({ state: "rejected", commandId: command.commandId,
+      code: "not-editable", message: "private server diagnostic" }),
+    preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
+  } as unknown as DashboardClient;
+  let editor: ReturnType<typeof useEditableSettings> | undefined;
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onDefinitiveRefusal, onConfirmedSave }); return null; }
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
+    await act(async () => { editor?.update("actor.label", "retained"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    assert.equal(editor?.save.state, "refused");
+    assert.equal(editor?.save.state === "refused" ? editor.save.feedback : undefined, "chip");
+    assert.equal(editor?.dirtyCount, 1);
+    assert.equal(onConfirmedSave.mock.calls.length, 0);
+    assert.deepEqual(onDefinitiveRefusal.mock.calls[0]?.[0], { actorId: "local-operator", commandId: onDefinitiveRefusal.mock.calls[0]?.[0].commandId,
+      kind: "ordinary", outcome: "refused" });
+    assert.equal(JSON.stringify(onDefinitiveRefusal.mock.calls).includes("private server diagnostic"), false);
   } finally { host.remove(); }
 });
 

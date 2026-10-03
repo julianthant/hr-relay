@@ -7,7 +7,7 @@ import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSett
 import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
-import type { ConfirmedSettingsSave } from "./settings-save-feedback-model.js";
+import { deliverDefinitiveSettingsRefusal, type ConfirmedSettingsSave, type DefinitiveSettingsRefusal } from "./settings-save-feedback-model.js";
 
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
@@ -17,6 +17,7 @@ function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
 export function useProtectedSettings(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>;
   onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void;
+  onDefinitiveRefusal?: (receipt: DefinitiveSettingsRefusal) => void;
 }) {
   const client = useSettingsClient();
   const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
@@ -66,14 +67,18 @@ export function useProtectedSettings(input: {
       const settled = settleCommandResult(result);
       if (settled.kind === "refused" && settled.reason === "conflict") {
         pending.current = undefined;
-        try { await input.refresh(); setSave({ state: "conflict", message: "Credentials changed. Current presence is refreshed beside your retained edit. Review it before retrying." }); }
-        catch { setSave({ state: "conflict", message: "Credentials changed, but current presence could not be read. Refresh before retrying the retained edit." }); }
+        try { await input.refresh(); if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Credentials changed. Current presence is refreshed beside your retained edit. Review it before retrying." }); }
+        catch { if (attemptIncarnation !== activeIncarnation.current) return; setSave({ state: "conflict", feedback: "chip", message: "Credentials changed, but current presence could not be read. Refresh before retrying the retained edit." }); }
+        deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "protected", outcome: "conflict" });
         return;
       }
       if (settled.kind === "refused") {
         if (settled.reason !== "rejected") throw new Error("settings-result-unconfirmed");
         if (!uncertainSettingsCode(settled.code)) pending.current = undefined;
-        setSave({ state: uncertainSettingsCode(settled.code) ? "unconfirmed" : "refused", code: settled.code, message: settingsRefusal(settled.code) }); return;
+        const uncertain = uncertainSettingsCode(settled.code);
+        setSave({ state: uncertain ? "unconfirmed" : "refused", ...(!uncertain && { feedback: "chip" as const }), code: settled.code, message: settingsRefusal(settled.code) });
+        if (!uncertain) deliverDefinitiveSettingsRefusal(input.onDefinitiveRefusal, { actorId: command.requestedBy, commandId: command.commandId, kind: "protected", outcome: "refused" });
+        return;
       }
       const document = await input.refresh();
       if (attemptIncarnation !== activeIncarnation.current) return;
