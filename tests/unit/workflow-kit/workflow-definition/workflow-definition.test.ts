@@ -8,6 +8,7 @@ import {
   defineWorkflow,
   workflowDefinitionOf,
   workflowEntryKinds,
+  workflowExplorerDeclaration,
 } from "../../../../src/workflow-kit/workflow-definition.js";
 import type { AnyWorkflowEntry, WorkflowAuthor, WorkflowDefinitionSpec } from "../../../../src/workflow-kit/workflow-definition.js";
 import { descriptorRuntimeNodes } from "../../../../src/workflow-kit/workflow.js";
@@ -65,6 +66,25 @@ function fixtureWorkflow(id: string, steps: (author: Author) => Authored) {
 }
 
 describe("workflow definition compiler", () => {
+  it("exports the compiled ordered tuple product and refuses an uncompiled definition", () => {
+    const declaration = workflowExplorerDeclaration(personLookupWorkflow);
+    expect(declaration.map((group) => [group.key, group.label, group.entries.map((entry) => ({
+      id: entry.id, nodeIds: entry.nodeIds.map(String), dependsOn: entry.dependsOn.map(String),
+    }))])).toEqual([
+      ["searching", "Searching", [{ id: "searching", nodeIds: ["searching"], dependsOn: [] }]],
+      ["cross-verify", "Cross Verification", [{ id: "cross-verify", nodeIds: ["cross-verify"], dependsOn: ["searching"] }]],
+      ["active-status", "Active Status", [{ id: "active-status", nodeIds: ["active-status"], dependsOn: ["searching", "cross-verify"] }]],
+      ["crm-dates", "CRM Dates", [{ id: "crm-dates", nodeIds: ["crm-dates"], dependsOn: ["searching"] }]],
+    ]);
+    expect(Object.isFrozen(declaration)).toBe(true);
+    expect(Object.isFrozen(declaration[0]?.entries[0]?.nodeIds)).toBe(true);
+    const uncompiled = fixtureWorkflow("uncompiled-explorer", ({ task, result }) => {
+      const read = task({ id: "read", contract: SearchPersonOrg, replay: "checkpoint" }, [], lookupInput);
+      return { steps: [[{ key: "read", label: "Read" }, [read]]], result: result(z.string(), [], () => "done") };
+    });
+    expect(() => workflowExplorerDeclaration(uncompiled)).toThrow(/has no compiled definition/u);
+  });
+
   it("derives execution order and edges from entry references while preserving tuple presentation order", () => {
     const graph = descriptorRuntimeNodes(personLookupDescriptor);
 

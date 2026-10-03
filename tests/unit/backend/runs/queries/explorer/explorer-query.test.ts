@@ -65,6 +65,20 @@ function separationsExplorerEntry() {
   return entry;
 }
 
+describe("compiled Explorer declaration binding", () => {
+  it("refuses a different definition beside the descriptor and names a descriptor without one", () => {
+    const deps = explorerQueryDeps(CLOCK, HASH);
+    const first = deps.modules[0];
+    const second = deps.modules[1];
+    assert.ok(first?.definition && second?.definition);
+    assert.throws(() => buildWorkflowExplorer({ ...deps, modules: [{ ...first, definition: second.definition }, ...deps.modules.slice(1)] }),
+      /Explorer definition is not the descriptor's compiled source/u);
+    const unavailable = buildWorkflowExplorer({ ...deps, modules: [{ ...first, definition: undefined }, ...deps.modules.slice(1)] });
+    assert.deepEqual(unavailable.workflows[0]?.definitionPreview,
+      { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" });
+  });
+});
+
 function syntheticDelegationExplorerWire() {
   const input = z.strictObject({
     route: z.enum(["single", "batch", "background"]),

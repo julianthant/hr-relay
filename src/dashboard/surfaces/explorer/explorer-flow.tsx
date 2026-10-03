@@ -105,7 +105,7 @@ export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor
             </li>;
           })}
         </ol>
-        <p className={`ml-10 mt-3 border-t border-ui-stroke pt-4 text-body ${stop === undefined ? "text-ui-secondary" : "text-ui-danger"}`}>{stop === undefined ? completion : "This preview path stops before downstream writes."}</p>
+        <p className={`ml-10 mt-3 border-t border-ui-stroke pt-4 text-body ${stop === undefined ? "text-ui-secondary" : "text-ui-danger"}`}>{stop === undefined ? completion : "This preview path stops before downstream writes. No workflow was run."}</p>
       </div>
     </div>
     {source && <ExplorerSource key={`${source.step.number}-${source.field.id}`} label={source.field.label} destination={source.field.destination ?? `${source.step.system ?? "System unavailable"} · ${source.form ?? `Step ${source.step.number}`}`} source={sourceFor(source.field, source.step.number)} onClose={closeSource} onJump={(step, fieldId) => {

@@ -5,34 +5,27 @@ import { Banner, Button, EmptyState, Spinner, TakeoverFrame } from "../ds/ui.js"
 import { useExplorerClient as useDashboardClient } from "../state/explorer-client.js";
 import { observeAsyncResource, LOADING, type AsyncResource } from "../state/async-resource.js";
 import { ExplorerTimeline } from "./explorer/explorer-flow.js";
-import { DEFAULT_SCENARIO, type FlowStep, type PreviewScenario } from "./explorer/explorer-flow-model.js";
+import { DEFAULT_SCENARIO, type PreviewScenario } from "./explorer/explorer-flow-model.js";
+import { buildEmergencyContactMock, buildOnboardingMock, DEFAULT_MOCK_SCENARIO,
+  EXPLORER_MOCK_WORKFLOWS, mockFieldSource, updateMockScenario, type MockScenario } from "./explorer/explorer-mock-fixtures.js";
 import { registeredExplorerPreview } from "./explorer/explorer-preview-model.js";
-
-const FICTIONAL = [
-  { id: "preview-onboarding", title: "Onboarding", count: 1,
-    summary: "Fictional onboarding example for exploring the interface.",
-    steps: [{ number: 1, title: "Fictional onboarding preview", parts: [
-      { kind: "note", text: "This example has no registered definition or executable workflow." },
-    ] }] },
-  { id: "preview-emergency-contact", title: "Emergency Contact", count: 1,
-    summary: "Fictional emergency contact example for exploring the interface.",
-    steps: [{ number: 1, title: "Fictional emergency contact preview", parts: [
-      { kind: "note", text: "This example has no registered definition or executable workflow." },
-    ] }] },
-] as const satisfies readonly { id: string; title: string; count: number; summary: string; steps: readonly FlowStep[] }[];
+const FICTIONAL = EXPLORER_MOCK_WORKFLOWS.filter((workflow) => workflow.id !== "fixture-separations");
 
 function SelectedPreview({ wire, workflowId, onWorkflow, onVersionRegistry }: {
   wire: WorkflowExplorerWire; workflowId: string; onWorkflow: (id: string) => void; onVersionRegistry: () => void;
 }) {
   const [choices, setChoices] = useState<Record<string, string>>({});
+  const [mockScenario, setMockScenario] = useState<MockScenario>(DEFAULT_MOCK_SCENARIO);
   const [scenario, setScenario] = useState<PreviewScenario>(DEFAULT_SCENARIO);
   const registered = wire.workflows.find((item) => String(item.id) === workflowId);
   const fictional = FICTIONAL.find((item) => item.id === workflowId);
   const preview = useMemo(() => registered?.definitionPreview.state === "compiled"
     ? registeredExplorerPreview(registered, choices) : undefined, [registered, choices]);
+  const mock = fictional?.id === "fixture-onboarding" ? buildOnboardingMock(mockScenario)
+    : fictional?.id === "fixture-emergency-contact" ? buildEmergencyContactMock(mockScenario) : undefined;
   const workflows = [
     ...wire.workflows.map((item) => ({ id: String(item.id), title: item.label, count: item.definitionPreview.state === "compiled" ? item.definitionPreview.groups.length : 0 })),
-    ...FICTIONAL.map(({ id, title, count }) => ({ id, title, count })),
+    ...FICTIONAL,
   ];
   if (registered === undefined && fictional === undefined) {
     return <TakeoverFrame label="Workflow explorer preview" className="ui-theme-scope bg-ui-canvas p-5">
@@ -54,19 +47,22 @@ function SelectedPreview({ wire, workflowId, onWorkflow, onVersionRegistry }: {
   }
   return <ExplorerTimeline
     title={preview?.title ?? fictional!.title}
-    steps={preview?.steps ?? fictional!.steps}
+    steps={preview?.steps ?? mock!.steps}
     scenario={scenario}
     onScenario={setScenario}
-    sourceFor={(field, step) => preview?.sources.get(`${step}:${field.id}`)}
+    sourceFor={(field, step) => preview?.sources.get(`${step}:${field.id}`) ?? (fictional ? mockFieldSource(field.source ?? "") : undefined)}
     onVersionRegistry={onVersionRegistry}
     workflows={workflows}
     workflowId={workflowId}
     onWorkflow={onWorkflow}
-    summary={preview?.summary ?? fictional!.summary}
-    completion={preview?.completion ?? "Fictional UI preview complete. No workflow was run."}
-    path={preview?.path}
-    onMockChoice={(id, value) => setChoices((current) => ({ ...current, [id]: value }))}
-    previewLabel={preview === undefined ? "Fictional UI preview" : "Definition preview"}
+    summary={preview?.summary ?? mock!.summary}
+    completion={preview?.completion ?? `${mock!.completion}. No workflow was run.`}
+    path={preview?.path ?? mock?.path}
+    stopAfter={mock?.stopAfter}
+    onMockChoice={(id, value) => fictional
+      ? setMockScenario((current) => updateMockScenario(current, id, value))
+      : setChoices((current) => ({ ...current, [id]: value }))}
+    previewLabel={preview === undefined ? "Mock data" : "Definition preview"}
     workflowClass={preview === undefined ? "Fictional workflow · UI preview" : "Registered workflow · hypothetical preview"}
   />;
 }
