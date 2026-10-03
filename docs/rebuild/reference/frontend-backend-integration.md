@@ -297,7 +297,7 @@ React client or rendered surface; `1g-spine` and `1i-spine` served them and `2g`
 - [x] one command route + one bulk arm — `POST /api/v1/commands`, `POST /api/v1/commands/bulk`
 - [x] one resumable stream with cursor resume — `subscriptions/dashboard-stream.ts`, `GET /events/v1`, `Last-Event-ID`
 - [x] the projector is fed by an offset-aware DISK TAIL, not an in-process hook (D218) — `compose.ts` seeds `rebuildFromJsonl()` and polls `ingestFromDisk()`
-- [ ] five of the six declared stream topics have no producer — only `dashboard-day` is ever emitted (§3.5)
+- [ ] `run-detail`, `run-review`, `run-people` and `artifact` remain unserved; D364 `run-logs` now has a producer with explicit health transitions and per-subscriber failure isolation (§3.5)
 - [ ] the artifact resource schemas have no route (§3.6)
 > 2026-08-20 | docs-cohesion frontend-backend-integration | verified against src/server/dashboard/{routes/api.ts,compose.ts,queries/**,projectors/**,subscriptions/**} and src/domain/dashboard/**; left: the unserved stream topics and the artifact route, both now stated in their own sections
 <!-- /roadmap-status -->
@@ -572,9 +572,10 @@ are served in the Context rail's Run data section (D345). The legacy
 Review records use stable record ids
 and record revisions so one page result can stream without replacing the whole run; People use
 stable member ids and pagination metadata for large groups. Receipt, failure, and archive evidence
-are immutable once finalized. **The per-run SUBSCRIPTION those three describe does not exist yet** —
-the stream emits one topic (§3.5), so a panel follows the day stream's `rowRevision` for its live
-key and re-reads the section (D257).
+are immutable once finalized. The backend now produces the `run-logs` composite topic (§3.5);
+`run-detail`, `run-review`, `run-people` and `artifact` remain unserved. Until Phase 5 connects the
+Logs result stream, the current renderer follows the day stream's `rowRevision` and re-reads the
+section (D257).
 
 ### 3.4 One command protocol
 
@@ -869,14 +870,29 @@ replacing the fresh snapshot a gap demands with a resume. Pinned by
 errors mid-read rejects `network`, a non-2xx stream response rejects `http`, and `close()` resolves),
 with `tests/unit/dashboard/use-dashboard-day.test.ts` for the hook's half.
 
-**One topic has a producer.** `TopicKeySchema` declares six (`dashboard-day`, `run-detail`,
-`run-logs`, `run-review`, `run-people`, `artifact`); the route's topic pattern admits only
-`dashboard-day:YYYY-MM-DD` and the hub emits only that topic. Every per-run subscription this
-section and §3.3 describe — Review record patches, note-page appends, artifact availability — is
-machinery with nothing on the other side of it. **That is the one unserved thing on this wire that
-is NOT declared** in `docs/rebuild/migrations/legacy/pending-wire-bindings.json`, and it should be; it is listed as to-build
-in §3's status block. What a panel does instead is D257: it follows the day stream's `rowRevision`
-for that run and re-reads the section, so a live thing has a live key.
+**The day stream remains day-only; D364 adds a separate run-logs producer.**
+`dashboard-day:YYYY-MM-DD` keeps its `pc` cursor, `Last-Event-ID` plus
+`Dashboard-Projection-Generation` resume pair, and pinned backfill-gap behavior. `run-logs:<runId>`
+and `dashboard-day:<day>,run-logs:<runId>` use `CompositeStreamEnvelope` over the same
+pull-driven `/events/v1` SSE bridge. Its `mc:<BFF-generation-UUID>:<canonical-topic-SHA256>:<safe-ordinal>`
+cursor is transport order, distinct from the dashboard `pc`, worker `workerStreamId/sequence`, and
+immutable Logs-page `lc` cursor.
+
+Composite replay requires the exact topic, generation and retained ring position; otherwise the
+server sends an id-less reset and a fresh snapshot. A snapshot cut includes buffered deltas without
+claiming an atomic cross-storage view. The Logs snapshot is capped at 200 confirmed actions and
+512 KiB; bounded rings and per-subscriber queues reset rather than silently drop state. Initial
+baseline frames have no SSE ids; only the final initial `live` health frame may establish the initial
+checkpoint. Once the baseline completes, subsequent non-reset frames are id-eligible, including
+`recovering` and `degraded` health. IDs track delivery watermarks: queued health watermarks are
+reminted at delivery, so they cannot skip queued data or regress after dequeue; resets are always
+id-less. Delivery order is retained before presentation sorting, with duplicate events identified
+by `eventId`. Each server delta carries one confirmed event; it does not refetch the whole Logs
+section. Injected parser/read/dispatch counters establish bounded policy only, not actual I/O,
+durability or latency. The current hub implements explicit health transitions (`live`, `recovering`,
+`degraded`) and per-subscriber failure isolation, covered by fake-port tests. `run-detail`,
+`run-review`, `run-people` and `artifact` remain unserved.
+Frontend Logs connection, results and capture association remain Phase 5.
 
 **What feeds the projector is a disk tail, not an in-process hook (D218).** A worker is a separate
 OS process, so `compose.ts` seeds the projection with `rebuildFromJsonl()` at boot — refusing to

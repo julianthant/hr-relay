@@ -2,7 +2,8 @@
 
 Status: Phase 1, its startup reconciliation prerequisite and Phase 2 are accepted locally on
 2026-10-01; the operator-approved layout polish is accepted locally on 2026-10-02.
-Phase 3 is accepted locally on 2026-10-02; Phases 4–5 remain proposed. This descriptive
+Phase 3 and Phase 4 are accepted locally on 2026-10-02;
+Phase 5 remains proposed. This descriptive
 supporting plan does not assign new roadmap task numbers, reopen accepted task checkboxes, or grant
 release/freeze/cutover admission. Roadmap recording and integration remain separate operator choices.
 
@@ -466,6 +467,23 @@ Record the exact shared contract at its existing reference owners and decision i
 
 ## Phase 4 — Connect ordered worker streams and incremental history
 
+**Status:** accepted locally on 2026-10-02 under the operator's Phase 4-only authorization.
+Entry: `9bbc323632784058fd1e7def7d72e47547f4935f`, branch `codex/logs-backend`, in the
+assigned continuation worktree. Accepted Phase 3 source `0dff920a102186b3218dbf549b79003b9f3e458e`
+and approved Logs UI `1211a24b81547ec2b7c6e27837c4d57c081d259e` are ancestors. The newer
+W0 presentation/selection and acceptance commits are preserved. Deployment ID:
+`logs-phase4-20261002`. Evidence owner:
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/`.
+Existing `docs/` owners and external evidence continue to replace the absent `agent_docs/` framework.
+No W1–W7 work, Phase 5, integration, push or cleanup is launched by this authorization.
+
+Accepted combined source candidate: `257ffefac39eaaa5cd77f05aeb0e7de58ee9c502`, including
+Logs repair `547141a03ef457d04c537438314c3b61f1c08ce5` and the narrowly admitted public-registry
+path prerequisite. Independent code/unit-quality review and focused verification pass the assigned
+surface; unchanged baseline failures and deferred complex proofs are recorded below.
+Concurrent W1 commits and its separately released Settings boot-read hunk in `compose.ts` are
+preserved and remain under W1 ownership.
+
 **Deliverable:** the shared facts have a persisted history path and a bounded, resumable live
 `run-logs` subscription, using the existing transport.
 
@@ -538,7 +556,7 @@ unrun checks and next phase prerequisite. Do not mark completion from a worker s
 | 2 — Backend modules and reviewed units | Accepted locally | Code candidate `2a1bad93b14b9b17bbccb7e69dc7974dfcf0e3f7`; exact mappings, focused checks and independent combined-candidate preservation verification below |
 | Layout polish — Approved final source/test homes | Accepted locally | `3e3a0a5c310905aa52d29616d26c6dee1e981605`; frozen code SHA-256 `a65ca56206aa238124e379b44f1ecb941fe17660abdffeaa24be2a6a50ab421f`; entry `7e237bd7` |
 | 3 — Confirmed action/step API | Accepted locally | Source `0dff920a102186b3218dbf549b79003b9f3e458e`; shared contract D364, focused checks and explicit proof limits below |
-| 4 — Ordered worker streams | Proposed | Requires Phase 3 |
+| 4 — Ordered worker streams | Accepted locally | Source `257ffefac39eaaa5cd77f05aeb0e7de58ee9c502`; ordered persistence adapters, bounded composite HTTP/SSE protocol and focused evidence below |
 | 5 — Approved Logs connection | Proposed | Requires Phase 4 |
 
 ### Phase 1 acceptance — 2026-10-01
@@ -1218,6 +1236,108 @@ Phase 4; frontend and capture connection remain Phase 5. No live/browser, persis
 durability, integration, complex, full coverage, parity or scenario proof was run or claimed.
 No push, merge, peer cleanup or next-phase launch is authorized by this acceptance. The peer's
 untracked `dashboard-surface-wiring.md` remains outside this task's ownership.
+
+### Phase 4 acceptance — 2026-10-02
+
+Accepted source candidate: `257ffefac39eaaa5cd77f05aeb0e7de58ee9c502`, branch
+`codex/logs-backend`, in the assigned continuation worktree. Entry `9bbc323632784058fd1e7def7d72e47547f4935f`,
+accepted Phase 3 and approved Logs UI remain ancestors. Newer W0 work and concurrent W1 commits,
+including `5db5a75793ce4b274234028ab3aada9550f491cd`, remain preserved. The only later change to
+the reviewed Logs composition blob is the separately released W1 Settings boot-read hunk; its
+ownership and acceptance remain with W1. This record covers only this supporting plan's Phase 4,
+deployment ID `logs-phase4-20261002`, using its existing documentation/evidence owners in place of
+the absent `agent_docs/` framework.
+
+The production writer stores strict optional v1 `confirmedAction` records in existing run-scoped
+NoteWire JSONL before exposing them. Worker UUID incarnations and positive sequences identify
+ordered logical streams. Frozen action/verifier/privacy bindings, exact run/attempt ownership,
+legacy absence, redaction and existing retention remain explicit. Immutable Archive Logs pages
+retain captured confirmed actions; old records and pre-v1 archives do not acquire invented facts.
+Production composition wires the writer, scoped incremental reader, Logs queries and subscription
+hub behind their ports.
+
+Run-only or selected day-plus-one-run subscriptions multiplex through the existing pull-driven
+HTTP/SSE bridge. The composite cursor binds BFF generation, canonical topic set and global delivery
+ordinal; worker sequence, day-only `pc` and immutable history `lc` remain distinct. Snapshot cuts,
+buffered deltas, delivery-order retention before presentation sorting and event-id deduplication
+support merge and resume. Generation/topic mismatch, expired replay, gaps and queue overflow
+reset with fresh snapshots. Initial baselines and resets have no SSE id; only final initial live
+health can establish the initial checkpoint. Subsequent non-reset frames are id-eligible, including
+recovering/degraded health, with health watermarks reminted at delivery. Bounded rings/queues,
+explicit health transitions, shutdown demand and per-subscriber authority/delivery isolation are
+covered by injected-port tests. Day-only projection resume and pinned backfill-gap semantics remain.
+
+The reader caps each tail batch at 256 KiB/200 lines; snapshot payloads retain at most 200 confirmed
+actions within 512 KiB. Fake-port counters demonstrate bounded batching, one authority read/tail
+probe per idle active poll, zero idle parsed bytes/records/deltas and no additional snapshot per
+delta. These are policy/work-count observations, not actual I/O, durability or latency evidence.
+There is no per-event whole-day rescan or full Logs section refetch in the implemented producer.
+
+Logical source commits include persistence/protocol `8eb148b910a2cff53a7167dbf53858a4a4e1e675`,
+delivery-order merge `69f8710176b2942b6cc8fc08ff112072230549bf`, ownership/archive/partial-tail
+repair `9e5c64ccb1ba81111d500f161a4d0cf7e6be7fcc`, retained fixture injection
+`d1a86bfecfe903ef8ed06a5e742d427f7db185f9`, explicit work counters
+`5e0f69ad19ceeec509321f5ee7b448e223c6859c`, and subscriber-health repair
+`547141a03ef457d04c537438314c3b61f1c08ce5`. Commit `529e42d9a2c04781e13109e9a73dd2ba98f98b29`
+restored accidentally staged peer Settings guards before W1's later authorized replacement.
+The final `257ffef` prerequisite changes only two public-registry module path constructors, preserving
+the exact tracked `config/test-data.json` path and existing failures while avoiding Vite's dynamic-URL
+asset rewrite. No config, private input, schema, guard or registry entry changed.
+
+The focused unit mapping is `tests/unit/backend/logs/{confirmed-action-api,confirmed-submit,
+confirmed-action-persistence,run-log-stream-store,archive-log-freeze,browser-action-drain}.test.ts`
+and `tests/unit/backend/transports/{run-log-tail,run-logs-stream,dashboard-wire}.test.ts`.
+The five persistence/store/archive/tail/stream files add or extend the new behavior coverage;
+the other four preserve the Phase 3 API, submit, drain and existing wire seams. Three retained
+integration fixtures received required hub injections for compilation; they were not executed.
+No test membership, assertion, floor or timeout was weakened or retired.
+
+| Focused command or receipt | Actual outcome |
+| --- | --- |
+| `npm run test --` and `npm run test:unit --` with the nine exact unit paths above | 9 files / 55 tests passed in each recorded invocation |
+| Scoped ESLint `--max-warnings 0` over 23 changed Logs TS paths | Passed, zero warnings |
+| Source-only dashboard wire-boundary and strict-boundary schema architecture selection | 2 files / 15 cases passed |
+| `npm run build:manifest:check` and `npm run stores:catalog:check` | Passed; final two path-reader files are not generator inputs, so unchanged-input receipts carry forward |
+| `npm run test:architecture -- tests/architecture/dashboard/wire-connectivity.test.ts -t 'keeps every wire mirror of a durable vocabulary member-for-member identical\|keeps the manifest itself parseable, unique, and non-empty of reasons'` | Standard runner collected 1 file; 2 selected cases passed / 49 skipped; no environment path override |
+| `npm exec -- eslint --max-warnings 0 src/backend/app/registries/test-target-registry.ts src/backend/app/registries/test-data.ts` | Passed, zero warnings |
+| Fresh `npm run typecheck` on final source | Exit 2; 72 baseline / 72 current diagnostics by path, TS code and normalized message, 0 added / 0 removed; red |
+
+The [focused verification report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/verification/final-547141a-verification-report.md)
+binds the 55 units, 15 static cases, lint and generated receipts to unchanged source hashes through
+W1's composition update. The [final prerequisite report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/verification/final-257-wire-report.md)
+adds the two selected static cases, scoped lint, independent same-path proof and fresh typecheck
+comparison on `257ffef`; its before/after receipts retain HEAD, branch, sources, runner and peer state.
+Independent [Logs code/unit-quality review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/review/candidate547141a-review.md)
+and [final prerequisite review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/review/final-257-prerequisite-verdict.md)
+pass the assigned surface. The final 25-path inventory digest is
+`a7762283a563bc9da86caefbabb76c08693b48f09830f7402e59bd25d3e1e9c4`; excluded W1 composition
+hunks are explicit, not reported as unchanged.
+
+The [roadmap attribution report](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/verification/final-257-roadmap-attribution-report-v2.md)
+establishes that the checked-in generated site omitted the already-committed Phase 3 D364 item in
+`task-contract.md`. Regeneration catches up that baseline item (`phase-1` 189/239 to 190/240) and
+the owned `p1-spine` run-logs status text; the four Phase 4 owner documents change no progress count.
+Independent scratch generation and immediate freshness checks pass, with identical owner-only
+and full-current output, including the concurrent W2 prose inputs. The local documentation commit
+may refresh exactly those derived changes; it does not accept or edit W2 work. The earlier report
+of a stale check after generation did not reproduce, and its missing raw log leaves that cause
+unknown.
+
+The additional no-secret-values guard remains red at 7 failed / 15 passed: two unchanged repository
+findings in peer `identity-approve-model.ts` and five synthetic exemption-fixture expectations,
+with entry/Phase 3/current attribution retained. No guard or allowlist was weakened. One ancillary
+pre-existing `wire-path-fix-path-proof.log` was overwritten by an executor and could not be recovered;
+its original contents are unknown. The uniquely named current replacement and recovery notice are
+in [the prerequisite receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/logs-backend-phase4/implementation/wire-path-fix-acceptance.txt).
+Neither the lost receipt nor its old filename supports a historical passing claim; source and
+required gate evidence remain available.
+
+Actual filesystem replay/retention, SQLite durability, application process notification, socket
+backpressure, browser/live HR, measured performance/latency, coverage, full-suite execution and
+complex-test design remain deferred for later operator review. Frontend Logs connection, result/capture
+presentation and Electron IPC remain outside this phase. This local acceptance grants no roadmap
+controlled-write/cutover admission, push, merge, peer cleanup or next-phase launch. Phase 5 has a
+verified local source prerequisite but still requires explicit operator launch.
 
 ## Prompts for fresh chats
 

@@ -17,13 +17,15 @@ execution/evidence: [W1](../plans/phase-3/dashboard-surface-wiring.md#w1--make-s
 complete frozen task invocations expose the exact `ctx.confirmed` API; published facts bind exact
 action, verifier, purpose, proof and timestamps; step results select only declared outcomes from
 confirmed evidence. Submit facts require the write sequencer's durable saved-effect proof. Queue
-saturation and append failures remain logging health, separate from external outcome. Persisted worker
-streaming remains Phase 4; frontend connection and capture association remain Phase 5. Owners:
+saturation and append failures remain logging health, separate from external outcome. Phase 4 owns
+persisted worker streaming and its run-scoped composite transport; the existing day-only `pc` stream
+remains unchanged. Frontend Logs connection, results and capture association remain Phase 5. Owners:
 [task-contract §4.2](task-contract.md#42-where-instrumentation-attaches),
 [workflow-model](workflow-model.md#d364--confirmed-task-facts-and-declared-step-results-2026-10-02),
 [dashboard-surfaces](dashboard-surfaces.md#d364--confirmed-actionfact-v1-and-step-result-2026-10-02),
 [write-safety](write-safety.md#d364--confirmed-submit-fact-follows-durable-settlement-2026-10-02),
 [execution-and-sessions](execution-and-sessions.md#d364--worker-local-confirmed-action-publisher-2026-10-02),
+[frontend-backend-integration §3.5](frontend-backend-integration.md#35-resumable-subscription-protocol),
 and the [current code map](codebase-structure.md).
 
 **UI catalog retirement (2026-10-01).** The generated UI catalog feature and its catalog-specific

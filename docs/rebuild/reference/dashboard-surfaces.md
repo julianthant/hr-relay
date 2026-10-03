@@ -298,9 +298,15 @@ it attempts every note, reports append/program/warning failures, and does not re
 or external-write result. Neither logging failure nor saturation says whether a remote HR action
 landed; only the write-safety settlement owns that outcome.
 
-Persisted ordered worker streaming and its read/replay adapters remain Phase 4. The frontend Logs
-connection, step-result display and capture association remain Phase 5; no screenshot artifact is
-included in this v1 event.
+**Phase 4 persistence.** A confirmed event is an optional, strict `confirmedAction` member on the
+existing run-scoped `NoteWire` JSONL row. The neutral note remains legacy-compatible; its append
+completes before the event is exposed to readers, and absence in old notes is never promoted into a
+confirmed event. The writer retains D364's exact frozen action/verifier, proof and privacy bindings.
+Notes keep D86's 30-day retention. Immutable Archive snapshots carry `confirmedActions` through the
+paged Logs section while pre-v1 snapshots keep that field absent. The worker stream UUID incarnation
+and positive sequence form `eventId` as `workerStreamId/sequence`. The frontend Logs connection,
+step-result display and capture association remain Phase 5; this v1 event carries no screenshot
+artifact.
 
 ## 10. D272–D276 — Phase 3a operator ratification (2026-08-26; ports and proofs remain open)
 
