@@ -47,4 +47,22 @@ describe("bounded complete-line JSONL tail", () => {
     assert.throws(() => readEventStreamLinesFrom("unused", "notes", second.cursors, undefined,
       { maxBytes: 16, maxLines: 20 }, fake.io), /beyond the bounded tail read/u);
   });
+
+  it("does not let an unchanged partial file starve a later complete file", () => {
+    const fake = fakeIo({ a: "xxxxx", b: "123456\n" });
+    const first = readEventStreamLinesFrom("unused", "notes", new Map(), undefined,
+      { maxBytes: 8, maxLines: 20 }, fake.io);
+    assert.deepEqual(first.lines, []);
+    assert.equal(first.hasMore, true);
+    assert.equal(first.cursors.get("a")?.bytesConsumed, 0);
+    const second = readEventStreamLinesFrom("unused", "notes", first.cursors, undefined,
+      { maxBytes: 8, maxLines: 20 }, fake.io);
+    assert.deepEqual(second.lines.map(line => line.text), ["123456"]);
+    assert.equal(second.bytesRead, 7);
+    assert.equal(second.hasMore, false);
+    fake.files.set("a", Buffer.from("xxxxx\n"));
+    const third = readEventStreamLinesFrom("unused", "notes", second.cursors, undefined,
+      { maxBytes: 8, maxLines: 20 }, fake.io);
+    assert.deepEqual(third.lines.map(line => line.text), ["xxxxx"]);
+  });
 });

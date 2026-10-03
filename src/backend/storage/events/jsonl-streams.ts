@@ -169,6 +169,8 @@ export interface EventStreamFileCursor {
   readonly bytesConsumed: number;
   /** Newline-terminated lines consumed — the base `lineNumber` continues from. */
   readonly linesConsumed: number;
+  /** Size of an incomplete trailing line already inspected without consuming it. */
+  readonly partialBytesObserved?: number;
 }
 
 export interface EventStreamTailResult {
@@ -242,13 +244,13 @@ export function readEventStreamLinesFrom(
     const cursor = cursors.get(file.path) ?? { bytesConsumed: 0, linesConsumed: 0 };
     nextCursors.set(file.path, cursor);
     const size = io.size(file);
-    if (size < cursor.bytesConsumed) {
+    if (size < (cursor.partialBytesObserved ?? cursor.bytesConsumed)) {
       throw new Error(
-        `${file.path} shrank from ${String(cursor.bytesConsumed)} to ${String(size)} bytes; `
+        `${file.path} shrank from ${String(cursor.partialBytesObserved ?? cursor.bytesConsumed)} to ${String(size)} bytes; `
         + "an append-only stream file was truncated and this tail refuses to guess what survived",
       );
     }
-    if (size === cursor.bytesConsumed) {
+    if (size === cursor.bytesConsumed || size === cursor.partialBytesObserved) {
       continue;
     }
     if (bytesRead >= maxBytes || consumedLines >= maxLines) { hasMore = true; continue; }
@@ -266,6 +268,7 @@ export function readEventStreamLinesFrom(
     const lastNewline = chunk.lastIndexOf(0x0a);
     if (lastNewline === -1) {
       if (chunk.length === maxBytes) throw new Error(`${file.path} has a JSONL line beyond the bounded tail read`);
+      nextCursors.set(file.path, { ...cursor, partialBytesObserved: size });
       continue;
     }
     let prefixEnd = lastNewline + 1;
@@ -288,6 +291,8 @@ export function readEventStreamLinesFrom(
     nextCursors.set(file.path, {
       bytesConsumed: cursor.bytesConsumed + prefixEnd,
       linesConsumed: cursor.linesConsumed + segments.length,
+      ...(prefixEnd === lastNewline + 1 && cursor.bytesConsumed + chunk.length === size
+        && lastNewline < chunk.length - 1 ? { partialBytesObserved: size } : {}),
     });
     consumedLines += segments.length;
     if (cursor.bytesConsumed + chunk.length < size) hasMore = true;

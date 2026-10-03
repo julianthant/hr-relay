@@ -60,6 +60,7 @@ export class RunLogsStreamHub {
   #recovering = false;
   #lastError: string | undefined;
   #dayError: string | undefined;
+  #deliveryError: string | undefined;
   #parsedLines = 0;
   #bytesRead = 0;
 
@@ -176,9 +177,14 @@ export class RunLogsStreamHub {
 
   #deliver(change: Change): void {
     for (const subscriber of this.#subscribers) {
-      const message = change.kind === "day" ? this.#dayEnvelope(subscriber, change) : this.#logEnvelope(subscriber, change);
-      if (message?.source === "control" && message.type === "reset-required") this.#resetSubscriber(subscriber, "generation-changed");
-      else if (message !== undefined) this.#push(subscriber, message);
+      try {
+        const message = change.kind === "day" ? this.#dayEnvelope(subscriber, change) : this.#logEnvelope(subscriber, change);
+        if (message?.source === "control" && message.type === "reset-required") this.#resetSubscriber(subscriber, "generation-changed");
+        else if (message !== undefined) this.#push(subscriber, message);
+      } catch (error) {
+        this.#deliveryError = error instanceof Error ? error.message : String(error);
+        this.#resetSubscriber(subscriber, "generation-changed");
+      }
     }
   }
 
@@ -205,10 +211,18 @@ export class RunLogsStreamHub {
   poll(): void {
     if (this.#closed) return;
     try {
+      this.#deliveryError = undefined;
       for (const subscriber of this.#subscribers) {
         const current = this.#deps.readRun(subscriber.runId);
         if (current === undefined || current.disposition !== "live") {
           this.#resetSubscriber(subscriber, "generation-changed");
+        } else if (current.run.envelope.runId !== subscriber.runId
+          || current.run.envelope.traceId !== subscriber.authority.envelope.traceId
+          || current.run.envelope.contractFingerprint !== subscriber.authority.envelope.contractFingerprint
+          || current.run.envelope.attempt < subscriber.authority.envelope.attempt) {
+          this.#resetSubscriber(subscriber, "generation-changed");
+        } else {
+          subscriber.authority = current.run;
         }
       }
       const tail = this.#deps.store.tail(this.#cursors);
@@ -233,15 +247,15 @@ export class RunLogsStreamHub {
           throw new Error(event.sequence > lastSequence ? "run-log-worker-sequence-gap" : "run-log-worker-sequence-regressed");
         }
         if (lastSequence === undefined && this.#streamSequence.size >= 4096) throw new Error("run-log-stream-head-bound-exceeded");
+        this.#deliver(this.#retain({ kind: "log", event } as Omit<Change, "ordinal">));
         this.#streamSequence.set(event.workerStreamId, event.sequence);
         this.#seen.set(event.eventId, body);
         if (this.#seen.size > 4096) this.#seen.delete(this.#seen.keys().next().value!);
-        this.#deliver(this.#retain({ kind: "log", event } as Omit<Change, "ordinal">));
       }
       this.#cursors = tail.cursors;
       this.#recovering = tail.hasMore;
-      this.#degraded = this.#dayError !== undefined;
-      this.#lastError = this.#dayError;
+      this.#degraded = this.#dayError !== undefined || this.#deliveryError !== undefined;
+      this.#lastError = this.#deliveryError ?? this.#dayError;
     } catch (error) {
       this.#degraded = true;
       this.#lastError = error instanceof Error ? error.message : String(error);

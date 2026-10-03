@@ -28,24 +28,24 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
   if (event.action.runId !== authority.envelope.runId
     || event.action.definitionFingerprint !== authority.envelope.contractFingerprint
     || event.action.attempt > authority.envelope.attempt) throw new Error("confirmed-action-authority-mismatch");
-  const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
-    candidate.id === event.action.invocationId && candidate.entryId === event.action.nodeId
-    && candidate.taskId === event.action.taskId);
-  if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
-  if (JSON.stringify(event.action.occurrencePath) !== JSON.stringify(invocation.occurrencePath)
-    || event.action.logicalSessionId !== invocation.operation.session.id
-    || (event.source.kind === "browser"
-      ? invocation.operation.system !== event.source.system
-        || invocation.operation.session.kind !== "browser"
-        || invocation.operation.session.system !== event.source.system
-      : invocation.operation.system !== "local" || invocation.operation.session.kind !== "local")) {
-    throw new Error("confirmed-action-frozen-source-mismatch");
-  }
-  const declaredAction = (logicalActionId: string): (typeof invocation.operation.actions)[number] => {
+  const declaredAction = (action: ConfirmedActionEvent["action"]) => {
+    const invocation = authority.envelope.operationDisplaySnapshot?.invocations.find(candidate =>
+      candidate.id === action.invocationId && candidate.entryId === action.nodeId
+      && candidate.taskId === action.taskId);
+    if (invocation === undefined) throw new Error("confirmed-action-frozen-invocation-missing");
+    if (JSON.stringify(action.occurrencePath) !== JSON.stringify(invocation.occurrencePath)
+      || action.logicalSessionId !== invocation.operation.session.id
+      || (event.source.kind === "browser"
+        ? invocation.operation.system !== event.source.system
+          || invocation.operation.session.kind !== "browser"
+          || invocation.operation.session.system !== event.source.system
+        : invocation.operation.system !== "local" || invocation.operation.session.kind !== "local")) {
+      throw new Error("confirmed-action-frozen-source-mismatch");
+    }
     const matches: (typeof invocation.operation.actions)[number][] = [];
     const visit = (actions: readonly (typeof invocation.operation.actions)[number][]): void => {
       for (const candidate of actions) {
-        if (candidate.id === logicalActionId) matches.push(candidate);
+        if (candidate.id === action.logicalActionId) matches.push(candidate);
         if (candidate.children !== undefined) visit(candidate.children);
       }
     };
@@ -54,7 +54,7 @@ function safeConfirmedAction(input: ConfirmedActionEvent, authority: RunRecord):
     return matches[0];
   };
   const isPublicScalar = (action: ConfirmedActionEvent["action"]): boolean => {
-    const declared = declaredAction(action.logicalActionId);
+    const declared = declaredAction(action);
     if (action.value?.consumed.state !== "observed") return true;
     const value = action.value.consumed.value;
     if (event.source.kind !== "browser" || (value !== null && typeof value === "object")) return false;

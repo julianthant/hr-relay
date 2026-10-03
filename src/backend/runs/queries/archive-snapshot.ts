@@ -118,9 +118,12 @@ function freezeProjectionSections(
  * frozen `nextCursor: present` would name a request nothing serves. Refusing
  * past the bound is the only honest alternative to truncating.
  */
-function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
+export function freezeLogs(deps: RunDetailQueryDeps, runId: string,
+  readSection: typeof buildRunSection = buildRunSection): FrozenNotePage {
   const notes: FrozenNotePage["notes"][number][] = [];
   const rows: NonNullable<FrozenNotePage["rows"]> = [];
+  const confirmedActions: NonNullable<FrozenNotePage["confirmedActions"]>[number][] = [];
+  let hasConfirmedActions = false;
   let structure: FrozenNotePage["operationStructure"];
   let cursor: string | undefined;
   /**
@@ -137,7 +140,7 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
    */
   const noteScan = createRunNoteScanCache();
   for (let page = 0; page < FROZEN_LOG_PAGE_LIMIT; page += 1) {
-    const section = buildRunSection(deps, runId, "logs", cursor, noteScan);
+    const section = readSection(deps, runId, "logs", cursor, noteScan);
     if (section.section !== "logs") {
       throw new Error(`the logs section of run ${runId} came back as ${section.section}`);
     }
@@ -151,6 +154,10 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
         || (structure.state === "observed" && nextStructure.state === "observed")) throw new Error("archive-operation-structure-changed-during-freeze");
     }
     notes.push(...section.payload.notes);
+    if (section.payload.confirmedActions !== undefined) {
+      hasConfirmedActions = true;
+      confirmedActions.push(...section.payload.confirmedActions);
+    }
     if (section.payload.rows === undefined) {
       throw new Error(`live logs for run ${runId} omitted combined rows; this build refuses to archive a pre-L3 shape`);
     }
@@ -161,6 +168,7 @@ function freezeLogs(deps: RunDetailQueryDeps, runId: string): FrozenNotePage {
         ...(structure === undefined ? {} : { operationStructure: structure }),
         rows,
         notes,
+        ...(hasConfirmedActions ? { confirmedActions } : {}),
         nextCursor: { state: "absent", reason: "end-of-page" },
       });
     }

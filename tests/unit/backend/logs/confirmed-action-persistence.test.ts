@@ -56,4 +56,41 @@ describe("confirmed action note append boundary", () => {
       stepOccurrence: confirmedStepOccurrence(foreignAction) } as typeof event, authority), /confirmed-action-authority-mismatch/u);
     assert.equal(attempts, 1);
   });
+
+  it("binds submit and saved verifier to their separate frozen invocations", () => {
+    const lines: string[] = [];
+    const writer = createNoteJsonlWriter({ stateRoot: "unused", clock: manualClock(new Date(AT)),
+      pid: 1, appendLine: (_workflow, _date, line) => { lines.push(line); } });
+    const commit = { ...action, invocationId: "commit-operation", taskId: "ucpath/fixture-commit",
+      logicalActionId: "submit", state: "completed" as const };
+    const verifier = { ...action, invocationId: "verify-operation", taskId: "ucpath/fixture-verify",
+      logicalActionId: "saved", state: "completed" as const };
+    if (event.kind !== "trace") throw new Error("fixture-event-not-trace");
+    const { state: _traceState, ...baseEvent } = event;
+    const submit = ConfirmedActionEventSchema.parse({ ...baseEvent, kind: "fact", meaning: "submit",
+      purpose: "saved-effect", action: commit,
+      stepOccurrence: `${RUN}/1/1/first/transaction`,
+      proof: { verifier, verdict: "matched", observationDigest: HASH },
+      confirmedAt: AT, disposition: "committed",
+      durableProof: { writeIntentId: "intent-1", checkpointNodeId: "first", proofDigest: HASH } });
+    const frozen = { ...authority, envelope: { ...authority.envelope,
+      operationDisplaySnapshot: { invocations: [
+        { id: "commit-operation", entryId: "first", taskId: "ucpath/fixture-commit",
+          occurrencePath: ["first"], operation: { system: "ucpath", session: { kind: "browser", id: "browser-session", system: "ucpath" },
+            actions: [{ id: "submit", target: "unregistered.private" }] } },
+        { id: "verify-operation", entryId: "first", taskId: "ucpath/fixture-verify",
+          occurrencePath: ["first"], operation: { system: "ucpath", session: { kind: "browser", id: "browser-session", system: "ucpath" },
+            actions: [{ id: "saved", target: "unregistered.private" }] } },
+      ] } } } as unknown as RunRecord;
+    const stored = writer.emitConfirmedAction(submit, frozen).confirmedAction;
+    assert.equal(lines.length, 1);
+    assert.equal(stored?.kind, "fact");
+    assert.equal(stored?.action.value, undefined);
+    assert.equal(stored?.kind === "fact" ? stored.proof.verifier.value : undefined, undefined);
+    assert.equal(lines[0].includes("private-data"), false);
+    const wrongFrozen = { ...frozen, envelope: { ...frozen.envelope,
+      operationDisplaySnapshot: { invocations: frozen.envelope.operationDisplaySnapshot?.invocations.slice(0, 1) } } } as RunRecord;
+    assert.throws(() => writer.emitConfirmedAction(submit, wrongFrozen), /frozen-invocation-missing/u);
+    assert.equal(lines.length, 1);
+  });
 });

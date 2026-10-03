@@ -4,6 +4,7 @@ import { ConfirmedActionEventSchema, confirmedStepOccurrence, type ConfirmedActi
 import { CompositeCursorSchema, emptyRunLogsMergeState, mergeRunLogs } from "../../../../src/models/dashboard/run-logs-subscription.js";
 import { RunLogsStreamHub } from "../../../../src/backend/transports/http/subscriptions/run-logs-stream.js";
 import { compositeEventStreamBody } from "../../../../src/backend/transports/http/subscriptions/sse-response.js";
+import { PositiveIntSchema } from "../../../../src/rules/identity/ids.js";
 import type { RunQueueProjection, RunQueueProjectionChange } from "../../../../src/backend/runs/projections/run-queue-projection.js";
 import type { RunRecord } from "../../../../src/models/run/record.js";
 import type { RunLogTail } from "../../../../src/backend/logs/run-log-stream.js";
@@ -14,10 +15,10 @@ const GENERATION = "33333333-3333-4333-8333-333333333333";
 const HASH = "a".repeat(64);
 const AT = "2026-10-02T12:00:00.000Z";
 
-function event(stream: string, sequence: number, runId = RUN): ConfirmedActionEvent {
+function event(stream: string, sequence: number, runId = RUN, attempt = 1): ConfirmedActionEvent {
   const action = {
     runId, definitionFingerprint: HASH, nodeId: "first", taskId: "ucpath/read-write-fixture",
-    attempt: 1, claimGeneration: 1, taskAttempt: 1, invocationId: "first-operation",
+    attempt, claimGeneration: 1, taskAttempt: 1, invocationId: "first-operation",
     occurrencePath: ["first"], logicalActionId: "read-field", occurrence: sequence,
     logicalSessionId: "local-session", state: "started" as const,
   };
@@ -38,16 +39,20 @@ function harness(maxPending = 64) {
       snapshotCursor: "pc:1", monthCounts: [], workflowCounts: [], statusCounts: [],
       queueSurfaces: [], workerCards: [], workerPools: [], notifications: [] }; },
   } as unknown as RunQueueProjection;
-  const authority = { envelope: { runId: RUN, traceId: "fpo-120000-0002",
+  let authority = { envelope: { runId: RUN, traceId: "fpo-120000-0002",
     contractFingerprint: HASH, attempt: 1 } } as RunRecord;
+  let runReader = (runId: string) => runId === RUN ? { disposition: "live" as const, run: authority } : undefined;
   const hub = new RunLogsStreamHub({ projection, maxPending, generation: () => GENERATION,
-    readRun: runId => runId === RUN ? { disposition: "live", run: authority } : undefined,
+    readRun: runId => runReader(runId),
     store: {
       tail(cursors): RunLogTail { return { events: batches.shift() ?? [], cursors,
         pruned: false, parsedLines: 1, bytesRead: 0, hasMore: false }; },
       snapshot: () => { snapshotHook?.(); return { events: [], hasEarlier: false, parsedLines: 2 }; },
     } });
-  return { hub, batches, listeners, onSnapshot: (hook?: () => void) => { snapshotHook = hook; } };
+  return { hub, batches, listeners, onSnapshot: (hook?: () => void) => { snapshotHook = hook; },
+    setAttempt: (attempt: number) => { authority = { ...authority, envelope: { ...authority.envelope,
+      attempt: PositiveIntSchema.parse(attempt) } }; },
+    setRunReader: (reader: typeof runReader) => { runReader = reader; } };
 }
 
 describe("confirmed run log composite stream", () => {
@@ -167,6 +172,35 @@ describe("confirmed run log composite stream", () => {
     assert.equal(state.events.some(item => item.eventId === "stream-a/2"), true);
     assert.deepEqual(state.events.map(item => item.eventId), snapshot.events.map(item => item.eventId));
     assert.equal(state.hasEarlier, snapshot.hasEarlier);
+  });
+
+  it("admits a new attempt of the same run and keeps one subscriber failure from hiding peer delivery", async () => {
+    const h = harness();
+    const earlier = h.hub.connect({ runId: RUN });
+    h.setAttempt(2);
+    const later = h.hub.connect({ runId: RUN });
+    h.batches.push([event("stream-requeue", 1, RUN, 2)]);
+    h.hub.poll();
+    assert.equal((await earlier.next())?.source, "run-logs");
+    assert.equal((await later.next())?.source, "run-logs");
+    assert.equal(h.hub.stats().degraded, false);
+    earlier.close(); later.close(); h.hub.close();
+
+    const isolated = harness();
+    const stale = isolated.hub.connect({ runId: RUN });
+    const fresh = isolated.hub.connect({ runId: RUN });
+    let reads = 0;
+    isolated.setRunReader(runId => runId === RUN ? { disposition: "live", run: {
+      envelope: { runId: RUN, traceId: "fpo-120000-0002", contractFingerprint: HASH,
+        attempt: ++reads === 1 ? 1 : 2 } } as RunRecord } : undefined);
+    isolated.batches.push([event("stream-requeue", 1, RUN, 2)]);
+    isolated.hub.poll();
+    assert.equal((await stale.next())?.source, "control");
+    assert.equal((await fresh.next())?.source, "run-logs");
+    assert.equal(isolated.hub.stats().lastError, "run-log-live-owner-mismatch");
+    isolated.hub.poll();
+    assert.equal(isolated.hub.stats().ordinal, 1);
+    stale.close(); fresh.close(); isolated.hub.close();
   });
 
   it("refuses a sequence gap and conflicting replay while preserving a distinct restart stream", () => {
