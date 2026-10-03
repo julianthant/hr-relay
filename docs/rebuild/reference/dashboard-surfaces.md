@@ -2822,7 +2822,8 @@ ref guards-and-tests §5.2's and are not repeated here.
 
 <a id="notifications-publication-amendment-2026-09-14"></a>
 
-**Approved publication amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+**Approved publication amendment — 2026-09-14 (3.1.9.5; broader implementation pending at
+approval).**
 The operator approved the complete [Notifications execution brief](../plans/phase-3/3.1-finish-the-dashboard/task-9-5-finish-notifications-and-delivery-behavior.md#approved-execution-brief--2026-09-14).
 This is the current requirement where historical D134/D138/D222/D262 descriptions below differ;
 it is not an assertion that the newly required code or proof already exists.
@@ -6510,24 +6511,51 @@ own entry stays a `ghost` button because it is not a command.
 
 <a id="notifications-inbox-amendment-2026-09-14"></a>
 
-**Approved inbox/delivery amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+**Approved inbox/delivery amendment — 2026-09-14 (3.1.9.5; implementation pending at
+approval).**
 Read §2.6's [publication amendment](#notifications-publication-amendment-2026-09-14) as the current
 contract where the historical wire restrictions below differ. Actual Ping/Inbox channel and counts
 make the filters truthful. Publication identity is distinct from row revision: read/unread/snooze
 changes do not represent a new delivery event. Pinned backfill rows remain permanent, immutable and
 visible under every ordinary filter. Read/unread and snooze stay independent; dismiss closes the
 drawer or desktop toast and never deletes a durable row. Existing actor, revision and command-replay
-protections remain; no unsnooze or new lifecycle command is introduced.
+protections remain. The 2026-09-14 approval implied no Unsnooze; W2 below supersedes that rule with
+explicit, command-kernel-guarded Unsnooze.
 
 Notification targets resolve on activation to the current live run on its own date, exact failure,
 verified saved report, Storage, or an explicit missing/deleted refusal. Navigation uses the existing
 Settings dirty-draft guard and honors cancellation. No frozen archive snapshot is rewritten.
 
+<a id="notifications-w2-amendment-2026-10-02"></a>
+
+**W2 implementation — accepted locally, 2026-10-02.** Repaired source candidate
+`4ffd665fe7b9a3f626a6772d68d4a8a7c849ef44` passed focused local acceptance; see the
+[source receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/commit/w2-g2-git-commit-receipt.md),
+[independent review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/review/W2-R1-final.md)
+and [repair verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/verification-repair/W2-V1-repair-report.md).
+This closes W2 only; it does not close or admit §2.6's broader publisher/persistence obligations,
+which retain their existing owners.
+
+- A new Snooze derives exactly 3,600,000 ms from the backend application clock. Explicit Unsnooze
+  is guarded by the command kernel. Actor/version CAS, exact-command replay/refusal, independent
+  read and snooze axes, pin immutability, fold/publication identity and commit-before-delivery order
+  remain binding.
+- Pre-W2 deadline-bearing commands are readable only through frozen historical journal/audit
+  schemas. An authenticated exact completed replay returns `already-applied` without writes or
+  deadline recalculation. New ingress rejects `payload.until`; unknown, pending, divergent or
+  wrong-actor historical envelopes refuse.
+- Serve declared display facts from canonical linked run/workflow evidence. Archived, missing or
+  incompatible context is explicitly unavailable; never infer subject or detail from a title.
+- The fixed green in-page `NotificationPing` presents real verified completion only. Nonpositive
+  in-page Ping states need separate operator design. Existing OS routing, permission and status are
+  unchanged; verified-done remains inbox-only for OS delivery. This amendment adds no component or
+  visual state.
+
 An explicit gesture in the drawer enables desktop notifications. Silent Ping delivery uses the
 Notifications API only while the dashboard is open and only after durable publication. Inbox-only
-rows never toast. Same-origin Web Locks elect one tab owner; initial baseline, reload, reconnect,
-duplicate snapshots, state commands and owner handover do not replay old toasts. Denied permission,
-unsupported capability, synchronous throws and asynchronous errors are explicit. An accepted API
+rows never produce OS toasts. Same-origin Web Locks elect one tab owner; initial baseline, reload,
+reconnect, duplicate snapshots, state commands and owner handover do not replay old toasts. Denied
+permission, unsupported capability, synchronous throws and asynchronous errors are explicit. An accepted API
 call proves only submission to the browser API, not human visibility. Delivery failures never mutate
 the inbox or create per-attempt OS authority. Both themes, keyboard/focus, desktop resizing and zoom
 retain the Phase 3.1 contract; no mobile/coarse-pointer variants or existing PNG refreeze are admitted.
@@ -6546,9 +6574,10 @@ and the row is the record, so an inbox item exists whether or not anything was e
 operating system.
 
 **Routing, ratified (D79b + D86), plus A46's safety arm.** **failed · gate-waiting · write-parked ·
-repeating · storage · backfill-gap** → **Ping**; **verified-done** → **Inbox only**. The backfill gap
-also enters the permanently pinned safety lane. Pings are silent. The ordinary lifecycle is deliberately
-slimmed from five states (unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
+repeating · storage · backfill-gap** → **Ping**; **verified-done** → **Inbox only for OS delivery**.
+The backfill gap also enters the permanently pinned safety lane. Pings are silent. The ordinary
+lifecycle is deliberately slimmed from five states
+(unread/read/acknowledged/snoozed/resolved plus per-attempt delivery
 records — that was multi-user incident tooling) to **read/unread plus an optional snooze**, and the
 inbox is **actor-keyed from day one** (the D75 seam) even though there is one actor today. Retention:
 notes 30d, spans 30d, **ledger forever**, artifacts and checkpoints until purge.
@@ -6565,12 +6594,14 @@ durable row's `summary`, `trigger` and `count` stay off both arms: they are pros
 and §2.6's line is that ids and closed codes may cross while prose may not. A row that names a run
 draws `Open run` (or `Open failure`); `storage` and `backfill-gap` draw no invented destination.
 
-**Every ordinary action CASes the row's own revision.** `notification-read`, `notification-unread` and
-`notification-snooze` are the whole family (`src/domain/commands.ts:266-267`), each carrying
+**Every ordinary action CASes the row's own revision.** `notification-read`, `notification-unread`,
+`notification-snooze` and `notification-unsnooze` are the whole family
+(`src/rules/commands/commands.ts`), each carrying
 `expectedVersion: entry.revision` — the bell holds a served row, not a guess about it — and both
 refusal arms are settled through the one exhaustive fold, because a conflict that fell through to the
-success path is D253's defect on a control whose only feedback is that the row changed. Snooze has
-no inverse on purpose: the kernel serves no `notification-unsnooze`, so the surface offers none.
+success path is D253's defect on a control whose only feedback is that the row changed. W2
+supersedes the 2026-09-14 no-inverse rule: new Snooze lasts 3,600,000 ms on the backend application
+clock, and the command kernel guards explicit Unsnooze.
 The pinned arm exposes no lifecycle control or revision. The authority itself refuses every fold or
 state update for that trigger — read, unread, snooze, clear-snooze and direct same-state writes — so
 hiding or version-bumping it is impossible through any service/repository path, not merely the

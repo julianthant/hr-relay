@@ -1,6 +1,6 @@
 # Existing dashboard components: backend lifecycle and wiring plan
 
-Status: W0 and W1 accepted locally on 2026-10-02. W2–W7 remain proposed and unlaunched. Remove, Snooze and superseded Settings save meanings below are operator-approved.
+Status: W0, W1 and W2 accepted locally on 2026-10-02. W3–W7 remain proposed and unlaunched. Remove, Snooze and superseded Settings save meanings below are operator-approved.
 
 This is supporting, unnumbered work for the [backend and unit-test initiative](backend-and-unit-tests.md). That plan continues to own confirmed Logs and its Phases 3–5. This document owns the proposed Settings, Notifications, Activity, Archive, Sessions, Explorer, and Queue wiring packages. It does not assign roadmap task numbers or grant release, freeze, cutover, or Electron admission.
 
@@ -495,3 +495,76 @@ No catalog, retired renderer or retired scenario/parity suite was restored.
 W1 is complete and accepted locally for its assigned implementation, focused verification and exact
 source commitment. W2–W7 remain unlaunched and require separate operator launch.
 No push, branch merge, worktree cleanup, live operation or release admission is authorized here.
+
+### W2 execution — 2026-10-02
+
+Deployment ID: `w2-notifications-20261002`. The operator authorized W2 only in
+`/Users/julianhein/Projects/hr-automation-rebuild-worktrees/hr-worktree-logs-backend`, branch
+`codex/logs-backend`, entry `257ffefac39eaaa5cd77f05aeb0e7de58ee9c502`.
+The scope is canonical notification display facts, backend-clock one-hour Snooze, explicit
+Unsnooze, and the existing `NotificationsView` / `NotificationPing` producer and callback wiring.
+The approved components, popover, controls and focus behavior remain the presentation boundary.
+Existing project documents and external evidence replace the absent `agent_docs/` framework.
+
+Evidence owner:
+`/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/`.
+
+Entry ownership and prerequisite verification passed. W0
+`6ab7f06d2cf8792c330dbf1bcc212a38af4b8fdd` and the accepted backend Phase 3 candidate
+`0dff920a102186b3218dbf549b79003b9f3e458e` are ancestors of the entry. W1
+`5db5a75793ce4b274234028ab3aada9550f491cd` is also accepted locally, but is not a W2 dependency.
+The four entry-dirty documents were peer-owned; no source was dirty. Concurrent Logs documentation
+commit `cfed4196910c0f32ec8ac831aca1733d8ce54319` preserved the W2 documentation hunks.
+
+The presentation checkout was reverified at
+`e25275f04e71517431503d6c94955daeed183c32`, branch `codex/run-rerun-spreadsheets`.
+Its accepted `notifications-view.tsx` and `notifications-view-model.ts` remained byte-identical to
+`c3998ec263dc7e6bcb20470ab6a32d60a04eff23`, W0 and the backend entry. Their SHA-256 values were
+`c49b6c0485a122a74436d15d1f7f23ab2bfb751c7f400d7ead4ec6f40fe1e349` and
+`9e2b3ccbae11286496d6f2b1fa28d855173f0dacabda3d46de87e167938a7bf8`, respectively.
+Unrelated dirty presentation work was excluded.
+
+**Accepted source:** `230f394a63d0ae0a41b6f504c59b9b1059344b8a` and repair
+`4ffd665fe7b9a3f626a6772d68d4a8a7c849ef44`, totaling 45 source/test paths. The initial 35-path
+manifest is `implementation/owned-path-manifest.sha256`; the 13-path repair manifest is
+`repair/repair-manifest.sha256` (file SHA-256
+`285b80c11b21d65a25f45d5e3ffec896aa6de59d3542bccd117d6651c7f0f082`). Three paths overlap.
+The [source commit receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/commit/w2-g2-git-commit-receipt.md)
+and [repair commit receipt](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/commit/W2-G3-repair-commit.md)
+bind exact paths, byte hashes, parentage and preservation of the four documentation edits.
+
+The production adapter mounts the approved consumers with served display facts, guarded controls,
+current target navigation and existing desktop permission/status delivery. The day resource owns
+expiry refresh. Read/unread and Snooze are independent; pin/fold, actor/revision, publication identity,
+exact replay and commit-before-delivery remain authoritative. Pre-W2 deadline-bearing journal/audit
+rows use frozen historical read schemas. Their authenticated exact completed replay returns the
+retained `already-applied` outcome without writes or recalculating the deadline. Unknown, pending,
+divergent or wrong-actor old envelopes refuse; new Snoozes reject `payload.until` and derive one hour
+from the backend clock. Settings navigation cancellation and late A → B → A responses remain guarded.
+
+**Focused acceptance:** independent [source review](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/review/W2-R1-final.md)
+and [repair verification](/Users/julianhein/Projects/hr-automation-rebuild-evidence/2026-10-02/dashboard-notifications-w2/verification-repair/W2-V1-repair-report.md)
+pass at the repaired source. Initial focused units passed 9 files / 29 cases; invalidated repair
+units passed 4 files / 14 cases with no React `act(...)` warnings. Scoped lint passed for both
+manifests. Notification durability passed 12 cases; the affected command-path case and strict-boundary
+suite passed 1 and 7 cases respectively. Manifest/store-catalog checks and the web bundle passed
+again after repair; the existing Vite chunk-size advisory remains. Unchanged-input evidence is reused
+only for paths outside the repair. Assertions, membership, isolation, floors and timeouts remain.
+
+**Remaining obligations:** typecheck is failed with 72 diagnostic lines byte-identical to entry.
+The broad architecture selection retained the same 47 failing test names as entry (Archive native
+consumer fixtures and relocation audit reach); the repair did not rerun or waive that selection.
+These failures are not accepted phase-exit evidence. Complex SQLite persistence/concurrency,
+process/restart, real SSE/browser/OS delivery, visual parity, performance, full coverage and phase-exit
+checks remain for their owners and later operator discussion. Focused in-memory ports do not prove
+SQLite durability.
+
+Archived, missing or incompatible linked context is explicitly unavailable. The fixed green
+in-page `NotificationPing` presents real verified completion only; nonpositive in-page Ping states
+need separate operator design. Existing OS Ping routing is unchanged and verified-done remains
+inbox-only for OS delivery. No new component or visual state was introduced.
+
+W2 is complete under this focused local acceptance. No release, freeze, cutover or Electron admission
+is granted. Logs, Run/Rerun, spreadsheet redesign and live HR are outside this package. No push,
+branch merge, worktree cleanup or subsequent package was authorized or launched; the operator owns
+the next launch and later gate/design decisions.

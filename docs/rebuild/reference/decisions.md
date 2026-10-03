@@ -2774,13 +2774,15 @@ Astra/high, maximum three concurrent. Existing gates and local merge conditions 
 
 ### Notifications amendments — 2026-09-14
 
-Operator-approved with the complete 3.1.9.5 plan; requirements are ratified, implementation is pending.
-These are dated amendments to existing decisions, not new decision numbers or completed build claims.
+Operator-approved with the complete 3.1.9.5 plan. W2 does not close or admit the broader
+publication/persistence obligations, which retain their existing owners. These are dated amendments
+to existing decisions, not new decision numbers.
 
 | Existing decision | Approved amendment and normative owner |
 | --- | --- |
 | D134 / D138 / D262 | Notification-owned SQLite source identity and health observations make source replay a no-op; identity and inbox create/fold are atomic. Distinct events fold once, preserving replayed operator state. This supersedes the historical absence of processing metadata and memory-only restart dedupe, while retaining inbox authority, immutable ledger and no per-attempt OS history. See [dashboard-surfaces §2.6](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14) and [operator-trust §6](operator-trust.md#notifications-behavior-amendment-2026-09-14). |
 | D79b / D86 / D138 | All eight current event kinds get production callers; repeating starts on the third distinct retained matching workflow/step/error-class failure with no time window, including verified archives. Verified-done requires canonical receipt evidence. Actual channel/count/publication identity, current-authority targets and explicit browser delivery are owned by [dashboard-surfaces §9.6](dashboard-surfaces.md#notifications-inbox-amendment-2026-09-14) and [frontend-backend-integration §5.1.6](frontend-backend-integration.md#notifications-wire-amendment-2026-09-14). |
+| W2 interaction — 2026-10-02 | Backend-clock one-hour Snooze, guarded Unsnooze and canonical display/wiring are accepted locally under focused W2 review. Broader publication/persistence obligations are not closed or admitted by W2 and retain their existing owners. See [dashboard-surfaces §9.6](dashboard-surfaces.md#notifications-w2-amendment-2026-10-02) and [frontend/backend wiring](frontend-backend-integration.md#notifications-w2-wiring-2026-10-02). |
 | D322 / D222 | Narrowly allow notification of actual failed backup operations or verified corrupt backup evidence. Missing/old/generation-stale unrequested backups still do not alert; explicit-only backup writing and unchanged doctor/recovery remain. D222's retired cadence/producer does not return. See [dashboard-surfaces §2.5](dashboard-surfaces.md#backup-notification-amendment-2026-09-14). |
 
 Persistence joins the next schema migration (52 at the approved base), strict registration, supported

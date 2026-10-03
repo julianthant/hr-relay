@@ -1701,7 +1701,8 @@ workflow-versioning half is row **D8**.
 
 <a id="notifications-wire-amendment-2026-09-14"></a>
 
-**Approved wire/target amendment — 2026-09-14 (3.1.9.5; implementation pending).**
+**Approved wire/target amendment — 2026-09-14 (3.1.9.5; implementation pending at
+approval).**
 Consume the [publication contract](dashboard-surfaces.md#notifications-publication-amendment-2026-09-14)
 and [operator behavior](operator-trust.md#notifications-behavior-amendment-2026-09-14). The notification
 arms of the existing day wire serve actual Ping/Inbox channel, count and publication identity along
@@ -1722,6 +1723,10 @@ same-origin Web Locks owner. It does not publish domain events, infer backfill g
 revision as a toast trigger. Dismiss is UI-only. The historical implementation paragraph below predates
 D322's retired backup caller; current caller coverage is recorded at dashboard-surfaces §2.6.
 
+<a id="notifications-w2-wiring-2026-10-02"></a>
+
+W2's accepted behavior and source/evidence record live in the
+[§9.6 notification amendment](dashboard-surfaces.md#notifications-w2-amendment-2026-10-02).
 
 <!-- roadmap: dash-defaults -->
 
@@ -1729,25 +1734,26 @@ D322's retired backup caller; current caller coverage is recorded at dashboard-s
    before any OS delivery is attempted (D138).
 2. The rows ride the day wire; the bell renders unread and critical counts and the all / ping /
    inbox / snoozed filters.
-3. Read, unread and snooze are COMMANDS, CASed on the row's own `revision` — which the D134 fold
-   advances on every ordinary publish, so a bell action races a fold that is designed to happen.
+3. Read, unread, snooze and unsnooze are COMMANDS, CASed on the row's own `revision` — which the
+   D134 fold advances on every ordinary publish, so a bell action races a fold designed to happen.
    A46's permanent arm has no revision and authority refuses every update/fold, including same-state
    writes, before any version can advance.
 4. A refusal is shown, never swallowed (D253).
 
-**Implemented:** the bell is `NotificationBell` inside `surfaces/top-bar.tsx`; the rows are on
-`DashboardDayWire`; the `notification` command family is `read` / `unread` / `snooze`. Publishing is
-the services' half — a park at an ALWAYS-GATE publishes a needs-you row by re-derivation over
-authority, and the backup hazard publishes `storage-degraded` on state TRANSITIONS only (D222).
+**Current binding:** Top Bar mounts `ConnectedNotifications`, which binds `NotificationsView` and
+`NotificationPing` to the served rows and command callbacks. Rows remain on `DashboardDayWire`; the
+notification commands are read, unread, snooze and unsnooze, CASed on the row revision. W2's exact
+Snooze, history-replay and unavailable-context contract is owned by §9.6.
 
 **Generic:** entirely — the trigger set is ref dashboard-surfaces §2.6's closed vocabulary. A46's
 closed pinned arm is the one permanent safety lane: it contributes to All, Unread and Pings, remains
 outside ordinary filtering, and shares the drawer's bounded scroller so every pin and ordinary row
 remains reachable.
 
-**Left:** there is no notification patch topic, so the bell moves when the day snapshot does (§3.5);
-snooze has no inverse because the kernel serves none; and the OS-delivery half belongs to the
-notification service, not this surface.
+**Left:** there is no notification patch topic, so the bell moves when the day snapshot does (§3.5).
+Nonpositive in-page Ping states need separate operator design. W2 does not close or admit the broader
+publisher/persistence obligations in §2.6, which retain their existing owners. OS delivery,
+permission and status are unchanged by W2; see §9.6.
 
 #### 5.1.7 Intake and prior-run value projection
 
