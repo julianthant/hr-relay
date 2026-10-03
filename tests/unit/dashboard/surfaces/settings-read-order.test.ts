@@ -2,11 +2,12 @@
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
 import { createRoot, type Root } from "react-dom/client";
-import { afterEach, it } from "vitest";
+import { afterEach, it, vi } from "vitest";
 import type { DashboardClient } from "../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../src/dashboard/state/client-context.js";
 import { useEditableSettings } from "../../../../src/dashboard/surfaces/settings-editor-model.js";
 import { useProviderKeys } from "../../../../src/dashboard/surfaces/settings-provider-model.js";
+import type { ConfirmedSettingsSave } from "../../../../src/dashboard/surfaces/settings-save-feedback-model.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../src/models/config/provider-keys.js";
 import { EditableSettingsWireSchema, type EditableSettingsWire } from "../../../../src/models/dashboard/settings-editor.js";
 import { fixtureSettingsDocument } from "../../../support/fixtures/dashboard/fixture-settings.js";
@@ -98,6 +99,7 @@ it("keeps a superseded ordinary draft unlocked and never resubmits it", async ()
   const later = fixtureSettingsDocument({ actor: { label: "later" } }, 3);
   let reads = 0;
   let submissions = 0;
+  const onConfirmedSave = vi.fn<(receipt: ConfirmedSettingsSave) => void>();
   const client = { editableSettings: async () => ++reads === 1 ? fixtureSettingsDocument() : later,
     applySettings: async (command: { commandId: string }) => {
       submissions += 1;
@@ -106,7 +108,7 @@ it("keeps a superseded ordinary draft unlocked and never resubmits it", async ()
     }, preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
   } as unknown as DashboardClient;
   let editor: ReturnType<typeof useEditableSettings> | undefined;
-  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A }); return null; }
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onConfirmedSave }); return null; }
   const host = document.createElement("div"); document.body.append(host);
   try {
     await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
@@ -116,10 +118,35 @@ it("keeps a superseded ordinary draft unlocked and never resubmits it", async ()
     assert.equal(editor?.save.state, "conflict");
     assert.equal(editor?.locked, false);
     assert.equal(editor?.dirtyCount, 1);
+    assert.equal(onConfirmedSave.mock.calls.length, 0);
     if (editor?.editor.state !== "loaded") throw new Error("settings editor did not load");
     assert.equal(editor.editor.document.revision, 3);
     await act(async () => { await new Promise(resolve => setTimeout(resolve, 850)); });
     assert.equal(submissions, 1);
+  } finally { host.remove(); }
+});
+
+it("emits one ordinary save receipt only after matching result and persisted readback", async () => {
+  const saved = fixtureSettingsDocument({ actor: { label: "saved" } }, 2);
+  let reads = 0;
+  const onConfirmedSave = vi.fn<(receipt: ConfirmedSettingsSave) => void>();
+  const client = { editableSettings: async () => ++reads === 1 ? fixtureSettingsDocument() : saved,
+    applySettings: async (command: { commandId: string }) => ({ state: "applied", commandId: command.commandId,
+      affectedTargets: [{ family: "settings", revision: 2 }], restartRequired: false, settingsRevision: 2,
+      settingsFingerprint: saved.settingsFingerprint }),
+    preflightScopes: async () => [], readPreflight: async () => ({ state: "unavailable", reason: "synthetic" }),
+  } as unknown as DashboardClient;
+  let editor: ReturnType<typeof useEditableSettings> | undefined;
+  function Probe() { editor = useEditableSettings({ actorId: "local-operator", descriptorFingerprint: A, onConfirmedSave }); return null; }
+  const host = document.createElement("div"); document.body.append(host);
+  try {
+    await act(async () => { root = createRoot(host); root.render(createElement(DashboardClientProvider, { client, children: createElement(Probe) })); });
+    await act(async () => { editor?.update("actor.label", "saved"); });
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 800)); });
+    assert.equal(editor?.save.state, "applied");
+    assert.equal(onConfirmedSave.mock.calls.length, 1);
+    assert.deepEqual(onConfirmedSave.mock.calls[0]?.[0], { actorId: "local-operator", commandId: onConfirmedSave.mock.calls[0]?.[0].commandId,
+      kind: "ordinary", replayed: false });
   } finally { host.remove(); }
 });
 

@@ -7,6 +7,7 @@ import { useNotificationClient } from "../../state/notification-client.js";
 import { NOTIFICATION_DELIVERY_LABELS, useNotificationDelivery } from "../../state/use-notification-delivery.js";
 import { projectNotifications, type NotificationFilter } from "./notifications-view-model.js";
 import { createNotificationToastFeed, notificationRowsForActor, notificationToastPresentation } from "./notification-feedback-model.js";
+import { createNotificationControlFeedback, notificationControlFeedback } from "./notification-control-feedback-model.js";
 import { NotificationsView } from "./notifications-view.js";
 
 export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, dayState, refresh, onOpenNotification }: {
@@ -25,6 +26,8 @@ export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, 
   const [notice, setNotice] = useState("");
   const [observation, setObservation] = useState("");
   const toastFeed = useRef(createNotificationToastFeed());
+  const controlFeedback = useMemo(() => createNotificationControlFeedback(feedback =>
+    toast({ tone: feedback.tone, title: feedback.title, description: feedback.description }), dismiss), [toast, dismiss]);
   const activePublicationToasts = useRef(new Map<string, string>());
   const toastContext = useRef(identity.current.version);
   const scopedRows = useMemo(() => notificationRowsForActor(rows, actorId), [rows, actorId]);
@@ -37,6 +40,7 @@ export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, 
       for (const toastId of activePublicationToasts.current.values()) dismiss(toastId);
       activePublicationToasts.current.clear();
       toastFeed.current.reset();
+      controlFeedback.reset();
       toastContext.current = identity.current.version;
     }
     const current = new Set<string>(scopedRows.map(row => row.publicationId));
@@ -57,13 +61,14 @@ export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, 
       });
       activePublicationToasts.current.set(publicationId, toastId);
     }
-  }, [scopedRows, actorId, day, client, connected, dayState, toast, dismiss, onOpenNotification]);
+  }, [scopedRows, actorId, day, client, connected, dayState, toast, dismiss, onOpenNotification, controlFeedback]);
 
   useEffect(() => () => {
     identity.current.version += 1;
     for (const toastId of activePublicationToasts.current.values()) dismiss(toastId);
     activePublicationToasts.current.clear();
-  }, [dismiss]);
+    controlFeedback.reset();
+  }, [dismiss, controlFeedback]);
 
   useEffect(() => {
     if (!open) return;
@@ -77,21 +82,36 @@ export function ConnectedNotifications({ rows, actorId, day, nowIso, connected, 
 
   const control = (id: string, action: "read" | "snooze") => {
     const version = identity.current.version;
-    const row = rows.find((entry) => entry.notificationId === id);
+    const row = scopedRows.find((entry) => entry.notificationId === id);
     if (row === undefined || row.kind !== "notification") { setNotice("Notification is unavailable. Refresh the inbox."); return; }
     const type = action === "read" ? row.readState === "read" ? "notification-unread" : "notification-read"
       : row.state === "snoozed" ? "notification-unsnooze" : "notification-snooze";
     setNotice("");
-    void client.executeCommand({
+    const command = {
       commandId: crypto.randomUUID(), requestedAt: nowIso, requestedBy: actorId,
       source: "notification-bell", family: "notification", type,
       target: { notificationId: row.notificationId, actorId, expectedVersion: row.revision },
-    }).then(result => {
+    } as const;
+    const publish = (feedback: ReturnType<typeof notificationControlFeedback>) => {
       if (identity.current.version !== version) return;
-      const settlement = settleCommandResult(result);
-      if (settlement.kind === "refused") setNotice(settlement.problem);
+      controlFeedback.publish(`${version}:${actorId}:${day}:${row.notificationId}`, command.commandId, feedback);
+    };
+    void client.executeCommand(command).then(result => {
+      if (identity.current.version !== version) return;
+      const feedback = notificationControlFeedback(command, result);
+      if (feedback.outcome === "unknown") setNotice("The notification result could not be confirmed. Refresh the inbox before acting again.");
+      else {
+        const settlement = settleCommandResult(result);
+        if (settlement.kind === "refused") setNotice(settlement.problem);
+      }
+      publish(feedback);
       refresh();
-    }, (error: unknown) => { if (identity.current.version !== version) return; setNotice(error instanceof Error ? error.message : String(error)); refresh(); });
+    }, (error: unknown) => {
+      if (identity.current.version !== version) return;
+      setNotice(error instanceof Error ? error.message : String(error));
+      publish(notificationControlFeedback(command, undefined));
+      refresh();
+    });
   };
   return <><NotificationsView state={state} filter={filter} onFilter={setFilter} open={open} onOpenChange={setOpen}
     onControl={control} onOpen={item => onOpenNotification(item.id, () => setOpen(false), setNotice)}

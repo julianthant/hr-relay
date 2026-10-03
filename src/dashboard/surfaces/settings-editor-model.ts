@@ -11,15 +11,16 @@ import { useProviderKeys } from "./settings-provider-model.js";
 import { useStorageRelocation } from "./settings-relocation-model.js";
 import { beforeEffectRefusal, checkedSettingsResult, ordinaryReadbackState, settingsRefusal, uncertainSettingsCode, type OrdinarySettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
 import { coupledSettingsLeaves, draftError, patchFromSettingsDraft, settingInput, settingsLeaves, type SettingsDraft, type SettingsDraftInput } from "./settings-draft-model.js";
+import type { ConfirmedSettingsSave } from "./settings-save-feedback-model.js";
 
 export type EditableSettingsState = { readonly state: "loading" } | { readonly state: "failed"; readonly message: string } | { readonly state: "loaded"; readonly document: EditableSettingsWire };
 export type { SettingsSaveState } from "./settings-attempt-model.js";
 export type { PreflightRerunState } from "./settings-preflight-model.js";
 
 /** One ordinary atomic draft, independent protected draft, no browser-persisted values or attempts. */
-export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string }>) {
+export function useEditableSettings(input: Readonly<{ actorId: string; descriptorFingerprint: string; onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void }>) {
   const client = useSettingsClient();
-  const incarnation = useMemo(() => ({ client }), [client]);
+  const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
   const activeIncarnation = useRef(incarnation);
   const [editor, setEditor] = useState<EditableSettingsState>({ state: "loading" });
   const current = useRef<EditableSettingsWire | undefined>(undefined);
@@ -64,8 +65,8 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     void refresh().catch((error: unknown) => { if (active && error instanceof Error && error.message !== "settings-read-superseded" && current.current === undefined) setEditor({ state: "failed", message: "Settings could not be read. Try again." }); });
     return () => { active = false; readGeneration.current += 1; };
   }, [refresh]);
-  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh });
-  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh });
+  const protectedEditor = useProtectedSettings({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave });
+  const providerEditor = useProviderKeys({ actorId: input.actorId, readReady: readProblem === undefined, document: editor.state === "loaded" ? editor.document : undefined, refresh, onConfirmedSave: input.onConfirmedSave });
   const relocationEditor = useStorageRelocation({ actorId: input.actorId });
   const leaves = editor.state === "loaded" ? settingsLeaves(editor.document) : [];
   const errors = Object.fromEntries(Object.entries(draft).map(([path, operation]) => {
@@ -111,6 +112,7 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
     if (busy.current) return;
     const attemptIncarnation = incarnation;
     busy.current = true; pending.current = command; setSave({ state: "saving" });
+    let confirmed: ConfirmedSettingsSave | undefined;
     try {
       const result = checkedSettingsResult(command, await client.applySettings(command));
       if (attemptIncarnation !== activeIncarnation.current) return;
@@ -135,11 +137,13 @@ export function useEditableSettings(input: Readonly<{ actorId: string; descripto
       }
       if (readback !== "confirmed") throw new Error("settings-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setSave({ state: "applied", replayed: result.state === "already-applied" });
+      confirmed = { actorId: command.requestedBy, commandId: command.commandId, kind: "ordinary", replayed: result.state === "already-applied" };
     } catch (error) {
       if (attemptIncarnation !== activeIncarnation.current) return;
       const refused = beforeEffectRefusal(error); if (refused) pending.current = undefined;
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your draft is retained." : "The settings write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
     } finally { busy.current = false; }
+    if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };
   const submit = (): void => {
     if (editor.state !== "loaded" || busy.current || pending.current !== undefined || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined) || readProblem !== undefined) return;

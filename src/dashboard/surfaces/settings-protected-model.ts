@@ -7,6 +7,7 @@ import { ProtectedSettingsPatchSchema, ProtectedValueSchemas, type ProtectedSett
 import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, checkedSettingsResult, protectedReadbackConfirms, settingsRefusal, uncertainSettingsCode, type ProtectedSettingsAttempt, type SettingsSaveState } from "./settings-attempt-model.js";
+import type { ConfirmedSettingsSave } from "./settings-save-feedback-model.js";
 
 type ProtectedDraftOperation = { readonly kind: "set"; readonly raw: string } | { readonly kind: "clear" };
 type ProtectedDraft = Partial<Record<ProtectedSettingsName, ProtectedDraftOperation>>;
@@ -15,9 +16,10 @@ function protectedValue(name: ProtectedSettingsName, raw: string): unknown {
 }
 export function useProtectedSettings(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined; refresh: () => Promise<EditableSettingsWire>;
+  onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void;
 }) {
   const client = useSettingsClient();
-  const incarnation = useMemo(() => ({ client }), [client]);
+  const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
   const activeIncarnation = useRef(incarnation);
   const [draft, setDraft] = useState<ProtectedDraft>({});
   const [errors, setErrors] = useState<Partial<Record<ProtectedSettingsName, string>>>({});
@@ -57,6 +59,7 @@ export function useProtectedSettings(input: {
     if (busy.current || incarnation !== activeIncarnation.current) return;
     const attemptIncarnation = incarnation;
     busy.current = true; pending.current = command; setSave({ state: "saving" });
+    let confirmed: ConfirmedSettingsSave | undefined;
     try {
       const result = checkedSettingsResult(command, await client.executeCommand(command));
       if (attemptIncarnation !== activeIncarnation.current) return;
@@ -77,12 +80,14 @@ export function useProtectedSettings(input: {
       if (!protectedReadbackConfirms(command, result, document)) throw new Error("credential-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setErrors({});
       setSave({ state: "applied", replayed: settled.replayed });
+      confirmed = { actorId: command.requestedBy, commandId: command.commandId, kind: "protected", replayed: settled.replayed };
     } catch (error) {
       if (attemptIncarnation !== activeIncarnation.current) return;
       const refused = beforeEffectRefusal(error);
       if (refused) pending.current = undefined;
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "settings-admission-refused" : undefined, message: refused ? "The request was refused before execution. Your credential draft is retained." : "The credential write could not be confirmed. It may already be stored. Retry the exact attempt; your draft is retained." });
     } finally { busy.current = false; }
+    if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };
   const submit = (): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || available?.state !== "available" || Object.keys(draft).length === 0 || Object.values(errors).some(error => error !== undefined)) return;

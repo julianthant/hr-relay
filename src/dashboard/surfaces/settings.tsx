@@ -13,16 +13,18 @@ Settings as SettingsIcon,
 SlidersHorizontal,
 Table2
 } from "lucide-react";
-import { useCallback,useEffect,useRef,useState } from "react";
+import { useCallback,useEffect,useMemo,useRef,useState } from "react";
 import type { FrontendBootstrapWire } from "../../models/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../models/dashboard/settings.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText } from "../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText,useToasts } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
+import { useSettingsClient } from "../state/settings-client.js";
 import { plural } from "./format.js";
 import { CapabilitiesSection } from "./settings-capabilities.js";
 import { useEditableSettings } from "./settings-editor-model.js";
+import { createSettingsSaveFeedback } from "./settings-save-feedback-model.js";
 import { EditableSettingsSection } from "./settings-editor.js";
 import { RoutesSection } from "./settings-routes.js";
 import { KeyboardSection } from "./settings-keyboard.js";
@@ -194,7 +196,25 @@ export function SettingsPage({
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
-  const editor = useEditableSettings({ actorId, descriptorFingerprint });
+  const { toast, dismiss } = useToasts();
+  const settingsClient = useSettingsClient();
+  const feedback = useMemo(() => createSettingsSaveFeedback((title, description) =>
+    toast({ tone: "success", title, description }), dismiss), [toast, dismiss]);
+  const feedbackScope = useRef({ actorId, client: settingsClient, version: 0, active: true });
+  if (feedbackScope.current.actorId !== actorId || feedbackScope.current.client !== settingsClient) {
+    feedbackScope.current = { actorId, client: settingsClient, version: feedbackScope.current.version + 1, active: true };
+  }
+  const feedbackVersion = feedbackScope.current.version;
+  useEffect(() => { feedback.reset(); }, [actorId, settingsClient, feedback]);
+  useEffect(() => {
+    feedbackScope.current.active = true;
+    return () => { feedbackScope.current.active = false; feedbackScope.current.version += 1; feedback.reset(); };
+  }, [feedback]);
+  const onConfirmedSave = useCallback((receipt: Parameters<typeof feedback.publish>[0]) => {
+    if (!feedbackScope.current.active || feedbackScope.current.version !== feedbackVersion) return;
+    feedback.publish(receipt, actorId);
+  }, [actorId, feedback, feedbackVersion]);
+  const editor = useEditableSettings({ actorId, descriptorFingerprint, onConfirmedSave });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);

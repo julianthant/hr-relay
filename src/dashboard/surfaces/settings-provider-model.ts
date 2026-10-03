@@ -7,6 +7,7 @@ import { deepFreeze } from "../../rules/validation/immutability.js";
 import { DashboardClientError } from "../client/errors.js";
 import { useSettingsClient } from "../state/settings-client.js";
 import { beforeEffectRefusal, settingsRefusal, type SettingsSaveState } from "./settings-attempt-model.js";
+import type { ConfirmedSettingsSave } from "./settings-save-feedback-model.js";
 
 type Slot = (typeof ProviderKeySlotSchema.options)[number];
 type DraftOperation = { readonly kind: "set"; readonly raw: string; readonly added?: true } | { readonly kind: "clear" };
@@ -52,9 +53,10 @@ export function providerReadbackState(command: Command, result: CommandResult, d
 export function useProviderKeys(input: {
   actorId: string; readReady: boolean; document: EditableSettingsWire | undefined;
   refresh: () => Promise<EditableSettingsWire>;
+  onConfirmedSave?: (receipt: ConfirmedSettingsSave) => void;
 }) {
   const client = useSettingsClient();
-  const incarnation = useMemo(() => ({ client }), [client]);
+  const incarnation = useMemo(() => ({ client, actorId: input.actorId }), [client, input.actorId]);
   const activeIncarnation = useRef(incarnation);
   const [draft, setDraft] = useState<Draft>({});
   const [save, setSave] = useState<SettingsSaveState>({ state: "idle" });
@@ -103,6 +105,7 @@ export function useProviderKeys(input: {
     if (busy.current || incarnation !== activeIncarnation.current) return;
     const attemptIncarnation = incarnation;
     busy.current = true; pending.current = command; setSave({ state: "saving" });
+    let confirmed: ConfirmedSettingsSave | undefined;
     try {
       const result = await client.applyProviderKeys(command);
       if (attemptIncarnation !== activeIncarnation.current) return;
@@ -128,6 +131,7 @@ export function useProviderKeys(input: {
       }
       if (readback !== "confirmed") throw new Error("provider-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setSave({ state: "applied", replayed: result.state === "already-applied" });
+      confirmed = { actorId: command.requestedBy, commandId: command.commandId, kind: "provider-key", replayed: result.state === "already-applied" };
     } catch (error) {
       if (attemptIncarnation !== activeIncarnation.current) return;
       const refused = beforeEffectRefusal(error) || error instanceof DashboardClientError && error.kind === "http"
@@ -136,6 +140,7 @@ export function useProviderKeys(input: {
       setSave({ state: refused ? "refused" : "unconfirmed", code: refused ? "provider-admission-refused" : undefined,
         message: refused ? "The provider request was refused before execution. Your edit is retained." : "The provider write could not be confirmed. Retry the exact attempt; your edit is retained." });
     } finally { busy.current = false; }
+    if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };
   const submit = (): void => {
     if (!input.readReady || busy.current || pending.current !== undefined || keys?.state !== "available"
@@ -165,6 +170,7 @@ export function useProviderKeys(input: {
     if (busy.current || keys?.state !== "pending" || incarnation !== activeIncarnation.current) return;
     const attemptIncarnation = incarnation;
     busy.current = true; setSave({ state: "saving" });
+    let confirmed: ConfirmedSettingsSave | undefined;
     try {
       const intent = ProviderKeysRetryIntentSchema.parse({ family: "settings", type: "apply-provider-keys", requestedBy: input.actorId,
         retry: { commandId: keys.pending.commandId, writeId: keys.pending.writeId,
@@ -177,8 +183,10 @@ export function useProviderKeys(input: {
       if (attemptIncarnation !== activeIncarnation.current) return;
       if (!confirms(result, document, keys.pending.commandId)) throw new Error("provider-recovery-readback-unconfirmed");
       pending.current = undefined; setDraft({}); setSave({ state: "applied", replayed: result.state === "already-applied" });
+      confirmed = { actorId: input.actorId, commandId: keys.pending.commandId, kind: "provider-key", replayed: result.state === "already-applied" };
     } catch { if (attemptIncarnation === activeIncarnation.current) setSave({ state: "unconfirmed", message: "The pending provider write could not be confirmed. Retry the bound recovery attempt." }); }
     finally { busy.current = false; }
+    if (confirmed !== undefined && attemptIncarnation === activeIncarnation.current) input.onConfirmedSave?.(confirmed);
   };
   return { draft, errors, save, dirtyCount: Object.keys(draft).length, locked, hasExactAttempt: pending.current !== undefined, update, add, remove,
     discard, submit, retry, retryPending };
