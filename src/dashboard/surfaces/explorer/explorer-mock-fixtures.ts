@@ -4,7 +4,7 @@ import type { FieldSource, FlowField, FlowPart, FlowStep } from "./explorer-flow
 // src/dashboard/components/dev/rebuild-demo/demo-explorer-wire.ts and workflows/{onboarding,emergency-contact}.
 export const EXPLORER_MOCK_WORKFLOWS = [
   { id: "fixture-separations", title: "Separations", count: 22 },
-  { id: "fixture-onboarding", title: "Onboarding", count: 10 },
+  { id: "fixture-onboarding", title: "Onboarding", count: 11 },
   { id: "fixture-emergency-contact", title: "Emergency Contact", count: 11 },
 ] as const;
 export type MockWorkflowId = typeof EXPLORER_MOCK_WORKFLOWS[number]["id"];
@@ -61,30 +61,31 @@ export function buildOnboardingMock(scenario: MockScenario): MockFlow {
   return {
     summary: "CRM record → I-9 profile → UCPath hire",
     completion: dry && !held ? "Dry-run path ends before I-9 creation and UCPath filing" : rehire ? "Concurrent-hire receipt readback illustrated" : "New-hire receipt readback illustrated",
-    path: { step: 5, control: "preview-fixture-person" },
-    stopAfter: held || dry ? 5 : undefined,
+    path: { step: 6, control: "preview-fixture-person" },
+    stopAfter: held || dry ? 6 : undefined,
     steps: [
-      step(1, "Open browser sessions", undefined, { kind: "sessions", systems: rehire ? ["CRM", "UCPath"] : ["CRM", "UCPath", "I-9"] }, choice("fixture-hire-mode", "Hire type", scenario)),
-      step(2, "Read the CRM onboarding record", "CRM", form("hire-record", "UCPath Entry Sheet", "Read only", rows("read", [
+      step(1, "Open browser sessions", undefined, { kind: "sessions", systems: rehire ? ["CRM", "UCPath"] : ["CRM", "UCPath", "I-9"] }),
+      step(2, "Choose the hire type", "You", choice("fixture-hire-mode", "Hire type", scenario)),
+      step(3, "Read the CRM onboarding record", "CRM", form("hire-record", "UCPath Entry Sheet", "Read only", rows("read", [
         ["email", "Email", "Supplied hire email"], ["name", "Legal name", "CRM record"], ["birth", "Date of birth · identity data", "Protected CRM fields"],
         ["address", "Address · city · state · postal code", "CRM record"], ["phone", "Phone", "CRM record"], ["wage", "Wage", "CRM appointment"],
         ["effective", "Effective date", "CRM appointment"], ["position", "Position number · appointment", "CRM appointment"], ["end", "Expected job end date", "CRM value, when supplied"],
       ])), action("Confirm the supplied email identifies this CRM record")),
-      step(3, "Download attached iDocs", "CRM", choice("fixture-documents", "Attachments", scenario), ...(scenario["fixture-documents"] === "attached" ? [
+      step(4, "Download attached iDocs", "CRM", choice("fixture-documents", "Attachments", scenario), ...(scenario["fixture-documents"] === "attached" ? [
         action("Open the record’s attached documents", "click"), action("Download the iDocs packet into the local hire folder", "read"), action("Read back the downloaded files"),
       ] : [action("No documents attached. Continue to person search", "rejoin")])),
-      step(4, "Search for the person", "UCPath", form("person-search", "Search / Match", "Fill form", rows("fill", [["name", "Legal name", "CRM record", "hire-name"], ["identity", "Date of birth · identity data", "Protected CRM fields", "hire-identity"]])),
+      step(5, "Search for the person", "UCPath", form("person-search", "Search / Match", "Fill form", rows("fill", [["name", "Legal name", "CRM record", "hire-name"], ["identity", "Date of birth · identity data", "Protected CRM fields", "hire-identity"]])),
         action("Click Search", "click"), form("person-results", "Matching people", "Read only", rows("read", [["people", "Employee IDs · names", "Observed search results"]]))),
-      step(5, "Resolve the hire identity", "You", choice("fixture-person", "Person search result", scenario), held ? stop(personResult) : action(personResult),
+      step(6, "Resolve the hire identity", "You", choice("fixture-person", "Person search result", scenario), held ? stop(personResult) : action(personResult),
         choice("fixture-hire-posture", "Hire rehearsal", scenario), ...(dry && !held ? [stop("Dry-run boundary · stop before I-9 creation and Smart HR")] : [])),
-      step(6, "Resolve the I-9 profile", "I-9", ...(rehire ? [action("Concurrent hire uses the existing person. Skip I-9 creation", "rejoin")] : [
+      step(7, "Resolve the I-9 profile", "I-9", ...(rehire ? [action("Concurrent hire uses the existing person. Skip I-9 creation", "rejoin")] : [
         choice("fixture-i9", "I-9 profile", scenario), action("Search the portal for the hire’s existing profile", "read"),
         ...(scenario["fixture-i9"] === "present" ? [action("Read and reuse the existing profile ID", "rejoin")] : [
           form("i9-profile", "I-9 profile", "Fill form", rows("fill", [["name", "Legal name", "CRM record", "hire-name"], ["email", "Email", "CRM record", "hire-email"]])),
           action("Create the I-9 profile", "click"), action("Read the profile ID back from the portal"),
         ]),
       ])),
-      step(7, "Stage the Smart HR hire", "UCPath", form("hire-template", "Smart HR · Template", "Fill form", rows("fill", [
+      step(8, "Stage the Smart HR hire", "UCPath", form("hire-template", "Smart HR · Template", "Fill form", rows("fill", [
         ["template", "Template", rehire ? "UC_CONC_HIRE" : "UC_FULL_HIRE", "hire-template"], ["effective", "Effective date", "CRM appointment", "hire-effective"],
       ])), action("Click Create Transaction", "click"),
         form("hire-details", "Smart HR · Transaction details", "Continue", rows("fill", [
@@ -100,9 +101,9 @@ export function buildOnboardingMock(scenario: MockScenario): MockFlow {
         form("job", "Smart HR · Job Data", "Fill form", rows("fill", [
           ["position", "Position number · appointment", "CRM appointment", "hire-position"], ["rate", "Compensation rate", "CRM wage", "hire-wage"], ["end", "Expected job end date", "CRM value or configured fiscal-year rule", "hire-end"],
         ])), action("Visit Earns Dist and the remaining required tabs", "click")),
-      step(8, "Verify the staged hire", "UCPath", action("Read back the person, effective date, position and compensation"), action("Verify all required tabs and that Save and Submit is enabled")),
-      step(9, "File the hire", "UCPath", action("Click Save and Submit", "click"), action("Read the transaction number from the confirmation", "read")),
-      step(10, "Verify the hire receipt", "UCPath", form("hire-receipt", "Hire confirmation", "Read only", rows("read", [["transaction", "Transaction number", "Confirmation page"], ["employee", "Employee ID · name", "Post-submit person readback"], ["date", "Effective date · job row", "Post-submit employment readback"]])), action("Match the receipt to the CRM hire and employment details")),
+      step(9, "Verify the staged hire", "UCPath", action("Read back the person, effective date, position and compensation"), action("Verify all required tabs and that Save and Submit is enabled")),
+      step(10, "File the hire", "UCPath", action("Click Save and Submit", "click"), action("Read the transaction number from the confirmation", "read")),
+      step(11, "Verify the hire receipt", "UCPath", form("hire-receipt", "Hire confirmation", "Read only", rows("read", [["transaction", "Transaction number", "Confirmation page"], ["employee", "Employee ID · name", "Post-submit person readback"], ["date", "Effective date · job row", "Post-submit employment readback"]])), action("Match the receipt to the CRM hire and employment details")),
     ],
   };
 }
@@ -149,14 +150,14 @@ export function buildEmergencyContactMock(scenario: MockScenario): MockFlow {
   };
 }
 
-const crm = (field: string, fieldId: string): FieldSource => ({ reads: [{ system: "CRM", page: "UCPath Entry Sheet", field, step: 2, fieldId }] });
+const crm = (field: string, fieldId: string): FieldSource => ({ reads: [{ system: "CRM", page: "UCPath Entry Sheet", field, step: 3, fieldId }] });
 const contact = (field: string, fieldId: string): FieldSource => ({ reads: [{ system: "OCR", page: "Emergency Contact Form", field, step: 2, fieldId }], chain: [{ step: 3, title: "Approve the contact record", detail: "Use only the fields approved during packet review." }] });
 const MOCK_SOURCES: Readonly<Record<string, FieldSource>> = {
   "hire-name": crm("Legal name", "name"), "hire-identity": crm("Protected identity data", "birth"), "hire-email": crm("Email", "email"), "hire-address": crm("Address · phone · email", "address"),
   "hire-effective": crm("Effective date", "effective"), "hire-position": crm("Position number · appointment", "position"), "hire-wage": crm("Wage", "wage"),
   "hire-end": { ...crm("Expected job end date", "end"), detail: "When no CRM end date is supplied, use the configured fiscal-year rule.", origin: "CRM value or configured rule" },
-  "hire-person": { reads: [{ system: "UCPath", page: "Search / Match", field: "Confirmed employee ID", step: 4, fieldId: "people" }], chain: [{ step: 5, title: "Resolve identity", detail: "Confirm the matched person before staging a concurrent hire." }] },
-  "hire-profile": { reads: [{ system: "I-9", page: "Profile", field: "Verified profile ID", step: 6 }] },
+  "hire-person": { reads: [{ system: "UCPath", page: "Search / Match", field: "Confirmed employee ID", step: 5, fieldId: "people" }], chain: [{ step: 6, title: "Resolve identity", detail: "Confirm the matched person before staging a concurrent hire." }] },
+  "hire-profile": { reads: [{ system: "I-9", page: "Profile", field: "Verified profile ID", step: 7 }] },
   "hire-template": { origin: "Hire type", detail: "New hire uses UC_FULL_HIRE and Hire - No Prior UC Affiliation. Concurrent hire uses UC_CONC_HIRE and Concurrent Hire - Non Dual Emp." },
   "contact-employee": contact("Employee ID · name", "employee"), "contact-name": contact("Contact name", "contact"), "contact-phone": contact("Cell · home · work phone", "phone"),
   "contact-address": contact("Contact address · employee address", "address"),

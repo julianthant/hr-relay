@@ -54,14 +54,17 @@ hire filing; Emergency Contact illustrates packet review, per-person fan-out, id
 duplicate handling, address/phone entry and save/readback. Review, mismatch, duplicate and dry-run
 choices control the hypothetical path and reset when changing workflows. The copied concepts are
 source-pinned to legacy `9bb973672666b9267569a22d3fa0af722e4c5e87`; the browser has no legacy runtime
-dependency. Each workflow begins with its declared browser systems, matching Separations. Emergency
+dependency. Each workflow begins with its declared browser systems, matching Separations. Onboarding puts
+Hire type in its own second step; all eleven steps, source links and preview stops follow that order. Emergency
 Contact names UCPath first and authenticates only after packet review. These chips declare session
 needs; they do not report launched or authenticated sessions.
 
 Archive retains served report identities, route joins and command boundaries. Wide reports pair
 retained fields, compact metadata and table rows, and keep section navigation sticky. Workflow groups
 use compact summaries and filters. Loading skeletons, empty results and failed reads are distinct;
-failed reads retain their error and offer read retry and navigation controls.
+failed reads retain their error and offer read retry and navigation controls. The replacement Archive
+and matching Dashboard, Explorer and Activity toolbars are awaiting artboard selection. The requested
+rebuild retains a similar folder layout; it does not authorize implementing an unselected toolbar design.
 
 Logs keeps its approved field tables, click rows, search/copy/latest controls
 and action-associated screenshots. Its Completed header is hidden while unfinished and failure states remain.
@@ -136,7 +139,9 @@ date navigation, notifications, theme and Settings; preflight
 is removed. `TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
 `NotificationsState` to `NotificationsView`. The connected search/date renderers are retired. Search,
 date and notification examples use local fixtures: navigation and delivery placeholders invoke no API,
-command, browser permission or OS delivery path. Settings retains its separate existing preflight read.
+command, browser permission or OS delivery path. The navbar uses the shared DS Calendar used by
+DateInput; Activity keeps its range-selection variant of the same calendar design. Date limits, day
+navigation, counts and Today remain local fixture behavior. Settings retains its separate existing preflight read.
 
 The 370px notification popover keeps its heading, filters and footer fixed while the message list scrolls.
 The pinned history-gap notice appears under every filter and has no lifecycle controls; read and snooze are
@@ -6698,8 +6703,9 @@ The operator approved Design 1 with subsequent control, step-row and spreadsheet
 Run and Rerun share an 880×628 desktop frame: Run has a workflow rail, Rerun a source rail.
 Checkboxes align with their titles; prior step outcomes use compact status labels beside the title.
 The source-history note stays at the bottom of the Rerun rail. Date popovers anchor to the input field.
-Peer controls in a row use the same height; spreadsheet Settings tabs retain their underline without
-a hover background.
+Peer controls in a row use the same height; spreadsheet Settings tabs form one connected control without
+a hover background. Its persistent selection surface slides with the shared 220ms move timing; rapid
+changes retarget the transition, and reduced motion changes selection without travel.
 Options use styled workbook choices, segmented priority/browser controls and compact fixed facts.
 Rerun keeps source-bound values and repeat-write confirmation. A confirmed applied start closes the
 dialog and emits a toast; unknown or refused submissions retain recovery.

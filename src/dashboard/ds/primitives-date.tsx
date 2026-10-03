@@ -22,6 +22,36 @@ function textDateValue(value: string): CalendarDate | null {
   return dateValue(`${year}-${month?.padStart(2, "0")}-${day?.padStart(2, "0")}`);
 }
 
+export function Calendar({ label, value, onChange, minValue, maxValue, autoFocus }: {
+  label: string;
+  value?: CalendarDate | null;
+  onChange?: (date: CalendarDate) => void;
+  minValue?: CalendarDate;
+  maxValue?: CalendarDate;
+  autoFocus?: boolean;
+}) {
+  const [yearPickerOpen, setYearPickerOpen] = useState(false);
+  return <HeroCalendar aria-label={label} className="ds-hero-calendar" {...(autoFocus !== undefined ? { autoFocus } : {})}
+    {...(value !== undefined ? { value } : {})} {...(onChange ? { onChange } : {})}
+    minValue={minValue} maxValue={maxValue} isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen}>
+    <HeroCalendar.Header>
+      <HeroCalendar.NavButton className="text-foreground" slot="previous" aria-label="Previous month" />
+      <HeroCalendar.YearPickerTrigger className="w-full justify-center">
+        <HeroCalendar.YearPickerTriggerHeading className="text-foreground" />
+        <HeroCalendar.YearPickerTriggerIndicator className="text-foreground" />
+      </HeroCalendar.YearPickerTrigger>
+      <HeroCalendar.NavButton className="text-foreground" slot="next" aria-label="Next month" />
+    </HeroCalendar.Header>
+    <HeroCalendar.Grid>
+      <HeroCalendar.GridHeader>{day => <HeroCalendar.HeaderCell>{day}</HeroCalendar.HeaderCell>}</HeroCalendar.GridHeader>
+      <HeroCalendar.GridBody>{date => <HeroCalendar.Cell date={date} />}</HeroCalendar.GridBody>
+    </HeroCalendar.Grid>
+    {yearPickerOpen && <HeroCalendar.YearPickerGrid>
+      <HeroCalendar.YearPickerGridBody>{({ year }) => <HeroCalendar.YearPickerCell year={year} />}</HeroCalendar.YearPickerGridBody>
+    </HeroCalendar.YearPickerGrid>}
+  </HeroCalendar>;
+}
+
 /** The calendar used by every ordinary date field in the dashboard. */
 export function DateInput({ label, value, onChange, min, max, inline = false, className, textEntry = false, textDateFormat = "M/D/YYYY", disabled = false, required = false, onOpenChange }: {
   label: string;
@@ -38,10 +68,9 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
   required?: boolean;
   onOpenChange?: (open: boolean) => void;
 }) {
-  const [yearPickerOpen, setYearPickerOpen] = useState(false);
   const [calendarOpen, setCalendarOpen] = useState(false);
   const selected = textEntry ? textDateValue(value) : dateValue(value);
-  const setOpen = (open: boolean) => { setCalendarOpen(open); if (!open) setYearPickerOpen(false); onOpenChange?.(open); };
+  const setOpen = (open: boolean) => { setCalendarOpen(open); onOpenChange?.(open); };
   const setDate = (date: CalendarDate | null) => {
     onChange(date === null ? "" : textEntry ? `${textDateFormat === "MM/DD/YYYY" ? String(date.month).padStart(2, "0") : String(date.month)}/${textDateFormat === "MM/DD/YYYY" ? String(date.day).padStart(2, "0") : String(date.day)}/${String(date.year)}` : date.toString());
     if (calendarOpen) setOpen(false);
@@ -84,29 +113,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
       </DateField.Group>
       </PopoverAnchor>
       <PopoverContent title={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} hideTitle hideClose className={cn("ds-date-popover w-auto [&>div]:p-0", dsLayer.modal)}>
-        <HeroCalendar aria-label={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} className="ds-hero-calendar" isYearPickerOpen={yearPickerOpen} onYearPickerOpenChange={setYearPickerOpen}>
-          <HeroCalendar.Header>
-            <HeroCalendar.NavButton className="text-foreground" slot="previous" />
-            <HeroCalendar.YearPickerTrigger className="w-full justify-center">
-              <HeroCalendar.YearPickerTriggerHeading className="text-foreground" />
-              <HeroCalendar.YearPickerTriggerIndicator className="text-foreground" />
-            </HeroCalendar.YearPickerTrigger>
-            <HeroCalendar.NavButton className="text-foreground" slot="next" />
-          </HeroCalendar.Header>
-          <HeroCalendar.Grid>
-            <HeroCalendar.GridHeader>
-              {day => <HeroCalendar.HeaderCell>{day}</HeroCalendar.HeaderCell>}
-            </HeroCalendar.GridHeader>
-            <HeroCalendar.GridBody>
-              {date => <HeroCalendar.Cell date={date} />}
-            </HeroCalendar.GridBody>
-          </HeroCalendar.Grid>
-          {yearPickerOpen && <HeroCalendar.YearPickerGrid>
-            <HeroCalendar.YearPickerGridBody>
-              {({ year }) => <HeroCalendar.YearPickerCell year={year} />}
-            </HeroCalendar.YearPickerGridBody>
-          </HeroCalendar.YearPickerGrid>}
-        </HeroCalendar>
+        <Calendar label={`Choose ${label.toLowerCase()}${textEntry ? "" : " date"}`} />
       </PopoverContent>
     </DatePicker>
     </Popover>

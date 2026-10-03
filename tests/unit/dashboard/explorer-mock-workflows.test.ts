@@ -46,7 +46,11 @@ describe("frontend-only Explorer mock workflows", () => {
   it("lists launched systems first and defers contact authentication until review", () => {
     const onboarding = buildOnboardingMock(DEFAULT_MOCK_SCENARIO);
     assert.equal(onboarding.steps[0]?.title, "Open browser sessions");
-    assert.deepEqual(onboarding.steps[0]?.parts[0], { kind: "sessions", systems: ["CRM", "UCPath", "I-9"] });
+    assert.deepEqual(onboarding.steps[0]?.parts, [{ kind: "sessions", systems: ["CRM", "UCPath", "I-9"] }]);
+    assert.equal(onboarding.steps[1]?.number, 2);
+    assert.equal(onboarding.steps[1]?.title, "Choose the hire type");
+    assert.ok(onboarding.steps[1]?.parts.some(part => part.kind === "mock-choice" && part.id === "fixture-hire-mode"));
+    assert.deepEqual(onboarding.steps.map(step => step.number), Array.from({ length: 11 }, (_, index) => index + 1));
     const contact = buildEmergencyContactMock(DEFAULT_MOCK_SCENARIO);
     assert.equal(contact.steps[0]?.title, "Open browser sessions");
     assert.deepEqual(contact.steps[0]?.parts[0], { kind: "sessions", systems: ["UCPath"] });
@@ -80,8 +84,8 @@ describe("frontend-only Explorer mock workflows", () => {
   it("switches mock workflows without a client provider, resets transient details and preserves Separations", async () => {
     await render();
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
-    await click("Onboarding10");
-    assert.equal(document.querySelectorAll("li[data-step-number]").length, 10);
+    await click("Onboarding11");
+    assert.equal(document.querySelectorAll("li[data-step-number]").length, 11);
     await click("Show source for Legal name");
     assert.ok(document.querySelector('[aria-label="Legal name source"]'));
     await click("Emergency Contact11");
@@ -92,19 +96,19 @@ describe("frontend-only Explorer mock workflows", () => {
     assert.ok(document.querySelector('[aria-label="Read result preview"]'));
   });
   it("holds onboarding writes, supports concurrent hire, and stops its rehearsal at the I-9 boundary", async () => {
-    await render(); await click("Onboarding10");
-    await choose("Person search result", "review"); assert.equal(hidden(6), true);
-    await choose("Person search result", "rejected"); assert.equal(hidden(9), true);
-    await choose("Person search result", "none"); assert.equal(hidden(10), false);
-    await choose("Hire type", "rehire"); assert.equal(hidden(6), true, "rehire cannot proceed without a matched EID");
-    await choose("Person search result", "matched"); assert.equal(hidden(10), false);
-    assert.match(document.getElementById("explorer-step-6")?.textContent ?? "", /Skip I-9 creation/);
-    assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /UC_CONC_HIRE/);
-    await choose("Hire rehearsal", "dry"); assert.equal(hidden(6), true); assert.equal(hidden(9), true);
+    await render(); await click("Onboarding11");
+    await choose("Person search result", "review"); assert.equal(hidden(7), true);
+    await choose("Person search result", "rejected"); assert.equal(hidden(10), true);
+    await choose("Person search result", "none"); assert.equal(hidden(11), false);
+    await choose("Hire type", "rehire"); assert.equal(hidden(7), true, "rehire cannot proceed without a matched EID");
+    await choose("Person search result", "matched"); assert.equal(hidden(11), false);
+    assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /Skip I-9 creation/);
+    assert.match(document.getElementById("explorer-step-8")?.textContent ?? "", /UC_CONC_HIRE/);
+    await choose("Hire rehearsal", "dry"); assert.equal(hidden(7), true); assert.equal(hidden(10), true);
     await choose("Hire type", "new"); await choose("Person search result", "none"); await choose("Hire rehearsal", "write");
     await choose("I-9 profile", "present");
-    assert.match(document.getElementById("explorer-step-6")?.textContent ?? "", /reuse the existing profile ID/);
-    assert.doesNotMatch(document.getElementById("explorer-step-6")?.textContent ?? "", /Create the I-9 profile/);
+    assert.match(document.getElementById("explorer-step-7")?.textContent ?? "", /reuse the existing profile ID/);
+    assert.doesNotMatch(document.getElementById("explorer-step-7")?.textContent ?? "", /Create the I-9 profile/);
   });
   it("holds contact writes on review/identity, skips exact duplicates and keeps rollup after dry run", async () => {
     await render(); await click("Emergency Contact11");

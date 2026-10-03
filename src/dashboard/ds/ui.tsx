@@ -193,7 +193,7 @@ export {
 } from "./primitives-form.js";
 export type { UnitFieldProps, SecretFieldProps } from "./primitives-form.js";
 
-export { DateInput } from "./primitives-date.js";
+export { Calendar, DateInput } from "./primitives-date.js";
 export { ChoicePicker, SegmentedChoice } from "./primitives-choice.js";
 
 export {

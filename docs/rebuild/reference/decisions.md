@@ -6,7 +6,8 @@ starts close to a toast; source binding, repeat-write warnings and unknown-submi
 Spreadsheet registration moves out of Run into Settings → Spreadsheets by type, initially Roster,
 with per-sheet mappings and searches across multiple named fields. Its workspace uses the available
 center width with contained table scrolling, separate field groups and a compact type card. Peer
-controls in each row share a height. Import closes to a toast.
+controls in each row share a height. The two spreadsheet Settings tabs are connected, with a sliding
+selection surface and reduced-motion support. Import closes to a toast.
 The registry and attachment choices are session-only fictional mocks; they do not read/save files,
 generate updated copies or start people from spreadsheet rows. Existing live launch and backend
 intake authority remain. Owner:
@@ -28,11 +29,14 @@ portion changes state/color. Logs defaults to a labelled fictional action histor
 selected subject and status, with sample captures and durations. The separate Selected run · queue
 facts view retains only served facts. Local sample decisions update the affected timeline portion and
 append ordinary log events. Explorer adds Onboarding and Emergency Contact mocks, listing browser
-systems first as Separations does; contact authentication remains after packet review. Archive uses
+systems first as Separations does; Onboarding gives Hire type its own second step and renumbers
+source links and stops across eleven steps. Contact authentication remains after packet review. The
+navbar uses the shared DateInput calendar design, alongside Activity’s range-selection variant. Archive uses
 paired report fields, compact rows and distinct loading/empty/error states. Inline image
 areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
-Backend classifiers and failure/resolve wiring remain deferred.
+Replacement Archive and matching Dashboard, Explorer and Activity toolbar artboards await selection;
+those replacements have not been implemented. Backend classifiers and failure/resolve wiring remain deferred.
 Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
 
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**

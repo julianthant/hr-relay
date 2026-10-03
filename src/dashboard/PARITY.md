@@ -42,8 +42,11 @@ compact metadata and rows, sticky report-section navigation and distinct loading
 with read-retry controls. Explorer adds fictional Onboarding and Emergency Contact paths to the existing
 Separations preview, including source returns, identity/review stops, duplicate handling and dry-run
 branches. All three begin with declared browser systems; contact authentication remains after packet
-review. Focused desktop dark/light interaction checks cover the changes; frozen reference screenshots
-remain unchanged. Mock workflows are presentation only and cannot start runs.
+review. Onboarding puts Hire type in step 2, with eleven ordered steps and corresponding source links
+and stops. The navbar renders the shared DateInput calendar design; Activity retains its range variant.
+Spreadsheet Settings uses connected tabs with a sliding selection surface and reduced-motion support.
+Replacement Archive and toolbar artboards await selection. Focused desktop dark/light interaction checks
+cover the changes; frozen reference screenshots remain unchanged. Mock workflows are presentation only and cannot start runs.
 
 ## Ruled deviations from the rebuild-demo
 

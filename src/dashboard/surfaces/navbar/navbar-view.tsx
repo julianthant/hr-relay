@@ -1,10 +1,11 @@
+import { parseDate } from "@internationalized/date";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowLeft, ArrowRight, CalendarDays, ChevronLeft, ChevronRight, Moon, Search, Settings, Sun, X } from "lucide-react";
-import { Popover, PopoverClose, PopoverContent, PopoverTrigger, dsFocus, type DemoTheme } from "../../ds/ui.js";
+import { Button, Calendar, Popover, PopoverClose, PopoverContent, PopoverTrigger, dsFocus, type DemoTheme } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
 import type { ShellView, ShellViewSelection } from "../top-bar-model.js";
-import { NAVBAR_VIEWS, navbarCalendarKey, navbarDayLabel, navbarMonthCells, navbarMonthLabel, navbarSearch, navbarShiftDay, navbarShiftMonth, type NavbarData, type NavbarSearchResult } from "./navbar-view-model.js";
+import { NAVBAR_VIEWS, navbarDayLabel, navbarSearch, navbarShiftDay, type NavbarData, type NavbarSearchResult } from "./navbar-view-model.js";
 
 const iconButton = cn("inline-flex size-7.5 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent", dsFocus);
 const floating = "ui-theme-scope bg-ui-panel font-ui text-ui-primary border-ui-stroke-control [&>div:last-child]:p-0";
@@ -57,37 +58,16 @@ export function NavbarSearch({ data, onResult }: { data: NavbarData; onResult: (
 
 export function NavbarCalendar({ data }: { data: NavbarData }) {
   const [day, setDay] = useState(data.today);
-  const [month, setMonth] = useState(data.today.slice(0, 7));
-  const [focused, setFocused] = useState(data.today);
   const [open, setOpen] = useState(false);
-  const surface = useRef<HTMLDivElement>(null);
-  const cells = navbarMonthCells(month, data.today);
   const count = data.counts[day];
-  useEffect(() => {
-    if (!open) return;
-    const timer = window.setTimeout(() => surface.current?.querySelector<HTMLButtonElement>(`[data-calendar-day="${day}"]`)?.focus(), 0);
-    return () => window.clearTimeout(timer);
-  }, [open, day]);
-  const focusDay = (next: string) => {
-    if (next > data.today) return;
-    setMonth(next.slice(0, 7));
-    setFocused(next);
-    window.requestAnimationFrame(() => surface.current?.querySelector<HTMLButtonElement>(`[data-calendar-day="${next}"]`)?.focus());
-  };
   const choose = (next: string) => { setDay(next); setOpen(false); };
   return <div className="flex h-8 shrink-0 items-center rounded-md border border-ui-stroke bg-ui-canvas p-px">
     <button type="button" aria-label="Previous day" title="Previous day" className={cn(iconButton, "size-7")} onClick={() => setDay(navbarShiftDay(day, -1))}><ChevronLeft aria-hidden className="size-3.5" /></button>
-    <Popover open={open} onOpenChange={next => { setOpen(next); if (next) { setMonth(day.slice(0, 7)); setFocused(day); } }}>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger asChild><button type="button" aria-label="Choose date" className={cn("flex h-7 items-center gap-1.5 rounded px-1.5 text-body hover:bg-ui-hover", dsFocus)}><CalendarDays aria-hidden className="size-3.5 text-ui-secondary" /><span>{navbarDayLabel(day)}</span><span title={count === undefined ? "Run count unavailable" : `${count} runs`} className="min-w-4.5 rounded bg-ui-table px-1 text-center text-caption tabular-nums text-ui-info">{count ?? "—"}</span></button></PopoverTrigger>
-      <PopoverContent title="Choose date" hideTitle align="end" className={cn(floating, "w-72")} surfaceRef={surface}>
-        <div className="flex items-center gap-1 border-b border-ui-stroke p-2"><button type="button" aria-label="Previous month" className={iconButton} onClick={() => { const next = navbarShiftMonth(month, -1); setMonth(next); setFocused(`${next}-01`); }}><ChevronLeft aria-hidden className="size-4" /></button><h2 className="m-0 flex-1 text-center text-heading">{navbarMonthLabel(month)}</h2><button type="button" aria-label="Next month" className={iconButton} disabled={month >= data.today.slice(0, 7)} onClick={() => { const next = navbarShiftMonth(month, 1); setMonth(next); setFocused(`${next}-01`); }}><ChevronRight aria-hidden className="size-4" /></button><PopoverClose asChild><button type="button" aria-label="Close calendar" className={iconButton}><X aria-hidden className="size-4" /></button></PopoverClose></div>
-        <table aria-label={navbarMonthLabel(month)} className="w-full table-fixed border-separate border-spacing-1 p-2 text-center text-body"><thead><tr>{["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map(name => <th key={name} scope="col" className="pb-1 text-caption font-normal text-ui-muted">{name}</th>)}</tr></thead><tbody>{Array.from({ length: 6 }, (_, row) => <tr key={row}>{cells.slice(row * 7, row * 7 + 7).map(cell => <td key={cell.day}><button type="button" data-calendar-day={cell.day} aria-label={navbarDayLabel(cell.day)} aria-pressed={cell.day === day} aria-current={cell.day === data.today ? "date" : undefined} disabled={!cell.available} tabIndex={cell.day === focused ? 0 : -1} onClick={() => choose(cell.day)} onFocus={() => setFocused(cell.day)} onKeyDown={event => {
-          const next = navbarCalendarKey(cell.day, event.key);
-          if (next === undefined) return;
-          event.preventDefault();
-          focusDay(next);
-        }} className={cn("flex size-8 items-center justify-center rounded text-body tabular-nums hover:bg-ui-hover disabled:opacity-35", dsFocus, cell.inMonth ? "text-ui-primary" : "text-ui-muted", cell.day === day && "bg-ui-table font-semibold text-ui-info ring-1 ring-ui-info")}>{cell.label}</button></td>)}</tr>)}</tbody></table>
-        <div className="flex items-center justify-between border-t border-ui-stroke px-3 py-2"><span className="text-caption text-ui-muted">Dates through {navbarDayLabel(data.today)}</span><button type="button" className={cn("rounded px-2 py-1 text-body text-ui-info hover:bg-ui-hover", dsFocus)} onClick={() => choose(data.today)}>Today</button></div>
+      <PopoverContent title="Choose date" hideTitle hideClose align="end" className="ds-date-popover w-auto [&>div]:p-0">
+        <Calendar label="Choose dashboard date" value={parseDate(day)} maxValue={parseDate(data.today)} autoFocus onChange={date => choose(date.toString())} />
+        <div className="flex items-center justify-between border-t border-ui-stroke px-3 py-2"><span className="text-caption text-ui-muted">Dates through {navbarDayLabel(data.today)}</span><Button size="sm" variant="ghost" onClick={() => choose(data.today)}>Today</Button></div>
       </PopoverContent>
     </Popover>
     <button type="button" aria-label="Next day" title="Next day" disabled={day >= data.today} className={cn(iconButton, "size-7")} onClick={() => setDay(navbarShiftDay(day, 1))}><ChevronRight aria-hidden className="size-3.5" /></button>
