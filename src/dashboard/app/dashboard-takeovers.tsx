@@ -5,7 +5,7 @@ type FrontendBootstrapWire
 import { ActivityReport } from "../surfaces/activity.js";
 import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { RuntimeArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-runtime.js";
-import { WorkflowExplorer } from "../surfaces/explorer.js";
+import { WorkflowExplorerPreview } from "../surfaces/explorer-preview.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { SettingsPage } from "../surfaces/settings.js";
 import {
@@ -131,7 +131,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
 
               NO WRAPPER — see the Settings arm above (UF-EX-2).
             */
-            <WorkflowExplorer
+            <WorkflowExplorerPreview
               workflowId={route.explore ?? activeWorkflowId}
               onWorkflow={(next) => setRoute({ ...route, explore: next })}
               onVersionRegistry={() => setRoute({

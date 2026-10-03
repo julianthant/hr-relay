@@ -33,7 +33,7 @@ import {
 } from "../../../workflow-kit/workflow.js";
 import { descriptorRuntimeNodes, runtimeNodeLabel } from "../../../workflow-kit/workflow.js";
 import type { AnyWorkflowDescriptor } from "../../../workflow-kit/workflow.js";
-import type { AnyWorkflowDefinition } from "../../../workflow-kit/workflow-definition.js";
+import { workflowDefinitionOf, workflowExplorerDeclaration, type AnyWorkflowDefinition } from "../../../workflow-kit/workflow-definition.js";
 import type { RegisteredTaskStore } from "../../../workflow-kit/task-registry.js";
 import { ContractFieldPathSchema } from "../../../models/task/task-contract.js";
 import { contractSchemaLeaves } from "../../../models/validation/contract-boundary.js";
@@ -791,6 +791,31 @@ function workflowWire(
   const workflowClosure = manifest.get(`workflow:${workflowId}`) ?? new Set<string>();
   const bindings = bindingIndex(module, deps.pendingImplBindings);
   const context = { bindings, ui, manifest, workflowClosure };
+  const definition = module.definition;
+  if (definition !== undefined && workflowDefinitionOf(descriptor) !== definition) {
+    throw new Error(`workflow ${workflowId} Explorer definition is not the descriptor's compiled source`);
+  }
+  const declaration = definition === undefined ? undefined : workflowExplorerDeclaration(definition);
+  if (declaration !== undefined) {
+    const declaredGroups = declaration.map((group) => ({ key: group.key, label: group.label,
+      nodes: group.entries.flatMap((entry) => entry.nodeIds) }));
+    const descriptorGroups = descriptor.timeline.map((group) => ({ key: group.key, label: group.label,
+      nodes: group.nodes.map((node) => String(node.id)) }));
+    if (JSON.stringify(declaredGroups) !== JSON.stringify(descriptorGroups)) {
+      throw new Error(`workflow ${workflowId} ordered definition preview disagrees with the compiled descriptor timeline`);
+    }
+    const ids = declaredGroups.flatMap((group) => group.nodes);
+    const compiledIds = nodes.map((node) => String(node.id));
+    if (ids.length !== compiledIds.length || new Set(ids).size !== ids.length
+      || ids.some((id) => !compiledIds.includes(id))) {
+      throw new Error(`workflow ${workflowId} ordered definition preview does not cover the compiled graph exactly`);
+    }
+  }
+  const systemsFirstUse = declaration === undefined ? [] : [...new Set(declaration.flatMap((group) =>
+    group.entries.flatMap((entry) => entry.taskIds.flatMap((id) => {
+      const binding = bindings.byTaskId.get(id);
+      return binding?.state === "bound" && binding.driverSystem !== undefined ? [String(binding.driverSystem)] : [];
+    }))))];
 
   const coverageByNode = new Map<string, ExplorerNodeWire["coveragePoints"][number][]>();
   for (const point of projections.coveragePoints) {
@@ -830,6 +855,9 @@ function workflowWire(
     version: descriptor.version,
     contractFingerprint: descriptor.contractFingerprint,
     operationStructure: operationStructureWire(descriptor),
+    definitionPreview: declaration === undefined
+      ? { state: "unavailable", reason: "this registered descriptor has no compiled ordered definition" }
+      : { state: "compiled", groups: declaration, systemsFirstUse },
     edit: {
       overrideRevision: effectivePresentation.overrideRevision,
       presentation: {

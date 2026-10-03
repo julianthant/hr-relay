@@ -458,6 +458,25 @@ export const ExplorerWorkflowWireSchema = z.strictObject({
   contractFingerprint: FingerprintSchema,
   /** One declared operation tree, or explicit legacy absence. */
   operationStructure: ExplorerOperationStructureWireSchema,
+  /** Authored tuple order, kept apart from the graph's typed execution edges. */
+  definitionPreview: z.discriminatedUnion("state", [
+    z.strictObject({ state: z.literal("unavailable"), reason: z.string().min(1) }),
+    z.strictObject({
+      state: z.literal("compiled"),
+      groups: z.array(z.strictObject({
+        key: z.string().min(1),
+        label: z.string().min(1),
+        entries: z.array(z.strictObject({
+          id: NodeIdSchema,
+          kind: z.enum(["task", "parallel", "delegate", "gate", "transaction"]),
+          nodeIds: z.array(NodeIdSchema).min(1),
+          dependsOn: z.array(NodeIdSchema),
+          taskIds: z.array(TaskIdSchema),
+        })).min(1),
+      })).min(1),
+      systemsFirstUse: z.array(BrowserSystemIdSchema),
+    }),
+  ]),
   /** The exact closed subset the safe-edit protocol derives for this descriptor. */
   edit: z.strictObject({
     overrideRevision: z.number().int().nonnegative(),

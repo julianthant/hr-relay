@@ -1,4 +1,4 @@
-import { ArrowUpRight, CheckCheck, ChevronDown, CircleStop, CornerDownRight, Cpu, Eye, GitBranch, GitMerge, Keyboard, LockKeyhole, Monitor, MousePointer2, PanelsTopLeft, PencilLine, UserRound } from "lucide-react";
+import { ArrowUpRight, CheckCheck, ChevronDown, CircleStop, CornerDownRight, Cpu, Eye, GitBranch, GitMerge, Keyboard, Monitor, MousePointer2, PanelsTopLeft, PencilLine, UserRound } from "lucide-react";
 import { dsFocus } from "../../ds/ui.js";
 import { ExplorerComment } from "./explorer-comment.js";
 import type { CommentChoices, FlowField, FlowPart, FlowStep, PreviewScenario } from "./explorer-flow-model.js";
@@ -62,7 +62,7 @@ export function ExplorerParts(props: PartProps) {
           {field.value}{field.mode === "fill" && <ArrowUpRight aria-hidden className="size-3.5 shrink-0" />}
         </span></>;
       return <div key={field.id} className="border-b border-ui-stroke last:border-b-0">
-        {field.mode === "fill" ? <button id={id} type="button" disabled={props.disabled} aria-label={`Show source for ${field.label}`} className={`${style} hover:bg-ui-hover disabled:cursor-not-allowed ${dsFocus}`} onClick={(event) => onSource(field, step, event.currentTarget, props.formTitle)}>{body}</button> : <div id={id} tabIndex={-1} className={style}>{body}</div>}
+        {field.mode === "fill" || field.source !== undefined ? <button id={id} type="button" disabled={props.disabled} aria-label={`Show source for ${field.label}`} className={`${style} hover:bg-ui-hover disabled:cursor-not-allowed ${dsFocus}`} onClick={(event) => onSource(field, step, event.currentTarget, props.formTitle)}>{body}</button> : <div id={id} tabIndex={-1} className={style}>{body}</div>}
         {field.template && <ExplorerComment id={templateId} kind={field.template} choices={comments} onChange={onComments} open={open[templateId] ?? field.template !== "duplicate"} onToggle={(value) => onToggle(templateId, value)} rulesOpen={open[`${templateId}-rules`] ?? false} onRulesToggle={(value) => onToggle(`${templateId}-rules`, value)} />}
       </div>;
     })}</div>;
@@ -76,7 +76,7 @@ export function ExplorerParts(props: PartProps) {
     </div>;
     if (part.kind === "note") return <p key={key} className="my-2 max-w-prose text-body text-ui-secondary">{part.text}</p>;
     if (part.kind === "resume") return <button key={key} type="button" className={`flex items-center gap-2 px-4 pt-3 text-caption text-ui-info hover:underline ${dsFocus}`} onClick={() => onStep(part.step)}><CornerDownRight aria-hidden className="size-3.5" />{part.text}</button>;
-    if (part.kind === "sessions") return <div key={key} className="flex flex-wrap gap-2 pt-1">{(part.systems ?? ["Kuali", "Kronos", "UCPath"]).map((system) => <span key={system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body" title={`Declared session: open ${system} and authenticate`}><Monitor aria-hidden className="size-4 text-ui-muted" />{system}<LockKeyhole aria-hidden className="ml-2 size-3 text-ui-muted" /></span>)}</div>;
+    if (part.kind === "sessions") return <div key={key} className="flex flex-wrap gap-2 pt-1">{(part.systems ?? ["Kuali", "Kronos", "UCPath"]).map((system) => <span key={system} className="flex h-9 items-center gap-2 rounded-md border border-ui-stroke bg-ui-table px-3 text-body" title={`Declared system: ${system}`}><Monitor aria-hidden className="size-4 text-ui-muted" />{system}</span>)}</div>;
     const Icon = { click: MousePointer2, read: Eye, verify: CheckCheck, compute: Cpu, key: Keyboard, rejoin: GitMerge, stop: CircleStop }[part.icon];
     return <div key={key} className={`my-2.5 flex min-h-9 items-center gap-2.5 text-body ${part.icon === "stop" ? "text-ui-danger" : "text-ui-secondary"} ${part.icon === "stop" ? "rounded-md border border-ui-stroke bg-ui-table p-3" : part.icon === "click" ? "ml-3 w-fit rounded-md border border-ui-stroke bg-ui-table px-2.5 py-1.5 text-ui-primary" : part.icon === "rejoin" ? "mt-3.5 border-t border-ui-stroke pt-3" : "px-2"}`}>
       <Icon aria-hidden className={`size-3.5 shrink-0 ${part.icon === "verify" ? "text-ui-positive" : part.icon === "rejoin" ? "text-ui-info" : ""}`} /><span>{part.text}</span>

@@ -1381,3 +1381,20 @@ export function workflowDefinitionOf(descriptor: object): AnyWorkflowDefinition 
 export function workflowEntryKinds(definition: AnyWorkflowDefinition): readonly WorkflowEntryKind[] {
   return Object.freeze([...new Set(flattenEntries(definition.steps).map(({ kind }) => kind))]);
 }
+
+/** Browser-safe presentation order from the same validated tuples the compiler executes. */
+export function workflowExplorerDeclaration(definition: AnyWorkflowDefinition) {
+  const compiled = COMPILED.get(definition)?.compiled;
+  if (compiled === undefined) throw new Error(`workflow ${definition.id} has no compiled definition`);
+  return Object.freeze(definition.steps.map(([group, entries]) => Object.freeze({
+    key: group.key,
+    label: group.label,
+    entries: Object.freeze(entries.map((entry) => Object.freeze({
+      id: entry.id,
+      kind: entry.kind,
+      nodeIds: Object.freeze([...entryNodeIds(entry)]),
+      dependsOn: Object.freeze(entry.references.map((reference) => reference.id)),
+      taskIds: Object.freeze(entry.contracts.map((contract) => String(contract.id))),
+    }))),
+  })));
+}

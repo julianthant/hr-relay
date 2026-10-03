@@ -18,6 +18,7 @@ export interface FlowField {
   readonly value: string;
   readonly mode: "read" | "fill" | "compute";
   readonly source?: string;
+  readonly destination?: string;
   readonly template?: "ucpath" | "kuali" | "duplicate";
 }
 export type FlowPart =

@@ -5,13 +5,14 @@ import { DEFAULT_COMMENTS, type CommentChoices, type FlowField, type FlowStep, t
 import { ExplorerParts } from "./explorer-parts.js";
 import { ExplorerSource } from "./explorer-source.js";
 
-export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor, onVersionRegistry, workflows, workflowId, onWorkflow, summary, completion, path, stopAfter, onMockChoice }: {
+export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor, onVersionRegistry, workflows, workflowId, onWorkflow, summary, completion, path, stopAfter, onMockChoice, previewLabel, workflowClass }: {
   title: string; steps: readonly FlowStep[]; scenario: PreviewScenario; onScenario: (scenario: PreviewScenario) => void;
   sourceFor: (field: FlowField, step: number) => FieldSource | undefined;
   onVersionRegistry: () => void;
   workflows: readonly { readonly id: string; readonly title: string; readonly count: number }[];
   workflowId: string; onWorkflow: (id: string) => void;
-  summary: string; completion: string; path: { readonly step: number; readonly control: string }; stopAfter?: number;
+  summary: string; completion: string; path?: { readonly step: number; readonly control: string }; stopAfter?: number;
+  previewLabel?: string; workflowClass?: string;
   onMockChoice: (id: string, value: string) => void;
 }) {
   const [comments, setComments] = useState<CommentChoices>(DEFAULT_COMMENTS);
@@ -72,7 +73,7 @@ export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor
   };
   return <TakeoverFrame label="Workflow explorer preview" className="ui-theme-scope bg-ui-canvas font-ui text-ui-primary [--ds-surface-3:var(--ui-hover)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-control-bg:var(--ui-table)] [--ds-control-fg:var(--ui-primary)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-focus-ring:var(--ui-info)]">
     <ActionBar className="mx-3 mt-3 bg-ui-panel"><ActionBarRow label="Explorer actions">
-      <Workflow aria-hidden className="size-4 shrink-0 text-ui-muted" /><h1 className="m-0 text-heading">Explorer</h1><Badge className="border-ui-stroke bg-ui-table text-ui-secondary">Mock data</Badge>
+      <Workflow aria-hidden className="size-4 shrink-0 text-ui-muted" /><h1 className="m-0 text-heading">Explorer</h1><Badge className="border-ui-stroke bg-ui-table text-ui-secondary">{previewLabel ?? "Mock data"}</Badge>
       <div className="ml-auto flex shrink-0 items-center gap-2"><Button size="toolbar" variant="secondary" onClick={() => setAllOpen(true)}>Expand all</Button><Button size="toolbar" variant="secondary" onClick={() => setAllOpen(false)}>Collapse all</Button><IconButton label="Show action legend" size="sm" onClick={() => setLegend(!legend)} icon={<ListOrdered aria-hidden className="size-4" />} /><Button size="toolbar" variant="secondary" icon={<Eye aria-hidden className="size-3.5" />} onClick={onVersionRegistry}>Version registry</Button></div>
     </ActionBarRow></ActionBar>
     <div className="grid min-h-0 flex-1 grid-cols-[190px_minmax(0,1fr)] gap-2 p-3 min-[1151px]:grid-cols-[230px_minmax(0,1fr)]">
@@ -82,12 +83,12 @@ export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor
         {matching.length === 0 ? <p className="px-3 py-3 text-body text-ui-secondary">No matching workflow</p> : matching.map((workflow) => <button key={workflow.id} type="button" aria-current={workflow.id === workflowId ? "page" : undefined} onClick={() => {
           if (workflow.id === workflowId) main.current?.scrollTo({ top: 0 }); else onWorkflow(workflow.id);
         }} className={`mx-2 flex items-center gap-2 rounded-md px-3 py-2.5 text-left text-body hover:bg-ui-hover ${workflow.id === workflowId ? "bg-ui-hover" : ""} ${dsFocus}`}><Workflow aria-hidden className={`size-3.5 shrink-0 ${workflow.id === workflowId ? "text-ui-info" : "text-ui-muted"}`} /><span className="font-semibold">{workflow.title}</span><span className="ml-auto text-caption text-ui-muted">{workflow.count}</span></button>)}
-        <p className="mt-auto border-t border-ui-stroke px-3 py-3 text-caption text-ui-muted">Fictional workflow · UI preview</p>
+        <p className="mt-auto border-t border-ui-stroke px-3 py-3 text-caption text-ui-muted">{workflowClass ?? "Fictional workflow · UI preview"}</p>
       </nav>
       <div ref={main} className="min-h-0 overflow-y-auto rounded-lg border border-ui-stroke bg-ui-canvas px-5 py-6 min-[1151px]:px-6" onKeyDown={(event) => { if (event.key === "Escape" && selected) { event.stopPropagation(); returnToField(); } }}>
         <div className="mb-6 flex items-center gap-3 border-b border-ui-stroke pb-6">
           <div className="min-w-0 flex-1"><h1 className="text-workflow tracking-tight">{title}</h1><p className="mt-1.5 text-body text-ui-secondary">{summary}</p></div>
-          <Button size="toolbar" variant="secondary" icon={<GitBranch aria-hidden className="size-3.5" />} onClick={() => focusAt(path.step, undefined, path.control)}>Preview paths</Button>
+          {path && <Button size="toolbar" variant="secondary" icon={<GitBranch aria-hidden className="size-3.5" />} onClick={() => focusAt(path.step, undefined, path.control)}>Preview paths</Button>}
         </div>
         {legend && <div className="mb-6 flex flex-wrap gap-x-5 gap-y-2 rounded-md border border-ui-stroke bg-ui-table px-3 py-2 text-caption text-ui-secondary" aria-label="Action legend">
           {([[Eye, "Read"], [PencilLine, "Fill"], [MousePointer2, "Click"], [Keyboard, "Key"], [Cpu, "Compute"], [CheckCheck, "Verify"], [ChevronsUpDown, "Expand / collapse"]] as const).map(([Icon, label]) => <span key={label} className="flex items-center gap-1.5"><Icon aria-hidden className="size-3.5" />{label}</span>)}
@@ -107,7 +108,7 @@ export function ExplorerTimeline({ title, steps, scenario, onScenario, sourceFor
         <p className={`ml-10 mt-3 border-t border-ui-stroke pt-4 text-body ${stop === undefined ? "text-ui-secondary" : "text-ui-danger"}`}>{stop === undefined ? completion : "This preview path stops before downstream writes."}</p>
       </div>
     </div>
-    {source && <ExplorerSource key={`${source.step.number}-${source.field.id}`} label={source.field.label} destination={`${source.step.system ?? "Local"} · ${source.form ?? `Step ${source.step.number}`}`} source={sourceFor(source.field, source.step.number)} onClose={closeSource} onJump={(step, fieldId) => {
+    {source && <ExplorerSource key={`${source.step.number}-${source.field.id}`} label={source.field.label} destination={source.field.destination ?? `${source.step.system ?? "System unavailable"} · ${source.form ?? `Step ${source.step.number}`}`} source={sourceFor(source.field, source.step.number)} onClose={closeSource} onJump={(step, fieldId) => {
       setSource(undefined); setSelected(fieldId === undefined ? `explorer-step-${step}` : `explorer-field-${step}-${fieldId}`); focusAt(step, fieldId);
     }} />}
     {selected && <div onKeyDown={(event) => { if (event.key === "Escape") { event.stopPropagation(); returnToField(); } }} className={`fixed bottom-6 right-6 z-40 flex items-center gap-3 rounded-lg border border-ui-stroke bg-ui-panel px-3 py-2 text-body ${dsElev.mid}`}>
