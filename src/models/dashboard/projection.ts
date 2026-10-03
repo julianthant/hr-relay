@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { sha256Hex } from "../../rules/validation/sha256.js";
 import { NotificationRecordSchema, NotificationTriggerSchema } from "../notifications/notifications.js";
+import { NotificationTriggerEventSchema, projectNotificationTrigger } from "../../rules/notifications/notification-triggers.js";
 /**
  * The two worker vocabularies are IMPORTED, not mirrored (§8.8's fourth joint
  * is for copies forced by §8.13). `src/domain/run/worker.ts` value-imports zod
@@ -801,6 +802,7 @@ export function notificationWireOf(
   record: z.infer<typeof NotificationRecordSchema>,
   nowMs: number,
   context?: NotificationDisplayContext,
+  sourceEvent?: z.infer<typeof NotificationSourceEventWireSchema>,
 ): z.infer<typeof NotificationWireSchema> {
   if (record.trigger === "backfill-gap") {
     return NotificationWireSchema.parse({
@@ -839,6 +841,7 @@ export function notificationWireOf(
     occurredAt: record.lastSeenAt,
     revision: record.version,
     context: context ?? { state: "unavailable" },
+    sourceEvent: sourceEvent ?? { state: "unavailable" },
     ...(link === undefined ? {} : { link: link.kind === "storage" ? { kind: "storage" } : link }),
   });
 }
@@ -862,6 +865,22 @@ export const NotificationDisplayContextSchema = z.discriminatedUnion("state", [
 ]);
 export type NotificationDisplayContext = z.infer<typeof NotificationDisplayContextSchema>;
 
+export const NotificationSourceEventWireSchema = z.discriminatedUnion("state", [
+  z.strictObject({ state: z.literal("available"), kind: z.enum(NotificationTriggerEventSchema.options.map(option => option.shape.kind.value) as [string, ...string[]]) }),
+  z.strictObject({ state: z.literal("unavailable") }),
+]);
+
+export function notificationSourceEventOf(record: z.infer<typeof NotificationRecordSchema>, source?: {
+  actorId: string; notificationId: string; adopted: boolean; event: unknown;
+}): z.infer<typeof NotificationSourceEventWireSchema> {
+  if (source === undefined) return { state: "unavailable" };
+  if (source.adopted || source.actorId !== record.actorId || source.notificationId !== record.notificationId) throw new Error("NOTIFICATION_PUBLICATION_OWNER_MISMATCH");
+  const event = NotificationTriggerEventSchema.parse(source.event);
+  const projection = projectNotificationTrigger(event);
+  if (projection.trigger !== record.trigger || projection.dedupeFingerprint !== record.dedupeFingerprint) throw new Error("NOTIFICATION_PUBLICATION_ROW_MISMATCH");
+  return { state: "available", kind: event.kind };
+}
+
 const StandardNotificationWireSchema = z.strictObject({
   kind: z.literal("notification"),
   channel: z.enum(["ping", "inbox"]),
@@ -878,6 +897,7 @@ const StandardNotificationWireSchema = z.strictObject({
   occurredAt: IsoInstantSchema,
   revision: RowRevisionSchema,
   context: NotificationDisplayContextSchema,
+  sourceEvent: NotificationSourceEventWireSchema.optional(),
   link: NotificationLinkWireSchema.optional(),
 });
 

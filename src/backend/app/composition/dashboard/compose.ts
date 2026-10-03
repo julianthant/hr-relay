@@ -4,7 +4,7 @@ import type { RuntimePreflightRunnerFactory } from "../../preflight/runtime-runn
 import { PreflightAdmissionRefusal } from "../../../../rules/preflight/preflight-admission.js";
 import { createWorkerBrowserChannel } from "../../../runtime/workers/worker-browser-channel.js";
 import { WorkerControlRefusal } from "../../../../models/run/worker-control.js";
-import { notificationWireOf } from "../../../../models/dashboard/projection.js";
+import { notificationSourceEventOf, notificationWireOf } from "../../../../models/dashboard/projection.js";
 import { createNotificationTargetQuery } from "../../../runs/queries/notifications.js";
 import { notificationDisplayContext } from "../../../runs/queries/notification-display.js";
 import { composeShell } from "./shell.js";
@@ -967,7 +967,7 @@ async function composeDashboardRuntimeStartup(
     notifications: { snapshot: actor => database.withAuthorityReadSnapshot(() => database.authority.notifications.listByActor(actor).map(record => notificationWireOf(record, clock.nowMs(), notificationDisplayContext(record, {
       read: id => lifecycle.read(id), descriptor: id => descriptors.resolve(id),
       checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt) },
-    })))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },
+    }), notificationSourceEventOf(record, database.authority.notificationPublications.latest(record.notificationId))))), target: (id, actor) => database.withAuthorityReadSnapshot(() => notificationTarget(id, actor)), status: notificationObserver.status },
     ...(staticBundle === undefined ? {} : { staticBundle }),
     requestIdentity: createSoloRequestIdentityCheckpoint(resolved.config.actor),
     preflight: createPreflightReportService({ dashboard: preflightAuthority, runtime: runtimePreflight, clock }),

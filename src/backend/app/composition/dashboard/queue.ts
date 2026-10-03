@@ -19,6 +19,7 @@ export function createOperatorProjection(input: Omit<Parameters<typeof createRun
     reader: input.reader,
     authority: {
       listNotifications: (actorId) => database.authority.notifications.listByActor(actorId),
+      latestNotificationSource: (notificationId) => database.authority.notificationPublications.latest(notificationId),
       listNotificationCheckpoints: (workflowId, itemId, nodeId, attempt) => database.authority.runCheckpoints.listByAttempt(workflowId, itemId, nodeId, attempt),
       listLiveWorkerLeases: () => database.authority.workerLeases.listLive(),
       getWorkerLease: (workerId) => database.authority.workerLeases.get(workerId),

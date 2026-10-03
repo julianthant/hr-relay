@@ -41,6 +41,7 @@ import { localDatePart } from "../../../rules/time/clock.js";
 import {
   DashboardDayWireSchema,
   notificationWireOf,
+  notificationSourceEventOf,
   QueueSurfaceWireSchema,
   TERMINAL_QUEUE_STATUSES,
   type DashboardDayWire,
@@ -191,6 +192,7 @@ export interface RunQueueProjectionDeps {
   readonly authority: {
     /** 2i-B: the durable inbox rows the day wire serves. */
     listNotifications(actorId: string): readonly z.infer<typeof NotificationRecordSchema>[];
+    latestNotificationSource?(notificationId: string): { actorId: string; notificationId: string; event: unknown; adopted: boolean } | undefined;
     listNotificationCheckpoints(workflowId: string, itemId: string, nodeId: string, attempt: number): readonly RunCheckpointRecord[];
     /**
      * D248: the Session Panel's card set. Two reads, because the panel answers
@@ -1762,7 +1764,7 @@ export class RunQueueProjection {
           read: id => this.#deps.reader.read(id),
           descriptor: id => this.#deps.descriptors.resolve(id),
           checkpoints: { listByAttempt: (workflowId, itemId, nodeId, attempt) => this.#deps.authority.listNotificationCheckpoints(workflowId, itemId, nodeId, attempt) },
-        })))
+        }), notificationSourceEventOf(record, this.#deps.authority.latestNotificationSource?.(record.notificationId))))
         .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt) || String(a.notificationId).localeCompare(String(b.notificationId))),
     });
   }
