@@ -44,7 +44,7 @@ import {
 } from "../../../../../src/models/dashboard/bootstrap.js";
 import { WorkerCardWireSchema } from "../../../../../src/models/dashboard/projection.js";
 import { SessionPanel } from "../../../../../src/dashboard/surfaces/shell.js";
-import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings.js";
+import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { appVersionTag, fmtAppVersion } from "../../../../../src/dashboard/surfaces/format.js";
@@ -226,7 +226,7 @@ describe("history push on re-press (unit F4b finding 2)", () => {
 describe("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
   const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
     client: STATIC_SETTINGS_CLIENT,
-    children: createElement(SettingsPage, {
+    children: createElement(SettingsPageWithToast, {
       storage: HEALTHY_STORAGE,
       sections: [STORAGE],
     // Opened on Keyboard rather than Storage, so this render never reaches
@@ -274,7 +274,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     assert.equal(resolution.state, "unknown");
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPage, {
+      children: createElement(SettingsPageWithToast, {
         storage: HEALTHY_STORAGE,
         sections: [STORAGE],
       section: "budgets",
@@ -292,7 +292,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
   it("quotes an unrendered served section's id with curly quotes, not &quot;", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPage, {
+      children: createElement(SettingsPageWithToast, {
         storage: HEALTHY_STORAGE,
         sections: [STORAGE, section("budgets", "Budgets")],
       section: "budgets",

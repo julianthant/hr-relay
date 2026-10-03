@@ -11,7 +11,7 @@ import {
 import { StorageHealthSummaryWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings.js";
+import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../../../src/models/config/provider-keys.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
@@ -57,7 +57,7 @@ describe("editable Settings surface", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host);
     await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client,
-      children: createElement(SettingsPage, { storage: STORAGE, sections: [],
+      children: createElement(SettingsPageWithToast, { storage: STORAGE, sections: [],
         workflowLabels: new Map<string, string>(), section: "credentials", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
         onExitGuardChange: next => { guard = next; } }),
@@ -142,7 +142,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPageWithToast, {
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -216,7 +216,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPageWithToast, {
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),
@@ -264,7 +264,7 @@ describe("editable Settings surface", () => {
     document.body.append(host);
     await act(async () => {
       root = createRoot(host as HTMLElement);
-      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPageWithToast, {
         storage: STORAGE, sections: [], workflowLabels: new Map<string, string>(), section: "general", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
       }) }));
@@ -309,7 +309,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPageWithToast, {
           storage: STORAGE,
           sections: [],
           workflowLabels: new Map<string, string>(),

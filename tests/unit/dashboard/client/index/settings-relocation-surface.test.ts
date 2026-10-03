@@ -6,7 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { StorageRelocationRows } from "../../../../../src/dashboard/surfaces/settings-relocation.js";
-import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings.js";
+import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
 import { FIXTURE_EDITABLE_SETTINGS } from "../../../../support/fixtures/dashboard/fixture-settings.js";
 import { StorageHealthSummaryWireSchema } from "../../../../../src/models/dashboard/bootstrap.js";
 import { useStorageRelocation, cancelRelocationCommand, desiredRelocationPair, planRelocationCommand } from "../../../../../src/dashboard/surfaces/settings-relocation-model.js";
@@ -297,7 +297,7 @@ describe("storage relocation Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPageWithToast, {
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: next => { guard = next; },
     }) })); });
@@ -328,7 +328,7 @@ describe("storage relocation Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPageWithToast, {
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], onSection: () => undefined, onExitGuardChange: () => undefined,
     }) })));

@@ -6,7 +6,7 @@ import { afterEach, describe, it } from "vitest";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { PreflightActionsProvider } from "../../../../../src/dashboard/state/preflight-actions.js";
-import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings.js";
+import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
 import {
   SettingsSectionPrimitiveSchema,
   StorageHealthSummaryWireSchema,
@@ -85,7 +85,7 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
     root = createRoot(host as HTMLElement);
     root.render(createElement(DashboardClientProvider, {
       client,
-      children: createElement(PreflightActionsProvider, { actions: {actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {}}, children: createElement(SettingsPage, {
+      children: createElement(PreflightActionsProvider, { actions: {actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {}}, children: createElement(SettingsPageWithToast, {
         storage: STORAGE,
         sections: SECTIONS,
         workflowLabels: new Map<string, string>(),

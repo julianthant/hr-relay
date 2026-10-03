@@ -8,7 +8,7 @@ import { SettingsSectionPrimitiveSchema, StorageHealthSummaryWireSchema } from "
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
 import { buildSettingsNav, resolveSettingsSection } from "../../../../../src/dashboard/surfaces/settings-model.js";
-import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings.js";
+import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 class MeasurementFreeResizeObserver {
@@ -48,7 +48,7 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPage, {
+    children: createElement(SettingsPageWithToast, {
       storage: STORAGE,
       sections: servedStatusSections,
       workflowLabels: new Map(),

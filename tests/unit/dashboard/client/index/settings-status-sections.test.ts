@@ -34,7 +34,7 @@ import {
 } from "../../../../../src/models/dashboard/bootstrap.js";
 import type { DashboardClient } from "../../../../../src/dashboard/client/index.js";
 import { DashboardClientProvider } from "../../../../../src/dashboard/state/client-context.js";
-import { SettingsPage } from "../../../../../src/dashboard/surfaces/settings.js";
+import { SettingsPageWithToast } from "../../../../support/fixtures/dashboard/settings-page-with-toast.js";
 import { buildSettingsNav } from "../../../../../src/dashboard/surfaces/settings-model.js";
 
 class MeasurementFreeResizeObserver {
@@ -136,7 +136,7 @@ async function mount(
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPage, {
+    children: createElement(SettingsPageWithToast, {
       storage: HEALTHY_STORAGE,
       sections,
       workflowLabels: LABELS,
