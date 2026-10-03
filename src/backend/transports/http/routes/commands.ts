@@ -1,4 +1,5 @@
 import { BulkRunCommandRequestSchema, CommandRequestSchema, ProviderKeysRetryIntentSchema } from "../../../../rules/commands/commands.js";
+import { HistoricalNotificationSnoozeCommandSchema } from "../../../../rules/commands/commands-history.js";
 import { createOperatorCommandIngress } from "../../../runs/commands/operator-command-ingress.js";
 import { assertRequestActor } from "../request-identity.js";
 
@@ -20,6 +21,8 @@ export function registerCommandsRoutes(app: DashboardApp, deps: CommandsRouteDep
     const body: unknown = await c.req.json();
     const command = CommandRequestSchema.safeParse(body);
     if (command.success) assertRequestActor(c.get("requestActorId"), command.data.requestedBy);
+    const historicalSnooze = HistoricalNotificationSnoozeCommandSchema.safeParse(body);
+    if (historicalSnooze.success) assertRequestActor(c.get("requestActorId"), historicalSnooze.data.requestedBy);
     const retry = ProviderKeysRetryIntentSchema.safeParse(body);
     if (retry.success) assertRequestActor(c.get("requestActorId"), retry.data.requestedBy);
     const result = await operatorCommands.submit(body, async (accepted) => {

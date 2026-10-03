@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { HistoricalNotificationSnoozeCommandSchema } from "../../../rules/commands/commands-history.js";
 import type { Clock } from "../../../rules/time/clock.js";
 import { deriveBulkChildCommandId } from "../../../rules/commands/command-groups.js";
 import {
@@ -50,7 +51,7 @@ function withOperatorProvenance(input: unknown, clock: Clock): unknown {
 }
 
 type CommandJournalRead = Readonly<{
-  get(commandId: string): CommandRequest | undefined;
+  get(commandId: string): CommandRequest | z.infer<typeof HistoricalNotificationSnoozeCommandSchema> | undefined;
 }>;
 
 const OrdinarySettingsIngressRequestSchema = SettingsCommandRequestSchema.extend({
@@ -266,7 +267,7 @@ export function acceptOperatorBulkCommand(
 export interface OperatorCommandIngress {
   submit(
     input: unknown,
-    execute: (accepted: CommandRequest) => Promise<CommandResult>,
+    execute: (accepted: CommandRequest | z.infer<typeof HistoricalNotificationSnoozeCommandSchema>) => Promise<CommandResult>,
   ): Promise<CommandResult>;
   executeBulk(
     input: unknown,
@@ -311,8 +312,16 @@ export function createOperatorCommandIngress(input: Readonly<{
   return Object.freeze({
     submit(
       command: unknown,
-      execute: (accepted: CommandRequest) => Promise<CommandResult>,
+      execute: (accepted: CommandRequest | z.infer<typeof HistoricalNotificationSnoozeCommandSchema>) => Promise<CommandResult>,
     ): Promise<CommandResult> {
+      const historicalSnooze = HistoricalNotificationSnoozeCommandSchema.safeParse(command);
+      if (historicalSnooze.success) {
+        if (historicalSnooze.data.requestedBy !== LOCAL_OPERATOR_ACTOR_ID
+          || historicalSnooze.data.target.actorId !== LOCAL_OPERATOR_ACTOR_ID) {
+          throw new RequestIdentityRefusedError("historical notification actor does not match the local operator");
+        }
+        return serialize([`command:${historicalSnooze.data.commandId}`], () => execute(historicalSnooze.data));
+      }
       if (typeof command === "object" && command !== null && !Array.isArray(command)
         && Object.hasOwn(command, "retry")) {
         refuseForeignActorClaim(command);

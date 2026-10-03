@@ -14,7 +14,7 @@ import { ProviderRequestStorageSchema, ProviderUsageStorageSchema } from "../../
 import { GeneratedArtifactSchema, ArtifactOutboxStorageRecordSchema, ArtifactSinkHeadRecordSchema } from "../../../models/artifacts/generated-artifact.js";
 import { ImportedArtifactSchema } from "../../../models/intake/imported-artifact.js";
 import { HistoricalOperationSourceSchema, TimelineEventRecordSchema } from "../../../models/events/timeline.js";
-import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../../rules/commands/commands-history.js";
+import { HistoricalNotificationSnoozeAuditSchema, HistoricalNotificationSnoozeCommandSchema, HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorCommandAuditSchema } from "../../../rules/commands/commands-history.js";
 import { z } from "zod";
 import { DuoCeremonyLeaseRecordSchema } from "../../../rules/sessions/duo-ceremony-lease.js";
 import { RunSessionRecordSchema } from "../../../models/run/session.js";
@@ -231,8 +231,8 @@ export const AUTHORITY_RECORD_SCHEMA_REGISTRY = Object.freeze({
   delegation_dependencies: DependencyRecordSchema,
   run_delegations: DelegationManifestSchema,
   // D341: pre-D341 protected commands/audits name retired entries; the frozen arm keeps them readable.
-  commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema]),
-  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema]),
+  commands: z.union([BulkParentCommandRecordSchema, AuthorityCommandRecordSchema, PreFloorCommandSchema, HistoricalProtectedSettingsCommandSchema, HistoricalNotificationSnoozeCommandSchema]),
+  command_audits: z.union([AuthorityCommandAuditRecordSchema, PreFloorCommandAuditSchema, HistoricalProtectedSettingsAuditSchema, HistoricalNotificationSnoozeAuditSchema]),
   notifications: NotificationRecordSchema,
   notification_publications: NotificationPublicationSchema,
   notification_health: NotificationHealthSchema,

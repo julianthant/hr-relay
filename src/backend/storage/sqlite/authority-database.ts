@@ -66,7 +66,7 @@ import { createTimelineRepository, timelineEventFromRow } from "./timeline-repos
 import { readTimelineRecords } from "../events/timeline-reader.js";
 import type { TimelineRepository, TimelineAppend } from "../../../models/events/timeline.js";
 import { SettingsCurrentRecordSchema as HistoricalSettingsCurrentRecordSchema } from "../compatibility/d331-settings-current.js";
-import { HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../../rules/commands/commands-history.js";
+import { HistoricalNotificationSnoozeAuditSchema, HistoricalNotificationSnoozeCommandSchema, HistoricalProtectedSettingsAuditSchema, HistoricalProtectedSettingsCommandSchema, PreFloorCommandSchema, PreFloorSettingsCommandSchema } from "../../../rules/commands/commands-history.js";
 import { CommandIdentityConflictError } from "../../../rules/commands/commands.js";
 import { createCredentialStore } from "../configuration/credential-store.js";
 import { repeatEvidenceDigest } from "../../../models/run/rerun.js";
@@ -417,7 +417,7 @@ type CommandRepository = Readonly<{
   acceptBulk(input: unknown): ImmutableInsertResult<z.infer<typeof BulkRunCommandAcceptanceRecordSchema>>;
   getBulk(commandId: string): z.infer<typeof BulkRunCommandAcceptanceRecordSchema> | undefined;
   parentId(commandId: string): string | null | undefined;
-  get(commandId: string): z.infer<typeof CommandRequestSchema> | undefined;
+  get(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof HistoricalNotificationSnoozeCommandSchema> | undefined;
   getSettingsHistory(commandId: string): z.infer<typeof CommandRequestSchema> | z.infer<typeof PreFloorSettingsCommandSchema> | z.infer<typeof HistoricalProtectedSettingsCommandSchema> | undefined;
   findProtectedSettingsCommandIdByWriteId(input: unknown): string | undefined;
   listProviderSettingsCommands(): readonly z.infer<typeof CommandRequestSchema>[];
@@ -432,8 +432,8 @@ type CommandRepository = Readonly<{
 const HistoricalSettingsAuditSchema = CommandAuditRecordSchema.extend({ request: PreFloorSettingsCommandSchema });
 type CommandAuditRepository = Readonly<{
   insert(input: unknown): ImmutableInsertResult<z.infer<typeof CommandAuditRecordSchema>>;
-  get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
-  findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | undefined;
+  get(auditId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalNotificationSnoozeAuditSchema> | undefined;
+  findByCommand(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalNotificationSnoozeAuditSchema> | undefined;
   findSettingsHistory(commandId: string): z.infer<typeof CommandAuditRecordSchema> | z.infer<typeof HistoricalSettingsAuditSchema> | z.infer<typeof HistoricalProtectedSettingsAuditSchema> | undefined;
 }>;
 
@@ -5537,7 +5537,7 @@ export class AuthorityDatabase implements Disposable {
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("commands", () => {
             this.#assertCommandIdentity(record, parentCommandId);
-            const existing = this.#readRecord("commands", record.commandId, CommandRequestSchema);
+            const existing = this.#readRecord("commands", record.commandId, z.union([CommandRequestSchema, HistoricalNotificationSnoozeCommandSchema]));
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command id ${record.commandId} was reused with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
@@ -5549,7 +5549,7 @@ export class AuthorityDatabase implements Disposable {
           });
         },
         get: (commandId: string) => {
-          const record = this.#readRecord("commands", commandId, z.union([CommandRequestSchema, BulkParentCommandRecordSchema]));
+          const record = this.#readRecord("commands", commandId, z.union([CommandRequestSchema, HistoricalNotificationSnoozeCommandSchema, BulkParentCommandRecordSchema]));
           if (record !== undefined && "kind" in record) throw new CommandIdentityConflictError();
           return record;
         },
@@ -5606,7 +5606,7 @@ export class AuthorityDatabase implements Disposable {
           const record = CommandAuditRecordSchema.parse(input);
           const json = canonicalJsonStringify(record);
           return this.#authorityWrite("command_audits", () => {
-            const existing = this.#readRecord("command_audits", record.auditId, CommandAuditRecordSchema);
+            const existing = this.#readRecord("command_audits", record.auditId, z.union([CommandAuditRecordSchema, HistoricalNotificationSnoozeAuditSchema]));
             if (existing !== undefined) {
               if (canonicalJsonStringify(existing) !== json) throw new Error(`command audit ${record.auditId} already exists with different content`);
               return { result: Object.freeze({ state: "existing" as const, record: existing }), changes: 0 };
@@ -5617,7 +5617,7 @@ export class AuthorityDatabase implements Disposable {
             return { result: Object.freeze({ state: "inserted" as const, record }), changes: sqliteChanges(result.changes) };
           });
         },
-        get: (auditId: string) => this.#readRecord("command_audits", auditId, CommandAuditRecordSchema),
+        get: (auditId: string) => this.#readRecord("command_audits", auditId, z.union([CommandAuditRecordSchema, HistoricalNotificationSnoozeAuditSchema])),
         findSettingsHistory: (commandId: string) => {
           const rows = this.#database.prepare("SELECT record_json FROM command_audits WHERE command_id=? ORDER BY record_key").all(commandId);
           if (rows.length > 1) throw new Error("historical settings command has ambiguous audits");
@@ -5633,7 +5633,7 @@ export class AuthorityDatabase implements Disposable {
           }
           const row = rows[0];
           if (row === undefined) return undefined;
-          return parseJsonRecord(CommandAuditRecordSchema, JsonRowSchema.parse(row).record_json);
+          return parseJsonRecord(z.union([CommandAuditRecordSchema, HistoricalNotificationSnoozeAuditSchema]), JsonRowSchema.parse(row).record_json);
         },
       }),
       lifecycleJournal: Object.freeze({

@@ -8,7 +8,7 @@ import { z } from "zod";
 import { CommandAuditRecordSchema, CommandEnvelopeSchema, markSettingsCommand } from "./commands.js";
 import { LEGACY_PROTECTED_SETTINGS_SCHEMA_HASH, LegacyMarkedProtectedSettingsPatchSchema } from "../../models/config/protected-settings-legacy.js";
 import { deepFreeze } from "../validation/immutability.js";
-import { FingerprintSchema, PositiveIntSchema, RunIdSchema } from "../identity/ids.js";
+import { ActorIdSchema, FingerprintSchema, IsoInstantSchema, NotificationIdSchema, PositiveIntSchema, RunIdSchema } from "../identity/ids.js";
 import { CheckpointPatchSchema } from "../../models/workflow/checkpoint.js";
 import { EditableSettingsOverrideSchema } from "../../models/config/settings-v29-schema.js";
 import { canonicalJsonStringify } from "../validation/canonical-json.js";
@@ -34,6 +34,15 @@ const PreFloorEditCheckpointCommandSchema = CommandEnvelopeSchema.extend({
 });
 export const PreFloorCommandSchema = z.union([PreFloorSettingsCommandSchema, PreFloorEditCheckpointCommandSchema]);
 export const PreFloorCommandAuditSchema = CommandAuditRecordSchema.extend({ request: PreFloorCommandSchema });
+
+/** The pre-W2 Snooze envelope is retained only for immutable journal and audit reads. */
+export const HistoricalNotificationSnoozeCommandSchema = CommandEnvelopeSchema.extend({
+  family: z.literal("notification"), type: z.literal("notification-snooze"),
+  target: z.strictObject({ notificationId: NotificationIdSchema, actorId: ActorIdSchema, expectedVersion: PositiveIntSchema }),
+  payload: z.strictObject({ until: IsoInstantSchema }),
+});
+export const HistoricalNotificationSnoozeAuditSchema = CommandAuditRecordSchema.extend({ request: HistoricalNotificationSnoozeCommandSchema });
+export type HistoricalNotificationSnoozeCommand = z.infer<typeof HistoricalNotificationSnoozeCommandSchema>;
 
 /**
  * D341: the marked protected-settings command as every pre-D341 journal wrote it. The schema

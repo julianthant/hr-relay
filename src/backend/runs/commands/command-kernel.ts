@@ -70,12 +70,14 @@ import {
   type CommandRequest,
   type CommandResult,
 } from "../../../rules/commands/commands.js";
+import { HistoricalNotificationSnoozeCommandSchema, type HistoricalNotificationSnoozeCommand } from "../../../rules/commands/commands-history.js";
 import { deriveItemId, deriveStableUuid, type IdFactory } from "../../../rules/identity/identifiers.js";
 import { deriveGateResultCheckpointFingerprint as deriveGateFingerprint } from "../../../models/workflow/gates.js";
 import {
   FingerprintSchema,
   IsoInstantSchema,
   ItemIdSchema,
+  LOCAL_OPERATOR_ACTOR_ID,
   WorkerIdSchema,
 } from "../../../rules/identity/ids.js";
 import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
@@ -2985,6 +2987,42 @@ function replay(
   });
 }
 
+function replayHistoricalNotificationSnooze(
+  dependencies: Pick<CommandKernelDependencies, "authority">,
+  request: HistoricalNotificationSnoozeCommand,
+): CommandResult {
+  const refused = (message: string): CommandResult => CommandResultSchema.parse({
+    state: "rejected", commandId: request.commandId, code: "command-divergent", message,
+  });
+  if (request.requestedBy !== LOCAL_OPERATOR_ACTOR_ID || request.target.actorId !== LOCAL_OPERATOR_ACTOR_ID) {
+    return refused("historical notification actor differs from the local operator");
+  }
+  return dependencies.authority.withAuthorityTransaction((repositories) => {
+    const stored = repositories.commands.get(request.commandId);
+    if (stored === undefined) return refused("historical notification command does not exist");
+    if (!HistoricalNotificationSnoozeCommandSchema.safeParse(stored).success
+      || canonicalJsonStringify(stored) !== canonicalJsonStringify(request)) {
+      return refused("historical notification command identity differs from its immutable request");
+    }
+    const audit = repositories.commandAudits.findByCommand(request.commandId);
+    if (audit === undefined) return refused("historical notification command has no settled audit");
+    if (canonicalJsonStringify(audit.request) !== canonicalJsonStringify(request)
+      || audit.result.commandId !== request.commandId || audit.result.state !== "applied"
+      || audit.result.affectedTargets.length !== 1
+      || audit.result.affectedTargets[0]?.family !== "notification"
+      || audit.result.affectedTargets[0].notificationId !== request.target.notificationId
+      || audit.versionChanges.length !== 1
+      || audit.versionChanges[0]?.target.family !== "notification"
+      || audit.versionChanges[0].target.notificationId !== request.target.notificationId
+      || Number(audit.versionChanges[0].before) !== Number(request.target.expectedVersion)
+      || Number(audit.versionChanges[0].after) !== Number(request.target.expectedVersion) + 1) {
+      return refused("historical notification audit does not match its settled request");
+    }
+    return CommandResultSchema.parse({ state: "already-applied", commandId: request.commandId,
+      affectedTargets: audit.result.affectedTargets });
+  });
+}
+
 /** Plan intent is journaled here; runtime activation is a separate offline operation. */
 export function executeStorageRelocationCommand(
   dependencies: Pick<CommandKernelDependencies, "authority" | "clock" | "ids" | "storageRelocationPlans">,
@@ -3229,6 +3267,12 @@ export function createCommandKernel(dependencies: CommandKernelDependencies): Co
   };
   return Object.freeze({
     execute(input: unknown, parentCommandId?: string): CommandResult {
+      const historicalSnooze = HistoricalNotificationSnoozeCommandSchema.safeParse(input);
+      if (historicalSnooze.success) {
+        if (parentCommandId !== undefined) return CommandResultSchema.parse({ state: "rejected", commandId: historicalSnooze.data.commandId,
+          code: "command-divergent", message: "historical notification commands are not command-group children" });
+        return replayHistoricalNotificationSnooze(dependencies, historicalSnooze.data);
+      }
       const request = CommandRequestSchema.parse(input);
       if (request.family === "failure-resolution" && (dependencies.failureResolution?.capability ?? failureResolutionCapability)().state === "unavailable") {
         return {state:"rejected",commandId:request.commandId,code:"capability-unavailable",message:"Failure resolution is not available in this build."};

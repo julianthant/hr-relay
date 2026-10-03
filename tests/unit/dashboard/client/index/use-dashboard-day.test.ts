@@ -41,8 +41,8 @@ const EMPTY_DAY: DashboardDayWire = DashboardDayWireSchema.parse({
 });
 
 let mounted: Root | undefined;
-afterEach(() => {
-  mounted?.unmount();
+afterEach(async () => {
+  await act(async () => { mounted?.unmount(); });
   mounted = undefined;
   vi.useRealTimers();
 });

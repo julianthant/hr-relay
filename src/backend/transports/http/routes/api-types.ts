@@ -26,7 +26,7 @@ export interface DashboardAppDeps extends TrustRouteDeps, ShellRouteDeps, Settin
   readonly activity?: import("./activity-types.js").ActivityRouteDeps["activity"];
   readonly data?: ReturnType<typeof composeDataQueries>;
   readonly commands: DashboardCommandService;
-  readonly commandJournal: { get(commandId: string): CommandRequest | undefined };
+  readonly commandJournal: { get(commandId: string): CommandRequest | import("../../../../rules/commands/commands-history.js").HistoricalNotificationSnoozeCommand | undefined };
   readonly bulkCommandAcceptances: BulkCommandAcceptanceAuthority;
   readonly protectedCommandAcceptedAt: (commandId: string) => string | undefined;
   readonly readPendingProviderRequest?: (identity: ProviderKeyPendingIdentity) => ProviderKeyWriteRequest;

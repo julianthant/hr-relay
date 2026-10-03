@@ -17,6 +17,8 @@ import {
   CommandResultSchema,
   RunDisplayNameSchema,
 } from "../../../../../src/rules/commands/commands.js";
+import { HistoricalNotificationSnoozeAuditSchema, HistoricalNotificationSnoozeCommandSchema } from "../../../../../src/rules/commands/commands-history.js";
+import { AUTHORITY_RECORD_SCHEMA_REGISTRY } from "../../../../../src/backend/storage/sqlite/storage-records.js";
 import { COMMAND_FIXTURES, HASH_A, NOW, UUID_1, UUID_2, UUID_3 } from "../../../../support/fixtures/phase1c-contract-fixtures.js";
 
 const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
@@ -53,6 +55,21 @@ const CURRENT_COMMAND_FIXTURES: readonly unknown[] = Object.freeze([
 ]);
 
 describe("authority classification and D95 command families", () => {
+  it("retains strict historical Snooze journal and audit rows without admitting a live payload", () => {
+    const request = { commandId: UUID_1, requestedAt: NOW, requestedBy: "local-operator", source: "notification-bell",
+      family: "notification", type: "notification-snooze", target: { notificationId: UUID_2, actorId: "local-operator", expectedVersion: 1 },
+      payload: { until: "2026-08-03T18:00:00.000Z" } };
+    const audit = { auditId: UUID_3, request, completedAt: NOW,
+      result: { state: "applied", commandId: UUID_1, affectedTargets: [{ family: "notification", notificationId: UUID_2 }] },
+      versionChanges: [{ target: { family: "notification", notificationId: UUID_2 }, before: 1, after: 2 }], affectedDependencyIds: [] };
+    assert.equal(CommandRequestSchema.safeParse(request).success, false);
+    assert.equal(CommandAuditRecordSchema.safeParse(audit).success, false);
+    assert.deepEqual(HistoricalNotificationSnoozeCommandSchema.parse(request), request);
+    assert.deepEqual(HistoricalNotificationSnoozeAuditSchema.parse(audit), audit);
+    assert.deepEqual(AUTHORITY_RECORD_SCHEMA_REGISTRY.commands.parse(request), request);
+    assert.deepEqual(AUTHORITY_RECORD_SCHEMA_REGISTRY.command_audits.parse(audit), audit);
+    assert.equal(HistoricalNotificationSnoozeCommandSchema.safeParse({ ...request, payload: { until: NOW, extra: true } }).success, false);
+  });
   it("classifies every table exactly once and freezes the registry", () => {
     assert.deepEqual(auditAuthorityTableRegistry(AUTHORITY_TABLE_REGISTRY), []);
     assert.equal(AUTHORITY_TABLE_REGISTRY.length, AuthorityTableNameSchema.options.filter(name => !["archived_runs", "version_plans", "version_bump_applications"].includes(name)).length + ProjectionTableNameSchema.options.length);
