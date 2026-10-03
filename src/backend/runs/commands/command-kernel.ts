@@ -79,7 +79,8 @@ import {
   WorkerIdSchema,
 } from "../../../rules/identity/ids.js";
 import { EditableSettingsOverrideSchema } from "../../../models/config/schema.js";
-import { SettingsApplyRefusalSchema } from "../../../models/config/settings.js";
+import { SettingsApplyRefusalSchema, type SettingsFileRecord } from "../../../models/config/settings.js";
+import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../models/config/provider-keys.js";
 import {
   IntakeParseSchema,
@@ -281,10 +282,9 @@ export const ProviderKeysApplicationOutcomeSchema = z.union([
 ]);
 
 export interface SettingsApplicationExecutor {
-  prepare(
-    command: SettingsCommand,
-  ): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
-  apply(command: SettingsCommand, repositories: AuthorityRepositories): unknown;
+  validateRequest(command: SettingsCommand): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
+  commitPrivate(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>): z.infer<typeof SettingsApplyRefusalSchema> | undefined;
+  applyOrdinary(command: Extract<SettingsCommand, { type: "apply-settings" }>, repositories: AuthorityRepositories, current: SettingsFileRecord): unknown;
   reconcileReplay(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>): unknown;
   confirmProvider?(command: Extract<SettingsCommand, { type: "apply-provider-keys" }>): void;
 }
@@ -2691,6 +2691,7 @@ function executeSettings(
   dependencies: Pick<CommandKernelDependencies, "settings">,
   repositories: AuthorityRepositories,
   request: SettingsCommand,
+  ordinarySnapshot?: SettingsFileRecord,
 ): CommandApplication {
   if (dependencies.settings === undefined) {
     throw new Error(
@@ -2703,8 +2704,9 @@ function executeSettings(
     }
   };
   if (request.type === "apply-settings") {
+    if (ordinarySnapshot === undefined) throw new Error("settings-ordinary-snapshot-unavailable");
     const outcome = OrdinarySettingsApplicationOutcomeSchema.parse(
-      dependencies.settings.apply(request, repositories),
+      dependencies.settings.applyOrdinary(request, repositories, ordinarySnapshot),
     );
     if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
     if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
@@ -2730,7 +2732,7 @@ function executeSettings(
     });
   }
   if (request.type === "apply-provider-keys") {
-    const outcome = ProviderKeysApplicationOutcomeSchema.parse(dependencies.settings.apply(request, repositories));
+    const outcome = ProviderKeysApplicationOutcomeSchema.parse(dependencies.settings.reconcileReplay(request));
     if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
     if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
     requireExpectedRevision(outcome.revision);
@@ -2740,7 +2742,7 @@ function executeSettings(
         sourceVersionToken: outcome.sourceVersionToken, restartRequired: outcome.restartRequired });
   }
   const outcome = ProtectedSettingsApplicationOutcomeSchema.parse(
-    dependencies.settings.apply(request, repositories),
+    { state: "applied", readback: dependencies.settings.reconcileReplay(request) },
   );
   if (outcome.state === "conflict") conflict(request, outcome.currentRevision, outcome.message);
   if (outcome.state === "rejected") reject(request, outcome.code, outcome.message);
@@ -3038,7 +3040,7 @@ export function executeSettingsCommand(
     return CommandResultSchema.parse({ state: "rejected", commandId: request.commandId,
       code: "schema-mismatch", message: "provider schema does not match the current catalog" });
   }
-  const refusal = request.type === "apply-settings" ? executor.prepare(request) : undefined;
+  const refusal = executor.validateRequest(request);
   if (refusal !== undefined) return CommandResultSchema.parse(refusal.state === "conflict"
     ? { state: "conflict", commandId: request.commandId, currentVersion: refusal.currentRevision, message: refusal.message }
     : { ...refusal, commandId: request.commandId });
@@ -3049,11 +3051,15 @@ export function executeSettingsCommand(
       const now = dependencies.clock.now().toISOString();
       const journalRequest = markSettingsCommand(request);
       repositories.commands.assertIdentity(journalRequest);
+      // Validate ordinary authority before this command becomes retained history.
+      // Replays use their existing journal and do not need a new read snapshot.
+      const ordinarySnapshot = request.type === "apply-settings" && repositories.commands.get(request.commandId) === undefined
+        ? readSettings(repositories) : undefined;
       if (request.type === "apply-protected-settings") {
         // BEGIN IMMEDIATE excludes another command writer across identity admission,
         // the independent private commit and its audit. SQL rollback never undoes
         // the private history, which also prevents foreign reuse after restore.
-        const protectedRefusal = executor.prepare(request);
+        const protectedRefusal = executor.commitPrivate(request);
         if (protectedRefusal !== undefined) {
           throw new CommandRefusal(CommandResultSchema.parse(protectedRefusal.state === "conflict"
             ? { state: "conflict", commandId: request.commandId, currentVersion: protectedRefusal.currentRevision, message: protectedRefusal.message }
@@ -3062,7 +3068,7 @@ export function executeSettingsCommand(
         credentialsCommitted = true;
       }
       if (request.type === "apply-provider-keys") {
-        const providerRefusal = executor.prepare(request);
+        const providerRefusal = executor.commitPrivate(request);
         if (providerRefusal !== undefined) throw new CommandRefusal(CommandResultSchema.parse(providerRefusal.state === "conflict"
           ? { state: "conflict", commandId: request.commandId, currentVersion: providerRefusal.currentRevision, message: providerRefusal.message }
           : { ...providerRefusal, commandId: request.commandId }));
@@ -3070,7 +3076,7 @@ export function executeSettingsCommand(
       }
       const journal = repositories.commands.insert(journalRequest);
       if (journal.state === "existing") return replay(dependencies, repositories, request, now);
-      const application = executeSettings(dependencies, repositories, request);
+      const application = executeSettings(dependencies, repositories, request, ordinarySnapshot);
       const auditId = dependencies.ids.uuid();
       repositories.commandAudits.insert({ auditId, request: journalRequest, result: application.result,
         completedAt: now, versionChanges: application.versionChanges, affectedDependencyIds: application.affectedDependencyIds });

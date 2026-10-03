@@ -29,6 +29,7 @@ import { createRuntimeVersionChanges } from "../../../src/backend/runs/archive/a
  */
 import assert from "node:assert/strict";
 import { PositiveIntSchema } from "../../../src/rules/identity/ids.js";
+import { SETTINGS_SCHEMA_HASH } from "../../../src/models/config/settings.js";
 import { mkdtempSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, relative } from "node:path";
@@ -227,12 +228,14 @@ function createHarness(wrap?: RepositoryWrap): GuardHarness {
       reopenBrowser: seamFailure("reopen-browser"),
     },
     settings: {
-      prepare: (command) => command.type === "apply-protected-settings" || command.type === "apply-provider-keys"
+      validateRequest: (command) => command.type === "apply-settings" && command.payload.settingsSchemaHash !== SETTINGS_SCHEMA_HASH
+        ? { state: "rejected", code: "schema-mismatch", message: "guard fixture uses a noncurrent settings schema" } : undefined,
+      commitPrivate: (command) => command.type === "apply-protected-settings" || command.type === "apply-provider-keys"
         ? { state: "conflict", currentRevision: PositiveIntSchema.parse(1), message: "guard fixture has no mutable private target" } : undefined,
       reconcileReplay: () => {
         throw new Error("guard fixture has no persisted settings replay target");
       },
-      apply: () => ({
+      applyOrdinary: () => ({
         state: "conflict",
         currentRevision: 1,
         message: "guard fixture has no mutable settings target",

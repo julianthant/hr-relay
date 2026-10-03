@@ -12,7 +12,6 @@ import {
 } from "../../../models/config/settings.js";
 import { canonicalJsonStringify } from "../../../rules/validation/canonical-json.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
-import { readSettings } from "../../runtime/settings/settings-runtime.js";
 import { z } from "zod";
 import { ProviderKeyStoreConflictError, type createProviderKeyStore } from "../../storage/configuration/provider-key-store.js";
 import { providerStoreRequest } from "./provider-key-projection.js";
@@ -67,7 +66,11 @@ export function createSettingsApplicationExecutor(
     restartRequired(slots: Readonly<Record<string, string>>): boolean }>,
 ): SettingsApplicationExecutor {
   return Object.freeze({
-    prepare(command: SettingsCommand) {
+    validateRequest(command: SettingsCommand) {
+      if (command.type === "apply-settings") return ordinaryRequestRefusal(command);
+      return undefined;
+    },
+    commitPrivate(command: Extract<SettingsCommand, { type: "apply-protected-settings" | "apply-provider-keys" }>) {
       if (command.type === "apply-provider-keys") {
         if (provider === undefined) throw new Error("provider-key-store-unavailable");
         if (!provider.bootKnown) throw new Error("provider-boot-provenance-unavailable");
@@ -80,25 +83,12 @@ export function createSettingsApplicationExecutor(
         }
         return undefined;
       }
-      if (command.type !== "apply-protected-settings") return ordinaryRequestRefusal(command);
       const outcome = credentials.apply(protectedInput(command));
       return outcome.state === "applied" ? undefined : outcome;
     },
-    apply(command: SettingsCommand, repositories: AuthorityRepositories) {
-      if (command.type === "apply-provider-keys") {
-        if (provider === undefined) throw new Error("provider-key-store-unavailable");
-        const result = provider.store.apply(providerStoreRequest(command));
-        return { state: "applied", revision: result.revision, receiptId: result.receiptId,
-          sourceVersionToken: result.sourceVersionToken, restartRequired: provider.restartRequired(result.slots) };
-      }
-      if (command.type === "apply-protected-settings") {
-        const outcome = credentials.verifyReplay(protectedInput(command));
-        if (outcome.state !== "applied") return outcome;
-        return { state: "applied", readback: protectedSettingsReadback(outcome.record) };
-      }
+    applyOrdinary(command: Extract<SettingsCommand, { type: "apply-settings" }>, repositories: AuthorityRepositories, current: SettingsFileRecord) {
       const refusal = ordinaryRequestRefusal(command);
       if (refusal !== undefined) return refusal;
-      const current = readSettings(repositories);
       if (current.revision !== command.target.expectedRevision) {
         return SettingsApplyRefusalSchema.parse({ state: "conflict", currentRevision: current.revision, message: "settings revision conflict" });
       }

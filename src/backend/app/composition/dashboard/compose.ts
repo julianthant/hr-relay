@@ -144,7 +144,7 @@ import { createContentAddressedArtifactWriter } from "../../../storage/artifacts
 import { createServerVerifiedArtifactReader } from "../../../storage/artifacts/server-verified-artifact-reader.js";
 
 import { createIntakeParser } from "../../../processing/spreadsheet/intake-parser.js";
-import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readSettings } from "../../../runtime/settings/settings-runtime.js";
+import { activeSettingsRuntimeIdentity, createCredentialSecretSource, readBootSettings } from "../../../runtime/settings/settings-runtime.js";
 import { createDashboardCommandService } from "../../../runs/commands/command-service.js";
 import { createRunWorkerCapacity } from "../../../runs/commands/run-worker-capacity.js";
 import { runQueuedSpanEvent } from "../../../runs/commands/run-queued-span.js";
@@ -567,20 +567,7 @@ async function composeDashboardRuntimeStartup(
   const providerBoot = input.providerBoot === undefined ? providerBootProvenance() : normalizeProviderBootProvenance(input.providerBoot);
   const protectedSecrets = createCredentialSecretSource(protectedSettingsAuthority);
   const bootConfig = (() => {
-    const persistedSettings = database.withAuthorityTransaction((repositories) => {
-      const activeRuntime = repositories.runtimeConfig.get();
-      const hasSettingsHistory = repositories.settingsCurrent.hasHistory();
-      const savedSettings = repositories.settingsCurrent.get();
-      const persisted = readSettings(repositories);
-      if (activeRuntime === undefined && (hasSettingsHistory || repositories.runtimeConfig.hasHistory())) {
-        throw new Error("dashboard settings/runtime authority is missing despite durable revision evidence");
-      }
-      if (savedSettings === undefined && (hasSettingsHistory
-        || (activeRuntime !== undefined && activeRuntime.settingsRevision > 1))) {
-        throw new Error("dashboard settings authority is missing despite durable revision evidence");
-      }
-      return persisted;
-    });
+    const persistedSettings = database.withAuthorityTransaction((repositories) => readBootSettings(repositories));
     return Object.freeze({
       persistedSettings,
       resolved: resolveConfigWithProvenance(persistedSettings.settings, hostFacts, clock, runtimeStoragePair),

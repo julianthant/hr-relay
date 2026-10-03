@@ -150,9 +150,10 @@ function createHarness(): Harness {
     writeResolution: requeueingWriteResolution(),
     workerRuntime: acceptingWorkerRuntime(),
     settings: {
-      prepare: () => undefined,
+      validateRequest: () => undefined,
+      commitPrivate: () => undefined,
       reconcileReplay: () => { throw new Error("this harness composes no settings replay authority"); },
-      apply: (): never => { throw new Error("this harness composes no settings apply authority"); },
+      applyOrdinary: (): never => { throw new Error("this harness composes no settings apply authority"); },
     },
   });
   return { database, kernel, clock, plannerIds: sequentialIdFactory("f") };

@@ -12,13 +12,25 @@ import {
   type SettingsFileRecord, type SettingsRuntimeIdentity, type SettingsRuntimeStatus,
 } from "../../../models/config/settings.js";
 import { PROTECTED_SETTINGS_SCHEMA_HASH, protectedSettingsReadback, type ProtectedSettingsReadback, type ProtectedStoreRecord } from "../../../models/config/protected-settings.js";
-import type { CommandAuthority } from "../../runs/commands/command-kernel.js";
 import type { AuthorityRepositories } from "../../storage/sqlite/authority-database.js";
 
-/** SQLite is the sole ordinary authority. Revision one is the absent singleton. */
+/** SQLite is the sole ordinary authority. Revision one exists only before durable settings history. */
 export function readSettings(repositories: AuthorityRepositories): SettingsFileRecord {
   const current = repositories.settingsCurrent.get();
-  if (current === undefined) return initialSettingsFileRecord();
+  if (current === undefined) {
+    const initial = initialSettingsFileRecord();
+    const active = repositories.runtimeConfig.get();
+    if (repositories.settingsCurrent.hasHistory() || repositories.settingsCurrent.hasAuditHistory()
+      || repositories.runtimeConfig.hasAdvancedHistory()
+      || (active === undefined && repositories.runtimeConfig.hasHistory())
+      || (active !== undefined && (active.settingsRevision !== initial.revision
+        || active.settingsFingerprint !== initial.settingsFingerprint))) {
+      throw new Error("settings-current-missing-with-history");
+    }
+    if (active !== undefined) repositories.runtimeConfig.requireActive({ settingsRevision: active.settingsRevision,
+      settingsFingerprint: active.settingsFingerprint, configFingerprint: active.configFingerprint });
+    return initial;
+  }
   const command = repositories.commands.getSettingsHistory(current.commandId);
   if (command === undefined) throw new Error(`settings revision ${String(current.revision)} has no durable command journal`);
   if (command.family !== "settings" || command.type !== "apply-settings"
@@ -45,6 +57,16 @@ export function readSettings(repositories: AuthorityRepositories): SettingsFileR
     settingsFingerprint: current.settingsFingerprint,
     settings: current.settings,
   });
+}
+
+/** Boot must not replace a missing active generation when durable Settings or snapshot history remains. */
+export function readBootSettings(repositories: AuthorityRepositories): SettingsFileRecord {
+  const record = readSettings(repositories);
+  if (repositories.runtimeConfig.get() === undefined
+    && (record.revision > 1 || repositories.runtimeConfig.hasHistory())) {
+    throw new Error("dashboard settings/runtime authority is missing despite durable revision evidence");
+  }
+  return record;
 }
 
 export function requireCurrentSettings(record: SettingsFileRecord, repositories: AuthorityRepositories): void {
@@ -82,14 +104,13 @@ export interface SettingsRuntimeSnapshot {
 }
 
 export function createSettingsRuntimeReader(input: Readonly<{
-  database: CommandAuthority;
   hostFacts: HostConfigFacts;
   clock: Clock;
   runtimeStoragePair?: AdmittedRuntimeStoragePair;
   active: SettingsRuntimeIdentity | ((repositories: AuthorityRepositories) => SettingsRuntimeIdentity);
-}>): Readonly<{ read(): SettingsRuntimeSnapshot }> {
+}>): Readonly<{ read(repositories: AuthorityRepositories): SettingsRuntimeSnapshot }> {
   return Object.freeze({
-    read: () => input.database.withAuthorityTransaction((repositories) => {
+    read: (repositories) => {
       const active = typeof input.active === "function" ? input.active(repositories) : input.active;
       repositories.runtimeConfig.requireActive({
         settingsRevision: active.settingsRevision,
@@ -105,7 +126,7 @@ export function createSettingsRuntimeReader(input: Readonly<{
           : { state: "restart-required", active, persisted },
       );
       return Object.freeze({ record, runtimeStatus });
-    }),
+    },
   });
 }
 

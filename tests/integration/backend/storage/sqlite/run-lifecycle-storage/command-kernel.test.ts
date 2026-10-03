@@ -334,10 +334,10 @@ function createHarness(
   settingsInputOrOptions?: SettingsApplicationExecutor | HarnessOptions,
   transactionWrap?: AuthorityTransactionWrap,
 ): Harness {
-  const options = settingsInputOrOptions !== undefined && !("apply" in settingsInputOrOptions)
+  const options = settingsInputOrOptions !== undefined && !("applyOrdinary" in settingsInputOrOptions)
     ? settingsInputOrOptions : {};
   const descriptors = options.descriptors ?? DESCRIPTOR_SET;
-  const settingsOverride = settingsInputOrOptions !== undefined && "apply" in settingsInputOrOptions
+  const settingsOverride = settingsInputOrOptions !== undefined && "applyOrdinary" in settingsInputOrOptions
     ? settingsInputOrOptions : undefined;
   const clock = manualClock(new Date(NOW));
   const path = databasePath("kernel.sqlite");
@@ -2001,11 +2001,12 @@ describe("apply-settings authority", () => {
     "preserves the closed %s rejection code and rolls back the command journal",
     (code) => {
       const settings: SettingsApplicationExecutor = {
-        prepare: () => undefined,
+        validateRequest: () => undefined,
+        commitPrivate: () => undefined,
         reconcileReplay: () => {
           throw new Error("rejected settings fixture has no replay authority");
         },
-        apply: () => ({ state: "rejected", code, message: `${code} { document: settings.json }` }),
+        applyOrdinary: () => ({ state: "rejected", code, message: `${code} { document: settings.json }` }),
       };
       const harness = createHarness(undefined, settings);
       const patch = { "browser.headless": { set: false } } as const;
@@ -2177,11 +2178,12 @@ describe("apply-settings authority", () => {
 
   it("refuses an executor outcome that does not advance exactly one revision", () => {
     const settings: SettingsApplicationExecutor = {
-      prepare: () => undefined,
+      validateRequest: () => undefined,
+      commitPrivate: () => undefined,
       reconcileReplay: () => {
         throw new Error("wrong-revision fixture has no replay authority");
       },
-      apply: (command) => ({
+      applyOrdinary: (command) => ({
         state: "applied",
         revision: command.target.expectedRevision + 2,
         settingsFingerprint: HASH_A,

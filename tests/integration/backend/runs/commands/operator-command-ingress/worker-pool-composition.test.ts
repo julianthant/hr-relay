@@ -240,11 +240,12 @@ function openControlHarness(options?: ControlHarnessOptions): ControlHarness {
     // plus the test-only alias-breaking clock advance around the seam.
     workerRuntime: { pool },
     settings: {
-      prepare: () => undefined,
+      validateRequest: () => undefined,
+      commitPrivate: () => undefined,
       reconcileReplay: () => {
         throw new Error("worker-pool fixture has no persisted settings replay authority");
       },
-      apply: (command) => ({
+      applyOrdinary: (command) => ({
         state: "applied",
         revision: command.target.expectedRevision + 1,
         settingsFingerprint: derivePersistedSettingsFingerprint({}),

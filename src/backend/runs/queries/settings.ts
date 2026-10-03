@@ -8,9 +8,8 @@ import {
   type SettingsFactsWire,
 } from "../../../models/dashboard/settings.js";
 
-export interface SettingsQueryDeps {
+interface SettingsQueryContext {
   /** The resolved config this process runs on — never a re-read of settings.json. */
-  readonly config: Config;
   /**
    * The composition root's own descriptor tuple. It takes descriptors rather
    * than the bootstrap's module views because every fact below is the
@@ -19,6 +18,7 @@ export interface SettingsQueryDeps {
    */
   readonly descriptors: readonly AnyWorkflowDescriptor[];
 }
+export type SettingsQueryDeps = SettingsQueryContext & ({ readonly config: Config } | { readonly readConfig: () => Config });
 
 /**
  * `WorkflowDryRunSupport` → the wire arm, field for field.
@@ -54,8 +54,9 @@ function editDataPostureOf(descriptor: AnyWorkflowDescriptor): unknown {
 }
 
 export function buildSettingsFacts(deps: SettingsQueryDeps): SettingsFactsWire {
+  const config = "readConfig" in deps ? deps.readConfig() : deps.config;
   return SettingsFactsWireSchema.parse({
-    systemHosts: listSystemEntryHosts(deps.config).map((entry) => ({
+    systemHosts: listSystemEntryHosts(config).map((entry) => ({
       system: entry.system,
       production: entry.prod,
       test: entry.test,

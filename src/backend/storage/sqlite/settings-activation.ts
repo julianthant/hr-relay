@@ -28,6 +28,12 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
             AND json_extract(record_json, '$.type') = 'apply-settings'
           LIMIT 1
         `).get() !== undefined,
+        hasAuditHistory: () => ports.database.prepare(`
+          SELECT 1 FROM command_audits
+          WHERE json_extract(record_json, '$.request.family') = 'settings'
+            AND json_extract(record_json, '$.request.type') = 'apply-settings'
+          LIMIT 1
+        `).get() !== undefined,
         advance: (input: unknown) => {
           const record = SettingsCurrentRecordSchema.parse(input);
           return ports.mutate( () => {
@@ -85,6 +91,7 @@ export function createSettingsActivationRepositories(ports:SettingsActivationPor
       }),
       runtimeConfig: Object.freeze({
         hasHistory: () => ports.database.prepare("SELECT 1 FROM settings_snapshots LIMIT 1").get() !== undefined,
+        hasAdvancedHistory: () => ports.database.prepare("SELECT 1 FROM settings_snapshots WHERE json_extract(record_json, '$.revision') > 1 LIMIT 1").get() !== undefined,
         matchesClaim(input: unknown): boolean {
           const token = RuntimeConfigClaimTokenSchema.parse(input);
           const current = readAppSettings(ports.database);

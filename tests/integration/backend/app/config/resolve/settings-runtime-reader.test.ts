@@ -20,6 +20,10 @@ import { requireSecret } from "../../../../../../src/models/config/secrets.js";
 
 const cleanups: (() => void)[] = [];
 afterEach(() => { for (const cleanup of cleanups.splice(0).reverse()) cleanup(); });
+function readerFor(database: CommandAuthority, input: Parameters<typeof createSettingsRuntimeReader>[0]) {
+  const reader = createSettingsRuntimeReader(input);
+  return { read: () => database.withAuthorityTransaction(repositories => reader.read(repositories)) };
+}
 function activate(database: AuthorityDatabase, record: SettingsFileRecord, clock: Clock) {
   const resolved = resolveConfigWithProvenance(record.settings, hostConfigFacts({}), clock);
   database.withAuthorityTransaction((repositories) => {
@@ -42,7 +46,7 @@ function fixture(probe: () => void = () => {}) {
   const authority: CommandAuthority = { withAuthorityTransaction: (work) => database.withAuthorityTransaction((repositories) => work({ ...repositories,
     settingsCurrent: { ...repositories.settingsCurrent, get: () => { reads += 1; probe(); return repositories.settingsCurrent.get(); } },
   })) };
-  const reader = createSettingsRuntimeReader({ database: authority, hostFacts: hostConfigFacts({}), clock, active: activeSettingsRuntimeIdentity });
+  const reader = readerFor(authority, { hostFacts: hostConfigFacts({}), clock, active: activeSettingsRuntimeIdentity });
   const settings = createSettingsApplicationExecutor((value) => resolveConfigWithProvenance(value, hostConfigFacts({}), clock), store);
   const execute = (command: unknown) => executeSettingsCommand({ authority: database, clock, ids: { uuid: randomUUID }, settings }, command);
   const apply = () => {
@@ -70,7 +74,7 @@ describe("SQLite Settings reader snapshot", () => {
       repositories.runtimeConfig.activate({ settingsRevision: f.initial.revision, settingsFingerprint: f.initial.settingsFingerprint,
         configSnapshotId, configFingerprint: resolved.fingerprint, activatedAt: f.clock.now().toISOString() });
     });
-    const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock,
+    const reader = readerFor(f.database, { hostFacts: hostConfigFacts({}), clock: f.clock,
       runtimeStoragePair: pair, active: activeSettingsRuntimeIdentity });
     assert.deepEqual(reader.read().runtimeStatus, { state: "current", identity: settingsRuntimeIdentity(f.initial, resolved.fingerprint) });
     assert.equal(readSettings(f.database.authority).revision, f.initial.revision);
@@ -100,9 +104,9 @@ describe("SQLite Settings reader snapshot", () => {
   });
   it("refuses a stale process identity before reading settings after another activation", () => {
     const f = fixture(); const record = f.apply(); const active = activate(f.database, record, f.clock); const before = f.reads();
-    const stale = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active: f.active });
+    const stale = readerFor(f.database, { hostFacts: hostConfigFacts({}), clock: f.clock, active: f.active });
     assert.throws(() => stale.read(), /are not dashboard-active; restart activation is required/u); assert.equal(f.reads(), before);
-    const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock, active });
+    const reader = readerFor(f.database, { hostFacts: hostConfigFacts({}), clock: f.clock, active });
     assert.deepEqual(reader.read(), { record, runtimeStatus: { state: "current", identity: active } });
   });
   it("cannot project a corrupt retired file as ordinary authority", () => {
@@ -160,7 +164,7 @@ describe("independent protected Settings reader", () => {
 
 it("S long-lived dashboard reader follows newly saved active settings", () => {
  const f = fixture();
- const reader = createSettingsRuntimeReader({ database: f.database, hostFacts: hostConfigFacts({}), clock: f.clock,
+ const reader = readerFor(f.database, { hostFacts: hostConfigFacts({}), clock: f.clock,
   active: activeSettingsRuntimeIdentity });
  const original = reader.read();
  const originalConfig = f.database.withAuthorityTransaction(activeSettingsConfig);

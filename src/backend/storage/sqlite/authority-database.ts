@@ -448,6 +448,7 @@ type RuntimeConfigRepository = Readonly<{
   matchesClaim(input: unknown): boolean;
   matchesRun(configFingerprint: string, runFingerprint: string): boolean;
   hasHistory(): boolean;
+  hasAdvancedHistory(): boolean;
   get(): ActiveRuntimeConfigRecord | undefined;
   activate(input: unknown): ActiveRuntimeConfigRecord;
   requireActive(input: unknown): RuntimeConfigClaimToken;
@@ -457,6 +458,7 @@ type RuntimeConfigRepository = Readonly<{
 type SettingsCurrentRepository = Readonly<{
   get(): SettingsCurrentRecord | undefined;
   hasHistory(): boolean;
+  hasAuditHistory(): boolean;
   advance(input: unknown): SettingsCurrentRecord;
 }>;
 

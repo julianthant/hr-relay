@@ -11,8 +11,10 @@ import { createSettingsApplicationExecutor } from "../../../runs/commands/settin
 import type { SettingsRouteDeps } from "../../../transports/http/routes/settings-types.js";
 import type { StorageRelocationPlanReader } from "../../../storage/maintenance/storage-relocation-plans.js";
 import { createNativePathPicker } from "../../../transports/http/native-path-picker.js";
+import type { CommandAuthority } from "../../../runs/commands/command-kernel.js";
 
 export function composeSettings(input: Parameters<typeof createSettingsRuntimeReader>[0] & {
+  database: CommandAuthority;
   environment: Readonly<Record<string, string | undefined>>; credentials: ReturnType<typeof createCredentialStore>;
   providerKeys?: ReturnType<typeof createProviderKeyStore>; providerBoot?: ProviderBootProvenance;
   storageRelocationPlans?: Pick<StorageRelocationPlanReader, "read">;
@@ -23,9 +25,9 @@ export function composeSettings(input: Parameters<typeof createSettingsRuntimeRe
   const routes: SettingsRouteDeps = {
     nativePathPicker: createNativePathPicker(),
     ...(input.storageRelocationPlans === undefined ? {} : { storageRelocationPlans: input.storageRelocationPlans }),
-    settings: { get config() { return database.withAuthorityTransaction(activeSettingsConfig); }, descriptors: DESCRIPTORS },
+    settings: { readConfig: () => database.withAuthorityTransaction(activeSettingsConfig), descriptors: DESCRIPTORS },
     settingsEditor: {
-      settings: { read: () => database.withAuthorityTransaction(repositories => ({ ...reader.read(), activeConfig: selectActiveRunSettings(repositories).config })) },
+      settings: { read: () => database.withAuthorityTransaction(repositories => ({ ...reader.read(repositories), activeConfig: selectActiveRunSettings(repositories).config })) },
       protectedSettings: createProtectedSettingsRuntimeReader(input.credentials), environment: input.environment, clock,
       providerKeys: input.providerKeys, providerBoot: input.providerBoot, activeProviderSlots,
       resolve: settings => resolveConfigWithProvenance(settings, hostFacts, clock, input.runtimeStoragePair),

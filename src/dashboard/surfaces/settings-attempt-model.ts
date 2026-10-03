@@ -4,6 +4,7 @@ import { ProtectedSettingsReadbackSchema } from "../../models/config/protected-s
 import { canonicalJsonStringify } from "../../rules/validation/canonical-json.js";
 import { DashboardClientError } from "../client/errors.js";
 import type { EditableSettingsWire } from "../../models/dashboard/settings-editor.js";
+import { ordinaryReadbackConfirms } from "./settings-draft-model.js";
 
 export type OrdinarySettingsAttempt = z.infer<typeof SettingsCommandRequestSchema>;
 export type ProtectedSettingsAttempt = z.infer<typeof ProtectedSettingsCommandRequestSchema>;
@@ -55,4 +56,13 @@ export function protectedReadbackConfirms(command: ProtectedSettingsAttempt, res
     const presence = current.entries[name as keyof typeof current.entries];
     return "clear" in operation ? !presence.present : presence.present;
   });
+}
+export function ordinaryReadbackState(command: OrdinarySettingsAttempt, result: CommandResult, document: EditableSettingsWire): "confirmed" | "superseded" | "unresolved" {
+  if ((result.state !== "applied" && result.state !== "already-applied") || result.commandId !== command.commandId
+    || result.settingsRevision !== command.target.expectedRevision + 1 || result.settingsFingerprint === undefined
+    || result.affectedTargets.length !== 1 || result.affectedTargets[0]?.family !== "settings"
+    || result.affectedTargets[0]?.revision !== result.settingsRevision) return "unresolved";
+  if (document.revision > result.settingsRevision) return "superseded";
+  return document.revision === result.settingsRevision && document.settingsFingerprint === result.settingsFingerprint
+    && ordinaryReadbackConfirms(document, command.payload.patch) ? "confirmed" : "unresolved";
 }
