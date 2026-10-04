@@ -1,6 +1,6 @@
 import { Tabs } from "@heroui/react/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/dropdown-menu.js";
-import { CheckCheck, CircleAlert, Mail, ListFilter, ChevronDown } from "lucide-react";
+import { CheckCheck, CircleAlert, Mail, ListFilter } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
@@ -37,7 +37,7 @@ export function NotificationsView({ state, filter, onFilter, onControl, onOpen, 
   };
   const unread = state.state === "ready" ? state.items.filter(item => !item.read) : [];
   return <section ref={surface} role="region" aria-label="Notifications" className="notification-rail ui-theme-scope flex min-h-0 flex-1 flex-col overflow-hidden font-ui text-ui-primary">
-    <div className="flex items-center justify-between gap-2 px-7 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
+    <div className="flex items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
       <button type="button" disabled={!unread.length} className={cn("text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => unread.forEach(item => control(item.id, "read"))}>Read all</button>
     </div>
     <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
@@ -46,7 +46,7 @@ export function NotificationsView({ state, filter, onFilter, onControl, onOpen, 
           <Tabs.Tab id="all" data-notification-filter="all">All<Tabs.Indicator /></Tabs.Tab>
           <Tabs.Tab id="unread" data-notification-filter="unread">Unread<Tabs.Indicator /></Tabs.Tab>
         </Tabs.List></Tabs.ListContainer>
-        <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label="Filter notifications by category" title={category === "all" ? "All updates" : category === "attention" ? "Needs you" : "Failed"} icon={<ListFilter data-icon="inline-start" />}><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" className="notification-category-filter" data-filtered={category !== "all"} aria-label="Filter notifications by category" title={category === "all" ? "All updates" : category === "attention" ? "Needs you" : "Failed"} icon={<ListFilter className="size-3.5" data-icon="inline-start" />} /></DropdownMenuTrigger>
           <DropdownMenuContent aria-label="Notification categories" align="end"><DropdownMenuGroup><DropdownMenuRadioGroup value={category} onValueChange={value => setCategory(value as NotificationCategory)}>
             <DropdownMenuRadioItem value="all">All updates</DropdownMenuRadioItem><DropdownMenuRadioItem value="attention">Needs you</DropdownMenuRadioItem><DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
           </DropdownMenuRadioGroup></DropdownMenuGroup></DropdownMenuContent>

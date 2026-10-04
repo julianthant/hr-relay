@@ -191,6 +191,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const rows = inbox.locator(".notification-row");
       await expect(rows).toHaveCount(5);
       await expect(inbox.getByRole("tab")).toHaveCount(2);
+      for (const tab of await inbox.getByRole("tab").all()) {
+        expect((await tab.boundingBox())!.height).toBe(28);
+        await expect(tab).toHaveCSS("font-size", "12px");
+        await expect(tab).toHaveCSS("font-weight", "400");
+      }
+      await expect(inbox.getByRole("tablist")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+      expect((await inbox.locator(".tabs__indicator").boundingBox())!.height).toBe(2);
+      const categoryFilter = inbox.getByRole("button", { name: "Filter notifications by category", exact: true });
+      const categoryFilterBounds = (await categoryFilter.boundingBox())!;
+      expect(categoryFilterBounds.width).toBe(28); expect(categoryFilterBounds.height).toBe(28);
+      await expect(categoryFilter.locator("svg")).toHaveCount(1);
+      expect((await categoryFilter.locator("svg").boundingBox())!.width).toBe(14);
+      await expect(categoryFilter).toHaveAttribute("data-filtered", "false");
       expect(await rows.first().evaluate(node => parseFloat(getComputedStyle(node).borderRadius))).toBeGreaterThan(0);
       await expect(inbox.getByText("Separations", { exact: true }).first()).toBeVisible();
       await capture(page, info, `notifications-normal-${size}`);
@@ -203,6 +216,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
       await inbox.getByRole("button", { name: "Filter notifications by category", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "Failed", exact: true }).click();
+      await expect(categoryFilter).toHaveAttribute("data-filtered", "true");
+      await expect(categoryFilter).toHaveAttribute("title", "Failed");
       await expect(rows).toHaveCount(1);
       await expect(inbox).toContainText("Document verification failed");
       await inbox.getByRole("tab", { name: "All", exact: true }).focus(); await page.keyboard.press("ArrowRight");
@@ -211,6 +226,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
       await inbox.getByRole("button", { name: "Filter notifications by category", exact: true }).click();
       await page.getByRole("menuitemradio", { name: "All updates", exact: true }).click();
+      await expect(categoryFilter).toHaveAttribute("data-filtered", "false");
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
       await expect(rows).toHaveCount(5);
       const before = page.url();

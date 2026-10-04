@@ -7355,7 +7355,9 @@ render.
 The selected served workflow ID persists as a local browser preference. On load, use it only when
 bootstrap serves that ID; otherwise select the first served workflow. The 2026-10-04 operator amendment
 makes the rail permanent and 264px wide, with a left-aligned HR GPT heading that stays unchanged in
-notifications. It has no floating/minimized modes or display-mode shortcuts. Category icons sit beside their headings; rail outer and row insets are 8px. Workflow rows have no
+notifications. Its left edge aligns with the category icons; the run-search glyph's right edge aligns
+with row counts, preserving the search button's full target. It has no floating/minimized modes or
+display-mode shortcuts. Category icons sit beside their headings; rail outer and row insets are 8px. Workflow rows have no
 leading icons or Preview badges; active/all metadata disappears at the narrow supported desktop width.
 Layout-preview workflows never enter the served launch catalog or persisted workflow preference.
 Scenario selectors and technical mock labels belong outside the product screens, in `review.html`.
@@ -7370,7 +7372,9 @@ those selections. The sort menu excludes Attention. Logs remains a separate bord
 12px canvas gutters, and its title uses the run title alone.
 
 The navbar and undo/redo controls are retired. The rail owns run search and notifications. Notifications
-uses HeroUI All/Unread tabs and a separate category menu for All updates, Needs you and Failed. Read
+uses compact 28px HeroUI All/Unread tabs with a selected underline and a separate 28px category menu
+control for All updates, Needs you and Failed. The category control has one 14px filter icon and marks
+an active category with the info color. Read
 state and category filters intersect without resolving a run's urgency. Rows use rounded hover/focus
 surfaces, omit History gap and restore focus when dismissed. Settings opens from the Sessions gear
 beside the plus button. The Sessions toggle excludes that right-hand action region, including its
