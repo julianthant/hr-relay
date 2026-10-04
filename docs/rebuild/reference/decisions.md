@@ -264,6 +264,7 @@ Workflow readiness uses separate requirements and compact workflow disclosures w
 All dashboard search bars use the UI catalog's 12px corners through one shared token; Settings navigation, Keyboard, Archive and Run's compact workflow filter drop their local rounding overrides. Existing sizes, theme and behavior are retained.
 Archive and Spreadsheets share a compact search/filter/count toolbar and framed table with matching cell spacing. Page actions align with the title row; the Archive folder count moves into its toolbar. The mounted Archive retires Export workflow while retaining saved-run exports, date filtering and Plan a bump. Wide tables scroll within their frame; theme and authority remain unchanged. The unmounted runtime workflow-export implementation is retained.
 Routes replaces the enclosing all-systems card and CRM disclosure bar with a plain CRM heading, five-URL count and five individual form cards. Other systems retain disclosures in separate cards. Search, validation, debounced complete-object saves and protected roster authority remain unchanged.
+Workflow names align with category text, reserving the category icon and its gap inside each row. Row-card edges and count alignment retain their 8px insets.
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including

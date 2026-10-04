@@ -7368,7 +7368,9 @@ bootstrap serves that ID; otherwise select the first served workflow. The 2026-1
 makes the rail permanent and 264px wide, with a left-aligned HR GPT heading that stays unchanged in
 notifications. Its left edge aligns with the category icons; the run-search glyph's right edge aligns
 with row counts, preserving the search button's full target. It has no floating/minimized modes or
-display-mode shortcuts. Category icons sit beside their headings; rail outer and row insets are 8px. Workflow rows have no
+display-mode shortcuts. Category icons sit beside their headings. Rail outer insets and row-card edges
+remain 8px; workflow names align with category text by reserving the 14px category icon and its 8px gap.
+Workflow rows have no
 leading icons or Preview badges; active/all metadata disappears at the narrow supported desktop width.
 Layout-preview workflows never enter the served launch catalog or persisted workflow preference.
 Scenario selectors and technical mock labels belong outside the product screens, in `review.html`.

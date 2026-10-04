@@ -23,6 +23,24 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(workflows.locator('button > svg')).toHaveCount(0);
       await expect(workflows.locator('h3 > svg')).toHaveCount(8);
       expect(await workflows.evaluate(node => getComputedStyle(node).paddingLeft)).toBe('8px');
+      for (const group of await workflows.locator('.workflow-rail-group').all()) {
+        const headingTextX = await group.locator('h3').evaluate(node => {
+          const text = [...node.childNodes].find(child => child.nodeType === Node.TEXT_NODE && child.textContent?.trim());
+          if (text === undefined) throw new Error('Workflow category text missing');
+          const range = document.createRange(); range.selectNodeContents(text);
+          return range.getBoundingClientRect().x;
+        });
+        const icon = (await group.locator('h3 > svg').boundingBox())!;
+        for (const row of await group.getByRole('button').all()) {
+          const label = (await row.locator('span').first().boundingBox())!;
+          const card = (await row.boundingBox())!;
+          expect(Math.abs(label.x - headingTextX)).toBeLessThanOrEqual(0.5);
+          expect(icon.x - card.x).toBe(8);
+          expect(card.x).toBe(8);
+          expect(card.x + card.width).toBe((await workflows.boundingBox())!.width - 8);
+        }
+      }
+      await info.attach(`workflow-labels-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
       const meta = workflows.locator('.workflow-rail-meta').first();
       if (width === 1024) await expect(meta).toBeHidden(); else await expect(meta).toBeVisible();
       await expect(workflows.getByText('Preview', { exact: true })).toHaveCount(0);
