@@ -82,6 +82,7 @@ export default defineConfig({
         index: resolve(import.meta.dirname, "src/dashboard/index.html"),
         kit: resolve(import.meta.dirname, "src/dashboard/kit.html"),
         logs: resolve(import.meta.dirname, "src/dashboard/logs.html"),
+        review: resolve(import.meta.dirname, "src/dashboard/review.html"),
       },
     },
     manifest: true,

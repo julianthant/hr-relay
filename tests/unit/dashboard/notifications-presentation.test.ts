@@ -37,6 +37,14 @@ describe("frontend notification state", () => {
     assert.deepEqual(notificationView(state, "attention").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-review"]);
     assert.equal(notificationView(state, "unread").shown.length, 2);
   });
+  it("intersects All/Unread with the separate category filter without resolving attention", () => {
+    const state = updateNotification(notificationsSample("normal"), "sample-verification", "read");
+    assert.deepEqual(notificationView(state, "all", "failed").shown.map(item => item.id), ["sample-verification"]);
+    assert.deepEqual(notificationView(state, "unread", "failed").shown, []);
+    assert.deepEqual(notificationView(state, "unread", "attention").shown.map(item => item.id), ["sample-approval"]);
+    assert.equal(notificationView(state, "unread", "attention").unread, 2);
+    assert.equal(notificationView(state, "all", "attention").shown.length, 3);
+  });
   it("distinguishes loading and unavailable from a measured empty inbox", () => {
     for (const scenario of ["loading", "unavailable"]) {
       const state = notificationsSample(scenario);

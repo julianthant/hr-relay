@@ -36,10 +36,10 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
   const finish = () => {
     onOpenChange(false);
     try {
-      if (new URLSearchParams(window.location.search).get("spreadsheetPreviewOutcome") === "failure") throw new Error("Mock import failed. No file was registered.");
+      if (new URLSearchParams(window.location.search).get("spreadsheetPreviewOutcome") === "failure") throw new Error("Import failed. No file was registered.");
       const file = registerMockSpreadsheet({ name, typeId, sheets }, existing?.id);
       onRegistered(file);
-      toast({ tone: "success", title: existing ? "Column mappings saved" : `${type.name} imported`, description: `${file.name} · ${file.sheets.length} sheets · mock data` });
+      toast({ tone: "success", title: existing ? "Column mappings saved" : `${type.name} imported`, description: `${file.name} · ${file.sheets.length} sheets` });
     } catch (error) {
       toast({ tone: "danger", title: `${type.name} couldn’t be imported`, description: error instanceof Error ? error.message : String(error), action: { label: "Try again", onAction: () => { retry.current = true; onOpenChange(true); } } });
     }
@@ -56,7 +56,7 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
       <DialogBody className="spreadsheet-main flex min-w-0 flex-1 flex-col overflow-hidden">
         <div className="flex items-center gap-[var(--ds-space-base)]">
           <span className="flex h-[34px] w-[30px] shrink-0 items-center justify-center rounded-md border border-ui-stroke bg-ui-table text-ui-positive"><FileSpreadsheet aria-hidden className={dsIcon.lg} /></span>
-          <div className="min-w-0 flex-1"><h3 className="truncate text-body font-semibold" title={name}>{name}</h3><p className="mt-[var(--ds-space-tight)] text-caption text-[color:var(--ds-fg-muted)]">{sheets.length} sheets · fictional sample records</p></div>
+          <div className="min-w-0 flex-1"><h3 className="truncate text-body font-semibold" title={name}>{name}</h3><p className="mt-[var(--ds-space-tight)] text-caption text-[color:var(--ds-fg-muted)]">{sheets.length} sheets</p></div>
           {!existing && <label className="flex h-9 shrink-0 cursor-pointer items-center rounded-md border border-ui-stroke-control px-[10px] text-body font-semibold">Change file<input type="file" accept=".xlsx,.xls,.csv" className="sr-only" aria-label="Choose spreadsheet file" onChange={event => { const file = event.target.files?.[0]; if (file) setName(file.name); }} /></label>}
           {existing ? <span className="shrink-0 rounded-[var(--ds-radius-sm)] border border-[color:var(--ds-border)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-caption">{type.name}</span> : <ChoicePicker label="Spreadsheet type" hideLabel value={typeId} options={types.map(entry => ({ value: entry.id, label: entry.name }))} onChange={id => {
             const next = types.find(entry => entry.id === id); if (!next) throw new Error("SPREADSHEET_TYPE_NOT_FOUND");
@@ -79,7 +79,7 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
             {!sheet.columns.some(columnMatches) && <p className="p-[var(--ds-space-cozy)] text-caption text-[color:var(--ds-fg-muted)]">No matching columns.</p>}
           </div>
         </> : <div className="min-h-0 flex-1 overflow-hidden"><SpreadsheetTable label={`${sheet.name} roster preview`} fields={fields} rows={MOCK_ROSTER_ROWS} rowStart={sheet.headerRow + 1} className="max-h-full" /></div>}
-        <div className="flex shrink-0 items-center justify-between gap-3 text-caption text-ui-muted">{view === "mapping" ? <><span>{sheet.mapping.filter(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY).length} of {sheet.columns.length} columns mapped</span><span>Search uses all mapped data</span></> : <><span>{sheet.name} · {MOCK_ROSTER_ROWS.length} fictional records</span><span>Headers at row {sheet.headerRow}</span></>}</div>
+        <div className="flex shrink-0 items-center justify-between gap-3 text-caption text-ui-muted">{view === "mapping" ? <><span>{sheet.mapping.filter(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY).length} of {sheet.columns.length} columns mapped</span><span>Search uses all mapped data</span></> : <><span>{sheet.name} · {MOCK_ROSTER_ROWS.length} records</span><span>Headers at row {sheet.headerRow}</span></>}</div>
       </DialogBody>
     </div>
     <DialogFooter meta={<span className="text-caption text-[color:var(--ds-fg-muted)]"><strong className="text-ui-primary">{type.name}</strong> · {sheets.length} sheets</span>}><Button variant="secondary" onClick={() => onOpenChange(false)}>Cancel</Button><Button variant="primary" disabled={errors.length > 0 || !name.trim()} onClick={finish}>{existing ? "Save mappings" : `Import ${type.name.toLowerCase()}`}</Button></DialogFooter>

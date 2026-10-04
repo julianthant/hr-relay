@@ -1,12 +1,12 @@
-import { useRef, useState } from 'react';
-import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, FileSpreadsheet, FolderOpen, Plus, X } from 'lucide-react';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from "../ds/breadcrumb.js";
+import { useState } from 'react';
+import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Columns3, Download, Plus } from 'lucide-react';
 import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput, Select } from '../ds/ui.js';
 import { DropdownMenu, DropdownMenuCheckboxItem, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
-import { cellText, columnName, downloadSpreadsheet, editSpreadsheetCell, importSpreadsheet, newEditableWorkbook, sortSpreadsheet, spreadsheetCsv, spreadsheetForeground, spreadsheetXlsx, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
+import { cellText, columnName, downloadSpreadsheet, editSpreadsheetCell, sortSpreadsheet, spreadsheetCsv, spreadsheetForeground, spreadsheetXlsx, type EditableSheet, type EditableWorkbook } from './spreadsheet-editor-model.js';
 import './spreadsheet-editor.css';
 
-export function SpreadsheetEditor({ document, dirty, onDocument }: { document: EditableWorkbook | null; dirty: boolean; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
-  const input = useRef<HTMLInputElement>(null);
+export function SpreadsheetEditor({ document, dirty, onDocument, onMapping }: { document: EditableWorkbook; dirty: boolean; onMapping?: () => void; onDocument: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const [sheetId, setSheetId] = useState('');
   const [query, setQuery] = useState('');
   const [page, setPage] = useState(0);
@@ -22,12 +22,6 @@ export function SpreadsheetEditor({ document, dirty, onDocument }: { document: E
     if (!document) throw new Error('SPREADSHEET_DOCUMENT_UNAVAILABLE');
     onDocument({ ...document, sheets: document.sheets.map(item => item.id === next.id ? next : item) }, dirty || changed);
   };
-  const open = async (file: File) => {
-    setBusy(true); setError('');
-    try { const next = await importSpreadsheet(file.name, await file.arrayBuffer()); onDocument(next, false); setSheetId(next.sheets[0].id); setQuery(''); setPage(0); setSort(null); }
-    catch (caught) { setError(caught instanceof Error ? caught.message : String(caught)); }
-    finally { setBusy(false); if (input.current) input.current.value = ''; }
-  };
   const exportFile = async (format: 'csv' | 'xlsx') => {
     if (!document || !sheet) throw new Error('SPREADSHEET_DOCUMENT_UNAVAILABLE');
     setBusy(true); setError('');
@@ -39,10 +33,10 @@ export function SpreadsheetEditor({ document, dirty, onDocument }: { document: E
   const rows = sheet?.rows.slice(1).filter(row => !query.trim() || columns.some(column => cellText(row.cells[column]).toLowerCase().includes(query.trim().toLowerCase()))) ?? [];
   const pages = Math.max(1, Math.ceil(rows.length / 50)), currentPage = Math.min(page, pages - 1);
   return <section aria-label="Spreadsheet editor" className="spreadsheet-editor">
-    <input ref={input} disabled={busy} type="file" accept=".xlsx,.csv" className="sr-only" aria-label="Open XLSX or CSV" onChange={event => { const file = event.target.files?.[0]; if (file) void open(file); }} />
-    <PageHeading title={document?.name ?? 'Spreadsheets'} description={document ? `${document.sheets.length} ${document.sheets.length === 1 ? 'sheet' : 'sheets'} · ${dirty ? 'Edited copy' : 'Local copy'}` : 'View, edit and export XLSX or CSV files.'} actions={document ? <IconButton label="Close spreadsheet" icon={<X className="size-4" />} onClick={() => dirty ? setCloseOpen(true) : onDocument(null, false)} /> : <Button size="sm" disabled={busy} icon={<FolderOpen className="size-4" />} onClick={() => input.current?.click()}>{busy ? 'Opening…' : 'Open file'}</Button>} />
+    <Breadcrumb><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={() => dirty ? setCloseOpen(true) : onDocument(null, false)}>Spreadsheets</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage className="truncate">{document.name}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+    <PageHeading title={document.name} description={`${document.sheets.length} ${document.sheets.length === 1 ? 'sheet' : 'sheets'} · ${dirty ? 'Edited copy' : 'Saved copy'}`} actions={onMapping && <Button variant="secondary" onClick={onMapping}>Edit column mappings</Button>} />
     {error && <Banner tone="danger" title="Spreadsheet unavailable">{error}</Banner>}
-    {!document ? <div className="spreadsheet-drop-zone" onDragOver={event => event.preventDefault()} onDrop={event => { event.preventDefault(); const file = event.dataTransfer.files[0]; if (file && !busy) void open(file); }}><FileSpreadsheet aria-hidden className="size-7 text-ui-info" /><p>Drop an XLSX or CSV file here</p><span>Your original file stays unchanged.</span><Button size="sm" variant="ghost" disabled={busy} icon={<Plus className="size-3.5" />} onClick={() => { const next = newEditableWorkbook(); onDocument(next, true); setSheetId(next.sheets[0].id); }}>New spreadsheet</Button></div> : sheet && <>
+    {sheet && <>
       <div className="spreadsheet-editor-toolbar"><Select disabled={busy} aria-label="Workbook sheet" value={sheet.id} onChange={event => { setSheetId(event.target.value); setPage(0); setSort(null); setQuery(''); }}>{document.sheets.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select>
         <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" icon={<Columns3 className="size-3.5" />}>Columns <span className="text-ui-muted">{columns.length}/{sheet.width}</span></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Visible columns" className="w-60">{Array.from({ length: sheet.width }, (_, column) => <DropdownMenuCheckboxItem key={column} closeOnClick={false} checked={!sheet.hidden.includes(column)} disabled={busy || columns.length === 1 && !sheet.hidden.includes(column)} onCheckedChange={checked => applySheet({ ...sheet, hidden: checked ? sheet.hidden.filter(index => index !== column) : [...sheet.hidden, column] })}>{columnName(column)} · {cellText(sheet.rows[0].cells[column]) || 'Untitled'}</DropdownMenuCheckboxItem>)}</DropdownMenuContent></DropdownMenu>
         <IconButton label="Add column" disabled={busy || (sheet.width + 1) * sheet.rows.length > 100000} icon={<Plus className="size-3.5" />} onClick={() => { setColumnTitle(''); setColumnOpen(true); }} />

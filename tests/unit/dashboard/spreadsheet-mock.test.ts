@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { afterEach, describe, it } from "vitest";
-import { addMockSpreadsheetType, initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, resetSpreadsheetMocks, searchMockSpreadsheet, spreadsheetMappingErrors, WORKBOOK_ONLY, type SpreadsheetType } from "../../../src/dashboard/surfaces/spreadsheet-mock-model.js";
+import { registeredSpreadsheetWorkbook, registerLocalSpreadsheet, retainSpreadsheetCopy, addMockSpreadsheetType, initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, resetSpreadsheetMocks, searchMockSpreadsheet, spreadsheetMappingErrors, WORKBOOK_ONLY, type SpreadsheetType } from "../../../src/dashboard/surfaces/spreadsheet-mock-model.js";
 import { ROSTER_FIELDS } from "../../../src/dashboard/surfaces/spreadsheet-mock-data.js";
+import { newEditableWorkbook, editSpreadsheetCell } from "../../../src/dashboard/surfaces/spreadsheet-editor-model.js";
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 const file = () => registerMockSpreadsheet({ name: "Fictional roster.xlsx", typeId: "roster", sheets: initialSpreadsheetSheets(roster) });
 afterEach(resetSpreadsheetMocks);
@@ -41,6 +42,23 @@ describe("type-based mock spreadsheet registration", () => {
     assert.equal(updated.id, record.id); assert.equal(updated.sheets.length, 3);
     assert.deepEqual(updated.sheets.map(sheet => sheet.name), record.sheets.map(sheet => sheet.name));
     assert.ok(updated.sheets.every(sheet => sheet.headerRow === 2));
+  });
+  it("opens every registered sheet as an isolated editable workbook", () => {
+    const record = file(); const document = registeredSpreadsheetWorkbook(record);
+    assert.equal(document.libraryId, record.id); assert.equal(document.sheets.length, record.sheets.length);
+    assert.ok(document.sheets.every(sheet => sheet.rows.length === 4));
+    assert.equal(document.sheets[0].rows[1].cells[0].value, "jordan.lee@example.com");
+    assert.notEqual(document.sheets[0].rows[1].cells[0], registeredSpreadsheetWorkbook(record).sheets[0].rows[1].cells[0]);
+    assert.equal(registeredSpreadsheetWorkbook(record).sheets[0].rows[1].cells[0].value, "jordan.lee@example.com");
+  });
+  it("retains edited copies by identity even when filenames match", () => {
+    const original = newEditableWorkbook(); const first = registerLocalSpreadsheet(original), second = registerLocalSpreadsheet(original);
+    assert.notEqual(first.id, second.id); assert.ok(first.addedAt);
+    const edited = { ...original, sheets: [editSpreadsheetCell(original.sheets[0], original.sheets[0].rows[1].id, 0, "edited")] };
+    retainSpreadsheetCopy(first.id, edited);
+    assert.equal(registeredSpreadsheetWorkbook(first).sheets[0].rows[1].cells[0].value, "edited");
+    assert.notEqual(registeredSpreadsheetWorkbook(second).sheets[0].rows[1].cells[0].value, "edited");
+    assert.throws(() => retainSpreadsheetCopy("missing", edited), /SPREADSHEET_NOT_FOUND/u);
   });
   it("unknown type, field and existing file references fail explicitly", () => {
     const sheets = initialSpreadsheetSheets(roster);

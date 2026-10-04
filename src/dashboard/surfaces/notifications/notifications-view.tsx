@@ -1,14 +1,16 @@
-import { CheckCheck, CircleAlert, Mail } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { Tabs } from "@heroui/react/tabs";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/dropdown-menu.js";
+import { CheckCheck, CircleAlert, Mail, ListFilter, ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
-import { notificationView, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
+import { notificationView, type NotificationCategory, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 
 const iconButton = cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-ui-secondary hover:bg-ui-hover hover:text-ui-primary", dsFocus);
 
 function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; onControl: (id: string, control: NotificationControl) => void; onOpen: (item: NotificationItem) => void }) {
   const urgent = item.tone === "danger" || item.tone === "warning";
-  return <li className="notification-row group border-b border-ui-stroke px-3 py-3 last:border-b-0 hover:bg-ui-hover">
+  return <li className="notification-row group rounded-lg px-3 py-3 hover:bg-ui-hover focus-within:bg-ui-hover">
     <div className="flex items-start gap-2"><span aria-hidden className={cn("mt-1.5 size-1.5 shrink-0 rounded-full", item.tone === "danger" ? "bg-ui-danger" : item.tone === "warning" ? "bg-ui-warning" : !item.read ? "bg-ui-info" : "bg-ui-stroke")} />
       <div className="min-w-0 flex-1"><button type="button" className={cn("block w-full truncate text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
         <p className={cn("mb-0 mt-1 text-caption", urgent ? item.tone === "danger" ? "text-ui-danger" : "text-ui-warning" : "text-ui-secondary")}>{item.title}</p>
@@ -25,7 +27,8 @@ export function NotificationsView({ state, filter, onFilter, onControl, onOpen, 
   onControl: (id: string, control: NotificationControl) => void;
   onOpen: (item: NotificationItem) => void; notice: string; onEnable?: () => void;
 }) {
-  const view = notificationView(state, filter);
+  const [category, setCategory] = useState<NotificationCategory>("all");
+  const view = notificationView(state, filter, category);
   const surface = useRef<HTMLDivElement>(null);
   const control = (id: string, action: NotificationControl) => {
     const focused = document.activeElement;
@@ -37,15 +40,27 @@ export function NotificationsView({ state, filter, onFilter, onControl, onOpen, 
     <div className="flex items-center justify-between gap-2 px-7 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
       <button type="button" disabled={!unread.length} className={cn("text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => unread.forEach(item => control(item.id, "read"))}>Read all</button>
     </div>
-    <div role="group" aria-label="Notification filters" className="mx-4 mb-1 flex gap-1 border-b border-ui-stroke">
-      {([{ id: "all", label: "All" }, { id: "unread", label: "Unread" }, { id: "attention", label: "Needs you" }, { id: "failed", label: "Failed" }] as const).map(item => <button type="button" key={item.id} data-notification-filter={item.id} aria-pressed={filter === item.id} onClick={() => onFilter(item.id)} className={cn("min-w-0 flex-1 border-b-2 px-0 py-2 text-[11px]", dsFocus, filter === item.id ? "border-ui-info text-ui-primary" : "border-transparent text-ui-muted hover:text-ui-primary")}>{item.label}</button>)}
-    </div>
+    <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
+      <div className="notification-filter-bar">
+        <Tabs.ListContainer><Tabs.List aria-label="Notification filters">
+          <Tabs.Tab id="all" data-notification-filter="all">All<Tabs.Indicator /></Tabs.Tab>
+          <Tabs.Tab id="unread" data-notification-filter="unread">Unread<Tabs.Indicator /></Tabs.Tab>
+        </Tabs.List></Tabs.ListContainer>
+        <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" aria-label="Filter notifications by category" title={category === "all" ? "All updates" : category === "attention" ? "Needs you" : "Failed"} icon={<ListFilter data-icon="inline-start" />}><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+          <DropdownMenuContent aria-label="Notification categories" align="end"><DropdownMenuGroup><DropdownMenuRadioGroup value={category} onValueChange={value => setCategory(value as NotificationCategory)}>
+            <DropdownMenuRadioItem value="all">All updates</DropdownMenuRadioItem><DropdownMenuRadioItem value="attention">Needs you</DropdownMenuRadioItem><DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup></DropdownMenuGroup></DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+      {(["all", "unread"] as const).map(tab => <Tabs.Panel key={tab} id={tab} className="notification-tab-panel">
       <div className="rail-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
-        {state.state === "loading" ? <div role="status" aria-label="Loading notifications" className="space-y-3">{[0,1,2].map(index => <Skeleton key={index} className="h-24 rounded-xl" />)}</div> : state.state === "unavailable" ? <div role="alert" className="py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-body">Notifications unavailable</p><p className="mb-0 mt-2 text-caption text-ui-secondary">{state.reason}</p></div> : <>
+        {state.state === "loading" ? <div role="status" aria-label="Loading notifications" className="flex flex-col gap-3">{[0,1,2].map(index => <Skeleton key={index} className="h-24 rounded-xl" />)}</div> : state.state === "unavailable" ? <div role="alert" className="py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-body">Notifications unavailable</p><p className="mb-0 mt-2 text-caption text-ui-secondary">{state.reason}</p></div> : <>
           <ul aria-label="Notification updates" className="m-0 list-none p-0">{view.shown.map(item => <NotificationRow key={item.id} item={item} onControl={control} onOpen={onOpen} />)}</ul>
-          {view.shown.length === 0 && <p className="py-6 text-center text-body text-ui-secondary">{filter === "all" || state.state === "ready" && state.items.length === 0 ? "No notifications" : filter === "unread" ? "All caught up" : filter === "failed" ? "No failures" : "Nothing needs attention"}</p>}
+          {view.shown.length === 0 && <p className="py-6 text-center text-body text-ui-secondary">{state.state === "ready" && state.items.length === 0 ? "No notifications" : category === "failed" ? "No failures" : category === "attention" ? "Nothing needs attention" : filter === "unread" ? "All caught up" : "No notifications"}</p>}
         </>}
       </div>
+      </Tabs.Panel>)}
+    </Tabs>
       {notice && <p role="status" className="m-0 border-t border-ui-stroke px-3 py-3 text-caption text-ui-secondary">{notice}</p>}
 
   </section>;

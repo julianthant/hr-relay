@@ -164,7 +164,7 @@ it("keeps the Settings editor and draft across section/catalog native history", 
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"),false);
   const archive = document.querySelector<HTMLAnchorElement>('nav[aria-label="Settings sections"] a[href="?settings=archive"]'); assert.ok(archive);
   await click(archive);
-  assert.ok(document.querySelector('[aria-label="Archive mock"]'));
+  assert.ok(document.querySelector('[aria-label="Archive"]'));
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
   assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')?.value,"1777");

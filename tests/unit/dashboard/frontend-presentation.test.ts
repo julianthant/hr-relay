@@ -84,7 +84,7 @@ describe("frontend presentation producers", () => {
     const activity = renderToStaticMarkup(createElement(ActivityReport, { range: "", onRange: noop }));
     assert.match(activity, /Workflow outcomes/);
     assert.match(activity, /36 measured/);
-    assert.match(activity, /Sample data/);
+    assert.doesNotMatch(activity, /Sample data/);
     const explorer = renderToStaticMarkup(createElement(WorkflowExplorer));
     assert.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
     assert.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
@@ -102,7 +102,7 @@ describe("frontend presentation producers", () => {
     const row = FIXTURE_DAY_WIRE.queueSurfaces.find(item => item.runId === FIXTURE_IDS.runningRun);
     assert.ok(row);
     const running = selectedLogPresentation({ row, workflowLabel: "Person Lookup" });
-    assert.equal(running.title, "Person Lookup · Battistessa, Johnnie");
+    assert.equal(running.title, "Battistessa, Johnnie");
     assert.equal(running.status, "Running");
     assert.match(JSON.stringify(running.steps), /Searching UCPath for Battistessa, Johnnie/u);
     assert.doesNotMatch(JSON.stringify(running.steps), /Alex Morgan|screenshots|Save and Submit/u);

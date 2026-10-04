@@ -1,12 +1,13 @@
 import { useMemo, useState } from "react";
-import { Select, PageHeading } from "../ds/ui.js";
+import { PageHeading } from "../ds/ui.js";
 import { activityPresetOf, activityPresetRange, activityRangeValue, parseActivityRange, type ActivityDatePreset } from "./activity-model.js";
 import { ACTIVITY_SAMPLE_RANGE, ACTIVITY_SAMPLE_STATES, ACTIVITY_SAMPLE_TODAY, activitySample, type ActivitySampleState } from "./activity/activity-fixture.js";
 import { ActivityView } from "./activity/activity-view.js";
 
 /** Temporary local producer for the production presentation. Replace only this seam when wiring. */
 export function ActivityReport({ range, onRange }: { range: string; onRange: (range: string) => void }) {
-  const [scenario, setScenario] = useState<ActivitySampleState>("normal");
+  const scenario = (new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("activityPreview") ?? "normal") as ActivitySampleState;
+  if (!ACTIVITY_SAMPLE_STATES.some(item => item.id === scenario)) throw new Error("ACTIVITY_PREVIEW_UNKNOWN");
   const [choice, setChoice] = useState<{ range: string; value: ActivityDatePreset }>();
   const [notice, setNotice] = useState("");
   const resolved = useMemo(() => parseActivityRange(range || activityRangeValue(ACTIVITY_SAMPLE_RANGE), ACTIVITY_SAMPLE_TODAY), [range]);
@@ -18,6 +19,5 @@ export function ActivityReport({ range, onRange }: { range: string; onRange: (ra
     onPreset={preset => { const value = preset === "custom" ? range : activityRangeValue(activityPresetRange(preset, ACTIVITY_SAMPLE_TODAY)); setChoice({ range: value, value: preset }); setNotice(""); if (preset !== "custom") onRange(value); }}
     onExport={() => setNotice("Export is not connected yet.")}
     notice={notice}
-    sampleControl={<Select aria-label="Activity sample data" variant="toolbar" value={scenario} onChange={event => { setScenario(event.target.value as ActivitySampleState); setNotice(""); }}>{ACTIVITY_SAMPLE_STATES.map(item => <option key={item.id} value={item.id}>Sample data · {item.label}</option>)}</Select>}
   />;
 }

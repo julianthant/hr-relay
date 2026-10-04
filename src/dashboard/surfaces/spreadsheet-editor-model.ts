@@ -4,7 +4,7 @@ import { parse } from 'csv-parse/browser/esm/sync';
 export type SheetCell = Readonly<{ value: string | number | boolean | Date | null; fill?: Fill; background?: string }>;
 export type SheetRow = Readonly<{ id: string; cells: readonly SheetCell[] }>;
 export type EditableSheet = Readonly<{ id: string; name: string; rows: readonly SheetRow[]; width: number; hidden: readonly number[] }>;
-export type EditableWorkbook = Readonly<{ name: string; sheets: readonly EditableSheet[]; themes: Workbook['model']['themes']; hasFormulas: boolean }>;
+export type EditableWorkbook = Readonly<{ name: string; libraryId?: string; sheets: readonly EditableSheet[]; themes: Workbook['model']['themes']; hasFormulas: boolean }>;
 const MAX_CELLS = 100_000;
 const indexedColors = ['000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','000000','FFFFFF','FF0000','00FF00','0000FF','FFFF00','FF00FF','00FFFF','800000','008000','000080','808000','800080','008080','C0C0C0','808080','9999FF','993366','FFFFCC','CCFFFF','660066','FF8080','0066CC','CCCCFF','000080','FF00FF','FFFF00','00FFFF','800080','800000','008080','0000FF','00CCFF','CCFFFF','CCFFCC','FFFF99','99CCFF','FF99CC','CC99FF','FFCC99','3366FF','33CCCC','99CC00','FFCC00','FF9900','FF6600','666699','969696','003366','339966','003300','333300','993300','993366','333399','333333'];
 const themeKeys = ['lt1','dk1','lt2','dk2','accent1','accent2','accent3','accent4','accent5','accent6','hlink','folHlink'];

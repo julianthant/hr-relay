@@ -6789,16 +6789,16 @@ Spreadsheet registration is separate, at Settings → Spreadsheets, organized by
 The initial type is Roster. Registered files, type definitions and per-sheet column mappings are
 inspectable; search covers multiple mapped fields, including names and identifiers. Spreadsheets uses the ordinary Settings content cap, with contained horizontal table scrolling when columns exceed that space. The search note stays on one line. Roster field groups are
 separate sections with distinct Field and Source column headings; the type card keeps one description.
-Preview tables use the approved fictional records and their source row numbers, with borders around
-the table's content rather than unused vertical space. The import
+Registered files open the shared editable viewer with the approved fictional records; the table border
+follows its content rather than unused vertical space. The import
 dialog has Mapping/Preview views, a 148px sheet rail, 32px mapping controls and the shared calendar
 where a date is requested. Import closes directly to a success/failure toast, without a Ready page.
 Reference use and generating an updated copy are the intended defaults, not per-import toggles.
 Importing a roster does not start people from its rows.
 
 The registry and Run attachment choices remain session-only fictional spreadsheet data. They do not
-persist registration, attach a workbook to a live run or start people from its rows. A separate local
-file editor at Settings → Data → Spreadsheets now parses real XLSX/CSV files, retains imported XLSX
+persist registration, attach a workbook to a live run or start people from its rows. The same library-to-viewer flow
+at Settings → Data → Spreadsheets parses real XLSX/CSV files, retains imported XLSX
 fills and theme colors, edits values, adds rows/columns, sorts and controls visible columns. Export
 creates a new XLSX/CSV copy without changing the original. XLSX includes every sheet; CSV includes
 the current sheet. Exports include all rows and only visible columns. Formula cells use saved values,
@@ -7356,29 +7356,51 @@ The selected served workflow ID persists as a local browser preference. On load,
 bootstrap serves that ID; otherwise select the first served workflow. The 2026-10-04 operator amendment
 makes the rail permanent and 264px wide, with a left-aligned HR GPT heading that stays unchanged in
 notifications. It has no floating/minimized modes or display-mode shortcuts. Workflow rows have no
-leading icons; Preview and active/all metadata disappear at the narrow supported desktop width.
+leading icons or Preview badges; active/all metadata disappears at the narrow supported desktop width.
 Layout-preview workflows never enter the served launch catalog or persisted workflow preference.
+Scenario selectors and technical mock labels belong outside the product screens, in `review.html`.
+Its controls select Logs, Activity and notification scenarios without changing runtime authority.
+
 The queue occupies its full rounded bordered left container, with a 30% track and 244px minimum.
 Start a run, bordered Status and Sort controls, an independent Attention toggle and the shared date
 picker occupy the 48px Action panel above Logs. Attention groups runs by status; other sorts order the
-whole queue without group headers. The same order drives keyboard traversal. Frequent filters are
-independent HeroUI toggles and status dropdown items allow combined selections. Selecting All resets
+whole queue without group headers. The same order drives keyboard traversal. The All/Needs you/Running
+quick-filter row is retired. Status dropdown items allow combined selections; selecting All resets
 those selections. The sort menu excludes Attention. Logs remains a separate bordered container with
 12px canvas gutters, and its title uses the run title alone.
-The navbar and undo/redo controls are retired. The rail owns run search and notifications; compact
-notification rows retain read/filter states, omit History gap and restore focus when dismissed.
-Settings opens from the Sessions gear beside the plus button and replaces the dashboard with a
-264px reference sidebar, Settings heading, search and grouped navigation. It contains no run-search
-or notification button. Data → Spreadsheets uses the ordinary Settings content cap. Back to dashboard
-and navigation away retain the Settings draft guard, including edited workbook copies. General uses
-the shared segmented calendar picker while preserving the served US date value. Theme preference
-lives in General → Appearance independently of runtime settings drafts. Capabilities merges into
-Preflight; old capability URLs resolve there. Keyboard settings use editable reference rows and
-locally persisted bindings consumed by run search and queue shortcuts. Local queue selection mode
-and Select menu items are retired. Archive applies immediately; Delete asks first and cancellation
-retains its served confirmation. Member check marks are retired; the final log step has no divider.
-Command toasts show subject and clock without the local actor ID. Run/Rerun retains the approved
-Design 1 and served launch authority pending the requested design discussion.
+
+The navbar and undo/redo controls are retired. The rail owns run search and notifications. Notifications
+uses HeroUI All/Unread tabs and a separate category menu for All updates, Needs you and Failed. Read
+state and category filters intersect without resolving a run's urgency. Rows use rounded hover/focus
+surfaces, omit History gap and restore focus when dismissed. Settings opens from the Sessions gear
+beside the plus button. The Sessions toggle excludes that right-hand action region, including its
+background. Settings replaces the dashboard with a 264px reference sidebar, Settings heading, search
+and grouped navigation. The header/search/Personal gaps are each 16px. It contains no run-search or
+notification button. Path Change buttons use the shared ordinary button radius. Storage summary and
+row status values use the same description font size and weight.
+
+Data → Spreadsheets uses the ordinary Settings content cap. Registered rows have a Date added column;
+clicking any row opens its workbook directly, with no arrow column or separate viewer/drop zone.
+A shadcn Breadcrumb returns from the editable viewer to the library with its draft guard and row focus.
+Imports and new workbooks join that same local library. Edited copies retain exact library identity,
+including duplicate filenames; registration survives section navigation but remains local to the page.
+The shared grid supports search, sorting, row/column additions, visibility and copy export. XLSX copies
+preserve supported cell fills; CSV contains values from the current sheet. Formula cells use stored
+values without recalculation. Exporting only some columns or sheets does not clear unsaved changes.
+Back to dashboard and navigation away retain the Settings draft guard, including edited workbook copies.
+
+General uses the shared segmented calendar picker while preserving the served US date value. Theme
+preference lives in General → Appearance independently of runtime settings drafts. Workflow operations
+and dry-run boundaries are integrated into Preflight's workflow-readiness group and selected scope;
+they have no second page heading or separate search. Old capability URLs resolve to Preflight. Runtime
+readiness remains the verified server report. The synthetic review server explicitly supplies a complete
+report and re-check/readback routes; production failures and unavailable readiness stay distinct.
+Keyboard settings use editable reference rows and locally persisted bindings consumed by run search
+and queue shortcuts. Local queue selection mode and Select menu items are retired. Archive applies
+immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
+are retired; the final log step has no divider. Command toasts show subject and clock without the local
+actor ID. Run/Rerun retains the approved Design 1 and served launch authority pending the requested
+design discussion.
 
 
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)

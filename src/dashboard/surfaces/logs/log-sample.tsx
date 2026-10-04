@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Badge, Select } from "../../ds/ui.js";
+import { Badge } from "../../ds/ui.js";
 import { StatusBadge } from "../status.js";
 import { dsStatusOf } from "../status-model.js";
 import { LogPanel } from "../log-panel.js";
@@ -12,7 +12,7 @@ import type { LogTimelineStage } from "./log-timeline-model.js";
 
 /** Status-matched fictional previews with a separate served queue-facts view. */
 export function LogSample({ selection }: { selection?: LogSelection }) {
-  const [scenarioId, setScenarioId] = useState<string>(selection ? "preview" : "separation");
+  const scenarioId = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search).get("logPreview") ?? (selection ? "preview" : "separation");
   const [edited, setEdited] = useState<{ basis: string; steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] }>();
   const scenarios = [...previewScenarios, ...decisionScenarios];
   const selected = selection ? selectedLogPresentation(selection) : undefined;
@@ -40,10 +40,5 @@ export function LogSample({ selection }: { selection?: LogSelection }) {
       return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, action.id) : scenario.timeline, steps: nextSteps };
     });
   };
-  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide}
-    toolbar={<Select aria-label="Logs sample data" variant="toolbar" value={scenarioId} onChange={event => {
-      const next = event.target.value;
-      if (!(next === "preview" && preview) && !(next === "selected" && selected) && !scenarios.some(item => item.id === next)) throw new Error("log-sample-scenario-missing");
-      setScenarioId(next); setEdited(undefined);
-    }}>{preview && <option value="preview">Sample data · {preview.label} · {preview.subject}</option>}{selected && <option value="selected">Selected run · queue facts</option>}{scenarios.map(item => <option key={item.id} value={item.id}>Sample data · {item.label}</option>)}</Select>} />;
+  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? preview.subject : scenarioId === "selected" && selected ? selected.title : scenario.subject} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide} />;
 }

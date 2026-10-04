@@ -48,13 +48,6 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
   </OperationsToolbar>;
 }
 
-export function FocusQueueHeader({ active, counts, onFilter, children }: {
-  active: readonly StatusBucket[]; counts: readonly StatusCountWire[]; onFilter: (next: readonly StatusBucket[]) => void; children?: ReactNode;
-}) {
-  const options = [{ value: 'all', label: 'All', count: totalCount(counts) }, { value: 'needsYou', label: 'Needs you', count: needsYouCount(counts) }, { value: 'running', label: 'Running', count: statusCount(counts, 'running') }] as const;
-  return <div className="queue-filter-tabs"><div role="group" aria-label="Frequent queue filters" className="queue-filter-list-container"><div className="queue-filter-list">
-    {options.map(option => <ToggleButton key={option.value} size="sm" variant="ghost" isSelected={active.includes(option.value)} onChange={() => onFilter(toggleQueueFilter(active, option.value))} aria-label={`${option.label} ${option.count}`} className="queue-filter-tab">
-      <span>{option.label}</span><span className="queue-filter-count">{option.count}</span>
-    </ToggleButton>)}
-  </div></div><div className="queue-filter-content">{children}</div></div>;
+export function FocusQueueHeader({ children }: { children?: ReactNode; active: readonly StatusBucket[]; counts: readonly StatusCountWire[]; onFilter: (next: readonly StatusBucket[]) => void }) {
+  return <div className="queue-filter-content">{children}</div>;
 }

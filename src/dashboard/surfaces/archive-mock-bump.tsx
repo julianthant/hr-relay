@@ -42,7 +42,7 @@ export function MockArchiveBump({ contextWorkflow, onCancel, onFinish }: {
         </fieldset>
        </PopoverContent>
       </Popover>
-      {contextWorkflow !== undefined && !MOCK_ARCHIVE_VERSIONS.workflows.some(row => row.workflowId === contextWorkflow) && <p className="text-caption text-[color:var(--ds-fg-muted)]">Choose a workflow from the mock registry.</p>}
+      {contextWorkflow !== undefined && !MOCK_ARCHIVE_VERSIONS.workflows.some(row => row.workflowId === contextWorkflow) && <p className="text-caption text-[color:var(--ds-fg-muted)]">Choose a registered workflow.</p>}
      </div>}
     </div>
     <div className="mock-archive-bump-scope" data-active={scope === 'dashboard' || undefined}>

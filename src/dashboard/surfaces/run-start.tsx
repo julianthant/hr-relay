@@ -1385,7 +1385,7 @@ export function RunStartDialog({
                       ...(isRerun && snapshot ? [{ key: "Source", value: rerunSource?.traceId ?? snapshot.source.runId }] : []),
                       { key: "Steps", value: `${selectedStepKeys.length} / ${workflow?.steps.length ?? 0} included${omissionRows.length ? ` · Omitted: ${omissionRows.map(row => row.label).join(", ")}` : ""}` },
                       ...omissionRows.map(row => ({ key: row.form.fields.every(field => field.kind === "us-date") ? "Entered dates" : row.label, value: stepOmissionFactsSummary(row) })),
-                      ...(workbookId ? [{ key: "Workbook", value: `${spreadsheetMocks.files.find(file => file.id === workbookId)?.name ?? "Unavailable"} · mock selection` }] : []),
+                      ...(workbookId ? [{ key: "Workbook", value: `${spreadsheetMocks.files.find(file => file.id === workbookId)?.name ?? "Unavailable"}` }] : []),
                       { key: "Queue", value: plan.priority === "interactive" ? "Interactive" : "Bulk" },
                       { key: "Browser", value: `${browserMode === "headed" ? "Headed" : "Headless"} · screenshots ${captureBrowserScreenshots ? "on" : "off"}` },
                       { key: "Dry run", value: plan.dryRun ? "On" : "Off" },

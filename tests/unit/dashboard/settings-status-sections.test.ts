@@ -1,3 +1,6 @@
+import { FIXTURE_EDITABLE_SETTINGS } from "../../parity/helpers/fixture-settings.js";
+import { fixturePreflightReport } from "../../parity/helpers/fixture-preflight-routes.js";
+import { DEFAULT_DASHBOARD_PROFILE } from "../../parity/helpers/fixture-profile.js";
 import { PreflightActionsProvider } from "../../../src/dashboard/state/preflight-actions.js";
 // @vitest-environment jsdom
 /**
@@ -134,7 +137,9 @@ async function mount(
   document.body.append(host);
   const client = {
     settingsFacts,
-    editableSettings: () => Promise.reject(new Error("editable settings are outside this status-section fixture")),
+    editableSettings: () => Promise.resolve(FIXTURE_EDITABLE_SETTINGS),
+    preflightScopes: () => Promise.resolve([]),
+    readPreflight: () => Promise.resolve({ state: "present", report: { ...fixturePreflightReport(DEFAULT_DASHBOARD_PROFILE), descriptorFingerprint: "a".repeat(64) } }),
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,

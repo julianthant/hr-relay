@@ -824,7 +824,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     }
     if (action === 'retry') selectionOrigin.current = retriedIds[0] ?? null;
     exitQueueSelection();
-    toast({ tone: 'success', title: `${ids.length} mock ${ids.length === 1 ? 'run' : 'runs'} ${action === 'retry' ? 'queued' : action === 'archive' ? 'archived' : 'deleted'}`, description: action === 'retry' ? 'Original mock settings retained. No runtime run was started.' : 'Local preview only. Reload restores the queue.' });
+    toast({ tone: 'success', title: `${ids.length} ${ids.length === 1 ? 'run' : 'runs'} ${action === 'retry' ? 'queued' : action === 'archive' ? 'archived' : 'deleted'}`, description: action === 'retry' ? 'Original settings retained.' : undefined });
     if (route.run !== undefined && ids.includes(route.run)) setRoute({ ...route, run: action === 'retry' ? retriedIds[0] : undefined });
   }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute]);
 
@@ -1154,7 +1154,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       />
 
       <Dialog open={pendingDelete !== null} onOpenChange={next => { if (!next) setPendingDelete(null); }}>
-        <DialogContent title="Delete this run?" description="Remove this run and its child rows from the local preview. Reload restores the original sample data." size="sm">
+        <DialogContent title="Delete this run?" description="Remove this run and its child rows." size="sm">
           <p className="text-body text-ui-primary">{previewQueue.rows.find(row => row.runId === pendingDelete?.[0])?.title}</p>
           <DialogFooter><Button variant="secondary" onClick={() => setPendingDelete(null)}>Keep run</Button><Button variant="danger" onClick={() => { if (pendingDelete) applyPreviewAction("delete", pendingDelete); setPendingDelete(null); }}>Delete run</Button></DialogFooter>
         </DialogContent>

@@ -4,8 +4,8 @@
 .dashboard-shell[data-settings-takeover="true"] .dashboard-workspace > main { margin-left: 0; }
 .dashboard-shell[data-settings-takeover="true"] main > div { padding: 0; }
 .dashboard-shell .settings-takeover { padding: 0; flex-direction: row; border: 0; border-radius: 0; overflow: hidden; }
-.dashboard-shell .settings-takeover > nav.settings-panel-nav { display: flex; width: var(--shell-rail-width); height: auto; max-height: none; flex-direction: column; flex-shrink: 0; gap: 24px; overflow-y: auto; border-right: 1px solid var(--ui-stroke); padding: 0 16px 24px; background: var(--ds-surface-1); }
-.settings-nav-header { display: flex; min-height: 64px; align-items: center; justify-content: space-between; padding-left: 12px; }
+.dashboard-shell .settings-takeover > nav.settings-panel-nav { display: flex; width: var(--shell-rail-width); height: auto; max-height: none; flex-direction: column; flex-shrink: 0; gap: 16px; overflow-y: auto; border-right: 1px solid var(--ui-stroke); padding: 20px 16px 24px; background: var(--ds-surface-1); }
+.settings-nav-header { display: flex; min-height: 32px; height: 32px; align-items: center; justify-content: space-between; padding-left: 12px; }
 .settings-nav-header h2 { margin: 0; font-size: 23px; font-weight: 500; }
 .settings-nav-search [data-slot="search-field-group"] { border: 0; border-radius: 999px; background: var(--ui-hover); }
 .settings-nav-group { display: flex; flex-direction: column; gap: 4px; }
@@ -86,8 +86,18 @@
 
 .queue-row-menu { padding: 6px; border-color: var(--ui-stroke); border-radius: 10px; min-width: 180px; }
 .queue-row-menu [role="menuitem"] { min-height: 32px; padding: 6px 8px; border-radius: 6px; gap: 10px; }
-.settings-takeover .ds-path-control > button { border: 0; box-shadow: none; background: var(--ui-hover); border-radius: 999px; font-weight: 400; }
+.settings-takeover .ds-path-control > button { border: 0; box-shadow: none; background: var(--ui-hover); border-radius: var(--ds-radius-md); font-weight: 400; }
 .settings-takeover .ds-path-control > button:hover { background: var(--ui-table); }
 
 .queue-attention-toggle { min-width: 32px; height: 32px; border: 1px solid var(--ui-stroke); border-radius: 6px; background: var(--ui-panel); color: var(--ui-secondary); }
 .queue-attention-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 15%,var(--ui-panel)); border-color: color-mix(in srgb,var(--ui-info) 45%,var(--ui-stroke)); color: var(--ui-info); }
+
+.notification-tabs { flex: 1; min-height: 0; gap: 8px; }
+.notification-filter-bar { display: flex; align-items: center; gap: 6px; padding: 0 16px; }
+.notification-filter-bar .tabs__list-container { flex: 1; min-width: 0; }
+.notification-filter-bar .tabs__list { width: 100%; background: var(--ui-canvas); border-radius: var(--ds-radius-lg); padding: 3px; }
+.notification-filter-bar .tabs__tab { flex: 1; min-width: 0; height: 32px; padding: 0 8px; color: var(--ui-secondary); font-size: var(--ds-text-ui); }
+.notification-filter-bar .tabs__tab[data-selected] { color: var(--ui-primary); }
+.notification-filter-bar .tabs__indicator { background: var(--ui-hover); border-radius: var(--ds-radius-md); box-shadow: none; }
+.notification-tab-panel { display: flex; min-height: 0; flex: 1; padding: 0; }
+.notification-row { margin-top: 4px; }

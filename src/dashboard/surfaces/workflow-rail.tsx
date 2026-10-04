@@ -13,11 +13,10 @@ export function WorkflowRail({ workflows, counts, active, preview, onSelect, onP
     <div className="workflow-rail-groups">{groups.map(group => <div key={group} className="workflow-rail-group"><h3>{group}</h3>
       {entries.filter(flow => flow.category === group).map(flow => <button key={flow.id} type="button"
         aria-current={(preview ?? active) === flow.id ? "page" : undefined}
-        aria-label={`${flow.label}${flow.mock ? " · layout preview" : ""}`} className={dsFocus}
+        aria-label={flow.label} className={dsFocus}
         onClick={() => flow.mock ? onPreview(flow.id) : onSelect(flow.id)}>
         <span className="truncate">{flow.label}</span>
         {!flow.mock && <span className="workflow-rail-meta ml-auto text-caption tabular-nums text-ui-muted" aria-label={counts ? `${activeCount(workflowStatusCounts(counts, flow.id))} active of ${workflowCount(counts, flow.id)} in ${flow.label}` : `Counts unavailable in ${flow.label}`} title={counts ? "Active / all runs today" : "Counts unavailable"}>{counts ? `${activeCount(workflowStatusCounts(counts, flow.id))} · ${workflowCount(counts, flow.id)}` : "…"}</span>}
-        {flow.mock && <span className="workflow-rail-meta ml-auto text-[10px] text-ui-muted">Preview</span>}
       </button>)}
     </div>)}</div>
   </nav>;

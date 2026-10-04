@@ -101,3 +101,11 @@
   color: var(--ds-fg-muted);
   font-size: var(--ds-text-body-description);
 }
+
+.diagnostics-page .ds-result-row-value, .diagnostic-summary-meta, .diagnostic-check-status {
+  font-size: var(--ds-text-body-description);
+  font-weight: 400;
+  line-height: var(--ds-lh-body-description);
+}
+.diagnostics-page .diagnostic-check-entry .ds-result-row { align-items: center; }
+.diagnostics-page .diagnostic-check-entry .ds-result-row-side { padding-top: 0; }

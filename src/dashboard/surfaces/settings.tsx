@@ -13,7 +13,6 @@ import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,
 import { cn } from "../lib/utils.js";
 import { plural } from "./format.js";
 import type { CatalogView } from "./row-catalog-model.js";
-import { CapabilitiesSection } from "./settings-capabilities.js";
 import { useEditableSettings } from "./settings-editor-model.js";
 import { EditableSettingsSection } from "./settings-editor.js";
 import { RoutesSection } from "./settings-routes.js";
@@ -322,14 +321,14 @@ export function SettingsPage({
           />
         )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <><PreflightSection editor={editor} /><CapabilitiesSection workflowLabels={workflowLabels} /></>}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} workflowLabels={workflowLabels} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
         {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
-          <CapabilitiesSection workflowLabels={workflowLabels} />
+          <PreflightSection editor={editor} workflowLabels={workflowLabels} />
         )}
         {resolution.state === "open"
           && resolution.entry.source === "served"

@@ -36,19 +36,19 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
    const url = URL.createObjectURL(new Blob([mockArchiveExport(exportRows, format)], { type: format === 'json' ? 'application/json' : 'text/csv;charset=utf-8' }));
    const link = document.createElement('a'); link.href = url; link.download = `${exportName}.${format}`;
    document.body.append(link); link.click(); link.remove(); window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-   toast({ tone: 'success', title: 'Mock export downloaded', description: `${exportRows.length} fictional ${exportRows.length === 1 ? 'report' : 'reports'} · ${format.toUpperCase()}` });
-  } catch (error) { toast({ tone: 'danger', title: 'Mock export failed', description: error instanceof Error ? error.message : String(error) }); }
+   toast({ tone: 'success', title: 'Export downloaded', description: `${exportRows.length} ${exportRows.length === 1 ? 'report' : 'reports'} · ${format.toUpperCase()}` });
+  } catch (error) { toast({ tone: 'danger', title: 'Export failed', description: error instanceof Error ? error.message : String(error) }); }
  };
  const updateFilters = (filters: ArchiveBrowseState['filters'], mode: 'push' | 'replace' = 'push') => {
   const next = ArchiveBrowseStateSchema.safeParse({ filters });
   if (!next.success) { toast({ tone: 'danger', title: 'Check the date range', description: 'The completed-through date must follow the completed-from date.' }); return; }
   onBrowse(next.data, mode);
  };
- return <section aria-label="Archive mock" className="mock-archive settings-reference-page settings-data-section">
+ return <section aria-label="Archive" className="mock-archive settings-reference-page settings-data-section">
   <PageHeading title="Archive" actions={<>
    {(folder !== null || report !== undefined) && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
     <DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></DropdownMenuTrigger>
-    <DropdownMenuContent aria-label="Export fictional reports" align="end" className="w-70">
+    <DropdownMenuContent aria-label="Export reports" align="end" className="w-70">
      <DropdownMenuGroup><DropdownMenuItem onSelect={() => download('json')}>JSON</DropdownMenuItem><DropdownMenuItem onSelect={() => download('csv')}>CSV</DropdownMenuItem></DropdownMenuGroup><p className="m-0 px-2 py-2 text-caption text-ui-muted">{exportRows.length} matching {exportRows.length === 1 ? 'report' : 'reports'}. JSON includes saved fields, settings and files.</p>
     </DropdownMenuContent>
    </DropdownMenu>}
@@ -65,8 +65,8 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   </div>}
   {folder === null && report === undefined && !invalid && !unavailable && <div className="flex items-center gap-3"><span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>{filtered && <Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}</div>}
   <div className="mock-archive-canvas">
-    {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable in the mock" message="Choose a fresh mock scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
-     : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable in the mock" message="This preview contains fictional runs only. Choose a mock workflow to browse its reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
+    {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
+     : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable" message="Choose a workflow to browse its saved reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
      : report ? <MockArchiveReport run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
      : folder === null ? <>
       <MockVersionFolders rows={rows} onFolder={onFolder} />
@@ -88,11 +88,11 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
       </div>
       <div className="mock-archive-table-wrap"><MockArchiveRunTable rows={rows} onSelection={onSelection} /></div>
       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}
-      <div className="mock-archive-table-footer"><span>{rows.length} of {scope.length} fictional reports</span>{filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}</div>
+      <div className="mock-archive-table-footer"><span>{rows.length} of {scope.length} reports</span>{filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}</div>
      </>}
   </div>
   <Dialog open={view === 'versions'} onOpenChange={open => { if (!open) onView('runs'); }}>
-   {view === 'versions' && <DialogContent size="md" className="ds-body-scope ds-body-overlay !w-[calc(100vw-var(--ds-space-section))] !max-w-[650px] !bg-[var(--ds-surface-overlay)]" title="Plan a version bump" description="Current dashboard 1.4 · fictional preview" onCloseAutoFocus={event => { event.preventDefault(); bumpTrigger.current?.focus(); }}>
+   {view === 'versions' && <DialogContent size="md" className="ds-body-scope ds-body-overlay !w-[calc(100vw-var(--ds-space-section))] !max-w-[650px] !bg-[var(--ds-surface-overlay)]" title="Plan a version bump" description="Current dashboard 1.4" onCloseAutoFocus={event => { event.preventDefault(); bumpTrigger.current?.focus(); }}>
     <MockArchiveBump contextWorkflow={report?.workflow ?? folder?.workflow} onCancel={() => onView('runs')} onFinish={() => {
      onView('runs'); toast({ tone: 'info', title: 'Mock bump reviewed', description: 'No version or run was changed.' });
     }} />

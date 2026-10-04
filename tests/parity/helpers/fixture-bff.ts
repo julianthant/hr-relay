@@ -1,3 +1,4 @@
+import { registerFixturePreflightRoutes } from "./fixture-preflight-routes.js";
 import { Hono } from "hono";
 import { readFile } from "node:fs/promises";
 import { createServer,type IncomingMessage,type Server,type ServerResponse } from "node:http";
@@ -105,7 +106,8 @@ export function createFixtureBff(
   registerFixtureSettingsRoutes({ app });
 
   // This surrounding-shell fixture intentionally has no runtime readiness authority.
-  app.get("/api/v1/preflight", c => c.json({ state: "unavailable", reason: "This shell fixture does not compose runtime readiness." }));
+  if (input.preflightScenario) registerFixturePreflightRoutes(app, profile, input.preflightScenario);
+  else app.get("/api/v1/preflight", c => c.json({ state: "unavailable", reason: "This shell fixture does not compose runtime readiness." }));
 
   registerFixtureStorageRoutes({ app });
 
@@ -225,6 +227,7 @@ export async function startFixtureServer(
     savedArchiveFileResponse?: (runId: string, digest: string) => Response | Promise<Response>;
     diagnosticFixture?: "restricted-jpeg";
     runCaptureScenario?: "evidence";
+    preflightScenario?: FixtureBffOptions["preflightScenario"];
   }>,
 ): Promise<FixtureServer> {
   // Ref frontend-backend-integration §7: a served bundle must provably be a build of the working tree.
@@ -239,6 +242,7 @@ export async function startFixtureServer(
     ...(input.archiveComparison === undefined ? {} : { archiveComparison: input.archiveComparison }),
     ...(input.diagnosticFixture === undefined ? {} : { diagnosticFixture: input.diagnosticFixture }),
     ...(input.runCaptureScenario === undefined ? {} : { runCaptureScenario: input.runCaptureScenario }),
+    ...(input.preflightScenario === undefined ? {} : { preflightScenario: input.preflightScenario }),
   });
   const openStreams = new Set<ServerResponse>();
   const artifactExchanges: FixtureArtifactExchange[] = [];

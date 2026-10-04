@@ -1,3 +1,4 @@
+export type NotificationCategory = "all" | "attention" | "failed";
 export type NotificationFilter = "all" | "unread" | "attention" | "failed";
 export type NotificationItem = Readonly<{
   id: string; title: string; subject: string; workflow: string; detail: string;
@@ -11,12 +12,12 @@ export type NotificationControl = "read";
 export const NOTIFICATION_VIEW_FILTERS: readonly { id: NotificationFilter; label: string }[] = [
   { id: "all", label: "All" }, { id: "unread", label: "Unread" }, { id: "attention", label: "Needs you" }, { id: "failed", label: "Failed" },
 ];
-export function notificationView(state: NotificationsState, filter: NotificationFilter) {
+export function notificationView(state: NotificationsState, filter: NotificationFilter, category: NotificationCategory = "all") {
   if (state.state !== "ready") return { unread: undefined, shown: [] as readonly NotificationItem[], pinned: [] as readonly NotificationPinned[] };
   return {
     unread: state.items.filter(item => !item.read).length,
     pinned: [],
-    shown: [...state.items].sort((a, b) => (a.tone === "danger" ? 0 : a.tone === "warning" ? 1 : 2) - (b.tone === "danger" ? 0 : b.tone === "warning" ? 1 : 2)).filter(item => filter === "unread" ? !item.read : filter === "attention" ? item.tone === "danger" || item.tone === "warning" : filter === "failed" ? item.tone === "danger" : true),
+    shown: [...state.items].sort((a, b) => (a.tone === "danger" ? 0 : a.tone === "warning" ? 1 : 2) - (b.tone === "danger" ? 0 : b.tone === "warning" ? 1 : 2)).filter(item => filter === "unread" ? !item.read : filter === "attention" ? item.tone === "danger" || item.tone === "warning" : filter === "failed" ? item.tone === "danger" : true).filter(item => category === "attention" ? item.tone === "danger" || item.tone === "warning" : category === "failed" ? item.tone === "danger" : true),
   };
 }
 export function updateNotification(state: NotificationsState, id: string, control: NotificationControl): NotificationsState {

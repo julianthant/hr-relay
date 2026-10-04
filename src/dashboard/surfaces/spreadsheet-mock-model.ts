@@ -1,9 +1,10 @@
+import { cellText, type EditableWorkbook } from "./spreadsheet-editor-model.js";
 import { useSyncExternalStore } from "react";
 import { MOCK_ROSTER_ROWS, ROSTER_FIELDS, ROSTER_SHEETS } from "./spreadsheet-mock-data.js";
 
 export interface SpreadsheetType { readonly id: string; readonly name: string; readonly fields: readonly string[] }
 export interface SpreadsheetSheet { readonly name: string; readonly headerRow: number; readonly columns: readonly string[]; readonly mapping: readonly string[] }
-export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[] }
+export interface RegisteredSpreadsheet { readonly id: string; readonly name: string; readonly typeId: string; readonly sheets: readonly SpreadsheetSheet[]; readonly addedAt?: string }
 export interface SpreadsheetMockState { readonly types: readonly SpreadsheetType[]; readonly files: readonly RegisteredSpreadsheet[] }
 export const WORKBOOK_ONLY = "Keep in workbook only";
 export const NOT_MAPPED = "Not used";
@@ -24,9 +25,9 @@ export function initialSpreadsheetSheets(type: SpreadsheetType): SpreadsheetShee
 const roster: SpreadsheetType = { id: "roster", name: "Roster", fields: ROSTER_FIELDS };
 function initialState(): SpreadsheetMockState {
   return { types: [roster], files: [
-    { id: "mock-roster-current", name: "26–27 Student applicants.xlsx", typeId: roster.id, sheets: initialSpreadsheetSheets(roster) },
-    { id: "mock-roster-previous", name: "25–26 Student applicants.xlsx", typeId: roster.id, sheets: initialSpreadsheetSheets(roster) },
-    { id: "mock-roster-summer", name: "Summer student roster.xlsx", typeId: roster.id, sheets: initialSpreadsheetSheets(roster).slice(0, 3) },
+    { id: "mock-roster-current", name: "26–27 Student applicants.xlsx", typeId: roster.id, addedAt: "2026-10-01T16:00:00Z", sheets: initialSpreadsheetSheets(roster) },
+    { id: "mock-roster-previous", name: "25–26 Student applicants.xlsx", typeId: roster.id, addedAt: "2026-10-01T16:00:00Z", sheets: initialSpreadsheetSheets(roster) },
+    { id: "mock-roster-summer", name: "Summer student roster.xlsx", typeId: roster.id, addedAt: "2026-10-01T16:00:00Z", sheets: initialSpreadsheetSheets(roster).slice(0, 3) },
   ] };
 }
 let state = initialState();
@@ -56,7 +57,7 @@ export function registerMockSpreadsheet(file: Omit<RegisteredSpreadsheet, "id">,
   if (errors.length) throw new Error(errors.join(" "));
   if (file.sheets.some(sheet => sheet.mapping.some(field => field !== NOT_MAPPED && field !== WORKBOOK_ONLY && !type.fields.includes(field)))) throw new Error("SPREADSHEET_FIELD_NOT_FOUND");
   if (existingId && !state.files.some(entry => entry.id === existingId)) throw new Error("SPREADSHEET_NOT_FOUND");
-  const record = { ...structuredClone(file), id: existingId ?? `mock-import-${state.files.length + 1}` };
+  const record = { addedAt: state.files.find(entry => entry.id === existingId)?.addedAt ?? new Date().toISOString(), ...structuredClone(file), id: existingId ?? `mock-import-${state.files.length + 1}` };
   publish({ ...state, files: existingId ? state.files.map(entry => entry.id === existingId ? record : entry) : [record, ...state.files] });
   return record;
 }
@@ -77,4 +78,29 @@ export function searchMockSpreadsheet(file: RegisteredSpreadsheet, sheetName: st
   const needle = query.trim().toLowerCase();
   return MOCK_ROSTER_ROWS.filter(row => !needle || fields.some(field => (row[field] ?? "").toLowerCase().includes(needle)));
 }
-export function resetSpreadsheetMocks(): void { publish(initialState()); }
+export function resetSpreadsheetMocks(): void { localWorkbooks.clear(); publish(initialState()); }
+
+const localWorkbooks = new Map<string, EditableWorkbook>();
+export function registeredSpreadsheetWorkbook(file: RegisteredSpreadsheet): EditableWorkbook {
+  const local = localWorkbooks.get(file.id);
+  if (local) return { ...structuredClone(local), libraryId: file.id };
+  return { name: file.name, libraryId: file.id, hasFormulas: false, themes: [], sheets: file.sheets.map((sheet, index) => {
+    const fields = sheet.mapping.flatMap((field, column) => field === NOT_MAPPED || field === WORKBOOK_ONLY ? [] : [{ field, title: sheet.columns[column] }]);
+    if (!fields.length) throw new Error("SPREADSHEET_NO_VISIBLE_COLUMNS");
+    return { id: `sheet-${index + 1}`, name: sheet.name, width: fields.length, hidden: [], rows: [
+      { id: "header", cells: fields.map(({ title }) => ({ value: title })) },
+      ...MOCK_ROSTER_ROWS.map((row, number) => ({ id: `row-${number + 1}`, cells: fields.map(({ field }) => ({ value: row[field] ?? "" })) })),
+    ] };
+  }) };
+}
+export function registerLocalSpreadsheet(document: EditableWorkbook): RegisteredSpreadsheet {
+  const file: RegisteredSpreadsheet = { id: crypto.randomUUID(), name: document.name, typeId: "local", addedAt: new Date().toISOString(),
+    sheets: document.sheets.map(sheet => ({ name: sheet.name, headerRow: 1, columns: sheet.rows[0].cells.map(cellText), mapping: sheet.rows[0].cells.map(cell => cellText(cell) || NOT_MAPPED) })) };
+  localWorkbooks.set(file.id, { ...structuredClone(document), libraryId: file.id });
+  publish({ ...state, files: [file, ...state.files] });
+  return file;
+}
+export function retainSpreadsheetCopy(id: string, document: EditableWorkbook): void {
+  if (!state.files.some(file => file.id === id)) throw new Error("SPREADSHEET_NOT_FOUND");
+  localWorkbooks.set(id, structuredClone(document));
+}

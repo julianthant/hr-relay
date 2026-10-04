@@ -21,9 +21,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
-      const select = surface.getByRole("combobox", { name: "Logs sample data" });
+      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveCount(0);
+      const chooseScenario = async (id: string) => { await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}&logPreview=${id}`); };
       for (const example of logDecisionExamples) {
-        await chooseSelect(select, example.id);
+        await chooseScenario( example.id);
         if (example.entry.kind === "decision") {
           const block = surface.getByRole("article", { name: example.entry.decision.title, exact: true });
           await block.scrollIntoViewIfNeeded();
@@ -37,7 +38,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(block.getByRole("alert")).toHaveCount(0);
         } else await expect(surface).toContainText(example.entry.message);
       }
-      await chooseSelect(select, "parked");
+      await chooseScenario( "parked");
       await surface.locator(".log-decision").scrollIntoViewIfNeeded();
       const parked = surface.getByRole("article", { name: "File termination", exact: true });
       expect(await parked.locator(".log-caution").evaluate(node => { const r = node.getBoundingClientRect(), parent = node.parentElement!.getBoundingClientRect(); return r.x > parent.x + 25 && r.width < parent.width; })).toBe(true);
@@ -54,14 +55,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const result = surface.getByText("Termination confirmed. Transaction SIM-042 is present. Continued to Finalize Kuali document.", { exact: true });
       await expect(result).toBeFocused();
       expect(await result.evaluate(node => node.closest("article"))).toBeNull();
-      await chooseSelect(select, "review-candidates");
+      await chooseScenario( "review-candidates");
       await surface.getByRole("button", { name: "Choose employee", exact: true }).click();
       form = page.getByRole("dialog", { name: "Choose employee", exact: true });
       await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
       await form.getByRole("radio", { name: /DEMO-2196/u }).check();
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(surface).toContainText("Selected DEMO-2196.");
-      await chooseSelect(select, "review-fields");
+      await chooseScenario( "review-fields");
       await surface.getByRole("button", { name: "Enter date", exact: true }).click();
       form = page.getByRole("dialog", { name: "Enter date", exact: true });
       await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
@@ -78,7 +79,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(surface).toContainText("Last day worked: 2026-09-25.");
-      await chooseSelect(select, "failure-prepared");
+      await chooseScenario( "failure-prepared");
       await surface.locator(".log-decision").scrollIntoViewIfNeeded();
       const failure = surface.getByRole("article", { name: "File termination", exact: true });
       await expect(failure).toContainText("While trying to enter last day worked");
@@ -118,11 +119,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.mouse.click(8, 300);
       await expect(viewer).toHaveCount(0);
       await expect(trigger).toBeFocused();
-      await chooseSelect(select, "separation");
+      await chooseScenario( "separation");
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("Document number");
       await page.route("**/logs-preview/kuali-search.svg", route => route.abort());
-      await chooseSelect(select, "empty");
-      await chooseSelect(select, "separation");
+      await chooseScenario( "empty");
+      await chooseScenario( "separation");
       const screenshot = surface.locator("figure").first();
       await screenshot.scrollIntoViewIfNeeded();
       await expect(screenshot.getByRole("alert")).toHaveText("Screenshot could not be loaded.");

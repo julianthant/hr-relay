@@ -8,7 +8,7 @@ import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     ensureParityBundle();
-    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
+    const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, preflightScenario: "ready" });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
@@ -23,7 +23,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(264);
       await expect(rail.getByRole("button")).toHaveCount(15);
       const typeStyle = (node: Element) => ({ size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight });
-      expect(await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(typeStyle)).toEqual(await rail.getByRole("button", { name: "I-9 Lookup · layout preview", exact: true }).evaluate(typeStyle));
+      expect(await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(typeStyle)).toEqual(await rail.getByRole("button", { name: "I-9 Lookup", exact: true }).evaluate(typeStyle));
       const bar = workspace.locator(".workspace-rail-header");
       expect((await bar.boundingBox())!.x).toBe(0);
       expect((await bar.boundingBox())!.height).toBe(64);
@@ -88,13 +88,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual({ bordered: true, rounded: true, opaque: true });
       }
       await info.attach(`action-panel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      for (const filter of await page.getByRole("group", { name: "Frequent queue filters", exact: true }).getByRole("button").all()) {
-        expect(await filter.evaluate(node => {
-          const range = document.createRange(); range.selectNodeContents(node);
-          return range.getBoundingClientRect().width <= node.getBoundingClientRect().width;
-        })).toBe(true);
-        expect(await filter.locator("span").first().evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
-      }
+      await expect(page.getByRole("group", { name: "Frequent queue filters", exact: true })).toHaveCount(0);
       await expect(logs.getByRole("button", { name: /^Choose date/u })).toBeVisible();
       await page.keyboard.press("w"); await page.keyboard.press("Escape"); await expect(rail).toBeVisible();
       const status = page.getByRole("button", { name: "Filter queue by status", exact: true });
@@ -115,9 +109,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const popupBounds = (await sortMenu.boundingBox())!, optionBounds = (await sortMenu.getByRole("option").first().boundingBox())!;
       expect(optionBounds.x - popupBounds.x).toBeGreaterThanOrEqual(6);
       await page.keyboard.press("Escape");
-      await rail.getByRole("button", { name: "Onboarding · layout preview", exact: true }).click();
-      const preview = page.getByRole("region", { name: "Onboarding preview queue", exact: true });
-      await expect(preview).toContainText("fictional sample runs");
+      await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
+      const preview = page.getByRole("region", { name: "Onboarding queue", exact: true });
+      await expect(preview).not.toContainText("fictional sample runs");
       await preview.getByRole("button").first().click();
       await expect(logs.getByRole("region", { name: "Selected run logs", exact: true }).locator(":scope > header h2")).toContainText("EID 10873698");
       await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();
@@ -138,9 +132,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.locator(".shortcut-reference-row")).toHaveCount(1); await expect(page.locator(".shortcut-reference-row kbd")).toHaveText("/");
       await shortcutSearch.fill("not a shortcut"); await expect(page.getByRole("status")).toHaveText("No shortcuts match your search.");
       await choosePage("Preflight");
-      const capabilitySearch = page.getByRole("searchbox", { name: "Find workflow capabilities", exact: true });
-      await capabilitySearch.fill("not a workflow"); await expect(page.getByText("No workflows match your search.", { exact: true })).toBeVisible();
-      await capabilitySearch.fill("Person"); await expect(page.locator(".capabilities-summary")).toContainText("Person Lookup");
+      await expect(page.getByRole("searchbox", { name: "Find workflow capabilities", exact: true })).toHaveCount(0);
+      await expect(page.locator(".preflight-workflow-operations")).toContainText("Person Lookup");
+      await expect(page.getByRole("heading", { name: "Workflow capabilities", exact: true })).toHaveCount(0);
       await choosePage("Storage checks"); await expect(page.getByRole("button", { name: "Run the read-only storage doctor", exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).not.toContainText("No completed checks in this server session");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);

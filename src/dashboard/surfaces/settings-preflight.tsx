@@ -1,3 +1,5 @@
+import type { ReactNode } from "react";
+import { CapabilitiesSection } from "./settings-capabilities.js";
 import { Badge, Banner, BodySection, Button, FormGroup, PageHeading, ResultRow, Select, StatusDot, dsText, Field } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { usePreflightActions } from "../state/preflight-actions.js";
@@ -99,18 +101,18 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
   </div>;
 }
 
-function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings }: { title: string; subtitle: string; checks: readonly PreflightCheckWire[]; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
+function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children }: { title: string; subtitle: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   return <BodySection title={title}>
     <p className="diagnostic-section-description">{subtitle}</p>
     <FormGroup label={title}><div role="list">
       {checks.length === 0
-        ? <div className="diagnostic-empty-group">No checks were returned for this group.</div>
+        ? children ? null : <div className="diagnostic-empty-group">No checks were returned for this group.</div>
         : checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}
-    </div></FormGroup>
+    </div>{children}</FormGroup>
   </BodySection>;
 }
 
-function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
+function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; preflight: PreflightRerunState; onRerun: () => void; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const scope = usePreflightScope();
   const completed = preflight.state === "completed" ? preflight : undefined;
   const displayed = preflight.state === "historical" ? preflight : completed;
@@ -150,16 +152,18 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { pr
         value={<span className="diagnostic-summary-meta">{displayed === undefined ? "No current result" : `${displayed.checks.length} returned checks`}</span>} />
     </FormGroup>}
     {displayed !== undefined && <>
-      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings and credentials for the selected scope." checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings} />
+      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings, credentials and operations for the selected scope." checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings}>
+        {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}
+      </SettingsPreflightGroup>
       <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={historical ? undefined : protectedSettings} />
     </>}
   </section>;
 }
 
 /** Setup and doctor share the served verdict and evidence, including absence and freshness. */
-export function PreflightReportContent({ preflight, onRerun, presentation = "compact", protectedSettings }: { preflight: PreflightRerunState; onRerun: () => void; presentation?: "compact" | "settings"; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
+export function PreflightReportContent({ preflight, onRerun, presentation = "compact", protectedSettings, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; preflight: PreflightRerunState; onRerun: () => void; presentation?: "compact" | "settings"; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   const actions = usePreflightActions();
-  if (presentation === "settings") return <SettingsPreflightReport preflight={preflight} onRerun={onRerun} protectedSettings={protectedSettings} />;
+  if (presentation === "settings") return <SettingsPreflightReport preflight={preflight} onRerun={onRerun} protectedSettings={protectedSettings} workflowLabels={workflowLabels} />;
   const completed = preflight.state === "completed" ? preflight : undefined;
   const verdict = completed === undefined ? undefined : preflightVerdict(completed.checks);
   const tone = verdict === "fail" ? "danger" : verdict === "warning" ? "warning" : "success";
@@ -199,7 +203,7 @@ export function PreflightReportContent({ preflight, onRerun, presentation = "com
   </div>;
 }
 
-export function PreflightSection({ editor }: { editor: ReturnType<typeof useEditableSettings> }) {
+export function PreflightSection({ editor, workflowLabels }: { workflowLabels?: ReadonlyMap<string, string>; editor: ReturnType<typeof useEditableSettings> }) {
   return <PreflightReportContent presentation="settings" preflight={editor.preflight} onRerun={editor.rerunPreflight}
-    protectedSettings={editor.editor.state === "loaded" ? editor.editor.document.protectedSettings : undefined} />;
+    workflowLabels={workflowLabels} protectedSettings={editor.editor.state === "loaded" ? editor.editor.document.protectedSettings : undefined} />;
 }
