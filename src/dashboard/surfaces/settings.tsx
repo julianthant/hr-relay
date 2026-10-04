@@ -1,8 +1,12 @@
+import "./settings-data.css";
 import { SpreadsheetsSettings } from "./spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
 import {
+Activity,
+Archive,
 BookMarked,
+Workflow,
 CircleAlert,
 ClipboardCheck,
 Database,
@@ -15,7 +19,7 @@ Settings as SettingsIcon,
 SlidersHorizontal,
 Table2
 } from "lucide-react";
-import { useCallback,useEffect,useRef,useState } from "react";
+import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
@@ -30,7 +34,7 @@ import { EditableSettingsSection } from "./settings-editor.js";
 import { RoutesSection } from "./settings-routes.js";
 import { KeyboardSection } from "./settings-keyboard.js";
 import { PreflightSection } from "./settings-preflight.js";
-import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage-settings-model.js";
 import { StorageSection } from "./storage-settings.js";
 import { UiCatalogSection } from "./ui-catalog.js";
@@ -65,6 +69,9 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   "ui-catalog": BookMarked,
   unrendered: CircleAlert,
   spreadsheets: Table2,
+  explorer: Workflow,
+  archive: Archive,
+  activity: Activity,
 };
 
 
@@ -178,6 +185,7 @@ export function SettingsPage({
   sections,
   workflowLabels,
   section,
+  dataContent,
   catalogQuery,
   catalogView,
   onCatalogQuery,
@@ -197,6 +205,7 @@ export function SettingsPage({
   workflowLabels: ReadonlyMap<string, string>;
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
+  dataContent?: ReactNode;
   /**
    * The `ui-catalog` section's own two route keys (D295). They are threaded
    * through rather than held here for the reason `?catalogView=` was made
@@ -221,6 +230,10 @@ export function SettingsPage({
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
+  const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
+  if (isDataSection && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
+  const content = useRef<HTMLDivElement>(null);
+  useEffect(() => { if (content.current) content.current.scrollTop = 0; }, [activeId]);
   const settingsEntries = groups.find(group => group.id === "personal")?.entries ?? [];
   const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
@@ -292,9 +305,10 @@ export function SettingsPage({
         ))}
       </nav>
 
-      <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
+      <div ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
         <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]", activeId === "spreadsheets" && "max-w-none!")}>
         {editor.editor.state === "failed" && !activeSettingsEditorSection
+          && !isDataSection
           && activeId !== "spreadsheets"
           && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
           && activeId !== SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (
@@ -316,6 +330,7 @@ export function SettingsPage({
             The server listed no settings sections and this build contributes none.
           </Banner>
         )}
+        {isDataSection && dataContent}
         {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
         {/* The catalog remains a Help destination inside the Settings page. */}

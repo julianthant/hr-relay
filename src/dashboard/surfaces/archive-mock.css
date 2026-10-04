@@ -1,13 +1,6 @@
-.mock-archive-canvas {
- min-height: 100%;
- border: 1px solid var(--ds-border);
- border-radius: var(--ds-radius-lg);
- padding: 24px 24px 48px;
- background: var(--ds-surface-page);
-}
+.mock-archive-canvas { min-width: 0; }
 .mock-archive .ds-page-heading { align-items: center; }
-.mock-archive-toolbar-count, .mock-archive-toolbar-version { color: var(--ds-fg-muted); font-size: 12px; white-space: nowrap; }
-.mock-archive-toolbar-actions { display: flex; flex-shrink: 0; align-items: center; gap: 12px; margin-left: auto; }
+.mock-archive-toolbar-count { color: var(--ds-fg-muted); font-size: 12px; white-space: nowrap; }
 .mock-archive-search {
  width: 310px; height: 34px;
 }
@@ -32,7 +25,8 @@
 .mock-archive-metadata { display: flex; align-items: start; gap: 32px; margin: 20px 0 24px; padding-bottom: 20px; border-bottom: 1px solid var(--ds-border); font-size: 13px; }
 .mock-archive-metadata dt { margin-bottom: 8px; color: var(--ds-fg-muted); font-size: 11px; white-space: nowrap; }
 .mock-archive-metadata dd { margin: 0; min-height: 22px; font-weight: 500; }
-.mock-archive-filters { display: grid; grid-template-columns: minmax(190px,1fr) 130px 170px minmax(320px, 1fr); gap: 12px; align-items: end; margin-bottom: 20px; }
+.mock-archive-filters { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; align-items: end; margin-bottom: 20px; }
+.mock-archive-filters > .mock-archive-field:first-child, .mock-archive-date-range { grid-column: span 2; }
 .mock-archive-field { display: flex; min-width: 0; flex-direction: column; gap: 7px; }
 .mock-archive-field > span { font-size: 11px; color: var(--ds-fg-secondary); font-weight: 500; }
 .mock-archive-field select, .mock-archive-filters .date-input-group { height: 34px; font-size: 13px; }
@@ -69,6 +63,5 @@
  .mock-archive-run-summary dl > div:last-child:nth-child(odd) { grid-column: 1 / -1; border-right: 0; }
 }
 @media (max-width: 1250px) {
- .mock-archive-canvas { padding: 20px 18px 40px; }
  .mock-archive-report-layout { grid-template-columns: 160px minmax(0,1fr); gap: 20px; }
 }

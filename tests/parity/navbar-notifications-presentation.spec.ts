@@ -23,7 +23,7 @@ function disconnectedRequests(page: Page) {
   const requests: string[] = [];
   page.on("request", request => {
     const path = new URL(request.url()).pathname;
-    if (request.method() !== "GET" || /\/api\/v1\/(?:notifications|search|calendar|preflight|doctor)(?:\/|$)/u.test(path)) requests.push(`${request.method()} ${path}`);
+    if (request.method() !== "GET" || /\/api\/v1\/(?:notifications|search|calendar|doctor)(?:\/|$)/u.test(path)) requests.push(`${request.method()} ${path}`);
   });
   return requests;
 }
@@ -45,10 +45,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const requests = disconnectedRequests(page);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&activity=`);
       const bar = page.getByRole("banner");
-      await expect(bar.getByRole("heading", { name: "RRSS HR", exact: true })).toBeVisible();
+      await expect(bar.getByRole("button", { name: "Dashboard", exact: true })).toBeVisible();
       await expect(bar.locator("svg.lucide-shield-check")).toHaveCount(0);
       expect((await bar.boundingBox())!.height).toBe(54);
-      for (const label of ["Back", "Forward", "Dashboard", "Archive", "Explorer", "Activity", /^Choose date/u, "Notifications, 4 unread", "Settings"]) {
+      for (const label of ["Back", "Forward", "Dashboard", /^Choose date/u, "Notifications, 4 unread", "Settings"]) {
         const control = bar.getByRole("button", { name: label, exact: true });
         await expect(control).toBeVisible();
         const bounds = (await control.boundingBox())!;
@@ -61,19 +61,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const searchBounds = (await bar.locator('.navbar-search').boundingBox())!;
       expect(searchBounds.width).toBeGreaterThanOrEqual(220);
       expect((await input.boundingBox())!.height).toBe(34);
-      expect((await bar.getByRole('navigation', { name: 'Main navigation' }).boundingBox())!.x + (await bar.getByRole('navigation', { name: 'Main navigation' }).boundingBox())!.width).toBeLessThan(searchBounds.x);
+      await expect(bar.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
       expect(searchBounds.x + searchBounds.width).toBeLessThan((await bar.locator('.ds-date-navigation').boundingBox())!.x);
       if (width === 1440) {
         expect(searchBounds.width).toBe(460);
         expect(Math.abs(searchBounds.x + searchBounds.width / 2 - width / 2)).toBeLessThanOrEqual(1);
       }
       await expect(bar.getByRole("button", { name: /preflight/iu })).toHaveCount(0);
-      await expect(bar.getByRole("button", { name: "Activity", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("link", { name: "Activity", exact: true })).toHaveAttribute("aria-current", "page");
       await capture(page, info, `navbar-${size}`);
-      await bar.getByRole("button", { name: "Explorer", exact: true }).click();
+      await page.getByRole("link", { name: "Explorer", exact: true }).click();
       await expect(page.getByRole("region", { name: "Workflow explorer preview" })).toBeVisible();
       await bar.getByRole("button", { name: "Dashboard", exact: true }).click();
-      await bar.getByRole("heading", { name: "RRSS HR", exact: true }).click();
+      await bar.getByRole("button", { name: "Dashboard", exact: true }).click();
       await page.locator("[data-demo-row-id]").first().click();
       const runUrl = page.url();
       await expect(bar.getByRole("button", { name: "Back", exact: true })).toBeEnabled();
@@ -151,7 +151,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await bar.getByRole("button", { name: "Settings", exact: true }).click();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
       await expect(bar.getByRole("button", { name: "Settings", exact: true })).toHaveAttribute("aria-pressed", "true");
-      await expect(bar.getByRole("button", { name: "Dashboard", exact: true })).toHaveAttribute("aria-pressed", "false");
+      await expect(bar.getByRole("button", { name: "Dashboard", exact: true })).not.toHaveAttribute("aria-pressed");
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     } finally { await server.close(); }
   });

@@ -1,9 +1,8 @@
-import { Archive, ArrowLeft, ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
+import { ArrowLeft, ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
-import { Badge, Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
-import { OperationsToolbar } from './operations-toolbar.js';
 import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { MockArchiveReport } from './archive-mock-report.js';
@@ -45,13 +44,8 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   if (!next.success) { toast({ tone: 'danger', title: 'Check the date range', description: 'The completed-through date must follow the completed-from date.' }); return; }
   onBrowse(next.data, mode);
  };
- return <section aria-label="Archive mock" className="mock-archive ds-body-overlay flex min-h-0 flex-1 flex-col bg-[var(--ds-surface-page)]">
-  <OperationsToolbar label="Archive controls" title="Archive" icon={<Archive aria-hidden className="size-4 text-ui-muted" />}>
-   {folder === null && report === undefined && !invalid && !unavailable ? <>
-    <span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>
-    {filtered && <Button size="toolbar" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}
-   </> : <Button size="toolbar" variant="ghost" icon={<ArrowLeft className={dsIcon.sm} />} onClick={recover}>Version history</Button>}
-   <div className="mock-archive-toolbar-actions"><span className="mock-archive-toolbar-version">Dashboard {MOCK_ARCHIVE_CURRENT}</span><Badge tone="neutral">Mock · fictional data</Badge>
+ return <section aria-label="Archive mock" className="mock-archive settings-reference-page settings-data-section">
+  <PageHeading title="Archive" description={`Retained run history · Dashboard ${MOCK_ARCHIVE_CURRENT} · fictional data`} actions={<>
    {(folder !== null || report !== undefined) && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
     <DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></DropdownMenuTrigger>
     <DropdownMenuContent aria-label="Export fictional reports" align="end" className="w-70">
@@ -59,10 +53,12 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
     </DropdownMenuContent>
    </DropdownMenu>}
    <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
-   </div>
-  </OperationsToolbar>
-  <div className="min-h-0 flex-1 overflow-auto p-[var(--ds-shell-inset)]">
-   <div className="mock-archive-canvas">
+  </>} />
+  {folder === null && report === undefined && !invalid && !unavailable && <div className="flex items-center gap-3">
+   <span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>
+   {filtered && <Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}
+  </div>}
+  <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable in the mock" message="Choose a fresh mock scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable in the mock" message="This preview contains fictional runs only. Choose a mock workflow to browse its reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
      : report ? <MockArchiveReport run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
@@ -88,7 +84,6 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}
       <div className="mock-archive-table-footer"><span>{rows.length} of {scope.length} fictional reports</span>{filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}</div>
      </>}
-   </div>
   </div>
   <Dialog open={view === 'versions'} onOpenChange={open => { if (!open) onView('runs'); }}>
    {view === 'versions' && <DialogContent size="md" className="ds-body-scope ds-body-overlay !w-[calc(100vw-var(--ds-space-section))] !max-w-[650px] !bg-[var(--ds-surface-overlay)]" title="Plan a version bump" description="Current dashboard 1.4 · fictional preview" onCloseAutoFocus={event => { event.preventDefault(); bumpTrigger.current?.focus(); }}>

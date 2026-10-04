@@ -33,7 +33,10 @@ export type SettingsNavIcon =
   | "keyboard"
   | "ui-catalog"
   | "unrendered"
-  | "spreadsheets";
+  | "spreadsheets"
+  | "explorer"
+  | "archive"
+  | "activity";
 
 
 /**
@@ -98,7 +101,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
-  readonly id: "personal" | "status" | "help";
+  readonly id: "personal" | "data" | "status" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -119,6 +122,7 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
  */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
 export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
+export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer", "archive", "activity"]);
 
 
 /**
@@ -174,6 +178,11 @@ export function buildSettingsNav(
       .map(section => servedEntry(section.id, section.label)) ?? []),
   ];
   groups.push({ id: "personal", heading: "Personal", entries });
+  groups.push({ id: "data", heading: "Data", entries: [
+    clientEntry("explorer", "Explorer", "explorer"),
+    clientEntry("archive", "Archive", "archive"),
+    clientEntry("activity", "Activity", "activity"),
+  ] });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
     statusEntries.push(servedEntry(section.id, section.label));

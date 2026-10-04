@@ -1,0 +1,10 @@
+.settings-data-section { min-width: 0; }
+.settings-data-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); }
+.settings-explorer-layout { display: grid; grid-template-columns: var(--ds-w-body-workflow-rail) minmax(0, 1fr); align-items: start; gap: var(--ds-space-section); }
+.settings-explorer-browser { position: sticky; top: 0; }
+.settings-explorer-browser nav > button { width: calc(100% - var(--spacing) * 4); }
+.settings-explorer-browser nav > button > span { overflow-wrap: anywhere; }
+.settings-activity-columns { grid-template-columns: minmax(0, 1fr); }
+@container (min-width: 780px) {
+  .settings-activity-columns { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

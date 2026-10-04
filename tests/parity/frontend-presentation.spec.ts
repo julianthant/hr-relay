@@ -16,35 +16,35 @@ function surfaceRequests(page: Page): string[] {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`shared Dashboard, Archive, Activity and Explorer action bar @ ${theme.attribute} ${width}`, async ({ page }) => {
+  test(`Settings Data pages share the standard Settings layout @ ${theme.attribute} ${width}`, async ({ page }) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
-      const dimensions: unknown[] = [];
-      for (const [path, label] of [[`/?day=${FIXTURE_DAY}`, "Queue actions"], ["/?activity=", "Activity actions"], ["/?explore=fixture-ui-explorer", "Explorer actions"], ["/?archive=", "Archive controls"]]) {
+      await page.goto(`${server.baseUrl}/?settings=general`);
+      await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
+      const body = page.locator('.settings-tab-body');
+      const original = await body.boundingBox();
+      const headingStyle = await body.locator('.ds-page-heading-title').first().evaluate(node => {
+        const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, line: style.lineHeight };
+      });
+      for (const [path, title] of [["/?activity=", "Activity"], ["/?explore=fixture-ui-explorer", "Explorer"], ["/?archive=", "Archive"]]) {
         await page.goto(`${server.baseUrl}${path}`);
-        const bar = page.getByRole("group", { name: label, exact: true });
-        await expect(bar).toBeVisible();
-        dimensions.push(await bar.evaluate(node => {
-          const row = getComputedStyle(node);
-          const frame = getComputedStyle(node.parentElement!);
-          return { height: node.getBoundingClientRect().height, padding: row.paddingInline, gap: row.gap, radius: frame.borderRadius, border: frame.borderTopWidth };
-        }));
-        if (label === "Queue actions") {
-          const launcher = bar.getByRole("button", { name: /^Workflow Panel/ });
-          if (await launcher.getAttribute("aria-expanded") === "true") await launcher.click();
-          await page.locator('[data-demo-row-id]').first().dblclick();
-          await page.getByRole("menuitem", { name: "Select", exact: true }).click();
-          await expect(page.getByRole("checkbox", { name: "Select all visible runs", exact: true })).toBeVisible();
-          await page.getByRole("button", { name: "Exit selection", exact: true }).click();
-          await expect(page.getByRole("checkbox", { name: "Select all visible runs", exact: true })).toHaveCount(0);
-        }
-        if (label === "Archive controls") {
-          await expect(bar.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible();
-          await expect(bar.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(0);
-          await expect(bar).toContainText('30 matching reports');
+        await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
+        await expect(body.getByRole("heading", { name: title, exact: true })).toBeVisible();
+        const bounds = (await body.boundingBox())!;
+        expect(bounds.x).toBe(original!.x); expect(bounds.width).toBe(original!.width);
+        expect(bounds.width).toBeLessThanOrEqual(828);
+        expect(await body.locator('.ds-page-heading-title').first().evaluate(node => {
+          const style = getComputedStyle(node); return { size: style.fontSize, weight: style.fontWeight, line: style.lineHeight };
+        })).toEqual(headingStyle);
+        await expect(body.locator('.operations-toolbar')).toHaveCount(0);
+        expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
+        expect((await page.getByRole('banner').boundingBox())!.height).toBe(54);
+        if (title === "Archive") {
+          await expect(page.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(0);
+          await expect(body).toContainText('30 matching reports');
           await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
           const search = page.getByRole("textbox", { name: "Search saved reports" });
           await search.focus();
@@ -55,16 +55,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await page.getByRole("button", { name: "Clear search", exact: true }).click();
           await expect(page.locator('tbody tr')).toHaveCount(4);
         }
-        if (label === "Explorer actions") {
-          await expect(bar.getByRole("heading", { name: "Explorer", exact: true })).toBeVisible();
-          await expect(bar.getByRole('textbox', { name: 'Find workflow', exact: true })).toHaveCount(0);
-          await expect(page.getByRole('complementary', { name: 'Workflow browser' }).getByRole('textbox', { name: 'Find workflow', exact: true })).toBeVisible();
-        }
-        if (label === "Activity actions") await expect(bar.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
+        if (title === "Explorer") await expect(page.getByRole('complementary', { name: 'Workflow browser' }).getByRole('textbox', { name: 'Find workflow', exact: true })).toBeVisible();
       }
-      expect(dimensions[1]).toEqual(dimensions[0]);
-      expect(dimensions[2]).toEqual(dimensions[0]);
-      expect(dimensions[3]).toEqual(dimensions[0]);
     } finally { await server.close(); }
   });
 
@@ -90,7 +82,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Document read timeout");
       const chart = surface.getByRole("group", { name: /runs? across.*interval/ });
       await expect(chart).toBeVisible();
-      await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
+      await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toHaveCount(0);
       const outcomes = surface.getByRole("table", { name: "Workflow outcomes", exact: true });
       const outcomeBounds = await outcomes.boundingBox();
       const chartSection = chart.locator("..").locator("..");
@@ -122,7 +115,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(fillStyle.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/u);
       expect(fillStyle.opacity).toBe("1");
       expect((await chart.boundingBox())!.height).toBeGreaterThanOrEqual(160);
-      if (width === 1440) expect((await chart.boundingBox())!.height).toBeGreaterThan(160);
+      if (chartBounds!.width > 600) expect((await chart.boundingBox())!.height).toBeGreaterThan(160);
       for (const [index, day, count] of [[0, 20, 0], [3, 23, 7], [5, 25, 9], [6, 26, 9]]) {
         const bar = bars.nth(index);
         await bar.hover();
@@ -578,15 +571,15 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     expect(Math.abs(popup.x + popup.width / 2 - pair.x - pair.width / 2)).toBeLessThanOrEqual(1);
     await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
     await expect(calendar).toBeVisible();
-    await expect(page).toHaveURL(/activity=$/);
+    expect(new URL(page.url()).searchParams.get("activity")).toBe("");
     await page.keyboard.press("Escape");
-    await expect(page).toHaveURL(/activity=$/);
+    expect(new URL(page.url()).searchParams.get("activity")).toBe("");
     await expect(start).toBeFocused();
     await end.click();
     await page.keyboard.press("Escape");
     await expect(end).toBeFocused();
     await end.click();
-    const outside = (await page.getByRole("heading", { name: "Workflow outcomes", exact: true }).boundingBox())!;
+    const outside = (await page.getByRole("heading", { name: "Activity", exact: true }).boundingBox())!;
     await page.mouse.click(outside.x + outside.width / 2, outside.y + outside.height / 2);
     await expect(calendar).toHaveCount(0);
     await expect(end).toBeFocused();

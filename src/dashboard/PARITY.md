@@ -63,10 +63,15 @@ once; the separate report metadata strip is removed. Workflow fields join detail
 Subject fields. The separate Fields navigation entry is removed; its old section links open details.
 Steps becomes Logs using the shared LogPanel, timeline, field/action rows, saved failure blocks,
 capture workspace and search/copy/latest controls. Historical logs expose no continuation actions.
-The compact operations toolbar replaces the Current/version-history heading rows and shares its
-geometry with Dashboard, Explorer and Activity. The 2026-10-03 operator revision restores Archive,
-Explorer and Activity toolbar titles. Archive's overview search is removed; folder search remains.
-Explorer's workflow search sits in its sidebar. Shared searches use shadcn InputGroup with one focus
+The 2026-10-03 operator revision moves Explorer, Archive and Activity into Settings → Data and
+removes the Navbar view switcher and those pages' operations toolbars. The data pages use ordinary
+Settings `PageHeading`, `DsBodyScope`, spacing and scrolling rather than full-width nested takeovers.
+Their controls and mock behaviors remain available within the content. Legacy data links, archive
+report sections and Activity ranges survive reload and browser history. Settings drafts survive
+section changes; returning to Dashboard retains the exit guard. Global sizing is unchanged.
+Spreadsheets remains in Personal with its original available-width layout and no expand control.
+Archive's overview search is removed; folder search remains. Explorer's workflow search stays in its
+workflow browser. Shared searches use shadcn InputGroup with one focus
 ring. The larger centered Navbar Command opens results beneath its existing input, without a search
 dialog or second field. Status/export/choice menus use shadcn Radix DropdownMenu. The Navbar date
 control retains editable segments, calendar and count without previous/next-day arrows.

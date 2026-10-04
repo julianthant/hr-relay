@@ -18,7 +18,10 @@ The approved mixed queue keeps the gray footer, current fonts and status bands, 
 leading/info icons, puts attempts in a footer dropdown and bulk selection outside, and uses segmented
 step progress plus an operation member table with a boxed finished/total count. Workflow-batch items
 render separately without changing publication. Review text is blue; Write parked remains yellow.
-The RRSS HR navbar retains every view and separates its paired history arrows with a divider.
+The RRSS HR navbar separates its paired history arrows with a divider. The 2026-10-03 operator
+revision removes the view switcher and moves Explorer, Archive and Activity into Settings → Data.
+Their page toolbars are removed; ordinary Settings headings, content width and spacing apply.
+The global sizing remains unchanged, and Spreadsheets stays in Personal without an expand control.
 Logs screenshots sit beside their action and use fields/form/browser/person presentation classes,
 bounded previews and fit-width/whole-image/100% viewing. The 2026-10-02 approval adds all 33 local
 log-block examples, required-only continuation forms, ordinary follow-up logs, neutral borders,
@@ -41,7 +44,8 @@ commits both values without footer controls. Activity shows endpoints only for C
 paired report fields, compact rows and distinct loading/empty/error states. Inline image
 areas are 128px (96px for browser groups), with single previews capped at 360px. Dimension checks
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
-The approved compact operations toolbar is shared by Dashboard, Archive, Explorer and Activity.
+The Dashboard retains the approved compact operations toolbar. Settings Data pages place their
+controls in their standard Settings content.
 The Dashboard mounts the Focus layout: icon-only launcher and Start a run left, All statuses/sort
 right, frequent filters aligned inside the queue header. Double/right-click and Shift+F10 open row
 actions; Select enters bulk mode with checkbox/count/Delete/Archive/Retry/X controls and Escape exit.
@@ -50,8 +54,8 @@ attempt and never opens Rerun or sends a runtime command. Local counts reflect t
 served rail/day counts and existing row-footer commands/recovery feedback retain their contracts.
 Run input uses the approved ordered Parsed input frame without an Examples strip; descriptor example
 validation, launch parsing and authority remain unchanged.
-The 2026-10-03 operator revision restores Archive, Explorer and Activity toolbar titles, removes
-Archive's overview search and moves Explorer's workflow search into its sidebar. Shared search fields
+The 2026-10-03 operator revision uses Archive, Explorer and Activity as Settings page headings,
+removes Archive's overview search and keeps Explorer's workflow search in its workflow browser. Shared search fields
 use shadcn InputGroup with one focus ring. The larger centered Navbar Command opens results beneath
 the same input, retaining its explicit disconnected navigation notice. Status/export/choice menus use
 shadcn Radix DropdownMenu; native Select controls retain their shadcn composition. The Navbar date
@@ -231,8 +235,8 @@ minor-archives-nothing rule for new changes. The 2026-10-03 presentation amendme
 mounted Archive with a polished original-layout mock using fictional local data and actions;
 the backend implementation remains retained and unmounted. Report metadata is consolidated once
 in Workflow details, without the separate strip. Workflow fields also live in details; Steps becomes
-the shared Logs panel. The shared compact operations toolbar replaces the two heading rows. This changes
-presentation, not version authority. Owners:
+the shared Logs panel. Archive is a Data page inside Settings, using its ordinary heading and content
+width without a separate operations toolbar. This changes presentation, not version authority. Owners:
 [dashboard-surfaces D348](dashboard-surfaces.md#d348--dashboard-and-workflow-runtime-versions-2026-09-24),
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 

@@ -33,12 +33,18 @@ A blocked-write row selects a separately labelled Separations sample, rather tha
 operation in Person Lookup. The selector's **Selected run · queue facts** view renders only the served
 subject, status, attempt, current message and pipeline, without inferred actions, captures or durations.
 A queue selection resets the sample selection and local decisions. The selector retains all approved
-examples. Queue, Archive, Activity and Explorer share the compact `OperationsToolbarRow` geometry
-(50px row with 12px horizontal padding); the takeover pages use `OperationsToolbar`. Archive search
-uses the shared shadcn InputGroup with one focus ring. The 2026-10-03 operator revision restores
-Archive, Explorer and Activity titles in their toolbars. Archive's version overview removes its local
-search field; report-folder search remains. Explorer's workflow search sits in its sidebar. Explorer has no back control
-or `onBack` prop; shell navigation exits it.
+examples. Queue retains the compact `OperationsToolbarRow` geometry (50px row with 12px
+horizontal padding). The 2026-10-03 operator revision moves Explorer, Archive and Activity into
+Settings → Data. Their separate operations toolbars are removed. Each page uses the same
+`DsBodyScope` content cap, `PageHeading`, spacing and scroll pane as the other Settings pages;
+its actions remain in its content. The Navbar view switcher is removed; RRSS HR returns to the
+Dashboard through the Settings draft guard. Legacy data-page links remain addressable inside
+Settings, including archive folders, report sections and Activity ranges. Settings drafts survive
+section changes. Spreadsheets stays in Personal with its original available-width layout, without
+an expand control. Global browser/CSS zoom stays at its original 100% sizing.
+Archive search uses shared shadcn InputGroup with one focus ring. The version overview removes its
+local search field; report-folder search remains. Explorer's workflow search stays in its workflow
+browser. Explorer has no back control or `onBack` prop; shell navigation exits it.
 
 The Navbar search is an editable shadcn Command/InputGroup, 460px wide and centered at wide desktop
 sizes, with space-aware sizing at the 1024px desktop floor. Clicking or typing opens keyboard-selectable

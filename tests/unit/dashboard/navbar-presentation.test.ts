@@ -10,12 +10,13 @@ const noop = () => {};
 describe("canonical frontend navbar", () => {
   it("renders all retained controls without a client provider or preflight", () => {
     const html = renderToStaticMarkup(createElement(TopBar, {
-      view: "queue", onView: noop, nav: { canBack: false, canForward: false, onBack: noop, onForward: noop },
+      onDashboard: noop, nav: { canBack: false, canForward: false, onBack: noop, onForward: noop },
       theme: "dark", onToggleTheme: noop, settingsOpen: false, onOpenSettings: noop,
     }));
-    for (const label of ["RRSS HR", "Back", "Forward", "Dashboard", "Archive", "Explorer", "Activity", "Search runs", "Choose date", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
+    for (const label of ["RRSS HR", "Back", "Forward", "Dashboard", "Search runs", "Choose date", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
     assert.doesNotMatch(html, /HR Automation|lucide-shield|Preflight|doctor|Storage checks/);
-    assert.match(html, /Sat, Sep 26/);
+    assert.match(html, /2026-09-26/);
+    assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity</);
   });
   it("finds every requested word across the local run fields, with no empty-query loss", () => {
     assert.equal(navbarSearch(NAVBAR_SAMPLE.results, "").length, 3);
