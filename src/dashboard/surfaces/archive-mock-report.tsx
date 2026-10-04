@@ -1,12 +1,14 @@
-import { ArrowLeft, ChevronRight, Download, FileText } from 'lucide-react';
+import type { ReactNode } from 'react';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../ds/breadcrumb.js';
+import { Download, FileText } from 'lucide-react';
 import { Badge, Button, PageHeading, StatusPill, dsIcon, useToasts } from '../ds/ui.js';
 import { ArchiveFieldGroup, ArchiveFieldRows, ArchiveResourceState } from './archive-visual.js';
 import { MOCK_ARCHIVE_REPORT_SECTIONS, mockArchiveDate, type MockArchiveRun } from './archive-mock-model.js';
 import { mockArchiveLogs } from './archive-mock-logs-model.js';
 import { LogPanel } from './log-panel.js';
 
-export function MockArchiveReport({ run, section, onSection, onHistory, onBack }: {
- run: MockArchiveRun; section: number; onSection: (section: number) => void; onHistory: () => void; onBack: () => void;
+export function MockArchiveReport({ run, section, onSection, onHistory, onBack, actions }: {
+ run: MockArchiveRun; section: number; onSection: (section: number) => void; onHistory: () => void; onBack: () => void; actions?: ReactNode;
 }) {
  const { toast } = useToasts();
  const activeSection = section === 1 ? 0 : section;
@@ -22,8 +24,10 @@ export function MockArchiveReport({ run, section, onSection, onHistory, onBack }
   } catch (error) { toast({ tone: 'danger', title: 'File could not be downloaded', description: error instanceof Error ? error.message : String(error) }); }
  };
  return <article aria-label="Saved run report">
-  <nav aria-label="Archive breadcrumbs" className="mock-archive-breadcrumbs"><Button variant="ghost" size="sm" onClick={onHistory}>Version history</Button><ChevronRight aria-hidden className={dsIcon.sm} /><span>{run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}`}</span><ChevronRight aria-hidden className={dsIcon.sm} /><Button variant="ghost" size="sm" onClick={onBack}>{run.workflowLabel}</Button><ChevronRight aria-hidden className={dsIcon.sm} /><span className="text-[color:var(--ds-fg)]">Run {run.number}</span></nav>
-  <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actions={<Button variant="ghost" size="sm" icon={<ArrowLeft className={dsIcon.sm} />} onClick={onBack}>All runs</Button>} />
+  <div className="mock-archive-folder-header">
+   <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onHistory}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onBack}>{run.workflowLabel}</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>Run {run.number}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+   <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actions={actions} />
+  </div>
   <div className="mock-archive-report-layout">
    <nav aria-label="Saved report sections" className="mock-archive-report-nav">{MOCK_ARCHIVE_REPORT_SECTIONS.map(({ id, label }) => <Button key={id} variant="ghost" className="mock-archive-section-button" aria-current={activeSection === id ? 'page' : undefined} onClick={() => onSection(id)}>{label}{id === 4 && <span className="ml-auto text-caption tabular-nums text-[color:var(--ds-fg-muted)]">{run.files.length}</span>}</Button>)}</nav>
    <div className="min-w-0">

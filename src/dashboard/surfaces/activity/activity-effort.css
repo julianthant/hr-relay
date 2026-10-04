@@ -1,0 +1,24 @@
+.activity-effort { display: flex; flex-direction: column; gap: var(--ds-space-base); }
+.activity-effort-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-section); padding-block: var(--ds-space-base); border-block: var(--ds-border-w) solid var(--ui-stroke); }
+.activity-effort-total { font-size: var(--ds-text-title); line-height: var(--ds-lh-title); font-weight: 550; font-variant-numeric: tabular-nums; }
+.activity-effort-summary p, .activity-effort-description, .activity-effort-note { margin: 0; color: var(--ui-muted); font-size: var(--ds-text-body-description); }
+.activity-effort-summary p { margin-top: var(--ds-space-tight); }
+.activity-effort-summary dl { display: flex; flex-wrap: wrap; gap: var(--ds-space-base); margin: 0; }
+.activity-effort-summary dt { color: var(--ui-muted); font-size: var(--ds-text-body-description); }
+.activity-effort-summary dd { margin: var(--ds-space-tight) 0 0; font-size: var(--ds-text-ui); font-variant-numeric: tabular-nums; }
+.activity-effort-table { overflow: hidden; border: var(--ds-border-w) solid var(--ui-stroke); border-radius: var(--ds-radius-lg); }
+.activity-effort-table table { width: 100%; table-layout: fixed; font-size: var(--ds-text-ui); }
+.activity-effort-workflow { width: 32%; }
+.activity-effort-savings { width: 22%; }
+.activity-effort-table thead { background: var(--ui-table); color: var(--ui-secondary); }
+.activity-effort-table th, .activity-effort-table td { padding: var(--ds-space-base); text-align: left; font-weight: 400; }
+.activity-effort-table tbody { background: var(--ui-panel); }
+.activity-effort-table tbody tr { border-top: var(--ds-border-w) solid var(--ui-stroke); }
+.activity-effort-table span { display: block; margin-top: var(--ds-space-tight); font-size: var(--ds-text-body-description); color: var(--ui-muted); }
+.activity-effort-table input { height: var(--ds-h-toolbar); font-size: var(--ds-text-ui); font-variant-numeric: tabular-nums; }
+.activity-effort-table .activity-effort-error { color: var(--ui-danger); }
+.activity-effort-result strong { font-weight: 500; font-variant-numeric: tabular-nums; }
+@media (max-width: 1100px) {
+  .activity-effort-summary { align-items: flex-start; flex-direction: column; gap: var(--ds-space-base); }
+  .activity-effort-table th, .activity-effort-table td { padding: var(--ds-space-snug); }
+}

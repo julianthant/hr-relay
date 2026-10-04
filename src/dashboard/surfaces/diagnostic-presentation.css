@@ -2,6 +2,12 @@
   min-width: 0;
 }
 
+.diagnostics-page.ds-body-stack > * + * {
+  margin-top: var(--ds-space-body-section-gap);
+}
+
+.diagnostics-page .diagnostic-status { margin-bottom: 0; }
+
 .diagnostic-status {
   display: flex;
   align-items: center;

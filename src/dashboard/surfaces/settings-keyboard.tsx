@@ -1,7 +1,7 @@
 import './reference-settings.css';
 import { useState } from 'react';
-import { Pencil, Plus, Trash2 } from 'lucide-react';
-import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput, Select } from '../ds/ui.js';
+import { Pencil, Trash2 } from 'lucide-react';
+import { Banner, Button, Dialog, DialogBody, DialogContent, DialogFooter, IconButton, Input, PageHeading, SearchInput } from '../ds/ui.js';
 import { DEFAULT_SHORTCUT_PREFERENCES, SHORTCUT_ACTIONS, saveShortcutPreferences, shortcutChord, shortcutLabel, useShortcutPreferences, type ShortcutAction } from './keyboard-preferences-model.js';
 
 export function KeyboardSection() {
@@ -22,11 +22,10 @@ export function KeyboardSection() {
   return <section className="settings-reference-page settings-shortcuts">
     <PageHeading as="h2" title="Keyboard shortcuts" />
     <SearchInput aria-label="Search shortcuts" placeholder="Search shortcuts" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery('')} />
-    <div className="shortcut-number-setting"><div><p>Number shortcuts</p><span>Use ⌘1–9 to switch {preferences.numberMode} and ⌃1–9 to switch {preferences.numberMode === 'runs' ? 'workflows' : 'runs'}.</span></div><Select aria-label="Number shortcuts" value={preferences.numberMode} onChange={event => saveShortcutPreferences({ ...preferences, numberMode: event.target.value as 'runs' | 'workflows' })}><option value="runs">⌘1–9 for Runs</option><option value="workflows">⌘1–9 for Workflows</option></Select></div>
     <div className="shortcut-reference-card" aria-label="Keyboard bindings">
       {actions.map(action => <div className="shortcut-reference-row" key={action.id}><div className="shortcut-reference-copy"><p>{action.title}</p><span>{action.description}</span></div>
         <div className="shortcut-reference-bindings">{preferences.bindings[action.id].map((chord, index) => <div className="shortcut-reference-binding" key={index}><kbd>{shortcutLabel(chord)}</kbd><IconButton label={`Edit ${action.title} shortcut ${index + 1}`} icon={<Pencil className="size-3.5" />} onClick={() => edit(action.id, index)} /><IconButton label={`Remove ${action.title} shortcut ${index + 1}`} icon={<Trash2 className="size-3.5" />} onClick={() => saveShortcutPreferences({ ...preferences, bindings: { ...preferences.bindings, [action.id]: preferences.bindings[action.id].filter((_, position) => index !== position) } })} /></div>)}
-          <IconButton label={`Add ${action.title} shortcut`} icon={<Plus className="size-3.5" />} onClick={() => edit(action.id, preferences.bindings[action.id].length)} />
+          {preferences.bindings[action.id].length === 0 && <div className="shortcut-reference-binding"><span className="text-caption text-ui-muted">Not assigned</span><IconButton label={`Edit ${action.title} shortcut 1`} icon={<Pencil className="size-3.5" />} onClick={() => edit(action.id, 0)} /></div>}
         </div>
       </div>)}
       {actions.length === 0 && <p role="status" className="p-5 text-ui-muted">No shortcuts match your search.</p>}

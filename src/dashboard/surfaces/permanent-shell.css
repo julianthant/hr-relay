@@ -29,15 +29,18 @@
 .rail-notification-toggle[data-selected] { background: color-mix(in srgb,var(--ui-info) 14%,transparent); color: var(--ui-info); }
 .rail-notification-toggle[data-hovered] { background: var(--ui-hover); }
 .rail-notification-toggle[data-focus-visible] { outline: 2px solid var(--ui-info); outline-offset: 2px; }
-.workflow-rail { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 8px 16px 16px; }
+.workflow-rail { display: flex; flex: 1; flex-direction: column; min-height: 0; padding: 8px 8px 16px; }
 .workflow-rail-groups { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-height: 0; scrollbar-width: none; }
 .workflow-rail-groups::-webkit-scrollbar, .rail-scroll::-webkit-scrollbar { display: none; }
 .rail-scroll { scrollbar-width: none; }
 .workflow-rail-group { display: flex; flex-direction: column; gap: 2px; }
-.workflow-rail h3 { margin: 0; padding: 0 12px 6px; color: var(--ui-muted); font-size: 14px; font-weight: 400; }
-.workflow-rail button { display: flex; width: 100%; height: 32px; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 10px; color: var(--ui-primary); font-size: var(--ds-text-ui); font-weight: 400; text-align: left; cursor: pointer; }
+.workflow-rail h3 { display: flex; align-items: center; gap: 8px; margin: 0; padding: 0 8px 6px; color: var(--ui-muted); font-size: 14px; font-weight: 400; }
+.workflow-rail button { display: flex; width: 100%; height: 32px; align-items: center; gap: 8px; padding: 0 8px; border: 0; border-radius: 10px; color: var(--ui-primary); font-size: var(--ds-text-ui); font-weight: 400; text-align: left; cursor: pointer; }
 .workflow-rail button:hover { background: var(--ds-surface-3); }
 .workflow-rail button[aria-current="page"] { background: var(--ds-surface-selected); }
+
+.session-panel-toggle::before { content: ""; position: absolute; inset: 0; background: var(--ui-hover); mask-image: linear-gradient(to right, black calc(100% - var(--ds-space-page)), transparent); opacity: 0; transition: opacity var(--ds-dur-2) var(--ds-ease-out); }
+.session-panel-toggle:hover::before { opacity: 1; }
 .dashboard-panel-columns { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(244px,30%) minmax(0,1fr); gap: var(--ds-space-cozy); padding: var(--ds-space-cozy); background: var(--ui-canvas); }
 .dashboard-queue-column, .dashboard-log-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 .dashboard-queue-column { container-type: inline-size; container-name: queue; }

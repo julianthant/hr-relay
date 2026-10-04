@@ -56,7 +56,7 @@ sizes, with space-aware sizing at the 1024px desktop floor. Clicking it, pressin
 Command results. Dismissal restores focus to the Navbar field. Result navigation retains its explicit
 disconnected notice. Status, export and choice menus use shadcn Base UI DropdownMenu; value controls use its Base UI Select composition. Both keep keyboard navigation and focus restoration. Popups inside dialogs portal into the owning dialog. Escape dismisses an inner Base UI popup before its enclosing dialog or drawer. Overlays register only while mounted. RRSS HR and the date count are removed. Back/Forward history controls remain separate in the shortened Navbar. The visible search shortcut hint is omitted; `/` remains available. Select items sit inside their padded SelectGroup. Menus use 6px outer insets and 8px item text insets. The editable date and calendar sit in the header above Logs and select the dashboard day.
 
-The workspace rail is permanent and 264px wide, with a left-aligned HR GPT heading. Its header owns the HeroUI notification toggle and run-search icon. Notifications replaces the workflow list while preserving the heading, queue and Logs. Settings replaces the workspace with a separate sidebar of the same width, a Settings heading and settings search; notifications and run search are absent there. The Navbar and undo/redo controls are removed. Theme preference lives in General → Appearance, outside runtime settings drafts. Workflow scrolling retains keyboard and wheel access with its scrollbar hidden. Selected workflows change only their highlight. Workflow name icons are removed; Preview labels and active/all counts are hidden at the supported 1024px desktop width. The queue uses a rounded bordered container with a 30% track and 244px minimum. Start a run, Status, Sort, Attention and the date picker occupy the rounded bordered 48px Action panel above Logs, with 12px canvas gutters. Status and Sort have thin bordered surfaces. Attention is an independent toggle, excluded from the sort menu: when enabled, rows group by status; Newest, Oldest and Longest sort the entire queue without group headings. Frequent status filters permit multiple selections. Expanding Sessions shortens the workspace; its plus and Settings controls are adjacent. Served workflow selection remains persisted. Extra legacy workflow labels are explicitly marked layout previews and open fictional queues/logs without entering the served launch catalog. Notification filters are All, Unread, Needs you and Failed; read state does not resolve pending run actions. History-gap pins, Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards above Sessions; command details show the subject and time without the local actor ID. Errors persist until acknowledgment. Archive removes its retained-history subtitle. Activity uses its ordinary Settings heading, a left-aligned period and calendars, a default outcomes table without version disclosures, and no Export or information control. Time-saved estimates require explicit per-workflow manual and assisted minutes; missing assumptions remain unestimated. Existing volume, outcomes and performance facts retain their supplied-data boundaries. Explorer, Storage checks and Preflight retain their heading actions and diagnostics. Workflow capabilities are part of Preflight. Keyboard settings follow the reference layout with editable key pills, add/remove controls, search and a number-shortcut mode selector; preferences persist locally and drive the actual handlers.
+The workspace rail is permanent and 264px wide, with a left-aligned HR GPT heading. Its header owns the HeroUI notification toggle and run-search icon. Notifications replaces the workflow list while preserving the heading, queue and Logs. Settings replaces the workspace with a separate sidebar of the same width, a Settings heading and settings search; notifications and run search are absent there. The Navbar and undo/redo controls are removed. Theme preference lives in General → Appearance, outside runtime settings drafts. Workflow scrolling retains keyboard and wheel access with its scrollbar hidden. Selected workflows change only their highlight. Workflow rows have no leading icons or Preview labels; category icons sit beside category headings. The rail uses 8px outer and row insets. Active/all counts are hidden at the supported 1024px desktop width. The queue uses a rounded bordered container with a 30% track and 244px minimum. Start a run, Status, Sort, Attention and the date picker occupy the rounded bordered 48px Action panel above Logs, with 12px canvas gutters. Status and Sort have thin bordered surfaces. Attention is an independent toggle, excluded from the sort menu: when enabled, rows group by status; Newest, Oldest and Longest sort the entire queue without group headings. Frequent status filters permit multiple selections. Expanding Sessions shortens the workspace; its plus and Settings controls are adjacent. Served workflow selection remains persisted. Additional layout workflow labels open fictional queues/logs without entering the served launch catalog. Notifications use HeroUI All/Unread tabs plus a category dropdown for All updates, Needs you and Failed; read state does not resolve pending run actions. History-gap pins, Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards above Sessions; command details show the subject and time without the local actor ID. Errors persist until acknowledgment. Archive removes its retained-history subtitle. Activity uses its ordinary Settings heading, a left-aligned period with calendars shown only for Custom and matching control typography, a default outcomes table without version disclosures, and no Export or information control. Time-saved estimates require explicit per-workflow manual and assisted minutes; missing assumptions remain unestimated. Existing volume, outcomes and performance facts retain their supplied-data boundaries. Explorer, Storage checks and Preflight retain their heading actions and diagnostics. Workflow capabilities are part of Preflight. Keyboard settings use compact rows with editable key pills, pencil/delete controls and search; Add controls and Run/workflow number-key navigation are retired; preferences persist locally and drive the actual handlers.
 
 Settings navigation uses closely spaced 32px rows with 10px rounded highlights. Selected and
 unselected labels/icons use primary foreground; muted group labels use 14px type. Section headings
@@ -7355,7 +7355,7 @@ render.
 The selected served workflow ID persists as a local browser preference. On load, use it only when
 bootstrap serves that ID; otherwise select the first served workflow. The 2026-10-04 operator amendment
 makes the rail permanent and 264px wide, with a left-aligned HR GPT heading that stays unchanged in
-notifications. It has no floating/minimized modes or display-mode shortcuts. Workflow rows have no
+notifications. It has no floating/minimized modes or display-mode shortcuts. Category icons sit beside their headings; rail outer and row insets are 8px. Workflow rows have no
 leading icons or Preview badges; active/all metadata disappears at the narrow supported desktop width.
 Layout-preview workflows never enter the served launch catalog or persisted workflow preference.
 Scenario selectors and technical mock labels belong outside the product screens, in `review.html`.
@@ -7374,10 +7374,12 @@ uses HeroUI All/Unread tabs and a separate category menu for All updates, Needs 
 state and category filters intersect without resolving a run's urgency. Rows use rounded hover/focus
 surfaces, omit History gap and restore focus when dismissed. Settings opens from the Sessions gear
 beside the plus button. The Sessions toggle excludes that right-hand action region, including its
-background. Settings replaces the dashboard with a 264px reference sidebar, Settings heading, search
+background. The toggle hover fill fades smoothly at that boundary and uses the shared opacity transition
+with reduced-motion support. Settings replaces the dashboard with a 264px reference sidebar, Settings heading, search
 and grouped navigation. The header/search/Personal gaps are each 16px. It contains no run-search or
 notification button. Path Change buttons use the shared ordinary button radius. Storage summary and
-row status values use the same description font size and weight.
+row status values use the same description font size and weight. Storage heading, summary and diagnostic
+groups use the same section gap.
 
 Data → Spreadsheets uses the ordinary Settings content cap. Registered rows have a Date added column;
 clicking any row opens its workbook directly, with no arrow column or separate viewer/drop zone.
@@ -7395,8 +7397,21 @@ and dry-run boundaries are integrated into Preflight's workflow-readiness group 
 they have no second page heading or separate search. Old capability URLs resolve to Preflight. Runtime
 readiness remains the verified server report. The synthetic review server explicitly supplies a complete
 report and re-check/readback routes; production failures and unavailable readiness stay distinct.
-Keyboard settings use editable reference rows and locally persisted bindings consumed by run search
-and queue shortcuts. Local queue selection mode and Select menu items are retired. Archive applies
+Keyboard settings use compact reference rows with key pills and aligned pencil/delete controls; cleared
+bindings can be reassigned with the pencil. Add controls and Run/workflow number-key navigation are retired. Existing
+local shortcut preferences remain readable; their old number-mode field has no effect. Editable bindings
+remain locally persisted and drive run search and queue shortcuts.
+
+Archive version groups show report counts instead of archived dates. Folder and report views use the same
+breadcrumb → focused heading/actions → controls/table structure as the spreadsheet viewer. They omit the
+second Archive heading, duplicate version/count metadata, redundant scope dropdowns and table count footer.
+Search and completed-date filters remain available. Export and version-bump actions stay beside the focused
+title. Activity calendars appear only for Custom, with the same typography as the period control. Time saved
+shows an explicit estimate, included-run/workflow coverage, manual versus assisted totals, percentage saved,
+and per-workflow savings beside compact minute inputs. Missing or invalid baselines remain unestimated;
+invalid values are announced and excluded rather than becoming plausible savings.
+
+Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
 are retired; the final log step has no divider. Command toasts show subject and clock without the local
 actor ID. Run/Rerun retains the approved Design 1 and served launch authority pending the requested

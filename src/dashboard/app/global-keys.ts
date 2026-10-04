@@ -111,7 +111,7 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
   const preferences = useShortcutPreferences();
   const modalOpen = useDsModalOpen();
   const {
-    queueVisible = true, workflowIds = [], onWorkflow,
+    queueVisible = true,
     onStartRun,
     onCyclePanelMode,
     panelMode,
@@ -137,13 +137,6 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
       }
       if (modalOpen || document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]') !== null) return;
       const action = shortcutActionForEvent(event, preferences);
-      if (!action && /^[1-9]$/.test(event.key) && (event.metaKey !== event.ctrlKey) && !event.altKey && !event.shiftKey) {
-        const kind = event.metaKey ? preferences.numberMode : preferences.numberMode === "runs" ? "workflows" : "runs";
-        const index = Number(event.key) - 1;
-        if (kind === "runs" && visibleRunIds[index]) { event.preventDefault(); onSelectRun(visibleRunIds[index]); }
-        else if (kind === "workflows" && workflowIds[index] && onWorkflow) { event.preventDefault(); onWorkflow(workflowIds[index]); }
-        return;
-      }
       if (!action && (event.metaKey || event.ctrlKey || event.altKey)) return;
 
       if (action === "start") {
@@ -219,7 +212,7 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [preferences, workflowIds, onWorkflow,
+  }, [preferences,
     modalOpen,
     queueVisible,
     onStartRun,

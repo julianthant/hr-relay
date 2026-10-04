@@ -1,4 +1,4 @@
-import { ArrowLeft, ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
+import { ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
 import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
@@ -7,6 +7,7 @@ import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { MockArchiveReport } from './archive-mock-report.js';
 import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
+import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../ds/breadcrumb.js';
 import './archive-mock.css';
 
 export function MockArchiveWorkspace({ selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder }: {
@@ -44,8 +45,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   if (!next.success) { toast({ tone: 'danger', title: 'Check the date range', description: 'The completed-through date must follow the completed-from date.' }); return; }
   onBrowse(next.data, mode);
  };
- return <section aria-label="Archive" className="mock-archive settings-reference-page settings-data-section">
-  <PageHeading title="Archive" actions={<>
+ const actions = <>
    {(folder !== null || report !== undefined) && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
     <DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></DropdownMenuTrigger>
     <DropdownMenuContent aria-label="Export reports" align="end" className="w-70">
@@ -53,7 +53,9 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
     </DropdownMenuContent>
    </DropdownMenu>}
    <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
-  </>} />
+  </>;
+ return <section aria-label="Archive" className="mock-archive settings-reference-page settings-data-section">
+  {(folder === null && report === undefined || unavailable || invalid) && <PageHeading title="Archive" actions={actions} />}
   {folder === null && report === undefined && !invalid && !unavailable && <div className="archive-header-filters">
     <ArchiveMockSearch value={browsing.filters.search ?? ""} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, "replace")} />
     <Select aria-label="Archived workflow" value={browsing.filters.workflow ?? "all"} onChange={event => updateFilters({ ...browsing.filters, workflow: event.target.value === "all" ? undefined : event.target.value })} icon={<Folder className={dsIcon.sm} />}>
@@ -67,28 +69,23 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable" message="Choose a workflow to browse its saved reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
-     : report ? <MockArchiveReport run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
+     : report ? <MockArchiveReport actions={actions} run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
      : folder === null ? <>
       <MockVersionFolders rows={rows} onFolder={onFolder} />
      </> : <>
-      <nav aria-label="Archive breadcrumbs" className="mock-archive-breadcrumbs"><Button variant="ghost" size="sm" onClick={recover}>Version history</Button><ChevronRight aria-hidden className={dsIcon.sm} /><span>{folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}`}</span><ChevronRight aria-hidden className={dsIcon.sm} /><span className="text-[color:var(--ds-fg)]">{scope[0].workflowLabel}</span></nav>
-      <PageHeading title={scope[0].workflowLabel} actions={<Button variant="ghost" size="sm" icon={<ArrowLeft className={dsIcon.sm} />} onClick={recover}>All workflows</Button>} />
-      <dl className="mock-archive-metadata">
-       <div><dt>Dashboard version</dt><dd>{folder.dashboardKey === 'unrecorded' ? 'Not recorded' : folder.dashboardKey}</dd></div>
-       <div><dt>Archived runs</dt><dd>{scope.length}</dd></div>
-       <div><dt>Workflow versions</dt><dd>{[...new Set(scope.map(row => row.workflowVersion))].join(', ')}</dd></div>
-      </dl>
+      <div className="mock-archive-folder-header">
+       <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={recover}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{scope[0].workflowLabel}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
+       <PageHeading title={scope[0].workflowLabel} description={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`} actions={actions} />
+      </div>
       <div className="mock-archive-filters">
-       <label className="mock-archive-field"><span>Search reports</span><ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} /></label>
-       <label className="mock-archive-field"><span>Dashboard version</span><Select value={folder.dashboardKey} onChange={event => onFolder({ ...folder, dashboardKey: event.target.value })}>{['1.3', '1.2', 'unrecorded'].map(key => <option key={key} value={key}>{key === 'unrecorded' ? 'Not recorded' : key}</option>)}</Select></label>
-       <label className="mock-archive-field"><span>Workflow</span><Select value={folder.workflow} onChange={event => onFolder({ ...folder, workflow: event.target.value })}>{MOCK_ARCHIVE_WORKFLOWS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}</Select></label>
+       <ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />
        <DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
         value={{ from: browsing.filters.from?.slice(0, 10) ?? '', to: browsing.filters.to?.slice(0, 10) ?? '' }}
         onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />
       </div>
       <div className="mock-archive-table-wrap"><MockArchiveRunTable rows={rows} onSelection={onSelection} /></div>
       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}
-      <div className="mock-archive-table-footer"><span>{rows.length} of {scope.length} reports</span>{filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}</div>
+      {filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}
      </>}
   </div>
   <Dialog open={view === 'versions'} onOpenChange={open => { if (!open) onView('runs'); }}>
@@ -111,7 +108,7 @@ function MockVersionFolders({ rows, onFolder }: { rows: readonly MockArchiveRun[
   const versionRows = rows.filter(row => row.dashboard === key);
   if (versionRows.length === 0) return null;
   return <section key={key} aria-label={key === 'unrecorded' ? 'Version not recorded' : `Dashboard ${key}`}>
-   <header className="mock-archive-version-heading"><h2><Layers3 aria-hidden className={dsIcon.md} />{key === 'unrecorded' ? 'Version not recorded' : `Dashboard ${key}`}</h2><span>{key === 'unrecorded' ? 'Historical runs' : `Archived ${mockArchiveDate(versionRows[0].archived)}`}</span></header>
+   <header className="mock-archive-version-heading"><h2><Layers3 aria-hidden className={dsIcon.md} />{key === 'unrecorded' ? 'Version not recorded' : `Dashboard ${key}`}</h2><span>{versionRows.length} {versionRows.length === 1 ? 'report' : 'reports'}</span></header>
    <div className="mock-archive-folders">{MOCK_ARCHIVE_WORKFLOWS.map(workflow => {
     const matches = versionRows.filter(row => row.workflow === workflow.id);
     if (matches.length === 0) return null;
