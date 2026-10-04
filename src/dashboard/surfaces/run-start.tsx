@@ -1311,7 +1311,7 @@ export function RunStartDialog({
                   </div>
                   <div>
                     <ChoicePicker label="Workbook · Optional" value={workbookId} onChange={setWorkbookId} options={[{ value: "", label: "None" }, ...spreadsheetMocks.files.map(file => ({ value: file.id, label: file.name, description: "Mock spreadsheet" }))]} />
-                    <p className="mt-[5px] text-caption text-ui-muted">Choose an already imported workbook for reference or results. Mock selection for now.</p>
+                    <p className="mt-[5px] text-caption text-ui-muted">Choose an already imported workbook for reference or results.</p>
                   </div>
                   <div className="launch-options-grid">
                     <div><SegmentedChoice label="Priority" value={priority} onChange={setPriority} options={[{ value: "interactive", label: "Interactive" }, { value: "bulk", label: "Bulk" }]} /><p className="mt-[5px] text-caption text-ui-muted">Bulk work yields to interactive runs.</p></div>
