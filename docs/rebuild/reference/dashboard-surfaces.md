@@ -7409,7 +7409,15 @@ Back to dashboard and navigation away retain the Settings draft guard, including
 General uses the shared segmented calendar picker while preserving the served US date value. Theme
 preference lives in General → Appearance independently of runtime settings drafts. Workflow operations
 and dry-run boundaries are integrated into Preflight's workflow-readiness group and selected scope;
-they have no second page heading or separate search. Old capability URLs resolve to Preflight. Runtime
+they have no second page heading or separate search. The 2026-10-04 Workflow readiness redesign separates
+returned requirements from supported operations. Compact workflow disclosures show descriptor-derived
+available/unbuilt counts, the six served capabilities in a two-column definition list, and the exact dry-run
+boundary. The first workflow opens by default. Available, Not applicable and Not built retain distinct words;
+capability support does not claim runtime readiness. The empty table header, nested group frame and inline
+source footer are removed. Descriptor source and capability meanings remain available through info controls.
+Long details and unknown workflow IDs wrap in full. Theme tokens, scope filtering, report freshness,
+credential remedies and distinct loading/empty/refusal states remain authoritative.
+Old capability URLs resolve to Preflight. Runtime
 readiness remains the verified server report. The synthetic review server explicitly supplies a complete
 report and re-check/readback routes; production failures and unavailable readiness stay distinct.
 Keyboard settings use compact reference rows with key pills and aligned pencil/delete controls; cleared

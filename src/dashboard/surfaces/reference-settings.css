@@ -6,15 +6,6 @@
 }
 .settings-reference-page .ds-page-heading { margin-bottom: 0; }
 .settings-reference-page .ds-body-section { min-width: 0; }
-.settings-reference-disclosure .ds-disclosure-trigger { min-height: var(--ds-h-body-row); }
-.settings-reference-capability-content .ds-result-row { border-top: 1px solid var(--ds-border); }
-.settings-reference-capability-label { display: inline-flex; align-items: center; gap: var(--ds-space-tight); }
-.settings-reference-posture {
-  border-top: 1px solid var(--ds-border);
-  padding: var(--ds-space-cozy);
-}
-.settings-reference-posture p { margin-top: var(--ds-space-tight); }
-.settings-reference-source { margin-top: var(--ds-space-snug); color: var(--ds-fg-muted); overflow-wrap: anywhere; }
 .settings-reference-keyboard-note { color: var(--ds-fg-muted); max-width: 76ch; }
 .ds-body-scope .settings-reference-catalog { gap: calc(var(--ds-space-page) + var(--ds-space-tight)); padding-top: var(--ds-space-snug); }
 .settings-reference-catalog-panel { display: flex; flex-direction: column; gap: var(--ds-space-body-group-inline); min-width: 0; padding-top: var(--ds-space-body-group-inline); }

@@ -54,6 +54,11 @@ The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Setti
 buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
 Time saved uses Activity's table typography, spacing and alternating rows, with compact minute inputs
 and coverage, manual/assisted totals and estimated savings in its footer.
+Workflow readiness separates returned requirements from compact workflow disclosures. Each disclosure
+shows available/unbuilt counts, six served operations in two columns and its exact dry-run boundary.
+The first workflow opens by default. The empty table header, nested frame and inline source footer are
+removed; source and capability meanings remain available through info controls. Theme, scope filtering,
+readiness authority, credential remedies and distinct loading/empty/refusal states remain unchanged.
 The Focus Archive replacement was rejected on 2026-10-03. Focused desktop dark/light interaction checks
 cover the changes; frozen reference screenshots remain unchanged. Mock workflows are presentation only and cannot start runs.
 

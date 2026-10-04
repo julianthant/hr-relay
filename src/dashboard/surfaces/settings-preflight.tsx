@@ -101,14 +101,19 @@ function SettingsPreflightCheck({ check, protectedSettings }: { check: Preflight
   </div>;
 }
 
-function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children }: { title: string; subtitle: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
+function SettingsPreflightGroup({ title, subtitle, checks, protectedSettings, children }: { title: string; subtitle?: string; checks: readonly PreflightCheckWire[]; children?: ReactNode; protectedSettings?: EditableSettingsWire["protectedSettings"] }) {
   return <BodySection title={title}>
-    <p className="diagnostic-section-description">{subtitle}</p>
-    <FormGroup label={title}><div role="list">
+    {subtitle && <p className="diagnostic-section-description">{subtitle}</p>}
+    {children ? <div role="group" aria-label={title} className="preflight-readiness-content">
+      {checks.length > 0 && <div className="workflow-readiness-requirements"><h3 className="workflow-readiness-subheading">Requirements</h3><FormGroup label="Workflow requirements"><div role="list">
+        {checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}
+      </div></FormGroup></div>}
+      {children}
+    </div> : <FormGroup label={title}><div role="list">
       {checks.length === 0
-        ? children ? null : <div className="diagnostic-empty-group">No checks were returned for this group.</div>
+        ? <div className="diagnostic-empty-group">No checks were returned for this group.</div>
         : checks.map(check => <SettingsPreflightCheck key={check.id} check={check} protectedSettings={protectedSettings} />)}
-    </div>{children}</FormGroup>
+    </div></FormGroup>}
   </BodySection>;
 }
 
@@ -152,7 +157,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         value={<span className="diagnostic-summary-meta">{displayed === undefined ? "No current result" : `${displayed.checks.length} returned checks`}</span>} />
     </FormGroup>}
     {displayed !== undefined && <>
-      <SettingsPreflightGroup title="Workflow readiness" subtitle="Required settings, credentials and operations for the selected scope." checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings}>
+      <SettingsPreflightGroup title="Workflow readiness" checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings}>
         {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}
       </SettingsPreflightGroup>
       <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={historical ? undefined : protectedSettings} />

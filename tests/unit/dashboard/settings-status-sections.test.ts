@@ -206,9 +206,13 @@ describe("System hosts wire compatibility", () => {
 });
 
 describe("Workflow capabilities (SE41/SE42)", () => {
-  it("names the served descriptor source without blanket teaching", async () => {
+  it("names the served descriptor source on demand without blanket teaching", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
-    assert.ok(text.includes("Source: served workflow descriptors."), text);
+    assert.ok(!text.includes("Source: served workflow descriptors."), text);
+    const help = mounted().querySelector('button[aria-label="About workflow operations"]');
+    assert.ok(help instanceof HTMLButtonElement);
+    await act(async () => { help.click(); });
+    assert.ok(document.body.textContent?.includes("Source: served workflow descriptors."));
     assert.doesNotMatch(text, /Every cell is derived from the same descriptor/u);
   });
 
@@ -240,6 +244,7 @@ describe("Workflow capabilities (SE41/SE42)", () => {
     await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, () => Promise.resolve(FACTS));
     assert.equal(mounted().querySelectorAll(".settings-reference-disclosure").length, 3);
     assert.equal(mounted().querySelectorAll(".settings-reference-disclosure[data-state=open]").length, 1);
+    assert.deepEqual([...mounted().querySelectorAll(".workflow-operation")].map(node => node.getAttribute("data-capability")), ["typed-start", "dry-run", "edit-data", "review-panel", "operator-gates", "browser-systems"]);
   });
 
   it("gives each workflow its own dry-run posture, including the refusal", async () => {
