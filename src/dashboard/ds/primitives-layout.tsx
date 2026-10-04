@@ -112,18 +112,20 @@ export function PageHeading({
   title,
   description,
   actions,
+  actionAlignment = "content",
   as: Heading = "h1",
   className,
 }: {
   title: ReactNode;
   description?: ReactNode;
   actions?: ReactNode;
+  actionAlignment?: "content" | "title";
   as?: "h1" | "h2";
   className?: string;
 }) {
   return (
-    <header className={cn("ds-page-heading", className)}>
-      <div className="min-w-0">
+    <header className={cn("ds-page-heading", actionAlignment === "title" && "ds-page-heading--title-actions", className)}>
+      <div className="ds-page-heading-copy min-w-0">
         <Heading className={cn("ds-page-heading-title", dsText.pageTitle, "text-[color:var(--ds-fg)]")}>
           {title}
         </Heading>
@@ -131,9 +133,29 @@ export function PageHeading({
           <p className={cn("ds-page-heading-description", dsText.meta)}>{description}</p>
         )}
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-[var(--ds-space-snug)]">{actions}</div>}
+      {actions && <div className="ds-page-heading-actions flex shrink-0 items-center gap-[var(--ds-space-snug)]">{actions}</div>}
     </header>
   );
+}
+
+/** Shared search, optional filters/count and framed table for data libraries. */
+export function TableList({ search, controls, summary, children }: {
+  search: ReactNode; controls?: ReactNode; summary?: ReactNode; children: ReactNode;
+}) {
+  return <div className="ds-table-list">
+    <TableToolbar search={search} controls={controls} summary={summary} />
+    <div className="ds-table-list-frame">{children}</div>
+  </div>;
+}
+
+export function TableToolbar({ search, controls, summary }: {
+  search: ReactNode; controls?: ReactNode; summary?: ReactNode;
+}) {
+  return <div className="ds-table-toolbar">
+    <div className="ds-table-toolbar-search">{search}</div>
+    {controls && <div className="ds-table-toolbar-controls">{controls}</div>}
+    {summary && <span className="ds-table-toolbar-summary">{summary}</span>}
+  </div>;
 }
 
 /** A labeled, rounded group of related body fields. */

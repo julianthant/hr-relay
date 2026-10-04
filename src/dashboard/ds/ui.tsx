@@ -125,6 +125,8 @@ export {
   PageHeader,
   DsBodyScope,
   PageHeading,
+  TableList,
+  TableToolbar,
   FormGroup,
   BodySection,
   ResultRow,

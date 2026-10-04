@@ -13,7 +13,6 @@
 .settings-tab-body .ds-switch-copy .ds-text-ui,
 .settings-tab-body .ds-radio-label { font-weight: 400; }
 .settings-tab-body .ds-page-heading-description { font-size: var(--ds-text-body-description); font-weight: 400; }
-.archive-header-filters { display: grid; grid-template-columns: minmax(0,1fr) 180px 150px; gap: 8px; align-items: center; }
 .activity-header-filters { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--ui-stroke); padding-bottom: 16px; }
 .activity-header-filters > div { max-width: 220px; }
 .settings-shortcuts .shortcut-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px; }
@@ -22,7 +21,6 @@
 .shortcut-setting-row span { font-size: 12px; color: var(--ui-muted); }
 .shortcut-setting-row kbd { border: 0; border-radius: 999px; background: var(--ui-hover); padding: 4px 10px; box-shadow: none; }
 
-.archive-header-filters .mock-archive-search { width: 100%; max-width: none; }
 .activity-header-filters { flex-wrap: wrap; align-items: flex-start; }
 .activity-header-filters > .activity-period-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: none; }
 .activity-period-controls > .ds-select-control { width: 130px; height: var(--ds-h-body-control); border-radius: var(--ds-radius-body-control); background: var(--ds-control-bg); }

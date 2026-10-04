@@ -1434,6 +1434,27 @@ body[data-demo-theme="light"] {
   font-weight: 600;
 }
 
+.ds-page-heading--title-actions { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; row-gap: var(--ds-space-body-caption-gap); }
+.ds-page-heading--title-actions .ds-page-heading-copy { display: contents; }
+.ds-page-heading--title-actions .ds-page-heading-title { grid-column: 1; grid-row: 1; }
+.ds-page-heading--title-actions .ds-page-heading-description { grid-column: 1; grid-row: 2; margin-top: 0; }
+.ds-page-heading--title-actions .ds-page-heading-actions { grid-column: 2; grid-row: 1; }
+
+.ds-table-list { display: flex; min-width: 0; flex-direction: column; gap: 12px; }
+.ds-table-toolbar { display: flex; min-width: 0; flex-wrap: wrap; align-items: end; gap: 12px; }
+.ds-table-toolbar-search { width: 280px; max-width: 100%; flex: 0 0 auto; }
+.ds-table-toolbar-search .ds-search-field { width: 100%; }
+.ds-table-toolbar-controls { display: flex; min-width: 0; flex: 1 1 auto; flex-wrap: wrap; align-items: end; justify-content: flex-end; gap: 8px; }
+.ds-table-toolbar-summary { font-size: var(--text-caption); line-height: var(--text-caption--line-height); color: var(--ui-muted); display: flex; min-height: 36px; align-items: center; margin-left: auto; white-space: nowrap; }
+.ds-table-list-frame { border-radius: var(--radius); border: 1px solid var(--ui-stroke); background: var(--ui-panel); min-width: 0; max-width: 100%; overflow: auto; }
+.ds-table-list-frame table { font-size: var(--text-body); line-height: var(--text-body--line-height); width: 100%; border-collapse: collapse; }
+.ds-table-list-frame thead { background: var(--ui-table); font-size: var(--text-caption); line-height: var(--text-caption--line-height); color: var(--ui-muted); }
+.ds-table-list-frame th { border-bottom: 1px solid var(--ui-stroke); padding: 9px 14px; text-align: left; font-weight: 400; }
+.ds-table-list-frame td { padding: 15px 14px; }
+.ds-table-list-frame tbody tr { border-bottom: 1px solid var(--ui-stroke); }
+.ds-table-list-frame tbody tr:hover, .ds-table-list-frame tbody tr:focus-within { background: var(--ui-hover); }
+.ds-table-list-frame tbody tr:last-child { border-bottom: 0; }
+
 .ds-page-heading-description {
   max-width: 65ch;
   margin: var(--ds-space-tight) 0 0;
@@ -1445,6 +1466,8 @@ body[data-demo-theme="light"] {
   font-size: var(--ds-text-body-caption);
   line-height: var(--ds-lh-body-caption);
 }
+
+.ds-body-scope .ds-page-heading--title-actions .ds-page-heading-description { margin-top: 0; }
 
 .ds-body-stack > * + * {
   margin-top: var(--ds-space-loose);

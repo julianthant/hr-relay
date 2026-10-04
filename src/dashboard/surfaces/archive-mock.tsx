@@ -1,9 +1,9 @@
-import { ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
+import { ChevronRight, Download, FileText, Folder, Layers3 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
-import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TableList, TableToolbar, dsIcon, useToasts } from '../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
-import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
+import { ArchiveResourceState } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { MockArchiveReport } from './archive-mock-report.js';
 import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
@@ -46,25 +46,26 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   onBrowse(next.data, mode);
  };
  const actions = <>
-   {(folder !== null || report !== undefined) && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
-    <DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></DropdownMenuTrigger>
+   {report !== undefined && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
+    <DropdownMenuTrigger asChild><Button variant="secondary" icon={<Download className={dsIcon.sm} />}>Export run</Button></DropdownMenuTrigger>
     <DropdownMenuContent aria-label="Export reports" align="end" className="w-70">
      <DropdownMenuGroup><DropdownMenuItem onSelect={() => download('json')}>JSON</DropdownMenuItem><DropdownMenuItem onSelect={() => download('csv')}>CSV</DropdownMenuItem></DropdownMenuGroup><p className="m-0 px-2 py-2 text-caption text-ui-muted">{exportRows.length} matching {exportRows.length === 1 ? 'report' : 'reports'}. JSON includes saved fields, settings and files.</p>
     </DropdownMenuContent>
    </DropdownMenu>}
-   <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
+   <Button ref={bumpTrigger} variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
   </>;
  return <section aria-label="Archive" className="mock-archive settings-reference-page settings-data-section">
-  {(folder === null && report === undefined || unavailable || invalid) && <PageHeading title="Archive" actions={actions} />}
-  {folder === null && report === undefined && !invalid && !unavailable && <div className="archive-header-filters">
-    <ArchiveMockSearch value={browsing.filters.search ?? ""} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, "replace")} />
+  {(folder === null && report === undefined || unavailable || invalid) && <PageHeading title="Archive" actionAlignment="title" actions={actions} />}
+  {folder === null && report === undefined && !invalid && !unavailable && <TableToolbar
+    search={<ArchiveMockSearch value={browsing.filters.search ?? ""} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, "replace")} />}
+    controls={<>
     <Select aria-label="Archived workflow" value={browsing.filters.workflow ?? "all"} onChange={event => updateFilters({ ...browsing.filters, workflow: event.target.value === "all" ? undefined : event.target.value })} icon={<Folder className={dsIcon.sm} />}>
       <option value="all">All workflows</option>{MOCK_ARCHIVE_WORKFLOWS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
     </Select>
     <Select aria-label="Archived outcome" value={browsing.filters.outcome ?? "all"} onChange={event => updateFilters({ ...browsing.filters, outcome: event.target.value === "all" ? undefined : event.target.value as NonNullable<ArchiveBrowseState["filters"]["outcome"]> })}>
       <option value="all">All outcomes</option><option value="done">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option>
     </Select>
-  </div>}
+    </>} />}
   {folder === null && report === undefined && !invalid && !unavailable && filtered && <div><Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button></div>}
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
@@ -75,15 +76,16 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
      </> : <>
       <div className="mock-archive-folder-header">
        <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={recover}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{scope[0].workflowLabel}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
-       <PageHeading title={scope[0].workflowLabel} description={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`} actions={actions} />
+       <PageHeading title={scope[0].workflowLabel} actionAlignment="title" actions={actions} />
       </div>
-      <div className="mock-archive-filters">
-       <ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />
-       <DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
+      <TableList
+       search={<ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />}
+       controls={<DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
         value={{ from: browsing.filters.from?.slice(0, 10) ?? '', to: browsing.filters.to?.slice(0, 10) ?? '' }}
-        onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />
-      </div>
-      <div className="mock-archive-table-wrap"><MockArchiveRunTable rows={rows} onSelection={onSelection} /></div>
+        onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />}
+       summary={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`}>
+       <MockArchiveRunTable rows={rows} onSelection={onSelection} />
+      </TableList>
       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}
       {filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}
      </>}
@@ -121,11 +123,11 @@ function MockVersionFolders({ rows, onFolder }: { rows: readonly MockArchiveRun[
 }
 
 function MockArchiveRunTable({ rows, onSelection }: { rows: readonly MockArchiveRun[]; onSelection: (id: string) => void }) {
- return <ArchiveTable label="Saved reports" roomy><THead><TR>{['Run', 'Subject', 'Result', 'Workflow version', 'Completed (UTC)', 'Document', 'Files'].map((label, index) => <TH key={label} className={index === 3 || index === 4 || index === 6 ? 'text-right' : undefined}>{label}</TH>)}<TH><span className="sr-only">Open report</span></TH></TR></THead><TBody>{rows.map(row => <TR key={row.id} className="cursor-pointer" onClick={event => {
+ return <table aria-label="Saved reports"><thead><tr>{['Run', 'Subject', 'Result', 'Workflow version', 'Completed (UTC)', 'Document', 'Files'].map((label, index) => <th key={label} scope="col" className={index === 3 || index === 4 || index === 6 ? '!text-right' : undefined}>{label}</th>)}<th scope="col"><span className="sr-only">Open report</span></th></tr></thead><tbody>{rows.map(row => <tr key={row.id} className="cursor-pointer" onClick={event => {
   if (event.target instanceof Element && event.target.closest('button')) return;
   onSelection(row.id);
  }}>
-  <TD><Button variant="ghost" className="mock-archive-run-title" onClick={() => onSelection(row.id)}>{row.title}</Button><span className="mock-archive-run-number">Run {row.number}</span></TD>
-  <TD><strong className="font-medium">{row.person}</strong><span className="mock-archive-run-number">{row.employeeId}</span></TD><TD>{mockArchiveResultLabel(row.outcome)}</TD><TD className="text-right tabular-nums">{row.workflowVersion}</TD><TD className="text-right"><time dateTime={row.completed}>{mockArchiveDate(row.completed)}</time><span className="mock-archive-run-number">{new Date(row.completed).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}</span></TD><TD>{row.document}</TD><TD className="text-right tabular-nums">{row.files.length}</TD><TD><Button size="sm" variant="ghost" aria-label={`Open report for ${row.person}`} icon={<ChevronRight className={dsIcon.sm} />} onClick={() => onSelection(row.id)} /></TD>
- </TR>)}</TBody></ArchiveTable>;
+  <td><div className="mock-archive-run-identity"><span className="mock-archive-run-icon"><FileText aria-hidden className={dsIcon.md} /></span><div><Button variant="ghost" className="mock-archive-run-title" onClick={() => onSelection(row.id)}>{row.title}</Button><span className="mock-archive-run-number">Run {row.number}</span></div></div></td>
+  <td><strong className="font-medium">{row.person}</strong><span className="mock-archive-run-number">{row.employeeId}</span></td><td>{mockArchiveResultLabel(row.outcome)}</td><td className="text-right tabular-nums">{row.workflowVersion}</td><td className="text-right"><time dateTime={row.completed}>{mockArchiveDate(row.completed)}</time><span className="mock-archive-run-number">{new Date(row.completed).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', timeZone: 'UTC' })}</span></td><td>{row.document}</td><td className="text-right tabular-nums">{row.files.length}</td><td><Button size="sm" variant="ghost" aria-label={`Open report for ${row.person}`} icon={<ChevronRight className={dsIcon.sm} />} onClick={() => onSelection(row.id)} /></td>
+ </tr>)}</tbody></table>;
 }

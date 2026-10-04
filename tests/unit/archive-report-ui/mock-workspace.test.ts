@@ -36,16 +36,25 @@ function button(label: string) {
  expect(match, label).toBeDefined(); return match!;
 }
 async function click(element: HTMLElement) { await act(async () => element.click()); }
+function versionGroups() {
+ return [...document.querySelectorAll('.mock-archive-version-groups > section')].map(group => ({
+  label: group.getAttribute('aria-label'), count: group.querySelector('.mock-archive-version-heading > span')?.textContent,
+ }));
+}
 
 it('browses folders, full-page reports and retained files without a dashboard client', async () => {
  const fetch = await mount();
- expect(document.body.textContent).toContain('30 matching reports');
+ expect(document.body.textContent).not.toContain('30 matching reports');
+ expect(versionGroups()).toEqual([{ label: 'Dashboard 1.3', count: '16 reports' }, { label: 'Dashboard 1.2', count: '10 reports' }, { label: 'Version not recorded', count: '4 reports' }]);
  expect(document.querySelector('h1')?.textContent).not.toBe('Version history');
  expect(document.body.textContent).not.toContain('Current · 1.4');
- expect(document.querySelector('[aria-label="Archive controls"] h2')?.textContent).toBe('Archive');
- expect(document.querySelector('[aria-label="Archive controls"] [aria-label="Search saved reports"]')).toBeNull();
+ expect(document.querySelector('[aria-label="Archive"] h1')?.textContent).toBe('Archive');
+ expect(document.querySelector('.ds-page-heading [aria-label="Search saved reports"]')).toBeNull();
+ expect(document.querySelector('.ds-table-toolbar [aria-label="Search saved reports"]')).not.toBeNull();
  await click(button('SeparationsWorkflow 1.124 runs'));
  expect(document.querySelector('table')?.textContent).toContain('Jordan Lee');
+ expect(document.querySelector('.ds-table-toolbar-summary')?.textContent).toBe('4 reports');
+ expect([...document.querySelectorAll('button')].some(item => item.textContent === 'Export workflow')).toBe(false);
  await click(button('Open report for Drew Ellis'));
  expect(document.querySelector('article')?.textContent).toContain('UCPath confirmation was unavailable');
  expect(document.querySelector('[role="dialog"]')).toBeNull();
@@ -58,26 +67,27 @@ it('browses folders, full-page reports and retained files without a dashboard cl
  expect([...document.querySelectorAll('article dt')].filter(item => item.textContent === 'Work location')).toHaveLength(1);
  expect(document.querySelector('article')?.textContent).toContain('Appointment ended');
  await click(button('Logs'));
- expect(document.querySelector('[aria-label="Run timeline"]')).not.toBeNull();
+ expect(document.querySelector('[aria-label="Selected run logs"]')).not.toBeNull();
  expect(document.querySelector('[data-decision-state="failed"]')?.textContent).toContain('Confirmation unavailable');
  expect(document.querySelector('[aria-label="Search logs"]')).not.toBeNull();
  expect(button('Go to latest action')).toBeDefined();
  await click(button('Retained files3'));
  expect(document.querySelector('article')?.textContent).toContain('failure-48224.txt');
- await click(button('All runs'));
+ await click(button('Separations'));
  expect(document.querySelector('table')?.textContent).toContain('Rowan Bell');
  expect(fetch).not.toHaveBeenCalled();
 });
 it('rejects a real or mismatched report identity without loading a different record', async () => {
  const fetch = await mount(MOCK_ARCHIVE_RUNS[0].id, { dashboardKey: '1.2', workflow: MOCK_ARCHIVE_WORKFLOWS[0].id });
- expect(document.querySelector('[role="alert"]')?.textContent).toContain('unavailable in the mock');
+ expect(document.querySelector('[role="alert"]')?.textContent).toContain('This saved report is unavailable');
  expect(document.querySelector('article')).toBeNull();
  await click(button('View version history'));
- expect(document.body.textContent).toContain('30 matching reports');
+ expect(versionGroups()).toEqual([{ label: 'Dashboard 1.3', count: '16 reports' }, { label: 'Dashboard 1.2', count: '10 reports' }, { label: 'Version not recorded', count: '4 reports' }]);
  expect(fetch).not.toHaveBeenCalled();
 });
 it('reviews the original bump scopes locally and invalidates review when scope changes', async () => {
  const fetch = await mount();
+ const originalVersions = versionGroups();
  await click(button('Plan a bump'));
  await click(button('Review change'));
  expect(document.body.textContent).toContain('1.13');
@@ -89,7 +99,8 @@ it('reviews the original bump scopes locally and invalidates review when scope c
  await click(button('Apply reviewed change'));
  expect(document.querySelector('[role="dialog"]')).toBeNull();
  expect(document.body.textContent).toContain('Mock bump reviewed');
- expect(document.body.textContent).toContain('Dashboard 1.4');
+ expect(versionGroups()).toEqual(originalVersions);
+ expect(document.body.textContent).toContain('No version or run was changed.');
  expect(fetch).not.toHaveBeenCalled();
 });
 it('merges old field-section links into details and copies the exact filtered saved logs', async () => {

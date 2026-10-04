@@ -26,7 +26,7 @@ export function MockArchiveReport({ run, section, onSection, onHistory, onBack, 
  return <article aria-label="Saved run report">
   <div className="mock-archive-folder-header">
    <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onHistory}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onBack}>{run.workflowLabel}</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>Run {run.number}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
-   <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actions={actions} />
+   <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actionAlignment="title" actions={actions} />
   </div>
   <div className="mock-archive-report-layout">
    <nav aria-label="Saved report sections" className="mock-archive-report-nav">{MOCK_ARCHIVE_REPORT_SECTIONS.map(({ id, label }) => <Button key={id} variant="ghost" className="mock-archive-section-button" aria-current={activeSection === id ? 'page' : undefined} onClick={() => onSection(id)}>{label}{id === 4 && <span className="ml-auto text-caption tabular-nums text-[color:var(--ds-fg-muted)]">{run.files.length}</span>}</Button>)}</nav>

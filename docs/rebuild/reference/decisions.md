@@ -262,6 +262,7 @@ The alignment amendment aligns HR GPT with category icons and the search glyph w
 Spreadsheets uses the shared Settings PageHeading, ordinary buttons with 14px icons and underline tabs while preserving its theme and blue accent. Archive omits the overview matching-report count.
 Workflow readiness uses separate requirements and compact workflow disclosures with descriptor-derived availability/gap counts, six operations in two columns and an explicit dry-run boundary. The table header, nested frame and inline source footer are retired; source and capability meanings remain available through info controls. Runtime readiness, scope, freshness, remedies and all unavailable states retain their authority.
 All dashboard search bars use the UI catalog's 12px corners through one shared token; Settings navigation, Keyboard, Archive and Run's compact workflow filter drop their local rounding overrides. Existing sizes, theme and behavior are retained.
+Archive and Spreadsheets share a compact search/filter/count toolbar and framed table with matching cell spacing. Page actions align with the title row; the Archive folder count moves into its toolbar. The mounted Archive retires Export workflow while retaining saved-run exports, date filtering and Plan a bump. Wide tables scroll within their frame; theme and authority remain unchanged. The unmounted runtime workflow-export implementation is retained.
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including

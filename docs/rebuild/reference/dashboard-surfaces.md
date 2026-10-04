@@ -7432,8 +7432,14 @@ Archive version groups show report counts instead of archived dates. Folder and 
 breadcrumb → focused heading/actions → controls/table structure as the spreadsheet viewer. They omit the
 second Archive heading, duplicate version/count metadata, redundant scope dropdowns, table count footer,
 and overview matching-report count.
-Search and completed-date filters remain available. Export and version-bump actions stay beside the focused
-title. Activity dates stay visible for every period, with the same typography and control exterior as the
+Archive and Spreadsheets share the `TableList`/`TableToolbar` data-library pattern: 280px search at the
+left, optional filters and summary at the right, a 12px gap, and one framed table with matching header
+and cell spacing. Filters wrap within the desktop content width; wide tables scroll inside their frame.
+Folder report counts live in the toolbar. Page actions align with the title row independently of its
+description. The workflow-export button is retired from the mounted Archive; saved-run export and
+version-bump actions remain beside the focused title. Search and completed-date filters retain their
+route state and date boundaries. The unmounted runtime export implementation remains retained.
+Activity dates stay visible for every period, with the same typography and control exterior as the
 period control. Presets synchronize both dates; manual endpoint edits select Custom, including incomplete
 drafts that retain the applied report range. Time saved matches Activity's table typography, spacing and
 alternating rows. Compact minute inputs sit beside per-workflow savings; the table footer shows covered
