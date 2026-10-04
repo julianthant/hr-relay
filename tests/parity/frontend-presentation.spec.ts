@@ -42,16 +42,25 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(page.getByRole("checkbox", { name: "Select all visible runs", exact: true })).toHaveCount(0);
         }
         if (label === "Archive controls") {
-          const search = bar.getByRole("textbox", { name: "Search saved reports" });
+          await expect(bar.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible();
+          await expect(bar.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(0);
+          await expect(bar).toContainText('30 matching reports');
+          await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
+          const search = page.getByRole("textbox", { name: "Search saved reports" });
           await search.focus();
-          const focus = await search.evaluate(node => ({ input: getComputedStyle(node).outlineStyle, group: getComputedStyle(node.parentElement!).outlineStyle }));
-          expect(focus).toEqual({ input: "none", group: "solid" });
-          await search.fill("Rivera");
-          await expect(bar).toContainText("2 matching reports");
-          await bar.getByRole("button", { name: "Clear search", exact: true }).click();
-          await expect(bar).toContainText("30 matching reports");
+          await expect(search).toHaveCSS('outline-style', 'none');
+          await expect(search.locator('..')).toHaveCSS('box-shadow', /0px 0px 0px 3px/u);
+          await search.fill("Jordan");
+          await expect(page.locator('tbody tr')).toHaveCount(1);
+          await page.getByRole("button", { name: "Clear search", exact: true }).click();
+          await expect(page.locator('tbody tr')).toHaveCount(4);
         }
-        if (label === "Explorer actions") await expect(page.getByRole("heading", { name: "Explorer", exact: true })).toHaveCount(0);
+        if (label === "Explorer actions") {
+          await expect(bar.getByRole("heading", { name: "Explorer", exact: true })).toBeVisible();
+          await expect(bar.getByRole('textbox', { name: 'Find workflow', exact: true })).toHaveCount(0);
+          await expect(page.getByRole('complementary', { name: 'Workflow browser' }).getByRole('textbox', { name: 'Find workflow', exact: true })).toBeVisible();
+        }
+        if (label === "Activity actions") await expect(bar.getByRole('heading', { name: 'Activity', exact: true })).toBeVisible();
       }
       expect(dimensions[1]).toEqual(dimensions[0]);
       expect(dimensions[2]).toEqual(dimensions[0]);
@@ -160,7 +169,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(chart.getByRole("tooltip")).toContainText("0 runs");
       await surface.getByRole("combobox", { name: "Report period" }).selectOption("this-week");
       await surface.getByRole("heading", { name: "Workflow outcomes", exact: true }).click();
-      await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toHaveCount(0);
+      await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toHaveCount(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       expect(await metrics.evaluate(node => getComputedStyle(node).gridTemplateColumns.split(" ").length)).toBe(4);
       expect((await metrics.boundingBox())!.height).toBeLessThan(130);
@@ -190,7 +199,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("alert")).toContainText("Activity unavailable");
       await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("normal");
       await surface.getByRole("button", { name: "Export report", exact: true }).click();
-      await page.getByRole("button", { name: "CSV", exact: true }).click();
+      await page.getByRole("menuitem", { name: "CSV", exact: true }).click();
       await expect(surface.getByRole("status")).toHaveText("Export is not connected yet.");
       await page.keyboard.press("Escape");
       expect(requests).toEqual([]);

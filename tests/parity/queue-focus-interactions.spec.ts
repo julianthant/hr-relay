@@ -48,7 +48,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await info.attach(evidence.replace('.a11y.yml', '.png'), { body: await page.screenshot(), contentType: 'image/png' });
 
       await status.click();
-      await page.getByRole('group', { name: 'Filter the queue by status', exact: true }).getByRole('button', { name: /^Failed / }).click();
+      const statuses = page.getByRole('menu', { name: 'Filter by status', exact: true });
+      await expect(statuses.locator('[data-slot="dropdown-menu-radio-item"]')).toHaveCount(11);
+      await expect(statuses.getByRole('menuitemradio', { name: /^All / })).toHaveAttribute('aria-checked', 'true');
+      await statuses.getByRole('menuitemradio', { name: /^Failed / }).click();
+      await expect(status).toBeFocused();
       const source = page.locator(`[data-demo-row-id="${failed.runId}"]`);
       await expect(source).toBeVisible();
       await source.dblclick();
@@ -62,7 +66,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole('dialog', { name: /run/i })).toHaveCount(0);
       await expect(source).toHaveCount(0);
       await status.click();
-      await page.getByRole('group', { name: 'Filter the queue by status', exact: true }).getByRole('button', { name: /^All / }).click();
+      await statuses.getByRole('menuitemradio', { name: /^All / }).click();
       const retried = rows.filter({ hasText: 'Mock retry queued with original settings' });
       await expect(retried).toHaveCount(1);
       await expect(retried).toContainText(`#${failed.attempt + 1}`);
@@ -114,6 +118,24 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(parsed.getByRole('listitem')).toHaveCount(2);
       await run.getByRole('button', { name: 'Next', exact: true }).click();
       await expect(run.getByRole('heading', { name: 'Run options', exact: true })).toBeVisible();
+      const workbook = run.getByRole('button', { name: 'None Workbook · Optional', exact: true });
+      await workbook.focus();
+      await workbook.press('ArrowDown');
+      const choices = page.getByRole('menu', { name: 'Workbook · Optional', exact: true });
+      await expect(choices.getByRole('menuitemradio', { name: 'None', exact: true })).toHaveAttribute('aria-checked', 'true');
+      const lastWorkbook = choices.getByRole('menuitemradio').last();
+      const workbookName = (await lastWorkbook.getAttribute('aria-label'))!;
+      await choices.press('End');
+      await expect(lastWorkbook).toBeFocused();
+      await lastWorkbook.press('Enter');
+      const chosenWorkbook = run.getByRole('button', { name: `${workbookName} Workbook · Optional`, exact: true });
+      await expect(chosenWorkbook).toBeFocused();
+      await expect(choices).toHaveCount(0);
+      await chosenWorkbook.press('ArrowDown');
+      await expect(choices.getByRole('menuitemradio', { name: workbookName, exact: true })).toHaveAttribute('aria-checked', 'true');
+      await page.keyboard.press('Escape');
+      await expect(chosenWorkbook).toBeFocused();
+      await expect(run).toBeVisible();
       await page.keyboard.press('Escape');
       await expect(start).toBeFocused();
       expect(writes).toEqual([]);

@@ -1,6 +1,5 @@
 import "./launch-presentation.css";
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
-import { Input as HeroInput } from "@heroui/react";
 import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
 import { candidateText, defaultRerunSteps, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
@@ -8,7 +7,7 @@ import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type Laun
 import { createRunLaunchService, type RerunLaunchSource } from "../app/run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
-import { ArrowLeft, ArrowRight, Check, Keyboard, Play, Search } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Keyboard, Play } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   BareButton,
@@ -26,6 +25,7 @@ import {
   KeyValueList,
   MetaLine,
   SectionLabel,
+  SearchInput,
   ChoicePicker,
   SegmentedChoice,
   Textarea,
@@ -435,23 +435,14 @@ function WorkflowPicker({
   return (
     <div className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke">
       <div className="shrink-0 px-3 pt-[18px] pb-3">
-        {/* A plain labelled input rather than SearchInput: this filters a short
-            list, so a clear affordance would cost a control for a state one
-            keystroke undoes. */}
-        <label className="launch-workflow-search flex min-w-0 items-center gap-2">
-          <Search aria-hidden className={cn(dsIcon.sm, "shrink-0", dsFg.muted)} />
-          <span className="sr-only">Filter workflows</span>
-          <HeroInput
+          <SearchInput
+            type="text"
+            aria-label="Filter workflows"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
+            onClear={() => setQuery("")}
             placeholder="Find workflow…"
-            className={cn(
-              "min-w-0 flex-1 border-none bg-transparent p-0 outline-none",
-              dsText.ui,
-              "text-[color:var(--ds-fg)] placeholder:text-[color:var(--ds-fg-faint)]",
-            )}
           />
-        </label>
       </div>
 
       <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto px-3 py-1">

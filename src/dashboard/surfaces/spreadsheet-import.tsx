@@ -1,7 +1,7 @@
 import "./launch-presentation.css";
 import { useEffect, useRef, useState } from "react";
-import { ArrowRight, FileSpreadsheet, Search } from "lucide-react";
-import { Banner, Button, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, Input, dsIcon, useToasts } from "../ds/ui.js";
+import { ArrowRight, FileSpreadsheet } from "lucide-react";
+import { Banner, Button, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, Input, SearchInput, dsIcon, useToasts } from "../ds/ui.js";
 import { SpreadsheetTable } from "./spreadsheet-table.js";
 import { MOCK_ROSTER_ROWS } from "./spreadsheet-mock-data.js";
 import { initialSpreadsheetSheets, NOT_MAPPED, registerMockSpreadsheet, spreadsheetMappingErrors, useSpreadsheetMocks, WORKBOOK_ONLY, type RegisteredSpreadsheet, type SpreadsheetSheet } from "./spreadsheet-mock-model.js";
@@ -69,7 +69,7 @@ export function SpreadsheetImportDialog({ open, onOpenChange, existing, onRegist
         </div>
         {errors.length > 0 && <Banner tone="danger" title="Check column mappings">{errors.map(error => <p key={error}>{error}</p>)}</Banner>}
         {view === "mapping" ? <>
-          <div className="flex shrink-0 items-center justify-between gap-3"><label className="flex h-9 w-[270px] items-center gap-2 rounded-md border border-ui-stroke-control bg-ui-field px-3"><Search aria-hidden className="size-[15px] text-ui-muted" /><span className="sr-only">Find a column</span><Input value={query} onChange={event => setQuery(event.target.value)} placeholder="Find a column" className="h-auto border-0 bg-transparent p-0" /></label><label className="flex shrink-0 items-center gap-2 text-caption text-ui-muted">Header row<Input aria-label="Header row" type="number" min={1} className="h-9 w-[42px]" value={Number.isNaN(sheet.headerRow) ? "" : sheet.headerRow} onChange={event => updateSheet({ headerRow: event.target.valueAsNumber })} /></label></div>
+          <div className="flex shrink-0 items-center justify-between gap-3"><SearchInput type="text" aria-label="Find a column" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} placeholder="Find a column" className="h-9 w-[270px]" /><label className="flex shrink-0 items-center gap-2 text-caption text-ui-muted">Header row<Input aria-label="Header row" type="number" min={1} className="h-9 w-[42px]" value={Number.isNaN(sheet.headerRow) ? "" : sheet.headerRow} onChange={event => updateSheet({ headerRow: event.target.valueAsNumber })} /></label></div>
           <div className="min-h-0 flex-1 overflow-y-auto rounded-[7px] border border-ui-stroke">
             <div className="spreadsheet-mapping-head sticky top-0 z-10 border-b border-ui-stroke bg-ui-table text-caption text-ui-muted"><span>Spreadsheet column</span><span /><span>{type.name} field</span></div>
             {sheet.columns.map((column, index) => columnMatches(column, index) ? <div key={`${column}:${index}`} className="spreadsheet-mapping-row border-b border-ui-stroke last:border-0">

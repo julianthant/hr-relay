@@ -42,7 +42,8 @@ it('browses folders, full-page reports and retained files without a dashboard cl
  expect(document.body.textContent).toContain('30 matching reports');
  expect(document.querySelector('h1')?.textContent).not.toBe('Version history');
  expect(document.body.textContent).not.toContain('Current · 1.4');
- expect(document.querySelector('[aria-label="Archive controls"] [aria-label="Search saved reports"]')).not.toBeNull();
+ expect(document.querySelector('[aria-label="Archive controls"] h2')?.textContent).toBe('Archive');
+ expect(document.querySelector('[aria-label="Archive controls"] [aria-label="Search saved reports"]')).toBeNull();
  await click(button('SeparationsWorkflow 1.124 runs'));
  expect(document.querySelector('table')?.textContent).toContain('Jordan Lee');
  await click(button('Open report for Drew Ellis'));

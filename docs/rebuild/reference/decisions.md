@@ -50,8 +50,13 @@ attempt and never opens Rerun or sends a runtime command. Local counts reflect t
 served rail/day counts and existing row-footer commands/recovery feedback retain their contracts.
 Run input uses the approved ordered Parsed input frame without an Examples strip; descriptor example
 validation, launch parsing and authority remain unchanged.
-Archive search has one focus ring; shell navigation supplies the Archive, Explorer and Activity names
-without repeated toolbar titles. Archive's mounted original-layout mock is owned by D348 below.
+The 2026-10-03 operator revision restores Archive, Explorer and Activity toolbar titles, removes
+Archive's overview search and moves Explorer's workflow search into its sidebar. Shared search fields
+use shadcn InputGroup with one focus ring. The larger centered Navbar Command opens results beneath
+the same input, retaining its explicit disconnected navigation notice. Status/export/choice menus use
+shadcn Radix DropdownMenu; native Select controls retain their shadcn composition. The Navbar date
+control removes previous/next-day arrows while retaining editable segments, calendar and count.
+Archive's mounted original-layout mock is owned by D348 below.
 Backend classifiers and failure/resolve wiring remain deferred.
 Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
 

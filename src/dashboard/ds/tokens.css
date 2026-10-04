@@ -1641,11 +1641,47 @@ body[data-demo-theme="light"] {
 
 .ds-search-input-group {
   min-width: 0;
+  height: var(--ds-h-md);
+  border-radius: var(--ds-radius-md);
 }
 
 .ds-body-scope .ds-search-input-group {
   width: 100%;
-  border-radius: var(--ds-radius-pill);
+}
+
+.ds-search-input-group [data-slot="input-group-control"] {
+  font-size: var(--ds-text-ui);
+}
+
+.navbar-shell {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+}
+
+.navbar-search {
+  width: 100%;
+  max-width: 460px;
+  justify-self: center;
+}
+
+.navbar-search [data-slot="input-group"] {
+  height: 36px;
+}
+
+.navbar-search [data-slot="input-group-control"] {
+  font-size: var(--text-control);
+}
+
+.navbar-search-results {
+  width: var(--radix-popover-trigger-width);
+  max-width: calc(100vw - 24px);
+  padding: 4px;
+}
+
+@media (min-width: 1400px) {
+  .navbar-shell {
+    grid-template-columns: minmax(0, 1fr) 460px minmax(0, 1fr);
+  }
 }
 
 .ds-body-scope .ds-date-picker--inline {

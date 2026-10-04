@@ -1,7 +1,8 @@
-import { ArrowLeft, ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
+import { Archive, ArrowLeft, ChevronRight, Download, Folder, Layers3 } from 'lucide-react';
 import { useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
-import { Badge, Button, DateRangeInput, Dialog, DialogContent, PageHeading, Popover, PopoverContent, PopoverTrigger, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { Badge, Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TBody, TD, TH, THead, TR, dsIcon, useToasts } from '../ds/ui.js';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
 import { OperationsToolbar } from './operations-toolbar.js';
 import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
@@ -45,19 +46,18 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   onBrowse(next.data, mode);
  };
  return <section aria-label="Archive mock" className="mock-archive ds-body-overlay flex min-h-0 flex-1 flex-col bg-[var(--ds-surface-page)]">
-  <OperationsToolbar label="Archive controls">
+  <OperationsToolbar label="Archive controls" title="Archive" icon={<Archive aria-hidden className="size-4 text-ui-muted" />}>
    {folder === null && report === undefined && !invalid && !unavailable ? <>
-    <ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />
     <span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>
     {filtered && <Button size="toolbar" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}
    </> : <Button size="toolbar" variant="ghost" icon={<ArrowLeft className={dsIcon.sm} />} onClick={recover}>Version history</Button>}
    <div className="mock-archive-toolbar-actions"><span className="mock-archive-toolbar-version">Dashboard {MOCK_ARCHIVE_CURRENT}</span><Badge tone="neutral">Mock · fictional data</Badge>
-   {(folder !== null || report !== undefined) && !unavailable && !invalid && <Popover open={exportOpen} onOpenChange={setExportOpen}>
-    <PopoverTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></PopoverTrigger>
-    <PopoverContent title="Export fictional reports" align="end" className="ds-body-scope ds-body-overlay !w-[280px] !bg-[var(--ds-surface-overlay)]">
-     <div className="space-y-[12px] p-[16px]"><p className="text-body text-[color:var(--ds-fg-muted)]">{exportRows.length} matching {exportRows.length === 1 ? 'report' : 'reports'}. JSON includes saved fields, settings and files.</p><div className="flex gap-[8px]"><Button variant="secondary" className="flex-1" onClick={() => download('json')}>JSON</Button><Button variant="secondary" className="flex-1" onClick={() => download('csv')}>CSV</Button></div></div>
-    </PopoverContent>
-   </Popover>}
+   {(folder !== null || report !== undefined) && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
+    <DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></DropdownMenuTrigger>
+    <DropdownMenuContent aria-label="Export fictional reports" align="end" className="w-70">
+     <DropdownMenuGroup><DropdownMenuItem onSelect={() => download('json')}>JSON</DropdownMenuItem><DropdownMenuItem onSelect={() => download('csv')}>CSV</DropdownMenuItem></DropdownMenuGroup><p className="m-0 px-2 py-2 text-caption text-ui-muted">{exportRows.length} matching {exportRows.length === 1 ? 'report' : 'reports'}. JSON includes saved fields, settings and files.</p>
+    </DropdownMenuContent>
+   </DropdownMenu>}
    <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
    </div>
   </OperationsToolbar>

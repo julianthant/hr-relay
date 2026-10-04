@@ -35,9 +35,19 @@ subject, status, attempt, current message and pipeline, without inferred actions
 A queue selection resets the sample selection and local decisions. The selector retains all approved
 examples. Queue, Archive, Activity and Explorer share the compact `OperationsToolbarRow` geometry
 (50px row with 12px horizontal padding); the takeover pages use `OperationsToolbar`. Archive search
-has one focus ring on its shared input group. Shell navigation owns the Archive, Explorer and Activity
-names, so their toolbars do not repeat those titles. Explorer has no back control
+uses the shared shadcn InputGroup with one focus ring. The 2026-10-03 operator revision restores
+Archive, Explorer and Activity titles in their toolbars. Archive's version overview removes its local
+search field; report-folder search remains. Explorer's workflow search sits in its sidebar. Explorer has no back control
 or `onBack` prop; shell navigation exits it.
+
+The Navbar search is an editable shadcn Command/InputGroup, 460px wide and centered at wide desktop
+sizes, with space-aware sizing at the 1024px desktop floor. Clicking or typing opens keyboard-selectable
+results beneath the same field, without another input or dialog. Search result navigation retains its
+explicit disconnected notice. Shared search fields use this shadcn InputGroup composition. Status,
+export and shared choice dropdowns use shadcn Radix DropdownMenu with selected radio states,
+keyboard navigation and focus restoration; native Select controls retain their shadcn composition.
+These library overlays register only while mounted. The Navbar date field retains its editable
+segments, suffix calendar icon and run count; its previous/next-day arrows are removed.
 
 The approved Focus toolbar is mounted in the Dashboard: an icon-only Workflow Panel launcher and
 blue Start a run control stay on the left; All statuses and sort stay on the right. Frequent

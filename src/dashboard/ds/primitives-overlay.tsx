@@ -94,6 +94,12 @@ function useRegisterModal(kind: "modal" | "layer" = "modal"): void {
   }, [kind]);
 }
 
+/** Mounted inside library-owned content so closed menus do not suppress shell keys. */
+export function OverlayLayerPresence() {
+  useRegisterModal("layer");
+  return null;
+}
+
 /**
  * Register a modal surface that is NOT one of this file's Dialog/Drawer.
  *

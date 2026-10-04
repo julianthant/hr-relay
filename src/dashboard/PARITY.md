@@ -64,8 +64,12 @@ Subject fields. The separate Fields navigation entry is removed; its old section
 Steps becomes Logs using the shared LogPanel, timeline, field/action rows, saved failure blocks,
 capture workspace and search/copy/latest controls. Historical logs expose no continuation actions.
 The compact operations toolbar replaces the Current/version-history heading rows and shares its
-geometry with Dashboard, Explorer and Activity. Search has one focus ring. Archive, Explorer and
-Activity do not repeat their shell navigation titles in their toolbars.
+geometry with Dashboard, Explorer and Activity. The 2026-10-03 operator revision restores Archive,
+Explorer and Activity toolbar titles. Archive's overview search is removed; folder search remains.
+Explorer's workflow search sits in its sidebar. Shared searches use shadcn InputGroup with one focus
+ring. The larger centered Navbar Command opens results beneath its existing input, without a search
+dialog or second field. Status/export/choice menus use shadcn Radix DropdownMenu. The Navbar date
+control retains editable segments, calendar and count without previous/next-day arrows.
 The original bump modal retains selected/all
 workflow scopes and inline review, with no runtime write. Archive transport and commands are
 unmounted. Other app surfaces keep their existing wiring. Shared single-date and range controls pass

@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react';
-import { Archive, ArrowUpDown, Check, ChevronDown, ListFilter, RotateCcw, Trash2, X } from 'lucide-react';
-import { Button, Checkbox, IconButton, Popover, PopoverContent, PopoverTrigger, Select, Tooltip, dsFocus, dsIcon } from '../ds/ui.js';
+import { Archive, ArrowUpDown, ChevronDown, ListFilter, RotateCcw, Trash2, X } from 'lucide-react';
+import { Button, Checkbox, IconButton, Select, Tooltip, dsFocus, dsIcon } from '../ds/ui.js';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
 import { OperationsToolbar } from './operations-toolbar.js';
 import { QUEUE_SORTS, type QueueSortKey } from './queue-model.js';
 import { needsYouCount, statusCount, totalCount, type StatusBucket, type StatusCountWire } from './shell-model.js';
@@ -19,16 +20,16 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
       {leading}<span aria-hidden className="h-5 border-l border-ui-stroke" />{runStart}
       <span className="flex-1" />
       <span className="text-caption text-ui-muted">Mock actions</span>
-      <Popover open={open} onOpenChange={setOpen}>
-        <PopoverTrigger asChild><Button variant="secondary" size="sm" aria-label="All statuses" icon={<ListFilter className={dsIcon.sm} />}>{['all', 'needsYou', 'running'].includes(active) ? 'All statuses' : label(active)}<ChevronDown className="size-3" /></Button></PopoverTrigger>
-        <PopoverContent title="Filter by status" hideTitle hideClose align="end" className="w-60 [&>div]:p-1">
-          <div role="group" aria-label="Filter the queue by status" className="flex flex-col gap-0.5">
-            {statuses.map(status => <Button key={status} variant="ghost" size="sm" aria-pressed={active === status} onClick={() => { onFilter(status); setOpen(false); }} className="w-full justify-start">
-              <span className="flex-1 text-left">{label(status)}</span><span className="tabular-nums text-ui-muted">{count(status)}</span><Check className={`size-3 ${active === status ? '' : 'invisible'}`} />
-            </Button>)}
-          </div>
-        </PopoverContent>
-      </Popover>
+      <DropdownMenu open={open} onOpenChange={setOpen}>
+        <DropdownMenuTrigger asChild><Button variant="secondary" size="sm" aria-label="All statuses" icon={<ListFilter data-icon="inline-start" className={dsIcon.sm} />}>{['all', 'needsYou', 'running'].includes(active) ? 'All statuses' : label(active)}<ChevronDown data-icon="inline-end" className="size-3" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent aria-label="Filter by status" align="end" className="w-60">
+          <DropdownMenuGroup><DropdownMenuRadioGroup value={active} onValueChange={next => { onFilter(next as StatusBucket); setOpen(false); }}>
+            {statuses.map(status => <DropdownMenuRadioItem key={status} value={status}>
+              <span className="flex-1">{label(status)}</span><span className="tabular-nums text-ui-muted">{count(status)}</span>
+            </DropdownMenuRadioItem>)}
+          </DropdownMenuRadioGroup></DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
       <Select variant="toolbar" aria-label="Sort the queue" value={sort} onChange={event => onSort(event.target.value as QueueSortKey)} icon={<ArrowUpDown className={dsIcon.sm} />}>
         {QUEUE_SORTS.map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
       </Select>

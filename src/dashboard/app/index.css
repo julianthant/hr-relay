@@ -334,7 +334,6 @@
 }
 .routes-page-search {
   width: 100%;
-  border-radius: var(--ds-radius-pill);
 }
 .routes-page-list {
   display: block;

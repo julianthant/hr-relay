@@ -27,9 +27,6 @@
 .launch-design .launch-workflow-rail {
   @apply w-[190px] bg-ui-table;
 }
-.launch-design .launch-workflow-search {
-  @apply h-8 rounded-md border border-ui-stroke bg-ui-panel px-2;
-}
 .launch-design .launch-stagebar {
   @apply flex shrink-0 items-center gap-1 border-b border-ui-stroke px-[18px] py-3;
 }

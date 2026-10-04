@@ -105,7 +105,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(fromDay).toHaveText('30');
       await expect(page.locator('.ds-date-picker[data-invalid="true"]')).toHaveCount(2);
       const invalid = page.locator('.ds-date-picker[data-invalid="true"] .date-input-group').first();
-      expect((await controlStyle(invalid)).border).not.toBe(buttonStyle.border);
+      await expect.poll(async () => (await controlStyle(invalid)).border).not.toBe(buttonStyle.border);
       const validFilters = ArchiveBrowseStateSchema.parse(JSON.parse(new URL(page.url()).searchParams.get('archiveBrowse')!)).filters;
       expect(validFilters.from! <= validFilters.to!).toBe(true);
       await from.click();

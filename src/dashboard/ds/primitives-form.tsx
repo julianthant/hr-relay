@@ -2,7 +2,7 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-form.tsx
  */
-import { Input as HeroInput, InputGroup as HeroInputGroup, Radio as HeroRadio, RadioGroup as HeroRadioGroup, Switch as HeroSwitch, TextArea as HeroTextArea } from "@heroui/react";
+import { Input as HeroInput, Radio as HeroRadio, RadioGroup as HeroRadioGroup, Switch as HeroSwitch, TextArea as HeroTextArea } from "@heroui/react";
 import {
   createContext,
   forwardRef,
@@ -20,7 +20,7 @@ import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check, ChevronDown, Eye, EyeOff, Lock, Minus, Pencil, Search, Trash2, TriangleAlert, Upload, X } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import { NativeSelect } from "./shadcn-native-select.js";
-import { ShadcnButton } from "./shadcn-button.js";
+import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./input-group.js";
 import { Button, IconButton } from "./primitives-core.js";
 import { Tooltip, TooltipProvider } from "./primitives-overlay.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
@@ -581,44 +581,30 @@ export const SearchInput = forwardRef<
 >(function SearchInput({ className, onClear, shortcut, value, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <HeroInputGroup
+    <InputGroup
       role="presentation"
-      className={cn(
-        "ds-search-input-group",
-        "flex min-w-0 items-center gap-[var(--ds-space-snug)] border bg-[var(--ds-surface-2)]",
-        "h-[var(--ds-h-md)] min-h-0 border-[color:var(--ds-control-border)] px-[var(--ds-space-base)]",
-        dsRadius.md,
-        dsFocusWithin,
-        className,
-      )}
+      className={cn("ds-search-input-group", className)}
     >
-      <HeroInputGroup.Prefix className="h-full p-0"><Search aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} /></HeroInputGroup.Prefix>
-      <HeroInputGroup.Input
+      <InputGroupInput
         ref={ref}
         {...field}
         type="search"
         value={value}
         {...props}
-        className={cn(
-          "min-w-0 flex-1 bg-transparent p-0 outline-none",
-          dsText.ui,
-          "text-[color:var(--ds-fg)] placeholder:text-[color:var(--ds-fg-faint)]",
-          "[&::-webkit-search-cancel-button]:hidden",
-        )}
       />
-      <HeroInputGroup.Suffix className="h-full p-0">{value && onClear ? (
-        <ShadcnButton
-          type="button"
+      <InputGroupAddon><Search aria-hidden /></InputGroupAddon>
+      <InputGroupAddon align="inline-end">{value && onClear ? (
+        <InputGroupButton
+          size="icon-xs"
           aria-label="Clear search"
           onClick={onClear}
-          className={cn("shrink-0 cursor-pointer text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]", dsFocus)}
         >
-          <X aria-hidden className={dsIcon.sm} />
-        </ShadcnButton>
+          <X aria-hidden />
+        </InputGroupButton>
       ) : (
         shortcut
-      )}</HeroInputGroup.Suffix>
-    </HeroInputGroup>
+      )}</InputGroupAddon>
+    </InputGroup>
   );
 });
 
