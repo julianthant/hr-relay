@@ -19,14 +19,14 @@ export interface DemoShortcut {
 }
 
 export const DEMO_SHORTCUTS: DemoShortcut[] = [
-  { keys: ["r"], what: "start a run — any workflow, from any view", where: "Anywhere" },
+  { keys: ["r"], what: "start a run — any served workflow, from Dashboard", where: "The queue" },
   // `/` was bound in `surfaces/day-search.tsx` and missing from this array,
   // under a doc comment there claiming the legend already carried it. Nothing
   // could fail while the legend was reachable from nowhere; D274 item 5 gave it
   // a destination, so the omission became a bound key an operator reading Help
   // is told does not exist. The registry's own rule is the fix: a binding that
   // is not here is unreachable from Help.
-  { keys: ["/"], what: "search this day — name, subject, trace id, run id or workflow", where: "Anywhere" },
+  { keys: ["/"], what: "search runs — name, subject, trace id, run id or workflow", where: "Anywhere" },
   { keys: ["j", "k"], what: "move down / up the queue", where: "The queue" },
   { keys: ["n"], what: "jump to the next row waiting on you", where: "The queue" },
   // The keyboard route to the row context menu. Right-click and the platform's
@@ -34,9 +34,6 @@ export const DEMO_SHORTCUTS: DemoShortcut[] = [
   // the operator's keyboard having that key, and it works from the SELECTION
   // rather than from focus.
   { keys: ["m"], what: "every command on the selected row", where: "The queue" },
-  { keys: ["1", "4"], join: "–", what: "switch the detail panel's tab", where: "The detail panel" },
-  { keys: ["w"], what: "cycle the Workflow Panel — floating, icon, sidebar", where: "Anywhere" },
-  { keys: ["Esc"], what: "minimise the Workflow Panel", where: "Anywhere" },
 ];
 
 /** the registry, in scope order, with empty scopes dropped */

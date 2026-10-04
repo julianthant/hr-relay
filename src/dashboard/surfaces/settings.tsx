@@ -106,13 +106,13 @@ function SectionButton({
         onClick();
       }}
       className={cn(
-        "flex min-h-[var(--ds-h-settings-nav-row)] min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-md)]",
-        "px-[var(--ds-space-cozy)] py-[var(--ds-space-snug)] text-[length:var(--ds-text-body-row)] text-left",
+        "flex h-[var(--ds-h-settings-nav-row)] min-w-0 items-center gap-[var(--ds-space-snug)] rounded-[var(--ds-radius-settings-nav)]",
+        "px-[var(--ds-space-cozy)] text-[length:var(--ds-text-body-row)] text-left text-[color:var(--ds-fg)]",
         dsFocus,
         dsMotion.base,
         active
-          ? "bg-[var(--ds-surface-selected)] font-medium text-[color:var(--ds-fg)]"
-          : "text-[color:var(--ds-fg-muted)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
+          ? "bg-[var(--ds-surface-selected)] font-medium"
+          : "font-normal hover:bg-[var(--ds-surface-3)]",
       )}
     >
       <Icon aria-hidden className={cn(dsIcon.md, "shrink-0")} />
@@ -283,14 +283,14 @@ export function SettingsPage({
       <nav
         aria-label="Settings sections"
         className={cn(
-          "flex w-[288px] shrink-0 flex-col gap-[var(--ds-space-section)] overflow-y-auto",
+          "flex w-[288px] shrink-0 flex-col gap-[var(--ds-space-loose)] overflow-y-auto",
           "border-r border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-loose)] py-[var(--ds-space-section)]",
         )}
       >
         <h2 className="m-0 px-[var(--ds-space-cozy)] text-[length:var(--ds-text-display)] leading-[var(--ds-lh-settings-sidebar-title)] font-semibold text-[color:var(--ds-fg)]">Settings</h2>
         {groups.map((group) => (
-          <div key={group.id} className="flex min-w-0 flex-col gap-[var(--ds-space-snug)]">
-            <span className="px-[var(--ds-space-cozy)] pb-[var(--ds-space-tight)] text-[length:var(--ds-text-body-caption)] font-normal normal-case tracking-normal text-[color:var(--ds-fg-muted)]">
+          <div key={group.id} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
+            <span className="px-[var(--ds-space-cozy)] pb-[var(--ds-space-snug)] text-[length:var(--ds-text-title)] font-normal normal-case tracking-normal text-[color:var(--ds-fg-muted)]">
               {group.heading}
             </span>
             {group.entries.map((entry) => (

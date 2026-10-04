@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { expect,test,type Download,type Page } from "@playwright/test";
 import { readFile } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -52,7 +53,7 @@ for(const viewport of PARITY_VIEWPORTS)for(const theme of PARITY_THEMES) {
       const refreshed=page.waitForResponse(value=>value.url().includes("/api/v1/search?"));await page.getByRole("button",{name:"Refresh search"}).click();await refreshed;
       await expect(page.locator("[data-corpus-search-result]")).toHaveCount(20);
       await page.getByText("Filters · 0 selected",{exact:true}).click();
-      await page.getByLabel("Run shape",{exact:true}).selectOption("preview");await expect(page.locator("[data-corpus-search-result]")).toHaveCount(12);
+      await chooseSelect(page.getByLabel("Run shape",{exact:true}), "preview");await expect(page.locator("[data-corpus-search-result]")).toHaveCount(12);
       await page.getByRole("button",{name:"Clear filters",exact:true}).click();await expect(page.locator("[data-corpus-search-result]")).toHaveCount(20);
       await page.keyboard.press("Escape");await expect(search).toHaveValue("");await page.keyboard.press("Escape");
       await expect(page.getByRole("dialog")).toHaveCount(0);await expect(page.getByRole("button",{name:"Search runs across dates"})).toBeFocused();

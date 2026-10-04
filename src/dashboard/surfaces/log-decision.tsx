@@ -32,7 +32,7 @@ export function LogDecisionBlock({ decision, onAction }: { decision: LogDecision
         {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}
         {decision.field && <div className="log-failed-field"><span>{decision.field.label}</span><strong>{decision.field.value}</strong><span>{decision.field.outcome}</span></div>}
         {decision.caution && <p className="log-caution">{decision.caution}</p>}
-        {decision.comparison && <table className="log-comparison" aria-label="Expected and observed values"><thead><tr><th scope="col">Field</th><th scope="col">Expected</th><th scope="col">Observed</th></tr></thead><tbody>{decision.comparison.map(row => <tr key={row.label} className={row.expected !== row.observed ? "different" : undefined}><th scope="row">{row.label}</th><td>{row.expected}</td><td>{row.observed}</td></tr>)}</tbody></table>}
+        {decision.comparison && <div className="log-comparison-frame"><table className="log-comparison" aria-label="Expected and observed values"><thead><tr><th scope="col">Field</th><th scope="col">Expected</th><th scope="col">Observed</th></tr></thead><tbody>{decision.comparison.map(row => <tr key={row.label} className={row.expected !== row.observed ? "different" : undefined}><th scope="row">{row.label}</th><td>{row.expected}</td><td>{row.observed}</td></tr>)}</tbody></table></div>}
         {decision.screenshots && <LogScreenshots screenshots={decision.screenshots} />}
         {decision.unavailableCapture && <div className="log-capture-unavailable"><ImageOff aria-hidden className="size-4" />{decision.unavailableCapture}</div>}
       </>}

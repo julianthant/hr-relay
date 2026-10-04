@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Locator } from '@playwright/test';
 import { ensureParityBundle, PARITY_DIST_DIR } from './helpers/bundle.js';
 import { startFixtureServer } from './helpers/fixture-bff.js';
@@ -19,7 +20,7 @@ async function controlStyle(control: Locator) {
 }
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`global single and range calendars across Navbar, Activity and Archive @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`global single and range calendars across Logs, Activity and Archive @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: 'working-tree' } });
     try {
@@ -29,30 +30,30 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const writes: string[] = [], errors: string[] = [];
       page.on('pageerror', error => errors.push(error.message));
       page.on('request', request => { if (request.method() !== 'GET') writes.push(request.url()); });
-      await page.goto(`${server.baseUrl}/?activity=`);
-      const date = page.getByRole('banner').getByRole('button', { name: /^Choose date/u });
+      await page.goto(`${server.baseUrl}/`);
+      const date = page.locator('.dashboard-log-date').getByRole('button', { name: /^Choose date/u });
+      const dateFieldStyle = await controlStyle(page.locator('.dashboard-log-date .date-input-group'));
       await date.click();
       const single = page.getByRole('dialog', { name: 'Choose date', exact: true });
       await expect(single).toHaveCSS('opacity', '1');
       await expect(single.getByRole('grid')).toHaveCount(1);
-      await expect(single.getByRole('button', { name: /Sunday, September 27, 2026/u })).toBeDisabled();
+      await expect(single.getByRole('button', { name: /Tuesday, August 4, 2026/u })).toBeDisabled();
       const singleStyle = await calendarStyle(single);
       const singleWidth = (await single.boundingBox())!.width;
       await single.screenshot({ path: info.outputPath(`single-${theme.attribute}-${width}.png`) });
       await page.keyboard.press('Escape');
       await expect(date).toBeFocused();
 
-      await page.getByRole('combobox', { name: 'Report period' }).selectOption('custom');
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("link", { name: "Activity", exact: true }).click();
+      await chooseSelect(page.getByRole('combobox', { name: 'Report period' }), 'custom');
       const start = page.getByRole('button', { name: /^Choose start date range/u });
       const end = page.getByRole('button', { name: /^Choose end date range/u });
       const controls = page.getByRole('group', { name: 'Custom report range', exact: true }).locator('.date-input-group');
       const buttonStyle = await controlStyle(page.getByRole('button', { name: 'Export report', exact: true }));
       expect(await controlStyle(controls.first())).toEqual(buttonStyle);
       expect(await controlStyle(controls.last())).toEqual(buttonStyle);
-      const header = page.getByRole('banner').locator('.ds-date-navigation');
-      expect(await controlStyle(header)).toEqual({ ...buttonStyle, height: '32px', radius: '6px' });
-      await expect(header.locator('.date-input-group')).toHaveCSS('border-width', '0px');
-      await expect(header.locator('.date-input-group')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      expect(dateFieldStyle).toEqual({ ...buttonStyle, height: '32px', radius: '6px' });
       const startDay = controls.first().getByRole('spinbutton', { name: /^day, Start/u });
       await startDay.focus();
       await expect(controls.first()).toHaveCSS('box-shadow', /0px 0px 0px 2px/u);

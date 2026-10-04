@@ -34,7 +34,7 @@ function button(name: string): HTMLButtonElement {
   return found;
 }
 function workflowButton(name: string): HTMLButtonElement {
-  const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflow Panel"] button')]
+  const found = [...document.querySelectorAll<HTMLButtonElement>('nav[aria-label="Workflows"] button')]
     .find(node => node.textContent?.trim().startsWith(name));
   assert.ok(found, `workflow ${name}`);
   return found;
@@ -65,7 +65,7 @@ describe("mounted shell navigation", () => {
     await click(workflowButton("Separations"));
     assert.equal(workflowButton("Separations").getAttribute("aria-current"), "page");
     assert.ok(workflowButton("Separations").querySelector('[aria-label="0 active of 0 in Separations"]'));
-    assert.doesNotMatch(document.querySelector('nav[aria-label="Workflow Panel"]')?.textContent ?? "", /active\s*│\s*all/iu);
+    assert.doesNotMatch(document.querySelector('nav[aria-label="Workflows"]')?.textContent ?? "", /active\s*│\s*all/iu);
     assert.equal(localStorage.getItem("hr-dashboard.selected-workflow"), "separations");
     await click(button("Settings"));
     await historyMove("back");
@@ -128,14 +128,20 @@ describe("mounted shell navigation", () => {
     assert.equal(new URLSearchParams(location.search).get("run"), FIXTURE_IDS.doneRun);
     assert.equal(selectedTab(), before);
   });
-  it("repeated doors do not add a native history entry and competing keys resolve one takeover", async () => {
+  it("Settings gear toggles the surface and competing keys resolve one takeover", async () => {
     await mount("?settings=keyboard&archive=&explore=missing");
     assert.ok(document.querySelector('[aria-label="Settings"]'));
+    const cursor = Number(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"));
     await click(button("Settings"));
-    const count = window.history.length;
+    assert.equal(new URLSearchParams(location.search).has("settings"), false);
     await click(button("Settings"));
-    assert.equal(window.history.length,count);
-    await click(button("Dashboard"));
+    assert.equal(new URLSearchParams(location.search).has("settings"), true);
+    assert.equal(Reflect.get(Object(window.history.state), "hrDashboardRouteCursor"), cursor + 2);
+    await historyMove("back");
+    assert.equal(new URLSearchParams(location.search).has("settings"), false);
+    await historyMove("forward");
+    assert.equal(new URLSearchParams(location.search).has("settings"), true);
+    await click(button("Settings"));
     assert.equal(new URLSearchParams(location.search).has("archive"),false);
     assert.equal(new URLSearchParams(location.search).has("explore"),false);
   });
@@ -162,7 +168,7 @@ it("keeps the Settings editor and draft across section/catalog native history", 
   assert.equal(document.body.textContent?.includes("Discard unsaved settings?"), false);
   await historyMove("back");
   assert.equal(document.querySelector<HTMLInputElement>('input[type="number"]')?.value,"1777");
-  await click(button("Dashboard"));
+  await click(button("Settings"));
   await click(button("Discard changes"));
   assert.equal(new URLSearchParams(location.search).has("settings"),false);
 });

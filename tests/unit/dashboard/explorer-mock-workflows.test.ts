@@ -32,16 +32,16 @@ function button(name: string): HTMLButtonElement {
   return found;
 }
 async function click(name: string): Promise<void> { await act(async () => button(name).click()); }
-async function chooseWorkflow(value: string): Promise<void> {
-  const select = document.querySelector('[aria-label="Explorer workflow"]');
-  assert.ok(select instanceof HTMLSelectElement);
-  await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
+async function chooseControl(label: string, value: string): Promise<void> {
+  const trigger = document.querySelector(`[aria-label="${label}"]`);
+  assert.ok(trigger instanceof HTMLButtonElement, `missing choice ${label}`);
+  await act(async () => trigger.click());
+  const option = document.querySelector(`[role="option"][data-value="${value}"]`);
+  assert.ok(option instanceof HTMLElement, `missing option ${value}`);
+  await act(async () => option.click());
 }
-async function choose(label: string, value: string): Promise<void> {
-  const select = [...document.querySelectorAll("select")].find((node) => node.getAttribute("aria-label") === `${label} preview`);
-  assert.ok(select instanceof HTMLSelectElement);
-  await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
-}
+async function chooseWorkflow(value: string): Promise<void> { await chooseControl("Explorer workflow", value); }
+async function choose(label: string, value: string): Promise<void> { await chooseControl(`${label} preview`, value); }
 function hidden(number: number): boolean {
   const node = document.getElementById(`explorer-step-${number}`);
   return node === null || node.hidden;
@@ -90,8 +90,10 @@ describe("frontend-only Explorer mock workflows", () => {
     await render();
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
     const workflowSelect = document.querySelector('[aria-label="Explorer workflow"]');
-    assert.ok(workflowSelect instanceof HTMLSelectElement);
-    assert.deepEqual([...workflowSelect.options].map(option => option.text), ["Separations", "Onboarding", "Emergency Contact"]);
+    assert.ok(workflowSelect instanceof HTMLButtonElement);
+    await act(async () => workflowSelect.click());
+    assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), ["Separations", "Onboarding", "Emergency Contact"]);
+    await act(async () => document.querySelector<HTMLElement>('[role="option"][data-value="fixture-separations"]')?.click());
     assert.equal(document.querySelector('aside[aria-label="Workflow browser"]'), null);
     for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
       assert.ok(![...document.querySelectorAll("button")].some(node => node.textContent === name || node.getAttribute("aria-label") === name));

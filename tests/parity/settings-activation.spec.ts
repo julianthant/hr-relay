@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test } from "@playwright/test";
 import { resolve } from "node:path";
 import { createDashboardClient } from "../../src/dashboard/client/index.js";
@@ -83,7 +84,7 @@ for (const theme of PARITY_THEMES) test(`settings activation ${theme.name}: real
     const savedTimeout = await client.editableSettings();
     expect(savedTimeout.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "timeouts.taskMs")?.settingsValue).toBe(210_000);
     await expect(task).toHaveValue("3.5");
-    await page.getByRole("combobox", { name: "Task unit" }).selectOption("seconds");
+    await chooseSelect(page.getByRole("combobox", { name: "Task unit" }), "seconds");
     await expect(page.getByRole("textbox", { name: "Task in seconds" })).toHaveValue("210");
     await page.getByRole("textbox", { name: "Task in seconds" }).fill("210.001");
     await expect(page.getByText("Saved", { exact: true })).toBeVisible();

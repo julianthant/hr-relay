@@ -252,12 +252,6 @@ export function QueueToolbar({
 
         <span aria-hidden className={cn("h-4 w-px shrink-0", "bg-[var(--ds-border)]")} />
 
-        {/* Sort is ONE control. The `⇅` is this select's ICON, never a glyph a
-            gap away from the control it belongs to. It is the `Select`
-            PRIMITIVE at `variant="toolbar"`, not a local copy: a bare
-            `<select>` is `inline-block` on a line box's baseline and sits
-            ~1.25px low however the height token is spelled, and the primitive's
-            flex wrapper is where that is fixed once for every consumer. */}
         <Select
           variant="toolbar"
           aria-label="Sort the queue"

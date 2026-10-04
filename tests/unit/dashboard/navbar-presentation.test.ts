@@ -13,9 +13,9 @@ describe("canonical frontend navbar", () => {
       onDashboard: noop, nav: { canBack: false, canForward: false, onBack: noop, onForward: noop },
       theme: "dark", onToggleTheme: noop, settingsOpen: false, onOpenSettings: noop,
     }));
-    for (const label of ["RRSS HR", "Back", "Forward", "Dashboard", "Search runs", "Choose date", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
-    assert.doesNotMatch(html, /HR Automation|lucide-shield|Preflight|doctor|Storage checks/);
-    assert.match(html, /2026-09-26/);
+    for (const label of ["Back", "Forward", "Search runs", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
+    assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|lucide-shield|Preflight|doctor|Storage checks/);
+    assert.doesNotMatch(html, /Dashboard date|Choose date/);
     assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity</);
   });
   it("finds every requested word across the local run fields, with no empty-query loss", () => {

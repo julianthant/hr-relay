@@ -33,48 +33,52 @@ A blocked-write row selects a separately labelled Separations sample, rather tha
 operation in Person Lookup. The selector's **Selected run · queue facts** view renders only the served
 subject, status, attempt, current message and pipeline, without inferred actions, captures or durations.
 A queue selection resets the sample selection and local decisions. The selector retains all approved
-examples. Queue retains the compact `OperationsToolbarRow` geometry (50px row with 12px
-horizontal padding). The 2026-10-03 operator revision moves Explorer, Archive and Activity into
+examples. Queue keeps compact controls in its own 48px header. The 2026-10-03 operator revision moves Explorer, Archive and Activity into
 Settings → Data. Their separate operations toolbars are removed. Each page uses the same
 `DsBodyScope` content cap, `PageHeading`, spacing and scroll pane as the other Settings pages;
-its actions remain in its content. The Navbar view switcher is removed; RRSS HR returns to the
-Dashboard through the Settings draft guard. Legacy data-page links remain addressable inside
+its actions remain in its content. The Navbar view switcher is removed; the active Settings gear
+returns to Dashboard through the Settings draft guard. Legacy data-page links remain addressable inside
 Settings, including archive folders, report sections and Activity ranges. Settings drafts survive
 section changes. Spreadsheets stays in Personal with its original available-width layout, without
 an expand control. Global browser/CSS zoom stays at its original 100% sizing.
 Activity's report sections stack in one full-width column at every desktop width. Explorer replaces
 its workflow sidebar and search with a right-aligned workflow dropdown beside its heading. Expand all,
-Collapse all, Version registry and the action legend control are removed; individual disclosures,
-preview paths and source returns remain available. Switching workflows resets transient timeline
+Collapse all, Version registry and the action legend control are removed. The selected-workflow
+intro strip and Preview paths button are removed; per-form branch selectors, disclosures and source
+returns remain available. Switching workflows resets transient timeline
 state while retaining dropdown focus. Storage checks and Preflight place their actions and scope
 selector beside their headings, with check freshness and unavailable states in the content below.
-Archive search uses shared shadcn InputGroup with one focus ring. The version overview removes its
-local search field; report-folder search remains. Explorer has no back control or `onBack` prop;
+Archive search uses the shared HeroUI SearchField with one focus surface. The version overview and report folders offer search fields; the overview also has workflow and outcome filters. Explorer has no back control or `onBack` prop;
 shell navigation exits it.
 
-The Navbar search is an editable shadcn Command/InputGroup, 460px wide and centered at wide desktop
-sizes, with space-aware sizing at the 1024px desktop floor. Clicking or typing opens keyboard-selectable
-results beneath the same field, without another input or dialog. Search result navigation retains its
-explicit disconnected notice. Shared search fields use this shadcn InputGroup composition. Status,
-export and shared choice dropdowns use shadcn Radix DropdownMenu with selected radio states,
-keyboard navigation and focus restoration; native Select controls retain their shadcn composition.
-These library overlays register only while mounted. The Navbar date field retains its editable
-segments, suffix calendar icon and run count; its previous/next-day arrows are removed.
+The 2026-10-04 operator revision uses HeroUI SearchField for every shared search, including its
+search icon and clear control. The Navbar field remains 460px wide and centered at wide desktop
+sizes, with space-aware sizing at the 1024px desktop floor. Clicking it, pressing Enter/Space or using
+`/` opens a centered search dialog with an editable HeroUI SearchField and keyboard-selectable
+Command results. Dismissal restores focus to the Navbar field. Result navigation retains its explicit
+disconnected notice. Status, export and choice menus use shadcn Base UI DropdownMenu; value controls use its Base UI Select composition. Both keep keyboard navigation and focus restoration. Popups inside dialogs portal into the owning dialog. Overlays register only while mounted. RRSS HR and the date count are removed. Back/Forward history controls remain separate in the shortened Navbar. The editable date and calendar sit in the header above Logs and select the dashboard day.
 
-The approved Focus toolbar is mounted in the Dashboard: an icon-only Workflow Panel launcher and
-blue Start a run control stay on the left; All statuses and sort stay on the right. Frequent
-All/Needs you/Running filters occupy the queue header and align with its cards. Double-click,
+The workflow rail is permanent, 288px wide, and extends above the Navbar to the workspace top. Settings uses the same full-height rail boundary. The Navbar occupies the remaining width and is 48px tall; Queue and Logs each have a 48px header below it. Only Start a run remains as a launch control. Expanding Sessions shortens the workspace and both rails stop at its boundary. Served workflow selection stays persisted; extra labels from the legacy dashboard are explicitly marked layout previews and open fictional sample queues/logs without writing or entering the served launch catalog. Notifications group updates by workflow with Needs you, Failed, Unread and All filters. Read state does not resolve pending run actions. Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards with title, detail, action and close; errors persist until acknowledgment. Cards stay at the bottom right above Sessions and become inert while an overlay is open. Archive removes its retained-history subtitle. Activity uses a title/action row, period/data controls and separate summary cards. Capabilities has a searchable availability table, and Keyboard shortcuts has searchable grouped rows with key pills for existing bindings. Storage checks omits its empty-session sentence.
+
+Settings navigation uses closely spaced 32px rows with 10px rounded highlights. Selected and
+unselected labels/icons use primary foreground; muted group labels use 14px type. Section headings
+and field labels use smaller regular-weight type. Activity workflow rows expand to show supplied
+version details; headers and numeric cells use regular weight in a rounded opaque table. Log decision
+frames, headers and bodies remain opaque; comparisons use a bordered table with a muted header and
+opaque difference highlights.
+
+The compact queue toolbar keeps Start a run on the left and All statuses/sort on the right.
+Frequent All/Needs you/Running filters occupy the queue header and align with its cards. Double-click,
 right-click and Shift+F10 open the row menu, whose Select item enters selection and includes that
 row. Selection replaces the filter header with a visible-row checkbox, count, Delete/Archive/Retry
-and an X exit. Escape exits selection and restores row focus; removal restores the launch control.
-There is no toolbar Select, Done or Clear control. The Workflow Panel remains 280px wide and its
-launcher/Start a run controls remain outside the panel's changing modes.
+and an X exit. Escape exits selection and restores row focus. There is no toolbar Select, Done or
+Clear control. The workflow rail remains visible independently of queue selection.
 
 These new queue menu and selection actions are explicitly local mocks. Each record retains authored
 mock settings; Retry reuses the exact settings object to add a queued attempt, with fresh identities
 and pending steps, without opening Rerun or issuing a command. Original attempts remain in history.
 Archive retains the removed local records; Delete removes them. The local queue filters/counts fold
-the latest mock attempt per item, while the Workflow Panel and Navbar retain served day counts.
+the latest mock attempt per item, while the Workflow Panel retains served day counts; the Navbar date count is removed.
 Reload or a changed day/source resets local changes. This is not a reconstruction of a runtime launch
 envelope or proof of live Retry/Archive/Delete contracts. Existing served row-footer commands and
 command-recovery feedback retain their wiring and assurances.
@@ -84,10 +88,9 @@ guidance and a framed Parsed input list with ordered entries and per-entry run c
 Examples strip is removed; descriptor examples retain their validation contract. Options/Steps/Rerun
 layouts, parsing, source binding and live launch contracts remain unchanged.
 
-Activity keeps four metrics in one row and equal-width report columns. The workflow table is framed;
-`RecordTable` renders confirmed transactions and evidence coverage beneath it in the left column, with
-shared `text-body` values (12px / 18px, weight 400). The adaptive chart and Run performance table sit
-on the right. Chart bars occupy 75% of each interval and are opaque; plot height adapts from 160px to
+Activity keeps four metrics in one row and stacks report sections in one full-width column. The workflow table is framed;
+`RecordTable` renders confirmed transactions and evidence coverage with shared `text-body` values
+(12px / 18px, weight 400). The adaptive chart and Run performance table follow below. Chart bars occupy 75% of each interval and are opaque; plot height adapts from 160px to
 224px. Range and granularity preserve interval semantics, explicit zero/empty states, responsive
 geometry and axis labels. Anchored, clamped tooltips and Arrow/Home/End/Escape bucket navigation remain.
 Loading shows skeletons and an accessible status without a visible caption. Performance rows are
@@ -115,10 +118,10 @@ Calendar, RangeCalendar and DatePicker references: the default DatePicker with C
 single date, and the documented two-month RangeCalendar for every range. Preserve HeroUI's default
 calendar geometry, editable date segments, suffix calendar icon, year selector and keyboard behavior.
 Date fields use the surrounding DS buttons' radius, border, height and neutral colors, including hover;
-the Navbar's date, arrows and count share one exterior without a nested field border. Keep visible focus
+the dashboard date has its own exterior above Logs, separate from Navbar history controls. Keep visible focus
 and invalid states. Both calendars use the same product palette. The shared popup host retains Radix focus and layer
 handling so date fields also work inside Run dialogs. Surface-specific calendar styling and old date buttons are removed.
-Navbar and form dates use DatePicker. Activity, Archive and Search ranges use DateRangeInput; either
+Dashboard and form dates use DatePicker. Activity, Archive and Search ranges use DateRangeInput; either
 endpoint opens the same centered range picker and completing the second date updates both values
 and closes it. Activity's Start/End fields appear only for Custom. Range pickers have no footer or
 Cancel/Apply controls. Text-entry dates preserve their required format and invalid drafts; Archive
@@ -192,15 +195,13 @@ App no longer passes worker cards, pools, clock, connection/version or worker co
 UI. The former connected SessionPanel and timeline renderer are retired. Backend worker/browser
 authority remains a separate wiring task.
 
-The approved Compact rail and popover design uses a 54px navbar with the text brand **RRSS HR** and no
-logo. A divider separates the brand from the paired history arrows. It retains all four views, search,
-date navigation, notifications, theme and Settings; preflight
-is removed. `TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
-`NotificationsState` to `NotificationsView`. The connected search/date renderers are retired. Search,
-date and notification examples use local fixtures: navigation and delivery placeholders invoke no API,
+The approved navbar is 54px tall. The left-hand date/history/calendar replaces the former RRSS HR
+brand; centered search opens the shared modal, and notifications, theme and Settings remain right.
+`TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
+`NotificationsState` to `NotificationsView`. Connected search/date renderers are retired. Search,
+date and notification examples use local fixtures; navigation and delivery placeholders invoke no API,
 command, browser permission or OS delivery path. The navbar uses the shared DatePicker described above.
-Date limits, day
-navigation, counts and Today remain local fixture behavior. Settings retains its separate existing preflight read.
+Date limits and Today remain local fixture behavior. Settings retains its existing preflight read.
 
 The 370px notification popover keeps its heading, filters and footer fixed while the message list scrolls.
 The pinned history-gap notice appears under every filter and has no lifecycle controls; read and snooze are
@@ -7351,12 +7352,13 @@ render.
 
 #### D347 — Workflow rail selection and heading · 2026-09-24
 
-The Workflow Panel persists the last selected workflow ID as a local browser preference. On load,
-use it only if the current bootstrap serves that ID; otherwise select the first served workflow.
-Selecting another workflow updates the preference, including when the operator leaves and returns to
-the dashboard. The rail shows category headings, workflow labels, the selected marker and each
-workflow's `active │ all` count pair. It has no `active │ all` column heading. The toolbar keeps
-its day-wide active count; the Status Bar and queue still consume the served projection.
+The selected served workflow ID persists as a local browser preference. On load, use it only when
+bootstrap serves that ID; otherwise select the first served workflow. The 2026-10-04 operator amendment
+makes the rail permanent and 288px wide, matching Settings navigation and extending to the workspace
+top. It has no floating/minimized modes or display-mode shortcuts. Served rows retain their active/all
+counts without a column heading. Layout-preview workflows use labels copied from the legacy demo,
+are marked Preview, and never enter the served launch catalog or persisted workflow preference.
+The queue keeps status filters and served projection; its Start a run control opens the served catalog.
 
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)
 

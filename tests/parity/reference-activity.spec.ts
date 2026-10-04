@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Page } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
 import { FIXTURE_ACTIVITY_RANGE } from "./helpers/fixture-archive.js";
@@ -43,7 +44,7 @@ test("[A3] Activity presets show exact applied dates without a calendar trigger"
     { value: "last-6-months", range: "2026-02-04..2026-08-03", label: "Feb 4 – Aug 3, 2026" },
     { value: "last-year", range: "2025-08-04..2026-08-03", label: "Aug 4, 2025 – Aug 3, 2026" },
   ]) {
-    await period.selectOption(preset.value);
+    await chooseSelect(period, preset.value);
     await expect(page).toHaveURL(new RegExp(`activity=${preset.range.replaceAll(".", "\\.")}(?:&|$)`));
     await expect(period).toHaveValue(preset.value);
     await expect(heading.getByText(preset.label, { exact: true })).toBeVisible();
@@ -56,11 +57,11 @@ test("[A3] Custom range stays draft until Apply; Cancel, Escape, outside, preset
   await openActivity(page);
   const period = page.getByRole("combobox", { name: "Report period" });
   const requests = collectActivityRequests(page);
-  await period.selectOption("this-week");
+  await chooseSelect(period, "this-week");
   await expect(page).toHaveURL(/activity=2026-08-02\.\.2026-08-03/u);
   await expect.poll(() => requests.length).toBe(1);
 
-  await period.selectOption("custom");
+  await chooseSelect(period, "custom");
   const picker = page.getByRole("dialog", { name: "Select report dates" });
   const apply = picker.getByRole("button", { name: "Apply range" });
   await expect(picker).toBeVisible();
@@ -77,7 +78,7 @@ test("[A3] Custom range stays draft until Apply; Cancel, Escape, outside, preset
   await expect(period).toBeFocused();
   expect(requests).toHaveLength(1);
 
-  await period.selectOption("custom");
+  await chooseSelect(period, "custom");
   await expect(picker).toBeVisible();
   await picker.getByRole("button", { name: /Wednesday, August 5, 2026/u }).click();
   await picker.getByRole("button", { name: /Friday, August 7, 2026/u }).click();
@@ -131,7 +132,7 @@ test("[A3] Custom range stays draft until Apply; Cancel, Escape, outside, preset
   await dateTrigger.click();
   await expect(picker).toBeVisible();
   await picker.getByRole("button", { name: /Friday, August 14, 2026/u }).click();
-  await period.selectOption("today");
+  await chooseSelect(period, "today");
   await expect(picker).toHaveCount(0);
   await expect(period).toHaveValue("today");
   await expect(page).toHaveURL(/activity=2026-08-03\.\.2026-08-03/u);
@@ -182,6 +183,6 @@ test("[A3] Invalid URL ranges remain refused until an explicit selection", async
   await expect(page.getByText(/Choose valid From and To dates/u)).toBeVisible();
   await expect(page).toHaveURL(/activity=2026-08-08\.\.2026-08-03/u);
 
-  await page.getByRole("combobox", { name: "Report period" }).selectOption("today");
+  await chooseSelect(page.getByRole("combobox", { name: "Report period" }), "today");
   await expect(page).toHaveURL(/activity=2026-08-03\.\.2026-08-03/u);
 });

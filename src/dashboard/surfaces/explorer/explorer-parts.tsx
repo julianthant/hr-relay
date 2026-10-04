@@ -1,5 +1,5 @@
 import { ArrowUpRight, CheckCheck, ChevronDown, CircleStop, CornerDownRight, Cpu, Eye, GitBranch, GitMerge, Keyboard, LockKeyhole, Monitor, MousePointer2, PanelsTopLeft, PencilLine, UserRound } from "lucide-react";
-import { dsFocus } from "../../ds/ui.js";
+import { Select, dsFocus } from "../../ds/ui.js";
 import { ExplorerComment } from "./explorer-comment.js";
 import type { CommentChoices, FlowField, FlowPart, FlowStep, PreviewScenario } from "./explorer-flow-model.js";
 
@@ -21,10 +21,10 @@ function BranchChoice({ choice, scenario, onScenario, disabled, result = false }
   const Icon = choice === "identity" ? UserRound : GitBranch;
   return <div className={`flex items-center gap-2.5 ${result ? "border-t border-ui-stroke px-4 py-3" : "mb-3 rounded-lg border border-ui-stroke bg-ui-table px-4 py-3"}`}>
     <Icon aria-hidden className="size-4 shrink-0 text-ui-info" /><label className="text-body font-medium" htmlFor={`preview-${choice}`}>{label}</label>
-    <select id={`preview-${choice}`} aria-label={`${label} preview`} value={scenario[choice]} disabled={disabled} onChange={(event) => onScenario({ ...scenario, [choice]: event.target.value })}
+    <Select id={`preview-${choice}`} aria-label={`${label} preview`} value={scenario[choice]} disabled={disabled} onChange={(event) => onScenario({ ...scenario, [choice]: event.target.value })}
       className={`ml-auto h-8 max-w-[60%] rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary disabled:cursor-not-allowed ${dsFocus}`}>
       {choices.map(([value, title]) => <option key={value} value={value}>{title}</option>)}
-    </select>
+    </Select>
   </div>;
 }
 
@@ -69,10 +69,10 @@ export function ExplorerParts(props: PartProps) {
     if (part.kind === "choice") return <BranchChoice key={key} choice={part.choice} {...props} />;
     if (part.kind === "mock-choice") return <div key={key} className="mb-3 flex items-center gap-2.5 rounded-lg border border-ui-stroke bg-ui-table px-4 py-3">
       <GitBranch aria-hidden className="size-4 shrink-0 text-ui-info" /><label className="text-body font-medium" htmlFor={`preview-${part.id}`}>{part.label}</label>
-      <select id={`preview-${part.id}`} aria-label={`${part.label} preview`} value={part.value} disabled={props.disabled} onChange={(event) => props.onMockChoice?.(part.id, event.target.value)}
+      <Select id={`preview-${part.id}`} aria-label={`${part.label} preview`} value={part.value} disabled={props.disabled} onChange={(event) => props.onMockChoice?.(part.id, event.target.value)}
         className={`ml-auto h-8 max-w-[60%] rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary disabled:cursor-not-allowed ${dsFocus}`}>
         {part.options.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
-      </select>
+      </Select>
     </div>;
     if (part.kind === "note") return <p key={key} className="my-2 max-w-prose text-body text-ui-secondary">{part.text}</p>;
     if (part.kind === "resume") return <button key={key} type="button" className={`flex items-center gap-2 px-4 pt-3 text-caption text-ui-info hover:underline ${dsFocus}`} onClick={() => onStep(part.step)}><CornerDownRight aria-hidden className="size-3.5" />{part.text}</button>;

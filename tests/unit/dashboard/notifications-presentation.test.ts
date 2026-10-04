@@ -9,39 +9,33 @@ function ready(state: NotificationsState) {
   return state;
 }
 describe("frontend notification state", () => {
-  it("keeps pinned gaps in every filter, with independent read and snooze facts", () => {
+  it("keeps pinned gaps in every filter, with urgency independent of read state", () => {
     const state = notificationsSample("normal");
     const all = notificationView(state, "all");
     assert.equal(all.unread, 4);
     assert.equal(all.shown.length, 5);
     assert.equal(all.pinned[0].title, "History gap");
-    for (const filter of ["all", "unread", "attention", "snoozed"] as const) assert.equal(notificationView(state, filter).pinned, ready(state).pinned);
+    for (const filter of ["all", "unread", "attention", "failed"] as const) assert.equal(notificationView(state, filter).pinned, ready(state).pinned);
     assert.deepEqual(notificationView(state, "unread").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-completed"]);
-    assert.deepEqual(notificationView(state, "attention").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-snoozed"]);
-    assert.deepEqual(notificationView(state, "snoozed").shown.map(item => item.id), ["sample-snoozed"]);
+    assert.deepEqual(notificationView(state, "attention").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-review"]);
+    assert.deepEqual(notificationView(state, "failed").shown.map(item => item.id), ["sample-verification"]);
   });
-  it("marks only the selected item read, preserving snooze, peer identity and the fixture", () => {
+  it("marks only the selected item read, preserving peer identity and the fixture", () => {
     const state = notificationsSample("normal");
     const updated = updateNotification(state, "sample-verification", "read");
     assert.equal(notificationView(updated, "all").unread, 3);
-    assert.equal(ready(updated).items[0].snoozed, false);
     assert.equal(ready(updated).items[1], ready(state).items[1]);
     assert.equal(ready(updated).pinned, ready(state).pinned);
     assert.equal(ready(state).items[0].read, false);
     assert.equal(notificationView(updateNotification(updated, "sample-verification", "read"), "all").unread, 4);
   });
-  it("snoozes without hiding read state or lowering unread attention", () => {
-    const state = updateNotification(notificationsSample("normal"), "sample-verification", "snooze");
-    assert.equal(ready(state).items[0].read, false);
-    assert.equal(notificationView(state, "all").unread, 4);
-    assert.equal(notificationView(state, "unread").shown.length, 3);
-    assert.equal(notificationView(state, "snoozed").shown.length, 2);
-    const read = updateNotification(state, "sample-verification", "read");
-    assert.equal(ready(read).items[0].snoozed, true);
-    assert.equal(notificationView(read, "all").unread, 3);
-    const unsnoozed = updateNotification(read, "sample-verification", "snooze");
-    assert.equal(ready(unsnoozed).items[0].read, true);
-    assert.equal(notificationView(unsnoozed, "snoozed").shown.length, 1);
+  it("keeps failures needing attention after their updates are read", () => {
+    const state = updateNotification(notificationsSample("normal"), "sample-verification", "read");
+    assert.equal(ready(state).items[0].read, true);
+    assert.equal(notificationView(state, "all").unread, 3);
+    assert.deepEqual(notificationView(state, "failed").shown.map(item => item.id), ["sample-verification"]);
+    assert.deepEqual(notificationView(state, "attention").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-review"]);
+    assert.equal(notificationView(state, "unread").shown.length, 2);
   });
   it("distinguishes loading and unavailable from a measured empty inbox", () => {
     for (const scenario of ["loading", "unavailable"]) {
@@ -55,8 +49,8 @@ describe("frontend notification state", () => {
   });
   it("refuses unavailable actions, unknown items and actions on pinned notices", () => {
     assert.throws(() => updateNotification(notificationsSample("loading"), "sample-verification", "read"), /notification-preview-not-ready/);
-    assert.throws(() => updateNotification(notificationsSample("normal"), "missing", "snooze"), /notification-preview-item-missing/);
-    for (const control of ["read", "snooze"] as const) assert.throws(() => updateNotification(notificationsSample("normal"), "sample-gap", control), /notification-preview-item-missing/);
+    assert.throws(() => updateNotification(notificationsSample("normal"), "missing", "read"), /notification-preview-item-missing/);
+    for (const control of ["read"] as const) assert.throws(() => updateNotification(notificationsSample("normal"), "sample-gap", control), /notification-preview-item-missing/);
     assert.throws(() => notificationsSample("unknown"), /notification-sample-missing/);
   });
 });

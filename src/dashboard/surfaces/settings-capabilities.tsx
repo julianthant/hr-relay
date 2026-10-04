@@ -1,6 +1,7 @@
 import "./reference-settings.css";
+import { useState } from "react";
 import { Info } from "lucide-react";
-import { Badge, BodySection, Disclosure, FormGroup, IconButton, PageHeading, Popover, PopoverContent, PopoverTrigger, ResultRow, dsClip, dsIcon, dsText } from "../ds/ui.js";
+import { Badge, SearchInput, Disclosure, FormGroup, IconButton, PageHeading, Popover, PopoverContent, PopoverTrigger, ResultRow, dsClip, dsIcon, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { CAPABILITY_SPECS, capabilityMatrix, type CapabilityCell } from "./settings-capabilities-model.js";
 import { useSettingsFacts } from "./settings-facts-model.js";
@@ -20,15 +21,19 @@ function WorkflowName({ label, served }: { label: string; served: boolean }) {
 
 export function CapabilitiesSection({ workflowLabels }: { workflowLabels: ReadonlyMap<string, string> }) {
   const facts = useSettingsFacts();
+  const [query, setQuery] = useState("");
   return <div className="settings-reference-page">
     <PageHeading as="h2" title="Workflow capabilities" description="Available workflow operations and dry-run boundaries." />
+    <SearchInput aria-label="Find workflow capabilities" placeholder="Find a workflow…" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} />
     <FactsPane facts={facts}>{loaded => {
       const matrix = capabilityMatrix(loaded.workflowCapabilities, workflowLabels);
       if (matrix.length === 0) return <p className={dsText.body}>This build registers no workflows. The served descriptor registry is empty.</p>;
-      return <BodySection title="By workflow">
+      const matching = matrix.filter(row => row.label.toLowerCase().includes(query.trim().toLowerCase()));
+      return <div className="capabilities-table">
         <FormGroup label="Workflow capabilities">
-          {matrix.map((row, index) => <Disclosure key={row.workflowId} variant="body" defaultOpen={index === 0}
-            summary={<WorkflowName label={row.label} served={row.labelServed} />}
+          <div className="capabilities-table-head"><span>Workflow</span><span>Availability and boundaries</span></div>
+          {matching.map((row, index) => <Disclosure key={row.workflowId} variant="body" defaultOpen={index === 0}
+            summary={<div className="capabilities-summary"><WorkflowName label={row.label} served={row.labelServed} /><div className="flex gap-2"><CapabilityValue cell={row.cells["typed-start"]} /><span className="text-caption font-normal text-ui-muted">Typed start</span></div></div>}
             className="settings-reference-disclosure" contentClassName="settings-reference-capability-content">
             {CAPABILITY_SPECS.map(spec => {
               const cell = row.cells[spec.key];
@@ -45,8 +50,9 @@ export function CapabilitiesSection({ workflowLabels }: { workflowLabels: Readon
             </div>
           </Disclosure>)}
         </FormGroup>
+        {matching.length === 0 && <p role="status" className={dsText.body}>No workflows match your search.</p>}
         <p className={cn(dsText.meta, "settings-reference-source")}>Source: served workflow descriptors.</p>
-      </BodySection>;
+      </div>;
     }}</FactsPane>
   </div>;
 }

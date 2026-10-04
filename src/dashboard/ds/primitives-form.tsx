@@ -2,8 +2,10 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-form.tsx
  */
-import { Input as HeroInput, Radio as HeroRadio, RadioGroup as HeroRadioGroup, Switch as HeroSwitch, TextArea as HeroTextArea } from "@heroui/react";
+import { Input as HeroInput, Radio as HeroRadio, RadioGroup as HeroRadioGroup, SearchField as HeroSearchField, Switch as HeroSwitch, TextArea as HeroTextArea } from "@heroui/react";
 import {
+  Children,
+  isValidElement,
   createContext,
   forwardRef,
   useEffect,
@@ -11,16 +13,16 @@ import {
   useId,
   useRef,
   useState,
+  type DOMAttributes,
   type InputHTMLAttributes,
   type ReactNode,
   type SelectHTMLAttributes,
   type TextareaHTMLAttributes,
 } from "react";
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
-import { Check, ChevronDown, Eye, EyeOff, Lock, Minus, Pencil, Search, Trash2, TriangleAlert, Upload, X } from "lucide-react";
+import { Check, Eye, EyeOff, Lock, Minus, Pencil, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { cn } from "../lib/utils.js";
-import { NativeSelect } from "./shadcn-native-select.js";
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./input-group.js";
+import { Select as BaseSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./base-select.js";
 import { Button, IconButton } from "./primitives-core.js";
 import { Tooltip, TooltipProvider } from "./primitives-overlay.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
@@ -356,62 +358,37 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaHTMLAttributes<H
   },
 );
 
-/**
- * A themed shadcn NativeSelect. The OS picker preserves native keyboard behavior.
- *
- * **The wrapper is a FLEX box, and that is load-bearing.** A `<select>` is
- * `inline-block` with `vertical-align: baseline`, so in a normal-flow wrapper
- * it sits on the baseline of a line box built from the inherited line-height —
- * a 24px control inside a 26.5px line box lands 1.25px low. Beside a row of
- * flex-aligned buttons of exactly the same height, that reads as one control
- * sagging for no reason. `flex` + `items-center` removes the line box entirely,
- * which is why the toolbar variant exists here rather than being hand-rolled at
- * the call site: the height token was already shared, and it was still wrong.
- *
- * `variant="toolbar"` is the `--ds-h-toolbar` control that lives in an action bar;
- * `icon` puts a glyph in the leading gutter so a sort control is ONE control
- * rather than a glyph sitting a gap away from the select it belongs to.
- */
-export const Select = forwardRef<
-  HTMLSelectElement,
-  SelectHTMLAttributes<HTMLSelectElement> & {
-    children: ReactNode;
-    variant?: "field" | "toolbar";
-    /** a leading glyph inside the control — pass an already-sized lucide icon */
-    icon?: ReactNode;
+/** Base UI Select with the shared field and toolbar sizes; option children keep existing callers explicit. */
+export const Select = forwardRef<HTMLButtonElement,
+  Omit<SelectHTMLAttributes<HTMLSelectElement>, keyof DOMAttributes<HTMLSelectElement>> & Omit<DOMAttributes<HTMLButtonElement>, "onChange" | "children"> & {
+    children: ReactNode; variant?: "field" | "toolbar"; icon?: ReactNode;
+    onChange?: (event: { target: { value: string }; currentTarget: { value: string } }) => void;
   }
->(function Select({ className, children, variant = "field", icon, ...props }, ref) {
+>(function Select({ className, children, variant = "field", icon, value, defaultValue, onChange, name, required, form, disabled, size: _nativeSize, ...props }, ref) {
   const field = useFieldControl();
-  const toolbar = variant === "toolbar";
-  return (
-    <NativeSelect
-      ref={ref}
-      {...field}
-      {...props}
-      wrapperClassName={toolbar ? "shrink-0" : undefined}
-      leading={icon && <span className="text-[color:var(--ds-fg-muted)]">{icon}</span>}
-      trailing={!toolbar && <ChevronDown className={cn(dsIcon.sm, "text-[color:var(--ds-fg-muted)]")} />}
-      className={cn(
-          toolbar
-            ? cn(
-                "w-full min-w-0 border bg-[var(--ds-surface-1)]",
-                dsBorder.base,
-                "text-[color:var(--ds-fg-secondary)] hover:bg-[var(--ds-surface-3)] hover:text-[color:var(--ds-fg)]",
-                dsRadius.md,
-                dsFocus,
-                dsMotion.fast,
-                "h-[var(--ds-h-toolbar)]",
-                dsText.meta,
-              )
-            : cn(controlShell, "h-[var(--ds-h-md)]", dsText.ui),
-          icon ? "pl-[var(--ds-space-section)]" : "pl-[var(--ds-space-base)]",
-          toolbar ? "pr-[var(--ds-space-base)]" : "pr-[var(--ds-space-section)]",
-          className,
-      )}
-    >
-      {children}
-    </NativeSelect>
-  );
+  const trigger = useRef<HTMLButtonElement>(null);
+  const [portalContainer, setPortalContainer] = useState<HTMLElement | null>(null);
+  const options: { value: string; label: ReactNode; disabled: boolean }[] = [];
+  function collect(nodes: ReactNode) {
+    Children.forEach(nodes, child => {
+      if (!isValidElement<{ value?: string | number; children?: ReactNode; disabled?: boolean }>(child)) return;
+      if (child.type === "option") options.push({ value: String(child.props.value ?? ""), label: child.props.children, disabled: !!child.props.disabled });
+      else if (child.props.children) collect(child.props.children);
+    });
+  }
+  collect(children);
+  const initial = defaultValue === undefined ? options[0]?.value : String(defaultValue);
+  return <BaseSelect modal={false} onOpenChange={open => { if (open) setPortalContainer(trigger.current?.closest<HTMLElement>('[role="dialog"]') ?? null); }} value={value === undefined ? undefined : String(value)} defaultValue={initial}
+    onValueChange={next => { if (next !== null) onChange?.({ target: { value: next }, currentTarget: { value: next } }); }}
+    name={name} required={required} form={form} disabled={disabled ?? field.disabled}
+    items={options.map(option => ({ value: option.value, label: option.label }))}>
+    <SelectTrigger data-value={value === undefined ? undefined : String(value)} ref={node => { trigger.current = node; if (typeof ref === "function") ref(node); else if (ref) ref.current = node; }} {...field} {...props} className={cn("ds-select-control w-full min-w-0 bg-[var(--ds-control-bg)] text-[color:var(--ds-control-fg)]", variant === "toolbar" ? "h-[var(--ds-h-toolbar)] w-auto shrink-0 text-caption" : "h-[var(--ds-h-md)]", className)}>
+      {icon}<SelectValue />
+    </SelectTrigger>
+    <SelectContent container={portalContainer} align="start" alignItemWithTrigger={false}>
+      {options.map(option => <SelectItem key={option.value} data-value={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
+    </SelectContent>
+  </BaseSelect>;
 });
 
 /**
@@ -578,33 +555,23 @@ export function Switch({
 export const SearchInput = forwardRef<
   HTMLInputElement,
   InputHTMLAttributes<HTMLInputElement> & { onClear?: () => void; shortcut?: ReactNode }
->(function SearchInput({ className, onClear, shortcut, value, ...props }, ref) {
+>(function SearchInput({ className, onClear, shortcut, value, defaultValue, disabled, readOnly, ...props }, ref) {
   const field = useFieldControl();
   return (
-    <InputGroup
-      role="presentation"
-      className={cn("ds-search-input-group", className)}
-    >
-      <InputGroupInput
+    <HeroSearchField className={cn("ds-search-field", className)} aria-label={props["aria-label"]}
+      value={value === undefined ? undefined : String(value)} defaultValue={defaultValue === undefined ? undefined : String(defaultValue)}
+      isDisabled={disabled ?? field.disabled} isReadOnly={readOnly} isInvalid={field["aria-invalid"] || props["aria-invalid"] === true} onClear={onClear}>
+      <HeroSearchField.Group>
+      <HeroSearchField.SearchIcon />
+      <HeroSearchField.Input
         ref={ref}
         {...field}
-        type="search"
-        value={value}
         {...props}
       />
-      <InputGroupAddon><Search aria-hidden /></InputGroupAddon>
-      <InputGroupAddon align="inline-end">{value && onClear ? (
-        <InputGroupButton
-          size="icon-xs"
-          aria-label="Clear search"
-          onClick={onClear}
-        >
-          <X aria-hidden />
-        </InputGroupButton>
-      ) : (
-        shortcut
-      )}</InputGroupAddon>
-    </InputGroup>
+      {onClear && <HeroSearchField.ClearButton aria-label="Clear search" />}
+      {!value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
+      </HeroSearchField.Group>
+    </HeroSearchField>
   );
 });
 

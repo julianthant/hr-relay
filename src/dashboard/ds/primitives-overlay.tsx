@@ -2,27 +2,26 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/ds/primitives-overlay.tsx
  */
-import { Button as HeroButton } from "@heroui/react";
 import {
   createContext,
-  useCallback,
   useContext,
   useEffect,
   useMemo,
   useRef,
   useState,
   useSyncExternalStore,
-  type ComponentProps,
   type Ref,
   type ReactNode,
 } from "react";
+import { Toast as ToastPrimitive } from "@base-ui/react/toast";
+import { ToastIcon as BaseToastIcon, Toast as BaseToast, ToastContent as BaseToastContent, ToastTitle as BaseToastTitle, ToastDescription as BaseToastDescription, ToastAction as BaseToastAction, ToastClose as BaseToastClose, ToastViewport as BaseToastViewport } from "./base-toast.js";
 import * as ContextMenuPrimitive from "@radix-ui/react-context-menu";
 import * as DialogPrimitive from "@radix-ui/react-dialog";
 import * as PopoverPrimitive from "@radix-ui/react-popover";
 import * as TooltipPrimitive from "@radix-ui/react-tooltip";
-import { ChevronDown, ChevronUp, CircleAlert, Info, TriangleAlert, X, CheckCircle2 } from "lucide-react";
+import { X } from "lucide-react";
 import { cn } from "../lib/utils.js";
-import { dsElev, dsFocus, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "./tokens.js";
+import { dsElev, dsIcon, dsLayer, dsMotion, dsRadius, dsText } from "./tokens.js";
 import { IconButton } from "./primitives-core.js";
 import { FloatingSurface } from "./primitives-layout.js";
 
@@ -977,8 +976,7 @@ const ToastContext = createContext<ToastContextValue | null>(null);
  * Rules: a toast reports something that ALREADY happened. It never asks a
  * question, never holds the only copy of information, and a `danger` toast
  * never disappears on its own — a failed write must be dismissed by a human.
- * Every toast arrives as a one-line chip; the operator expands via the chevron
- * when they want the full text.
+ * Cards show their title, detail and recovery action together.
  */
 export function useToasts(): ToastContextValue {
   const ctx = useContext(ToastContext);
@@ -986,295 +984,36 @@ export function useToasts(): ToastContextValue {
   return ctx;
 }
 
-const TOAST_TONE: Record<DsToastTone, { icon: typeof Info; accent: string }> = {
-  info: { icon: Info, accent: "text-[color:var(--ds-info-fg)]" },
-  success: {
-    icon: CheckCircle2,
-    accent: "text-[color:var(--ds-success-fg)]",
-  },
-  warning: {
-    icon: CircleAlert,
-    accent: "text-[color:var(--ds-status-waiting-fg)]",
-  },
-  danger: {
-    icon: TriangleAlert,
-    accent: "text-[color:var(--ds-danger)]",
-  },
-};
-
 export function ToastProvider({ children }: { children: ReactNode }) {
-  const [toasts, setToasts] = useState<DsToast[]>([]);
-  const timers = useRef(new Map<string, ReturnType<typeof setTimeout>>());
-  // A per-provider sequence, NOT a clock read. The legacy demo minted toast
-  // ids from `Date.now()` + `Math.random()`; both are banned here — the clock
-  // guard owns every time read (`clock-single-source`), and a nondeterministic
-  // id would change the DOM between two parity captures of the same state.
-  // Uniqueness within one provider is all an id was ever for.
-  const nextToastId = useRef(0);
-
-  const dismiss = useCallback((id: string) => {
-    const timer = timers.current.get(id);
-    if (timer) {
-      clearTimeout(timer);
-      timers.current.delete(id);
-    }
-    setToasts((current) => current.filter((item) => item.id !== id));
-  }, []);
-
-  const toast = useCallback(
-    (input: Omit<DsToast, "id">) => {
-      nextToastId.current += 1;
-      const id = `toast-${String(nextToastId.current)}`;
-      setToasts((current) => [...current, { ...input, id }]);
-      // A failure stays until acknowledged. Everything else clears itself at 3s.
-      if (input.tone !== "danger") {
-        const timer = setTimeout(() => dismiss(id), input.duration ?? 3000);
-        timers.current.set(id, timer);
-      }
+  const manager = useMemo(() => ToastPrimitive.createToastManager(), []);
+  const nextId = useRef(0);
+  const value = useMemo<ToastContextValue>(() => ({
+    toast: input => {
+      const id = `toast-${++nextId.current}`;
+      manager.add({ id, title: input.title, description: input.description,
+        type: input.tone === "danger" ? "error" : input.tone,
+        timeout: input.tone === "danger" ? 0 : input.duration ?? 3000,
+        actionProps: input.action ? { children: input.action.label, onClick: () => { input.action?.onAction(); manager.close(id); } } : undefined,
+      });
       return id;
     },
-    [dismiss],
-  );
-
-  // Capture the map instance for the unmount sweep — `timers.current` read at
-  // cleanup time would be a lint (and correctness) hazard.
-  const timersMap = timers.current;
-  useEffect(() => () => timersMap.forEach((timer) => clearTimeout(timer)), [timersMap]);
-
-  const value = useMemo(() => ({ toast, dismiss }), [toast, dismiss]);
-
-  return (
-    <ToastContext.Provider value={value}>
-      {children}
-      <ToastViewport toasts={toasts} onDismiss={dismiss} />
-    </ToastContext.Provider>
-  );
+    dismiss: id => manager.close(id),
+  }), [manager]);
+  return <ToastContext.Provider value={value}><ToastPrimitive.Provider toastManager={manager}>
+    {children}<ToastViewport />
+  </ToastPrimitive.Provider></ToastContext.Provider>;
 }
 
-/**
- * The toast viewport.
- *
- * **Always bottom-right — app-level chrome that never re-anchors.** A modal,
- * drawer, or popover opening must not slide the stack to the other side of the
- * window; the operator learns one corner and the stack stays there.
- *
- * **While any dismissable layer is open the cards go inert** (non-interactive,
- * controls disabled) so a persistent `danger` toast cannot swallow a click meant
- * for the dialog underneath it — geometry alone is not enough when a wide modal
- * shares the same corner. Nothing is hidden and nothing is dismissed; cards
- * become live again the instant the layer closes.
- *
- * The viewport aligns its cards to the right edge (`items-end`) so a collapsed
- * chip — see `ToastCard` — can hug its own text instead of holding the full
- * 360px column.
- */
-function ToastViewport({ toasts, onDismiss }: { toasts: DsToast[]; onDismiss: (id: string) => void }) {
-  const anyOverlay = useAnyOverlayOpen();
-  if (toasts.length === 0) return null;
-  return (
-    <div
-      role="region"
-      aria-label="Notifications"
-      data-ds-toast-viewport="default"
-      className={cn(
-        // `--ds-toast-inset-bottom` rather than a bare space token, and it is a
-        // CONSTANT the shell sets once. It clears exactly one thing — the app's
-        // own Session bar — and nothing that belongs to a panel. A surface with
-        // nothing parked at the bottom does not set it and gets the plain
-        // gutter.
-        "pointer-events-none fixed bottom-[var(--ds-toast-inset-bottom,var(--ds-space-loose))]",
-        "right-[var(--ds-space-loose)] items-end",
-        "flex w-[360px] max-w-[calc(100vw-var(--ds-space-section))] flex-col gap-[var(--ds-space-base)]",
-        dsLayer.toast,
-      )}
-    >
-      {toasts.map((item) => (
-        <ToastCard key={item.id} toast={item} onDismiss={onDismiss} inert={anyOverlay} />
-      ))}
-    </div>
-  );
-}
-
-/**
- * One toast. Every toast **arrives collapsed** — a one-line chip — and expands
- * to the full card ONLY when the operator presses the chevron. No timer, no
- * hover peek, and no layout shift (modal open, overlay inert) may change that
- * state.
- *
- * A `danger` toast is PERSISTENT: it has no dismiss timer and the chip stays
- * until the operator dismisses it or expands it deliberately.
- *
- * `data-ds-toast-state="full" | "chip"` is the hook a headless check asserts on.
- *
- * A11y: `role="alert"` is unchanged for `danger` and lives on the SAME element
- * across both states (React reuses the node, so the alert is announced once, on
- * arrival). `aria-atomic="false"` overrides the role's implicit `true` so an
- * operator-driven expand/collapse is silent rather than re-announcing the alert.
- */
-function ToastCard({
-  toast,
-  onDismiss,
-  inert,
-}: {
-  toast: DsToast;
-  onDismiss: (id: string) => void;
-  inert: boolean;
-}) {
-  const entered = useEntered();
-  const spec = TOAST_TONE[toast.tone];
-  const Icon = spec.icon;
-
-  const persistent = toast.tone === "danger";
-  const [collapsed, setCollapsed] = useState(true);
-
-  // Pressing a toggle unmounts it and mounts its counterpart, which would drop
-  // a keyboard user on `<body>`. Hand focus to whichever toggle took its place.
-  const toggleRef = useRef<HTMLButtonElement>(null);
-  const restoreFocus = useRef(false);
-  useEffect(() => {
-    if (!restoreFocus.current) return;
-    restoreFocus.current = false;
-    toggleRef.current?.focus();
-  }, [collapsed]);
-
-  const setCollapsedByOperator = (next: boolean) => {
-    restoreFocus.current = true;
-    setCollapsed(next);
-  };
-
-  const expanded = !collapsed;
-
-  const shell = cn(
-    inert ? "pointer-events-none" : "pointer-events-auto",
-    "border",
-    "border-[color:var(--ds-border-strong)] bg-[var(--ds-surface-overlay)]",
-    dsRadius.md,
-    dsElev.mid,
-    dsMotion.enter,
-    entered ? "translate-y-0 opacity-100" : "translate-y-1 opacity-0",
-  );
-
-  const surfaceProps = {
-    role: persistent ? ("alert" as const) : ("status" as const),
-    "aria-atomic": false,
-    "data-ds-toast-state": expanded ? "full" : "chip",
-  };
-
-  if (!expanded) {
-    return (
-      <div
-        {...surfaceProps}
-        className={cn(
-          shell,
-          "flex w-fit max-w-full items-center gap-[var(--ds-space-tight)]",
-          "py-[var(--ds-space-tight)] pl-[var(--ds-space-base)] pr-[var(--ds-space-hair)]",
-        )}
-      >
-        <HeroButton
-          ref={toggleRef}
-          type="button"
-          isDisabled={inert}
-          variant="ghost"
-          aria-expanded={false}
-          {...({ title: inert ? "Show the full alert — available once the dialog is closed" : "Show the full alert" } as ComponentProps<typeof HeroButton>)}
-          onClick={() => setCollapsedByOperator(false)}
-          className={cn(
-            "flex h-auto min-w-0 flex-1 cursor-pointer items-center gap-[var(--ds-space-tight)] border-0 bg-transparent p-0 shadow-none",
-            "disabled:cursor-default",
-            dsRadius.sm,
-            dsFocus,
-          )}
-        >
-          <Icon aria-hidden className={cn(dsIcon.md, "shrink-0", spec.accent)} />
-          <span className={cn(dsText.ui, "truncate font-medium text-[color:var(--ds-fg)]")}>{toast.title}</span>
-          <ChevronUp aria-hidden className={cn(dsIcon.sm, "shrink-0 text-[color:var(--ds-fg-muted)]")} />
-        </HeroButton>
-        <IconButton
-          label="Dismiss"
-          size="sm"
-          disabled={inert}
-          title={inert ? "Dismiss — available once the dialog is closed" : "Dismiss"}
-          icon={<X aria-hidden className={dsIcon.md} />}
-          onClick={() => onDismiss(toast.id)}
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div
-      {...surfaceProps}
-      // CLICK ANYWHERE DISMISSES. A toast is an interruption the operator has
-      // finished with the moment they have read it, and making them find a
-      // 20px × to say so is friction on the most common gesture the surface
-      // has. The × STAYS — it is the labelled, keyboard-reachable control, and
-      // this is a convenience layered over it, not a replacement for it. That
-      // is also why no `role="button"` goes on this element: it is a live
-      // region announcing an outcome, and re-labelling it as a control would
-      // cost the announcement to buy a route that already exists.
-      onClick={inert ? undefined : () => onDismiss(toast.id)}
-      className={cn(
-        shell,
-        "flex w-full items-start gap-[var(--ds-space-base)] p-[var(--ds-space-cozy)]",
-        !inert && "cursor-pointer",
-      )}
-    >
-      <Icon aria-hidden className={cn(dsIcon.lg, "mt-px shrink-0", spec.accent)} />
-      <div className="flex min-w-0 flex-1 flex-col gap-[var(--ds-space-hair)]">
-        <span className={cn(dsText.ui, "font-medium text-[color:var(--ds-fg)]")}>{toast.title}</span>
-        {toast.description && (
-          <span className={cn(dsText.body, "text-[color:var(--ds-fg-muted)]")}>{toast.description}</span>
-        )}
-        {toast.action && (
-          <HeroButton
-            type="button"
-            isDisabled={inert}
-            variant="ghost"
-            onClick={(e) => {
-              // The card behind this dismisses on click; without stopping here
-              // the action would fire and the card would dismiss twice.
-              e.stopPropagation();
-              toast.action?.onAction();
-              onDismiss(toast.id);
-            }}
-            className={cn(
-              "mt-[var(--ds-space-tight)] h-auto w-fit min-w-0 cursor-pointer border-0 bg-transparent p-0 text-left underline underline-offset-2 shadow-none",
-              dsText.meta,
-              "text-[color:var(--ds-fg)]",
-              "disabled:cursor-default disabled:opacity-45",
-              dsFocus,
-            )}
-          >
-            {toast.action.label}
-          </HeroButton>
-        )}
-      </div>
-      <div className="flex shrink-0 items-center gap-[var(--ds-space-hair)]">
-        {persistent && !collapsed && (
-          <IconButton
-            ref={toggleRef}
-            label="Collapse this alert to one line"
-            size="sm"
-            disabled={inert}
-            aria-expanded
-            title={
-              inert
-                ? "Collapse to one line — available once the dialog is closed"
-                : "Collapse to one line — the alert stays until you dismiss it"
-            }
-            icon={<ChevronDown aria-hidden className={dsIcon.md} />}
-            onClick={() => setCollapsedByOperator(true)}
-          />
-        )}
-        <IconButton
-          label="Dismiss"
-          size="sm"
-          disabled={inert}
-          title={inert ? "Dismiss — available once the dialog is closed" : "Dismiss"}
-          icon={<X aria-hidden className={dsIcon.md} />}
-          onClick={() => onDismiss(toast.id)}
-        />
-      </div>
-    </div>
-  );
+function ToastViewport() {
+  const { toasts } = ToastPrimitive.useToastManager();
+  const inert = useAnyOverlayOpen();
+  return <BaseToastViewport aria-label="Notifications" data-ds-toast-viewport="default" inert={inert || undefined}>
+    {toasts.map(item => <BaseToast key={item.id} toast={item} role={item.type === "error" ? "alert" : "status"} data-ds-toast-state="full" className={cn(inert && "pointer-events-none")}>
+      <BaseToastContent><BaseToastIcon type={item.type} />
+        <div className="min-w-0 flex-1"><BaseToastTitle /><BaseToastDescription /></div>
+        {item.actionProps && <BaseToastAction disabled={inert} />}
+        <BaseToastClose disabled={inert} aria-label="Dismiss" />
+      </BaseToastContent>
+    </BaseToast>)}
+  </BaseToastViewport>;
 }

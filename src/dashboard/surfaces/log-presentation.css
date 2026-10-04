@@ -51,13 +51,13 @@
 .log-viewer-image { position: absolute; left: 50%; top: 50%; max-width: none; box-shadow: 0 4px 16px color-mix(in srgb, var(--ui-primary) 12%, transparent); }
 .log-viewer-caption { display: flex; align-items: center; gap: 10px; padding: 10px 17px; border-top: 1px solid var(--ui-stroke); font-size: 10px; }
 .log-viewer-caption label { display: flex; align-items: center; gap: 7px; margin-left: auto; color: var(--ui-muted); }
-.log-viewer-caption select { max-width: 250px; border: 1px solid var(--ui-stroke); border-radius: 4px; padding: 3px 6px; background: var(--ui-panel); color: var(--ui-primary); font-size: 10px; }
+.log-viewer-caption .ds-select-control { width: 250px; max-width: 100%; }
 .log-capture-open:focus-visible, .log-capture-tab:focus-visible, .log-image-viewport:focus-visible { outline: 2px solid var(--ui-info); outline-offset: -2px; }
 .log-decision { overflow: hidden; border: 1px solid var(--ui-stroke); border-radius: 8px; background: var(--ui-panel); }
-.log-decision-header { display: flex; min-height: 53px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--ui-stroke); }
+.log-decision-header { display: flex; min-height: 53px; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 18px; border-bottom: 1px solid var(--ui-stroke); background: var(--ui-table); }
 .log-decision-header h4 { margin: 0; font-size: 14px; line-height: 21px; font-weight: 600; }
 .log-decision-badge { display: inline-flex; align-items: center; gap: 5px; border: 1px solid color-mix(in srgb, currentColor 30%, transparent); border-radius: 5px; padding: 3px 7px; font-size: 11px; font-weight: 600; background: color-mix(in srgb, currentColor 9%, transparent); white-space: nowrap; }
-.log-decision-body { padding: 16px 18px; font-size: 12px; line-height: 20px; }
+.log-decision-body { padding: 16px 18px; font-size: 12px; line-height: 20px; background: var(--ui-table); }
 .log-decision-body > p { margin: 0; }
 .log-decision-body strong { font-weight: 500; }
 .log-attempted { margin-top: 6px !important; color: var(--ui-secondary); }
@@ -69,11 +69,13 @@
 .log-failed-field > span:first-child { color: var(--ui-secondary); }
 .log-failed-field > span:last-child { margin-left: auto; color: var(--ui-danger); }
 .log-capture-unavailable { display: flex; align-items: center; gap: 9px; padding: 12px; margin-top: 14px; border: 1px dashed var(--ui-stroke); border-radius: 6px; font-size: 11px; color: var(--ui-muted); }
-.log-comparison { width: 100%; border-collapse: collapse; font-size: 12px; }
+.log-comparison-frame { overflow: hidden; margin-top: 14px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: var(--ui-panel); }
+.log-comparison { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--ui-panel); }
 .log-comparison th, .log-comparison td { padding: 8px 10px; border-bottom: 1px solid var(--ui-stroke); text-align: left; font-weight: 400; }
-.log-comparison thead { color: var(--ui-muted); font-size: 10px; }
+.log-comparison thead { color: var(--ui-muted); font-size: 10px; background: var(--ui-table); }
+.log-comparison tbody tr:last-child > * { border-bottom: 0; }
 .log-comparison tbody th { color: var(--ui-secondary); }
-.log-comparison .different { background: color-mix(in srgb, var(--ui-info) 6%, transparent); }
+.log-comparison .different { background: color-mix(in srgb, var(--ui-info) 6%, var(--ui-panel)); }
 .log-comparison .different td:last-child { color: var(--ui-info); font-weight: 500; }
 .log-decision-footer { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 18px; border-top: 1px solid var(--ui-stroke); background: var(--ui-table); }
 .log-decision-footer > span { color: var(--ui-muted); font-size: 11px; }

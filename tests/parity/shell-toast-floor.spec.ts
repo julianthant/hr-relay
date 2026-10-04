@@ -63,7 +63,9 @@ async function measureToastFloor(page: Parameters<typeof gotoAppState>[0]): Prom
         `expected toast viewport and Session Panel; found toast=${String(toast !== null)}, sessions=${String(sessions !== null)}`,
       );
     }
-    const toastRect = toast.getBoundingClientRect();
+    const card = toast.querySelector<HTMLElement>("[data-slot='toast']");
+    if (card === null) throw new Error("expected a painted toast card");
+    const toastRect = card.getBoundingClientRect();
     const sessionRect = sessions.getBoundingClientRect();
     const computedBottom = Number.parseFloat(window.getComputedStyle(toast).bottom);
     if (!Number.isFinite(computedBottom)) {
@@ -89,7 +91,9 @@ for (const viewport of VIEWPORTS) {
 
     await page.getByRole("button", { name: "Run next" }).first().click();
     const toast = page.locator("[data-ds-toast-viewport='default']");
-    await expect(toast).toBeVisible();
+    await expect(toast.locator("[data-slot='toast']")).toBeVisible();
+    await expect(toast.locator("[data-slot='toast']")).not.toHaveAttribute("data-starting-style", "");
+    await expect(toast.locator("[data-slot='toast']")).toHaveCSS("transform", "matrix(1, 0, 0, 1, 0, 0)");
 
     const geometry = await measureToastFloor(page);
     const evidence = formatGeometry(geometry);

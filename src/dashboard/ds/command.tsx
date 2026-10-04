@@ -1,8 +1,7 @@
 import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 import { cn } from "../lib/utils.js"
-import { SearchIcon, X } from "lucide-react"
-import { InputGroup, InputGroupAddon, InputGroupButton, InputGroupInput } from "./input-group.js"
+import { SearchField } from "@heroui/react"
 
 function Command({
   className,
@@ -29,13 +28,14 @@ function CommandInput({
   ...props
 }: React.ComponentProps<typeof CommandPrimitive.Input> & { shortcut?: React.ReactNode; onClear?: () => void }) {
   return (
-    <InputGroup className={className}>
-      <CommandPrimitive.Input asChild {...props}><InputGroupInput aria-expanded={props['aria-expanded']} {...('aria-activedescendant' in props ? { 'aria-activedescendant': props['aria-activedescendant'] } : {})} /></CommandPrimitive.Input>
-      <InputGroupAddon><SearchIcon aria-hidden /></InputGroupAddon>
-      {(onClear || shortcut) && <InputGroupAddon align="inline-end">
-        {props.value && onClear ? <InputGroupButton size="icon-xs" aria-label="Clear search" onClick={onClear}><X aria-hidden /></InputGroupButton> : shortcut}
-      </InputGroupAddon>}
-    </InputGroup>
+    <SearchField className={cn("ds-search-field", className)} aria-label={props['aria-label']} value={props.value} onChange={props.onValueChange} onClear={onClear}>
+      <SearchField.Group>
+        <SearchField.SearchIcon />
+        <CommandPrimitive.Input asChild {...props}><SearchField.Input aria-expanded={props['aria-expanded']} {...('aria-activedescendant' in props ? { 'aria-activedescendant': props['aria-activedescendant'] } : {})} /></CommandPrimitive.Input>
+        {onClear && <SearchField.ClearButton aria-label="Clear search" />}
+        {!props.value && shortcut && <span className="ds-search-shortcut">{shortcut}</span>}
+      </SearchField.Group>
+    </SearchField>
   )
 }
 

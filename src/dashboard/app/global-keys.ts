@@ -190,7 +190,7 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
         onMinimisePanel();
         return;
       }
-      if (event.key === "w") {
+      if (event.key === "w" && panelMode !== "sidebar") {
         event.preventDefault();
         onCyclePanelMode();
         return;

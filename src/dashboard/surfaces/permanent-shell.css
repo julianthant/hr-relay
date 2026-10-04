@@ -1,0 +1,31 @@
+.dashboard-shell { --shell-rail-width: 288px; }
+.dashboard-workspace > .navbar-shell { margin-left: var(--shell-rail-width); }
+.dashboard-shell:not([data-settings-takeover="true"]) .dashboard-workspace > main { margin-left: var(--shell-rail-width); }
+.dashboard-shell .workflow-rail,
+.dashboard-shell .settings-takeover > nav { position: absolute; inset: 0 auto 0 0; width: var(--shell-rail-width); z-index: 20; }
+.dashboard-shell .settings-takeover { padding-left: var(--shell-rail-width); }
+.workflow-rail { display: flex; flex-direction: column; min-height: 0; border-right: 1px solid var(--ui-stroke); background: var(--ds-surface-1); color: var(--ui-primary); padding: 22px 16px 16px; }
+.workflow-rail h2 { margin: 0 12px 18px; font-size: var(--ds-text-display); line-height: var(--ds-lh-settings-sidebar-title); font-weight: 600; }
+.workflow-rail-groups { display: flex; flex-direction: column; gap: 16px; overflow-y: auto; min-height: 0; }
+.workflow-rail-group { display: flex; flex-direction: column; gap: 2px; }
+.workflow-rail h3 { margin: 0; padding: 0 12px 6px; color: var(--ui-muted); font-size: 14px; font-weight: 400; }
+.workflow-rail button { display: flex; width: 100%; height: 32px; align-items: center; gap: 8px; padding: 0 12px; border: 0; border-radius: 10px; color: var(--ui-primary); font-size: var(--ds-text-ui); font-weight: 400; text-align: left; cursor: pointer; }
+.workflow-rail button:hover { background: var(--ds-surface-3); }
+.workflow-rail button[aria-current="page"] { background: var(--ds-surface-selected); font-weight: 500; }
+.dashboard-panel-columns { display: grid; height: 100%; min-height: 0; grid-template-columns: minmax(260px,32%) minmax(0,1fr); }
+.dashboard-queue-column, .dashboard-log-column { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.dashboard-queue-column { border-right: 1px solid var(--ui-stroke); container-type: inline-size; container-name: queue; }
+.dashboard-queue-column > section, .dashboard-log-column > section { flex: 1; min-height: 0; border-radius: 0; border-width: 0; }
+.dashboard-queue-column > .operations-toolbar { height: 48px; min-height: 48px; margin: 0; border-radius: 0; border-width: 0 0 1px; padding: 8px 12px; gap: 6px; }
+.dashboard-log-date { display: flex; align-items: center; justify-content: flex-end; height: 48px; min-height: 48px; padding: 6px 16px; border-bottom: 1px solid var(--ui-stroke); background: var(--ui-panel); }
+.dashboard-log-date .date-input-group { height: 32px; }
+.dashboard-shell .navbar-shell { grid-template-columns: auto minmax(0,1fr) auto; }
+.dashboard-shell .navbar-search { width: min(460px,100%); justify-self: center; }
+
+.dashboard-queue-column .operations-toolbar > [role="toolbar"] { min-height: 48px; height: 48px; padding: 6px 12px; gap: 6px; }
+
+@container queue (max-width: 330px) {
+  .queue-sort.ds-select-control { width: 32px; padding-inline: 8px; justify-content: center; }
+  .queue-sort [data-slot="select-value"], .queue-sort > svg:last-child { display: none; }
+  [aria-label="Frequent queue filters"] button { padding-inline: 2px; font-size: var(--ds-text-meta); white-space: nowrap; }
+}

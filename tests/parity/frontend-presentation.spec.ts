@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test, type Page } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
@@ -24,6 +25,20 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?settings=general`);
       await expect(page.getByRole("heading", { name: "General", exact: true })).toBeVisible();
+      const sidebar = page.getByRole('navigation', { name: 'Settings sections', exact: true });
+      const general = sidebar.getByRole('link', { name: 'General', exact: true });
+      const performanceLink = sidebar.getByRole('link', { name: 'Performance', exact: true });
+      const colors = await general.evaluate(node => ({ color: getComputedStyle(node).color, radius: getComputedStyle(node).borderRadius }));
+      await expect(performanceLink).toHaveCSS('color', colors.color);
+      expect(colors.radius).toBe('10px');
+      const selectedBounds = (await general.boundingBox())!;
+      const otherBounds = (await performanceLink.boundingBox())!;
+      expect(selectedBounds.height).toBe(32);
+      expect(otherBounds.y - selectedBounds.y - selectedBounds.height).toBe(2);
+      await expect(sidebar.getByText('Personal', { exact: true })).toHaveCSS('font-size', '14px');
+      await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-weight', '400');
+      await expect(page.locator('.ds-body-section-heading').first()).toHaveCSS('font-size', '14px');
+      await expect(page.locator('.ds-switch-copy .ds-text-ui').first()).toHaveCSS('font-weight', '400');
       const body = page.locator('.settings-tab-body');
       const original = await body.boundingBox();
       const headingStyle = await body.locator('.ds-page-heading-title').first().evaluate(node => {
@@ -41,15 +56,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual(headingStyle);
         await expect(body.locator('.operations-toolbar')).toHaveCount(0);
         expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
-        expect((await page.getByRole('banner').boundingBox())!.height).toBe(54);
+        expect((await page.getByRole('banner').boundingBox())!.height).toBe(48);
         if (title === "Archive") {
-          await expect(page.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(0);
+          await expect(page.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(1);
           await expect(body).toContainText('30 matching reports');
           await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
           const search = page.getByRole("textbox", { name: "Search saved reports" });
           await search.focus();
           await expect(search).toHaveCSS('outline-style', 'none');
-          await expect(search.locator('..')).toHaveCSS('box-shadow', /0px 0px 0px 3px/u);
+          await expect(search.locator('..')).toHaveAttribute('data-slot', 'search-field-group');
+          await expect(search.locator('..')).toHaveAttribute('data-focus-within', 'true');
+          await expect(search.locator('..')).not.toHaveCSS('box-shadow', 'none');
           await search.fill("Jordan");
           await expect(page.locator('tbody tr')).toHaveCount(1);
           await page.getByRole("button", { name: "Clear search", exact: true }).click();
@@ -85,7 +102,18 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const metrics = surface.getByLabel("Activity summary");
       await expect(metrics).toContainText("38");
       await expect(metrics).toContainText("36 measured · 4 unmeasured");
-      await expect(surface.getByRole("row", { name: "Separations Version 2.1 24 3 2 29" })).toBeVisible();
+      await expect(surface.getByRole("row", { name: "Separations 24 3 2 29" })).toBeVisible();
+      const separation = surface.getByRole("button", { name: "Separations", exact: true });
+      await expect(separation).toHaveAttribute("aria-expanded", "true");
+      const version = surface.getByRole("row", { name: "Version 2.1", exact: true });
+      await expect(version).toBeVisible();
+      await separation.focus();
+      await separation.press("Enter");
+      await expect(version).toBeHidden();
+      await separation.press("Space");
+      await expect(version).toBeVisible();
+      await surface.getByRole("button", { name: "Person lookup", exact: true }).click();
+      await expect(surface.getByRole("row", { name: "Version 2.0", exact: true })).toBeVisible();
       await expect(surface).toContainText("35 of 38 completed");
       const performance = surface.getByRole("table", { name: "Run performance", exact: true });
       await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("95%");
@@ -97,6 +125,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toBeVisible();
       await expect(surface.getByRole("group", { name: "Activity actions", exact: true })).toHaveCount(0);
       const outcomes = surface.getByRole("table", { name: "Workflow outcomes", exact: true });
+      await expect(outcomes.locator('..')).toHaveCSS('border-radius', '12.6px');
+      await expect(outcomes.getByRole('columnheader', { name: 'Workflow', exact: true })).toHaveCSS('font-weight', '400');
       const outcomeBounds = await outcomes.boundingBox();
       const chartSection = chart.locator("..").locator("..");
       const chartBounds = await chartSection.boundingBox();
@@ -145,8 +175,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await page.mouse.move(0, 0);
       await bars.last().focus();
-      await surface.getByRole("combobox", { name: "Report period" }).selectOption("today");
+      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "today");
       await expect(bars).toHaveCount(24);
+      await bars.first().focus();
       await expect(chart.getByRole("tooltip")).toContainText("Sep 26");
       await expect(chart.getByRole("tooltip")).toContainText("0 runs");
       const solo = (await bars.first().boundingBox())!;
@@ -154,7 +185,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const hourlyPlot = (await chart.boundingBox())!;
       const hourlyLeft = Math.max(hourlyPlot.x, Math.min(solo.x + solo.width / 2 - soloTip.width / 2, hourlyPlot.x + hourlyPlot.width - soloTip.width));
       expect(Math.abs(soloTip.x - hourlyLeft)).toBeLessThanOrEqual(1);
-      await surface.getByRole("combobox", { name: "Report period" }).selectOption("this-week");
+      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "this-week");
       await expect(bars).toHaveCount(7);
       await bars.nth(3).focus();
       await expect(chart.getByRole("tooltip")).toHaveText("Sep 237 runs");
@@ -166,7 +197,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(chart.getByRole("tooltip")).toHaveText("Sep 200 runs");
       await page.keyboard.press("Escape");
       await expect(chart.getByRole("tooltip")).toHaveCount(0);
-      await surface.getByRole("combobox", { name: "Report period" }).selectOption("last-3-months");
+      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "last-3-months");
       expect(await bars.count()).toBeGreaterThan(7);
       const denseBar = (await bars.first().locator(":scope > span").first().boundingBox())!;
       const denseBand = (await bars.first().boundingBox())!;
@@ -174,7 +205,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(denseBar.width / denseBand.width).toBeLessThan(.9);
       await bars.first().hover();
       await expect(chart.getByRole("tooltip")).toContainText("0 runs");
-      await surface.getByRole("combobox", { name: "Report period" }).selectOption("this-week");
+      await chooseSelect(surface.getByRole("combobox", { name: "Report period" }), "this-week");
       await surface.getByRole("heading", { name: "Workflow outcomes", exact: true }).click();
       await expect(surface.getByRole("heading", { name: "Activity", exact: true })).toHaveCount(1);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
@@ -184,27 +215,27 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
       await test.info().attach(evidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
-      await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("incomplete");
+      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "incomplete");
       await expect(surface).toContainText("Volume unavailable");
       await expect(surface.getByLabel("Activity summary")).toContainText("Unavailable");
       await expect(surface).toContainText("Readback verifiedUnavailable");
       await expect(performance.getByRole("row", { name: /Longest run/ })).toContainText("Unavailable");
       await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("Unavailable");
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("Unavailable");
-      await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("empty");
+      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "empty");
       await expect(surface).toContainText("No workflow activity in this period");
       await expect(surface).toContainText("No runs in this period");
       await expect(performance.getByRole("row", { name: /Completion rate/ })).toContainText("No finished runs");
       await expect(performance.getByRole("row", { name: /Total measured runtime/ })).toContainText("0s");
       await expect(performance.getByRole("row", { name: /Most common failure/ })).toContainText("No failures");
-      await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("loading");
+      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "loading");
       const loading = surface.getByRole("status", { name: "Loading activity report" });
       await expect(loading).toBeVisible();
       await expect(loading).toHaveText("");
       await expect(surface.getByRole("button", { name: "Export report", exact: true })).toBeDisabled();
-      await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("unavailable");
+      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "unavailable");
       await expect(surface.getByRole("alert")).toContainText("Activity unavailable");
-      await surface.getByRole("combobox", { name: "Activity sample data" }).selectOption("normal");
+      await chooseSelect(surface.getByRole("combobox", { name: "Activity sample data" }), "normal");
       await surface.getByRole("button", { name: "Export report", exact: true }).click();
       await page.getByRole("menuitem", { name: "CSV", exact: true }).click();
       await expect(surface.getByRole("status")).toHaveText("Export is not connected yet.");
@@ -224,19 +255,18 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&run=${FIXTURE_IDS.doneRun}`);
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
       await expect(surface.getByRole("heading", { name: "Person Lookup · EID 10001573", exact: true })).toBeVisible();
-      await page.getByRole("button", { name: "Minimise the Workflow Panel to an icon", exact: true }).click();
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.runningRun}"]`).click();
       await expect(surface.getByRole("heading", { name: "Person Lookup · Battistessa, Johnnie", exact: true })).toBeVisible();
-      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveValue("preview");
+      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveAttribute("data-value", "preview");
       await expect(surface).toContainText("Waiting for UCPath search results for Battistessa, Johnnie.");
       await expect(surface).not.toContainText("Alex Morgan");
-      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("selected");
+      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "selected");
       await expect(surface).toContainText("Searching UCPath for Battistessa, Johnnie");
       await expect(surface.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button")).toHaveCount(4);
       await page.locator(`[data-demo-row-id="${FIXTURE_IDS.failedRun}"]`).click();
       await expect(surface.getByRole("heading", { name: "Person Lookup · EID 10555001", exact: true })).toBeVisible();
       await expect(surface).not.toContainText("Searching UCPath for Battistessa, Johnnie");
-      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveValue("preview");
+      await expect(surface.getByRole("combobox", { name: "Logs sample data" })).toHaveAttribute("data-value", "preview");
       const defaultFailure = surface.getByRole("article", { name: "Search CRM employee record", exact: true });
       await expect(defaultFailure).toBeInViewport();
       await expect(defaultFailure).toContainText("The CRM Search button could not be clicked.");
@@ -252,6 +282,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(defaultReview).toBeInViewport();
       await expect(defaultReview.locator("figure")).toHaveCount(1);
       await expect(defaultReview).toContainText("Blirea, Glaundi");
+      for (const part of ['.log-decision-header', '.log-decision-body', '.log-comparison-frame', '.log-comparison', '.log-comparison thead', '.log-comparison .different']) {
+        const alpha = await defaultReview.locator(part).first().evaluate(node => {
+          const context = document.createElement('canvas').getContext('2d');
+          if (!context) throw new Error('color-alpha-context-unavailable');
+          context.fillStyle = getComputedStyle(node).backgroundColor;
+          context.fillRect(0, 0, 1, 1);
+          return context.getImageData(0, 0, 1, 1).data[3];
+        });
+        expect(alpha).toBe(255);
+      }
+      await expect(defaultReview.locator('.log-comparison-frame')).toHaveCSS('border-top-width', '1px');
+      await expect(defaultReview.locator('.log-comparison-frame')).toHaveCSS('border-radius', '10px');
+
       await expect(defaultReview.locator("img")).toHaveJSProperty("naturalWidth", 850);
       await expect(defaultReview.getByRole("alert")).toHaveCount(0);
       await selectedTimeline.getByRole("button", { name: /^Cross Verification/u }).hover();
@@ -274,7 +317,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await selectedTimeline.getByRole("button", { name: /^File termination/u }).click();
       await expect(defaultParked).toBeInViewport();
       await expect(surface).not.toContainText("Employee match approved.");
-      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("separation");
+      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "separation");
       await expect(surface.getByRole("heading", { name: "Separations · Alex Morgan", exact: true })).toBeVisible();
       await expect(surface.locator("header").first().locator(":scope > span.text-caption")).toHaveCount(0);
       await expect(surface.getByRole("heading", { name: "Reconcile dates", exact: true })).toHaveCount(0);
@@ -358,7 +401,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Enter");
       await expect(surface.getByRole("heading", { name: "Read pending terminations", exact: true })).toBeFocused();
       await expect(surface.getByRole("searchbox", { name: "Search logs" })).toHaveValue("");
-      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("reading");
+      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "reading");
       await expect(surface.locator("header").first()).toContainText("In progress");
       await expect(timeline.getByRole("button", { name: /^Read timecard.*In progress/ })).toBeEnabled();
       await timeline.getByRole("button", { name: /^Read timecard/ }).focus();
@@ -366,11 +409,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("tooltip")).not.toContainText("16s");
       await expect(page.getByRole("tooltip")).not.toContainText("28s");
       await expect(timeline.getByRole("button", { name: /^File termination.*Upcoming/ })).toBeDisabled();
-      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("waiting");
+      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "waiting");
       await expect(timeline).toContainText("Waiting");
-      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("failed");
+      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "failed");
       await expect(timeline.getByRole("button", { name: /^Finalize document.*Failed/ })).toBeEnabled();
-      await surface.getByRole("combobox", { name: "Logs sample data" }).selectOption("empty");
+      await chooseSelect(surface.getByRole("combobox", { name: "Logs sample data" }), "empty");
       await expect(surface.getByRole("heading", { name: "No actions yet" })).toBeVisible();
       await expect(surface.getByRole("button", { name: "Copy logs" })).toBeDisabled();
       await expect(timeline.getByRole("button", { disabled: true })).toHaveCount(5);
@@ -510,7 +553,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(add).toBeFocused();
       await add.click();
-      await dialog.getByRole("combobox", { name: "Workflow", exact: true }).selectOption("person-lookup");
+      await chooseSelect(dialog.getByRole("combobox", { name: "Workflow", exact: true }), "person-lookup");
       await dialog.getByRole("spinbutton", { name: "Workers", exact: true }).fill("0");
       await expect(dialog.getByRole("button", { name: "Add workers", exact: true })).toBeDisabled();
       await workerCount.fill("7");
@@ -569,7 +612,7 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     const end = page.getByRole("button", { name: /^Choose end date range/u });
     await expect(start).toHaveCount(0);
     await expect(end).toHaveCount(0);
-    await period.selectOption("custom");
+    await chooseSelect(period, "custom");
     const calendar = page.getByRole("dialog", { name: "Select report dates", exact: true });
     await expect(calendar).toHaveCount(0);
     await start.click();
@@ -606,9 +649,9 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     const fields = page.getByRole("group", { name: "Custom report range", exact: true });
     await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("25");
     await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
-    await expect(period).toHaveValue("custom");
+    await expect(period).toHaveAttribute("data-value", "custom");
     await expect(page.getByLabel("Activity summary")).toContainText("of 18 runs");
-    await period.selectOption("today");
+    await chooseSelect(period, "today");
     await expect(start).toHaveCount(0);
     await expect(end).toHaveCount(0);
     await expect(page.getByLabel("Activity summary")).toContainText("of 9 runs");

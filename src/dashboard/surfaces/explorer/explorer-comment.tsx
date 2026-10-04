@@ -1,12 +1,12 @@
 import { ChevronDown, FileText } from "lucide-react";
-import { dsFocus } from "../../ds/ui.js";
+import { Select, dsFocus } from "../../ds/ui.js";
 import { commentTemplate, LEAVE_CONDITIONS, LEAVE_OPTIONS, type CommentChoices } from "./explorer-flow-model.js";
 
 function Choice({ label, value, options, onChange }: { label: string; value: string; options: readonly (readonly [string, string])[]; onChange: (value: string) => void }) {
   return <label className="flex min-w-0 flex-col gap-1 text-caption text-ui-secondary">
-    {label}<select className={`h-8 min-w-0 rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary ${dsFocus}`} value={value} onChange={(event) => onChange(event.target.value)}>
+    {label}<Select aria-label={label} className={`h-8 min-w-0 rounded-md border border-ui-stroke-control bg-ui-field px-2 text-body text-ui-primary ${dsFocus}`} value={value} onChange={(event) => onChange(event.target.value)}>
       {options.map(([id, text]) => <option key={id} value={id}>{text}</option>)}
-    </select>
+    </Select>
   </label>;
 }
 

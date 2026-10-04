@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import { existsSync, writeFileSync } from "node:fs";
 import { createHash, randomUUID } from "node:crypto";
@@ -58,7 +59,7 @@ async function review(page: Page, field: Field, value: string): Promise<void> {
   const input = dialog.getByRole(field === "label" ? "textbox" : "combobox", { name: `Workflow ${field}`, exact: true });
   await expect(input).toBeFocused();
   if (field === "label") await input.fill(value);
-  else await input.selectOption(value);
+  else await chooseSelect(input, value);
   await dialog.getByRole("textbox", { name: "Operator reason (required)" }).fill(`Review ${field} appearance`);
   await dialog.getByRole("button", { name: "Review change", exact: true }).click();
   await expect(dialog.getByRole("region", { name: "Draft review" })).toContainText(`presentation.${field}`);
@@ -317,7 +318,7 @@ test("E4 branch and child path controls stay keyboard-readable and launch no exe
     const inspect = page.getByRole("button", { name: "Inspect After B", exact: true });
     await inspect.focus();
     await page.keyboard.press("Enter");
-    await routeChoice.selectOption("Route A");
+    await chooseSelect(routeChoice, "Route A");
     await expect(page.getByRole("button", { name: "Close step inspection", exact: true })).toHaveCount(0);
     await routeChoice.focus();
     await routeChoice.press("r");

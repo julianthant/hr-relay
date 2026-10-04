@@ -677,25 +677,11 @@ This demo is asserted through the accessibility tree, so a missing label is a
   `aria-invalid` and announces the error via `role="alert"`. Never hand-roll it.
 - Dialog and Drawer are Radix: focus enters on open, **returns to the trigger on
   close**, Escape dismisses, the rest of the page is hidden from assistive tech.
-- Toasts: `role="status"`, except `danger` which is `role="alert"` and **never
-  auto-dismisses** — a failed write is acknowledged by a human. Because it never
-  dismisses, a `danger` toast **recedes to a one-line chip** after a few seconds
-  rather than sitting on top of the panel underneath it forever: same tint, same
-  icon, still naming the failure, still dismissible, and back to the full card on
-  hover or a press (the timer never fires while the pointer is over it or focus
-  is inside it, and an operator who expands it keeps it expanded). The alert
-  persists; only its footprint recedes. **While a Dialog
-  or Drawer is open the toast viewport steps aside** (bottom-right → bottom-left,
-  away from the footer's action gutter) **and goes inert** (cards
-  `pointer-events: none`, their controls disabled), so a persistent toast can
-  never swallow a click meant for the decision the operator is making. It stays
-  fully visible and becomes live again when the modal closes.
-  **A dialog built on any OTHER primitive must call `useDsModalPresence()`** from
-  a component that mounts only while it is open — the registry is what makes the
-  step-aside happen, and a dialog that skips it is one a persistent `danger`
-  toast can still click-block. A **Popover** or **ContextMenu** registers as a
-  `layer` instead: it makes the cards inert and moves NOTHING (see the rule
-  below).
+- Toasts use the shadcn Base UI card composition. Ordinary notifications announce status; errors
+  announce alerts and never auto-dismiss. Title, detail and recovery action remain visible together.
+  The stack stays at the bottom right above Sessions. While a dialog, drawer, popover or menu is open,
+  cards become inert and their controls are disabled; closing the overlay restores interaction.
+  Custom overlays must register their mounted presence with the shared DS layer registry.
 
 ### The decision notice and the toast stack are in DIFFERENT coordinate spaces
 
@@ -721,10 +707,8 @@ cleared by a CONSTANT, `--ds-toast-inset-bottom`, built from the bars and bands
 the shell has parked at the bottom. A gap that is always there is predictable;
 one that appears when some other element does is the defect.
 
-**The toast viewport moves for exactly one thing: an open Dialog or Drawer**,
-whose footer's right-hand gutter holds the primary action. A Popover moves
-nothing — it is the most frequently opened surface in the product, and a stack
-that teleports on every ⓘ is the same defect wearing a different trigger.
+**Overlays never move the toast viewport.** Opening a dialog, drawer, popover or menu makes
+its cards inert and disables their controls. Closing the overlay restores interaction at the same anchor.
 - Contrast is WCAG AA minimum, including text on a solid status fill (which is
   why the loud statuses use dark ink on a bright fill).
 - Colour is never the only differentiator, anywhere.

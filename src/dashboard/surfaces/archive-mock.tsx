@@ -6,7 +6,7 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem,
 import { ArchiveResourceState, ArchiveTable } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
 import { MockArchiveReport } from './archive-mock-report.js';
-import { MOCK_ARCHIVE_CURRENT, MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
+import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
 import './archive-mock.css';
 
 export function MockArchiveWorkspace({ selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder }: {
@@ -45,7 +45,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   onBrowse(next.data, mode);
  };
  return <section aria-label="Archive mock" className="mock-archive settings-reference-page settings-data-section">
-  <PageHeading title="Archive" description={`Retained run history · Dashboard ${MOCK_ARCHIVE_CURRENT} · fictional data`} actions={<>
+  <PageHeading title="Archive" actions={<>
    {(folder !== null || report !== undefined) && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
     <DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={exportRows.length === 0} icon={<Download className={dsIcon.sm} />}>{report ? 'Export run' : 'Export workflow'}</Button></DropdownMenuTrigger>
     <DropdownMenuContent aria-label="Export fictional reports" align="end" className="w-70">
@@ -54,10 +54,16 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
    </DropdownMenu>}
    <Button ref={bumpTrigger} size="toolbar" variant="secondary" onClick={() => onView('versions')}>Plan a bump</Button>
   </>} />
-  {folder === null && report === undefined && !invalid && !unavailable && <div className="flex items-center gap-3">
-   <span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>
-   {filtered && <Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}
+  {folder === null && report === undefined && !invalid && !unavailable && <div className="archive-header-filters">
+    <ArchiveMockSearch value={browsing.filters.search ?? ""} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, "replace")} />
+    <Select aria-label="Archived workflow" value={browsing.filters.workflow ?? "all"} onChange={event => updateFilters({ ...browsing.filters, workflow: event.target.value === "all" ? undefined : event.target.value })} icon={<Folder className={dsIcon.sm} />}>
+      <option value="all">All workflows</option>{MOCK_ARCHIVE_WORKFLOWS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
+    </Select>
+    <Select aria-label="Archived outcome" value={browsing.filters.outcome ?? "all"} onChange={event => updateFilters({ ...browsing.filters, outcome: event.target.value === "all" ? undefined : event.target.value as NonNullable<ArchiveBrowseState["filters"]["outcome"]> })}>
+      <option value="all">All outcomes</option><option value="done">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option>
+    </Select>
   </div>}
+  {folder === null && report === undefined && !invalid && !unavailable && <div className="flex items-center gap-3"><span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>{filtered && <Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}</div>}
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable in the mock" message="Choose a fresh mock scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable in the mock" message="This preview contains fictional runs only. Choose a mock workflow to browse its reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
@@ -96,7 +102,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
 }
 
 function ArchiveMockSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
- return <SearchInput type="text" className="mock-archive-search" aria-label="Search saved reports" placeholder="Name, ID, document or field…" value={value} onChange={event => onChange(event.target.value)} onClear={() => onChange('')} />;
+ return <SearchInput type="text" className="mock-archive-search" aria-label="Search saved reports" placeholder="Search archived reports" value={value} onChange={event => onChange(event.target.value)} onClear={() => onChange('')} />;
 }
 
 function MockVersionFolders({ rows, onFolder }: { rows: readonly MockArchiveRun[]; onFolder: (folder: MockArchiveFolder) => void }) {

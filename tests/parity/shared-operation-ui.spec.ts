@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
@@ -41,10 +42,10 @@ for (const theme of PARITY_THEMES) {
       await page.getByRole("button", { name: "Collapse all", exact: true }).click();
       const outcome = page.getByRole("combobox", { name: "Transactions in Progress declared result", exact: true });
       await expect(outcome).toBeVisible();
-      await outcome.selectOption("unknown");
+      await chooseSelect(outcome, "unknown");
       await expect(page.getByText("Preview stops here", { exact: true })).toBeVisible();
       expect(await page.locator('[data-operation-muted="true"]').count()).toBeGreaterThan(0);
-      await outcome.selectOption("none");
+      await chooseSelect(outcome, "none");
       await expect(page.getByRole("button", { name: "Continue at termination", exact: true })).toBeVisible();
       await page.getByRole("button", { name: "Expand all", exact: true }).click();
       await page.locator(".operation-template").first().locator("summary").click();

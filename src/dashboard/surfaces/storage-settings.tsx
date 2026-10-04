@@ -164,7 +164,7 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
-    <p className="diagnostic-status">{report === undefined ? doctor.state === "reading" ? "Loading last storage check…" : "No completed checks in this server session" : `Last checked ${fmtInstantDay(report.checkedAt)} ${fmtClock(report.checkedAt)}`}</p>
+    {report !== undefined && <p className="diagnostic-status">Last checked {fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</p>}
       {authority === "healthy"
         ? <FormGroup label="Data store summary" className="diagnostic-summary">
           <ResultRow label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}

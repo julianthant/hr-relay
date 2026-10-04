@@ -12,8 +12,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
-import { EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
-import { cn } from "../lib/utils.js";
+import { Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
@@ -59,8 +58,11 @@ import { SessionPanel } from "../surfaces/session-panel.js";
 import {
 DASHBOARD_MAIN_REGION_ID
 } from "../surfaces/settings-model.js";
-import { activeCount,activeStatusWords,parseWorkflows,useSelectedWorkflow,useWorkflowPanelMode,type StatusBucket } from "../surfaces/shell-model.js";
-import { WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
+import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell-model.js";
+import { WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
+import { WorkflowRail } from "../surfaces/workflow-rail.js";
+import { WORKFLOW_RAIL_PREVIEWS } from "../surfaces/workflow-rail-model.js";
+import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
 import { TopBar } from "../surfaces/top-bar.js";
@@ -110,7 +112,6 @@ export function DashboardApp() {
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
-  const panelMode = useWorkflowPanelMode();
   const [filter, setFilter] = useState<StatusBucket>("all");
   const [openWells, setOpenWells] = useState<ReadonlySet<string>>(() => new Set());
   const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
@@ -165,7 +166,6 @@ export function DashboardApp() {
           nativeHistory={nativeHistory}
           theme={theme}
           onToggleTheme={toggleTheme}
-          panelMode={panelMode}
           filter={filter}
           onFilter={setFilter}
           openWells={openWells}
@@ -229,7 +229,6 @@ interface LoadedAppProps {
   nativeHistory: NativeRouteHistory;
   theme: ReturnType<typeof useDemoTheme>["theme"];
   onToggleTheme: () => void;
-  panelMode: ReturnType<typeof useWorkflowPanelMode>;
   filter: StatusBucket;
   onFilter: (bucket: StatusBucket) => void;
   openWells: ReadonlySet<string>;
@@ -261,7 +260,6 @@ function LoadedApp({
   nativeHistory,
   theme,
   onToggleTheme,
-  panelMode,
   filter,
   onFilter,
   openWells,
@@ -353,32 +351,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.label ?? workflowId,
     [workflows],
   );
-  /**
-   * The active workflow's served 2-char code. A workflow id the boot document
-   * does not carry has no code, and the launcher then draws NOTHING in that
-   * slot — the demo's own `WORKFLOW_CODE[active] ?? ""`. Deriving two letters
-   * from the label would put a value the server never issued beside the
-   * identity an operator selects a real HR workflow by.
-   */
-  const workflowCodeOf = useCallback(
-    (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.code ?? "",
-    [workflows],
-  );
-
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (dayWire === undefined) return [];
     const scoped = previewQueue.rows.filter((s) => s.workflowId === activeWorkflowId);
     return filterQueueSurfaces(scoped, filter);
   }, [dayWire, previewQueue.rows, activeWorkflowId, filter]);
-
-  const dayCount = dayWire?.monthCounts.find((c) => c.day === day)?.count ?? 0;
-  /**
-   * ACTIVE across every workflow today — queued + running + cancelling, off the day's OWN
-   * served `statusCounts`, which is already day-scoped across workflows. The
-   * launcher and the rail's orange column are then the same quantity at two
-   * scopes and cannot disagree (D81, R2 D3/D4).
-   */
-  const dayActive = activeCount(dayWire?.statusCounts ?? []);
 
   /** Local mock counts follow the latest attempt; served day/rail counts keep their own scope. */
   const scopedStatusCounts = useMemo(
@@ -945,9 +922,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   useGlobalKeys({
     queueVisible: activeTakeover(route) === "none" && dayWire !== undefined,
     onStartRun: openStart,
-    onCyclePanelMode: panelMode.cycleMode,
-    panelMode: panelMode.mode,
-    onMinimisePanel: () => panelMode.setMode("icon"),
+    onCyclePanelMode: () => {},
+    panelMode: "sidebar",
+    onMinimisePanel: () => {},
     visibleRunIds: keyboardOrder,
     attentionRunIds: keyboardAttention,
     selectedRunId: route.run,
@@ -1006,16 +983,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     });
   }, [route, setRoute]);
 
-  const dockedWorkflowPanel = panelMode.mode === "sidebar" && dayWire !== undefined ? (
-    <WorkflowSidebar
-      mode={panelMode.mode}
-      onMode={panelMode.setMode}
-      workflows={workflows}
-      counts={dayWire.workflowCounts}
-      activeWorkflowId={activeWorkflowId}
-      onActive={selectWorkflow}
-    />
-  ) : null;
+  const [railPreview, setRailPreview] = useState<string | null>(null);
+  const previewFlow = WORKFLOW_RAIL_PREVIEWS.find(flow => flow.id === railPreview);
+  const [railRun, setRailRun] = useState<string>();
+  const railRow = previewQueue.rows.find(row => row.runId === railRun);
+
 
   return (
     // NOT the theme root any more (D272 item 2): the app root moved above both
@@ -1029,8 +1001,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     }}>
     <div
       data-parity-ready={ready ? "true" : "loading"}
-      className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
+      className="dashboard-shell relative flex min-h-0 min-w-0 flex-1 flex-col"
+      data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
     >
+      <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
+      {!["settings", "archive", "activity", "explore"].includes(takeover) && <WorkflowRail workflows={workflows} counts={dayWire?.workflowCounts} active={activeWorkflowId} preview={railPreview}
+        onSelect={id => { setRailPreview(null); selectWorkflow(id); }} onPreview={id => { setRailPreview(id); setRailRun(undefined); }} />}
       <TopBar
         onDashboard={returnToDashboard}
         settingsOpen={["settings", "archive", "activity", "explore"].includes(takeover)}
@@ -1080,7 +1056,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         />
 
         <div className="flex min-h-0 flex-1">
-          {takeover !== "none" && dockedWorkflowPanel}
+
 
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
 
@@ -1125,51 +1101,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             }}
           />
           <BulkCommandFeedback bulkOutcome={bulkOutcome} onDismissBulkOutcome={() => setBulkOutcome(null)} onSelectRun={selectRun} />
-          <FocusQueueToolbar
-            sort={sort}
-            onSort={onSort}
-            active={filter}
-            counts={scopedStatusCounts}
-            onFilter={onFilter}
-            leading={dayWire === undefined ? null :
-              <WorkflowPanelToggle
-                mode={panelMode.mode}
-                onMode={panelMode.setMode}
-                activeWorkflowLabel={workflowLabelOf(activeWorkflowId)}
-                activeWorkflowCode={workflowCodeOf(activeWorkflowId)}
-                dayActive={dayActive}
-                dayActiveWords={activeStatusWords(dayWire?.statusCounts ?? [])}
-                dayCount={dayCount}
-              />
-            }
-            runStart={
-              /*
-                ONE TOOLBAR DOOR, AND IT IS THE MODAL (D296).
 
-                This group used to carry three controls. `Import spreadsheet`
-                was a RULED deviation from the demo (D272 item 3, ledger rows
-                A174/B141) kept for one stated reason — "the demo reaches its
-                intake from INSIDE the Run Modal and this repository's
-                `RunStartSurfaces` serves no such handoff, so deleting the
-                button would make the whole intake workspace unreachable" — and
-                the same note named its own expiry: *it goes when the run modal
-                grows the handoff*. The modal has grown it. The spreadsheet
-                method's `Open the intake…` is the demo's own door, so the
-                deviation is not overruled, it is DISCHARGED, and rejected arm C
-                ("build the Run-Modal handoff first") is what landed.
-
-                `Workflow explorer` (D275 item 1, ledger 3 CA41) goes for D295's
-                reason rather than for its own: the explorer is a segment of the
-                top bar's product-view switcher, so the toolbar button was a
-                second door onto a takeover that already has one, and D275 item
-                1's actual objection was navigation that leads NOWHERE. It still
-                leads somewhere — from `Explorer`, where "where you are" is
-                answered. The `explore` route key, the deep links and the
-                surface are untouched.
-              */
-              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
-            }
-          />
 
           <CommandResultFeed
             results={commandResults}
@@ -1212,10 +1144,46 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             against the viewport and was clipping the status-filter row.
           */}
           <div className="flex min-h-0 flex-1">
-            {dockedWorkflowPanel}
+
             <div className="relative min-h-0 min-w-0 flex-1">
-            <div className="grid h-full grid-cols-[var(--ds-w-side-panel)_minmax(0,1fr)] gap-[var(--ds-shell-inset)] p-[var(--ds-shell-inset)]">
-              {dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+            <div className="dashboard-panel-columns">
+              <div className="dashboard-queue-column">
+          <FocusQueueToolbar
+            sort={sort}
+            onSort={onSort}
+            active={filter}
+            counts={scopedStatusCounts}
+            onFilter={onFilter}
+            leading={null}
+            runStart={
+              /*
+                ONE TOOLBAR DOOR, AND IT IS THE MODAL (D296).
+
+                This group used to carry three controls. `Import spreadsheet`
+                was a RULED deviation from the demo (D272 item 3, ledger rows
+                A174/B141) kept for one stated reason — "the demo reaches its
+                intake from INSIDE the Run Modal and this repository's
+                `RunStartSurfaces` serves no such handoff, so deleting the
+                button would make the whole intake workspace unreachable" — and
+                the same note named its own expiry: *it goes when the run modal
+                grows the handoff*. The modal has grown it. The spreadsheet
+                method's `Open the intake…` is the demo's own door, so the
+                deviation is not overruled, it is DISCHARGED, and rejected arm C
+                ("build the Run-Modal handoff first") is what landed.
+
+                `Workflow explorer` (D275 item 1, ledger 3 CA41) goes for D295's
+                reason rather than for its own: the explorer is a segment of the
+                top bar's product-view switcher, so the toolbar button was a
+                second door onto a takeover that already has one, and D275 item
+                1's actual objection was navigation that leads NOWHERE. It still
+                leads somewhere — from `Explorer`, where "where you are" is
+                answered. The `explore` route key, the deep links and the
+                surface are untouched.
+              */
+              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
+            }
+          />
+              {previewFlow ? <WorkflowMockQueue label={previewFlow.label} rows={surfaces} selected={railRun} onSelect={setRailRun} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
@@ -1239,8 +1207,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                   onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])} />}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
-
-            {route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
+              </div>
+              <div className="dashboard-log-column">
+                <div className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
+                  onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
+            {previewFlow && railRow ? <LogSample key={`${previewFlow.id}:${railRow.runId}`} selection={{ row: railRow, workflowLabel: previewFlow.label }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
@@ -1249,25 +1220,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 description={route.run === undefined ? "Select a run from the queue to open its logs." : `Run ${route.run} is not in the loaded queue for ${day}. Select a run from this day.`}
               /></PanelBody></Panel>
             )}
+              </div>
             </div>
 
-            {/* The floating window lives INSIDE the panel region, so it overlays
-                the panels and never the bars above them — and it is rendered on
-                the queue view only, as in the demo. A takeover replaces the
-                queue whole; a workflow switcher hovering over it would be
-                offering to change the scope of a surface that no longer has
-                one. */}
-            {panelMode.mode === "floating" && dayWire !== undefined && (
-              <WorkflowWindow
-                mode={panelMode.mode}
-                onMode={panelMode.setMode}
-                opened={panelMode.opened}
-                workflows={workflows}
-                counts={dayWire?.workflowCounts ?? []}
-                activeWorkflowId={activeWorkflowId}
-                onActive={selectWorkflow}
-              />
-            )}
             </div>
           </div>
           </>
@@ -1275,6 +1230,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           </div>
         </div>
       </main>
+      </div>
 
       <SessionPanel
         open={sessionsOpen}

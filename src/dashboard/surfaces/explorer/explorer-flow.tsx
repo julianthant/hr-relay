@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpRight, CheckCheck, Cpu, GitBranch, Monitor, X } from "lucide-react";
+import { ArrowUpRight, CheckCheck, Cpu, Monitor, X } from "lucide-react";
 import { Button, dsElev, IconButton, PageHeading, Select } from "../../ds/ui.js";
 import { DEFAULT_COMMENTS, type CommentChoices, type FlowField, type FlowStep, type FieldSource, type PreviewScenario } from "./explorer-flow-model.js";
 import { ExplorerParts } from "./explorer-parts.js";
@@ -26,7 +26,7 @@ export function ExplorerTimeline(props: ExplorerTimelineProps) {
   </section>;
 }
 
-function ExplorerWorkflowTimeline({ title, steps, scenario, onScenario, sourceFor, summary, completion, path, stopAfter, onMockChoice }: ExplorerTimelineProps) {
+function ExplorerWorkflowTimeline({ steps, scenario, onScenario, sourceFor, completion, stopAfter, onMockChoice }: ExplorerTimelineProps) {
   const [comments, setComments] = useState<CommentChoices>(DEFAULT_COMMENTS);
   const [open, setOpen] = useState<Readonly<Record<string, boolean>>>({});
   const [source, setSource] = useState<{ field: FlowField; step: FlowStep; form?: string }>();
@@ -76,10 +76,6 @@ function ExplorerWorkflowTimeline({ title, steps, scenario, onScenario, sourceFo
   };
   return <>
     <div className="min-w-0" onKeyDown={(event) => { if (event.key === "Escape" && selected) { event.stopPropagation(); returnToField(); } }}>
-      <div className="mb-6 flex flex-wrap items-center gap-3 border-b border-ui-stroke pb-6">
-        <div className="min-w-0 flex-1"><h2 className="m-0 text-section font-semibold">{title}</h2><p className="mt-1.5 text-body text-ui-secondary">{summary}</p></div>
-        <Button size="toolbar" variant="secondary" icon={<GitBranch aria-hidden className="size-3.5" />} onClick={() => focusAt(path.step, undefined, path.control)}>Preview paths</Button>
-      </div>
       <ol aria-label="Workflow steps" className="relative pl-10 before:absolute before:bottom-5 before:left-3.5 before:top-3 before:w-px before:bg-ui-stroke">
         {steps.map((step) => {
           const blocked = stop !== undefined && step.number > stop;

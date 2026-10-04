@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import { ChevronLeft, ChevronRight, Columns2, Expand, ImageOff, Minus, Monitor, Plus, RotateCw } from "lucide-react";
-import { Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../ds/ui.js";
+import { Select, Button, Dialog, DialogContent, DialogTrigger, IconButton } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import type { LogScreenshot } from "./log-feed-model.js";
 import { captureGeometry, captureKindLabel, captureLoadProblem, captureSourceDimensions, type CaptureMode } from "./log-screenshots-model.js";
@@ -79,7 +79,7 @@ function CaptureWorkspace({ screenshots, selected, choose }: { screenshots: read
       <IconButton label="Rotate image" icon={<RotateCw aria-hidden className="size-3.5" />} onClick={() => setRotation(value => (value + 90) % 360)} />{screenshots.length > 1 && <IconButton label="Compare captures" icon={<Columns2 aria-hidden className="size-3.5" />} aria-pressed={compare} onClick={() => { setCompare(value => !value); reset("whole"); }} />}
       <span className="log-dimensions">{capture.width} × {capture.height}</span><IconButton label="Previous screenshot" icon={<ChevronLeft aria-hidden className="size-3.5" />} disabled={selected === 0} onClick={() => switchCapture(selected - 1)} /><span className="text-caption tabular-nums">{selected + 1} / {screenshots.length}</span><IconButton label="Next screenshot" icon={<ChevronRight aria-hidden className="size-3.5" />} disabled={selected === screenshots.length - 1} onClick={() => switchCapture(selected + 1)} />
     </div><div className={cn("log-image-panes", compare && "log-image-panes--compare")}><div className="log-image-pane">{compare && <div className="log-pane-title">{capture.system ?? "Capture"}<span>{capture.label}</span></div>}<ImagePane capture={capture} mode={mode} zoom={zoom} rotation={rotation} onScale={setScale} /></div>{compare && screenshots[other] && <div className="log-image-pane"><div className="log-pane-title">{screenshots[other].system ?? "Capture"}<span>{screenshots[other].label}</span></div><ImagePane capture={screenshots[other]} mode={mode} zoom={zoom} rotation={rotation} /></div>}</div>
-    <div className="log-viewer-caption"><span>{captureKindLabel(capture.kind)}</span>{compare && <label>Compare with<select aria-label="Comparison capture" value={other} onChange={event => setOther(Number(event.target.value))}>{screenshots.map((item, index) => index !== selected && <option key={index} value={index}>{item.system ?? "Capture"} · {item.label ?? index + 1}</option>)}</select></label>}</div></div>
+    <div className="log-viewer-caption"><span>{captureKindLabel(capture.kind)}</span>{compare && <label>Compare with<Select aria-label="Comparison capture" value={other} onChange={event => setOther(Number(event.target.value))}>{screenshots.map((item, index) => index !== selected && <option key={index} value={index}>{item.system ?? "Capture"} · {item.label ?? index + 1}</option>)}</Select></label>}</div></div>
   </div>;
 }
 export function LogScreenshots({ screenshots }: { screenshots: readonly LogScreenshot[] }) {

@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { installRunOperationsRoutes } from "../fixtures/run-operations.js";
@@ -18,7 +19,7 @@ for (const theme of PARITY_THEMES) test(`Setup repair and launch share admission
     await page.setViewportSize({ width: 1280, height: 720 }); await page.clock.setFixedTime(new Date(server.now)); await installTheme(page, theme);
     await gotoAppState(page, server.baseUrl, { day: FIXTURE_DAY, settings: "preflight" }); await dismissWorkflowWindow(page);
     const setup = page.getByRole("region", { name: "Preflight", exact: true });
-    await setup.getByRole("combobox").selectOption(server.scope);
+    await chooseSelect(setup.getByRole("combobox"), server.scope);
     await expect(setup).toContainText("UCPath sign-in"); await expect(setup.getByText("fail", { exact: true }).first()).toBeVisible();
     const rejected = await page.request.post(`${server.baseUrl}/api/v1/start-plans`, {
       headers: { origin: server.baseUrl }, data: { workflowId: server.scope, submissions: [{ emplId: "10873698" }], dryRun: false },

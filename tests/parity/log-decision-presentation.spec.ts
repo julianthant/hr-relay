@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect, test } from "@playwright/test";
 import { logDecisionExamples } from "../../src/dashboard/surfaces/logs/log-decision-fixture.js";
@@ -22,7 +23,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Selected run logs", exact: true });
       const select = surface.getByRole("combobox", { name: "Logs sample data" });
       for (const example of logDecisionExamples) {
-        await select.selectOption(example.id);
+        await chooseSelect(select, example.id);
         if (example.entry.kind === "decision") {
           const block = surface.getByRole("article", { name: example.entry.decision.title, exact: true });
           await block.scrollIntoViewIfNeeded();
@@ -36,7 +37,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(block.getByRole("alert")).toHaveCount(0);
         } else await expect(surface).toContainText(example.entry.message);
       }
-      await select.selectOption("parked");
+      await chooseSelect(select, "parked");
       await surface.locator(".log-decision").scrollIntoViewIfNeeded();
       const parked = surface.getByRole("article", { name: "File termination", exact: true });
       expect(await parked.locator(".log-caution").evaluate(node => { const r = node.getBoundingClientRect(), parent = node.parentElement!.getBoundingClientRect(); return r.x > parent.x + 25 && r.width < parent.width; })).toBe(true);
@@ -53,21 +54,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const result = surface.getByText("Termination confirmed. Transaction SIM-042 is present. Continued to Finalize Kuali document.", { exact: true });
       await expect(result).toBeFocused();
       expect(await result.evaluate(node => node.closest("article"))).toBeNull();
-      await select.selectOption("review-candidates");
+      await chooseSelect(select, "review-candidates");
       await surface.getByRole("button", { name: "Choose employee", exact: true }).click();
       form = page.getByRole("dialog", { name: "Choose employee", exact: true });
       await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
       await form.getByRole("radio", { name: /DEMO-2196/u }).check();
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(surface).toContainText("Selected DEMO-2196.");
-      await select.selectOption("review-fields");
+      await chooseSelect(select, "review-fields");
       await surface.getByRole("button", { name: "Enter date", exact: true }).click();
       form = page.getByRole("dialog", { name: "Enter date", exact: true });
       await expect(form.getByRole("button", { name: "Continue run", exact: true })).toBeDisabled();
       await form.getByRole("button", { name: /^Choose last day worked date/u }).click();
-      const calendar = page.locator(".ds-hero-calendar");
+      const calendar = page.getByRole("dialog", { name: "Choose last day worked date", exact: true });
       await expect(calendar).toBeVisible();
-      await expect(calendar.locator('[data-slot="calendar-year-picker-trigger"]')).toBeVisible();
+      await expect(calendar.getByRole('button', { name: /year selector/u })).toBeVisible();
       await page.keyboard.press("Escape");
       await expect(calendar).toBeHidden();
       await expect(form).toBeVisible();
@@ -77,7 +78,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await form.getByRole("button", { name: "Continue run", exact: true }).click();
       await expect(surface).toContainText("Last day worked: 2026-09-25.");
-      await select.selectOption("failure-prepared");
+      await chooseSelect(select, "failure-prepared");
       await surface.locator(".log-decision").scrollIntoViewIfNeeded();
       const failure = surface.getByRole("article", { name: "File termination", exact: true });
       await expect(failure).toContainText("While trying to enter last day worked");
@@ -111,17 +112,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("ArrowLeft");
       await viewer.getByRole("button", { name: "Compare captures", exact: true }).click();
       await expect(viewer.locator(".log-image-viewport")).toHaveCount(2);
-      await viewer.getByRole("combobox", { name: "Comparison capture", exact: true }).selectOption("2");
+      await chooseSelect(viewer.getByRole("combobox", { name: "Comparison capture", exact: true }), "2");
       await expect(viewer.locator(".log-pane-title").nth(1)).toContainText("Kronos");
       await test.info().attach(`log-viewer-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       await page.mouse.click(8, 300);
       await expect(viewer).toHaveCount(0);
       await expect(trigger).toBeFocused();
-      await select.selectOption("separation");
+      await chooseSelect(select, "separation");
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("Document number");
       await page.route("**/logs-preview/kuali-search.svg", route => route.abort());
-      await select.selectOption("empty");
-      await select.selectOption("separation");
+      await chooseSelect(select, "empty");
+      await chooseSelect(select, "separation");
       const screenshot = surface.locator("figure").first();
       await screenshot.scrollIntoViewIfNeeded();
       await expect(screenshot.getByRole("alert")).toHaveText("Screenshot could not be loaded.");

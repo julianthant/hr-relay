@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { createHash } from "node:crypto";
 import { expect,test,type Locator } from "@playwright/test";
 import { gotoAppState } from "./helpers/app-driver.js";
@@ -42,7 +43,7 @@ for(const scene of SETUP_SCENES)for(const theme of PARITY_THEMES)for(const viewp
       const errors=failOnPageErrors(page);await page.setViewportSize(viewport);await page.clock.setFixedTime(new Date(server.now));await installTheme(page,theme);
       await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);await assertThemeApplied(page,theme);
       const setup=page.getByRole("region",{name:"Preflight",exact:true});
-      await expect(setup.getByRole("combobox")).toBeVisible();if(scene.selected)await setup.getByRole("combobox").selectOption(server.scope);
+      await expect(setup.getByRole("combobox")).toBeVisible();if(scene.selected)await chooseSelect(setup.getByRole("combobox"), server.scope);
       await expect(setup).toContainText(scene.expected);await expect(setup.getByRole("button",{name:"Run checks again",exact:true})).toBeEnabled();
       const readUrl=new URL("/api/v1/preflight",server.baseUrl);
       if(scene.selected)readUrl.searchParams.set("selection",JSON.stringify({workflowId:server.scope}));
@@ -75,7 +76,7 @@ test("Setup minimum canvas retains keyboard rerun and authoritative readback",as
   const server=await startSetupPreflightServer("unavailable");
   try {
     await page.setViewportSize({width:1024,height:720});await page.clock.setFixedTime(new Date(server.now));await gotoAppState(page,server.baseUrl,{day:FIXTURE_DAY,settings:"preflight"});await dismissWorkflowWindow(page);
-    const setup=page.getByRole("region",{name:"Preflight",exact:true});await setup.getByRole("combobox").selectOption(server.scope);await expect(setup).toContainText("Readiness unavailable");const rerun=setup.getByRole("button",{name:"Run checks again",exact:true});await expect(rerun).toBeEnabled();await rerun.focus();await page.keyboard.press("Enter");
+    const setup=page.getByRole("region",{name:"Preflight",exact:true});await chooseSelect(setup.getByRole("combobox"), server.scope);await expect(setup).toContainText("Readiness unavailable");const rerun=setup.getByRole("button",{name:"Run checks again",exact:true});await expect(rerun).toBeEnabled();await rerun.focus();await page.keyboard.press("Enter");
     await expect(setup.locator("time")).toHaveAttribute("dateTime",server.now);await expect(setup.locator("time")).toHaveText(fmtClock(server.now));expect(server.requests.some(request=>request.method==="POST"&&request.path==="/api/v1/preflight/rerun"&&request.status===200)).toBe(true);
     expect(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth)).toBe(true);
   }finally{await server.close();}

@@ -3,3 +3,28 @@
 .settings-heading-actions { align-items: center; }
 .settings-heading-actions > :last-child { margin-left: auto; }
 .settings-heading-select { width: var(--ds-w-body-control-standard); }
+.settings-tab-body .settings-group-heading h2,
+.settings-tab-body .settings-group h3,
+.settings-tab-body .ds-body-section-heading,
+.settings-tab-body h2.text-section,
+.settings-tab-body h3.text-section { font-size: var(--ds-text-title); line-height: var(--ds-lh-title); font-weight: 400; }
+.settings-tab-body .ds-field-label,
+.settings-tab-body .ds-result-row-copy .ds-field-label,
+.settings-tab-body .ds-switch-copy .ds-text-ui,
+.settings-tab-body .ds-radio-label { font-weight: 400; }
+.settings-tab-body .ds-page-heading-description { font-size: var(--ds-text-body-description); font-weight: 400; }
+.archive-header-filters { display: grid; grid-template-columns: minmax(0,1fr) 180px 150px; gap: 8px; align-items: center; }
+.archive-header-filters .ds-search-field [data-slot="search-field-group"] { border-radius: 999px; }
+.activity-header-filters { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--ui-stroke); padding-bottom: 16px; }
+.activity-header-filters > div { max-width: 220px; }
+.settings-shortcuts .shortcut-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px; }
+.settings-shortcuts .shortcut-setting-row + .shortcut-setting-row { border-top: 1px solid var(--ui-stroke); }
+.shortcut-setting-row p { margin: 0 0 4px; font-size: 14px; font-weight: 400; }
+.shortcut-setting-row span { font-size: 12px; color: var(--ui-muted); }
+.shortcut-setting-row kbd { border: 0; border-radius: 999px; background: var(--ui-hover); padding: 4px 10px; box-shadow: none; }
+.capabilities-table-head { display: flex; justify-content: space-between; gap: 24px; padding: 12px 18px; border-bottom: 1px solid var(--ui-stroke); color: var(--ui-muted); font-size: 12px; background: var(--ui-table); }
+.capabilities-summary { display: flex; flex: 1; align-items: center; justify-content: space-between; gap: 16px; padding-right: 12px; font-size: 14px; font-weight: 400; }
+.capabilities-table .settings-reference-disclosure { border-radius: 0; }
+.capabilities-table .settings-reference-capability-content { background: var(--ui-panel); }
+
+.archive-header-filters .mock-archive-search { width: 100%; max-width: none; }

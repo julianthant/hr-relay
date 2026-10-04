@@ -1,3 +1,4 @@
+import { chooseSelect } from "./helpers/select-choice.js";
 import { expect, test, type Locator } from "@playwright/test";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
@@ -59,7 +60,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const scope = heading.getByRole("combobox", { name: "Check readiness for", exact: true });
       const rerun = heading.getByRole("button", { name: "Run checks again", exact: true });
       await expect(scope).toBeVisible();
-      await scope.selectOption(server.scope);
+      await chooseSelect(scope, server.scope);
       await expect(surface).toContainText("Readiness unavailable");
       await expect(rerun).toBeEnabled();
       await assertHeadingActions(surface);

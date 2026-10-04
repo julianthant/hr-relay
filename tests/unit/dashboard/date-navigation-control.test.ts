@@ -19,19 +19,21 @@ it("browses independently and retains a usable tab stop across empty months", as
   const settle = async () => { await act(async () => { await new Promise(resolve => setTimeout(resolve, 25)); }); };
   const click = async (target: HTMLElement) => { await act(async () => target.click()); await settle(); };
   try {
-    await act(async () => root.render(createElement(NavbarCalendar, { data: NAVBAR_SAMPLE })));
-    assert.equal(button("Next day").disabled, true);
-    await click(button("Previous day")); assert.deepEqual(dateSegments(), ['9', '25', '2026']); assert.equal(button("Next day").disabled, false);
+    await act(async () => root.render(createElement(NavbarCalendar, { data: NAVBAR_SAMPLE, nav: { canBack: false, canForward: false, onBack: () => undefined, onForward: () => undefined } })));
+    assert.equal(host.querySelector('[aria-label="Back"]'), null);
+    assert.equal(host.querySelector('[aria-label="Forward"]'), null);
+    assert.equal(host.querySelector('[title="Run count unavailable"]'), null);
+    assert.deepEqual(dateSegments(), ['9', '26', '2026']);
     await click(button("Choose date"));
-    assert.match(document.activeElement?.getAttribute("aria-label") ?? "", /Friday, September 25, 2026/);
+    assert.match(document.activeElement?.getAttribute("aria-label") ?? "", /Saturday, September 26, 2026/);
     await act(async () => document.activeElement?.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowLeft", bubbles: true, cancelable: true }))); await settle();
-    assert.match(document.activeElement?.getAttribute("aria-label") ?? "", /Thursday, September 24, 2026/);
+    assert.match(document.activeElement?.getAttribute("aria-label") ?? "", /Friday, September 25, 2026/);
     assert.equal(calendarTabStops(), 1);
     assert.equal(dateCell("Sunday, September 27, 2026").getAttribute("aria-disabled"), "true");
     await click(button("Previous month")); assert.match(document.body.textContent ?? "", /August 2026/); assert.equal(calendarTabStops(), 1);
-    assert.deepEqual(dateSegments(), ['9', '25', '2026']);
-    await click(dateCell("Thursday, August 20, 2026")); assert.deepEqual(dateSegments(), ['8', '20', '2026']); assert.equal(host.querySelector('[title="Run count unavailable"]')?.textContent, '—'); assert.equal(document.querySelector('[role="dialog"]'), null);
-    await click(button("Choose date")); await click(button("Today")); assert.deepEqual(dateSegments(), ['9', '26', '2026']); assert.equal(button("Next day").disabled, true);
+    assert.deepEqual(dateSegments(), ['9', '26', '2026']);
+    await click(dateCell("Thursday, August 20, 2026")); assert.deepEqual(dateSegments(), ['8', '20', '2026']); assert.equal(host.querySelector('[title="Run count unavailable"]'), null); assert.equal(document.querySelector('[role="dialog"]'), null);
+    await click(button("Choose date")); await click(button("Today")); assert.deepEqual(dateSegments(), ['9', '26', '2026']); assert.equal(host.querySelector('[aria-label="Forward"]'), null);
     assert.equal(fetch.mock.calls.length, 0);
   } finally { await act(async () => root.unmount()); host.remove(); vi.unstubAllGlobals(); }
 });

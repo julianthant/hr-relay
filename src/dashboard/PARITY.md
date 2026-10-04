@@ -45,7 +45,7 @@ review. Onboarding puts Hire type in step 2, with eleven ordered steps and corre
 and stops. Single dates render the shared HeroUI DatePicker with its default Calendar; every range
 uses the documented two-month RangeCalendar. Calendar interiors retain HeroUI geometry; date fields
 retain editable segments and suffix icons with DS button borders, radius, heights and neutral colors.
-The Navbar date composite shares one exterior. Focus and invalid states remain visible. Both calendars
+The date field above Logs keeps its own exterior; Navbar history controls are separate. Focus and invalid states remain visible. Both calendars
 share the product palette. Activity endpoints appear only for Custom; either
 endpoint opens the centered shared range picker, and the second date commits without footer controls.
 Archive and Search retain open-ended field entry.
@@ -72,14 +72,19 @@ section changes; returning to Dashboard retains the exit guard. Global sizing is
 Spreadsheets remains in Personal with its original available-width layout and no expand control.
 Activity's report sections stack in one column at every desktop width. Explorer uses a workflow
 dropdown on the right of its heading, without the workflow sidebar/search, Expand all, Collapse all,
-Version registry or action legend control. Per-form disclosures, preview paths and source returns
-remain available; switching workflows resets transient timeline state while preserving dropdown
+Version registry or action legend control. The selected-workflow intro strip and Preview paths button are removed. Per-form disclosures,
+branch selectors and source returns remain available; switching workflows resets transient timeline state while preserving dropdown
 focus. Storage checks and Preflight put their actions and scope selector beside the heading, with
 freshness, failures and unavailable states below.
-Archive's overview search is removed; folder search remains. Shared searches use shadcn InputGroup
-with one focus ring. The larger centered Navbar Command opens results beneath its existing input, without a search
-dialog or second field. Status/export/choice menus use shadcn Radix DropdownMenu. The Navbar date
-control retains editable segments, calendar and count without previous/next-day arrows.
+Archive overview and folders use shared searches; the overview also has workflow/outcome filters. The 2026-10-04 revision uses HeroUI
+SearchField for shared searches. The centered Navbar field opens a centered search modal on click,
+Enter/Space or `/`, with keyboard Command results, clear control and focus restoration. Status/export/
+choice menus use shadcn Base UI DropdownMenu; value controls use Base UI Select. RRSS HR and the date count are removed. The editable date and calendar sit above Logs, separate from Navbar history controls. The active Settings
+gear returns to Dashboard through the draft guard. Settings navigation has tighter 32px rows, 10px
+highlights and primary-foreground labels/icons; muted group labels are 14px. Section headings and field
+labels use smaller regular type. Activity's rounded opaque table expands workflow rows to show supplied
+versions. Log decision headers/bodies are opaque, and comparison tables have a border, muted header
+and opaque difference highlights.
 The original bump modal retains selected/all
 workflow scopes and inline review, with no runtime write. Archive transport and commands are
 unmounted. Other app surfaces keep their existing wiring. Shared single-date and range controls pass
@@ -155,3 +160,5 @@ The operator replaced the 1180px shell stacking switch with a 1024×720 CSS-pixe
 canvas. Queue and detail remain side by side; smaller browser windows scroll. The affected
 1024×768 references deliberately change, while larger desktop references retain their geometry.
 Ref frontend-backend-integration §10 and ref dashboard-surfaces §9.9 own this amendment.
+
+The 2026-10-04 permanent-shell revision makes Workflow and Settings navigation 288px wide and full-height above Sessions. The 48px Navbar occupies the remaining width. Queue and Logs reach it through their own 48px headers; the workflow launcher and panel-mode shortcuts are removed. Legacy workflow labels are marked layout previews with fictional queues/logs. Notifications group actionable updates by workflow with no snooze or desktop-delivery controls. Base UI toast cards replace compact chips while preserving persistent errors, recovery actions, overlay inertness and the Session floor. Archive/Activity headers, searchable capabilities and shortcut rows follow Settings geometry. Focused desktop interaction checks cover both themes at 1024 and 1440 pixels; frozen references and full repository gates remain owned by 3.1.19.

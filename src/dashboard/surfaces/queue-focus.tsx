@@ -17,11 +17,10 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
   const label = (status: StatusBucket) => status === 'all' ? 'All' : status === 'needsYou' ? 'Needs you' : PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
   const count = (status: StatusBucket) => status === 'all' ? totalCount(counts) : status === 'needsYou' ? needsYouCount(counts) : statusCount(counts, status);
   return <OperationsToolbar label="Queue actions" className="[--ds-h-toolbar:32px] [--ds-h-sm:32px] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]">
-      {leading}<span aria-hidden className="h-5 border-l border-ui-stroke" />{runStart}
+      {leading}{runStart}
       <span className="flex-1" />
-      <span className="text-caption text-ui-muted">Mock actions</span>
       <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild><Button variant="secondary" size="sm" aria-label="All statuses" icon={<ListFilter data-icon="inline-start" className={dsIcon.sm} />}>{['all', 'needsYou', 'running'].includes(active) ? 'All statuses' : label(active)}<ChevronDown data-icon="inline-end" className="size-3" /></Button></DropdownMenuTrigger>
+        <DropdownMenuTrigger asChild><Button variant="secondary" size="sm" aria-label="All statuses" icon={<ListFilter data-icon="inline-start" className={dsIcon.sm} />}><span className="sr-only">{label(active)}</span><ChevronDown data-icon="inline-end" className="size-3" /></Button></DropdownMenuTrigger>
         <DropdownMenuContent aria-label="Filter by status" align="end" className="w-60">
           <DropdownMenuGroup><DropdownMenuRadioGroup value={active} onValueChange={next => { onFilter(next as StatusBucket); setOpen(false); }}>
             {statuses.map(status => <DropdownMenuRadioItem key={status} value={status}>
@@ -30,7 +29,7 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
           </DropdownMenuRadioGroup></DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
-      <Select variant="toolbar" aria-label="Sort the queue" value={sort} onChange={event => onSort(event.target.value as QueueSortKey)} icon={<ArrowUpDown className={dsIcon.sm} />}>
+      <Select variant="toolbar" className="queue-sort" aria-label="Sort the queue" title={`Sort queue: ${QUEUE_SORTS.find(entry => entry.key === sort)?.label}`} value={sort} onChange={event => onSort(event.target.value as QueueSortKey)} icon={<ArrowUpDown className={dsIcon.sm} />}>
         {QUEUE_SORTS.map(entry => <option key={entry.key} value={entry.key}>{entry.label}</option>)}
       </Select>
   </OperationsToolbar>;
