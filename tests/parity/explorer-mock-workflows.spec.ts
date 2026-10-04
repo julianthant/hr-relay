@@ -18,11 +18,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       page.on("request", (request) => { if (request.method() !== "GET" || /\/api\/v1\/(?:explorer|runs\/)/u.test(new URL(request.url()).pathname)) requests.push(`${request.method()} ${request.url()}`); });
       await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
-      const workflows = surface.getByRole("navigation", { name: "Preview workflows" });
-      await expect(workflows.getByRole("button")).toHaveCount(3);
-      await workflows.getByRole("button", { name: "Onboarding 11", exact: true }).click();
+      const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
+      await expect(workflows.locator("option")).toHaveText(["Separations", "Onboarding", "Emergency Contact"]);
+      await workflows.focus();
+      await workflows.selectOption("fixture-onboarding");
+      await expect(workflows).toBeFocused();
       await expect(surface.getByRole("heading", { name: "Onboarding", exact: true })).toBeVisible();
-      await expect(surface.getByText("Mock data", { exact: true })).toBeVisible();
+      await expect(surface).toContainText("Fictional preview data.");
       await expect(surface.locator("li[data-step-number]")).toHaveCount(11);
       await expect(surface.locator("#explorer-step-1")).toContainText("Open browser sessions");
       await expect(surface.locator("#explorer-step-1")).toContainText("CRM");
@@ -51,7 +53,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("button", { name: "Show source for Compensation rate", exact: true })).toBeFocused();
       await surface.getByRole("combobox", { name: "Hire rehearsal preview" }).selectOption("dry");
       await expect(surface.locator("#explorer-step-10")).toBeHidden();
-      await workflows.getByRole("button", { name: "Emergency Contact 11", exact: true }).click();
+      await workflows.selectOption("fixture-emergency-contact");
       await expect(surface.getByRole("heading", { name: "Emergency Contact", exact: true })).toBeVisible();
       await expect(surface.locator("li[data-step-number]")).toHaveCount(11);
       await expect(surface.locator("#explorer-step-1")).toContainText("Open browser sessions");
@@ -90,12 +92,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.locator("#explorer-step-10")).toHaveCount(0);
       await expect(surface.locator("#explorer-step-7")).not.toContainText("Demote the existing");
       await expect(surface.locator("#explorer-step-11")).toBeVisible();
-      await workflows.getByRole("button", { name: "Separations 22", exact: true }).click();
+      await workflows.selectOption("fixture-separations");
       await expect(surface.locator("li[data-step-number]")).toHaveCount(22);
       await expect(surface.getByRole("combobox", { name: "Identity check preview" })).toHaveValue("verified");
-      await surface.getByRole("textbox", { name: "Find workflow" }).fill("contact");
-      await expect(workflows.getByRole("button")).toHaveCount(1);
-      await expect(workflows.getByRole("button", { name: "Emergency Contact 11", exact: true })).toBeVisible();
+      await expect(workflows).toHaveValue("fixture-separations");
+      await expect(surface.getByRole("textbox", { name: "Find workflow" })).toHaveCount(0);
+      await expect(workflows.locator("option")).toHaveCount(3);
       expect(requests).toEqual([]);
     } finally { await server.close(); }
   });

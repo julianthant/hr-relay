@@ -55,7 +55,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await page.getByRole("button", { name: "Clear search", exact: true }).click();
           await expect(page.locator('tbody tr')).toHaveCount(4);
         }
-        if (title === "Explorer") await expect(page.getByRole('complementary', { name: 'Workflow browser' }).getByRole('textbox', { name: 'Find workflow', exact: true })).toBeVisible();
+        if (title === "Explorer") {
+          const heading = body.locator('.ds-page-heading').first();
+          const workflow = heading.getByRole('combobox', { name: 'Explorer workflow', exact: true });
+          await expect(workflow).toBeVisible();
+          const copy = (await heading.locator(':scope > div').first().boundingBox())!;
+          const dropdown = (await workflow.boundingBox())!;
+          expect(dropdown.x).toBeGreaterThan(copy.x + copy.width);
+          expect(Math.abs((dropdown.y + dropdown.height / 2) - (copy.y + copy.height / 2))).toBeLessThanOrEqual(2);
+          await expect(page.getByRole('complementary', { name: 'Workflow browser' })).toHaveCount(0);
+          for (const name of ['Expand all', 'Collapse all', 'Version registry', 'Show action legend']) {
+            await expect(body.getByRole('button', { name, exact: true })).toHaveCount(0);
+          }
+        }
       }
     } finally { await server.close(); }
   });
@@ -91,6 +103,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(outcomeBounds).not.toBeNull();
       expect(chartBounds).not.toBeNull();
       expect(Math.abs(outcomeBounds!.width - chartBounds!.width)).toBeLessThanOrEqual(2);
+      expect(Math.abs(outcomeBounds!.x - chartBounds!.x)).toBeLessThanOrEqual(2);
+      expect(chartBounds!.y).toBeGreaterThan(outcomeBounds!.y + outcomeBounds!.height);
       expect(await outcomes.locator("..").evaluate(node => getComputedStyle(node).borderTopStyle)).toBe("solid");
       const transactions = surface.getByRole("table", { name: "Confirmed transactions", exact: true });
       const coverage = surface.getByRole("table", { name: "Evidence coverage", exact: true });

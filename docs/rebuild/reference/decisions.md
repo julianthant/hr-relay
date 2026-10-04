@@ -21,6 +21,11 @@ render separately without changing publication. Review text is blue; Write parke
 The RRSS HR navbar separates its paired history arrows with a divider. The 2026-10-03 operator
 revision removes the view switcher and moves Explorer, Archive and Activity into Settings → Data.
 Their page toolbars are removed; ordinary Settings headings, content width and spacing apply.
+Activity's report sections use one column at every desktop width. Explorer replaces its workflow
+sidebar/search with a right-aligned heading dropdown and removes Expand all, Collapse all, Version
+registry and the action legend control. Individual disclosures and source returns remain available.
+Storage checks and Preflight also place their actions and scope selector beside the heading, retaining
+check status and diagnostics below.
 The global sizing remains unchanged, and Spreadsheets stays in Personal without an expand control.
 Logs screenshots sit beside their action and use fields/form/browser/person presentation classes,
 bounded previews and fit-width/whole-image/100% viewing. The 2026-10-02 approval adds all 33 local
@@ -55,7 +60,7 @@ served rail/day counts and existing row-footer commands/recovery feedback retain
 Run input uses the approved ordered Parsed input frame without an Examples strip; descriptor example
 validation, launch parsing and authority remain unchanged.
 The 2026-10-03 operator revision uses Archive, Explorer and Activity as Settings page headings,
-removes Archive's overview search and keeps Explorer's workflow search in its workflow browser. Shared search fields
+removes Archive's overview search and replaces Explorer's workflow browser with a heading dropdown. Shared search fields
 use shadcn InputGroup with one focus ring. The larger centered Navbar Command opens results beneath
 the same input, retaining its explicit disconnected navigation notice. Status/export/choice menus use
 shadcn Radix DropdownMenu; native Select controls retain their shadcn composition. The Navbar date

@@ -70,9 +70,14 @@ Their controls and mock behaviors remain available within the content. Legacy da
 report sections and Activity ranges survive reload and browser history. Settings drafts survive
 section changes; returning to Dashboard retains the exit guard. Global sizing is unchanged.
 Spreadsheets remains in Personal with its original available-width layout and no expand control.
-Archive's overview search is removed; folder search remains. Explorer's workflow search stays in its
-workflow browser. Shared searches use shadcn InputGroup with one focus
-ring. The larger centered Navbar Command opens results beneath its existing input, without a search
+Activity's report sections stack in one column at every desktop width. Explorer uses a workflow
+dropdown on the right of its heading, without the workflow sidebar/search, Expand all, Collapse all,
+Version registry or action legend control. Per-form disclosures, preview paths and source returns
+remain available; switching workflows resets transient timeline state while preserving dropdown
+focus. Storage checks and Preflight put their actions and scope selector beside the heading, with
+freshness, failures and unavailable states below.
+Archive's overview search is removed; folder search remains. Shared searches use shadcn InputGroup
+with one focus ring. The larger centered Navbar Command opens results beneath its existing input, without a search
 dialog or second field. Status/export/choice menus use shadcn Radix DropdownMenu. The Navbar date
 control retains editable segments, calendar and count without previous/next-day arrows.
 The original bump modal retains selected/all

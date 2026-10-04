@@ -120,24 +120,21 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings }: { pr
   const runtimeChecks = displayed?.checks.filter(check => check.id !== "fiscal.current" && !check.id.startsWith("secrets.")) ?? [];
   const attentionCount = displayed?.checks.filter(check => check.verdict !== "pass").length ?? 0;
   return <section className="diagnostics-page ds-body-stack settings-preflight" aria-label="Preflight" aria-live="polite">
-    <PageHeading as="h2" title="Preflight" description="Readiness for the dashboard and its workflows." />
-    <div className="diagnostic-toolbar">
-      <div className="diagnostic-toolbar-meta">
+    <PageHeading as="h2" title="Preflight" description="Readiness for the dashboard and its workflows." className="settings-heading-actions" actions={<>
         <label className="sr-only" htmlFor="settings-preflight-scope">Check readiness for</label>
-        <Select id="settings-preflight-scope" value={scope.selected} onChange={event => scope.select(event.target.value)}
+        <Select id="settings-preflight-scope" className="diagnostic-scope-select" value={scope.selected} onChange={event => scope.select(event.target.value)}
           aria-invalid={scope.state === "unavailable" || undefined}>
           <option value="dashboard">Dashboard</option>
           {scope.workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.label}</option>)}
         </Select>
-        {scope.state === "unavailable" && <span>Workflow scopes could not be read.</span>}
-        {displayed !== undefined && <>
-          <span>{historical ? "Last checked" : "Checked"} <time dateTime={displayed.report.checkedAt}>{fmtClock(displayed.report.checkedAt)}</time></span>
-        </>}
-        {displayed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
-      </div>
       <Button variant="secondary" onClick={onRerun} disabled={preflight.state === "running" || preflight.state === "idle" || (preflight.state === "historical" && preflight.checking)}>
         {preflight.state === "running" || (preflight.state === "historical" && preflight.checking) ? "Running checks…" : "Run checks again"}
       </Button>
+    </>} />
+    <div className="diagnostic-status">
+      {scope.state === "unavailable" && <span>Workflow scopes could not be read.</span>}
+      {displayed !== undefined && <span>{historical ? "Last checked" : "Checked"} <time dateTime={displayed.report.checkedAt}>{fmtClock(displayed.report.checkedAt)}</time></span>}
+      {displayed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
     </div>
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
     {historical && <Banner tone="warning" title="Previous result">{preflight.message} Run checks again for current readiness.</Banner>}

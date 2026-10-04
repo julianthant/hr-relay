@@ -20,24 +20,29 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole("region", { name: "Workflow explorer preview", exact: true });
       await expect(surface).toBeVisible();
       await expect(surface.getByRole("list", { name: "Workflow steps" }).getByRole("listitem")).toHaveCount(22);
-      await expect(surface.getByText("Mock data", { exact: true })).toBeVisible();
-      expect(await surface.getByRole("navigation").evaluate((node) => node.getBoundingClientRect().width)).toBe(width === 1024 ? 190 : 230);
+      await expect(surface).toContainText("Fictional preview data.");
+      const workflows = surface.getByRole("combobox", { name: "Explorer workflow", exact: true });
+      await expect(workflows).toHaveValue("fixture-separations");
+      await expect(workflows.locator("option")).toHaveText(["Separations", "Onboarding", "Emergency Contact"]);
+      await expect(surface.getByRole("complementary", { name: "Workflow browser" })).toHaveCount(0);
       expect(await surface.locator('[data-step-number="1"] > span').evaluate((node) => node.getBoundingClientRect().width)).toBe(28);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
       await expect(surface.getByRole("button", { name: "Back to dashboard" })).toHaveCount(0);
-      await expect(surface.getByRole("group", { name: "Explorer actions", exact: true })).toBeVisible();
-      await expect(surface.getByRole("button", { name: "Show action legend" }).locator("svg")).toHaveCount(1);
+      for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
+        await expect(surface.getByRole("button", { name, exact: true })).toHaveCount(0);
+      }
       const snapshot = await surface.ariaSnapshot();
       test.info().annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash("sha256").update(snapshot).digest("hex") });
       await test.info().attach(evidence, { body: snapshot, contentType: "text/yaml" });
       await test.info().attach(evidence.replace(".a11y.yml", ".png"), { body: await page.screenshot(), contentType: "image/png" });
-      await surface.getByRole("button", { name: "Collapse all", exact: true }).click();
-      await expect(surface.locator("details[open]")).toHaveCount(0);
+      const pendingForm = surface.locator('#explorer-step-17 details[data-disclosure]').first();
+      await pendingForm.locator(':scope > summary').click();
+      await expect(pendingForm).not.toHaveAttribute("open");
       await expect(surface.getByRole("combobox", { name: "Read result preview" })).toBeVisible();
       await surface.getByRole("button", { name: "Preview paths", exact: true }).click();
       await expect(surface.getByRole("combobox", { name: "Read result preview" })).toBeFocused();
-      await surface.getByRole("button", { name: "Expand all", exact: true }).click();
-      await expect(surface.locator("details:not([open])")).toHaveCount(0);
+      const finalForm = surface.locator('details[data-disclosure="22-finalize"]');
+      await expect(finalForm).toHaveAttribute("open", "");
       const origin = surface.getByRole("button", { name: "Show source for Department", exact: true });
       await origin.click();
       const panel = surface.getByRole("dialog", { name: "Department source", exact: true });
@@ -47,7 +52,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await panel.getByRole("button", { name: "Go to original field", exact: true }).nth(1).click();
       await expect(surface.locator("#explorer-field-3-options")).toBeFocused();
       await expect(surface.locator('details[data-disclosure="3-request-options"]')).toHaveAttribute("open", "");
-      await surface.getByRole("button", { name: "Collapse all", exact: true }).click();
+      await finalForm.locator(':scope > summary').click();
+      await expect(finalForm).not.toHaveAttribute("open");
       await surface.getByRole("button", { name: "Return to filled field" }).click();
       await expect(origin).toBeFocused();
       await expect(surface.locator('details[data-disclosure="22-finalize"]')).toHaveAttribute("open", "");
@@ -55,18 +61,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.keyboard.press("Escape");
       await expect(panel).toHaveCount(0);
       await expect(origin).toBeFocused();
-      await surface.getByRole("button", { name: "Collapse all", exact: true }).click();
-      await expect(surface.locator("details[open]")).toHaveCount(0);
-      await surface.getByRole("button", { name: "Expand all", exact: true }).click();
+      await finalForm.locator(':scope > summary').click();
+      await expect(origin).toBeHidden();
+      await finalForm.locator(':scope > summary').click();
+      await expect(origin).toBeVisible();
       const table = surface.locator('details[data-disclosure="22-finalize"]').locator("..");
       expect(await table.evaluate((node) => getComputedStyle(node).backgroundColor)).toBe(theme.attribute === "dark" ? "rgb(43, 43, 43)" : "rgb(244, 244, 244)");
-      const search = surface.getByRole("textbox", { name: "Find workflow" });
-      await search.fill("unmatched");
-      await expect(surface.getByText("No matching workflow", { exact: true })).toBeVisible();
-      await search.fill("Separation");
-      await expect(surface.getByRole("button", { name: "Separations 22" })).toBeVisible();
-      await surface.getByRole("button", { name: "Show action legend" }).click();
-      await expect(surface.getByText("Compute", { exact: true })).toBeVisible();
+      await expect(surface.getByRole("textbox", { name: "Find workflow" })).toHaveCount(0);
+      await expect(surface.getByLabel("Action legend", { exact: true })).toHaveCount(0);
       expect(requests).toEqual([]);
     } finally { await server.close(); }
   });
@@ -110,7 +112,7 @@ test("named comment conditions update both UCPath fields and preserve Kuali text
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
     await page.goto(`${server.baseUrl}/?explore=fixture-ui-explorer`);
-    await page.getByRole("button", { name: "Expand all", exact: true }).click();
+    await page.getByText("Exact template · same text as Initiator comments", { exact: true }).click();
     const ucpath = page.getByLabel("UCPath comment template", { exact: true });
     await page.getByRole("combobox", { name: "Leave scenario", exact: true }).selectOption("tie");
     await expect(ucpath).toHaveCount(2);
@@ -125,8 +127,10 @@ test("named comment conditions update both UCPath fields and preserve Kuali text
     await expect(kuali).toContainText("Updated Last Day Worked");
     await expect(kuali).toContainText("Updated Separation Date");
     expect((await kuali.textContent())?.match(/per operator entry at run start/g)).toHaveLength(2);
-    await page.getByRole("button", { name: "Collapse all", exact: true }).click();
-    await page.getByRole("button", { name: "Expand all", exact: true }).click();
+    const finalForm = page.locator('details[data-disclosure="22-finalize"]');
+    await finalForm.locator(':scope > summary').click();
+    await expect(page.getByRole("combobox", { name: "Date changes", exact: true })).toBeHidden();
+    await finalForm.locator(':scope > summary').click();
     await expect(page.getByRole("combobox", { name: "Date changes", exact: true })).toHaveValue("both");
     await expect(page.getByRole("combobox", { name: "Leave scenario", exact: true })).toHaveValue("operator");
   } finally { await server.close(); }

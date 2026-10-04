@@ -24,7 +24,7 @@ async function render(): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root?.render(createElement(WorkflowExplorer, { onVersionRegistry: () => undefined })));
+  await act(async () => root?.render(createElement(WorkflowExplorer)));
 }
 function button(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
@@ -32,6 +32,11 @@ function button(name: string): HTMLButtonElement {
   return found;
 }
 async function click(name: string): Promise<void> { await act(async () => button(name).click()); }
+async function chooseWorkflow(value: string): Promise<void> {
+  const select = document.querySelector('[aria-label="Explorer workflow"]');
+  assert.ok(select instanceof HTMLSelectElement);
+  await act(async () => { select.value = value; select.dispatchEvent(new Event("change", { bubbles: true })); });
+}
 async function choose(label: string, value: string): Promise<void> {
   const select = [...document.querySelectorAll("select")].find((node) => node.getAttribute("aria-label") === `${label} preview`);
   assert.ok(select instanceof HTMLSelectElement);
@@ -84,19 +89,26 @@ describe("frontend-only Explorer mock workflows", () => {
   it("switches mock workflows without a client provider, resets transient details and preserves Separations", async () => {
     await render();
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
-    await click("Onboarding11");
+    const workflowSelect = document.querySelector('[aria-label="Explorer workflow"]');
+    assert.ok(workflowSelect instanceof HTMLSelectElement);
+    assert.deepEqual([...workflowSelect.options].map(option => option.text), ["Separations", "Onboarding", "Emergency Contact"]);
+    assert.equal(document.querySelector('aside[aria-label="Workflow browser"]'), null);
+    for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {
+      assert.ok(![...document.querySelectorAll("button")].some(node => node.textContent === name || node.getAttribute("aria-label") === name));
+    }
+    await chooseWorkflow("fixture-onboarding");
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 11);
     await click("Show source for Legal name");
     assert.ok(document.querySelector('[aria-label="Legal name source"]'));
-    await click("Emergency Contact11");
+    await chooseWorkflow("fixture-emergency-contact");
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 11);
     assert.equal(document.querySelector('[aria-label="Legal name source"]'), null);
-    await click("Separations22");
+    await chooseWorkflow("fixture-separations");
     assert.equal(document.querySelectorAll("li[data-step-number]").length, 22);
     assert.ok(document.querySelector('[aria-label="Read result preview"]'));
   });
   it("holds onboarding writes, supports concurrent hire, and stops its rehearsal at the I-9 boundary", async () => {
-    await render(); await click("Onboarding11");
+    await render(); await chooseWorkflow("fixture-onboarding");
     await choose("Person search result", "review"); assert.equal(hidden(7), true);
     await choose("Person search result", "rejected"); assert.equal(hidden(10), true);
     await choose("Person search result", "none"); assert.equal(hidden(11), false);
@@ -111,7 +123,7 @@ describe("frontend-only Explorer mock workflows", () => {
     assert.doesNotMatch(document.getElementById("explorer-step-7")?.textContent ?? "", /Create the I-9 profile/);
   });
   it("holds contact writes on review/identity, skips exact duplicates and keeps rollup after dry run", async () => {
-    await render(); await click("Emergency Contact11");
+    await render(); await chooseWorkflow("fixture-emergency-contact");
     await choose("Contact review", "pending"); assert.equal(hidden(4), true); assert.equal(hidden(5), true);
     await choose("Contact review", "rejected"); assert.equal(hidden(10), true);
     await choose("Contact review", "approved"); await choose("Contact identity", "mismatch"); assert.equal(hidden(6), true);

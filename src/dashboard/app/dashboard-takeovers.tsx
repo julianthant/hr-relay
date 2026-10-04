@@ -41,7 +41,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
    onFolder={folder => setRoute({ ...route, settings: "archive", archive: ARCHIVE_INDEX,
      archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
  /> : dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute({ ...route, settings: "activity", activity: next })} />
- : dataSection === "explorer" ? <WorkflowExplorer onVersionRegistry={() => setRoute({ ...routeWithoutTakeovers(route), settings: "archive", archive: ARCHIVE_INDEX, archiveView: "versions" })} /> : undefined;
+ : dataSection === "explorer" ? <WorkflowExplorer /> : undefined;
  return (takeover === "settings" || dataContent !== undefined ? (
             <SettingsPage
               storage={boot.storage}

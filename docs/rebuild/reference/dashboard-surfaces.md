@@ -42,9 +42,15 @@ Dashboard through the Settings draft guard. Legacy data-page links remain addres
 Settings, including archive folders, report sections and Activity ranges. Settings drafts survive
 section changes. Spreadsheets stays in Personal with its original available-width layout, without
 an expand control. Global browser/CSS zoom stays at its original 100% sizing.
+Activity's report sections stack in one full-width column at every desktop width. Explorer replaces
+its workflow sidebar and search with a right-aligned workflow dropdown beside its heading. Expand all,
+Collapse all, Version registry and the action legend control are removed; individual disclosures,
+preview paths and source returns remain available. Switching workflows resets transient timeline
+state while retaining dropdown focus. Storage checks and Preflight place their actions and scope
+selector beside their headings, with check freshness and unavailable states in the content below.
 Archive search uses shared shadcn InputGroup with one focus ring. The version overview removes its
-local search field; report-folder search remains. Explorer's workflow search stays in its workflow
-browser. Explorer has no back control or `onBack` prop; shell navigation exits it.
+local search field; report-folder search remains. Explorer has no back control or `onBack` prop;
+shell navigation exits it.
 
 The Navbar search is an editable shadcn Command/InputGroup, 460px wide and centered at wide desktop
 sizes, with space-aware sizing at the 1024px desktop floor. Clicking or typing opens keyboard-selectable

@@ -2,25 +2,16 @@
   min-width: 0;
 }
 
-.diagnostic-toolbar,
-.diagnostic-toolbar-meta {
+.diagnostic-status {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--ds-space-base);
-}
-
-.diagnostic-toolbar {
-  justify-content: space-between;
   color: var(--ds-fg-muted);
   font-size: var(--ds-text-body-description);
 }
 
-.diagnostic-toolbar-meta {
-  min-width: 0;
-}
-
-.diagnostic-toolbar-meta select {
+.diagnostic-scope-select {
   width: auto;
   min-width: var(--ds-w-body-unit);
 }
@@ -109,14 +100,4 @@
   padding-block: var(--ds-space-base);
   color: var(--ds-fg-muted);
   font-size: var(--ds-text-body-description);
-}
-
-@media (max-width: 700px) {
-  .diagnostic-toolbar {
-    align-items: flex-start;
-  }
-
-  .diagnostic-toolbar-meta {
-    width: 100%;
-  }
 }
