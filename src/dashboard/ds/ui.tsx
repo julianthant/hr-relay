@@ -195,6 +195,7 @@ export type { UnitFieldProps, SecretFieldProps } from "./primitives-form.js";
 
 export { Calendar, DateInput, DateInput as DatePicker, DateRangeInput, RangeCalendar } from "./primitives-date.js";
 export { ChoicePicker, SegmentedChoice } from "./primitives-choice.js";
+export { ToggleGroup, ToggleGroupItem } from "./base-toggle-group.js";
 
 export {
   Dialog,

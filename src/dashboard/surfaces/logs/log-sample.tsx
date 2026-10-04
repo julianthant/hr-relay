@@ -1,5 +1,7 @@
 import { useState } from "react";
-import { Select } from "../../ds/ui.js";
+import { Badge, Select } from "../../ds/ui.js";
+import { StatusBadge } from "../status.js";
+import { dsStatusOf } from "../status-model.js";
 import { LogPanel } from "../log-panel.js";
 import { decisionActionResult, type LogDecisionAction, type LogDecisionAnswer } from "../log-decision-model.js";
 import type { LogStep } from "../log-feed-model.js";
@@ -38,7 +40,7 @@ export function LogSample({ selection }: { selection?: LogSelection }) {
       return { basis, timeline: scenarioId === "preview" ? continuedLookupTimeline(current?.basis === basis ? current.timeline : scenario.timeline, action.id) : scenario.timeline, steps: nextSteps };
     });
   };
-  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? `${preview.workflowLabel} · ${preview.subject}` : scenarioId === "selected" && selected ? selected.title : `Separations · ${scenario.subject}`} status={scenario.status} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide}
+  return <LogPanel key={basis} title={scenarioId === "preview" && preview ? `${preview.workflowLabel} · ${preview.subject}` : scenarioId === "selected" && selected ? selected.title : `Separations · ${scenario.subject}`} status={selection && (scenarioId === "preview" || scenarioId === "selected") ? <StatusBadge status={dsStatusOf(selection.row.status)} presentation="queue" /> : <Badge tone="neutral">{scenario.status}</Badge>} steps={steps} timeline={timeline} initialStepId={scenarioId === "preview" ? preview?.initialStepId : undefined} onDecision={scenarioId === "selected" ? undefined : decide}
     toolbar={<Select aria-label="Logs sample data" variant="toolbar" value={scenarioId} onChange={event => {
       const next = event.target.value;
       if (!(next === "preview" && preview) && !(next === "selected" && selected) && !scenarios.some(item => item.id === next)) throw new Error("log-sample-scenario-missing");

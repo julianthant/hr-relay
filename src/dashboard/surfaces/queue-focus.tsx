@@ -1,7 +1,7 @@
 import { useState, type ReactNode } from 'react';
 import { Archive, ArrowUpDown, ChevronDown, ListFilter, RotateCcw, Trash2, X } from 'lucide-react';
-import { Button, Checkbox, IconButton, Select, Tooltip, dsFocus, dsIcon } from '../ds/ui.js';
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
+import { Button, Checkbox, IconButton, Select, ToggleGroup, ToggleGroupItem, Tooltip, dsIcon } from '../ds/ui.js';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
 import { OperationsToolbar } from './operations-toolbar.js';
 import { QUEUE_SORTS, type QueueSortKey } from './queue-model.js';
 import { needsYouCount, statusCount, totalCount, type StatusBucket, type StatusCountWire } from './shell-model.js';
@@ -13,20 +13,31 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
   onFilter: (next: StatusBucket) => void; sort: QueueSortKey; onSort: (next: QueueSortKey) => void; 
 }) {
   const [open, setOpen] = useState(false);
-  const statuses: readonly StatusBucket[] = ['all', 'needsYou', 'queued', 'running', 'cancelling', 'awaiting-approval', 'blocked', 'done', 'partial', 'failed', 'cancelled'];
+  const groups: readonly { label: string; statuses: readonly StatusBucket[] }[] = [
+    { label: 'Quick filters', statuses: ['all', 'needsYou'] },
+    { label: 'In progress', statuses: ['queued', 'running', 'cancelling', 'awaiting-approval', 'blocked'] },
+    { label: 'Finished', statuses: ['done', 'partial', 'failed', 'cancelled'] },
+  ];
   const label = (status: StatusBucket) => status === 'all' ? 'All' : status === 'needsYou' ? 'Needs you' : PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
   const count = (status: StatusBucket) => status === 'all' ? totalCount(counts) : status === 'needsYou' ? needsYouCount(counts) : statusCount(counts, status);
   return <OperationsToolbar label="Action panel controls" className="[--ds-h-toolbar:32px] [--ds-h-sm:32px] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]">
       {leading}{runStart}
-      <span className="flex-1" />
       <DropdownMenu open={open} onOpenChange={setOpen}>
-        <DropdownMenuTrigger asChild><Button variant="secondary" size="sm" aria-label="All statuses" icon={<ListFilter data-icon="inline-start" className={dsIcon.sm} />}><span className="sr-only">{label(active)}</span><ChevronDown data-icon="inline-end" className="size-3" /></Button></DropdownMenuTrigger>
-        <DropdownMenuContent aria-label="Filter by status" align="end" className="w-60">
-          <DropdownMenuGroup><DropdownMenuRadioGroup value={active} onValueChange={next => { onFilter(next as StatusBucket); setOpen(false); }}>
-            {statuses.map(status => <DropdownMenuRadioItem key={status} value={status}>
-              <span className="flex-1">{label(status)}</span><span className="tabular-nums text-ui-muted">{count(status)}</span>
-            </DropdownMenuRadioItem>)}
-          </DropdownMenuRadioGroup></DropdownMenuGroup>
+        <DropdownMenuTrigger asChild><Button variant="secondary" size="sm" className="queue-status-trigger" data-filtered={active !== 'all'} aria-label="Filter queue by status" aria-description={`Selected: ${label(active)}`} title={`Status: ${label(active)}`} icon={<ListFilter data-icon="inline-start" />}><span className="queue-status-label">{active === 'all' ? 'Status' : label(active)}</span><ChevronDown data-icon="inline-end" /></Button></DropdownMenuTrigger>
+        <DropdownMenuContent aria-label="Filter by status" align="start" className="w-64">
+          <DropdownMenuRadioGroup value={active} onValueChange={next => { onFilter(next as StatusBucket); setOpen(false); }}>
+            {groups.map((group, index) => <DropdownMenuGroup key={group.label}>
+              {index > 0 && <DropdownMenuSeparator />}
+              <DropdownMenuLabel>{group.label}</DropdownMenuLabel>
+              {group.statuses.map(status => {
+                const spec = status === 'all' ? undefined : PROPOSED_STATUS[dsStatusOf(status === 'needsYou' ? 'awaiting-approval' : status)];
+                const Icon = spec?.icon ?? ListFilter;
+                return <DropdownMenuRadioItem key={status} value={status}>
+                  <Icon aria-hidden className={spec?.soloTone} /><span className="flex-1">{label(status)}</span><span className="tabular-nums text-muted-foreground">{count(status)}</span>
+                </DropdownMenuRadioItem>;
+              })}
+            </DropdownMenuGroup>)}
+          </DropdownMenuRadioGroup>
         </DropdownMenuContent>
       </DropdownMenu>
       <Select variant="toolbar" className="queue-sort" aria-label="Sort the queue" title={`Sort queue: ${QUEUE_SORTS.find(entry => entry.key === sort)?.label}`} value={sort} onChange={event => onSort(event.target.value as QueueSortKey)} icon={<ArrowUpDown className={dsIcon.sm} />}>
@@ -50,11 +61,10 @@ export function FocusQueueHeader({ active, counts, onFilter, selecting, selected
         <span aria-hidden className="mx-1 h-5 border-l border-ui-stroke" />
         <Tooltip content="Exit selection"><IconButton label="Exit selection" icon={<X className={dsIcon.sm} />} onClick={onExit} /></Tooltip>
       </div>
-    </> : <div role="group" aria-label="Frequent queue filters" className="relative grid w-full grid-cols-3 rounded-md border border-ui-stroke bg-ui-canvas p-[3px]">
-      {options.some(option => option.value === active) && <span aria-hidden className="pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/3)] rounded-[4px] bg-ui-hover transition-transform duration-[var(--ds-dur-move)] motion-reduce:transition-none" style={{ transform: `translateX(${options.findIndex(option => option.value === active) * 100}%)` }} />}
-      {options.map(option => <button key={option.value} type="button" aria-pressed={active === option.value} onClick={() => onFilter(option.value)} className={`relative min-w-0 rounded-[4px] px-1 py-2 text-body ${dsFocus} ${active === option.value ? 'font-semibold text-ui-primary' : 'text-ui-muted'}`}>
-        {option.label} <span className="tabular-nums">{option.count}</span>
-      </button>)}
-    </div>}
+    </> : <ToggleGroup variant="segmented" aria-label="Frequent queue filters" className="grid w-full grid-cols-3" value={options.some(option => option.value === active) ? [active] : []} onValueChange={values => { const next = options.find(option => option.value === values[0]); if (next) onFilter(next.value); }}>
+      {options.map(option => <ToggleGroupItem key={option.value} value={option.value} aria-label={`${option.label} ${option.count}`}>
+        <span className="min-w-0 truncate">{option.label}</span><span className="shrink-0 tabular-nums">{option.count}</span>
+      </ToggleGroupItem>)}
+    </ToggleGroup>}
   </div>;
 }

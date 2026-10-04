@@ -800,6 +800,7 @@ export function PageHeader({
 export function TakeoverFrame({
   label,
   direction = "column",
+  animateFrame = true,
   className,
   children,
 }: {
@@ -807,6 +808,8 @@ export function TakeoverFrame({
   label: string;
   /** `row` only for Settings' nav-beside-section layout */
   direction?: "column" | "row";
+  /** Settings animates its content while its permanent rail stays in place. */
+  animateFrame?: boolean;
   className?: string;
   children: ReactNode;
 }) {
@@ -857,8 +860,7 @@ export function TakeoverFrame({
         // this element was never opted in.
         "flex min-h-0 flex-1 overflow-hidden outline-none",
         direction === "row" ? "flex-row" : "flex-col",
-        "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))]",
-        "data-[demo-enter=from]:opacity-0 ds-motion-enter",
+        animateFrame && "data-[demo-enter=from]:translate-y-[calc(-1*var(--ds-travel-sm))] data-[demo-enter=from]:opacity-0 ds-motion-enter",
         className,
       )}
     >

@@ -21,26 +21,29 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: 900 });
       await installTheme(page, theme);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
-      const bar = page.getByRole('group', { name: 'Queue actions', exact: true });
-      const launcher = bar.getByRole('button', { name: /^Workflow Panel/ });
+      const bar = page.getByRole('group', { name: 'Action panel controls', exact: true });
       const start = bar.getByRole('button', { name: 'Start a run', exact: true });
-      const status = bar.getByRole('button', { name: 'All statuses', exact: true });
+      const status = bar.getByRole('button', { name: 'Filter queue by status', exact: true });
       const sort = bar.getByRole('combobox', { name: 'Sort the queue', exact: true });
       await expect(bar).toBeVisible();
-      await expect(launcher).toHaveText('');
-      if (await launcher.getAttribute('aria-expanded') === 'true') {
-        expect((await page.getByRole('dialog', { name: 'Workflow Panel', exact: true }).boundingBox())!.width).toBe(280);
-        await launcher.click();
-      }
-      const bounds = await Promise.all([launcher, start, status, sort].map(control => control.boundingBox()));
+      await expect(page.getByRole('button', { name: /^Workflow Panel/ })).toHaveCount(0);
+      await expect(page.getByRole('navigation', { name: 'Workflows', exact: true })).toBeVisible();
+      const bounds = await Promise.all([start, status, sort].map(control => control.boundingBox()));
       expect(bounds.every(bound => bound?.height === 32)).toBe(true);
-      expect(bounds[0]!.x).toBeLessThan(bounds[1]!.x);
+      expect(bounds[0]!.x + bounds[0]!.width).toBeLessThan(bounds[1]!.x);
       expect(bounds[1]!.x + bounds[1]!.width).toBeLessThan(bounds[2]!.x);
-      expect(bounds[2]!.x).toBeLessThan(bounds[3]!.x);
       await expect(bar.getByRole('button', { name: /^(Select|Done|Clear)$/ })).toHaveCount(0);
       const filters = page.getByRole('group', { name: 'Frequent queue filters', exact: true });
       const rows = page.locator('[data-demo-row-id]');
       await expect(filters.getByRole('button', { name: 'All 14', exact: true })).toHaveAttribute('aria-pressed', 'true');
+      await filters.getByRole('button', { name: 'All 14', exact: true }).focus();
+      await page.keyboard.press('ArrowRight');
+      const needsYou = filters.getByRole('button', { name: 'Needs you 3', exact: true });
+      await expect(needsYou).toBeFocused();
+      await page.keyboard.press('Space');
+      await expect(needsYou).toHaveAttribute('aria-pressed', 'true');
+      await expect(page.locator('[data-demo-row-id]:not(tr)')).toHaveCount(3);
+      await filters.getByRole('button', { name: 'All 14', exact: true }).click();
       expect(Math.abs((await filters.boundingBox())!.width - (await rows.first().boundingBox())!.width)).toBeLessThanOrEqual(1);
       const snapshot = await page.getByRole('main').ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash('sha256').update(snapshot).digest('hex') });
@@ -48,7 +51,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await info.attach(evidence.replace('.a11y.yml', '.png'), { body: await page.screenshot(), contentType: 'image/png' });
 
       await status.click();
-      const statuses = page.getByRole('menu', { name: 'Filter by status', exact: true });
+      const statuses = page.getByRole('menu', { name: 'Filter queue by status', exact: true });
       await expect(statuses.locator('[data-slot="dropdown-menu-radio-item"]')).toHaveCount(11);
       await expect(statuses.getByRole('menuitemradio', { name: /^All / })).toHaveAttribute('aria-checked', 'true');
       await statuses.getByRole('menuitemradio', { name: /^Failed / }).click();
@@ -121,7 +124,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const workbook = run.getByRole('button', { name: 'None Workbook · Optional', exact: true });
       await workbook.focus();
       await workbook.press('ArrowDown');
-      const choices = page.getByRole('menu', { name: 'Workbook · Optional', exact: true });
+      const choices = run.getByRole('menu', { name: / Workbook · Optional$/ });
+      await expect(choices).toHaveAccessibleName('None Workbook · Optional');
       await expect(choices.getByRole('menuitemradio', { name: 'None', exact: true })).toHaveAttribute('aria-checked', 'true');
       const lastWorkbook = choices.getByRole('menuitemradio').last();
       const workbookName = (await lastWorkbook.getAttribute('aria-label'))!;
@@ -132,6 +136,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(chosenWorkbook).toBeFocused();
       await expect(choices).toHaveCount(0);
       await chosenWorkbook.press('ArrowDown');
+      await expect(choices).toHaveAccessibleName(`${workbookName} Workbook · Optional`);
       await expect(choices.getByRole('menuitemradio', { name: workbookName, exact: true })).toHaveAttribute('aria-checked', 'true');
       await page.keyboard.press('Escape');
       await expect(chosenWorkbook).toBeFocused();

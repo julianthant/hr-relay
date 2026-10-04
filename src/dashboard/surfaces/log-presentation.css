@@ -72,7 +72,7 @@
 .log-comparison-frame { overflow: hidden; margin-top: 14px; border: 1px solid var(--ui-stroke); border-radius: 10px; background: var(--ui-panel); }
 .log-comparison { width: 100%; border-collapse: collapse; font-size: 12px; background: var(--ui-panel); }
 .log-comparison th, .log-comparison td { padding: 8px 10px; border-bottom: 1px solid var(--ui-stroke); text-align: left; font-weight: 400; }
-.log-comparison thead { color: var(--ui-muted); font-size: 10px; background: var(--ui-table); }
+.log-comparison thead { color: var(--ui-muted); font-size: 10px; background: var(--ui-hover); }
 .log-comparison tbody tr:last-child > * { border-bottom: 0; }
 .log-comparison tbody th { color: var(--ui-secondary); }
 .log-comparison .different { background: color-mix(in srgb, var(--ui-info) 6%, var(--ui-panel)); }

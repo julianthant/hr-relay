@@ -1116,18 +1116,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
             <div className="relative min-h-0 min-w-0 flex-1">
             <div className="dashboard-panel-columns">
-              <section aria-label="Action panel" className="dashboard-action-panel">
-          <FocusQueueToolbar
-            sort={sort}
-            onSort={onSort}
-            active={filter}
-            counts={scopedStatusCounts}
-            onFilter={onFilter}
-            leading={null}
-            runStart={
-              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
-            }
-          />
+              <div className="dashboard-queue-column">
               {previewFlow ? <WorkflowMockQueue label={previewFlow.label} rows={surfaces} selected={railRun} onSelect={setRailRun} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
@@ -1152,10 +1141,23 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                   onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])} />}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
-              </section>
+              </div>
               <div className="dashboard-log-column">
+                <section aria-label="Action panel" className="dashboard-action-panel">
+          <FocusQueueToolbar
+            sort={sort}
+            onSort={onSort}
+            active={filter}
+            counts={scopedStatusCounts}
+            onFilter={onFilter}
+            leading={null}
+            runStart={
+              <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
+            }
+          />
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
+                </section>
             {previewFlow && railRow ? <LogSample key={`${previewFlow.id}:${railRow.runId}`} selection={{ row: railRow, workflowLabel: previewFlow.label }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (

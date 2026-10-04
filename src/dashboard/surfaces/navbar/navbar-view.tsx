@@ -31,7 +31,7 @@ export function NavbarSearch({ data, onResult }: { data: NavbarData; onResult: (
     <SearchInput ref={trigger} aria-label="Search runs" aria-haspopup="dialog" aria-expanded={open} placeholder="Search runs…" readOnly
       onClick={() => setOpen(true)} onKeyDown={event => {
         if (["Enter", " ", "/", "ArrowDown"].includes(event.key)) { event.preventDefault(); setOpen(true); }
-      }} shortcut={<kbd aria-hidden className="text-caption">/</kbd>} />
+      }} />
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent title="Search runs" description="Search recent runs by name, workflow or status." size="lg" className="navbar-search-dialog" onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus(); }}>
         <Command className="navbar-search-command" label="Search runs" value={activeResult} onValueChange={setActiveResult} shouldFilter={false} loop>

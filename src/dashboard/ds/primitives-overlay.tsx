@@ -305,6 +305,12 @@ export function DialogContent({
   );
 }
 
+function protectNestedPopupEscape(event: KeyboardEvent): void {
+  // Radix handles Escape in capture; let the inner Base UI popup dismiss first.
+  const dialog = event.target instanceof Element ? event.target.closest('[role="dialog"]') : null;
+  if (dialog?.querySelector('[data-slot="dropdown-menu-content"][data-open], [data-slot="dropdown-menu-sub-content"][data-open], [data-slot="select-content"][data-open]')) event.preventDefault();
+}
+
 /** Mounts only while the dialog is open — which is what makes the entry read. */
 function DialogSurface({
   title,
@@ -332,7 +338,7 @@ function DialogSurface({
       <Scrim layer={dsLayer.modal} entered={entered} />
       <DialogPrimitive.Content
         onCloseAutoFocus={onCloseAutoFocus}
-        onEscapeKeyDown={onEscapeKeyDown}
+        onEscapeKeyDown={event => { protectNestedPopupEscape(event); onEscapeKeyDown?.(event); }}
         className={cn(
           "fixed left-1/2 top-1/2 w-[calc(100vw-var(--ds-space-section))] -translate-x-1/2 -translate-y-1/2",
           DIALOG_SIZE[size],
@@ -493,6 +499,7 @@ function DrawerSurface({
       <Scrim layer={dsLayer.drawer} entered={entered} slow />
       <DialogPrimitive.Content
         style={isRight ? { width: size } : { height: size }}
+        onEscapeKeyDown={protectNestedPopupEscape}
         className={cn(
           "fixed flex flex-col overflow-hidden border outline-none",
           isRight ? "inset-y-0 right-0 max-w-[94vw] border-l" : "inset-x-0 bottom-0 max-h-[90vh] border-t",

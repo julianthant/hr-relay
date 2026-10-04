@@ -65,10 +65,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const searchColors = await bar.locator('[data-slot="search-field-search-icon"]').evaluate(node => ({ color: getComputedStyle(node).color, background: getComputedStyle(node.parentElement!).backgroundColor }));
       expect(contrastRatio(searchColors.color, searchColors.background)).toBeGreaterThanOrEqual(3);
       await expect(bar.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
-      expect((await bar.boundingBox())!.x).toBe(288);
+      expect((await bar.boundingBox())!.x).toBe(264);
       if (width === 1440) {
         expect(searchBounds.width).toBe(460);
-        expect(Math.abs(searchBounds.x + searchBounds.width / 2 - (288 + (width - 288) / 2))).toBeLessThanOrEqual(20);
+        expect(Math.abs(searchBounds.x + searchBounds.width / 2 - (264 + (width - 264) / 2))).toBeLessThanOrEqual(20);
       }
       await expect(bar.getByRole("button", { name: /preflight/iu })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Activity", exact: true })).toHaveAttribute("aria-current", "page");

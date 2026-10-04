@@ -22,7 +22,7 @@ import {
 import * as CheckboxPrimitive from "@radix-ui/react-checkbox";
 import { Check, Eye, EyeOff, Lock, Minus, Pencil, Trash2, TriangleAlert, Upload } from "lucide-react";
 import { cn } from "../lib/utils.js";
-import { Select as BaseSelect, SelectTrigger, SelectValue, SelectContent, SelectItem } from "./base-select.js";
+import { Select as BaseSelect, SelectTrigger, SelectValue, SelectContent, SelectGroup, SelectItem } from "./base-select.js";
 import { Button, IconButton } from "./primitives-core.js";
 import { Tooltip, TooltipProvider } from "./primitives-overlay.js";
 import { dsBorder, dsFocus, dsFocusWithin, dsIcon, dsMotion, dsRadius, dsText } from "./tokens.js";
@@ -386,7 +386,7 @@ export const Select = forwardRef<HTMLButtonElement,
       {icon}<SelectValue />
     </SelectTrigger>
     <SelectContent container={portalContainer} align="start" alignItemWithTrigger={false}>
-      {options.map(option => <SelectItem key={option.value} data-value={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}
+      <SelectGroup>{options.map(option => <SelectItem key={option.value} data-value={option.value} value={option.value} disabled={option.disabled}>{option.label}</SelectItem>)}</SelectGroup>
     </SelectContent>
   </BaseSelect>;
 });
