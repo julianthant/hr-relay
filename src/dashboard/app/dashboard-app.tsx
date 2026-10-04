@@ -1112,42 +1112,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             }}
           />
 
-          {/*
-            THE PANEL REGION IS A GRID, AND THAT IS THE WHOLE FIX.
-
-            It was two `flex-1` children. `flex-1` on a flex child is
-            `flex-basis: 0%` plus a GROW factor, and a grow factor only
-            distributes space among children that EXIST — so with no run open
-            the second child was not rendered, nothing claimed the free space,
-            and `QueuePanel`'s own root (a flex item with no width) shrank to
-            its content. At 1440×900 that left a ~470px column of rows and ~950
-            PIXELS OF EMPTY BLACK, in the middle of the surface this product is
-            named after, at every viewport since 1i-spine.
-
-            A grid cannot fail that way: the tracks exist whether or not
-            anything is placed in them. `--ds-w-side-panel` (376px) is the same
-            resting width the context rail uses, which is the design's own
-            contract — neither side panel grows independently at wider
-            viewports, so the centre stays the largest column. Below 1180 it
-            collapses to one column and the panels stack.
-
-            Ported from the demo's own panel region, legacy
-            hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
-            `RebuildDemo.tsx:747-748`. Note this SUPERSEDES ref dashboard-surfaces's 400/470
-            table — the demo moved both side panels onto one 376px token after
-            those numbers were measured, and ref frontend-backend-integration §1 makes the demo the
-            visual oracle. Ref dashboard-surfaces §Shell is updated in the same commit.
-
-            `relative` is the positioning context for the floating Workflow
-            Panel, which is why the window now overlays the panels WITHOUT
-            covering the bars above them — it had been absolutely positioned
-            against the viewport and was clipping the status-filter row.
-          */}
           <div className="flex min-h-0 flex-1">
 
             <div className="relative min-h-0 min-w-0 flex-1">
             <div className="dashboard-panel-columns">
-              <div className="dashboard-queue-column">
+              <section aria-label="Action panel" className="dashboard-action-panel">
           <FocusQueueToolbar
             sort={sort}
             onSort={onSort}
@@ -1156,30 +1125,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             onFilter={onFilter}
             leading={null}
             runStart={
-              /*
-                ONE TOOLBAR DOOR, AND IT IS THE MODAL (D296).
-
-                This group used to carry three controls. `Import spreadsheet`
-                was a RULED deviation from the demo (D272 item 3, ledger rows
-                A174/B141) kept for one stated reason — "the demo reaches its
-                intake from INSIDE the Run Modal and this repository's
-                `RunStartSurfaces` serves no such handoff, so deleting the
-                button would make the whole intake workspace unreachable" — and
-                the same note named its own expiry: *it goes when the run modal
-                grows the handoff*. The modal has grown it. The spreadsheet
-                method's `Open the intake…` is the demo's own door, so the
-                deviation is not overruled, it is DISCHARGED, and rejected arm C
-                ("build the Run-Modal handoff first") is what landed.
-
-                `Workflow explorer` (D275 item 1, ledger 3 CA41) goes for D295's
-                reason rather than for its own: the explorer is a segment of the
-                top bar's product-view switcher, so the toolbar button was a
-                second door onto a takeover that already has one, and D275 item
-                1's actual objection was navigation that leads NOWHERE. It still
-                leads somewhere — from `Explorer`, where "where you are" is
-                answered. The `explore` route key, the deep links and the
-                surface are untouched.
-              */
               <RunStartButton id={RUN_START_DOOR_ID} onOpen={openStart} />
             }
           />
@@ -1207,9 +1152,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                   onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])} />}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
-              </div>
+              </section>
               <div className="dashboard-log-column">
-                <div className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
+                <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
             {previewFlow && railRow ? <LogSample key={`${previewFlow.id}:${railRow.runId}`} selection={{ row: railRow, workflowLabel: previewFlow.label }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />

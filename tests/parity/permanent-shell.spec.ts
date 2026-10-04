@@ -3,10 +3,11 @@ import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
+import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
 import { chooseSelect } from "./helpers/select-choice.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
-  test(`permanent workflow rail and independent log date @ ${theme.attribute}-${width}`, async ({ page }, info) => {
+  test(`permanent rail with Action panel and separate log containers @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -28,17 +29,44 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bar.getByRole("button", { name: /^Choose date/u })).toHaveCount(0);
       await expect(page.getByRole("button", { name: /Workflow Panel|Float|Minimise/iu })).toHaveCount(0);
       await expect(page.getByRole("button", { name: "Start a run", exact: true })).toBeVisible();
-      const queue = page.locator(".dashboard-queue-column"), logs = page.locator(".dashboard-log-column");
+      const queue = page.getByRole("region", { name: "Action panel", exact: true }), logs = page.locator(".dashboard-log-column");
       const queueBounds = (await queue.boundingBox())!, logBounds = (await logs.boundingBox())!;
-      expect(queueBounds.x).toBe(288); expect(queueBounds.y).toBe(48); expect(logBounds.y).toBe(48);
+      expect(queueBounds.x).toBe(300); expect(queueBounds.y).toBe(60); expect(logBounds.y).toBe(60);
       expect(queueBounds.width).toBeGreaterThanOrEqual(260);
-      expect(logBounds.x).toBe(queueBounds.x + queueBounds.width);
-      expect(logBounds.x + logBounds.width).toBe(width);
+      expect(logBounds.x).toBeCloseTo(queueBounds.x + queueBounds.width + 12);
+      expect(logBounds.x + logBounds.width).toBe(width - 12);
+      const dateBar = logs.getByRole("group", { name: "Log date controls", exact: true });
+      const dateBounds = (await dateBar.boundingBox())!;
+      expect(dateBounds.x).toBe(logBounds.x); expect(dateBounds.y).toBe(queueBounds.y); expect(dateBounds.height).toBe(48);
+      const logPanel = logs.locator(":scope > section");
+      await expect(logPanel).toContainText("No run open");
+      const logPanelBounds = (await logPanel.boundingBox())!;
+      expect(logPanelBounds.y).toBe(dateBounds.y + dateBounds.height + 12);
+      expect(logPanelBounds.y + logPanelBounds.height).toBe(queueBounds.y + queueBounds.height);
+      expect(queueBounds.y + queueBounds.height).toBe((await page.getByRole("region", { name: "Session Panel", exact: true }).boundingBox())!.y - 12);
+      const controls = queue.getByRole("group", { name: "Action panel controls", exact: true });
+      await expect(controls).toBeVisible();
       for (const control of [page.getByRole("button", { name: "Start a run", exact: true }), page.getByRole("button", { name: "All statuses", exact: true }), page.getByRole("combobox", { name: "Sort the queue", exact: true })]) {
         const bounds = (await control.boundingBox())!;
+        expect(await controls.locator(control).count()).toBe(1);
         expect(bounds.x).toBeGreaterThanOrEqual(queueBounds.x);
         expect(bounds.x + bounds.width).toBeLessThanOrEqual(queueBounds.x + queueBounds.width);
+        expect(bounds.y).toBeGreaterThan(queueBounds.y);
+        expect(bounds.y + bounds.height).toBeLessThan((await queue.getByRole("group", { name: "Frequent queue filters", exact: true }).boundingBox())!.y);
       }
+      await page.locator(`[data-demo-row-id="${FIXTURE_IDS.openGateRun}"]`).click();
+      await expect(logs.getByRole("region", { name: "Selected run logs", exact: true })).toBeVisible();
+      for (const frame of [queue, dateBar, logPanel]) {
+        expect(await frame.evaluate(node => {
+          const style = getComputedStyle(node);
+          return {
+            bordered: [style.borderTopWidth, style.borderRightWidth, style.borderBottomWidth, style.borderLeftWidth].every(value => value === "1px"),
+            rounded: parseFloat(style.borderTopLeftRadius) > 0,
+            opaque: style.backgroundColor !== "transparent" && !style.backgroundColor.endsWith(", 0)"),
+          };
+        })).toEqual({ bordered: true, rounded: true, opaque: true });
+      }
+      await info.attach(`action-panel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       for (const filter of await page.getByRole("group", { name: "Frequent queue filters", exact: true }).getByRole("button").all()) {
         expect(await filter.evaluate(node => {
           const range = document.createRange(); range.selectNodeContents(node);

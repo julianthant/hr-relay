@@ -33,7 +33,7 @@ A blocked-write row selects a separately labelled Separations sample, rather tha
 operation in Person Lookup. The selector's **Selected run · queue facts** view renders only the served
 subject, status, attempt, current message and pipeline, without inferred actions, captures or durations.
 A queue selection resets the sample selection and local decisions. The selector retains all approved
-examples. Queue keeps compact controls in its own 48px header. The 2026-10-03 operator revision moves Explorer, Archive and Activity into
+examples. The Action panel contains the queue and its compact controls in a 48px header. The 2026-10-03 operator revision moves Explorer, Archive and Activity into
 Settings → Data. Their separate operations toolbars are removed. Each page uses the same
 `DsBodyScope` content cap, `PageHeading`, spacing and scroll pane as the other Settings pages;
 its actions remain in its content. The Navbar view switcher is removed; the active Settings gear
@@ -58,7 +58,7 @@ sizes, with space-aware sizing at the 1024px desktop floor. Clicking it, pressin
 Command results. Dismissal restores focus to the Navbar field. Result navigation retains its explicit
 disconnected notice. Status, export and choice menus use shadcn Base UI DropdownMenu; value controls use its Base UI Select composition. Both keep keyboard navigation and focus restoration. Popups inside dialogs portal into the owning dialog. Overlays register only while mounted. RRSS HR and the date count are removed. Back/Forward history controls remain separate in the shortened Navbar. The editable date and calendar sit in the header above Logs and select the dashboard day.
 
-The workflow rail is permanent, 288px wide, and extends above the Navbar to the workspace top. Settings uses the same full-height rail boundary. The Navbar occupies the remaining width and is 48px tall; Queue and Logs each have a 48px header below it. Only Start a run remains as a launch control. Expanding Sessions shortens the workspace and both rails stop at its boundary. Served workflow selection stays persisted; extra labels from the legacy dashboard are explicitly marked layout previews and open fictional sample queues/logs without writing or entering the served launch catalog. Notifications group updates by workflow with Needs you, Failed, Unread and All filters. Read state does not resolve pending run actions. Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards with title, detail, action and close; errors persist until acknowledgment. Cards stay at the bottom right above Sessions and become inert while an overlay is open. Archive removes its retained-history subtitle. Activity uses a title/action row, period/data controls and separate summary cards. Capabilities has a searchable availability table, and Keyboard shortcuts has searchable grouped rows with key pills for existing bindings. Storage checks omits its empty-session sentence.
+The workflow rail is permanent, 288px wide, and extends above the Navbar to the workspace top. Settings uses the same full-height rail boundary. The Navbar occupies the remaining width and is 48px tall. Below it, the Action panel encloses Start a run, status/sort controls, frequent filters and the queue in one rounded bordered container. Logs and its 48px date bar use separate rounded bordered containers, with 12px canvas gutters between and around the panels. Only Start a run remains as a launch control. Expanding Sessions shortens the workspace and both rails stop at its boundary. Served workflow selection stays persisted; extra labels from the legacy dashboard are explicitly marked layout previews and open fictional sample queues/logs without writing or entering the served launch catalog. Notifications group updates by workflow with Needs you, Failed, Unread and All filters. Read state does not resolve pending run actions. Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards with title, detail, action and close; errors persist until acknowledgment. Cards stay at the bottom right above Sessions and become inert while an overlay is open. Archive removes its retained-history subtitle. Activity uses a title/action row, period/data controls and separate summary cards. Capabilities has a searchable availability table, and Keyboard shortcuts has searchable grouped rows with key pills for existing bindings. Storage checks omits its empty-session sentence.
 
 Settings navigation uses closely spaced 32px rows with 10px rounded highlights. Selected and
 unselected labels/icons use primary foreground; muted group labels use 14px type. Section headings
@@ -67,7 +67,7 @@ version details; headers and numeric cells use regular weight in a rounded opaqu
 frames, headers and bodies remain opaque; comparisons use a bordered table with a muted header and
 opaque difference highlights.
 
-The compact queue toolbar keeps Start a run on the left and All statuses/sort on the right.
+The Action panel toolbar keeps Start a run on the left and All statuses/sort on the right.
 Frequent All/Needs you/Running filters occupy the queue header and align with its cards. Double-click,
 right-click and Shift+F10 open the row menu, whose Select item enters selection and includes that
 row. Selection replaces the filter header with a visible-row checkbox, count, Delete/Archive/Retry
@@ -7358,7 +7358,7 @@ makes the rail permanent and 288px wide, matching Settings navigation and extend
 top. It has no floating/minimized modes or display-mode shortcuts. Served rows retain their active/all
 counts without a column heading. Layout-preview workflows use labels copied from the legacy demo,
 are marked Preview, and never enter the served launch catalog or persisted workflow preference.
-The queue keeps status filters and served projection; its Start a run control opens the served catalog.
+The Action panel encloses the queue, its status filters and Start a run control in one rounded bordered container. Logs and the date bar above it retain their own rounded bordered containers, separated by 12px canvas gutters. The served queue projection remains unchanged; Start a run opens the served catalog.
 
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)
 

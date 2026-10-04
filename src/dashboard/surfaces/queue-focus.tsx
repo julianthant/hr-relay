@@ -16,7 +16,7 @@ export function FocusQueueToolbar({ leading, runStart, active, counts, onFilter,
   const statuses: readonly StatusBucket[] = ['all', 'needsYou', 'queued', 'running', 'cancelling', 'awaiting-approval', 'blocked', 'done', 'partial', 'failed', 'cancelled'];
   const label = (status: StatusBucket) => status === 'all' ? 'All' : status === 'needsYou' ? 'Needs you' : PROPOSED_STATUS[dsStatusOf(status)].accessibleLabel;
   const count = (status: StatusBucket) => status === 'all' ? totalCount(counts) : status === 'needsYou' ? needsYouCount(counts) : statusCount(counts, status);
-  return <OperationsToolbar label="Queue actions" className="[--ds-h-toolbar:32px] [--ds-h-sm:32px] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]">
+  return <OperationsToolbar label="Action panel controls" className="[--ds-h-toolbar:32px] [--ds-h-sm:32px] [--ds-brand-solid-bg:var(--ui-info)] [--ds-brand-solid-fg:var(--ui-canvas)] [--ds-brand-solid-hover:var(--ui-info)]">
       {leading}{runStart}
       <span className="flex-1" />
       <DropdownMenu open={open} onOpenChange={setOpen}>

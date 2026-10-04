@@ -50,8 +50,8 @@ areas are 128px (96px for browser groups), with single previews capped at 360px.
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
 The Dashboard retains the approved compact operations toolbar. Settings Data pages place their
 controls in their standard Settings content.
-The Dashboard mounts the permanent workflow rail and compact queue toolbar: Start a run left, All statuses/sort
-right, frequent filters aligned inside the queue header. Double/right-click and Shift+F10 open row
+The Dashboard mounts the permanent workflow rail and rounded bordered Action panel: Start a run left, All statuses/sort
+right, frequent filters and queue inside the same container. Logs and its date bar have separate rounded bordered containers with 12px canvas gutters. Double/right-click and Shift+F10 open row
 actions; Select enters bulk mode with checkbox/count/Delete/Archive/Retry/X controls and Escape exit.
 These new actions are local mocks: Retry retains the exact authored mock settings, adds a queued
 attempt and never opens Rerun or sends a runtime command. Local counts reflect the latest mock attempt;
@@ -257,7 +257,7 @@ width without a separate operations toolbar. This changes presentation, not vers
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 
 **D347 — Remember the selected workflow and simplify the rail heading (operator direction, 2026-09-24):**
-The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 operator amendment replaces floating/docked modes with a permanent 288px rail matching Settings navigation, extending to the workspace top. Served rows retain active/all counts. Extra legacy workflow labels are marked layout previews with local sample queues/logs, without launch authority or persisted selection. The shortened Navbar contains separate history controls; the date moves above Logs. Start a run remains the single launch control; status filters and the served queue projection remain. Owner:
+The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 operator amendment replaces floating/docked modes with a permanent 288px rail matching Settings navigation, extending to the workspace top. Served rows retain active/all counts. Extra legacy workflow labels are marked layout previews with local sample queues/logs, without launch authority or persisted selection. The shortened Navbar contains separate history controls; the date moves into its own rounded bordered bar above the Logs container. The rounded bordered Action panel encloses Start a run, status/sort controls, frequent filters and the queue. The containers have 12px canvas gutters. Start a run remains the single launch control; status filters and the served queue projection remain. Owner:
 [dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
