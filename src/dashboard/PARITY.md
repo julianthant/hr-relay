@@ -86,7 +86,9 @@ branch selectors and source returns remain available; switching workflows resets
 focus. Storage checks and Preflight put their actions and scope selector beside the heading, with
 freshness, failures and unavailable states below.
 Archive overview and folders use shared searches; the overview also has workflow/outcome filters. The 2026-10-04 revision uses HeroUI
-SearchField for shared searches. The centered Navbar field opens a centered search modal on click,
+SearchField for shared searches. Every search field uses the UI catalog's 12px corner radius through
+the shared search token, including Settings navigation, Keyboard, Archive and the compact Run filter.
+Search sizes, theme and behavior remain unchanged. The centered Navbar field opens a centered search modal on click,
 Enter/Space or `/`, with keyboard Command results, clear control and focus restoration. Status/export/
 choice menus use shadcn Base UI DropdownMenu; value controls use Base UI Select. RRSS HR and the date count are removed. The editable date and calendar sit above Logs, separate from Navbar history controls. The active Settings
 gear returns to Dashboard through the draft guard. Settings navigation has tighter 32px rows, 10px

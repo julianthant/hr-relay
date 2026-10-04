@@ -14,7 +14,6 @@
 .settings-tab-body .ds-radio-label { font-weight: 400; }
 .settings-tab-body .ds-page-heading-description { font-size: var(--ds-text-body-description); font-weight: 400; }
 .archive-header-filters { display: grid; grid-template-columns: minmax(0,1fr) 180px 150px; gap: 8px; align-items: center; }
-.archive-header-filters .ds-search-field [data-slot="search-field-group"] { border-radius: 999px; }
 .activity-header-filters { display: flex; justify-content: space-between; align-items: center; gap: 12px; border-bottom: 1px solid var(--ui-stroke); padding-bottom: 16px; }
 .activity-header-filters > div { max-width: 220px; }
 .settings-shortcuts .shortcut-setting-row { display: flex; align-items: center; justify-content: space-between; gap: 24px; padding: 18px; }
@@ -32,7 +31,6 @@
 .settings-takeover .ds-result-row { align-items: center; padding-block: 18px; }
 .settings-takeover .ds-result-row-side { align-self: center; }
 .settings-takeover .ds-button[data-variant="secondary"] { border-color: var(--ui-stroke); box-shadow: none; }
-.settings-shortcuts .ds-search-field [data-slot="search-field-group"] { border-radius: 999px; }
 .shortcut-reference-copy p { margin: 0 0 4px; font-size: 14px; font-weight: 400; }
 .shortcut-reference-copy span { color: var(--ui-muted); font-size: 12px; }
 .shortcut-reference-card { border: 1px solid var(--ui-stroke); border-radius: 14px; background: var(--ui-panel); padding: 0 18px; }

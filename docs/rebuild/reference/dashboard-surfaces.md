@@ -7424,6 +7424,9 @@ Keyboard settings use compact reference rows with key pills and aligned pencil/d
 bindings can be reassigned with the pencil. Add controls and Run/workflow number-key navigation are retired. Existing
 local shortcut preferences remain readable; their old number-mode field has no effect. Editable bindings
 remain locally persisted and drive run search and queue shortcuts.
+All dashboard search fields use the UI catalog's 12px corners through the shared search-radius token.
+Settings navigation, Keyboard, Archive and the compact Run workflow filter have no local radius
+override. Their sizes, theme colors, search behavior and Run/Rerun flow remain unchanged.
 
 Archive version groups show report counts instead of archived dates. Folder and report views use the same
 breadcrumb → focused heading/actions → controls/table structure as the spreadsheet viewer. They omit the

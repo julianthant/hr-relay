@@ -139,7 +139,7 @@
 .launch-dialog .launch-workflow-rail nav ul { @apply gap-1; }
 .launch-dialog .launch-workflow-rail nav { @apply py-0; }
 .launch-dialog .launch-workflow-rail nav > span { @apply text-[10px] leading-[18px] font-[650]; }
-.launch-dialog .launch-workflow-rail [data-slot="search-field-group"] { @apply h-8 min-h-8 gap-[6px] rounded-md border border-ui-stroke bg-ui-panel px-[7px] py-0; }
+.launch-dialog .launch-workflow-rail [data-slot="search-field-group"] { @apply h-8 min-h-8 gap-[6px] border border-ui-stroke bg-ui-panel px-[7px] py-0; }
 .launch-dialog .launch-workflow-rail [data-slot="search-field-input"] { @apply h-[30px] min-h-0 text-caption; }
 .launch-dialog .launch-workflow-rail [data-slot="search-field-search-icon"] { @apply size-[14px]; }
 .launch-dialog .launch-stagebar { @apply h-[54px]; }
