@@ -1,24 +1,18 @@
-.activity-effort { display: flex; flex-direction: column; gap: var(--ds-space-base); }
-.activity-effort-summary { display: flex; align-items: center; justify-content: space-between; gap: var(--ds-space-section); padding-block: var(--ds-space-base); border-block: var(--ds-border-w) solid var(--ui-stroke); }
-.activity-effort-total { font-size: var(--ds-text-title); line-height: var(--ds-lh-title); font-weight: 550; font-variant-numeric: tabular-nums; }
-.activity-effort-summary p, .activity-effort-description, .activity-effort-note { margin: 0; color: var(--ui-muted); font-size: var(--ds-text-body-description); }
-.activity-effort-summary p { margin-top: var(--ds-space-tight); }
-.activity-effort-summary dl { display: flex; flex-wrap: wrap; gap: var(--ds-space-base); margin: 0; }
-.activity-effort-summary dt { color: var(--ui-muted); font-size: var(--ds-text-body-description); }
-.activity-effort-summary dd { margin: var(--ds-space-tight) 0 0; font-size: var(--ds-text-ui); font-variant-numeric: tabular-nums; }
-.activity-effort-table { overflow: hidden; border: var(--ds-border-w) solid var(--ui-stroke); border-radius: var(--ds-radius-lg); }
-.activity-effort-table table { width: 100%; table-layout: fixed; font-size: var(--ds-text-ui); }
-.activity-effort-workflow { width: 32%; }
-.activity-effort-savings { width: 22%; }
-.activity-effort-table thead { background: var(--ui-table); color: var(--ui-secondary); }
-.activity-effort-table th, .activity-effort-table td { padding: var(--ds-space-base); text-align: left; font-weight: 400; }
-.activity-effort-table tbody { background: var(--ui-panel); }
-.activity-effort-table tbody tr { border-top: var(--ds-border-w) solid var(--ui-stroke); }
-.activity-effort-table span { display: block; margin-top: var(--ds-space-tight); font-size: var(--ds-text-body-description); color: var(--ui-muted); }
-.activity-effort-table input { height: var(--ds-h-toolbar); font-size: var(--ds-text-ui); font-variant-numeric: tabular-nums; }
+.activity-effort-description, .activity-effort-note { margin: 0 0 12px; color: var(--ui-muted); font-size: var(--text-caption); line-height: var(--text-caption--line-height); }
+.activity-effort-note { margin: 8px 0 0; }
+.activity-effort-table { overflow: hidden; border: 1px solid var(--ui-stroke); border-radius: var(--ds-radius-body-group); background: var(--ui-table); }
+.activity-effort-table table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: var(--text-body); line-height: var(--text-body--line-height); }
+.activity-effort-workflow { width: 30%; }
+.activity-effort-savings { width: 26%; }
+.activity-effort-table th, .activity-effort-table td { padding: 12px 16px; text-align: right; font-weight: 400; font-variant-numeric: tabular-nums; }
+.activity-effort-table th:first-child { text-align: left; }
+.activity-effort-table thead { background: var(--ui-table); color: var(--ui-secondary); font-size: var(--text-caption); }
+.activity-effort-table tbody tr { border-top: 1px solid var(--ui-stroke); background: var(--ui-panel); }
+.activity-effort-table tbody tr:nth-child(even) { background: var(--ui-table); }
+.activity-effort-table tfoot { border-top: 1px solid var(--ui-stroke); background: var(--ui-table); }
+.activity-effort-table span { display: block; margin-top: 4px; color: var(--ui-muted); font-size: var(--text-caption); }
+.activity-effort-table input { width: 96px; max-width: 100%; height: var(--ds-h-body-control); margin-left: auto; font-size: var(--text-body); text-align: right; font-variant-numeric: tabular-nums; }
 .activity-effort-table .activity-effort-error { color: var(--ui-danger); }
-.activity-effort-result strong { font-weight: 500; font-variant-numeric: tabular-nums; }
-@media (max-width: 1100px) {
-  .activity-effort-summary { align-items: flex-start; flex-direction: column; gap: var(--ds-space-base); }
-  .activity-effort-table th, .activity-effort-table td { padding: var(--ds-space-snug); }
-}
+.activity-effort-result strong { font-weight: 500; }
+.activity-effort-table .activity-effort-prompt { margin-top: 0; color: var(--ui-secondary); font-size: inherit; }
+.activity-effort-table .activity-effort-empty { padding: 24px 16px; text-align: center; color: var(--ui-secondary); }

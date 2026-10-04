@@ -46,11 +46,14 @@ and stops. Single dates render the shared HeroUI DatePicker with its default Cal
 uses the documented two-month RangeCalendar. Calendar interiors retain HeroUI geometry; date fields
 retain editable segments and suffix icons with DS button borders, radius, heights and neutral colors.
 The date field above Logs keeps its own exterior; Navbar history controls are separate. Focus and invalid states remain visible. Both calendars
-share the product palette. Activity endpoints appear only for Custom; either
-endpoint opens the centered shared range picker, and the second date commits without footer controls.
+share the product palette. Activity endpoints stay visible for every period; presets synchronize both
+dates, and manual endpoint edits select Custom. Incomplete drafts retain the applied report range.
+Either endpoint opens the centered shared range picker, and the second date commits without footer controls.
 Archive and Search retain open-ended field entry.
 The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Settings heading, ordinary
 buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
+Time saved uses Activity's table typography, spacing and alternating rows, with compact minute inputs
+and coverage, manual/assisted totals and estimated savings in its footer.
 The Focus Archive replacement was rejected on 2026-10-03. Focused desktop dark/light interaction checks
 cover the changes; frozen reference screenshots remain unchanged. Mock workflows are presentation only and cannot start runs.
 

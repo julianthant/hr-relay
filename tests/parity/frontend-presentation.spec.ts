@@ -601,7 +601,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   });
 }
 
-test("Activity Custom dates share a centered two-month calendar; the second date applies and dismissals restore focus", async ({ page }) => {
+test("Activity dates stay visible with a centered two-month calendar; edits select Custom and dismissals restore focus", async ({ page }) => {
   ensureParityBundle();
   const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
   try {
@@ -610,9 +610,9 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     const period = page.getByRole("combobox", { name: "Report period" });
     const start = page.getByRole("button", { name: /^Choose start date range/u });
     const end = page.getByRole("button", { name: /^Choose end date range/u });
-    await expect(start).toHaveCount(0);
-    await expect(end).toHaveCount(0);
-    await chooseSelect(period, "custom");
+    await expect(start).toBeVisible();
+    await expect(end).toBeVisible();
+    await expect(period).toHaveAttribute("data-value", "this-week");
     const calendar = page.getByRole("dialog", { name: "Select report dates", exact: true });
     await expect(calendar).toHaveCount(0);
     await start.click();
@@ -622,7 +622,7 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     await expect(calendar.getByRole("heading", { name: "October 2026", exact: true, includeHidden: true })).toBeVisible();
     await expect(calendar.getByRole("button", { name: "Cancel", exact: true })).toHaveCount(0);
     await expect(calendar.getByRole("button", { name: "Apply range", exact: true })).toHaveCount(0);
-    const pair = (await page.getByRole("group", { name: "Custom report range", exact: true }).boundingBox())!;
+    const pair = (await page.getByRole("group", { name: "Report date range", exact: true }).boundingBox())!;
     const popup = (await calendar.boundingBox())!;
     expect(popup.width).toBeGreaterThan(pair.width);
     expect(Math.abs(popup.x + popup.width / 2 - pair.x - pair.width / 2)).toBeLessThanOrEqual(1);
@@ -646,14 +646,16 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     await expect(calendar).toHaveCount(0);
     await expect(end).toBeFocused();
     await expect(page).toHaveURL(/activity=2026-09-25\.\.2026-09-26/);
-    const fields = page.getByRole("group", { name: "Custom report range", exact: true });
+    const fields = page.getByRole("group", { name: "Report date range", exact: true });
     await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("25");
     await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
     await expect(period).toHaveAttribute("data-value", "custom");
     await expect(page.getByLabel("Activity summary")).toContainText("of 18 runs");
     await chooseSelect(period, "today");
-    await expect(start).toHaveCount(0);
-    await expect(end).toHaveCount(0);
+    await expect(start).toBeVisible();
+    await expect(end).toBeVisible();
+    await expect(fields.getByRole("spinbutton", { name: /^day, Start/u })).toHaveText("26");
+    await expect(fields.getByRole("spinbutton", { name: /^day, End/u })).toHaveText("26");
     await expect(page.getByLabel("Activity summary")).toContainText("of 9 runs");
     expect(requests).toEqual([]);
   } finally { await server.close(); }

@@ -49,8 +49,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await chooseSelect(page.getByRole('combobox', { name: 'Report period' }), 'custom');
       const start = page.getByRole('button', { name: /^Choose start date range/u });
       const end = page.getByRole('button', { name: /^Choose end date range/u });
-      const controls = page.getByRole('group', { name: 'Custom report range', exact: true }).locator('.date-input-group');
-      const buttonStyle = await controlStyle(page.getByRole('button', { name: 'Export report', exact: true }));
+      const controls = page.getByRole('group', { name: 'Report date range', exact: true }).locator('.date-input-group');
+      const buttonStyle = await controlStyle(page.getByRole('combobox', { name: 'Report period', exact: true }));
       expect(await controlStyle(controls.first())).toEqual(buttonStyle);
       expect(await controlStyle(controls.last())).toEqual(buttonStyle);
       expect(dateFieldStyle).toEqual({ ...buttonStyle, height: '32px', radius: '6px' });
@@ -74,7 +74,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await range.getByRole('grid').nth(1).getByRole('button', { name: /Friday, October 2, 2026/u }).click();
       await expect(range).toHaveCount(0);
       await expect(page).toHaveURL(/activity=2026-09-30\.\.2026-10-02/u);
-      const pair = page.getByRole('group', { name: 'Custom report range', exact: true });
+      const pair = page.getByRole('group', { name: 'Report date range', exact: true });
       await expect(pair.getByRole('spinbutton', { name: /^day, Start/u })).toHaveText('30');
       await expect(pair.getByRole('spinbutton', { name: /^month, End/u })).toHaveText('10');
       await expect(pair.getByRole('spinbutton', { name: /^day, End/u })).toHaveText('2');
@@ -84,7 +84,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await sameDay.click();
       await expect(page).toHaveURL(/activity=2026-09-30\.\.2026-09-30/u);
 
-      await page.goto(`${server.baseUrl}/?archive=&archiveDashboard=1.3&archiveWorkflow=archive-demo-separation`);
+      await page.goto(`${server.baseUrl}/?settings=archive`);
+      await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
       const from = page.getByRole('button', { name: /^Choose completed from \(utc\) date range/u });
       const through = page.getByRole('button', { name: /^Choose completed through \(utc\) date range/u });
       await through.click();

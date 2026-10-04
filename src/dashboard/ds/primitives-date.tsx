@@ -107,8 +107,10 @@ export function RangeCalendar({ label, value, onChange, focusedValue, minValue, 
   </HeroRangeCalendar>;
 }
 
-export function DateRangeInput({ label, value, onChange, fromLabel = "Start", toLabel = "End", variant = "field", className, min, max, disabled = false, groupLabel }: {
+export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "Start", toLabel = "End", variant = "field", className, min, max, disabled = false, groupLabel }: {
   label: string; value: { from: string; to: string }; onChange: (value: { from: string; to: string }) => void;
+  /** Reports a direct endpoint edit even when its draft cannot yet be applied. */
+  onEdit?: () => void;
   fromLabel?: string; toLabel?: string; variant?: "field" | "toolbar"; className?: string;
   min?: string; max?: string; disabled?: boolean; groupLabel?: string;
 }) {
@@ -128,6 +130,7 @@ export function DateRangeInput({ label, value, onChange, fromLabel = "Start", to
   const minimum = dateValue(min), maximum = dateValue(max);
   const invalid = (from !== null && to !== null && from.compare(to) > 0) || [from, to].some(date => date !== null && ((minimum !== null && date.compare(minimum) < 0) || (maximum !== null && date.compare(maximum) > 0)));
   const changeEndpoint = (key: "from" | "to", date: CalendarDate | null) => {
+    onEdit?.();
     const next = { ...draft, [key]: date?.toString() ?? "" };
     setDraft(next);
     const start = dateValue(next.from), end = dateValue(next.to);
