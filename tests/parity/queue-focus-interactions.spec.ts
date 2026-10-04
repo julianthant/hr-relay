@@ -29,11 +29,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bar).toBeVisible();
       await expect(launcher).toHaveText('');
       if (await launcher.getAttribute('aria-expanded') === 'true') {
-        expect((await page.getByRole('dialog', { name: 'Workflow Panel', exact: true }).boundingBox())!.width).toBe(280);
+        expect((await page.getByRole('dialog', { name: 'Workflow Panel', exact: true }).boundingBox())!.width).toBe(280 * .9);
         await launcher.click();
       }
       const bounds = await Promise.all([launcher, start, status, sort].map(control => control.boundingBox()));
-      expect(bounds.every(bound => bound?.height === 32)).toBe(true);
+      expect(bounds.every(bound => bound !== null && Math.abs(bound.height - 32 * .9) < .05)).toBe(true);
       expect(bounds[0]!.x).toBeLessThan(bounds[1]!.x);
       expect(bounds[1]!.x + bounds[1]!.width).toBeLessThan(bounds[2]!.x);
       expect(bounds[2]!.x).toBeLessThan(bounds[3]!.x);

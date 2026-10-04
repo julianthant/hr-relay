@@ -30,7 +30,6 @@ type ActionTarget,
 type PendingCommand,
 } from "../surfaces/actions.js";
 import { CommandRecovery, type CommandRecoveryEntry } from "../surfaces/command-recovery.js";
-import { ARCHIVE_INDEX } from "../surfaces/archive-model.js";
 import { serverLocalDay } from "../surfaces/date-navigation-model.js";
 import { fmtClock } from "../surfaces/format.js";
 import { type PanelTab } from "../surfaces/log-panel-model.js";
@@ -64,7 +63,6 @@ import { activeCount,activeStatusWords,parseWorkflows,useSelectedWorkflow,useWor
 import { WorkflowPanelToggle,WorkflowSidebar,WorkflowWindow } from "../surfaces/shell.js";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
-import { type ShellView } from "../surfaces/top-bar-model.js";
 import { TopBar } from "../surfaces/top-bar.js";
 import {
 bulkSubjectsOf,
@@ -90,7 +88,6 @@ import { useTakeoverCloseFocus } from "./takeover-focus-model.js";
 import {
 activeTakeover,
 routeForCrossDateSearchResult,
-shellViewOf,
 type AppRouteState
 } from "./url-state.js";
 
@@ -979,37 +976,11 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   // cannot disagree with a link that carries more than one key.
   const takeover = activeTakeover(route);
 
-  const shellView = shellViewOf(takeover);
   const closeTakeoverTo = useTakeoverCloseFocus(takeover, setRoute);
 
-  /**
-   * Switching views CLEARS the other three keys rather than layering one over
-   * another. Anything else lets a link accumulate takeovers whose precedence
-   * the operator cannot see, and leaves a closed view still in the URL.
-   */
-  const onShellView = useCallback(
-    (next: ShellView): void => {
-      const base = {
-        ...route,
-        intake: undefined,
-        archive: undefined,
-        archiveView: undefined,
-        archiveDashboard: undefined,
-        archiveWorkflow: undefined,
-        activity: undefined,
-        explore: undefined,
-        catalog: undefined,
-        catalogView: undefined,
-        settings: undefined,
-      };
-      leaveSettings(() => {
-        if (next === "archive") setRoute({ ...base, archive: ARCHIVE_INDEX });
-        else if (next === "activity") setRoute({ ...base, activity: "" });
-        else if (next === "explorer") setRoute({ ...base, explore: activeWorkflowId });
-        else setRoute(base);
-      });
-    },
-    [route, setRoute, activeWorkflowId, leaveSettings],
+  const returnToDashboard = useCallback(
+    () => leaveSettings(() => setRoute(routeWithoutTakeovers(route))),
+    [route, setRoute, leaveSettings],
   );
 
   /**
@@ -1062,9 +1033,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       className={cn("flex min-h-0 min-w-0 flex-1 flex-col")}
     >
       <TopBar
-        view={shellView}
-        onView={onShellView}
-        settingsOpen={takeover === "settings"}
+        onDashboard={returnToDashboard}
+        settingsOpen={takeover === "settings" || takeover === "archive" || takeover === "activity" || takeover === "explore"}
         onOpenSettings={openSettings}
         theme={theme}
         onToggleTheme={onToggleTheme}

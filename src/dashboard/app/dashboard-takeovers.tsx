@@ -27,24 +27,28 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
  supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
  onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; children: ReactNode;
-}) {return (takeover === "settings" ? (
-            /*
-              Settings REPLACES the queue (D272 item 1 / D274 item 5). It was a
-              dialog, which gave the one page an operator opens most often no
-              place in history and no back path — and the demo's own container
-              is a page for exactly that reason.
-
-              NO WRAPPER (UF-SET-1/4/5). All four demo-covered takeovers mount
-              their own `TakeoverFrame`, whose JSDoc owns the why — geometry,
-              arrival and focus, decided once. The demo's switch
-              (`1ec1d870 RebuildDemo.tsx:656-678`) hands its pages straight to
-              the shell column with nothing between them and it.
-            */
+}) {
+ const dataSection = takeover === "settings" ? route.settings
+   : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
+ const dataContent = dataSection === "archive" ? <ArchiveWorkspace
+   selection={route.archive ?? ARCHIVE_INDEX} view={route.archiveView ?? "runs"}
+   folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
+     ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}
+   browse={route.archiveBrowse} browseInvalid={route.archiveBrowseInvalid}
+   onBrowse={(browse, mode) => setRoute({ ...route, settings: "archive", archive: route.archive ?? ARCHIVE_INDEX, archiveBrowse: browse, archiveBrowseInvalid: undefined }, mode)}
+   onSelection={next => setRoute({ ...route, settings: "archive", archive: next, archiveBrowse: { ...route.archiveBrowse, filters: route.archiveBrowse?.filters ?? {}, section: undefined } })}
+   onView={next => setRoute({ ...route, settings: "archive", archive: route.archive ?? ARCHIVE_INDEX, archiveView: next })}
+   onFolder={folder => setRoute({ ...route, settings: "archive", archive: ARCHIVE_INDEX,
+     archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
+ /> : dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute({ ...route, settings: "activity", activity: next })} />
+ : dataSection === "explorer" ? <WorkflowExplorer onVersionRegistry={() => setRoute({ ...routeWithoutTakeovers(route), settings: "archive", archive: ARCHIVE_INDEX, archiveView: "versions" })} /> : undefined;
+ return (takeover === "settings" || dataContent !== undefined ? (
             <SettingsPage
               storage={boot.storage}
               sections={settingsSections}
               workflowLabels={workflowLabels}
-              section={route.settings ?? ""}
+              section={route.settings ?? dataSection ?? ""}
+              dataContent={dataContent}
               catalogQuery={route.catalog ?? ""}
               catalogView={route.catalogView ?? DEFAULT_CATALOG_VIEW}
               onCatalogQuery={(next) => setRoute({ ...route, catalog: next })}
@@ -52,7 +56,8 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               actorId={boot.actor.id}
               descriptorFingerprint={boot.descriptorHash}
               preflight={boot.preflight ?? []}
-              onSection={(next) => setRoute({ ...route, settings: next })}
+              onSection={next => setRoute({ ...routeWithoutTakeovers(route), settings: next,
+                ...(next === "archive" ? { archive: ARCHIVE_INDEX } : next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
               onExitGuardChange={onSettingsExitGuardChange}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (
@@ -77,34 +82,5 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
                 routeWithoutTakeovers(route),
               )}
               onEnqueued={() => setRoute(routeWithoutTakeovers(route))}
-            />
-          ) : takeover === "archive" ? (
-            /*
-              The Archive replaces the queue whole. It is the opposite view of
-              the same world — what has LEFT the live surfaces — so showing it
-              beside a live queue would invite exactly the comparison D80 says
-              is not available: an archived run and a current one ran different
-              code.
-
-              NO WRAPPER — see the Settings arm above (UF-AR-3).
-            */
-            <ArchiveWorkspace
-              selection={route.archive ?? ARCHIVE_INDEX}
-              view={route.archiveView ?? "runs"}
-              folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
-                ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}
-              browse={route.archiveBrowse}
-              browseInvalid={route.archiveBrowseInvalid}
-              onBrowse={(browse, mode) => setRoute({ ...route, archiveBrowse: browse, archiveBrowseInvalid: undefined }, mode)}
-              onSelection={(next) => setRoute({ ...route, archive: next, archiveBrowse: { ...route.archiveBrowse, filters: route.archiveBrowse?.filters ?? {}, section: undefined } })}
-              onView={(next) => setRoute({ ...route, archiveView: next })}
-              onFolder={(folder) => setRoute({ ...route, archive: ARCHIVE_INDEX,
-                archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
-            />
-          ) : takeover === "activity" ? (
-            <ActivityReport range={route.activity ?? ""} onRange={(next) => setRoute({ ...route, activity: next })} />
-          ) : takeover === "explore" ? (
-            <WorkflowExplorer
-              onVersionRegistry={() => setRoute({ ...routeWithoutTakeovers(route), archive: ARCHIVE_INDEX, archiveView: "versions" })}
             />
           ) : children);}

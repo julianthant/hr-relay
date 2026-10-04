@@ -76,19 +76,21 @@ describe("canonical Settings navigation", () => {
   const document = fixtureSettingsDocument();
   const groups = buildSettingsNav(servedStatusSections, document);
 
-  it("serves the approved 12 pages under the three shared groups", () => {
+  it("serves the approved 15 pages under the four shared groups", () => {
     assert.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "spreadsheets", "routes", "providers", "credentials"]],
+      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Data", ["explorer", "archive", "activity", "spreadsheets"]],
       ["Status", ["storage", "preflight", "workflow-capabilities"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
-    assert.equal(groups.flatMap(group => group.entries).length, 12);
+    assert.equal(groups.flatMap(group => group.entries).length, 15);
   });
 
   it("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav(servedStatusSections);
     assert.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "spreadsheets", "routes", "providers", "credentials"]],
+      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Data", ["explorer", "archive", "activity", "spreadsheets"]],
       ["Status", ["storage", "preflight", "workflow-capabilities"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
@@ -111,7 +113,7 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 12);
+    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 15);
     assert.ok(page.textContent?.includes("Editable settings unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
     assert.ok(page.querySelector('button')?.textContent?.includes("Try again"));

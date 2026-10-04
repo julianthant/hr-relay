@@ -121,8 +121,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       });
       expect(fillStyle.color).toMatch(/^rgb\(\d+, \d+, \d+\)$/u);
       expect(fillStyle.opacity).toBe("1");
-      expect((await chart.boundingBox())!.height).toBeGreaterThanOrEqual(160);
-      if (width === 1440) expect((await chart.boundingBox())!.height).toBeGreaterThan(160);
+      expect((await chart.boundingBox())!.height).toBeGreaterThanOrEqual(160 * .9);
+      if (width === 1440) expect((await chart.boundingBox())!.height).toBeGreaterThan(160 * .9);
       for (const [index, day, count] of [[0, 20, 0], [3, 23, 7], [5, 25, 9], [6, 26, 9]]) {
         const bar = bars.nth(index);
         await bar.hover();
@@ -326,7 +326,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("save and submit");
       const formShot = surface.getByRole("button", { name: "Enlarge screenshot captured at 09:32:38", exact: true });
       await formShot.scrollIntoViewIfNeeded();
-      expect((await formShot.boundingBox())!.height).toBe(146);
+      expect((await formShot.boundingBox())!.height).toBeCloseTo(146 * .9, 1);
       await expect(formShot.locator("img")).toHaveJSProperty("naturalHeight", 1050);
       await formShot.click();
       const viewer = page.getByRole("dialog", { name: "UCPath · Form after Save and Submit", exact: true });
@@ -339,7 +339,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(imageBounds.height).toBeLessThanOrEqual(viewportBounds.height);
       expect(imageBounds.width).toBeLessThanOrEqual(viewportBounds.width);
       await viewer.getByRole("button", { name: "100%", exact: true }).click();
-      expect((await viewer.getByRole("img").boundingBox())!.width).toBe(850);
+      expect((await viewer.getByRole("img").boundingBox())!.width).toBe(850 * .9);
       await page.keyboard.press("Escape");
       await expect(formShot).toBeFocused();
       await surface.getByRole("searchbox", { name: "Search logs" }).fill("unmatched");
@@ -578,9 +578,9 @@ test("Activity Custom dates share a centered two-month calendar; the second date
     expect(Math.abs(popup.x + popup.width / 2 - pair.x - pair.width / 2)).toBeLessThanOrEqual(1);
     await calendar.getByRole("button", { name: /Friday, September 25, 2026/ }).click();
     await expect(calendar).toBeVisible();
-    await expect(page).toHaveURL(/activity=$/);
+    expect(new URL(page.url()).searchParams.get("activity")).toBe("");
     await page.keyboard.press("Escape");
-    await expect(page).toHaveURL(/activity=$/);
+    expect(new URL(page.url()).searchParams.get("activity")).toBe("");
     await expect(start).toBeFocused();
     await end.click();
     await page.keyboard.press("Escape");

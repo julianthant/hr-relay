@@ -1655,7 +1655,7 @@ body[data-demo-theme="light"] {
 
 .navbar-shell {
   display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) 460px minmax(0, 1fr);
 }
 
 .navbar-search {
@@ -1673,15 +1673,9 @@ body[data-demo-theme="light"] {
 }
 
 .navbar-search-results {
-  width: var(--radix-popover-trigger-width);
+  width: calc(var(--radix-popover-trigger-width) / var(--dashboard-scale, 1));
   max-width: calc(100vw - 24px);
   padding: 4px;
-}
-
-@media (min-width: 1400px) {
-  .navbar-shell {
-    grid-template-columns: minmax(0, 1fr) 460px minmax(0, 1fr);
-  }
 }
 
 .ds-body-scope .ds-date-picker--inline {

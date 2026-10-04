@@ -69,7 +69,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
       await range.screenshot({ path: info.outputPath(`range-${theme.attribute}-${width}.png`) });
       await range.getByRole('grid').first().getByRole('button', { name: /Wednesday, September 30, 2026/u }).click();
-      await expect(page).toHaveURL(/activity=$/u);
+      expect(new URL(page.url()).searchParams.get("activity")).toBe("");
+
       await range.getByRole('grid').nth(1).getByRole('button', { name: /Friday, October 2, 2026/u }).click();
       await expect(range).toHaveCount(0);
       await expect(page).toHaveURL(/activity=2026-09-30\.\.2026-10-02/u);

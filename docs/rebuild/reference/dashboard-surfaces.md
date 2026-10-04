@@ -40,8 +40,17 @@ Archive, Explorer and Activity titles in their toolbars. Archive's version overv
 search field; report-folder search remains. Explorer's workflow search sits in its sidebar. Explorer has no back control
 or `onBack` prop; shell navigation exits it.
 
-The Navbar search is an editable shadcn Command/InputGroup, 460px wide and centered at wide desktop
-sizes, with space-aware sizing at the 1024px desktop floor. Clicking or typing opens keyboard-selectable
+The 2026-10-03 density and navigation revision applies a shared 0.9 layout scale to the dashboard,
+including its dialogs, calendars and menus, while filling the viewport and preserving browser zoom.
+Floating overlays retain viewport coordinates and scale their content separately. Chart tooltips and
+log scroll targets convert screen coordinates to layout coordinates. The Navbar view switcher is
+removed; the RRSS HR brand returns to Dashboard through the Settings draft guard. Explorer, Archive,
+Activity and Spreadsheets live in Settings → Data. Existing page-specific URLs retain their state and
+open inside Settings. The three data workspaces use the remaining pane width; their toolbars and
+filters wrap within it. Settings keeps its existing draft owner across Data navigation.
+
+The Navbar search is an editable shadcn Command/InputGroup, 460 layout pixels wide (414 displayed
+pixels at the new density) and centered at both the 1024px and wide desktop sizes. Clicking or typing opens keyboard-selectable
 results beneath the same field, without another input or dialog. Search result navigation retains its
 explicit disconnected notice. Shared search fields use this shadcn InputGroup composition. Status,
 export and shared choice dropdowns use shadcn Radix DropdownMenu with selected radio states,
@@ -6777,11 +6786,12 @@ Options use styled workbook choices, segmented priority/browser controls and com
 Rerun keeps source-bound values and repeat-write confirmation. A confirmed applied start closes the
 dialog and emits a toast; unknown or refused submissions retain recovery.
 
-Spreadsheet registration is separate, at Settings → Spreadsheets, organized by spreadsheet type.
+Spreadsheet registration is separate, at Settings → Data → Spreadsheets, organized by spreadsheet type.
 The initial type is Roster. Registered files, type definitions and per-sheet column mappings are
-inspectable; search covers multiple mapped fields, including names and identifiers. Spreadsheets use
-the available center-pane width outside the ordinary Settings content cap, with horizontal table
-scrolling when columns exceed that space. The search note stays on one line. Roster field groups are
+inspectable; search covers multiple mapped fields, including names and identifiers. Spreadsheets open
+within the ordinary Settings content cap. Expand uses the available center-pane width; Collapse
+restores the cap without changing the selected workbook, sheet or search. Leaving the section resets
+expansion. Both sizes retain horizontal table scrolling when columns exceed the available space. The search note stays on one line. Roster field groups are
 separate sections with distinct Field and Source column headings; the type card keeps one description.
 Preview tables use the approved fictional records and their source row numbers, with borders around
 the table's content rather than unused vertical space. The import

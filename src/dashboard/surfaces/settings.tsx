@@ -2,6 +2,9 @@ import { SpreadsheetsSettings } from "./spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
 import {
+Archive,
+Activity,
+Workflow,
 BookMarked,
 CircleAlert,
 ClipboardCheck,
@@ -15,7 +18,7 @@ Settings as SettingsIcon,
 SlidersHorizontal,
 Table2
 } from "lucide-react";
-import { useCallback,useEffect,useRef,useState } from "react";
+import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
@@ -30,7 +33,7 @@ import { EditableSettingsSection } from "./settings-editor.js";
 import { RoutesSection } from "./settings-routes.js";
 import { KeyboardSection } from "./settings-keyboard.js";
 import { PreflightSection } from "./settings-preflight.js";
-import { SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
+import { SETTINGS_DATA_SECTION_IDS,SETTINGS_GEAR_ID,SETTINGS_KEYBOARD_SECTION_ID,SETTINGS_PREFLIGHT_SECTION_ID,SETTINGS_UI_CATALOG_SECTION_ID,buildSettingsNav,resolveSettingsSection,type SettingsNavEntry,type SettingsNavIcon,type SettingsSection } from "./settings-model.js";
 import { storageNeedsAttention,type StorageHealthSummary } from "./storage-settings-model.js";
 import { StorageSection } from "./storage-settings.js";
 import { UiCatalogSection } from "./ui-catalog.js";
@@ -65,6 +68,9 @@ const NAV_ICON: Record<SettingsNavIcon, typeof Database> = {
   "ui-catalog": BookMarked,
   unrendered: CircleAlert,
   spreadsheets: Table2,
+  explorer: Workflow,
+  archive: Archive,
+  activity: Activity,
 };
 
 
@@ -187,6 +193,7 @@ export function SettingsPage({
   preflight: _preflight,
   onSection,
   onExitGuardChange,
+  dataContent,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
@@ -214,6 +221,7 @@ export function SettingsPage({
   onSection: (next: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
+  dataContent?: ReactNode;
 }) {
   const editor = useEditableSettings({ actorId, descriptorFingerprint });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
@@ -221,6 +229,8 @@ export function SettingsPage({
   const groups = buildSettingsNav(sections, editor.editor.state === "loaded" ? editor.editor.document : undefined);
   const resolution = resolveSettingsSection(groups, section);
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
+  const isDataWorkspace = activeId !== "spreadsheets" && SETTINGS_DATA_SECTION_IDS.some(id => id === activeId);
+  if (isDataWorkspace && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
   const settingsEntries = groups.find(group => group.id === "personal")?.entries ?? [];
   const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
   const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
@@ -292,8 +302,8 @@ export function SettingsPage({
         ))}
       </nav>
 
-      <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
-        <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]", activeId === "spreadsheets" && "max-w-none!")}>
+      <div className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage, isDataWorkspace && "settings-data-workspace")}>
+        {isDataWorkspace ? dataContent : <DsBodyScope className="settings-tab-body flex flex-col gap-[var(--ds-space-page)]">
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && activeId !== "spreadsheets"
           && activeId !== SETTINGS_PREFLIGHT_SECTION_ID
@@ -352,7 +362,7 @@ export function SettingsPage({
             </span>
           </section>
         )}
-        </DsBodyScope>
+        </DsBodyScope>}
       </div>
       <Dialog open={pendingExit !== undefined} onOpenChange={(open) => { if (!open) setPendingExit(undefined); }}>
         <DialogContent

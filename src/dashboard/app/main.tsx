@@ -19,6 +19,7 @@ if (container === null) {
 }
 
 const client = createDashboardClient({ baseUrl: window.location.origin });
+document.documentElement.dataset.dashboardDensity = "compact";
 
 createRoot(container).render(
   <StrictMode>
