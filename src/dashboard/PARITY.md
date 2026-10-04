@@ -54,6 +54,9 @@ The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Setti
 buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
 Time saved uses Activity's table typography, spacing and alternating rows, with compact minute inputs
 and coverage, manual/assisted totals and estimated savings in its footer.
+Routes shows CRM and its five-URL count above five separate shared form cards, with no CRM disclosure
+bar or enclosing all-systems card. Other systems retain disclosures in individual cards. Required URL
+controls, search, validation, complete-object autosaves and protected SharePoint roster authority are retained.
 Workflow readiness separates returned requirements from compact workflow disclosures. Each disclosure
 shows available/unbuilt counts, six served operations in two columns and its exact dry-run boundary.
 The first workflow opens by default. The empty table header, nested frame and inline source footer are

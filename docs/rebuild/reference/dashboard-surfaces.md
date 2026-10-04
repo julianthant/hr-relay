@@ -7396,6 +7396,11 @@ notification button. Path Change buttons use the shared ordinary button radius. 
 row status values use the same description font size and weight. Storage heading, summary and diagnostic
 groups use the same section gap.
 
+Routes uses a plain CRM heading with its five-URL count and a separate shared form card for each URL.
+The CRM disclosure bar and enclosing all-systems card are removed. Other systems retain their
+disclosures in separate cards. Route labels, descriptions, required controls, system search, validation,
+debounced saves, complete object patches and the protected SharePoint roster authority remain unchanged.
+
 Data → Spreadsheets uses the ordinary Settings content cap. Registered rows have a Date added column;
 clicking any row opens its workbook directly, with no arrow column or separate viewer/drop zone.
 A shadcn Breadcrumb returns from the editable viewer to the library with its draft guard and row focus.

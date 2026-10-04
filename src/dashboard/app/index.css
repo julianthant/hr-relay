@@ -336,8 +336,13 @@
   width: 100%;
 }
 .routes-page-list {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-base);
 }
+.routes-page-crm { margin-bottom: var(--ds-space-base); }
+.routes-page-url-cards { display: flex; flex-direction: column; gap: var(--ds-space-base); }
+.routes-page-url-card .routes-page-field { padding-inline: 0; border-bottom: 0; }
 .routes-page-system {
   min-width: 0;
 }

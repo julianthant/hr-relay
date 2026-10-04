@@ -9,7 +9,7 @@ import { ProtectedSettingField } from "./settings-protected-field.js";
 
 export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditableSettings> }) {
   const [query, setQuery] = useState("");
-  const [open, setOpen] = useState("urls.crm.prod");
+  const [open, setOpen] = useState("");
   const [removal, setRemoval] = useState<{ hasSaved: boolean; label: string } | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
   if (editor.editor.state === "loading") return <Spinner label="Reading routes" />;
@@ -20,7 +20,6 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   const routes = section.leaves.map(leaf => ({ leaf, presentation: routePresentation(leaf) })).sort((a, b) => Number(b.leaf.path === "urls.crm.prod") - Number(a.leaf.path === "urls.crm.prod"));
   const credentials = editor.protectedEditor;
   const rosterName = "sharepointOnboardingRosterUrl";
-  const destinationCount = routes.reduce((count, { leaf }) => count + (leaf.control.input === "object" ? leaf.control.fields.length : 0) + Number(leaf.path === "urls.sharepoint.prod"), 0);
   const filtered = routes.filter(({ leaf, presentation }) => `${presentation.name} ${presentation.description} ${Object.values(presentation.fields).map(field => `${field.name} ${field.description}`).join(" ")} ${leaf.path === "urls.sharepoint.prod" ? "Onboarding roster URL Download the onboarding roster" : ""}`.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase()));
   return <section className="settings-page-panel routes-page">
     <PageHeading title="Routes" description="Production destinations, organized by system." />
@@ -29,25 +28,26 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current routes unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
       <SettingsSaveFeedback save={editor.save} retry={editor.retry} retryConflict={editor.submit} />
       <SearchInput className="routes-page-search" aria-label="Find a system or route" placeholder="Search systems or routes" value={query} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} />
-      <BodySection title={<span className="routes-section-heading"><span>Production destinations</span><span>{String(filtered.length)} {filtered.length === 1 ? "system" : "systems"} · {String(destinationCount)} destinations</span></span>}>
-      <FormGroup label="Production destinations" className="routes-page-list">
+      <div className="routes-page-list">
         {filtered.map(({ leaf, presentation }) => {
           const expanded = open === leaf.path;
+          const crm = leaf.path === "urls.crm.prod";
+          const count = (leaf.control.input === "object" ? leaf.control.fields.length : 0) + Number(leaf.path === "urls.sharepoint.prod");
+          const meta = `${String(count)} ${count === 1 ? "URL" : "URLs"}`;
           const operation = editor.draft[leaf.path];
           const raw = operation?.kind === "set" ? operation.raw : settingInput(leaf, operation?.kind === "clear" ? leaf.defaultValue : leaf.effectiveValue);
           if (typeof raw === "string") throw new Error("routes-section-object-invalid");
-          return <Disclosure key={leaf.path} variant="body" summary={presentation.name} description={presentation.description}
-            meta={`${String((leaf.control.input === "object" ? leaf.control.fields.length : 0) + Number(leaf.path === "urls.sharepoint.prod"))} ${leaf.path !== "urls.sharepoint.prod" && leaf.control.input === "object" && leaf.control.fields.length === 1 ? "URL" : "URLs"}`}
-            open={expanded} onOpenChange={next => setOpen(next ? leaf.path : "")} className="routes-page-system" contentClassName="routes-page-system-fields">
-            {leaf.control.input === "object" && <div data-settings-path={leaf.path}>
+          const content = leaf.control.input === "object" && <div data-settings-path={leaf.path} className={crm ? "routes-page-url-cards" : undefined}>
               {leaf.control.fields.map(field => {
                 const detail = presentation.fields[field.name];
                 if (detail === undefined) throw new Error("routes-section-field-missing");
-                return <Field key={field.name} orientation="horizontal" controlWidth="wide" label={detail.name} description={detail.description} required className="routes-page-field">
+                const control = <Field key={field.name} orientation="horizontal" controlWidth="wide" label={detail.name} description={detail.description} required className="routes-page-field">
                   <Input type="url" required spellCheck={false} value={raw[field.name] ?? ""} disabled={editor.locked}
                     aria-invalid={editor.errors[leaf.path] !== undefined || undefined}
                     onChange={event => editor.update(leaf.path, { ...raw, [field.name]: event.target.value })} />
                 </Field>;
+                return crm ? <FormGroup key={field.name} label={detail.name} className="routes-page-url-card">{control}</FormGroup>
+                  : control;
               })}
               {leaf.path === "urls.sharepoint.prod" && <>
                 {document.protectedSettings.state === "unknown" && <Banner tone="warning" title="Onboarding roster URL unavailable">The protected value could not be read. <Button size="sm" onClick={editor.reload}>Retry read</Button></Banner>}
@@ -60,11 +60,17 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
                 {operation !== undefined && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.reset(leaf.path)}>Undo edit</Button>}
                 {leaf.source === "settings" && <Button size="sm" variant="ghost" disabled={editor.locked} onClick={() => editor.clear(leaf.path)}>Reset to default</Button>}
               </div>}
-            </div>}
-          </Disclosure>;
+            </div>;
+          return crm ? <BodySection key={leaf.path} className="routes-page-crm" title={<span className="routes-section-heading"><span>{presentation.name}</span><span>{meta}</span></span>}>
+            {content}
+          </BodySection> : <FormGroup key={leaf.path} label={presentation.name}>
+            <Disclosure variant="body" summary={presentation.name} description={presentation.description} meta={meta}
+              open={expanded} onOpenChange={next => setOpen(next ? leaf.path : "")} className="routes-page-system" contentClassName="routes-page-system-fields">
+              {content}
+            </Disclosure>
+          </FormGroup>;
         })}
-      </FormGroup>
-      </BodySection>
+      </div>
       {filtered.length === 0 && <p className={cn(dsText.ui, "text-[color:var(--ds-fg-muted)]")}>No routes match “{query}”.</p>}
     </form>
     <Dialog open={removal !== null} onOpenChange={next => { if (!next) setRemoval(null); }}>

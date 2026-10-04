@@ -75,7 +75,9 @@ describe("typed Settings catalog controls", () => {
     const annualRows = [...mounted.host.querySelectorAll('[data-settings-path^="annualDates."]')];
     assert.equal(annualRows.length, 1);
     assert.equal(annualRows[0]?.getAttribute("data-settings-path"), "annualDates.FY2027.jobEndDate");
-    assert.equal(annualRows[0]?.querySelector("input")?.required, true);
+    const dateSegments = [...(annualRows[0]?.querySelectorAll('[role="spinbutton"]') ?? [])];
+    assert.equal(dateSegments.length, 3);
+    assert.ok(dateSegments.every(segment => segment.getAttribute("aria-required") === "true"));
     assert.doesNotMatch(mounted.host.textContent ?? "", /Kronos|Add fiscal year|New fiscal year|FY202[0-9]/u);
   });
   it("folds Display into General and omits the observed-host page", async () => {
@@ -126,15 +128,25 @@ describe("typed Settings catalog controls", () => {
     }
     assert.doesNotMatch(host.textContent ?? "", /Code-owned paths for this process|Local operator ID/u);
   });
-  it("keeps each route label associated with its generated control id", async () => {
+  it("gives each CRM URL its own card with an associated label and description", async () => {
     const { host } = await setup("routes");
-    const field = host.querySelector(".routes-page-field"); assert.ok(field);
-    const label = field.querySelector("label");
-    const input = field.querySelector("input");
-    assert.ok(label); assert.ok(input);
-    assert.equal(label.htmlFor, input.id);
-    assert.notEqual(input.id, "");
-    assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
+    const crm = host.querySelector(".routes-page-crm"); assert.ok(crm);
+    assert.equal(crm.querySelector("h2")?.textContent, "CRM5 URLs");
+    assert.equal(crm.querySelectorAll("button").length, 0);
+    const cards = [...crm.querySelectorAll('[role="group"]')];
+    assert.deepEqual(cards.map(card => card.getAttribute("aria-label")), ["Entry", "Onboarding search", "UCPath entry sheet", "Onboarding history", "iDocs viewer"]);
+    for (const card of cards) {
+      const label = card.querySelector("label");
+      const input = card.querySelector("input");
+      assert.ok(label); assert.ok(input);
+      assert.equal(card.querySelectorAll("input").length, 1);
+      assert.equal(label.htmlFor, input.id);
+      assert.notEqual(input.id, "");
+      assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
+      assert.equal(input.required, true);
+      assert.equal(input.type, "url");
+    }
+    assert.equal(crm.closest(".ds-form-group"), null, "CRM cards have no enclosing group card");
   });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");

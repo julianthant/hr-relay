@@ -14,6 +14,7 @@ import { DashboardClientProvider } from "../../../src/dashboard/state/client-con
 import { SettingsPage } from "../../../src/dashboard/surfaces/settings.js";
 import { DEFAULT_CATALOG_VIEW } from "../../../src/dashboard/surfaces/row-catalog-model.js";
 import { PROVIDER_KEYS_SCHEMA_HASH } from "../../../src/domain/config/provider-keys.js";
+import { settingInput } from "../../../src/dashboard/surfaces/settings-draft-model.js";
 
 Reflect.set(globalThis, "IS_REACT_ACT_ENVIRONMENT", true);
 
@@ -335,6 +336,10 @@ describe("editable Settings surface", () => {
     assert.doesNotMatch(host.textContent ?? "", /Test routes/u);
     const input = host.querySelector('[data-settings-path="urls.crm.prod"] input');
     if (!(input instanceof HTMLInputElement)) throw new Error("missing CRM route input");
+    const crm = DOCUMENT.sections.flatMap(section => section.leaves).find(leaf => leaf.path === "urls.crm.prod");
+    assert.ok(crm);
+    const original = settingInput(crm);
+    assert.notEqual(typeof original, "string");
     vi.useFakeTimers();
     // eslint-disable-next-line @typescript-eslint/unbound-method
     const setter = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")?.set;
@@ -353,7 +358,10 @@ describe("editable Settings surface", () => {
     await act(async () => { await vi.advanceTimersByTimeAsync(1); });
     assert.equal(applied.length, 1);
     assert.doesNotMatch(host.textContent ?? "", /Save routes/u);
-    const command = applied[0] as { payload: { patch: Record<string, { set: { entry: string } }> } };
+    const command = applied[0] as { payload: { patch: Record<string, { set: Record<string, string> }> } };
     assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
+    assert.equal(typeof original, "object");
+    if (typeof original === "string") throw new Error("CRM route values are not an object");
+    assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one card retains the other four URLs");
   });
 });
