@@ -1,3 +1,4 @@
+import { PreflightActionsProvider } from "../../../src/dashboard/state/preflight-actions.js";
 // @vitest-environment jsdom
 /**
  * D274 item 6 (ledger 3 SE40–SE42) — the Workflow capabilities Settings section, as an
@@ -137,7 +138,7 @@ async function mount(
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPage, {
+    children: createElement(SettingsPage, { onClose: () => undefined,
       // D295: the catalog is a Settings section now. No render here opens it,
       // so these carry the section's defaults rather than a fixture nothing reads.
       catalogQuery: "",
@@ -156,7 +157,7 @@ async function mount(
   });
   await act(async () => {
     root = createRoot(host as HTMLElement);
-    root.render(element);
+    root.render(createElement(PreflightActionsProvider, { actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings: () => undefined, showSessions: () => undefined }, children: element }));
   });
   return host.textContent ?? "";
 }

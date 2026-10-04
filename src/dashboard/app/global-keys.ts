@@ -1,3 +1,4 @@
+import { shortcutActionForEvent, useShortcutPreferences } from "../surfaces/keyboard-preferences-model.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/RebuildDemo.tsx:441-534
@@ -45,6 +46,8 @@ import type { WorkflowPanelMode } from "../surfaces/shell-model.js";
 export interface GlobalKeyBindings {
   /** Queue bindings have no target while another surface owns the main region. */
   readonly queueVisible?: boolean;
+  readonly workflowIds?: readonly string[];
+  readonly onWorkflow?: (id: string) => void;
   /** `r` — the run-start dialog is workflow-global, so this needs no scope */
   onStartRun: () => void;
   /** `w` — the panel's own three-mode cycle */
@@ -105,9 +108,10 @@ export function nextAttention(
 }
 
 export function useGlobalKeys(bindings: GlobalKeyBindings): void {
+  const preferences = useShortcutPreferences();
   const modalOpen = useDsModalOpen();
   const {
-    queueVisible = true,
+    queueVisible = true, workflowIds = [], onWorkflow,
     onStartRun,
     onCyclePanelMode,
     panelMode,
@@ -131,10 +135,18 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
       ) {
         return;
       }
-      if (event.metaKey || event.ctrlKey || event.altKey) return;
       if (modalOpen || document.querySelector('[role="dialog"][data-state="open"], [role="menu"][data-state="open"]') !== null) return;
+      const action = shortcutActionForEvent(event, preferences);
+      if (!action && /^[1-9]$/.test(event.key) && (event.metaKey !== event.ctrlKey) && !event.altKey && !event.shiftKey) {
+        const kind = event.metaKey ? preferences.numberMode : preferences.numberMode === "runs" ? "workflows" : "runs";
+        const index = Number(event.key) - 1;
+        if (kind === "runs" && visibleRunIds[index]) { event.preventDefault(); onSelectRun(visibleRunIds[index]); }
+        else if (kind === "workflows" && workflowIds[index] && onWorkflow) { event.preventDefault(); onWorkflow(workflowIds[index]); }
+        return;
+      }
+      if (!action && (event.metaKey || event.ctrlKey || event.altKey)) return;
 
-      if (event.key === "r") {
+      if (action === "start") {
         event.preventDefault();
         onStartRun();
         return;
@@ -152,28 +164,28 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
        * from focus. `openContextMenuFor` is the ds helper that exists for this
        * and had no caller until now.
        */
-      if (event.key === "m") {
+      if (action === "menu") {
         if (selectedRunId === undefined) return;
         event.preventDefault();
         openContextMenuFor(document.querySelector(`[data-demo-row-id="${selectedRunId}"]`));
         return;
       }
 
-      if (event.key === "j" || event.key === "ArrowDown") {
+      if (action === "next") {
         const next = stepSelection(visibleRunIds, selectedRunId, "next");
         if (next === undefined) return;
         event.preventDefault();
         onSelectRun(next);
         return;
       }
-      if (event.key === "k" || event.key === "ArrowUp") {
+      if (action === "previous") {
         const next = stepSelection(visibleRunIds, selectedRunId, "previous");
         if (next === undefined) return;
         event.preventDefault();
         onSelectRun(next);
         return;
       }
-      if (event.key === "n") {
+      if (action === "attention") {
         const next = nextAttention(visibleRunIds, attentionRunIds, selectedRunId);
         if (next === undefined) return;
         event.preventDefault();
@@ -207,7 +219,7 @@ export function useGlobalKeys(bindings: GlobalKeyBindings): void {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [
+  }, [preferences, workflowIds, onWorkflow,
     modalOpen,
     queueVisible,
     onStartRun,

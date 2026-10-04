@@ -109,28 +109,13 @@ export function rowInfoFacts(surface: QueueSurfaceWire): readonly RowInfoFact[] 
   return facts;
 }
 
-/**
- * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
- * `demo-data.ts` `DEMO_SORTS` / `sortDemoRows` / `SORT_STATUS_RANK`.
- *
- * All four are PRESENTATIONS the operator asked for by name, and the control on
- * the toolbar is what makes the reorder visible. They reorder WITHIN a band and
- * never across one: a band is what a run's status means, and no sort may move a
- * row out of the group that says a human is blocking.
- *
- * `attention` used to pass the array straight through with a note claiming it
- * ordered "what needs you, then what broke, then the rest" — a sentence about
- * an order the server does not produce, on the control that is the default
- * (R3 finding 1). It now ranks by status the way the demo does, newest first
- * inside a rank. That is presentation over a served enum, not a second opinion
- * about what a run IS: no row changes band, no count moves.
- */
+/** Attention groups by status; the other orders sort the entire queue. */
 export type QueueSortKey = "attention" | "newest" | "oldest" | "longest";
 
 export const QUEUE_SORTS: readonly { key: QueueSortKey; label: string; note: string }[] = [
   { key: "attention", label: "Attention first", note: "What needs you, then what broke, then everything else — the default." },
-  { key: "newest", label: "Newest first", note: "Most recently started at the top of each band." },
-  { key: "oldest", label: "Oldest first", note: "The rows that have been sitting the longest, first in each band." },
+  { key: "newest", label: "Newest first", note: "Most recently started first." },
+  { key: "oldest", label: "Oldest first", note: "Earliest started first." },
   { key: "longest", label: "Longest running", note: "Biggest elapsed or recorded duration first — where the time is going." },
 ];
 
@@ -181,12 +166,13 @@ export function groupQueueAttempts(surfaces: readonly QueueSurfaceWire[]): reado
 /** Match a status at item scope, then retain every served attempt for that item. */
 export function filterQueueSurfaces(
   surfaces: readonly QueueSurfaceWire[],
-  filter: QueueStatusFilter,
+  filter: QueueStatusFilter | readonly QueueStatusFilter[],
 ): readonly QueueSurfaceWire[] {
-  if (filter === "all") return surfaces;
-  const matches = (surface: QueueSurfaceWire): boolean => filter === "needsYou"
+  const filters = typeof filter === "string" ? [filter] : filter;
+  if (filters.length === 0 || filters.includes("all")) return surfaces;
+  const matches = (surface: QueueSurfaceWire): boolean => filters.some(value => value === "needsYou"
     ? surface.status === "awaiting-approval" || surface.status === "blocked"
-    : surface.status === filter;
+    : surface.status === value);
   const includedItems = new Set(
     groupQueueAttempts(surfaces.filter(matches)).map((group) => group.key),
   );
@@ -377,6 +363,12 @@ export function sortQueueBand(
   });
 }
 
+/** The view and keyboard navigation share the same row order. */
+export function queueDisplayGroups(rows: readonly QueueSurfaceWire[], sort: QueueSortKey, nowIso: string): readonly { key: QueueBandKey | null; label: string; rows: readonly QueueSurfaceWire[] }[] {
+  if (sort !== "attention") return [{ key: null, label: "", rows: sortQueueBand(rows, sort, nowIso) }];
+  return BAND_ORDER.map(key => ({ key, label: BAND_LABEL[key], rows: sortQueueBand(rows.filter(row => bandOf(dsStatusOf(row.status)) === key), sort, nowIso) }));
+}
+
 /* ── the attention transition ────────────────────────────────────────────── */
 
 /** how long the settle lasts — one `move`, then still */
@@ -515,12 +507,8 @@ export function visibleRunIds(
     if (item === undefined) throw new Error(`queue keyboard order lost item ${String(surface.itemId)}`);
     ids.push(...item.attempts.map((attempt) => String(attempt.runId)));
   };
-  for (const key of BAND_ORDER) {
-    const band = sortQueueBand(
-      displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
-      sort,
-      nowIso,
-    );
+  for (const group of queueDisplayGroups(displayTop, sort, nowIso)) {
+    const band = group.rows;
     for (const surface of band) {
       addAttempts(surface);
       const memberGroups = groupQueueAttempts(membersOf.get(surface.runId) ?? []);

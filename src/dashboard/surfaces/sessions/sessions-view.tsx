@@ -1,5 +1,6 @@
+import { SETTINGS_GEAR_ID } from "../settings-model.js";
 import { useId, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Minus, Monitor, Pause, Play, Plus, RotateCw, Square, Trash2, UsersRound } from "lucide-react";
+import { Settings, ChevronDown, ChevronUp, Minus, Monitor, Pause, Play, Plus, RotateCw, Square, Trash2, UsersRound } from "lucide-react";
 import { ActionBarRow, Button, Dialog, DialogBody, DialogContent, DialogFooter, DialogTrigger, Field, Input, Select, Skeleton } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { SESSION_STATE_LABELS, sessionStateColor, sessionTallies, type SessionControl, type SessionWorker, type SessionsViewState } from "./sessions-view-model.js";
@@ -23,10 +24,10 @@ function WorkerCard({ worker, onControl }: { worker: SessionWorker; onControl: (
   </article>;
 }
 
-export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows }: {
+export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workflows, settingsOpen, onSettings }: {
   data: SessionsViewState; open: boolean; onOpenChange: (open: boolean) => void;
   onControl: (id: string, control: SessionControl) => void; onAdd: (workflowId: string, count: number) => void;
-  workflows: readonly { id: string; label: string }[];
+  workflows: readonly { id: string; label: string }[]; settingsOpen?: boolean; onSettings?: () => void;
 }) {
   const contentId = useId();
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -42,7 +43,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       <span className="pointer-events-none relative flex min-w-0 items-center gap-3 border-l border-ui-stroke pl-3 text-caption">{data.state === "ready" ? data.workers.length ? sessionTallies(data.workers).filter(tally => tally.count > 0).map(tally => <span key={tally.state} className="inline-flex items-center gap-1.5 whitespace-nowrap"><span aria-hidden className={cn("size-1.5 rounded-full bg-current", sessionStateColor(tally.state))} /><span className="tabular-nums">{tally.count}</span><span className="text-ui-secondary">{SESSION_STATE_LABELS[tally.state].toLocaleLowerCase()}</span></span>) : <span className="text-ui-muted">No workers</span> : <span className="text-ui-muted">{data.state === "loading" ? "Loading" : "Unavailable"}</span>}</span>
       <span className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
-          <DialogTrigger asChild><Button size="sm" variant="secondary" disabled={data.state !== "ready" || !workflows.length} icon={<Plus aria-hidden className="size-3.5" />}>Add workers</Button></DialogTrigger>
+          <DialogTrigger asChild><Button size="sm" variant="ghost" className="size-8 p-0" aria-label="Add workers" disabled={data.state !== "ready" || !workflows.length} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger>
           <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
               <Field label="Workflow"><Select value={workflow} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
@@ -55,6 +56,7 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
             <DialogFooter><Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button><Button disabled={!validCount || !validWorkflow || data.state !== "ready"} onClick={() => { onAdd(workflow, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
           </DialogContent>
         </Dialog>
+        {onSettings && <Button id={SETTINGS_GEAR_ID} size="sm" variant="ghost" className="size-8 p-0" aria-label="Settings" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} />}
       </span>
     </ActionBarRow>
     {open && <div id={contentId} className="max-h-[24rem] overflow-y-auto border-t border-ui-stroke bg-ui-canvas p-3">

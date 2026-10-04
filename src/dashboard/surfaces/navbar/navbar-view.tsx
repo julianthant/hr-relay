@@ -1,3 +1,4 @@
+import { shortcutActionForEvent, useShortcutPreferences } from "../keyboard-preferences-model.js";
 import { useEffect, useId, useRef, useState } from "react";
 import { Search } from "lucide-react";
 import { Button, DatePicker, Dialog, DialogContent, dsFocus } from "../../ds/ui.js";
@@ -9,6 +10,7 @@ import { navbarDayLabel, navbarSearch, type NavbarData, type NavbarSearchResult 
 const iconButton = cn("inline-flex size-7.5 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent", dsFocus);
 
 export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (result: NavbarSearchResult) => void }) {
+  const preferences = useShortcutPreferences();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [notice, setNotice] = useState("");
@@ -21,12 +23,12 @@ export function RailSearch({ data, onResult }: { data: NavbarData; onResult: (re
     const onKey = (event: KeyboardEvent) => {
       const target = event.target;
       if (target instanceof HTMLElement && target.closest("input, textarea, select, [contenteditable=true], [role=dialog], [role=menu]")) return;
-      if (event.key !== "/" || event.metaKey || event.ctrlKey || event.altKey) return;
+      if (event.defaultPrevented || event.isComposing || shortcutActionForEvent(event, preferences) !== "search") return;
       event.preventDefault(); setOpen(true);
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [preferences]);
   return <div className="rail-search">
     <button ref={trigger} type="button" aria-label="Search runs" title="Search runs" aria-haspopup="dialog" aria-expanded={open} className={iconButton} onClick={() => setOpen(true)}><Search aria-hidden className="size-4" /></button>
     <Dialog open={open} onOpenChange={setOpen}>

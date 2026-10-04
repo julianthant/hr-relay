@@ -44,9 +44,9 @@ export function Calendar({ label, value, onChange, minValue, maxValue, autoFocus
 }
 
 /** HeroUI owns the fields and calendar; Radix preserves focus inside existing dialogs. */
-export function DateInput({ label, value, onChange, min, max, inline = false, className, textEntry = false, textDateFormat = "M/D/YYYY", disabled = false, required = false, onOpenChange, hideLabel = false, triggerLabel, footer }: {
+export function DateInput({ label, value, onChange, min, max, inline = false, className, textEntry = false, textDateFormat = "M/D/YYYY", valueFormat = textEntry ? "us" : "iso", disabled = false, required = false, onOpenChange, hideLabel = false, triggerLabel, footer }: {
   label: string; value: string; onChange: (value: string) => void; min?: string; max?: string;
-  inline?: boolean; className?: string; textEntry?: boolean; textDateFormat?: "M/D/YYYY" | "MM/DD/YYYY";
+  inline?: boolean; className?: string; textEntry?: boolean; textDateFormat?: "M/D/YYYY" | "MM/DD/YYYY"; valueFormat?: "iso" | "us";
   disabled?: boolean; required?: boolean; onOpenChange?: (open: boolean) => void;
   hideLabel?: boolean; triggerLabel?: string; footer?: ReactNode | ((choose: (value: string) => void) => ReactNode);
 }) {
@@ -55,7 +55,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
   const focusFrame = useRef<number | undefined>(undefined);
   const id = useId();
   useEffect(() => () => { if (focusFrame.current !== undefined) cancelAnimationFrame(focusFrame.current); }, []);
-  const selected = textEntry ? textDateValue(value) : dateValue(value);
+  const selected = valueFormat === "us" ? textDateValue(value) : dateValue(value);
   const pickerLabel = triggerLabel ?? `Choose ${label.toLowerCase()}${textEntry || /date$/iu.test(label) ? "" : " date"}`;
   const setOpen = (open: boolean) => {
     if (focusFrame.current !== undefined) cancelAnimationFrame(focusFrame.current);
@@ -63,7 +63,7 @@ export function DateInput({ label, value, onChange, min, max, inline = false, cl
     setCalendarOpen(open); onOpenChange?.(open);
   };
   const setDate = (date: CalendarDate | null) => {
-    onChange(date === null ? "" : textEntry ? `${textDateFormat === "MM/DD/YYYY" ? String(date.month).padStart(2, "0") : String(date.month)}/${textDateFormat === "MM/DD/YYYY" ? String(date.day).padStart(2, "0") : String(date.day)}/${String(date.year)}` : date.toString());
+    onChange(date === null ? "" : valueFormat === "us" ? `${textDateFormat === "MM/DD/YYYY" ? String(date.month).padStart(2, "0") : String(date.month)}/${textDateFormat === "MM/DD/YYYY" ? String(date.day).padStart(2, "0") : String(date.day)}/${String(date.year)}` : date.toString());
     if (calendarOpen) setOpen(false);
   };
   return <Popover open={calendarOpen} onOpenChange={setOpen}><PopoverAnchor asChild><HeroDatePicker isOpen={calendarOpen} onOpenChange={setOpen}

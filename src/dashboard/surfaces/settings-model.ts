@@ -89,7 +89,7 @@ export interface SettingsNavEntry {
    * `served` — the server LISTED this section; `client` — the bundle
    * contributes it and `settingsSections` does not name it. It is about who
    * owns the LIST, not who holds the data: `Keyboard` is client-owned end to
-   * end (SE7 — a legend of this build's own bindings, so a served section for
+   * end (SE7 — editable bindings used by this build, so a served section for
    * it would be the server describing the client to itself), while the
    * `UI catalog` added by D295 is client-LISTED and still reads a served
    * artifact over `GET /api/v1/ui-catalog`. Nothing on the wire lists it
@@ -170,7 +170,6 @@ export function buildSettingsNav(
     clientEntry("general", "General", "general"),
     clientEntry("performance", "Performance", "performance"),
     clientEntry("paths", "Paths", "paths"),
-    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("routes", "Routes", "routes"),
     clientEntry("providers", "Provider budgets & models", "performance"),
     clientEntry("credentials", "Credentials", "general"),
@@ -179,12 +178,14 @@ export function buildSettingsNav(
   ];
   groups.push({ id: "personal", heading: "Personal", entries });
   groups.push({ id: "data", heading: "Data", entries: [
+    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("explorer", "Explorer", "explorer"),
     clientEntry("archive", "Archive", "archive"),
     clientEntry("activity", "Activity", "activity"),
   ] });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
+    if (section.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID) continue;
     statusEntries.push(servedEntry(section.id, section.label));
     if (section.id === "storage") statusEntries.push({ id: SETTINGS_PREFLIGHT_SECTION_ID, label: "Preflight", icon: "preflight", source: "client" });
   }
@@ -224,6 +225,7 @@ export function resolveSettingsSection(
   requested: string,
 ): SettingsSectionResolution {
   const entries = groups.flatMap((group) => group.entries);
+  if (requested === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID) requested = SETTINGS_PREFLIGHT_SECTION_ID;
   const first = entries[0];
   if (requested.length === 0) {
     return first === undefined ? { state: "empty" } : { state: "open", entry: first };

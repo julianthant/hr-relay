@@ -181,6 +181,6 @@ export function toastAppliedCommandResult(
   toast({
     tone: "success",
     title: input.actionLabel,
-    description: `${input.subject} · ${input.clock} · ${input.actorId}`,
+    description: `${input.subject} · ${input.clock}`,
   });
 }

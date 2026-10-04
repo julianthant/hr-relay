@@ -86,7 +86,7 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
     root = createRoot(host as HTMLElement);
     root.render(createElement(DashboardClientProvider, {
       client,
-      children: createElement(PreflightActionsProvider, { actions: {actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {}}, children: createElement(SettingsPage, {
+      children: createElement(PreflightActionsProvider, { actions: {actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings() {}, showSessions() {}}, children: createElement(SettingsPage, { onClose: () => undefined,
         // D295: the catalog is a Settings section now. No render here opens it,
         // so these carry the section's defaults rather than a fixture nothing reads.
         catalogQuery: "",

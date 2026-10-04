@@ -94,7 +94,7 @@ describe("the applied-command toast (D253)", () => {
       clock: "3:07 PM",
       actorId: "local-operator",
     });
-    assert.deepEqual(toasted, [{ title: "Retry", description: "Jordan Reyes · 3:07 PM · local-operator" }]);
+    assert.deepEqual(toasted, [{ title: "Retry", description: "Jordan Reyes · 3:07 PM" }]);
   });
 
   it("throws rather than falling silent when handed a refusal", () => {

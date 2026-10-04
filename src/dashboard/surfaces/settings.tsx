@@ -1,30 +1,15 @@
+import type { EditableWorkbook } from "./spreadsheet-editor-model.js";
 import "./settings-data.css";
 import { SpreadsheetsSettings } from "./spreadsheets.js";
 import { EditableSettingsSectionIdSchema } from "../../domain/dashboard/settings-editor.js";
 import { SettingsAuthoritySection } from "./settings-authorities.js";
-import {
-Activity,
-Archive,
-BookMarked,
-Workflow,
-CircleAlert,
-ClipboardCheck,
-Database,
-FolderOpen,
-Gauge,
-Keyboard as KeyboardIcon,
-Link2,
-Monitor,
-Settings as SettingsIcon,
-SlidersHorizontal,
-Table2
-} from "lucide-react";
+import { Activity, Archive, BookMarked, Workflow, CircleAlert, ClipboardCheck, Database, FolderOpen, Gauge, Keyboard as KeyboardIcon, Link2, Monitor, Settings as SettingsIcon, SlidersHorizontal, Table2, ArrowLeft } from "lucide-react";
 import { useCallback,useEffect,useRef,useState,type ReactNode } from "react";
 import type { FrontendBootstrapWire } from "../../domain/dashboard/bootstrap.js";
 import {
 SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID
 } from "../../domain/dashboard/settings.js";
-import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsIcon,dsMotion,dsSurface,dsText } from "../ds/ui.js";
+import { Banner,Button,Dialog,DialogContent,DialogFooter,DsBodyScope,IconButton,SearchInput,SectionLabel,StatusDot,TakeoverFrame,dsFocus,dsMotion,dsIcon,dsSurface,dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { plural } from "./format.js";
 import type { CatalogView } from "./row-catalog-model.js";
@@ -102,6 +87,7 @@ function SectionButton({
       href={`?settings=${encodeURIComponent(entry.id)}`}
       aria-current={active ? "page" : undefined}
       onClick={(event) => {
+        if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
         event.preventDefault();
         onClick();
       }}
@@ -111,7 +97,7 @@ function SectionButton({
         dsFocus,
         dsMotion.base,
         active
-          ? "bg-[var(--ds-surface-selected)] font-medium"
+          ? "bg-[var(--ds-surface-selected)] font-normal"
           : "font-normal hover:bg-[var(--ds-surface-3)]",
       )}
     >
@@ -196,6 +182,7 @@ export function SettingsPage({
   preflight: _preflight,
   onSection,
   onExitGuardChange,
+  onClose,
 }: {
   storage: StorageHealthSummary;
   sections: readonly SettingsSection[];
@@ -224,8 +211,11 @@ export function SettingsPage({
   preflight: NonNullable<FrontendBootstrapWire["preflight"]>;
   onSection: (next: string) => void;
   /** Lets the shell route every Settings-unmounting control through this draft owner. */
+  onClose: () => void;
   onExitGuardChange?: (guard: ((proceed: () => void) => void) | undefined) => void;
 }) {
+  const [workbookDraft, setWorkbookDraft] = useState<{ document: EditableWorkbook | null; dirty: boolean }>({ document: null, dirty: false });
+  const onWorkbook = (document: EditableWorkbook | null, dirty: boolean) => setWorkbookDraft({ document, dirty });
   const editor = useEditableSettings({ actorId, descriptorFingerprint });
   const [pendingExit, setPendingExit] = useState<(() => void) | undefined>(undefined);
   const exitFocusTarget = useRef<HTMLElement | null>(null);
@@ -234,11 +224,12 @@ export function SettingsPage({
   const activeId = resolution.state === "open" ? resolution.entry.id : undefined;
   const isDataSection = activeId !== undefined && SETTINGS_DATA_SECTION_IDS.has(activeId);
   if (isDataSection && dataContent === undefined) throw new Error("SETTINGS_DATA_CONTENT_UNAVAILABLE");
+  const [navQuery, setNavQuery] = useState("");
   const content = useRef<HTMLDivElement>(null);
   useEffect(() => { if (content.current) content.current.scrollTop = 0; }, [activeId]);
   const settingsEntries = groups.find(group => group.id === "personal")?.entries ?? [];
   const activeSettingsEditorSection = activeId !== undefined && settingsEntries.some(entry => entry.id === activeId);
-  const totalDirty = editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
+  const totalDirty = (workbookDraft.dirty ? 1 : 0) + editor.dirtyCount + editor.protectedEditor.dirtyCount + editor.providerEditor.dirtyCount + editor.relocationEditor.dirtyCount;
   const providerUncertain = editor.providerEditor.save.state === "unconfirmed";
   const relocationUncertain = editor.relocationEditor.uncertain;
   const hasDirtyDraft = totalDirty > 0 || providerUncertain || relocationUncertain;
@@ -272,6 +263,7 @@ export function SettingsPage({
   const discardAndExit = (): void => {
     if (pendingExit === undefined) throw new Error("Settings discard was confirmed without a pending exit");
     exitFocusTarget.current = null;
+    setWorkbookDraft({ document: null, dirty: false });
     editor.discard();
     editor.protectedEditor.discard();
     editor.providerEditor.discard();
@@ -282,32 +274,18 @@ export function SettingsPage({
 
   return (
     <TakeoverFrame label="Settings" direction="row" animateFrame={false} className="settings-takeover">
-      <nav
-        aria-label="Settings sections"
-        className={cn(
-          "flex w-[288px] shrink-0 flex-col gap-[var(--ds-space-loose)] overflow-y-auto",
-          "border-r border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-loose)] py-[var(--ds-space-section)]",
-        )}
-      >
-        {groups.map((group) => (
-          <div key={group.id} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
-            <span className="px-[var(--ds-space-cozy)] pb-[var(--ds-space-snug)] text-[length:var(--ds-text-title)] font-normal normal-case tracking-normal text-[color:var(--ds-fg-muted)]">
-              {group.heading}
-            </span>
-            {group.entries.map((entry) => (
-              <SectionButton
-                key={entry.id}
-                entry={entry}
-                active={entry.id === activeId}
-                onClick={() => onSection(entry.id)}
-              />
-            ))}
-          </div>
-        ))}
+      <nav aria-label="Settings sections" className="settings-panel-nav rail-scroll">
+        <header className="settings-nav-header"><h2>Settings</h2><IconButton label="Back to dashboard" size="sm" icon={<ArrowLeft className={dsIcon.md} />} onClick={() => requestExit(onClose)} /></header>
+        <SearchInput aria-label="Search settings" placeholder="Search" value={navQuery} onChange={event => setNavQuery(event.target.value)} className="settings-nav-search" />
+        {groups.map(group => {
+          const entries = group.entries.filter(entry => `${entry.label} ${group.heading}`.toLowerCase().includes(navQuery.trim().toLowerCase()));
+          return entries.length > 0 && <div key={group.id} className="settings-nav-group"><span>{group.heading}</span>{entries.map(entry => <SectionButton key={entry.id} entry={entry} active={entry.id === activeId} onClick={() => onSection(entry.id)} />)}</div>;
+        })}
+        {navQuery.trim() && !groups.some(group => group.entries.some(entry => `${entry.label} ${group.heading}`.toLowerCase().includes(navQuery.trim().toLowerCase()))) && <p className="text-caption text-ui-muted px-3">No settings found</p>}
       </nav>
 
       <div ref={content} className={cn("settings-content flex min-h-0 min-w-0 flex-1 flex-col overflow-y-auto px-[var(--ds-space-section)] py-[var(--ds-space-page)]", dsSurface.bodyPage)}>
-        <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]", activeId === "spreadsheets" && "max-w-none!")}>
+        <DsBodyScope className={cn("settings-tab-body flex flex-col gap-[var(--ds-space-page)]")}>
         {editor.editor.state === "failed" && !activeSettingsEditorSection
           && !isDataSection
           && activeId !== "spreadsheets"
@@ -332,7 +310,7 @@ export function SettingsPage({
           </Banner>
         )}
         {isDataSection && dataContent}
-        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings />}
+        {resolution.state === "open" && resolution.entry.id === "spreadsheets" && <SpreadsheetsSettings workbook={workbookDraft.document} workbookDirty={workbookDraft.dirty} onWorkbook={onWorkbook} />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_KEYBOARD_SECTION_ID && <KeyboardSection />}
         {/* The catalog remains a Help destination inside the Settings page. */}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_UI_CATALOG_SECTION_ID && (
@@ -344,7 +322,7 @@ export function SettingsPage({
           />
         )}
         {resolution.state === "open" && resolution.entry.id === "storage" && <StorageSection storage={storage} />}
-        {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} />}
+        {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <><PreflightSection editor={editor} /><CapabilitiesSection workflowLabels={workflowLabels} /></>}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
           <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />

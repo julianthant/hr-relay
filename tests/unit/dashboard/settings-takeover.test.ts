@@ -232,7 +232,7 @@ describe("history push on re-press (unit F4b finding 2)", () => {
 describe("the settings nav renders real navigation, not buttons (unit F4b finding 4)", () => {
   const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
     client: STATIC_SETTINGS_CLIENT,
-    children: createElement(SettingsPage, {
+    children: createElement(SettingsPage, { onClose: () => undefined,
       // D295: the catalog is a Settings section now. No render here opens it,
       // so these carry the section's defaults rather than a fixture nothing reads.
       catalogQuery: "",
@@ -286,7 +286,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
     assert.equal(resolution.state, "unknown");
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPage, {
+      children: createElement(SettingsPage, { onClose: () => undefined,
         // D295: the catalog is a Settings section now. No render here opens it,
         // so these carry the section's defaults rather than a fixture nothing reads.
         catalogQuery: "",
@@ -310,7 +310,7 @@ describe("curly quotes around a section name (unit F4b finding 3)", () => {
   it("quotes an unrendered served section's id with curly quotes, not &quot;", () => {
     const markup = renderToStaticMarkup(createElement(DashboardClientProvider, {
       client: STATIC_SETTINGS_CLIENT,
-      children: createElement(SettingsPage, {
+      children: createElement(SettingsPage, { onClose: () => undefined,
         // D295: the catalog is a Settings section now. No render here opens it,
         // so these carry the section's defaults rather than a fixture nothing reads.
         catalogQuery: "",

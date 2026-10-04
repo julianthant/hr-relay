@@ -1,3 +1,4 @@
+import { DropdownMenu, DropdownMenuContent, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../ds/dropdown-menu.js";
 /**
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoQueue.tsx
@@ -27,15 +28,12 @@
  */
 import { memo, useState } from "react";
 import type { ReactNode } from "react";
-import { AlertTriangle, ArrowRight, ArrowUpRight, CheckCircle2, ChevronDown, ChevronUp, FileText } from "lucide-react";
+import { AlertTriangle, ArrowRight, ArrowUpRight, ChevronDown, ChevronUp, FileText } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
   BareButton,
   Chip,
   Checkbox,
-  Popover,
-  PopoverTrigger,
-  PopoverContent,
   dsBorder,
   dsClip,
   dsFocus,
@@ -68,8 +66,6 @@ import {
 import type { QueueSortKey } from "./queue-model.js";
 import { MEMBER_WELL_LINES } from "./layout-metrics.js";
 import {
-  BAND_LABEL,
-  BAND_ORDER,
   type LinkedRunWire,
   type MemberSurfaceWire,
   type OperationSurfaceWire,
@@ -87,7 +83,7 @@ import {
   queueItemLayout,
   type QueueBatch,
   type QueueItemGroup,
-  sortQueueBand,
+  queueDisplayGroups,
   useAttentionAnnounce,
 } from "./queue-model.js";
 
@@ -820,38 +816,19 @@ function QueueAttemptSelector({ title, surface, item, selectedRunId, onSelect }:
 }) {
   const [open, setOpen] = useState(false);
   const attempts = item?.attempts ?? [surface];
-  return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <BareButton type="button" aria-label={`Attempts for ${title}`} aria-expanded={open}
-          title={`Attempt ${String(surface.attempt)} of this item`}
-          onClick={(event) => event.stopPropagation()}
-          className={cn("inline-flex h-[var(--ds-h-xs)] shrink-0 items-center gap-[var(--ds-space-tight)] whitespace-nowrap border px-[var(--ds-space-tight)]",
-            dsRadius.sm, dsText.meta, dsText.nums, dsFocus, "border-[color:var(--ds-recess-border)] text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]")}
-        >#{surface.attempt}<ChevronDown aria-hidden className={dsIcon.sm} /></BareButton>
-      </PopoverTrigger>
-      <PopoverContent title={`Attempts for ${title}`} width="sm" hideTitle hideClose className="max-h-[var(--radix-popover-content-available-height)] overflow-y-auto">
-        <ol className="flex flex-col divide-y divide-[color:var(--ds-border-subtle)]">
-          {[...attempts].reverse().map((attempt) => {
-            const status = dsStatusOf(attempt.status);
-            const selected = String(attempt.runId) === selectedRunId;
-            return <li key={attempt.runId}>
-              <BareButton type="button" aria-label={`Open ${title} — attempt ${String(attempt.attempt)} — ${statusAccessibleName(status).toLowerCase()}`}
-                aria-current={selected ? "true" : undefined}
-                onClick={(event) => { event.stopPropagation(); onSelect(String(attempt.runId)); setOpen(false); }}
-                className={cn("flex w-full items-center gap-[var(--ds-space-snug)] px-[var(--ds-space-snug)] py-[var(--ds-space-snug)] text-left", dsText.meta, dsFocus,
-                  "hover:bg-[var(--ds-surface-3)]", selected && "bg-[var(--ds-surface-selected)]")}
-              >
-                <span className={cn(dsText.nums, "shrink-0 text-[color:var(--ds-fg-secondary)]")}>#{attempt.attempt}</span>
-                <StatusBadge status={status} presentation="queue" />
-                {selected && <CheckCircle2 aria-hidden className={cn(dsIcon.sm, "ml-auto text-[color:var(--ds-fg-muted)]")} />}
-              </BareButton>
-            </li>;
-          })}
-        </ol>
-      </PopoverContent>
-    </Popover>
-  );
+  return <DropdownMenu open={open} onOpenChange={setOpen}>
+    <DropdownMenuTrigger asChild><BareButton type="button" aria-label={`Attempts for ${title}`} title={`Attempt ${surface.attempt}`} onClick={event => event.stopPropagation()}
+      className={cn("inline-flex h-6 items-center gap-1 rounded-md px-1.5 text-caption text-ui-muted hover:bg-ui-hover hover:text-ui-primary", dsFocus)}>
+      #{surface.attempt}<ChevronDown aria-hidden className="size-3" />
+    </BareButton></DropdownMenuTrigger>
+    <DropdownMenuContent aria-label={`Attempts for ${title}`} className="w-56">
+      <DropdownMenuRadioGroup value={selectedRunId ?? String(surface.runId)} onValueChange={id => { onSelect(id); setOpen(false); }}>
+        {[...attempts].reverse().map(attempt => <DropdownMenuRadioItem key={attempt.runId} value={String(attempt.runId)}>
+          <span className="text-caption tabular-nums text-ui-muted">#{attempt.attempt}</span><StatusBadge status={dsStatusOf(attempt.status)} presentation="queue" />
+        </DropdownMenuRadioItem>)}
+      </DropdownMenuRadioGroup>
+    </DropdownMenuContent>
+  </DropdownMenu>;
 }
 
 /* ── the row ─────────────────────────────────────────────────────────────── */
@@ -1239,18 +1216,7 @@ export const QueuePanel = memo(function QueuePanel({
 }) {
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
-  const bands = BAND_ORDER.map((key) => ({
-    key,
-    label: BAND_LABEL[key],
-    // Row order inside a band is the projection's until the operator names
-    // another one on the toolbar — and even then the reorder stays inside the
-    // band, so nothing leaves the group its status put it in.
-    rows: sortQueueBand(
-      displayTop.filter((surface) => bandOf(dsStatusOf(surface.status)) === key),
-      sort,
-      state.nowIso,
-    ),
-  }));
+  const bands = queueDisplayGroups(displayTop, sort, state.nowIso);
 
   /**
    * THE FINISHED-TODAY DIGEST (R3 finding 4).
@@ -1319,8 +1285,8 @@ export const QueuePanel = memo(function QueuePanel({
         {bands.map((band) => {
           if (band.rows.length === 0) return null;
           return (
-            <div key={band.key}>
-              <div
+            <div key={band.key ?? "chronological"}>
+              {band.key !== null && <div data-queue-band={band.key}
                 className={cn(
                   dsText.caps,
                   "mx-[var(--ds-space-cozy)] mt-[var(--ds-space-loose)] mb-[var(--ds-space-snug)] flex items-center gap-[var(--ds-space-base)]",
@@ -1345,7 +1311,7 @@ export const QueuePanel = memo(function QueuePanel({
                   {band.rows.length}
                 </span>
                 <span aria-hidden className="h-px flex-1 bg-[var(--ds-border-subtle)]" />
-              </div>
+              </div>}
               {/* The day's finished work in one line — only under `All`, where
                   the band holds everything that finished. Under a filter it
                   would count a subset and read like a day total. */}

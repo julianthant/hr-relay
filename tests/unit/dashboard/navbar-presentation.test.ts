@@ -10,10 +10,10 @@ const noop = () => {};
 describe("canonical workspace rail", () => {
   it("renders all retained controls without a client provider or preflight", () => {
     const html = renderToStaticMarkup(createElement(WorkspaceRail, {
-      onDashboard: noop, settingsOpen: false, onOpenSettings: noop, workflows: [], active: "", preview: null, onSelect: noop, onPreview: noop,
+      settingsOpen: false, workflows: [], active: "", preview: null, onSelect: noop, onPreview: noop,
     }));
-    for (const label of ["Workflows", "Search runs", "Notifications, 4 unread", "Settings"]) assert.ok(html.includes(label), label);
-    assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|lucide-shield|Preflight|doctor|Storage checks/);
+    for (const label of ["HR GPT", "Search runs", "Notifications, 3 unread"]) assert.ok(html.includes(label), label);
+    assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|>Settings<|lucide-shield|Preflight|doctor|Storage checks/);
     assert.doesNotMatch(html, /Dashboard date|Choose date|aria-label="Back"|aria-label="Forward"|Switch to light theme|role="banner"/);
     assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity</);
   });

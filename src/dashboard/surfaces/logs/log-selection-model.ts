@@ -12,7 +12,7 @@ const PIPELINE_STATE: Record<QueueSurfaceWire["pipeline"][number]["state"], LogT
 };
 
 /** Queue facts provide selection context, never invented browser action history. */
-export function selectedLogPresentation({ row, workflowLabel }: LogSelection) {
+export function selectedLogPresentation({ row }: LogSelection) {
   const status = PROPOSED_STATUS[dsStatusOf(row.status)].label;
   const time = fmtActionClock(row.updatedAt);
   const current = row.pipeline.find(node => ["active", "blocked", "failed"].includes(node.state));
@@ -27,5 +27,5 @@ export function selectedLogPresentation({ row, workflowLabel }: LogSelection) {
     ...(node.durationSec === undefined ? {} : { durationLabel: fmtElapsed(node.durationSec) }),
     substeps: [],
   }));
-  return { title: `${workflowLabel} · ${queueRowTitle(row)}`, status, steps, timeline };
+  return { title: queueRowTitle(row), status, steps, timeline };
 }

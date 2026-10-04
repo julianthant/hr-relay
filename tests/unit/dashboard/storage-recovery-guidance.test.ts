@@ -89,7 +89,7 @@ async function mountDoctor(report: StorageDoctorWire, fetchReport: () => Promise
       client,
       children: createElement(PreflightActionsProvider, {
         actions: { actorId: "local-operator", descriptorFingerprint: "a".repeat(64), showSettings: () => undefined, showSessions: () => undefined },
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
         // D295: the catalog is a Settings section now. No render here opens it,
         // so these carry the section's defaults rather than a fixture nothing reads.
         catalogQuery: "",

@@ -4,7 +4,6 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { FIXTURE_DAY } from "./helpers/fixture-identity.js";
 import { FIXTURE_IDS } from "./helpers/fixture-queue.js";
-import { chooseSelect } from "./helpers/select-choice.js";
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   test(`permanent rail with separate queue, Action panel and Logs @ ${theme.attribute}-${width}`, async ({ page }, info) => {
@@ -89,7 +88,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual({ bordered: true, rounded: true, opaque: true });
       }
       await info.attach(`action-panel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      for (const filter of await page.getByRole("tablist", { name: "Frequent queue filters", exact: true }).getByRole("tab").all()) {
+      for (const filter of await page.getByRole("group", { name: "Frequent queue filters", exact: true }).getByRole("button").all()) {
         expect(await filter.evaluate(node => {
           const range = document.createRange(); range.selectNodeContents(node);
           return range.getBoundingClientRect().width <= node.getBoundingClientRect().width;
@@ -101,14 +100,14 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const status = page.getByRole("button", { name: "Filter queue by status", exact: true });
       await status.focus(); await page.keyboard.press("Enter");
       const menu = page.locator('[data-slot="dropdown-menu-content"][data-open]');
-      await expect(menu.getByRole("menuitemradio")).toHaveCount(11);
+      await expect(menu.getByRole("menuitemcheckbox")).toHaveCount(11);
       await expect(menu.locator('[data-slot="dropdown-menu-label"]')).toHaveText(["Quick filters", "In progress", "Finished"]);
       expect(await menu.evaluate(node => getComputedStyle(node).paddingTop)).toBe("6px");
-      expect(await menu.getByRole("menuitemradio").first().evaluate(node => getComputedStyle(node).paddingLeft)).toBe("8px");
-      await menu.getByRole("menuitemradio", { name: /^Failed/u }).click();
-      await expect(status).toBeFocused();
-      await status.click(); await menu.getByRole("menuitemradio", { name: /^All\s/u }).click();
-      await chooseSelect(page.getByRole("combobox", { name: "Sort the queue" }), "attention");
+      expect(await menu.getByRole("menuitemcheckbox").first().evaluate(node => getComputedStyle(node).paddingLeft)).toBe("8px");
+      await menu.getByRole("menuitemcheckbox", { name: /^Failed/u }).click();
+      await page.keyboard.press("Escape"); await expect(status).toBeFocused();
+      await status.click(); await menu.getByRole("menuitemcheckbox", { name: /^All\s/u }).click(); await page.keyboard.press("Escape");
+      await page.getByRole("button", { name: "Attention first", exact: true }).click();
       await page.getByRole("combobox", { name: "Sort the queue" }).click();
       const sortMenu = page.locator('[data-slot="select-content"][data-open]');
       await sortMenu.evaluate(async node => { await Promise.all(node.getAnimations({ subtree: true }).map(animation => animation.finished)); });
@@ -120,45 +119,29 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const preview = page.getByRole("region", { name: "Onboarding preview queue", exact: true });
       await expect(preview).toContainText("fictional sample runs");
       await preview.getByRole("button").first().click();
-      await expect(logs).toContainText("Onboarding");
+      await expect(logs.getByRole("region", { name: "Selected run logs", exact: true }).locator(":scope > header h2")).toContainText("EID 10873698");
       await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();
       await expect(preview).toHaveCount(0);
-      const navbarFill = await bar.evaluate(node => getComputedStyle(node).backgroundColor);
-      const transitionFrames = await page.evaluate(async () => {
-        const button = document.querySelector<HTMLButtonElement>('button[aria-label="Settings"]');
-        if (!button) throw new Error("Settings trigger missing");
-        button.click();
-        const frames = [];
-        for (let index = 0; index < 10; index++) {
-          await new Promise(requestAnimationFrame);
-          const nav = document.querySelector('[aria-label="Settings sections"]');
-          const banner = document.querySelector('.workspace-rail-header');
-          const frame = document.querySelector('.settings-takeover');
-          if (nav && banner && frame) frames.push({ navY: nav.getBoundingClientRect().y, navX: nav.getBoundingClientRect().x,
-            opacity: getComputedStyle(frame).opacity, translate: getComputedStyle(frame).translate, background: getComputedStyle(banner).backgroundColor });
-        }
-        return frames;
-      });
-      expect(transitionFrames.length).toBeGreaterThan(0);
-      for (const frame of transitionFrames) expect(frame).toEqual({ navY: 64, navX: 0, opacity: "1", translate: "none", background: navbarFill });
+      const railFill = await bar.evaluate(node => getComputedStyle(node).backgroundColor);
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       const settings = page.getByRole("navigation", { name: "Settings sections", exact: true });
-      const settingsBounds = (await settings.boundingBox())!;
-      expect(settingsBounds.x).toBe(0); expect(settingsBounds.y).toBe(64); expect(settingsBounds.width).toBe(264);
-      await settings.getByRole("link", { name: "Keyboard", exact: true }).click();
+      await expect(settings).toBeVisible(); await expect(queue).toHaveCount(0); await expect(bar).toBeHidden();
+      expect((await settings.boundingBox())!.x).toBe(0);
+      expect((await settings.boundingBox())!.width).toBe(264);
+      expect(await settings.evaluate(node => getComputedStyle(node).backgroundColor)).toBe(railFill);
+      await expect(settings.getByRole("heading", { name: "Settings", exact: true })).toBeVisible();
+      await expect(settings.getByRole("button", { name: /^Notifications,|^Search runs$/u })).toHaveCount(0);
+      const choosePage = async (name: string) => { await settings.getByRole("link", { name, exact: true }).click(); };
+      await choosePage("Keyboard");
       const shortcutSearch = page.getByRole("searchbox", { name: "Search shortcuts", exact: true });
       await shortcutSearch.fill("search runs");
-      await expect(page.locator(".shortcut-setting-row")).toHaveCount(1);
-      await expect(page.locator(".shortcut-setting-row kbd")).toHaveText("/");
-      await shortcutSearch.fill("not a shortcut");
-      await expect(page.getByRole("status")).toHaveText("No shortcuts match your search.");
-      await settings.getByRole("link", { name: "Workflow capabilities", exact: true }).click();
+      await expect(page.locator(".shortcut-reference-row")).toHaveCount(1); await expect(page.locator(".shortcut-reference-row kbd")).toHaveText("/");
+      await shortcutSearch.fill("not a shortcut"); await expect(page.getByRole("status")).toHaveText("No shortcuts match your search.");
+      await choosePage("Preflight");
       const capabilitySearch = page.getByRole("searchbox", { name: "Find workflow capabilities", exact: true });
-      await capabilitySearch.fill("not a workflow");
-      await expect(page.getByRole("status")).toHaveText("No workflows match your search.");
-      await capabilitySearch.fill("Person");
-      await expect(page.locator(".capabilities-summary")).toContainText("Person Lookup");
-      await settings.getByRole("link", { name: "Storage checks", exact: true }).click();
-      await expect(page.getByRole("button", { name: "Run the read-only storage doctor", exact: true })).toBeVisible();
+      await capabilitySearch.fill("not a workflow"); await expect(page.getByText("No workflows match your search.", { exact: true })).toBeVisible();
+      await capabilitySearch.fill("Person"); await expect(page.locator(".capabilities-summary")).toContainText("Person Lookup");
+      await choosePage("Storage checks"); await expect(page.getByRole("button", { name: "Run the read-only storage doctor", exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).not.toContainText("No completed checks in this server session");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);

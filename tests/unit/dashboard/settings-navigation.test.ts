@@ -49,7 +49,7 @@ async function mountFailedRead(section: string): Promise<HTMLElement> {
   } as unknown as DashboardClient;
   const element = createElement(DashboardClientProvider, {
     client,
-    children: createElement(SettingsPage, {
+    children: createElement(SettingsPage, { onClose: () => undefined,
       catalogQuery: "",
       catalogView: DEFAULT_CATALOG_VIEW,
       onCatalogQuery: () => undefined,
@@ -76,22 +76,22 @@ describe("canonical Settings navigation", () => {
   const document = fixtureSettingsDocument();
   const groups = buildSettingsNav(servedStatusSections, document);
 
-  it("serves the approved 15 pages under the four shared groups", () => {
+  it("serves the approved 14 pages under the four shared groups", () => {
     assert.deepEqual(groups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "spreadsheets", "routes", "providers", "credentials"]],
-      ["Data", ["explorer", "archive", "activity"]],
-      ["Status", ["storage", "preflight", "workflow-capabilities"]],
+      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Data", ["spreadsheets", "explorer", "archive", "activity"]],
+      ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
-    assert.equal(groups.flatMap(group => group.entries).length, 15);
+    assert.equal(groups.flatMap(group => group.entries).length, 14);
   });
 
   it("keeps the approved navigation while the editable settings projection is unavailable", () => {
     const unavailableGroups = buildSettingsNav(servedStatusSections);
     assert.deepEqual(unavailableGroups.map(group => [group.heading, group.entries.map(entry => entry.id)]), [
-      ["Personal", ["general", "performance", "paths", "spreadsheets", "routes", "providers", "credentials"]],
-      ["Data", ["explorer", "archive", "activity"]],
-      ["Status", ["storage", "preflight", "workflow-capabilities"]],
+      ["Personal", ["general", "performance", "paths", "routes", "providers", "credentials"]],
+      ["Data", ["spreadsheets", "explorer", "archive", "activity"]],
+      ["Status", ["storage", "preflight"]],
       ["Help", ["keyboard", "ui-catalog"]],
     ]);
     assert.ok(unavailableGroups[0]?.entries.every(entry => entry.source === "client"));
@@ -113,17 +113,17 @@ describe("canonical Settings navigation", () => {
 
   it("shows the read refusal without hiding tabs while an independent page is open", async () => {
     const page = await mountFailedRead("keyboard");
-    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 15);
+    assert.equal(page.querySelectorAll('a[href^="?settings="]').length, 14);
     assert.ok(page.textContent?.includes("Editable settings unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert.ok(page.querySelector('button')?.textContent?.includes("Try again"));
+    assert.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
   });
 
   it("reports a credential read failure instead of leaving its loading spinner", async () => {
     const page = await mountFailedRead("credentials");
     assert.ok(page.textContent?.includes("Credentials unavailable"), page.textContent ?? "");
     assert.ok(page.textContent?.includes("Settings could not be read."), page.textContent ?? "");
-    assert.ok(page.querySelector('button')?.textContent?.includes("Try again"));
+    assert.ok([...page.querySelectorAll("button")].some(button => button.textContent?.includes("Try again")));
     assert.ok(!page.textContent?.includes("Reading settings authorities"), page.textContent ?? "");
   });
 });

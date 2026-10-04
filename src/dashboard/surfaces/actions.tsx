@@ -39,7 +39,6 @@ import {
   Pencil,
   RotateCcw,
   Search,
-  Check,
   Archive,
   Trash2,
   X,
@@ -143,7 +142,7 @@ export function CommandResultFeed({
                 {entry.actionLabel} — {entry.subject}
               </span>
               <span className={cn(dsText.micro, dsText.nums, "ml-auto shrink-0 text-[color:var(--ds-fg-muted)]")}>
-                {entry.actionLabel} · {entry.clock} · {entry.actorId}
+                {entry.actionLabel} · {entry.clock}
               </span>
               <IconButton
                 size="sm"
@@ -496,15 +495,15 @@ export function RowContextMenu({
   const groups = [navigate, commands, destructive].filter((g) => g.length > 0);
 
   return (
-    <ContextMenu>
+    <ContextMenu modal={false}>
       <ContextMenuTrigger asChild>{children}</ContextMenuTrigger>
-      <ContextMenuContent label={`Commands for ${rowLabel}`}>
-        {onSelectRow !== undefined && <ContextMenuItem icon={<Check className={dsIcon.sm} />} onSelect={onSelectRow}>Select</ContextMenuItem>}
+      <ContextMenuContent className="queue-row-menu" label={`Commands for ${rowLabel}`}>
+
         {onPreviewAction !== undefined ? <>
-          <ContextMenuSeparator className="my-1 h-px bg-ui-stroke" />
           <ContextMenuItem icon={<RotateCcw className={dsIcon.sm} />} onSelect={() => onPreviewAction('retry')}>Retry</ContextMenuItem>
           <ContextMenuItem icon={<Archive className={dsIcon.sm} />} onSelect={() => onPreviewAction('archive')}>Archive</ContextMenuItem>
-          <ContextMenuItem icon={<Trash2 className={dsIcon.sm} />} tone="destructive" onSelect={() => onPreviewAction('delete')}>Delete</ContextMenuItem>
+          <ContextMenuSeparator className="my-1 h-px bg-ui-stroke" />
+          <ContextMenuItem icon={<Trash2 className={dsIcon.sm} />} tone="destructive" onSelect={() => requestAnimationFrame(() => onPreviewAction('delete'))}>Delete</ContextMenuItem>
         </> : groups.map((group, i) => (
           <Fragment key={i}>
             {i > 0 && <ContextMenuSeparator className={cn("my-[var(--ds-space-tight)] h-px", dsBorder.subtle, "border-t")} />}

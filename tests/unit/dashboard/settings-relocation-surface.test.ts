@@ -298,7 +298,7 @@ describe("storage relocation Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+    await act(async () => { root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined,
       onCatalogView: () => undefined, onSection: () => undefined, onExitGuardChange: next => { guard = next; },
@@ -330,7 +330,7 @@ describe("storage relocation Paths controls", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host); root = createRoot(host);
     const storage = StorageHealthSummaryWireSchema.parse({ authority: "healthy", backup: "current", checkedAt: "2026-09-26T12:00:00.000Z" });
-    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+    await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
       storage, sections: [], workflowLabels: new Map(), section: "paths", actorId: "local-operator", descriptorFingerprint: "d".repeat(64),
       preflight: [], catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined,
       onCatalogView: () => undefined, onSection: () => undefined, onExitGuardChange: () => undefined,

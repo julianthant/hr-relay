@@ -37,7 +37,7 @@ function ScalarRow({ editor, leaf, wide = false }: { editor: Editor; leaf: Edita
   return <div data-settings-path={leaf.path} className="settings-compact-row">
     <Field orientation="horizontal" controlWidth={wide ? "wide" : "standard"} label={title} description={description} error={error} required={leaf.input === "date"} disabled={editor.locked}>
       <div className="settings-compact-control">{leaf.input === "date"
-        ? <DateInput label={title} value={raw} onChange={value => editor.update(leaf.path, value)} textEntry required disabled={editor.locked} />
+        ? <DateInput label={title} value={raw} onChange={value => editor.update(leaf.path, value)} valueFormat="us" hideLabel required disabled={editor.locked} />
         : <Input type="text" value={raw} disabled={editor.locked} onChange={event => editor.update(leaf.path, event.target.value)} />}
       <SettingsRowActions editor={editor} leaf={leaf} textEntry /></div>
     </Field>

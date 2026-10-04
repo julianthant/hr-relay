@@ -1,3 +1,5 @@
+import { SpreadsheetEditor } from "./spreadsheet-editor.js";
+import type { EditableWorkbook } from "./spreadsheet-editor-model.js";
 import { useState } from "react";
 import { ArrowLeft, ArrowRight, FileSpreadsheet, X } from "lucide-react";
 import { Banner, Button, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, Field, IconButton, Input, SearchInput, Tab, TabList, TabPanel, Tabs, dsIcon, useToasts } from "../ds/ui.js";
@@ -41,7 +43,7 @@ function SpreadsheetTypeDialog({ open, onOpenChange, type }: { open: boolean; on
   </DialogContent></Dialog>;
 }
 
-export function SpreadsheetsSettings() {
+export function SpreadsheetsSettings({ workbook, workbookDirty, onWorkbook }: { workbook: EditableWorkbook | null; workbookDirty: boolean; onWorkbook: (next: EditableWorkbook | null, dirty: boolean) => void }) {
   const { files, types } = useSpreadsheetMocks();
   const [tab, setTab] = useState<"registered" | "types">("registered");
   const [query, setQuery] = useState("");
@@ -60,14 +62,15 @@ export function SpreadsheetsSettings() {
   const sheet = selected?.sheets.find(entry => entry.name === sheetName);
   const fields = sheet ? [...new Set(sheet.mapping.filter(field => field !== "Not used" && field !== "Keep in workbook only"))] : [];
   return <section aria-label="Spreadsheets" className="launch-design spreadsheet-workspace min-w-0 text-body">
-    {selected ? <>
+    <SpreadsheetEditor document={workbook} dirty={workbookDirty} onDocument={onWorkbook} />
+    {!workbook && <div className="mt-6">{selected ? <>
       <Button variant="ghost" icon={<ArrowLeft aria-hidden className={dsIcon.sm} />} className="mb-[19px] h-auto p-0 text-ui-secondary" onClick={() => setSelectedId(null)}>Spreadsheets</Button>
       <div className="mb-[22px] flex items-start justify-between gap-5"><div className="min-w-0"><h2 className="break-words text-section font-semibold">{selected.name}</h2><p className="mt-[5px] text-ui-secondary">{types.find(type => type.id === selected.typeId)?.name} · {selected.sheets.length} sheets · {spreadsheetFields(selected).length} mapped fields</p></div><Button variant="secondary" onClick={() => { setEditing(selected); setImportOpen(true); }}>Edit column mappings</Button></div>
       <div className="spreadsheet-detail-tools mb-[14px] flex flex-wrap items-end gap-x-[18px] gap-y-3"><ChoicePicker label="Sheet" value={sheetName} options={selected.sheets.map(entry => ({ value: entry.name, label: entry.name }))} onChange={setSheetName} className="w-[160px] shrink-0" /><div className="min-w-[180px] max-w-[340px] flex-1"><SearchInput aria-label="Search mapped data" placeholder="Search name, EID, PID, email…" value={dataQuery} onChange={event => setDataQuery(event.target.value)} onClear={() => setDataQuery("")} /></div><p className="ml-auto shrink-0 whitespace-nowrap text-right text-caption text-ui-muted">Search uses every mapped field.</p></div>
       <SpreadsheetTable label="Registered spreadsheet rows" fields={fields} rows={rows} rowStart={(sheet?.headerRow ?? 0) + 1} rowNumbers={rows.map(row => MOCK_ROSTER_ROWS.indexOf(row) + (sheet?.headerRow ?? 0) + 1)} />
       <p className="mt-3 text-caption text-ui-muted">{rows.length} fictional records shown</p>
     </> : <>
-      <header className="mb-[22px] flex items-start justify-between gap-5"><div><h2 className="text-section font-semibold">Spreadsheets</h2><p className="mt-[5px] text-ui-secondary">Manage registered files and reusable spreadsheet types.</p></div><Button variant="primary" onClick={() => { if (tab === "registered") { setEditing(undefined); setImportOpen(true); } else { setViewType(undefined); setTypeOpen(true); } }}>{tab === "registered" ? "Import spreadsheet" : "Add spreadsheet type"}</Button></header>
+      <header className="mb-[22px] flex items-start justify-between gap-5"><div><h2 className="text-section font-semibold">Registered spreadsheets</h2><p className="mt-[5px] text-ui-secondary">Manage registered files and reusable spreadsheet types.</p></div><Button variant="primary" onClick={() => { if (tab === "registered") { setEditing(undefined); setImportOpen(true); } else { setViewType(undefined); setTypeOpen(true); } }}>{tab === "registered" ? "Import spreadsheet" : "Add spreadsheet type"}</Button></header>
       <Tabs value={tab} onValueChange={value => { setTab(value as "registered" | "types"); setSelectedId(null); }}>
       <TabList label="Spreadsheet settings" className="spreadsheet-tabs"><span aria-hidden className="spreadsheet-tabs-indicator" data-types={tab === "types" || undefined} /><Tab value="registered" count={files.length}>Registered spreadsheets</Tab><Tab value="types" count={types.length}>Spreadsheet types</Tab></TabList>
       <TabPanel value="registered">
@@ -79,7 +82,7 @@ export function SpreadsheetsSettings() {
         <p className="mt-[14px] text-caption text-ui-muted">Types define what columns mean. Each imported spreadsheet keeps its own column mappings.</p>
       </TabPanel></Tabs>
     </>}
-    <p className="mt-5 text-caption text-ui-muted">Mock preview · fictional data · registration resets on reload.</p>
+    <p className="mt-5 text-caption text-ui-muted">Registry preview · fictional data · registration resets on reload.</p></div>}
     <SpreadsheetImportDialog open={importOpen} onOpenChange={setImportOpen} existing={editing} onRegistered={() => { if (!editing) { setTab("registered"); setSelectedId(null); setQuery(""); } }} />
     <SpreadsheetTypeDialog open={typeOpen} onOpenChange={setTypeOpen} type={viewType} />
   </section>;

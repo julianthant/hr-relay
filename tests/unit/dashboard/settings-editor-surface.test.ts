@@ -58,7 +58,7 @@ describe("editable Settings surface", () => {
     } as unknown as DashboardClient;
     host = document.createElement("div"); document.body.append(host);
     await act(async () => { root = createRoot(host!); root.render(createElement(DashboardClientProvider, { client,
-      children: createElement(SettingsPage, { catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW,
+      children: createElement(SettingsPage, { onClose: () => undefined, catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW,
         onCatalogQuery: () => undefined, onCatalogView: () => undefined, storage: STORAGE, sections: [],
         workflowLabels: new Map<string, string>(), section: "credentials", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
@@ -144,7 +144,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
           // D295: the catalog is a Settings section now. No render here opens it,
           // so these carry the section's defaults rather than a fixture nothing reads.
           catalogQuery: "",
@@ -224,7 +224,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
           // D295: the catalog is a Settings section now. No render here opens it,
           // so these carry the section's defaults rather than a fixture nothing reads.
           catalogQuery: "",
@@ -268,7 +268,7 @@ describe("editable Settings surface", () => {
     assert.equal(closeCount, 1, "explicit discard is the only dirty-draft exit");
   });
 
-  it("retains a partial required job-end date in the text draft and never submits it", async () => {
+  it("uses the shared segmented job-end date picker and keeps incomplete edits unsent", async () => {
     const applied: unknown[] = [];
     const client = {
       editableSettings: () => Promise.resolve(DOCUMENT),
@@ -278,7 +278,7 @@ describe("editable Settings surface", () => {
     document.body.append(host);
     await act(async () => {
       root = createRoot(host as HTMLElement);
-      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, {
+      root.render(createElement(DashboardClientProvider, { client, children: createElement(SettingsPage, { onClose: () => undefined,
         catalogQuery: "", catalogView: DEFAULT_CATALOG_VIEW, onCatalogQuery: () => undefined, onCatalogView: () => undefined,
         storage: STORAGE, sections: [], workflowLabels: new Map<string, string>(), section: "general", actorId: "local-operator",
         descriptorFingerprint: "d".repeat(64), preflight: [], onSection: () => undefined,
@@ -287,26 +287,16 @@ describe("editable Settings surface", () => {
     await act(async () => undefined);
     vi.useFakeTimers();
     const datePath = `annualDates.FY${String(DOCUMENT.currentFiscalYear)}.jobEndDate`;
-    const input = host.querySelector(`[data-settings-path="${datePath}"] input`);
-    if (!(input instanceof HTMLInputElement)) throw new Error("missing current job-end-date input");
-    assert.equal(input.required, true);
-    assert.equal(input.type, "text", "the partial-date editor remains text based so invalid drafts stay visible");
-    await act(async () => {
-      const descriptor = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value");
-      if (descriptor?.set === undefined) throw new Error("HTML input value setter is unavailable");
-      // eslint-disable-next-line @typescript-eslint/unbound-method
-      Reflect.apply(descriptor.set, input, ["6/"]);
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-    });
+    const date = host.querySelector(`[data-settings-path="${datePath}"] .ds-date-picker`);
+    assert.ok(date);
+    assert.equal(date.querySelectorAll('.ds-date-text-input').length, 0);
+    const segments = date.querySelectorAll<HTMLElement>('[role="spinbutton"]');
+    assert.equal(segments.length, 3);
+    const month = segments[0]; assert.ok(month);
+    await act(async () => { month.focus(); month.dispatchEvent(new KeyboardEvent("keydown", { key: "Backspace", bubbles: true })); month.dispatchEvent(new KeyboardEvent("keyup", { key: "Backspace", bubbles: true })); });
     await act(async () => { await vi.advanceTimersByTimeAsync(701); });
-    assert.equal(input.value, "6/");
-    assert.equal(applied.length, 0, "an invalid partial date stays in the local draft without a command");
-    const undo = [...host.querySelectorAll<HTMLButtonElement>(`[data-settings-path="${datePath}"] button`)].find(button => button.textContent === "Undo");
-    assert.ok(undo);
-    await act(async () => { undo.click(); });
-    assert.notEqual(input.value, "6/");
-    assert.equal(applied.length, 0);
+    assert.equal(applied.length, 0, "incomplete date edits cannot produce a settings command");
+    assert.ok(date.querySelector('button[aria-label="Choose job end date"]'));
   });
 
   it("autosaves valid production routes after 700 ms but retains invalid partial URLs", async () => {
@@ -324,7 +314,7 @@ describe("editable Settings surface", () => {
       root = createRoot(host as HTMLElement);
       root.render(createElement(DashboardClientProvider, {
         client,
-        children: createElement(SettingsPage, {
+        children: createElement(SettingsPage, { onClose: () => undefined,
           catalogQuery: "",
           catalogView: DEFAULT_CATALOG_VIEW,
           onCatalogQuery: () => undefined,

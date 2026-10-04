@@ -14,8 +14,8 @@ export const NOTIFICATION_VIEW_FILTERS: readonly { id: NotificationFilter; label
 export function notificationView(state: NotificationsState, filter: NotificationFilter) {
   if (state.state !== "ready") return { unread: undefined, shown: [] as readonly NotificationItem[], pinned: [] as readonly NotificationPinned[] };
   return {
-    unread: state.pinned.length + state.items.filter(item => !item.read).length,
-    pinned: state.pinned,
+    unread: state.items.filter(item => !item.read).length,
+    pinned: [],
     shown: [...state.items].sort((a, b) => (a.tone === "danger" ? 0 : a.tone === "warning" ? 1 : 2) - (b.tone === "danger" ? 0 : b.tone === "warning" ? 1 : 2)).filter(item => filter === "unread" ? !item.read : filter === "attention" ? item.tone === "danger" || item.tone === "warning" : filter === "failed" ? item.tone === "danger" : true),
   };
 }

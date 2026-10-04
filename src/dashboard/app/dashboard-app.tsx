@@ -12,7 +12,7 @@ import {
 SettingsSectionPrimitiveSchema,
 type FrontendBootstrapWire,
 } from "../../domain/dashboard/bootstrap.js";
-import { Button,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
+import { Button,Dialog,DialogContent,DialogFooter,DatePicker,EmptyState,Panel,PanelBody,ToastProvider,TooltipProvider,dsIcon,useDemoTheme,useToasts } from "../ds/ui.js";
 import { useDashboardClient } from "../state/client-context.js";
 import { useServedNow } from "../state/served-clock.js";
 import { useBootstrap } from "../state/use-bootstrap.js";
@@ -37,7 +37,6 @@ import type { QueueBatch } from "../surfaces/queue-model.js";
 import {
   attentionRunIds,
   filterQueueSurfaces,
-  groupQueueAttempts,
   queueRowTitle,
 visibleRunIds,
 type QueueSortKey,
@@ -110,7 +109,7 @@ export function DashboardApp() {
   const onPopstate = useRef<PopstateRouteHandler | undefined>(undefined);
   const [route, setRoute, nativeHistory] = useRoute(onPopstate);
   const { theme, toggleTheme } = useDemoTheme();
-  const [filter, setFilter] = useState<StatusBucket>("all");
+  const [filter, setFilter] = useState<readonly StatusBucket[]>(["all"]);
   const [openWells, setOpenWells] = useState<ReadonlySet<string>>(() => new Set());
   const tab = SHELL_PANEL_TABS.find(candidate => candidate === route.section);
   const setTab = useCallback((next: PanelTab | undefined) => setRoute({ ...route, section: next }), [route, setRoute]);
@@ -222,8 +221,8 @@ interface LoadedAppProps {
   nativeHistory: NativeRouteHistory;
   theme: ReturnType<typeof useDemoTheme>["theme"];
   onToggleTheme: () => void;
-  filter: StatusBucket;
-  onFilter: (bucket: StatusBucket) => void;
+  filter: readonly StatusBucket[];
+  onFilter: (bucket: readonly StatusBucket[]) => void;
   openWells: ReadonlySet<string>;
   onWells: (next: ReadonlySet<string>) => void;
   tab: PanelTab | undefined;
@@ -382,9 +381,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
    * cannot disagree.
    */
   const queueFilterScope = useMemo((): QueueFilterScope | undefined => {
-    if (filter === "all") return undefined;
-    if (filter === "needsYou") return { kind: "needsYou" };
-    return { kind: "status", word: PROPOSED_STATUS[dsStatusOf(filter)].label.toLowerCase() };
+    if (filter.length === 0 || filter.includes("all")) return undefined;
+    if (filter.length === 1 && filter[0] === "needsYou") return { kind: "needsYou" };
+    return { kind: "status", word: filter.map(value => value === "all" ? "all" : value === "needsYou" ? "needs you" : PROPOSED_STATUS[dsStatusOf(value)].label.toLowerCase()).join(" or ") };
   }, [filter]);
 
   const startWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
@@ -413,20 +412,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       nowIso,
     }),
     [route.run, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
-  );
-
-  /**
-   * What `Select all in view` may take: the TOP-LEVEL rows drawn on screen, in
-   * the order they are drawn. A member is acted on through its group or on its
-   * own row and is never half-selected with it, which is why it never enters
-   * this set — `visibleRunIds` includes members, so it is not the same list.
-   */
-  const selectableIds = useMemo(
-    () => groupQueueAttempts(surfaces)
-      .map((item) => item.representative)
-      .filter((surface) => surface.lineage.state !== "child")
-      .map((surface) => String(surface.runId)),
-    [surfaces],
   );
 
   const { leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
@@ -827,7 +812,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       (row ?? document.getElementById(RUN_START_DOOR_ID))?.focus({ preventScroll: true });
     });
   }, [onSelectMode, onBulkIds]);
-  const runPreviewAction = useCallback((action: QueueMockAction, ids: readonly string[]) => {
+  const [pendingDelete, setPendingDelete] = useState<readonly string[] | null>(null);
+  const applyPreviewAction = useCallback((action: QueueMockAction, ids: readonly string[]) => {
     if (ids.length === 0) return;
     selectionOrigin.current = ids[0] ?? null;
     let retriedIds: readonly string[];
@@ -842,15 +828,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     if (route.run !== undefined && ids.includes(route.run)) setRoute({ ...route, run: action === 'retry' ? retriedIds[0] : undefined });
   }, [previewQueue, nowIso, exitQueueSelection, toast, route, setRoute]);
 
+  const runPreviewAction = useCallback((action: QueueMockAction, ids: readonly string[]) => {
+    if (action === "delete") setPendingDelete(ids); else applyPreviewAction(action, ids);
+  }, [applyPreviewAction]);
+
   const queueHandlers = useMemo(
     (): QueueHandlers => ({
       onSetBatchGrouping: setBatchGrouping,
       onSelect: selectRun,
-      onSelectBulk: runId => {
-        selectionOrigin.current = runId;
-        onSelectMode(true);
-        onBulkIds(new Set([...bulkIds, runId]));
-      },
       onExitSelection: exitQueueSelection,
       onPreviewAction: runPreviewAction,
       /*
@@ -895,7 +880,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         selectRun(String(link.runId));
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId, onSelectMode, exitQueueSelection, runPreviewAction],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId, exitQueueSelection, runPreviewAction],
   );
 
   const keyboardOrder = useMemo(
@@ -913,6 +898,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     panelMode: "sidebar",
     onMinimisePanel: () => {},
     visibleRunIds: keyboardOrder,
+    workflowIds: workflows.map(workflow => String(workflow.id)), onWorkflow: selectWorkflow,
     attentionRunIds: keyboardAttention,
     selectedRunId: route.run,
     onSelectRun: selectRun,
@@ -972,12 +958,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
 
   const renderQueueBody = useCallback((body: ReactNode) => (
     <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
-      selecting={selectMode} selectedCount={bulkIds.size}
-      allSelected={selectableIds.length > 0 && selectableIds.every(id => bulkIds.has(id))}
-      someSelected={selectableIds.some(id => bulkIds.has(id))}
-      onSelectAll={checked => onBulkIds(checked ? new Set([...bulkIds, ...selectableIds]) : new Set([...bulkIds].filter(id => !selectableIds.includes(id))))}
-      onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])}>{body}</FocusQueueHeader>
-  ), [filter, scopedStatusCounts, onFilter, selectMode, bulkIds, selectableIds, onBulkIds, exitQueueSelection, runPreviewAction]);
+      >{body}</FocusQueueHeader>
+  ), [filter, scopedStatusCounts, onFilter]);
 
   const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
   const [railPreview, setRailPreview] = useState<string | null>(null);
@@ -1005,8 +987,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     >
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} onDashboard={returnToDashboard}
-        settingsOpen={settingsOpen} onOpenSettings={openSettings} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1169,8 +1150,15 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       <SessionPanel
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}
+        settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()}
       />
 
+      <Dialog open={pendingDelete !== null} onOpenChange={next => { if (!next) setPendingDelete(null); }}>
+        <DialogContent title="Delete this run?" description="Remove this run and its child rows from the local preview. Reload restores the original sample data." size="sm">
+          <p className="text-body text-ui-primary">{previewQueue.rows.find(row => row.runId === pendingDelete?.[0])?.title}</p>
+          <DialogFooter><Button variant="secondary" onClick={() => setPendingDelete(null)}>Keep run</Button><Button variant="danger" onClick={() => { if (pendingDelete) applyPreviewAction("delete", pendingDelete); setPendingDelete(null); }}>Delete run</Button></DialogFooter>
+        </DialogContent>
+      </Dialog>
       <RunLaunchHost
         controller={launch}
         workflows={startWorkflows}

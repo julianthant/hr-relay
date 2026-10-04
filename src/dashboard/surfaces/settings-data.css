@@ -28,3 +28,22 @@
 .capabilities-table .settings-reference-capability-content { background: var(--ui-panel); }
 
 .archive-header-filters .mock-archive-search { width: 100%; max-width: none; }
+.activity-header-filters { flex-wrap: wrap; align-items: flex-start; }
+.activity-header-filters > .activity-period-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: none; }
+.activity-period-controls > .ds-select-control { width: 130px; }
+.activity-header-filters > .activity-sample-control { max-width: 190px; }
+.settings-takeover .ds-result-row { align-items: center; padding-block: 18px; }
+.settings-takeover .ds-result-row-side { align-self: center; }
+.settings-takeover .ds-button[data-variant="secondary"] { border-color: var(--ui-stroke); box-shadow: none; }
+.settings-shortcuts .ds-search-field [data-slot="search-field-group"] { border-radius: 999px; }
+.shortcut-number-setting { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 16px; border: 1px solid var(--ui-stroke); border-radius: 14px; background: var(--ui-panel); padding: 18px; }
+.shortcut-number-setting p, .shortcut-reference-copy p { margin: 0 0 4px; font-size: 14px; font-weight: 400; }
+.shortcut-number-setting span, .shortcut-reference-copy span { color: var(--ui-muted); font-size: 12px; }
+.shortcut-number-setting > .ds-select-control { width: 176px; }
+.shortcut-reference-card { border: 1px solid var(--ui-stroke); border-radius: 14px; background: var(--ui-panel); padding: 0 18px; }
+.shortcut-reference-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(170px, .85fr); align-items: center; gap: 16px; padding: 18px 0; }
+.shortcut-reference-row + .shortcut-reference-row { border-top: 1px solid var(--ui-stroke); }
+.shortcut-reference-bindings { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.shortcut-reference-binding { display: flex; align-items: center; width: 100%; gap: 8px; }
+.shortcut-reference-binding > :last-child { margin-left: auto; }
+.shortcut-reference-binding kbd { min-width: 32px; border: 0; border-radius: 999px; background: var(--ui-hover); color: var(--ui-secondary); padding: 4px 10px; box-shadow: none; text-align: center; font-size: 12px; }

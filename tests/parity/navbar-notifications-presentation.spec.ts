@@ -43,7 +43,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       const requests = disconnectedRequests(page);
-      await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&activity=`);
+      await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const bar = page.getByRole("complementary", { name: "Workspace" });
       await expect(page.locator(".navbar-shell")).toHaveCount(0);
       await expect(page.getByRole("button", { name: /^(Back|Forward)$/u })).toHaveCount(0);
@@ -51,7 +51,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(bar.locator("svg.lucide-shield-check")).toHaveCount(0);
       expect((await bar.boundingBox())!.width).toBe(264);
       expect((await bar.locator(".workspace-rail-header").boundingBox())!.height).toBe(64);
-      for (const label of ["Notifications, 4 unread", "Search runs", "Back to workflows"]) {
+      for (const label of ["Notifications, 3 unread", "Search runs"]) {
         const control = bar.getByRole("button", { name: label, exact: true });
         await expect(control).toBeVisible();
         const bounds = (await control.boundingBox())!;
@@ -64,11 +64,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(contrastRatio(searchColors.color, searchColors.background)).toBeGreaterThanOrEqual(3);
       await expect(bar.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
       await expect(bar.getByRole("button", { name: /preflight/iu })).toHaveCount(0);
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("link", { name: "Activity", exact: true }).click();
       await expect(page.getByRole("link", { name: "Activity", exact: true })).toHaveAttribute("aria-current", "page");
       await capture(page, info, `navbar-${size}`);
       await page.getByRole("link", { name: "Explorer", exact: true }).click();
       await expect(page.getByRole("region", { name: "Workflow explorer preview" })).toBeVisible();
-      await bar.getByRole("button", { name: "Back to workflows", exact: true }).click();
+      await page.getByRole("button", { name: "Back to dashboard", exact: true }).click();
       await page.locator("[data-demo-row-id]").first().click();
       const runUrl = page.url();
       await page.goBack();
@@ -150,7 +152,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await calendar.getByRole("button", { name: "Today", exact: true }).click();
       await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("8");
       await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("3");
-      await bar.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("button", { name: "Settings", exact: true }).click();
       await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "General", exact: true }).click();
       const themeSwitch = page.getByRole("switch", { name: /^Dark theme/u });
       await expect(themeSwitch).toBeChecked({ checked: theme.attribute === "dark" });
@@ -159,20 +161,21 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(themeSwitch).toBeChecked({ checked: theme.attribute !== "dark" });
       expect(requests).toEqual([]);
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
-      await expect(bar.getByRole("button", { name: "Back to workflows", exact: true })).toBeVisible();
+      await expect(page.getByRole("button", { name: "Back to dashboard", exact: true })).toBeVisible();
+      await expect(bar).toBeHidden();
       await expect(bar.getByRole("button", { name: "Dashboard", exact: true })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     } finally { await server.close(); }
   });
 
-  test(`notification filters, pinned gaps and local actions @ ${size}`, { annotation: [{ type: "required-a11y-evidence", description: `notifications-normal-${size}.a11y.yml` }] }, async ({ page }, info) => {
+  test(`notification filters, retired history gaps and local actions @ ${size}`, { annotation: [{ type: "required-a11y-evidence", description: `notifications-normal-${size}.a11y.yml` }] }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
       await page.setViewportSize({ width, height: width === 1024 ? 720 : 1000 });
       await installTheme(page, theme);
       const requests = disconnectedRequests(page);
-      await page.goto(`${server.baseUrl}/?activity=`);
+      await page.goto(`${server.baseUrl}/`);
       const bell = () => page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       await bell().click();
       const inbox = page.locator(".notification-rail");
@@ -186,15 +189,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 1024 ? 720 : 1000);
       await expect(inbox.getByRole("button", { name: /Snooze|Enable/u })).toHaveCount(0);
       const rows = inbox.getByRole("listitem");
-      await expect(rows).toHaveCount(3);
-      await expect(inbox.getByRole("heading", { name: "Separations", exact: true })).toBeVisible();
+      await expect(rows).toHaveCount(5);
+      await expect(inbox.getByText("Separations", { exact: true }).first()).toBeVisible();
       await capture(page, info, `notifications-normal-${size}`);
-      await inbox.getByText("History gap", { exact: true }).click();
-      await expect(inbox).toContainText("This notice cannot be dismissed or marked read.");
-      await expect(inbox.locator("details").first().getByRole("button")).toHaveCount(0);
+      await expect(inbox.getByText("History gap", { exact: true })).toHaveCount(0);
       await inbox.getByRole("button", { name: "Mark read: Document verification failed", exact: true }).click();
-      await expect(bell()).toHaveAccessibleName("Notifications, 3 unread");
-      await expect(rows).toHaveCount(3);
+      await expect(bell()).toHaveAccessibleName("Notifications, 2 unread");
+      await expect(rows).toHaveCount(5);
       await inbox.getByRole("button", { name: "Unread", exact: true }).click();
       await expect(rows).toHaveCount(2);
       await inbox.getByRole("button", { name: "Failed", exact: true }).click();
@@ -214,8 +215,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await inbox.getByRole("button", { name: "Mark read: Separation completed", exact: true }).click();
       await expect(inbox).toContainText("All caught up");
       await expect(inbox.getByRole("button", { name: "Unread", exact: true })).toBeFocused();
-      await expect(inbox.getByText("History gap", { exact: true })).toBeVisible();
-      await expect(bell()).toHaveAccessibleName("Notifications, 1 unread");
+      await expect(inbox.getByText("History gap", { exact: true })).toHaveCount(0);
+      await expect(bell()).toHaveAccessibleName("Notifications, 0 unread");
       await page.keyboard.press("Escape");
       await expect(inbox).toHaveCount(0);
       await expect(bell()).toBeFocused();
@@ -231,7 +232,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       const requests = disconnectedRequests(page);
       for (const scenario of ["empty", "loading", "unavailable"] as const) {
-        await page.goto(`${server.baseUrl}/?activity=&notificationsPreview=${scenario}`);
+        await page.goto(`${server.baseUrl}/?notificationsPreview=${scenario}`);
         const name = scenario === "empty" ? "Notifications, 0 unread" : scenario === "loading" ? "Notifications loading" : "Notifications unavailable";
         await page.getByRole("button", { name, exact: true }).click();
         const inbox = page.locator(".notification-rail");
@@ -241,7 +242,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await expect(inbox.getByRole("button", { name: /^(?:Mark read:|Snooze:)/ })).toHaveCount(0);
         await capture(page, info, `notifications-${scenario}-${size}`);
       }
-      await page.goto(`${server.baseUrl}/?activity=&notificationsPreview=ping`);
+      await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
       const ping = page.locator('[data-slot="toast"]');
       await expect(ping).toBeVisible();
       await expect(ping).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
@@ -250,7 +251,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await ping.getByRole("button", { name: "Open notifications", exact: true }).click();
       await expect(ping).toHaveCount(0);
       await expect(page.locator(".notification-rail")).toBeVisible();
-      await page.goto(`${server.baseUrl}/?activity=&notificationsPreview=ping`);
+      await page.goto(`${server.baseUrl}/?notificationsPreview=ping`);
       await ping.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(ping).toHaveCount(0);
       await expect(page.locator(".notification-rail")).toHaveCount(0);

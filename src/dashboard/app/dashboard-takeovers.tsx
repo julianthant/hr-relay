@@ -15,6 +15,7 @@ import {
 RUN_START_DOOR_ID,
 type DashboardTakeoverCloseFocusTargetId
 } from "./dashboard-app-model.js";
+import { SETTINGS_GEAR_ID } from "../surfaces/settings-model.js";
 import type { SettingsExitGuard } from "./navigation-model.js";
 import {
 activeTakeover,
@@ -60,6 +61,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
               preflight={boot.preflight ?? []}
               onSection={next => setRoute({ ...routeWithoutTakeovers(route), settings: next,
                 ...(next === "archive" ? { archive: ARCHIVE_INDEX } : next === "activity" ? { activity: "" } : next === "explorer" ? { explore: activeWorkflowId } : {}) })}
+              onClose={() => closeTakeoverTo(SETTINGS_GEAR_ID, routeWithoutTakeovers(route))}
               onExitGuardChange={onSettingsExitGuardChange}
             />
           ) : takeover === "intake" && route.intake !== undefined ? (

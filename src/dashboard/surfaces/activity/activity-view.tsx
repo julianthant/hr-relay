@@ -1,11 +1,11 @@
-import { useId, useState, type ReactNode } from "react";
-import { BarChart3, ChevronDown, ChevronRight, Download, Info } from "lucide-react";
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, Select, Skeleton, PageHeading } from "../../ds/ui.js";
-import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../../ds/dropdown-menu.js';
+import { ActivityEffort } from "./activity-effort.js";
+import { type ReactNode } from "react";
+import { BarChart3 } from "lucide-react";
+import { Select, Skeleton, PageHeading } from "../../ds/ui.js";
 import { ACTIVITY_DATE_PRESETS, type ActivityDatePreset, type ActivityDateRange } from "../activity-model.js";
 import { ActivityRange } from "./activity-range.js";
 import { ActivityVolume } from "./activity-volume.js";
-import { activityCompletionRate, activityDuration, activityFailureRate, type ActivitySummary, type ActivityViewState, type ActivityWorkflow } from "./activity-view-model.js";
+import { activityCompletionRate, activityDuration, activityFailureRate, type ActivitySummary, type ActivityViewState } from "./activity-view-model.js";
 
 function Metrics({ report }: { report: ActivitySummary }) {
   const metrics = [
@@ -21,22 +21,15 @@ function Metrics({ report }: { report: ActivitySummary }) {
   </dl>;
 }
 
-function OutcomeRow({ workflow, initiallyExpanded }: { workflow: ActivityWorkflow; initiallyExpanded: boolean }) {
-  const [expanded, setExpanded] = useState(initiallyExpanded);
-  const detailsId = useId();
-  return <tbody className={`border-b border-ui-stroke last:border-b-0 ${expanded ? "bg-ui-table" : "bg-ui-panel"}`}>
-    <tr><th scope="row" className="px-4 py-3 text-left font-normal">
-      {workflow.version ? <button type="button" className="flex w-full items-center gap-2 rounded-md text-left text-control focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info" aria-expanded={expanded} aria-controls={detailsId} onClick={() => setExpanded(value => !value)}><ChevronRight aria-hidden className={`size-3.5 shrink-0 text-ui-secondary ${expanded ? "rotate-90" : ""}`} />{workflow.label}</button> : <span className="block pl-5.5 text-control">{workflow.label}</span>}
-    </th><td className="px-2 py-3 text-right tabular-nums">{workflow.completed}</td><td className="px-2 py-3 text-right tabular-nums">{workflow.outstanding}</td><td className={`px-2 py-3 text-right tabular-nums ${workflow.failed ? "text-ui-danger" : ""}`}>{workflow.failed}</td><td className="py-3 pl-2 pr-4 text-right tabular-nums">{workflow.total}</td></tr>
-    {workflow.version && <tr id={detailsId} hidden={!expanded}><td colSpan={5} className="pb-4 pl-9.5 pr-4"><dl className="m-0 flex items-baseline gap-6 text-body"><dt className="text-ui-secondary">Version</dt><dd className="m-0">{workflow.version}</dd></dl></td></tr>}
-  </tbody>;
-}
-
 function Outcomes({ report }: { report: ActivitySummary }) {
   return <section aria-labelledby="activity-outcomes" className="min-w-0"><h2 id="activity-outcomes" className="mb-3 mt-0 text-section">Workflow outcomes</h2>
     <div className="overflow-hidden rounded-[var(--ds-radius-body-group)] border border-ui-stroke bg-ui-table"><table aria-label="Workflow outcomes" className="w-full table-fixed border-collapse text-body"><colgroup><col className="w-[30%]" /><col /><col /><col /><col /></colgroup>
-      <thead className="bg-ui-panel text-caption text-ui-secondary"><tr className="border-b border-ui-stroke"><th scope="col" className="px-4 py-3 text-left font-normal">Workflow</th>{["Completed", "Outstanding", "Failed", "Total runs"].map(label => <th key={label} scope="col" className="px-2 py-3 text-right font-normal last:pr-4">{label}</th>)}</tr></thead>
-      {report.workflows.map((workflow, index) => <OutcomeRow key={workflow.id} workflow={workflow} initiallyExpanded={index === 0} />)}
+      <thead className="bg-ui-table text-caption text-ui-secondary"><tr className="border-b border-ui-stroke"><th scope="col" className="px-4 py-3 text-left font-normal">Workflow</th>{["Completed", "Outstanding", "Failed", "Total runs"].map(label => <th key={label} scope="col" className="px-2 py-3 text-right font-normal last:pr-4">{label}</th>)}</tr></thead>
+      <tbody>{report.workflows.map(workflow => <tr key={workflow.id} className="border-b border-ui-stroke last:border-b-0 odd:bg-ui-panel even:bg-ui-table">
+        <th scope="row" className="px-4 py-3 text-left font-normal">{workflow.label}</th>
+        <td className="px-2 py-3 text-right tabular-nums">{workflow.completed}</td><td className="px-2 py-3 text-right tabular-nums">{workflow.outstanding}</td>
+        <td className={`px-2 py-3 text-right tabular-nums ${workflow.failed ? "text-ui-danger" : ""}`}>{workflow.failed}</td><td className="py-3 pl-2 pr-4 text-right tabular-nums">{workflow.total}</td>
+      </tr>)}</tbody>
       {!report.workflows.length && <tbody><tr><td colSpan={5} className="px-4 py-6 text-center text-ui-secondary">No workflow activity in this period</td></tr></tbody>}
     </table></div>
   </section>;
@@ -75,21 +68,17 @@ function Performance({ report }: { report: ActivitySummary }) {
   ]} /></section>;
 }
 
-export function ActivityView({ data, range, period, onPreset, onRange, onExport, sampleControl, notice }: {
+export function ActivityView({ data, range, period, onPreset, onRange, sampleControl, notice }: {
   data: ActivityViewState; range: ActivityDateRange; today: string; period: ActivityDatePreset;
   onPreset: (preset: ActivityDatePreset) => void; onRange: (range: ActivityDateRange) => void;
-  onExport: (format: "csv" | "xlsx") => void; sampleControl?: ReactNode; notice?: string;
+  onExport?: (format: "csv" | "xlsx") => void; sampleControl?: ReactNode; notice?: string;
 }) {
   return <section aria-label="Activity report" className="settings-reference-page settings-data-section ui-theme-scope text-ui-primary">
-    <PageHeading title="Activity" description="Run outcomes, volume and performance." actions={<>
-      <DropdownMenu><DropdownMenuTrigger asChild><Button size="toolbar" variant="secondary" disabled={data.state !== "loaded"} icon={<Download aria-hidden className="size-3.5" />}>Export report<ChevronDown aria-hidden className="size-3" /></Button></DropdownMenuTrigger><DropdownMenuContent aria-label="Export report" align="end" className="w-60"><DropdownMenuGroup><DropdownMenuItem onSelect={() => onExport("csv")}>CSV</DropdownMenuItem><DropdownMenuItem onSelect={() => onExport("xlsx")}>Excel workbook</DropdownMenuItem></DropdownMenuGroup><p className="m-0 px-2 py-2 text-caption text-ui-muted">Exports will be connected during backend integration.</p></DropdownMenuContent></DropdownMenu>
-      <Popover><PopoverTrigger asChild><IconButton label="How this report is counted" size="sm" icon={<Info aria-hidden className="size-3.5" />} /></PopoverTrigger><PopoverContent title="How this report is counted" align="end" width="md" className="ui-theme-scope bg-ui-panel font-ui text-ui-primary"><p className="mt-0 text-body text-ui-secondary">Run outcomes use start dates. Outstanding means running or waiting; failure rate uses terminal runs. Median duration uses measured terminal runs.</p><p className="mb-0 text-body text-ui-secondary">Confirmed transactions use receipt dates and stay separate from run totals. Dates use {data.state === "loaded" ? data.report.timeZone : "the report time zone"}.</p></PopoverContent></Popover>
-    </>} />
-    <div className="activity-header-filters"><div className="min-w-0">{sampleControl}</div><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select></div>
-    {period === "custom" && <ActivityRange range={range} onApply={onRange} />}
+    <PageHeading title="Activity" description="Run outcomes, volume and performance." />
+    <div className="activity-header-filters"><div className="activity-period-controls"><Select aria-label="Report period" variant="toolbar" value={period} onChange={event => onPreset(event.target.value as ActivityDatePreset)}>{ACTIVITY_DATE_PRESETS.map(preset => <option key={preset.value} value={preset.value}>{preset.label}</option>)}</Select><ActivityRange range={range} onApply={onRange} /></div><div className="activity-sample-control">{sampleControl}</div></div>
     {notice && <p role="status" className="m-0 text-body text-ui-secondary">{notice}</p>}
     <div className="min-w-0" aria-busy={data.state === "loading" || undefined}>
-      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <div role="status" aria-label="Loading activity report"><div className="grid grid-cols-4 gap-4">{[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-24 rounded-lg min-[1151px]:h-32" />)}</div><Skeleton className="mt-6 h-64 rounded-lg" /></div> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
+      {data.state === "loaded" ? <><Metrics report={data.report} /><div className="mt-6 flex min-w-0 flex-col gap-6"><Outcomes report={data.report} /><ActivityEffort report={data.report} /><ActivityVolume volume={data.report.volume} /><Transactions report={data.report} /><Coverage report={data.report} /><Performance report={data.report} /></div></> : data.state === "loading" ? <div role="status" aria-label="Loading activity report"><div className="grid grid-cols-4 gap-4">{[1, 2, 3, 4].map(item => <Skeleton key={item} className="h-24 rounded-lg min-[1151px]:h-32" />)}</div><Skeleton className="mt-6 h-64 rounded-lg" /></div> : <div role="alert" className="flex min-h-72 flex-col items-center justify-center text-center"><BarChart3 aria-hidden className="mb-4 size-6 text-ui-muted" /><h2 className="m-0 text-section">Activity unavailable</h2><p className="mb-0 mt-2 max-w-md text-body text-ui-secondary">{data.reason}</p></div>}
     </div>
   </section>;
 }

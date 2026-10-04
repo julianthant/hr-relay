@@ -8,8 +8,7 @@ with per-sheet mappings and searches across multiple named fields. Its workspace
 center width with contained table scrolling, separate field groups and a compact type card. Peer
 controls in each row share a height. The two spreadsheet Settings tabs are connected, with a sliding
 selection surface and reduced-motion support. Import closes to a toast.
-The registry and attachment choices are session-only fictional mocks; they do not read/save files,
-generate updated copies or start people from spreadsheet rows. Existing live launch and backend
+The registry and attachment choices remain session-only fictional mocks. The 2026-10-04 amendment adds a separate real XLSX/CSV editor in Settings → Data → Spreadsheets, with value editing, column visibility, sorting, new-copy exports and XLSX fill preservation. It does not wire registration or row-based launch authority. Existing live launch and backend
 intake authority remain. Owner:
 [Run, Rerun and spreadsheet presentation amendment](dashboard-surfaces.md#run-rerun-and-spreadsheet-presentation-amendment--2026-10-02).
 
@@ -25,7 +24,7 @@ sidebar/search with a right-aligned heading dropdown and removes Expand all, Col
 registry and the action legend control. Individual disclosures and source returns remain available.
 Storage checks and Preflight also place their actions and scope selector beside the heading, retaining
 check status and diagnostics below.
-The global sizing remains unchanged, and Spreadsheets stays in Personal without an expand control.
+Global sizing remains unchanged. Spreadsheets moves into Data, uses the same Settings content cap and has no expand control.
 Logs screenshots sit beside their action and use fields/form/browser/person presentation classes,
 bounded previews and fit-width/whole-image/100% viewing. The 2026-10-02 approval adds all 33 local
 log-block examples, required-only continuation forms, ordinary follow-up logs, neutral borders,
@@ -63,13 +62,15 @@ The 2026-10-04 revision uses HeroUI SearchField for editable shared searches. Th
 Search icon opens the centered Command dialog with clear, keyboard selection and focus restoration;
 result navigation retains its disconnected notice. Status/export/choice menus use shadcn Base UI
 DropdownMenu; value controls use Base UI Select, preserving 6px outer and 8px item text padding.
-The Navbar and undo/redo controls are removed. Workflow and Settings share a permanent 264px rail;
-a fixed header owns the HeroUI notification toggle and Search icon, and a fixed footer owns Settings
-or Back to workflows. Notifications replaces the rail body with grouped updates and attention/read
-filters; pinned history gaps remain distinct, and read state never resolves a pending action. Snooze
-and desktop-delivery controls remain retired. Theme preference lives in General → Appearance,
-outside runtime settings drafts. Settings content fades while the rail remains stationary and opaque.
-The date stays in the 48px Action panel above Logs. Status/sort triggers use quiet neutral fills.
+The Navbar and undo/redo controls are removed. Workflow and Settings use separate 264px sidebars.
+HR GPT heads the workflow rail, with its notification toggle and Search icon. Settings has a Settings
+heading, settings search and grouped navigation, without those workflow controls. The Sessions gear
+beside the plus button opens Settings; Back uses the draft guard. Compact notification rows preserve
+attention/read filters and omit History gap. Read state never resolves a pending action. Snooze and
+desktop-delivery controls remain retired. Theme preference lives in General → Appearance outside
+runtime drafts. General uses the same segmented calendar picker as the dashboard. The date remains
+in the 48px Action panel above Logs. Status and Sort use thin bordered surfaces. Attention is a
+separate toggle that groups the queue; the other modes sort all rows without group headings.
 Workflow selection changes the highlight alone. Queue member checked marks and controls are retired;
 served status icons remain. Run uses a shorter frame with contrasting header/footer and an ordered
 path. Cancel keeps served consequence and exact-target facts, with safe initial focus and a separate
@@ -254,7 +255,7 @@ width without a separate operations toolbar. This changes presentation, not vers
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 
 **D347 — Remember the selected workflow and simplify the rail heading (operator direction, 2026-09-24):**
-The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 operator amendment replaces floating/docked modes with a permanent 264px rail matching Settings navigation, extending to the workspace top. Served rows retain active/all counts. Extra legacy workflow labels are marked layout previews with local sample queues/logs, without launch authority or persisted selection. The Navbar and history controls are retired; the rail header owns Search and the notification toggle, whose panel replaces the workflow list. Theme preference moves to General → Appearance; the date shares the rounded bordered Action panel above Logs with Start a run and status/sort controls. The queue occupies its full rounded bordered left container; its 30% track has a 244px minimum. The containers have 12px canvas gutters. Start a run remains the single launch control; status filters and the served queue projection remain. Owner:
+The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 amendment uses a permanent 264px rail headed HR GPT, with no workflow-name icons and no Preview/count metadata at the narrow supported width. Local layout previews have no launch authority. The Navbar and undo/redo controls are retired. The rail owns search and the notification toggle; notifications preserves HR GPT, uses compact rows and removes History gap. Settings replaces the dashboard with a separate sidebar of the same width, settings search and grouped navigation; run search and notifications are absent. The Sessions gear beside the plus button opens Settings, and Back uses its draft guard. Spreadsheets lives under Data with the ordinary content cap. Capabilities merges into Preflight. General uses the shared segmented calendar picker; theme is a local browser preference. Keyboard settings match the supplied editable reference layout and persist working bindings. Status and Sort have bordered surfaces. Attention is a separate toggle, absent from the sort menu: it groups rows by status; Newest, Oldest and Longest sort the entire queue without group headers. Multi-select status filters and keyboard order share the drawn queue. The queue retains its 30% track and 244px minimum, with 12px gutters and a 48px Action panel above Logs. Logs titles use the run title alone. Selection mode and Select menu items are retired; Archive applies immediately, Delete confirms, and cancellation retains served confirmation. Command toasts omit the local actor ID. Run/Rerun keeps the approved Design 1 pending the requested discussion. Owner:
 [dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,

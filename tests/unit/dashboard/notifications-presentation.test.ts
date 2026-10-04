@@ -9,13 +9,13 @@ function ready(state: NotificationsState) {
   return state;
 }
 describe("frontend notification state", () => {
-  it("keeps pinned gaps in every filter, with urgency independent of read state", () => {
+  it("retires history gaps, with urgency independent of read state", () => {
     const state = notificationsSample("normal");
     const all = notificationView(state, "all");
-    assert.equal(all.unread, 4);
+    assert.equal(all.unread, 3);
     assert.equal(all.shown.length, 5);
-    assert.equal(all.pinned[0].title, "History gap");
-    for (const filter of ["all", "unread", "attention", "failed"] as const) assert.equal(notificationView(state, filter).pinned, ready(state).pinned);
+    assert.deepEqual(all.pinned, []);
+    for (const filter of ["all", "unread", "attention", "failed"] as const) assert.deepEqual(notificationView(state, filter).pinned, []);
     assert.deepEqual(notificationView(state, "unread").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-completed"]);
     assert.deepEqual(notificationView(state, "attention").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-review"]);
     assert.deepEqual(notificationView(state, "failed").shown.map(item => item.id), ["sample-verification"]);
@@ -23,16 +23,16 @@ describe("frontend notification state", () => {
   it("marks only the selected item read, preserving peer identity and the fixture", () => {
     const state = notificationsSample("normal");
     const updated = updateNotification(state, "sample-verification", "read");
-    assert.equal(notificationView(updated, "all").unread, 3);
+    assert.equal(notificationView(updated, "all").unread, 2);
     assert.equal(ready(updated).items[1], ready(state).items[1]);
     assert.equal(ready(updated).pinned, ready(state).pinned);
     assert.equal(ready(state).items[0].read, false);
-    assert.equal(notificationView(updateNotification(updated, "sample-verification", "read"), "all").unread, 4);
+    assert.equal(notificationView(updateNotification(updated, "sample-verification", "read"), "all").unread, 3);
   });
   it("keeps failures needing attention after their updates are read", () => {
     const state = updateNotification(notificationsSample("normal"), "sample-verification", "read");
     assert.equal(ready(state).items[0].read, true);
-    assert.equal(notificationView(state, "all").unread, 3);
+    assert.equal(notificationView(state, "all").unread, 2);
     assert.deepEqual(notificationView(state, "failed").shown.map(item => item.id), ["sample-verification"]);
     assert.deepEqual(notificationView(state, "attention").shown.map(item => item.id), ["sample-verification", "sample-approval", "sample-review"]);
     assert.equal(notificationView(state, "unread").shown.length, 2);
