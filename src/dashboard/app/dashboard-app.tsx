@@ -5,7 +5,7 @@ import { resolveDateSelection, routeForStartedRun } from "./date-state-model.js"
 import { RunLaunchHost } from "./run-launch.js";
 import { launchWorkflows, useRunLaunch } from "./run-launch-model.js";
 import { PanelRight } from "lucide-react";
-import { useCallback,useMemo,useRef,useState,type CSSProperties } from "react";
+import { useCallback,useMemo,useRef,useState,type CSSProperties,type ReactNode } from "react";
 import { WorkflowBatchCommandRequestSchema } from "../../domain/commands.js";
 import type { ActionDescriptorWire } from "../../domain/dashboard/actions.js";
 import {
@@ -39,7 +39,6 @@ import {
   filterQueueSurfaces,
   groupQueueAttempts,
   queueRowTitle,
-toggleCheckedByYou,
 visibleRunIds,
 type QueueSortKey,
 type QueueSurfaceWire,
@@ -60,12 +59,11 @@ DASHBOARD_MAIN_REGION_ID
 } from "../surfaces/settings-model.js";
 import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell-model.js";
 import { WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
-import { WorkflowRail } from "../surfaces/workflow-rail.js";
 import { WORKFLOW_RAIL_PREVIEWS } from "../surfaces/workflow-rail-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
-import { TopBar } from "../surfaces/top-bar.js";
+import { WorkspaceRail } from "../surfaces/workspace-rail.js";
 import {
 bulkSubjectsOf,
 composeBulkRunCommand,
@@ -120,9 +118,6 @@ export function DashboardApp() {
   const [sort, setSort] = useState<QueueSortKey>("attention");
   const [selectMode, setSelectMode] = useState(false);
   const [bulkIds, setBulkIds] = useState<ReadonlySet<string>>(() => new Set());
-  // Deliberately browser-local triage, not a durable run fact. Reloading the
-  // dashboard starts this set over; only the operator can see their checks.
-  const [checkedIds, setCheckedIds] = useState<ReadonlySet<string>>(() => new Set());
 
   const boot = bootstrap.state === "loaded" ? bootstrap.value : undefined;
 
@@ -178,8 +173,6 @@ export function DashboardApp() {
           onSelectMode={setSelectMode}
           bulkIds={bulkIds}
           onBulkIds={setBulkIds}
-          checkedIds={checkedIds}
-          onCheckedIds={setCheckedIds}
         />
       )}
     </ToastProvider>
@@ -247,8 +240,6 @@ interface LoadedAppProps {
   onSelectMode: (on: boolean) => void;
   bulkIds: ReadonlySet<string>;
   onBulkIds: (next: ReadonlySet<string>) => void;
-  checkedIds: ReadonlySet<string>;
-  onCheckedIds: (next: ReadonlySet<string>) => void;
 }
 
 
@@ -272,8 +263,6 @@ function LoadedApp({
   onSelectMode,
   bulkIds,
   onBulkIds,
-  checkedIds,
-  onCheckedIds,
 }: LoadedAppProps) {
   /**
    * THE clock (D256). The server's instant is the authority; the browser
@@ -420,11 +409,10 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       openWells,
       selectMode,
       bulkIds,
-      checkedIds,
       panelWorkflowId: activeWorkflowId,
       nowIso,
     }),
-    [route.run, openWells, selectMode, bulkIds, checkedIds, activeWorkflowId, nowIso],
+    [route.run, openWells, selectMode, bulkIds, activeWorkflowId, nowIso],
   );
 
   /**
@@ -441,7 +429,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     [surfaces],
   );
 
-  const { nav, leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
+  const { leaveSettings, onSettingsExitGuardChange } = useDashboardNavigation({
     route, setRoute, day, activeWorkflowId, setActiveWorkflowId, tab, onTab, dayWire,
     workflowLabelOf, onPopstateRef, nativeHistory,
   });
@@ -884,7 +872,6 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         else next.add(runId);
         onBulkIds(next);
       },
-      onToggleChecked: (runId) => onCheckedIds(toggleCheckedByYou(checkedIds, runId)),
       /*
         A parent can belong to ANOTHER workflow, so the jump moves the panel and
         then selects — selecting alone would open a run the queue beside it is
@@ -908,7 +895,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         selectRun(String(link.runId));
       },
     }),
-    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, checkedIds, onCheckedIds, dayWire, setActiveWorkflowId, onSelectMode, exitQueueSelection, runPreviewAction],
+    [setBatchGrouping, selectRun, runQueueAction, openWells, onWells, bulkIds, onBulkIds, dayWire, setActiveWorkflowId, onSelectMode, exitQueueSelection, runPreviewAction],
   );
 
   const keyboardOrder = useMemo(
@@ -983,10 +970,22 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     });
   }, [route, setRoute]);
 
+  const renderQueueBody = useCallback((body: ReactNode) => (
+    <FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
+      selecting={selectMode} selectedCount={bulkIds.size}
+      allSelected={selectableIds.length > 0 && selectableIds.every(id => bulkIds.has(id))}
+      someSelected={selectableIds.some(id => bulkIds.has(id))}
+      onSelectAll={checked => onBulkIds(checked ? new Set([...bulkIds, ...selectableIds]) : new Set([...bulkIds].filter(id => !selectableIds.includes(id))))}
+      onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])}>{body}</FocusQueueHeader>
+  ), [filter, scopedStatusCounts, onFilter, selectMode, bulkIds, selectableIds, onBulkIds, exitQueueSelection, runPreviewAction]);
+
+  const settingsOpen = ["settings", "archive", "activity", "explore"].includes(takeover);
   const [railPreview, setRailPreview] = useState<string | null>(null);
   const previewFlow = WORKFLOW_RAIL_PREVIEWS.find(flow => flow.id === railPreview);
   const [railRun, setRailRun] = useState<string>();
   const railRow = previewQueue.rows.find(row => row.runId === railRun);
+  const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow]);
+  const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(undefined); }, []);
 
 
   return (
@@ -1005,16 +1004,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       data-settings-takeover={["settings", "archive", "activity", "explore"].includes(takeover)}
     >
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      {!["settings", "archive", "activity", "explore"].includes(takeover) && <WorkflowRail workflows={workflows} counts={dayWire?.workflowCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={id => { setRailPreview(null); selectWorkflow(id); }} onPreview={id => { setRailPreview(id); setRailRun(undefined); }} />}
-      <TopBar
-        onDashboard={returnToDashboard}
-        settingsOpen={["settings", "archive", "activity", "explore"].includes(takeover)}
-        onOpenSettings={openSettings}
-        theme={theme}
-        onToggleTheme={onToggleTheme}
-        nav={nav}
-      />
+      <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} active={activeWorkflowId} preview={railPreview}
+        onSelect={onRailSelect} onPreview={onRailPreview} onDashboard={returnToDashboard}
+        settingsOpen={settingsOpen} onOpenSettings={openSettings} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1072,7 +1064,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
-            onSettingsExitGuardChange={onSettingsExitGuardChange}>
+            onSettingsExitGuardChange={onSettingsExitGuardChange} theme={theme} onToggleTheme={onToggleTheme}>
           <>
           {/*
             ONE COMPOSED ACTION BAR (ref dashboard-surfaces §Shell, D18). It was two bands: a
@@ -1133,12 +1125,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 day={day}
                 isToday={day === today}
                 sort={sort}
-                header={<FocusQueueHeader active={filter} counts={scopedStatusCounts} onFilter={onFilter}
-                  selecting={selectMode} selectedCount={bulkIds.size}
-                  allSelected={selectableIds.length > 0 && selectableIds.every(id => bulkIds.has(id))}
-                  someSelected={selectableIds.some(id => bulkIds.has(id))}
-                  onSelectAll={checked => onBulkIds(checked ? new Set([...bulkIds, ...selectableIds]) : new Set([...bulkIds].filter(id => !selectableIds.includes(id))))}
-                  onExit={exitQueueSelection} onAction={action => runPreviewAction(action, [...bulkIds])} />}
+                renderBody={renderQueueBody}
                 {...(queueFilterScope === undefined ? {} : { filter: queueFilterScope })}
               />}
               </div>

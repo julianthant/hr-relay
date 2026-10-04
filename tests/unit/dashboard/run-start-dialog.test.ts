@@ -410,6 +410,13 @@ async function openDialog(
       throw new Error(`expected exactly one control labelled "${label}", found ${String(found.length)}`);
     }
     const control = document.getElementById(only.htmlFor);
+    if (control instanceof HTMLButtonElement && control.getAttribute("role") === "combobox") {
+      await act(async () => control.click());
+      const option = [...document.querySelectorAll<HTMLElement>('[role="option"]')].find(node => node.dataset.value === next);
+      assert.ok(option, `the "${label}" choice has no option ${next}`);
+      await act(async () => option.click());
+      return;
+    }
     if (!(control instanceof HTMLInputElement
       || control instanceof HTMLSelectElement
       || control instanceof HTMLTextAreaElement)) {
@@ -911,12 +918,15 @@ describe("an omittable step draws its own form when it is left out (D307)", () =
       .find((candidate) => (candidate.textContent ?? "").trim() === "Approval status");
     assert.ok(label !== undefined, "the enum field drew no label");
     const select = document.getElementById(label.htmlFor);
-    assert.ok(select instanceof HTMLSelectElement);
-    assert.equal(select.value, "", "an approval status was chosen for the operator");
-    assert.deepEqual(
-      [...select.options].map((option) => option.value),
-      ["", "Approved", "Manually Processed", "Pending"],
-    );
+    assert.ok(select instanceof HTMLButtonElement && select.getAttribute("role") === "combobox");
+    assert.equal(select.dataset.value, "", "an approval status was chosen for the operator");
+    await act(async () => select.click());
+    const options = [...document.querySelectorAll<HTMLElement>('[role="option"]')];
+    assert.deepEqual(options.map(option => option.dataset.value), ["", "Approved", "Manually Processed", "Pending"]);
+    assert.equal(options.filter(option => option.getAttribute("aria-selected") === "true").length, 1);
+    assert.equal(options.find(option => option.getAttribute("aria-selected") === "true")?.dataset.value, "");
+    await act(async () => select.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+
   });
 });
 

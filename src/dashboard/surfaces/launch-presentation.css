@@ -136,3 +136,25 @@
 .spreadsheet-dialog .spreadsheet-view-tabs button {
   @apply h-7 px-[10px] py-[5px] text-body;
 }
+
+.launch-dialog > header { @apply border-0 bg-ui-table px-6 py-5; }
+.launch-dialog > header h2 { @apply text-[18px] font-medium; }
+.launch-dialog > header p { @apply mt-1 text-body text-ui-secondary; }
+.launch-dialog > footer { @apply bg-ui-table px-6; }
+.launch-dialog .launch-workflow-rail { @apply w-[208px] bg-ui-canvas px-4 pt-4; }
+.launch-dialog .launch-workflow-rail button[aria-current] { @apply font-normal; }
+.launch-dialog .launch-stagebar { @apply gap-3 bg-ui-panel px-6 py-3; }
+.launch-dialog .launch-stagebar > li { @apply gap-2 px-0 py-1; }
+.launch-dialog .launch-stagebar > li + li::before { content: ""; @apply mr-1 h-px w-5 bg-ui-stroke; }
+.launch-dialog .launch-stage-marker { @apply size-5 text-caption; }
+.launch-dialog .launch-content { @apply gap-5 px-6 py-5; }
+.launch-dialog .launch-content > section > h3 { @apply m-0 text-heading font-medium; }
+.launch-dialog .ds-field-label { @apply font-medium; }
+.launch-dialog textarea { @apply min-h-28 bg-ui-canvas; }
+.command-confirm-dialog { @apply max-w-[440px] border-ui-stroke-control bg-ui-panel text-ui-primary; }
+.command-confirm-dialog > header { @apply border-0 px-6 pb-0 pt-6; }
+.command-confirm-dialog > header h2 { @apply text-[18px] font-medium; }
+.command-confirm-dialog > header p { @apply mt-3 max-w-[48ch] text-body leading-relaxed text-ui-secondary; }
+.command-confirm-target { @apply mx-6 my-5 flex min-w-0 flex-col gap-1 rounded-lg border border-ui-stroke bg-ui-table p-3; }
+.command-confirm-reference { @apply mt-2 break-all border-t border-ui-stroke pt-2; }
+.command-confirm-dialog > footer { @apply border-ui-stroke bg-ui-panel px-6 py-4; }

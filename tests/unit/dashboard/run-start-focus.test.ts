@@ -48,7 +48,7 @@ for (const launch of ["external button", "keyboard shortcut"] as const) {
       await mount();
       const door=button("Start a run"); assert.equal(door.id,RUN_START_DOOR_ID);
       if(launch === "external button") await click(door);
-      else { button("Dashboard").focus(); await key("r"); }
+      else { button("Settings").focus(); await key("r"); }
       const dialog=document.querySelector('[role="dialog"]'); assert.ok(dialog);
       assert.ok(dialog.contains(document.activeElement),"opening must move focus into the dialog");
       if(dismissal === "Escape") await key("Escape"); else await click(button(dismissal));

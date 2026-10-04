@@ -2,20 +2,19 @@ import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
-import { TopBar } from "../../../src/dashboard/surfaces/top-bar.js";
+import { WorkspaceRail } from "../../../src/dashboard/surfaces/workspace-rail.js";
 import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/navbar/navbar-fixture.js";
 import { navbarCalendarKey, navbarDayLabel, navbarMonthCells, navbarMonthLabel, navbarSearch, navbarShiftDay, navbarShiftMonth } from "../../../src/dashboard/surfaces/navbar/navbar-view-model.js";
 
 const noop = () => {};
-describe("canonical frontend navbar", () => {
+describe("canonical workspace rail", () => {
   it("renders all retained controls without a client provider or preflight", () => {
-    const html = renderToStaticMarkup(createElement(TopBar, {
-      onDashboard: noop, nav: { canBack: false, canForward: false, onBack: noop, onForward: noop },
-      theme: "dark", onToggleTheme: noop, settingsOpen: false, onOpenSettings: noop,
+    const html = renderToStaticMarkup(createElement(WorkspaceRail, {
+      onDashboard: noop, settingsOpen: false, onOpenSettings: noop, workflows: [], active: "", preview: null, onSelect: noop, onPreview: noop,
     }));
-    for (const label of ["Back", "Forward", "Search runs", "Notifications, 4 unread", "Switch to light theme", "Settings"]) assert.ok(html.includes(label), label);
+    for (const label of ["Workflows", "Search runs", "Notifications, 4 unread", "Settings"]) assert.ok(html.includes(label), label);
     assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|lucide-shield|Preflight|doctor|Storage checks/);
-    assert.doesNotMatch(html, /Dashboard date|Choose date/);
+    assert.doesNotMatch(html, /Dashboard date|Choose date|aria-label="Back"|aria-label="Forward"|Switch to light theme|role="banner"/);
     assert.doesNotMatch(html, /aria-label="Main navigation"|>Archive<|>Explorer<|>Activity</);
   });
   it("finds every requested word across the local run fields, with no empty-query loss", () => {

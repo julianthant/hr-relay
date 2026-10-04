@@ -26,7 +26,7 @@
  * reach the wire at `src/domain/dashboard/actions.ts`. They had simply been
  * rendering as bare banner pills, dropping the served `detail` on the floor.
  */
-import { Fragment, type ReactNode } from "react";
+import { Fragment, useRef, type ReactNode } from "react";
 import {
   AlertTriangle,
   ArrowUpRight,
@@ -559,12 +559,15 @@ export function ConfirmCommandDialog({
   onCancel: () => void;
   onConfirm: (pending: PendingCommand) => void;
 }) {
+  const safeAction = useRef<HTMLButtonElement>(null);
   const confirm = pending?.action.confirm;
   return (
     <Dialog open={Boolean(pending && confirm)} onOpenChange={(open) => !open && onCancel()}>
       {pending && confirm && (
         <DialogContent
           size="sm"
+          className="command-confirm-dialog ui-theme-scope"
+          onOpenAutoFocus={event => { event.preventDefault(); safeAction.current?.focus(); }}
           onCloseAutoFocus={(e) => {
             if (pending.triggerElement?.isConnected) {
               e.preventDefault();
@@ -592,31 +595,16 @@ export function ConfirmCommandDialog({
           }
           description={confirm.body}
         >
-          {/*
-            THE SUBJECT LINE, in the demo's own placement
-            (`DemoActions.tsx:487-489`): a bare div, NOT `DialogBody`. Two
-            reasons it matters. `DialogBody` is the scrolling pane with the
-            dialog's full inset — this is one quiet line of identity under a
-            served body, and giving it the pane's padding made it read as the
-            dialog's content rather than its footnote (R8 finding 15).
-
-            And it now renders `subject` — the row's OWN name, which this
-            component has documented on `PendingCommand` since it was written
-            and has never once drawn (R8 finding 4b). The confirm body is
-            server-authored and says what the command will DO; without the
-            subject the operator is asked to confirm a blast radius without
-            being shown the thing it lands on.
-          */}
-          <div className={cn(dsText.meta, "px-[var(--ds-space-loose)] pt-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]")}>
-            <span className="font-medium text-[color:var(--ds-fg-secondary)]">{pending.subject}</span>
-            <span className={cn(dsText.nums, "ml-[var(--ds-space-snug)]")}>
-              {pending.workflowLabel} · {pending.traceId} · row rev {pending.action.expectedVersion}
-            </span>
+          <div className="command-confirm-target">
+            <span className="text-caption text-ui-muted">Selected run</span>
+            <strong className="text-heading font-medium text-ui-primary">{pending.subject}</strong>
+            <span className="text-body text-ui-secondary">{pending.workflowLabel}</span>
+            <span className="command-confirm-reference font-data text-caption text-ui-muted">{pending.traceId} · revision {pending.action.expectedVersion}</span>
           </div>
           <DialogFooter>
             {/* The safe exit is `secondary` and it comes FIRST; the surface's one
                 committing action is last, so the eye ends on the verb. */}
-            <Button variant="secondary" onClick={onCancel}>
+            <Button ref={safeAction} variant="secondary" onClick={onCancel}>
               Keep it as it is
             </Button>
             <Button variant={confirm.tone === "destructive" ? "danger" : "primary"} onClick={() => onConfirm(pending)}>

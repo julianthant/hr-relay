@@ -36,7 +36,7 @@ async function capture(page: Page, info: TestInfo, name: string) {
 
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
   const size = `${theme.attribute}-${width}`;
-  test(`compact canonical navbar and local controls @ ${size}`, { annotation: ["navbar", "navbar-search", "navbar-calendar"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
+  test(`permanent workspace rail and local controls @ ${size}`, { annotation: ["navbar", "navbar-search", "navbar-calendar"].map(name => ({ type: "required-a11y-evidence", description: `${name}-${size}.a11y.yml` })) }, async ({ page }, info) => {
     ensureParityBundle();
     const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" } });
     try {
@@ -44,45 +44,36 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await installTheme(page, theme);
       const requests = disconnectedRequests(page);
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}&activity=`);
-      const bar = page.getByRole("banner");
-      await expect(bar.getByRole("button", { name: "Dashboard", exact: true })).toHaveCount(0);
+      const bar = page.getByRole("complementary", { name: "Workspace" });
+      await expect(page.locator(".navbar-shell")).toHaveCount(0);
+      await expect(page.getByRole("button", { name: /^(Back|Forward)$/u })).toHaveCount(0);
       await expect(bar).not.toContainText("RRSS HR");
       await expect(bar.locator("svg.lucide-shield-check")).toHaveCount(0);
-      expect((await bar.boundingBox())!.height).toBe(48);
-      for (const label of ["Back", "Forward", "Notifications, 4 unread", "Settings"]) {
+      expect((await bar.boundingBox())!.width).toBe(264);
+      expect((await bar.locator(".workspace-rail-header").boundingBox())!.height).toBe(64);
+      for (const label of ["Notifications, 4 unread", "Search runs", "Back to workflows"]) {
         const control = bar.getByRole("button", { name: label, exact: true });
         await expect(control).toBeVisible();
         const bounds = (await control.boundingBox())!;
         expect(bounds.x).toBeGreaterThanOrEqual(0);
-        expect(bounds.x + bounds.width).toBeLessThanOrEqual(width);
+        expect(bounds.x + bounds.width).toBeLessThanOrEqual(264);
       }
-      const trigger = bar.getByRole("searchbox", { name: "Search runs", exact: true });
-      await expect(trigger).toBeVisible();
+      const trigger = bar.getByRole("button", { name: "Search runs", exact: true });
       await expect(trigger).toHaveAttribute("aria-expanded", "false");
-      const searchBounds = (await bar.locator('.navbar-search').boundingBox())!;
-      expect(searchBounds.width).toBeGreaterThanOrEqual(220);
-      expect((await bar.locator('[data-slot="search-field-group"]').boundingBox())!.height).toBe(36);
-      const searchColors = await bar.locator('[data-slot="search-field-search-icon"]').evaluate(node => ({ color: getComputedStyle(node).color, background: getComputedStyle(node.parentElement!).backgroundColor }));
+      const searchColors = await trigger.evaluate(node => ({ color: getComputedStyle(node).color, background: getComputedStyle(node.closest("header")!).backgroundColor }));
       expect(contrastRatio(searchColors.color, searchColors.background)).toBeGreaterThanOrEqual(3);
       await expect(bar.getByRole('navigation', { name: 'Main navigation' })).toHaveCount(0);
-      expect((await bar.boundingBox())!.x).toBe(264);
-      if (width === 1440) {
-        expect(searchBounds.width).toBe(460);
-        expect(Math.abs(searchBounds.x + searchBounds.width / 2 - (264 + (width - 264) / 2))).toBeLessThanOrEqual(20);
-      }
       await expect(bar.getByRole("button", { name: /preflight/iu })).toHaveCount(0);
       await expect(page.getByRole("link", { name: "Activity", exact: true })).toHaveAttribute("aria-current", "page");
       await capture(page, info, `navbar-${size}`);
       await page.getByRole("link", { name: "Explorer", exact: true }).click();
       await expect(page.getByRole("region", { name: "Workflow explorer preview" })).toBeVisible();
-      await bar.getByRole("button", { name: "Settings", exact: true }).click();
+      await bar.getByRole("button", { name: "Back to workflows", exact: true }).click();
       await page.locator("[data-demo-row-id]").first().click();
       const runUrl = page.url();
-      await expect(bar.getByRole("button", { name: "Back", exact: true })).toBeEnabled();
-      await bar.getByRole("button", { name: "Back", exact: true }).click();
-      await expect(bar.getByRole("button", { name: "Forward", exact: true })).toBeEnabled();
+      await page.goBack();
       expect(page.url()).not.toBe(runUrl);
-      await bar.getByRole("button", { name: "Forward", exact: true }).click();
+      await page.goForward();
       await expect(page).toHaveURL(runUrl);
       const beforeSearch = page.url();
       await page.keyboard.press("/");
@@ -159,12 +150,16 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await calendar.getByRole("button", { name: "Today", exact: true }).click();
       await expect(dateField.getByRole("spinbutton", { name: /^month/u })).toHaveText("8");
       await expect(dateField.getByRole("spinbutton", { name: /^day/u })).toHaveText("3");
-      await bar.getByRole("button", { name: theme.attribute === "dark" ? "Switch to light theme" : "Switch to dark theme", exact: true }).click();
-      await expect(bar.getByRole("button", { name: theme.attribute === "dark" ? "Switch to dark theme" : "Switch to light theme", exact: true })).toBeVisible();
-      expect(requests).toEqual([]);
       await bar.getByRole("button", { name: "Settings", exact: true }).click();
+      await page.getByRole("navigation", { name: "Settings sections" }).getByRole("link", { name: "General", exact: true }).click();
+      const themeSwitch = page.getByRole("switch", { name: /^Dark theme/u });
+      await expect(themeSwitch).toBeChecked({ checked: theme.attribute === "dark" });
+      await themeSwitch.focus();
+      await themeSwitch.press("Space");
+      await expect(themeSwitch).toBeChecked({ checked: theme.attribute !== "dark" });
+      expect(requests).toEqual([]);
       await expect(page.getByRole("region", { name: "Settings", exact: true })).toBeVisible();
-      await expect(bar.getByRole("button", { name: "Settings", exact: true })).toHaveAttribute("aria-pressed", "true");
+      await expect(bar.getByRole("button", { name: "Back to workflows", exact: true })).toBeVisible();
       await expect(bar.getByRole("button", { name: "Dashboard", exact: true })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     } finally { await server.close(); }
@@ -180,11 +175,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?activity=`);
       const bell = () => page.getByRole("button", { name: /^Notifications, \d+ unread$/u });
       await bell().click();
-      const inbox = page.getByRole("dialog", { name: "Notifications", exact: true });
+      const inbox = page.locator(".notification-rail");
       await expect(inbox).toHaveCSS("opacity", "1");
-      await expect(inbox).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
+      await expect(page.locator(".workspace-rail")).toHaveCSS("background-color", theme.attribute === "dark" ? "rgb(34, 34, 34)" : "rgb(255, 255, 255)");
+      await expect(bell()).toHaveAttribute("aria-pressed", "true");
+      await expect(page.getByRole("navigation", { name: "Settings sections" })).toBeHidden();
       const bounds = (await inbox.boundingBox())!;
-      expect(bounds.width).toBe(420);
+      expect(bounds.width).toBe(263);
       expect(bounds.y).toBeGreaterThanOrEqual(0);
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 1024 ? 720 : 1000);
       await expect(inbox.getByRole("button", { name: /Snooze|Enable/u })).toHaveCount(0);
@@ -209,7 +206,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await inbox.getByRole("button", { name: "Open log", exact: true }).first().click();
       await expect(inbox.getByRole("status")).toHaveText("Run navigation is not connected yet.");
       expect(page.url()).toBe(before);
-      await inbox.getByRole("button", { name: "Close notifications", exact: true }).click();
+      await bell().click();
       await expect(bell()).toBeFocused();
       await bell().press("Enter");
       await inbox.getByRole("button", { name: "Unread", exact: true }).click();
@@ -237,7 +234,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await page.goto(`${server.baseUrl}/?activity=&notificationsPreview=${scenario}`);
         const name = scenario === "empty" ? "Notifications, 0 unread" : scenario === "loading" ? "Notifications loading" : "Notifications unavailable";
         await page.getByRole("button", { name, exact: true }).click();
-        const inbox = page.getByRole("dialog", { name: "Notifications", exact: true });
+        const inbox = page.locator(".notification-rail");
         if (scenario === "empty") await expect(inbox).toContainText("No notifications");
         else if (scenario === "loading") await expect(inbox.getByRole("status", { name: "Loading notifications", exact: true })).toHaveText("");
         else await expect(inbox.getByRole("alert")).toContainText("Notification data could not be loaded.");
@@ -252,11 +249,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await capture(page, info, `notification-ping-${size}`);
       await ping.getByRole("button", { name: "Open notifications", exact: true }).click();
       await expect(ping).toHaveCount(0);
-      await expect(page.getByRole("dialog", { name: "Notifications", exact: true })).toBeVisible();
+      await expect(page.locator(".notification-rail")).toBeVisible();
       await page.goto(`${server.baseUrl}/?activity=&notificationsPreview=ping`);
       await ping.getByRole("button", { name: "Dismiss", exact: true }).click();
       await expect(ping).toHaveCount(0);
-      await expect(page.getByRole("dialog", { name: "Notifications", exact: true })).toHaveCount(0);
+      await expect(page.locator(".notification-rail")).toHaveCount(0);
       expect(requests).toEqual([]);
     } finally { await server.close(); }
   });

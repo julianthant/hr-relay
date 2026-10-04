@@ -32,7 +32,6 @@ import { cn } from "../lib/utils.js";
 import {
   BareButton,
   Chip,
-  IconButton,
   Checkbox,
   Popover,
   PopoverTrigger,
@@ -78,7 +77,6 @@ import {
   type QueueSurfaceWire,
   bandOf,
   canViewAllMembers,
-  checkedQueueItemCount,
   orderMembers,
   partition,
   queueGateAge,
@@ -107,9 +105,6 @@ export interface QueueViewState {
   /** bulk-selection mode: checkboxes on top-level rows */
   selectMode?: boolean;
   bulkIds?: ReadonlySet<string>;
-  /** Ephemeral operator triage. This is browser-local context, never a served
-   * member outcome or durable evidence; reload starts with an empty set. */
-  checkedIds?: ReadonlySet<string>;
   /**
    * The workflow this queue is scoped to. A row of that workflow does not
    * reprint its label — the panel header already said it. Left undefined by a
@@ -145,7 +140,6 @@ export interface QueueHandlers {
   onExitSelection?: () => void;
   onPreviewAction?: (action: 'retry' | 'archive' | 'delete', ids: readonly string[]) => void;
   /** Mark a loaded member checked by you. This has no authority effect. */
-  onToggleChecked?: (runId: string) => void;
   /**
    * Jump to the run that delegated this one — the panel switch AND the
    * selection, because a parent can belong to another workflow and selecting it
@@ -176,7 +170,6 @@ export type QueueParentLookup = (
 export type QueueActionsOf = (surface: QueueSurfaceWire) => readonly ActionDescriptorWire[];
 
 const NO_ACTIONS: QueueActionsOf = () => [];
-const NO_CHECKED_IDS: ReadonlySet<string> = new Set();
 
 /* the band ordering and its sort vocabulary live in `queue-model.ts` — see the note there */
 export type { QueueSortKey };
@@ -520,13 +513,11 @@ function MemberWell({
   );
 }
 
-function MemberLine({ surface, item, selected, checked, onSelect, onToggleChecked }: {
+function MemberLine({ surface, item, selected, onSelect }: {
   surface: MemberSurfaceWire;
   item: QueueItemGroup;
   selected: boolean;
-  checked: boolean;
   onSelect: (runId: string) => void;
-  onToggleChecked?: () => void;
 }) {
   const status = dsStatusOf(surface.status);
   const spec = PROPOSED_STATUS[status];
@@ -548,13 +539,7 @@ function MemberLine({ surface, item, selected, checked, onSelect, onToggleChecke
           >{queueRowTitle(surface)}</BareButton>
           {item.attempts.length > 1 && <QueueAttemptSelector title={queueRowTitle(surface)} surface={surface} item={item}
             selectedRunId={String(surface.runId)} onSelect={onSelect} />}
-          {checked && <span title="Marked checked by you" className="inline-flex shrink-0 items-center text-[color:var(--ds-success-fg)]">
-            <CheckCircle2 aria-hidden className={dsIcon.sm} /><span className="sr-only">checked by you</span>
-          </span>}
-          {onToggleChecked !== undefined && <IconButton size="xs" className="relative"
-            label={checked ? `Mark ${queueRowTitle(surface)} unchecked` : `Mark ${queueRowTitle(surface)} checked by you`}
-            onClick={(event) => { event.stopPropagation(); onToggleChecked(); }}
-            icon={<CheckCircle2 aria-hidden className={cn(dsIcon.sm, checked && "text-[color:var(--ds-success-fg)]")} />} />}
+
         </div>
       </td>
       <td className={cn(dsText.meta, "w-px whitespace-nowrap border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-right", status === "waiting" || status === "running" ? "text-ui-info" : status === "failed" ? "text-ui-danger" : spec.soloTone)}>
@@ -591,8 +576,6 @@ function GroupMemberList({
 }) {
   const itemGroups = groupQueueAttempts(members);
   const ordered = orderMembers(itemGroups.map((item) => item.representative) as MemberSurfaceWire[]);
-  const checkedIds = state.checkedIds ?? NO_CHECKED_IDS;
-  const checkedCount = checkedQueueItemCount(itemGroups, checkedIds);
   const wellOpen = state.openWells.has(itemKey);
   const canExpand = ordered.length > MEMBER_WELL_LINES;
   /**
@@ -649,11 +632,8 @@ function GroupMemberList({
   return (
     <MemberWell
       open={wellOpen && canExpand}
-      header={(checkedCount > 0 || (ordered.length > 0 && ordered.length < surface.memberRollup.total)) && (
+      header={ordered.length > 0 && ordered.length < surface.memberRollup.total && (
         <div className={cn(dsText.meta, "flex flex-wrap items-center gap-[var(--ds-space-base)] border-b border-[color:var(--ds-border-subtle)] px-[var(--ds-space-base)] py-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>
-          {checkedCount > 0 && <span aria-label={`${checkedCount} of ${surface.memberRollup.total} checked by you`}>
-            {checkedCount}/{surface.memberRollup.total} checked by you
-          </span>}
           {ordered.length > 0 && ordered.length < surface.memberRollup.total && <span>
             {ordered.length} of {plural(surface.memberRollup.total, "member")} loaded
           </span>}
@@ -689,8 +669,7 @@ function GroupMemberList({
             const visible = item.attempts.find((attempt) => String(attempt.runId) === state.selectedRunId) ?? member;
             const selected = item.attempts.some((attempt) => String(attempt.runId) === state.selectedRunId);
             return <MemberLine key={item.key} surface={visible as MemberSurfaceWire} item={item} selected={selected}
-              checked={checkedIds.has(String(visible.runId))} onSelect={handlers.onSelect}
-              {...(handlers.onToggleChecked === undefined ? {} : { onToggleChecked: () => handlers.onToggleChecked?.(String(visible.runId)) })} />;
+              onSelect={handlers.onSelect} />;
           })}
         </tbody>
       </table>
@@ -1232,6 +1211,7 @@ export const QueuePanel = memo(function QueuePanel({
   filter,
   sort = "attention",
   header,
+  renderBody,
 }: {
   /** the day's flat queue projection, already scoped to this panel's workflow */
   surfaces: readonly QueueSurfaceWire[];
@@ -1255,6 +1235,7 @@ export const QueuePanel = memo(function QueuePanel({
   /** the toolbar's ordering control; the default passes the projection through */
   sort?: QueueSortKey;
   header?: ReactNode;
+  renderBody?: (body: ReactNode) => ReactNode;
 }) {
   const { top, membersOf } = partition(surfaces);
   const { displayTop, itemByRunId } = queueItemLayout(top);
@@ -1294,35 +1275,7 @@ export const QueuePanel = memo(function QueuePanel({
     cancelled: digestOf("cancelled"),
   };
 
-  return (
-    <section
-      aria-label="Queue"
-      onKeyDown={event => { if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); } }}
-      className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}
-    >
-      {/*
-        THE WORKFLOW NAME, AND NOTHING ELSE.
-
-        The header read `Oath Upload · queue · Sat, Jul 25 · 1 run` and three
-        quarters of that was already on screen: the DATE is the Top Bar's own
-        navigator, the COUNT is the Status Bar's `All` pill and the rail's badge
-        on the same workflow, and `queue` names the panel the operator is
-        standing in. What it answers is "which panel am I in", which is the one
-        question no other surface answers when the Workflow Panel is reduced to
-        an icon.
-      */}
-      {header ?? <div
-        className={cn(
-          "flex shrink-0 items-center border-b",
-          dsSize.hBar,
-          dsBorder.subtle,
-          dsText.meta,
-          "gap-[var(--ds-space-snug)] px-[var(--ds-space-cozy)] text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        <h2 className={cn(dsText.title, "min-w-0 truncate font-semibold text-[color:var(--ds-fg)]")}>{panelLabel}</h2>
-      </div>}
-      {/* ONE scrolling region, and its track runs the panel's full height. */}
+  const body = (
       <div className="min-h-0 flex-1 overflow-y-auto pb-3">
         {/* Empty is a STATE: what would be here, why it is not, and what to do
             — in that order, and no defence of the design. */}
@@ -1454,6 +1407,8 @@ export const QueuePanel = memo(function QueuePanel({
           );
         })}
       </div>
-    </section>
   );
+  return <section aria-label="Queue" onKeyDown={event => { if (event.key === 'Escape' && state.selectMode === true) { event.preventDefault(); event.stopPropagation(); handlers.onExitSelection?.(); } }} className={cn("flex min-h-0 flex-col overflow-hidden border", dsRadius.lg, dsBorder.base, dsSurface.card)}>
+    {renderBody ? renderBody(body) : <>{header ?? <div className={cn("flex shrink-0 items-center border-b px-3", dsSize.hBar, dsBorder.subtle)}><h2 className={cn(dsText.title, "truncate font-semibold")}>{panelLabel}</h2></div>}{body}</>}
+  </section>;
 });

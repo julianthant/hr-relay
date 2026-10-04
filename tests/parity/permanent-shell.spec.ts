@@ -19,13 +19,19 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
       const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
       await expect(rail).toBeVisible();
-      const railBounds = (await rail.boundingBox())!;
+      const workspace = page.getByRole("complementary", { name: "Workspace" });
+      const railBounds = (await workspace.boundingBox())!;
       expect(railBounds.x).toBe(0); expect(railBounds.y).toBe(0); expect(railBounds.width).toBe(264);
       await expect(rail.getByRole("button")).toHaveCount(15);
-      const bar = page.getByRole("banner");
-      expect((await bar.boundingBox())!.x).toBe(264);
-      expect((await bar.boundingBox())!.height).toBe(48);
-      await expect(bar.getByRole("group", { name: "Navigation history" })).toBeVisible();
+      const typeStyle = (node: Element) => ({ size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight });
+      expect(await rail.getByRole("button", { name: "Person Lookup", exact: true }).evaluate(typeStyle)).toEqual(await rail.getByRole("button", { name: "I-9 Lookup · layout preview", exact: true }).evaluate(typeStyle));
+      const bar = workspace.locator(".workspace-rail-header");
+      expect((await bar.boundingBox())!.x).toBe(0);
+      expect((await bar.boundingBox())!.height).toBe(64);
+      await expect(page.locator(".navbar-shell")).toHaveCount(0);
+      await expect(page.getByRole("group", { name: "Navigation history" })).toHaveCount(0);
+      await expect(bar.getByRole("button", { name: "Search runs", exact: true })).toBeVisible();
+      await expect(bar.getByRole("button", { name: /^Notifications,/u })).toBeVisible();
       await expect(bar.getByRole("button", { name: /^Choose date/u })).toHaveCount(0);
       await expect(bar.locator("kbd")).toHaveCount(0);
       expect(await rail.locator(".workflow-rail-groups").evaluate(node => getComputedStyle(node).scrollbarWidth)).toBe("none");
@@ -34,7 +40,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const queue = page.getByRole("region", { name: "Queue", exact: true }), logs = page.locator(".dashboard-log-column");
       const actions = logs.getByRole("region", { name: "Action panel", exact: true });
       const queueBounds = (await queue.boundingBox())!, logBounds = (await logs.boundingBox())!;
-      expect(queueBounds.x).toBe(276); expect(queueBounds.y).toBe(60); expect(logBounds.y).toBe(60);
+      expect(queueBounds.x).toBe(276); expect(queueBounds.y).toBe(12); expect(logBounds.y).toBe(12);
       expect(queueBounds.width).toBeGreaterThanOrEqual(244);
       expect(logBounds.x).toBeCloseTo(queueBounds.x + queueBounds.width + 12);
       expect(logBounds.x + logBounds.width).toBe(width - 12);
@@ -83,11 +89,12 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         })).toEqual({ bordered: true, rounded: true, opaque: true });
       }
       await info.attach(`action-panel-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      for (const filter of await page.getByRole("group", { name: "Frequent queue filters", exact: true }).getByRole("button").all()) {
+      for (const filter of await page.getByRole("tablist", { name: "Frequent queue filters", exact: true }).getByRole("tab").all()) {
         expect(await filter.evaluate(node => {
           const range = document.createRange(); range.selectNodeContents(node);
           return range.getBoundingClientRect().width <= node.getBoundingClientRect().width;
         })).toBe(true);
+        expect(await filter.locator("span").first().evaluate(node => node.scrollWidth <= node.clientWidth)).toBe(true);
       }
       await expect(logs.getByRole("button", { name: /^Choose date/u })).toBeVisible();
       await page.keyboard.press("w"); await page.keyboard.press("Escape"); await expect(rail).toBeVisible();
@@ -125,7 +132,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         for (let index = 0; index < 10; index++) {
           await new Promise(requestAnimationFrame);
           const nav = document.querySelector('[aria-label="Settings sections"]');
-          const banner = document.querySelector('.navbar-shell');
+          const banner = document.querySelector('.workspace-rail-header');
           const frame = document.querySelector('.settings-takeover');
           if (nav && banner && frame) frames.push({ navY: nav.getBoundingClientRect().y, navX: nav.getBoundingClientRect().x,
             opacity: getComputedStyle(frame).opacity, translate: getComputedStyle(frame).translate, background: getComputedStyle(banner).backgroundColor });
@@ -133,10 +140,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         return frames;
       });
       expect(transitionFrames.length).toBeGreaterThan(0);
-      for (const frame of transitionFrames) expect(frame).toEqual({ navY: 0, navX: 0, opacity: "1", translate: "none", background: navbarFill });
+      for (const frame of transitionFrames) expect(frame).toEqual({ navY: 64, navX: 0, opacity: "1", translate: "none", background: navbarFill });
       const settings = page.getByRole("navigation", { name: "Settings sections", exact: true });
       const settingsBounds = (await settings.boundingBox())!;
-      expect(settingsBounds.x).toBe(0); expect(settingsBounds.y).toBe(0); expect(settingsBounds.width).toBe(264);
+      expect(settingsBounds.x).toBe(0); expect(settingsBounds.y).toBe(64); expect(settingsBounds.width).toBe(264);
       await settings.getByRole("link", { name: "Keyboard", exact: true }).click();
       const shortcutSearch = page.getByRole("searchbox", { name: "Search shortcuts", exact: true });
       await shortcutSearch.fill("search runs");

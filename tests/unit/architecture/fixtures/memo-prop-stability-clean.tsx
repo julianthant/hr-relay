@@ -10,7 +10,7 @@
 export function Good({ boot, route }: any) {
   return (
     <div>
-      <TopBar
+      <WorkspaceRail
         daySurfaces={daySurfaces}
         onDay={onSelectDay}
         nav={nav}

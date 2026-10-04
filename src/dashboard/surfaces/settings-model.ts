@@ -134,7 +134,7 @@ export const SETTINGS_DATA_SECTION_IDS: ReadonlySet<string> = new Set(["explorer
  * takeover can be reached from two doors (the gear, and the storage band's
  * `Storage checks`) and can survive a reload — so the target is looked up by
  * id the same way `WORKFLOW_PANEL_TOGGLE_ID` is (`shell.tsx`), rather than
- * held as a React ref threaded down through `TopBar`.
+ * held as a React ref threaded down through `WorkspaceRail`.
  */
 export const SETTINGS_GEAR_ID = "settings-gear";
 
@@ -144,7 +144,7 @@ export const DASHBOARD_MAIN_REGION_ID = "dashboard-main-region";
 /**
  * Which id to focus when the takeover closes: the gear it was opened from, or
  * — if the gear is not mounted — the main region the takeover was covering.
- * The gear is part of the persistent `TopBar` and is always mounted while
+ * The gear is part of the persistent `WorkspaceRail` and is always mounted while
  * `SettingsPage` is, so `gearMounted` is normally `true`; the fallback exists
  * because the id lookup happens through the DOM rather than through a prop the
  * type system can prove present.

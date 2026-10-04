@@ -11,7 +11,6 @@ export function WorkflowRail({ workflows, counts, active, preview, onSelect, onP
     ...WORKFLOW_RAIL_PREVIEWS.filter(flow => !workflows.some(served => served.id === flow.id)).map(flow => ({ ...flow, mock: true }))];
   const groups = [...new Set(entries.map(flow => flow.category))];
   return <nav aria-label="Workflows" className="workflow-rail">
-    <h2>Workflows</h2>
     <div className="workflow-rail-groups">{groups.map(group => <div key={group} className="workflow-rail-group"><h3>{group}</h3>
       {entries.filter(flow => flow.category === group).map(flow => <button key={flow.id} type="button"
         aria-current={(preview ?? active) === flow.id ? "page" : undefined}

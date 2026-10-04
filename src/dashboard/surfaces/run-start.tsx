@@ -401,8 +401,8 @@ function PickerRow({
         dsFocus,
         dsMotion.fast,
         selected
-          ? cn("bg-[var(--ds-surface-3)] font-semibold", dsFg.base)
-          : cn("hover:bg-[var(--ds-surface-2)]", node.harness === undefined ? dsFg.secondary : dsFg.muted),
+          ? cn("bg-[var(--ds-surface-3)] font-normal", dsFg.base)
+          : cn("hover:bg-[var(--ds-surface-2)]", node.harness === undefined ? dsFg.base : dsFg.muted),
       )}
     >
       {workflow.code !== undefined && <span className="w-4 shrink-0 text-caption text-ui-muted">{workflow.code}</span>}
@@ -1193,8 +1193,8 @@ export function RunStartDialog({
         onCloseAutoFocus={onCloseAutoFocus}
         size="xl"
         title={isRerun ? "Rerun" : "Start a run"}
-        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : `New work · ${workflow?.label ?? "Choose workflow"}`}
-        className="launch-design launch-dialog max-w-[min(calc(100vw-32px),880px)] h-[min(calc(100dvh-32px),628px)] max-h-[calc(100dvh-32px)]"
+        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow?.label ?? "Choose a workflow to begin"}
+        className="launch-design launch-dialog max-w-[min(calc(100vw-48px),920px)] h-[min(calc(100dvh-48px),540px)] max-h-[calc(100dvh-48px)]"
       >
         <div className="flex min-h-0 flex-1">
           {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} /> : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">

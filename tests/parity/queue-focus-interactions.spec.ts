@@ -33,17 +33,17 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(bounds[0]!.x + bounds[0]!.width).toBeLessThan(bounds[1]!.x);
       expect(bounds[1]!.x + bounds[1]!.width).toBeLessThan(bounds[2]!.x);
       await expect(bar.getByRole('button', { name: /^(Select|Done|Clear)$/ })).toHaveCount(0);
-      const filters = page.getByRole('group', { name: 'Frequent queue filters', exact: true });
+      const filters = page.getByRole('tablist', { name: 'Frequent queue filters', exact: true });
       const rows = page.locator('[data-demo-row-id]');
-      await expect(filters.getByRole('button', { name: 'All 14', exact: true })).toHaveAttribute('aria-pressed', 'true');
-      await filters.getByRole('button', { name: 'All 14', exact: true }).focus();
+      await expect(filters.getByRole('tab', { name: 'All 14', exact: true })).toHaveAttribute('aria-selected', 'true');
+      await filters.getByRole('tab', { name: 'All 14', exact: true }).focus();
       await page.keyboard.press('ArrowRight');
-      const needsYou = filters.getByRole('button', { name: 'Needs you 3', exact: true });
+      const needsYou = filters.getByRole('tab', { name: 'Needs you 3', exact: true });
       await expect(needsYou).toBeFocused();
       await page.keyboard.press('Space');
-      await expect(needsYou).toHaveAttribute('aria-pressed', 'true');
+      await expect(needsYou).toHaveAttribute('aria-selected', 'true');
       await expect(page.locator('[data-demo-row-id]:not(tr)')).toHaveCount(3);
-      await filters.getByRole('button', { name: 'All 14', exact: true }).click();
+      await filters.getByRole('tab', { name: 'All 14', exact: true }).click();
       expect(Math.abs((await filters.boundingBox())!.width - (await rows.first().boundingBox())!.width)).toBeLessThanOrEqual(1);
       const snapshot = await page.getByRole('main').ariaSnapshot();
       info.annotations.push({ type: `a11y-attachment-sha256:${evidence}`, description: createHash('sha256').update(snapshot).digest('hex') });
@@ -105,7 +105,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole('checkbox', { name: 'Select all visible runs', exact: true }).check();
       await page.getByRole('button', { name: 'Delete selected runs', exact: true }).click();
       await expect(rows).toHaveCount(0);
-      await expect(filters.getByRole('button', { name: 'All 0', exact: true })).toBeVisible();
+      await expect(filters.getByRole('tab', { name: 'All 0', exact: true })).toBeVisible();
       await expect(page.getByText('No Person Lookup runs', { exact: true })).toBeVisible();
       await page.reload();
 

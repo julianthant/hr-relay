@@ -186,6 +186,7 @@ export function SettingsPage({
   workflowLabels,
   section,
   dataContent,
+  appearance,
   catalogQuery,
   catalogView,
   onCatalogQuery,
@@ -206,6 +207,7 @@ export function SettingsPage({
   /** the open section id — `""` is the page's own default, from `?settings=` */
   section: string;
   dataContent?: ReactNode;
+  appearance?: ReactNode;
   /**
    * The `ui-catalog` section's own two route keys (D295). They are threaded
    * through rather than held here for the reason `?catalogView=` was made
@@ -287,7 +289,6 @@ export function SettingsPage({
           "border-r border-[color:var(--ds-border)] bg-[var(--ds-surface-1)] px-[var(--ds-space-loose)] py-[var(--ds-space-section)]",
         )}
       >
-        <h2 className="m-0 px-[var(--ds-space-cozy)] text-[length:var(--ds-text-display)] leading-[var(--ds-lh-settings-sidebar-title)] font-semibold text-[color:var(--ds-fg)]">Settings</h2>
         {groups.map((group) => (
           <div key={group.id} className="flex min-w-0 flex-col gap-[var(--ds-space-hair)]">
             <span className="px-[var(--ds-space-cozy)] pb-[var(--ds-space-snug)] text-[length:var(--ds-text-title)] font-normal normal-case tracking-normal text-[color:var(--ds-fg-muted)]">
@@ -346,7 +347,7 @@ export function SettingsPage({
         {resolution.state === "open" && resolution.entry.id === SETTINGS_PREFLIGHT_SECTION_ID && <PreflightSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id === "routes" && <RoutesSection editor={editor} />}
         {resolution.state === "open" && resolution.entry.id !== "routes" && EditableSettingsSectionIdSchema.safeParse(resolution.entry.id).success && (
-          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} />
+          <EditableSettingsSection editor={editor} sectionId={resolution.entry.id} appearance={appearance} />
         )}
         {resolution.state === "open" && resolution.entry.id === "credentials" && <SettingsAuthoritySection editor={editor} sectionId="credentials" />}
         {resolution.state === "open" && resolution.entry.id === SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID && (

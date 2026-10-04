@@ -52,7 +52,7 @@ The dashboard stylesheet imports this theme. Its neutral DS, content-body, Setti
 resolve to the shared palette across the dashboard; `.ui-theme-scope` groups migrated presentation
 utilities but does not gate those aliases. Activity, Explorer, Logs, Sessions, the navbar and
 notifications use the `ui-*`, typography and `font-*` utilities. Presentation seams are `ActivityViewState`,
-`ExplorerTimeline`, `LogPanel`/`LogFeed`, `SessionsViewState`, `NavbarData` into `NavbarView`, and
+`ExplorerTimeline`, `LogPanel`/`LogFeed`, `SessionsViewState`, `NavbarData` into `RailSearch` through `WorkspaceRail`, and
 `NotificationsState` into `NotificationsView`. Current producers use local fixtures; approved backend
 wiring must feed the same renderers and interactions.
 

@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
 import { Banner, Button, FormGroup, PageHeading, Spinner, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
@@ -10,8 +11,8 @@ import { CompactSettingsSection } from "./ui-settings-records-general-paths.js";
 import { PerformanceSettingsSection } from "./ui-settings-records-performance.js";
 import { ProviderSettingsSection } from "./settings-provider.js";
 
-export function EditableSettingsSection({ editor, sectionId }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string }) {
-  if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} />;
+export function EditableSettingsSection({ editor, sectionId, appearance }: { editor: ReturnType<typeof useEditableSettings>; sectionId: string; appearance?: ReactNode }) {
+  if (sectionId === "general" || sectionId === "paths") return <CompactSettingsSection editor={editor} sectionId={sectionId} appearance={appearance} />;
   if (sectionId === "performance") return <PerformanceSettingsSection editor={editor} />;
   if (sectionId === "providers") return <ProviderSettingsSection editor={editor} />;
   if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;

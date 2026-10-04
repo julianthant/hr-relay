@@ -8,6 +8,8 @@ import { MockArchiveWorkspace as ArchiveWorkspace } from "../surfaces/archive-mo
 import { WorkflowExplorer } from "../surfaces/explorer.js";
 import { IntakeWorkspace } from "../surfaces/intake.js";
 import { DEFAULT_CATALOG_VIEW } from "../surfaces/row-catalog-model.js";
+import { AppearanceSettings } from "../surfaces/appearance-settings.js";
+import type { DemoTheme } from "../ds/ui.js";
 import { SettingsPage } from "../surfaces/settings.js";
 import {
 RUN_START_DOOR_ID,
@@ -20,13 +22,13 @@ routeWithoutTakeovers,
 type AppRouteState
 } from "./url-state.js";
 export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
- workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,children}: {
+ workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,theme,onToggleTheme,children}: {
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
  workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  supportsDryRun: boolean;
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
- onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; children: ReactNode;
+ onSettingsExitGuardChange: (guard: SettingsExitGuard | undefined) => void; theme: DemoTheme; onToggleTheme: () => void; children: ReactNode;
 }) {
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
@@ -44,7 +46,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
  : dataSection === "explorer" ? <WorkflowExplorer /> : undefined;
  return (takeover === "settings" || dataContent !== undefined ? (
             <SettingsPage
-              storage={boot.storage}
+              storage={boot.storage} appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}
               sections={settingsSections}
               workflowLabels={workflowLabels}
               section={route.settings ?? dataSection ?? ""}

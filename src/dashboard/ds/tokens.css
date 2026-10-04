@@ -1658,33 +1658,9 @@ body[data-demo-theme="light"] {
 .ds-search-field [data-slot="search-field-input"] { min-width: 0; width: 100%; font-size: var(--ds-text-ui); }
 .ds-search-shortcut { margin-right: var(--ds-space-base); color: var(--ds-fg-muted); }
 
-.navbar-shell {
-  display: grid;
-  grid-template-columns: auto minmax(220px, 1fr) auto;
-}
-
-.navbar-search {
-  width: 100%;
-  max-width: 460px;
-  justify-self: center;
-}
-
-.navbar-search [data-slot="search-field-group"] {
-  height: 36px;
-}
-
-.navbar-search [data-slot="search-field-input"] {
-  font-size: var(--text-control);
-}
-
 .navbar-search-command [cmdk-list] { max-height: 360px; padding-inline: var(--ds-space-base); }
 .navbar-search-command [cmdk-item] { border-radius: var(--ds-radius-lg); padding: var(--ds-space-base); }
 
-@media (min-width: 1400px) {
-  .navbar-shell {
-    grid-template-columns: minmax(0, 1fr) 460px minmax(0, 1fr);
-  }
-}
 
 .ds-body-scope .ds-date-picker--inline {
   display: flex;

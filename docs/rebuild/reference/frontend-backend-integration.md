@@ -2661,7 +2661,7 @@ measurement, not a regression — which is exactly why the row is reported three
 once. A table where the unchanged rows had also "improved" would have been measuring the machine.
 
 **What the second half of D4 — the `memo` work — did and did not buy, stated rather than measured.**
-`QueuePanel`, `TopBar` and `LogPanel` are now `memo`'d and every prop the app hands them is stable
+`QueuePanel`, `WorkspaceRail` and `LogPanel` are `memo`'d (the 2026-10-04 operator amendment replaces TopBar with WorkspaceRail) and every prop the app hands them is stable
 or primitive (`viewState`, the queue's five-closure `handlers`, `nav`, the day's three list props,
 the per-render `SettingsSectionPrimitiveSchema.array().parse`, `onDay`, `onDetailEdited`, and the
 open panel's row and served actions). The honest bound on it: the app's live instant (D256) is a

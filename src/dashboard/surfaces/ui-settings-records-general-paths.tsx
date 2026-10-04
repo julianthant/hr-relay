@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
 import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, ResultRow, Spinner, Switch, UnitField, dsText } from "../ds/ui.js";
@@ -97,17 +98,21 @@ function PathsContent({ editor }: { editor: Editor }) {
   </>;
 }
 
-export function CompactSettingsSection({ editor, sectionId }: { editor: Editor; sectionId: "general" | "paths" }) {
-  if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
-  if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
-  const document = editor.editor.document;
+export function CompactSettingsSection({ editor, sectionId, appearance }: { editor: Editor; sectionId: "general" | "paths"; appearance?: ReactNode }) {
   return <section className="settings-compact-page">
-    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "Browser behavior, display, and job end date." : "Workflow files and runtime locations."} />
-    <Form validationBehavior="aria" className="settings-compact-form" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
+    <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "Appearance, browser behavior, display, and job end date." : "Workflow files and runtime locations."} />
+    {sectionId === "general" && appearance}
+    {editor.editor.state === "loading" ? <Spinner label="Reading editable settings" /> : editor.editor.state === "failed" ? <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner> : <CompactSettingsForm editor={editor} sectionId={sectionId} />}
+  </section>;
+}
+
+function CompactSettingsForm({ editor, sectionId }: { editor: Editor; sectionId: "general" | "paths" }) {
+  if (editor.editor.state !== "loaded") throw new Error("settings-form-document-unavailable");
+  const document = editor.editor.document;
+  return <Form validationBehavior="aria" className="settings-compact-form" onSubmit={event => { event.preventDefault(); editor.submit(); }}>
       {document.runtimeStatus.state === "restart-required" && <Banner tone="warning" title="Restart required">Settings revision {String(document.runtimeStatus.persisted.settingsRevision)} is saved; this dashboard still runs revision {String(document.runtimeStatus.active.settingsRevision)}.</Banner>}
       {editor.readProblem !== undefined && <Banner tone="warning" title="Current settings unavailable">{editor.readProblem} <Button size="sm" onClick={editor.reload}>Refresh current values</Button></Banner>}
       <SettingsSaveFeedback save={editor.save} retry={editor.retry} retryConflict={editor.submit} />
       <div className="ds-body-stack">{sectionId === "general" ? <GeneralContent editor={editor} year={document.currentFiscalYear} /> : <PathsContent editor={editor} />}</div>
-    </Form>
-  </section>;
+    </Form>;
 }

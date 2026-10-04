@@ -50,7 +50,7 @@ areas are 128px (96px for browser groups), with single previews capped at 360px.
 measure the decoded source independently of preview layout and retain explicit mismatch/decode errors.
 The Dashboard retains the approved compact operations toolbar. Settings Data pages place their
 controls in their standard Settings content.
-The Dashboard mounts the permanent workflow rail and a full-height rounded bordered queue container. The queue track uses 30% of the available workspace with a 244px minimum. Its frequent filters use Base UI ToggleGroup. Start a run, grouped status/sort controls and the date share the 48px rounded bordered Action panel above the separate Logs container, with 12px canvas gutters. Double/right-click and Shift+F10 open row
+The Dashboard mounts the permanent workflow rail and a full-height rounded bordered queue container. The queue track uses 30% of the available workspace with a 244px minimum. Its frequent filters use HeroUI Tabs with an associated content panel. Start a run, grouped status/sort controls and the date share the 48px rounded bordered Action panel above the separate Logs container, with 12px canvas gutters. Double/right-click and Shift+F10 open row
 actions; Select enters bulk mode with checkbox/count/Delete/Archive/Retry/X controls and Escape exit.
 These new actions are local mocks: Retry retains the exact authored mock settings, adds a queued
 attempt and never opens Rerun or sends a runtime command. Local counts reflect the latest mock attempt;
@@ -59,24 +59,22 @@ Run input uses the approved ordered Parsed input frame without an Examples strip
 validation, launch parsing and authority remain unchanged.
 The 2026-10-03 operator revision uses Archive, Explorer and Activity as Settings page headings,
 keeps Archive search and replaces Explorer's workflow browser with a heading dropdown.
-The 2026-10-04 revision uses HeroUI SearchField for all shared searches. The centered Navbar field
-opens a centered search dialog with keyboard Command results, a clear control and focus restoration;
+The 2026-10-04 revision uses HeroUI SearchField for editable shared searches. The workspace rail's
+Search icon opens the centered Command dialog with clear, keyboard selection and focus restoration;
 result navigation retains its disconnected notice. Status/export/choice menus use shadcn Base UI
-DropdownMenu; value controls use Base UI Select. The 48px Navbar removes RRSS HR and contains separate
-undo/redo history controls. The editable date and calendar move above Logs; the date count and
-previous/next-day arrows are removed. Workflow and Settings rails are 264px wide and extend to the
-workspace top. Settings entry keeps the rail and Navbar opaque and stationary while its content fades. Workflow scrolling retains keyboard and wheel access with the scrollbar hidden. The visible search slash hint is omitted; the shortcut remains. SelectGroup restores popup insets; menus have 6px outer and 8px item text padding. Log title bars and comparison headers have distinct opaque fills, and queue-backed log headers share the queue StatusBadge. Extra legacy workflow labels are local previews without launch authority. Notifications
-group actionable updates by workflow without snooze or desktop-delivery controls; Base UI toast cards
-preserve persistent errors, recovery actions, overlay inertness and the Sessions floor. Archive and
-Activity headers, searchable capabilities and shortcut rows follow the Settings design. Its active
-Settings gear returns through the draft guard. The selected-workflow intro/Preview paths strip is
-removed; per-form branch selectors and source returns remain. Settings navigation uses tighter 32px
-rows, 10px highlights, primary-foreground labels/icons and muted 14px group labels. Section headings
-and field labels use smaller regular type. Activity workflow rows expand supplied version details in
-a rounded opaque table. Log decision headers/bodies and comparison highlights use opaque fills;
-comparisons use bordered tables with muted headers.
-Archive's mounted original-layout mock is owned by D348 below.
-Backend classifiers and failure/resolve wiring remain deferred.
+DropdownMenu; value controls use Base UI Select, preserving 6px outer and 8px item text padding.
+The Navbar and undo/redo controls are removed. Workflow and Settings share a permanent 264px rail;
+a fixed header owns the HeroUI notification toggle and Search icon, and a fixed footer owns Settings
+or Back to workflows. Notifications replaces the rail body with grouped updates and attention/read
+filters; pinned history gaps remain distinct, and read state never resolves a pending action. Snooze
+and desktop-delivery controls remain retired. Theme preference lives in General → Appearance,
+outside runtime settings drafts. Settings content fades while the rail remains stationary and opaque.
+The date stays in the 48px Action panel above Logs. Status/sort triggers use quiet neutral fills.
+Workflow selection changes the highlight alone. Queue member checked marks and controls are retired;
+served status icons remain. Run uses a shorter frame with contrasting header/footer and an ordered
+path. Cancel keeps served consequence and exact-target facts, with safe initial focus and a separate
+identity block. The final visible log step has no bottom divider. Toasts retain shadcn Base UI
+presentation. Backend authority and deferred wiring boundaries remain unchanged.
 Owner: [dashboard presentation amendment](dashboard-surfaces.md#frontend-only-dashboard-presentation-amendment--2026-10-01).
 
 **D360 — Concise resolve and failure presentation (approved 2026-09-30):**
@@ -256,7 +254,7 @@ width without a separate operations toolbar. This changes presentation, not vers
 [approved 3.1.24 task](../plans/phase-3/3.1-finish-the-dashboard/task-24-archive-runtime-versions.md).
 
 **D347 — Remember the selected workflow and simplify the rail heading (operator direction, 2026-09-24):**
-The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 operator amendment replaces floating/docked modes with a permanent 264px rail matching Settings navigation, extending to the workspace top. Served rows retain active/all counts. Extra legacy workflow labels are marked layout previews with local sample queues/logs, without launch authority or persisted selection. The shortened Navbar contains separate history controls; the date shares the rounded bordered Action panel above Logs with Start a run and status/sort controls. The queue occupies its full rounded bordered left container; its 30% track has a 244px minimum. The containers have 12px canvas gutters. Start a run remains the single launch control; status filters and the served queue projection remain. Owner:
+The selected served workflow persists across visits and refreshes; an absent stored ID selects the first served workflow. The 2026-10-04 operator amendment replaces floating/docked modes with a permanent 264px rail matching Settings navigation, extending to the workspace top. Served rows retain active/all counts. Extra legacy workflow labels are marked layout previews with local sample queues/logs, without launch authority or persisted selection. The Navbar and history controls are retired; the rail header owns Search and the notification toggle, whose panel replaces the workflow list. Theme preference moves to General → Appearance; the date shares the rounded bordered Action panel above Logs with Start a run and status/sort controls. The queue occupies its full rounded bordered left container; its 30% track has a 244px minimum. The containers have 12px canvas gutters. Start a run remains the single launch control; status filters and the served queue projection remain. Owner:
 [dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,

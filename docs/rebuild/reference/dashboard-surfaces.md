@@ -36,8 +36,7 @@ A queue selection resets the sample selection and local decisions. The selector 
 examples. The queue occupies its full left container. Its launch, status and sort controls share the 48px Action panel above Logs with the date picker. The 2026-10-03 operator revision moves Explorer, Archive and Activity into
 Settings → Data. Their separate operations toolbars are removed. Each page uses the same
 `DsBodyScope` content cap, `PageHeading`, spacing and scroll pane as the other Settings pages;
-its actions remain in its content. The Navbar view switcher is removed; the active Settings gear
-returns to Dashboard through the Settings draft guard. Legacy data-page links remain addressable inside
+its actions remain in its content. Workspace rail Settings navigation returns to Workflows through the Settings draft guard. Legacy data-page links remain addressable inside
 Settings, including archive folders, report sections and Activity ranges. Settings drafts survive
 section changes. Spreadsheets stays in Personal with its original available-width layout, without
 an expand control. Global browser/CSS zoom stays at its original 100% sizing.
@@ -58,7 +57,7 @@ sizes, with space-aware sizing at the 1024px desktop floor. Clicking it, pressin
 Command results. Dismissal restores focus to the Navbar field. Result navigation retains its explicit
 disconnected notice. Status, export and choice menus use shadcn Base UI DropdownMenu; value controls use its Base UI Select composition. Both keep keyboard navigation and focus restoration. Popups inside dialogs portal into the owning dialog. Escape dismisses an inner Base UI popup before its enclosing dialog or drawer. Overlays register only while mounted. RRSS HR and the date count are removed. Back/Forward history controls remain separate in the shortened Navbar. The visible search shortcut hint is omitted; `/` remains available. Select items sit inside their padded SelectGroup. Menus use 6px outer insets and 8px item text insets. The editable date and calendar sit in the header above Logs and select the dashboard day.
 
-The workflow rail is permanent, 264px wide, and extends above the Navbar to the workspace top. Settings uses the same full-height rail boundary. The rail and Navbar remain opaque and fixed during entry; only Settings content fades. The workflow list remains scrollable with its scrollbar hidden. The Navbar occupies the remaining width and is 48px tall. Below it, the queue occupies a rounded bordered left container, with frequent filters in its header. The queue track uses 30% of the available workspace with a 244px minimum. Start a run, status/sort controls and the date picker occupy the rounded bordered 48px Action panel above Logs. Logs retains its own rounded bordered container; 12px canvas gutters separate the panels. Only Start a run remains as a launch control. Expanding Sessions shortens the workspace and both rails stop at its boundary. Served workflow selection stays persisted; extra labels from the legacy dashboard are explicitly marked layout previews and open fictional sample queues/logs without writing or entering the served launch catalog. Notifications group updates by workflow with Needs you, Failed, Unread and All filters. Read state does not resolve pending run actions. Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards with title, detail, action and close; errors persist until acknowledgment. Cards stay at the bottom right above Sessions and become inert while an overlay is open. Archive removes its retained-history subtitle. Activity uses a title/action row, period/data controls and separate summary cards. Capabilities has a searchable availability table, and Keyboard shortcuts has searchable grouped rows with key pills for existing bindings. Storage checks omits its empty-session sentence.
+The workspace rail is permanent, 264px wide, and starts at the workspace top. Its fixed header places the title before the HeroUI notification toggle and Search icon; Settings navigation shares the same column and fixed footer. Notifications replaces the rail body, preserving the queue and Logs. The Navbar and undo/redo controls are removed. Theme preference lives in General → Appearance, outside runtime settings drafts. Rail surfaces stay opaque and stationary during Settings entry; only Settings content fades. Workflow scrolling retains keyboard and wheel access with its scrollbar hidden. Selected workflows change their highlight without changing font size, weight or color. The queue occupies a rounded bordered left container, with frequent filters in its header. The queue track uses 30% of the available workspace with a 244px minimum. Start a run, status/sort controls and the date picker occupy the rounded bordered 48px Action panel above Logs. Logs retains its own rounded bordered container; 12px canvas gutters separate the panels. Only Start a run remains as a launch control. Expanding Sessions shortens the workspace and both rails stop at its boundary. Served workflow selection stays persisted; extra labels from the legacy dashboard are explicitly marked layout previews and open fictional sample queues/logs without writing or entering the served launch catalog. Notifications group updates by workflow with Needs you, Failed, Unread and All filters. Read state does not resolve pending run actions. Snooze and desktop-delivery controls are removed from this preview. Toasts use shadcn Base UI cards with title, detail, action and close; errors persist until acknowledgment. Cards stay at the bottom right above Sessions and become inert while an overlay is open. Archive removes its retained-history subtitle. Activity uses a title/action row, period/data controls and separate summary cards. Capabilities has a searchable availability table, and Keyboard shortcuts has searchable grouped rows with key pills for existing bindings. Storage checks omits its empty-session sentence.
 
 Settings navigation uses closely spaced 32px rows with 10px rounded highlights. Selected and
 unselected labels/icons use primary foreground; muted group labels use 14px type. Section headings
@@ -68,7 +67,7 @@ frames, headers and bodies remain opaque; comparisons use a bordered table with 
 opaque difference highlights. Log title bars and comparison table headers use fills distinct from their surrounding bodies. Queue-backed log headers render the same StatusBadge presentation as their selected queue rows.
 
 The Action panel keeps Start a run, the labelled status filter and sort together on the left, with the date picker on the right. The status menu groups Quick filters, In progress and Finished with status icons and counts.
-Frequent All/Needs you/Running filters use a Base UI ToggleGroup in the queue header and align with its cards. Double-click,
+Frequent All/Needs you/Running filters use HeroUI Tabs with a blue underline, normal-weight labels and separate counts. The selected content is an associated tabpanel; a status chosen outside these three filters receives a labelled additional tab. The status and sort triggers use quiet neutral controls within the Action panel, retaining the grouped, padded Base UI popups. Double-click,
 right-click and Shift+F10 open the row menu, whose Select item enters selection and includes that
 row. Selection replaces the filter header with a visible-row checkbox, count, Delete/Archive/Retry
 and an X exit. Escape exits selection and restores row focus. There is no toolbar Select, Done or
@@ -85,8 +84,7 @@ command-recovery feedback retain their wiring and assurances.
 
 Run input follows the approved Design 1 frame: a concise descriptor-derived input label, parser
 guidance and a framed Parsed input list with ordered entries and per-entry run counts. The existing
-Examples strip is removed; descriptor examples retain their validation contract. Options/Steps/Rerun
-layouts, parsing, source binding and live launch contracts remain unchanged.
+Examples strip is removed; descriptor examples retain their validation contract. The Run dialog uses a 920px maximum width, a 540px desktop height, a darker 208px workflow rail, an ordered path, and contrasting header/footer surfaces. Input, Options, Steps, Values and Confirm remain scrollable inside the frame. Selected workflows use a highlight without heavier typography. Cancel confirmation retains the served title, consequence copy, target and revision; it presents the subject in a distinct identity block and initially focuses the safe action. Parsing, source binding and live launch contracts remain unchanged. The final visible log step has no bottom divider, including when a scroll spacer follows it.
 
 Activity keeps four metrics in one row and stacks report sections in one full-width column. The workflow table is framed;
 `RecordTable` renders confirmed transactions and evidence coverage with shared `text-body` values
@@ -195,21 +193,19 @@ App no longer passes worker cards, pools, clock, connection/version or worker co
 UI. The former connected SessionPanel and timeline renderer are retired. Backend worker/browser
 authority remains a separate wiring task.
 
-The approved navbar is 54px tall. The left-hand date/history/calendar replaces the former RRSS HR
-brand; centered search opens the shared modal, and notifications, theme and Settings remain right.
-`TopBar` supplies local `NavbarData` to `NavbarView`, and `NotificationBell` supplies local
-`NotificationsState` to `NotificationsView`. Connected search/date renderers are retired. Search,
-date and notification examples use local fixtures; navigation and delivery placeholders invoke no API,
-command, browser permission or OS delivery path. The navbar uses the shared DatePicker described above.
-Date limits and Today remain local fixture behavior. Settings retains its existing preflight read.
+`WorkspaceRail` supplies local `NavbarData` to the icon-triggered search dialog and local
+`NotificationsState` to the inline `NotificationsView`. Search and notification examples use local
+fixtures; their navigation placeholders invoke no API, command, browser permission or OS delivery
+path. The shared DatePicker above Logs retains the route-owned date, limits and Today action.
 
-The 370px notification popover keeps its heading, filters and footer fixed while the message list scrolls.
-The pinned history-gap notice appears under every filter and has no lifecycle controls; read and snooze are
-independent, and the default four-unread count includes the pin. Removing a filtered row restores focus to
-the active filter. Empty, loading, unavailable and ping examples remain distinct. The shared semantic
-palette is authored in `src/dashboard/ds/dashboard-theme.css`; DS, body, Settings and shadcn neutral
-aliases resolve through `src/dashboard/ds/tokens.css`. Current values and presentation seams are in the
-[Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
+The notification rail keeps its filters and footer fixed while grouped updates scroll. The pinned
+history-gap notice appears under every filter and has no lifecycle controls. Read state is independent
+of pending run actions, and the default four-unread count includes the pin. Removing a filtered row
+restores focus to the active filter. Escape returns to the previous rail view and focuses the bell.
+Empty, loading, unavailable and toast examples remain distinct. Snooze remains retired. The shared
+semantic palette is authored in `src/dashboard/ds/dashboard-theme.css`; DS, body, Settings and shadcn
+neutral aliases resolve through `src/dashboard/ds/tokens.css`. Current values and presentation seams
+are in the [Dashboard theme guide](../../../src/dashboard/ds/DASHBOARD-THEME.md).
 
 The approved mixed queue presentation retains the existing system title font and monospaced gray
 footer band, with 14px top padding. Regular rows have no leading status or information icon. Bulk
@@ -222,8 +218,7 @@ Tooltips retain supplied state, duration and execution count. Terminal duration 
 instant was retained; measured zero remains visible.
 
 Operation rows show a boxed finished/total counter beside their status and an aligned Name/Status
-member table. Member status icons, attention ordering, exact run selection and local checked marks
-remain. The compact table fits five complete rows and expands to twenty; unloaded members remain a
+member table. Member status icons, attention ordering and exact run selection remain. Local checked marks, their controls and tally are retired. The compact table fits five complete rows and expands to twenty; unloaded members remain a
 distinct state. Workflow-batch items render separately even when the served session prefers grouping;
 no grouping control or grouping command is offered. Logical retry identity remains item-scoped, and
 keyboard traversal follows the visible status bands. Bands retain uppercase labels, circular counts and
@@ -7359,6 +7354,16 @@ top. It has no floating/minimized modes or display-mode shortcuts. Served rows r
 counts without a column heading. Layout-preview workflows use labels copied from the legacy demo,
 are marked Preview, and never enter the served launch catalog or persisted workflow preference.
 The queue occupies its full rounded bordered left container, with a 30% track and 244px minimum. Start a run and the status/sort controls move into the 48px rounded bordered Action panel above Logs, alongside its date picker. Logs remains a separate rounded bordered container, with 12px canvas gutters between panels. The served queue projection remains unchanged; Start a run opens the served catalog.
+The same amendment removes the navbar and its undo/redo controls. The fixed rail header owns Search
+and a HeroUI notification toggle; Notifications replaces the workflow list in that column while the
+queue and Logs stay visible. Settings uses the same header and a guarded Back to workflows exit.
+Theme is a browser preference in General → Appearance, independent of the runtime settings draft.
+Workflow selection changes only its highlight. HeroUI tabs own the frequent queue filters and their
+associated content panel; status/sort popup triggers use the compact Action panel treatment. Local
+member check marks are retired while served outcomes remain. The final visible log step has no
+trailing divider. Run and Cancel dialogs retain served launch authority, target revision and
+consequence copy; cancellation initially focuses the safe action.
+
 
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)
 

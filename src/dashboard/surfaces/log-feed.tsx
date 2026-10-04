@@ -103,7 +103,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
         const content = afterStep?.(step.id);
         return content == null ? null : <div key={step.id}>{content}</div>;
       })}
-      {visible.map(step => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className="grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-b border-ui-stroke py-5 first:pt-0 last:border-b-0">
+      {visible.map((step, index) => <section key={step.id} aria-labelledby={`${id}-${step.id}`} className={cn("grid min-w-0 grid-cols-[var(--spacing-log-time)_minmax(0,1fr)] gap-x-4 border-ui-stroke py-5 first:pt-0", index < visible.length - 1 && "border-b")}>
         <time className={cn("font-data text-caption tabular-nums text-ui-muted", step.header === false ? "pt-4" : "pt-0.5")}>{step.time}</time>
         <div className="min-w-0">
           <header className={step.header === false ? "sr-only" : "mb-4 flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1"}><h3 id={`${id}-${step.id}`} ref={node => { if (node) headings.current.set(step.id, node); else headings.current.delete(step.id); }} tabIndex={-1} className="m-0 rounded-sm text-heading focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-ui-info">{step.title}</h3>{step.system && <span className="inline-flex items-center gap-1.5 border-l border-ui-stroke pl-3 text-body text-ui-muted"><Monitor aria-hidden className="size-3.5" />{step.system}</span>}</header>
