@@ -1,6 +1,5 @@
 .mock-archive-canvas { min-width: 0; }
 .mock-archive .ds-page-heading { align-items: center; }
-.mock-archive-toolbar-count { color: var(--ds-fg-muted); font-size: 12px; white-space: nowrap; }
 .mock-archive-search {
  width: 310px; height: 34px;
 }

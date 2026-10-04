@@ -108,23 +108,10 @@
 .spreadsheet-dialog .spreadsheet-mapping-row {
   @apply grid grid-cols-[minmax(170px,1fr)_18px_minmax(180px,1fr)] items-center gap-3 px-3 py-[5px];
 }
-/* One selection surface moves between connected tabs; content changes immediately. */
-.spreadsheet-tabs {
-  @apply relative mb-[22px] inline-grid grid-cols-2 self-start rounded-[7px] border border-ui-stroke bg-ui-canvas p-[3px];
-}
-.spreadsheet-tabs [data-slot="tabs-trigger"] {
-  @apply z-10 m-0 h-8 justify-center whitespace-nowrap border-0 bg-transparent px-3 text-body font-medium;
-}
-.spreadsheet-tabs [data-state="active"] {
-  @apply font-semibold text-ui-primary;
-}
-.spreadsheet-tabs-indicator {
-  @apply pointer-events-none absolute inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-md bg-ui-hover;
-  transition: transform var(--ds-dur-move) var(--ds-ease-standard);
-}
-.spreadsheet-tabs-indicator[data-types] { transform: translateX(100%); }
-@media (prefers-reduced-motion: reduce) {
-  .spreadsheet-tabs-indicator { transition-property: opacity; }
+.spreadsheet-workspace {
+  --ds-accent: var(--ui-info);
+  --ds-accent-hover: var(--ui-info);
+  --ds-accent-fg: var(--ui-canvas);
 }
 .spreadsheet-detail-tools .ds-choice-picker > button {
   @apply h-8;

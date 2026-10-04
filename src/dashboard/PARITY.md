@@ -49,7 +49,8 @@ The date field above Logs keeps its own exterior; Navbar history controls are se
 share the product palette. Activity endpoints appear only for Custom; either
 endpoint opens the centered shared range picker, and the second date commits without footer controls.
 Archive and Search retain open-ended field entry.
-Spreadsheet Settings uses connected tabs with a sliding selection surface and reduced-motion support.
+The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Settings heading, ordinary
+buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
 The Focus Archive replacement was rejected on 2026-10-03. Focused desktop dark/light interaction checks
 cover the changes; frozen reference screenshots remain unchanged. Mock workflows are presentation only and cannot start runs.
 

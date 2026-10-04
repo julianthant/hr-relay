@@ -65,7 +65,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
       <option value="all">All outcomes</option><option value="done">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option>
     </Select>
   </div>}
-  {folder === null && report === undefined && !invalid && !unavailable && <div className="flex items-center gap-3"><span className="mock-archive-toolbar-count" role="status">{rows.length} matching reports</span>{filtered && <Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button>}</div>}
+  {folder === null && report === undefined && !invalid && !unavailable && filtered && <div><Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button></div>}
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable" message="Choose a workflow to browse its saved reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />

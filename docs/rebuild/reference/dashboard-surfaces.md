@@ -6785,9 +6785,9 @@ controls, with three columns for checkbox options. Workflow version appears in O
 the footer shows the input count and workflow, or the source/new-run context.
 Checkboxes align with their titles; prior step outcomes use compact status labels beside the title.
 The source-history note stays at the bottom of the Rerun rail. Date popovers anchor to the input field.
-Peer controls in a row use the same height; spreadsheet Settings tabs form one connected control without
-a hover background. Its persistent selection surface slides with the shared 220ms move timing; rapid
-changes retarget the transition, and reduced motion changes selection without travel.
+Peer controls in a row use the same height. The 2026-10-04 operator revision makes spreadsheet Settings
+use the shared Settings PageHeading, ordinary buttons with 14px icons, and underline tabs. It retains
+the existing theme and blue spreadsheet accent.
 Options use styled workbook choices, segmented priority/browser controls and compact fixed facts.
 Rerun pre-fills only available, declared input identifiers from the source, retaining copy attribution
 until edited. Dates and other previous values remain explicit copy actions. Real descriptor fields,
@@ -7419,7 +7419,8 @@ remain locally persisted and drive run search and queue shortcuts.
 
 Archive version groups show report counts instead of archived dates. Folder and report views use the same
 breadcrumb → focused heading/actions → controls/table structure as the spreadsheet viewer. They omit the
-second Archive heading, duplicate version/count metadata, redundant scope dropdowns and table count footer.
+second Archive heading, duplicate version/count metadata, redundant scope dropdowns, table count footer,
+and overview matching-report count.
 Search and completed-date filters remain available. Export and version-bump actions stay beside the focused
 title. Activity calendars appear only for Custom, with the same typography as the period control. Time saved
 shows an explicit estimate, included-run/workflow coverage, manual versus assisted totals, percentage saved,

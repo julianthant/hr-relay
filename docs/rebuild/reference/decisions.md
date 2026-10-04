@@ -259,6 +259,7 @@ The selected served workflow persists across visits and refreshes; an absent sto
 [dashboard-surfaces §9.9](dashboard-surfaces.md#d347--workflow-rail-selection-and-heading--2026-09-24).
 The 2026-10-04 density amendment adds category-heading icons, compact shortcut rows without Run/workflow number-key navigation, equal Storage spacing, count-led Archive folder headers, Custom-only Activity calendars, explicit savings estimates and a faded Sessions hover boundary.
 The alignment amendment aligns HR GPT with category icons and the search glyph with row counts; notifications use 28px underline tabs and a 28px category control with one 14px icon.
+Spreadsheets uses the shared Settings PageHeading, ordinary buttons with 14px icons and underline tabs while preserving its theme and blue accent. Archive omits the overview matching-report count.
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including

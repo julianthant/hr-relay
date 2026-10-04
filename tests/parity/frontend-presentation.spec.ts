@@ -59,7 +59,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         expect((await page.getByRole('banner').boundingBox())!.height).toBe(48);
         if (title === "Archive") {
           await expect(page.getByRole("textbox", { name: "Search saved reports" })).toHaveCount(1);
-          await expect(body).toContainText('30 matching reports');
+          await expect(body.getByText(/^\d+ matching reports$/u)).toHaveCount(0);
           await page.getByRole('region', { name: 'Dashboard 1.3', exact: true }).getByRole('button', { name: /^Separations/u }).click();
           const search = page.getByRole("textbox", { name: "Search saved reports" });
           await search.focus();
