@@ -5,7 +5,8 @@ import { Command, CommandInput, CommandEmpty, CommandGroup, CommandItem, Command
 import { Popover as SearchPopover, PopoverAnchor as SearchPopoverAnchor, PopoverContent as SearchPopoverContent } from "../../ds/popover.js";
 import { cn } from "../../lib/utils.js";
 import type { NavControls } from "../navigation-controls.js";
-import { navbarDayLabel, navbarSearch, type NavbarData, type NavbarSearchResult } from "./navbar-view-model.js";
+import type { ShellView, ShellViewSelection } from "../top-bar-model.js";
+import { NAVBAR_VIEWS, navbarDayLabel, navbarSearch, type NavbarData, type NavbarSearchResult } from "./navbar-view-model.js";
 
 const iconButton = cn("inline-flex size-7.5 shrink-0 items-center justify-center rounded-md text-ui-secondary hover:bg-ui-hover hover:text-ui-primary disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent", dsFocus);
 
@@ -71,15 +72,16 @@ export function NavbarCalendar({ data }: { data: NavbarData }) {
   </div>;
 }
 
-export function NavbarView({ data, onDashboard, nav, theme, onToggleTheme, settingsOpen, onOpenSettings, onResult, notifications }: {
-  data: NavbarData; onDashboard: () => void; nav: NavControls;
+export function NavbarView({ data, view, onView, nav, theme, onToggleTheme, settingsOpen, onOpenSettings, onResult, notifications }: {
+  data: NavbarData; view: ShellViewSelection; onView: (view: ShellView) => void; nav: NavControls;
   theme: DemoTheme; onToggleTheme: () => void; settingsOpen: boolean; onOpenSettings: () => void;
   onResult: (result: NavbarSearchResult) => void; notifications: ReactNode;
 }) {
   return <header role="banner" className="navbar-shell ui-theme-scope h-13.5 shrink-0 items-center gap-3 border-b border-ui-stroke bg-ui-panel px-3 font-ui text-ui-primary min-[1151px]:px-4">
     <div className="flex min-w-0 items-center gap-2 min-[1151px]:gap-3">
-    <h1 aria-label="RRSS HR" className="m-0 shrink-0 whitespace-nowrap text-control font-semibold tracking-[var(--ds-tracking-brand)]"><button type="button" aria-label="Dashboard" onClick={onDashboard} className={cn("rounded", dsFocus)}>RRSS HR</button></h1>
+    <h1 className="m-0 shrink-0 whitespace-nowrap text-control font-semibold tracking-[var(--ds-tracking-brand)]">RRSS HR</h1>
     <div className="flex shrink-0 border-l border-ui-stroke pl-2 min-[1151px]:ml-1 min-[1151px]:pl-2.5"><button type="button" aria-label="Back" title={nav.backTo ? `Back to ${nav.backTo}` : "Back"} disabled={!nav.canBack} className={cn(iconButton, "size-7")} onClick={nav.onBack}><ArrowLeft aria-hidden className="size-3.5" /></button><button type="button" aria-label="Forward" title={nav.forwardTo ? `Forward to ${nav.forwardTo}` : "Forward"} disabled={!nav.canForward} className={cn(iconButton, "size-7")} onClick={nav.onForward}><ArrowRight aria-hidden className="size-3.5" /></button></div>
+    <nav aria-label="Main navigation" className="flex shrink-0 items-center gap-0.5 rounded-lg border border-ui-stroke bg-ui-canvas p-0.5">{NAVBAR_VIEWS.map(item => <button type="button" key={item.id} aria-pressed={view === item.id} onClick={() => onView(item.id)} className={cn("h-6.5 rounded px-2 text-body hover:bg-ui-hover", dsFocus, view === item.id ? "bg-ui-table font-semibold text-ui-primary" : "font-medium text-ui-secondary")}>{item.label}</button>)}</nav>
     </div>
     <NavbarSearch data={data} onResult={onResult} />
     <div className="flex shrink-0 items-center justify-end gap-3"><NavbarCalendar data={data} />

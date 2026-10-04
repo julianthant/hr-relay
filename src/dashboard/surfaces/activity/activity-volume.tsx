@@ -35,11 +35,10 @@ export function ActivityVolume({ volume }: { volume?: Volume }) {
     const bounds = area.current.getBoundingClientRect();
     const anchor = button.getBoundingClientRect();
     const size = tooltip.current.getBoundingClientRect();
-    const scale = bounds.width / Number.parseFloat(getComputedStyle(area.current).width);
     setPosition({
       key: bucketKey,
-      left: Math.max(0, Math.min(anchor.left - bounds.left + anchor.width / 2 - size.width / 2, bounds.width - size.width)) / scale,
-      top: Math.max(0, (bounds.height * .8125 * (1 - barHeight / 100) - size.height) / scale - 8),
+      left: Math.max(0, Math.min(anchor.left - bounds.left + anchor.width / 2 - size.width / 2, bounds.width - size.width)),
+      top: Math.max(0, bounds.height * .8125 * (1 - barHeight / 100) - size.height - 8),
     });
   }, [bucketKey, barHeight, intervalLabel, bucketCount, width]);
   return <section aria-labelledby={`${tooltipId}-heading`} className="min-w-0">

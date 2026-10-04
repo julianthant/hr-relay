@@ -33,9 +33,6 @@ export type SettingsNavIcon =
   | "keyboard"
   | "ui-catalog"
   | "unrendered"
-  | "explorer"
-  | "archive"
-  | "activity"
   | "spreadsheets";
 
 
@@ -101,7 +98,7 @@ export interface SettingsNavEntry {
 
 
 export interface SettingsNavGroup {
-  readonly id: "personal" | "data" | "status" | "help";
+  readonly id: "personal" | "status" | "help";
   readonly heading: string;
   readonly entries: readonly SettingsNavEntry[];
 }
@@ -122,7 +119,6 @@ export const SETTINGS_KEYBOARD_SECTION_ID = "keyboard";
  */
 export const SETTINGS_UI_CATALOG_SECTION_ID = "ui-catalog";
 export const SETTINGS_PREFLIGHT_SECTION_ID = "preflight";
-export const SETTINGS_DATA_SECTION_IDS = ["explorer", "archive", "activity", "spreadsheets"] as const;
 
 
 /**
@@ -155,9 +151,11 @@ export function settingsCloseFocusTargetId(gearMounted: boolean): string {
 
 
 /**
+ * The demo's three nav groups, minus the ones this build has no member for.
+ *
  * The approved Settings page list stays available while the current editor
  * projection loads or fails. Each page still reads its values and edit
- * authority from the served projection; Data, Status and Help remain independent.
+ * authority from the served projection; Status and Help remain independent.
  */
 export function buildSettingsNav(
   sections: readonly SettingsSection[],
@@ -168,6 +166,7 @@ export function buildSettingsNav(
     clientEntry("general", "General", "general"),
     clientEntry("performance", "Performance", "performance"),
     clientEntry("paths", "Paths", "paths"),
+    clientEntry("spreadsheets", "Spreadsheets", "spreadsheets"),
     clientEntry("routes", "Routes", "routes"),
     clientEntry("providers", "Provider budgets & models", "performance"),
     clientEntry("credentials", "Credentials", "general"),
@@ -175,8 +174,6 @@ export function buildSettingsNav(
       .map(section => servedEntry(section.id, section.label)) ?? []),
   ];
   groups.push({ id: "personal", heading: "Personal", entries });
-  groups.push({ id: "data", heading: "Data", entries: SETTINGS_DATA_SECTION_IDS.map(id => clientEntry(id,
-    id === "explorer" ? "Explorer" : id === "archive" ? "Archive" : id === "activity" ? "Activity" : "Spreadsheets", id)) });
   const statusEntries: SettingsNavEntry[] = [];
   for (const section of sections) {
     statusEntries.push(servedEntry(section.id, section.label));

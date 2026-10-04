@@ -71,9 +71,8 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
     const viewport = scroller.current;
     if (!section || !viewport) throw new Error("log-initial-step-missing");
     const style = getComputedStyle(viewport);
-    const scale = Number.parseFloat(getComputedStyle(document.documentElement).zoom || "1");
-    if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.offsetHeight - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom))}px`;
-    viewport.scrollTop += (section.getBoundingClientRect().top - viewport.getBoundingClientRect().top) / scale - Number.parseFloat(style.paddingTop);
+    if (end.current) end.current.style.height = `${Math.max(0, viewport.clientHeight - section.getBoundingClientRect().height - Number.parseFloat(style.paddingTop) - Number.parseFloat(style.paddingBottom))}px`;
+    viewport.scrollTop += section.getBoundingClientRect().top - viewport.getBoundingClientRect().top - Number.parseFloat(style.paddingTop);
   }, [initialStepId]);
   useEffect(() => () => { if (jumpFrame.current !== undefined) cancelAnimationFrame(jumpFrame.current); }, []);
   const jump = (stepId: string) => {

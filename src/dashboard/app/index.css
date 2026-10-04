@@ -26,23 +26,6 @@
 
 @custom-variant dark (&:is(.dark *));
 
-html[data-dashboard-density="compact"] {
-  --dashboard-scale: 0.9;
-  zoom: var(--dashboard-scale);
-}
-
-html[data-dashboard-density="compact"] [data-app-root] {
-  height: calc(100dvh / var(--dashboard-scale));
-}
-
-/* Floating libraries position in viewport pixels; scale their content separately. */
-html[data-dashboard-density="compact"] [data-radix-popper-content-wrapper] {
-  zoom: calc(1 / var(--dashboard-scale));
-}
-html[data-dashboard-density="compact"] [data-radix-popper-content-wrapper] > * {
-  zoom: var(--dashboard-scale);
-}
-
 :root {
   --background: hsl(30 28.5714% 97.2549%);
   --foreground: hsl(12 21.7391% 9.0196%);
@@ -226,19 +209,7 @@ html[data-dashboard-density="compact"] [data-radix-popper-content-wrapper] > * {
 
 .settings-takeover { background: var(--ds-body-surface-page); }
 .settings-content { min-width: 0; }
-.settings-content.settings-data-workspace {
-  padding: 0;
-  overflow: hidden;
-  container: settings-data / inline-size;
-}
 .settings-tab-body { width: 100%; flex: none; margin-inline: auto; }
-.settings-tab-body:has(.spreadsheet-workspace[data-expanded="true"]) { max-width: none; }
-
-@container settings-data (width < 1100px) {
-  .operations-toolbar > [role="group"] { height: auto; flex-wrap: wrap; }
-  .activity-toolbar-controls { flex-wrap: wrap; min-width: 0; max-width: 100%; }
-  .settings-data-workspace .mock-archive-filters { grid-template-columns: minmax(190px, 1fr) minmax(130px, 1fr); }
-}
 .settings-page-panel {
   width: 100%;
   min-width: 0;

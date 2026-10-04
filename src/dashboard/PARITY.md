@@ -4,19 +4,6 @@ Read before changing a listed deviation or judging reference parity. These are o
 exceptions, moved from the instruction pair on 2026-09-04; relocation does not revoke them.
 The current owning contracts supersede dated claims. `DESIGN.md` remains the visual authority.
 
-## Compact density and Settings Data (2026-10-03)
-
-The operator's 90% view becomes the dashboard's normal density through a shared 0.9 layout scale.
-The shell still fills the viewport. Portalled dialogs, menus and calendars share the scale; floating
-positions, chart tooltips and log scroll targets remain aligned. Browser zoom remains available.
-The Navbar view switcher is removed. Its RRSS HR brand returns to Dashboard through the existing
-Settings draft guard. Settings adds Data with Explorer, Archive, Activity and Spreadsheets. Existing
-Archive, Activity and Explorer URLs retain their page state inside Settings. Data workspaces use the
-remaining pane width with contained scrolling and wrapping toolbars/filters. Spreadsheets opens at
-the normal Settings content cap; Expand/Collapse changes width while preserving workbook, sheet and
-search. Leaving the section resets expansion. Focused desktop dark/light checks cover this revision;
-frozen screenshots remain unchanged under the Phase 3.1 gate cadence.
-
 ## Approved mixed queue presentation (2026-10-01)
 
 The operator-approved queue and navbar presentation is owned by the

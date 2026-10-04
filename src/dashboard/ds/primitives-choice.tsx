@@ -25,7 +25,7 @@ export function ChoicePicker({ label, value, options, onChange, disabled, hideLa
       <DropdownMenuTrigger asChild><Button id={id} disabled={disabled} aria-label={`${selected.label} ${label}`} className="w-full justify-between">
         <span className="min-w-0 flex-1 truncate text-left">{selected.label}</span><ChevronDown aria-hidden data-icon="inline-end" />
       </Button></DropdownMenuTrigger>
-      <DropdownMenuContent aria-label={label} className="w-[calc(var(--radix-dropdown-menu-trigger-width)/var(--dashboard-scale,1))]">
+      <DropdownMenuContent aria-label={label} className="w-[var(--radix-dropdown-menu-trigger-width)]">
         <DropdownMenuGroup><DropdownMenuRadioGroup value={value} onValueChange={next => { onChange(next); setOpen(false); }}>
           {options.map(option => <DropdownMenuRadioItem key={option.value} value={option.value} aria-label={option.label} aria-description={option.description}>
             <span className="flex min-w-0 flex-col gap-0.5"><span>{option.label}</span>{option.description && <span className="text-caption text-ui-muted">{option.description}</span>}</span>

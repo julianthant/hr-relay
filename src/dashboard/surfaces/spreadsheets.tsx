@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { ArrowLeft, ArrowRight, FileSpreadsheet, Maximize2, Minimize2, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, FileSpreadsheet, X } from "lucide-react";
 import { Banner, Button, ChoicePicker, Dialog, DialogBody, DialogContent, DialogFooter, Field, IconButton, Input, SearchInput, Tab, TabList, TabPanel, Tabs, dsIcon, useToasts } from "../ds/ui.js";
 import { SpreadsheetImportDialog } from "./spreadsheet-import.js";
 import { SpreadsheetTable } from "./spreadsheet-table.js";
@@ -43,7 +43,6 @@ function SpreadsheetTypeDialog({ open, onOpenChange, type }: { open: boolean; on
 
 export function SpreadsheetsSettings() {
   const { files, types } = useSpreadsheetMocks();
-  const [expanded, setExpanded] = useState(false);
   const [tab, setTab] = useState<"registered" | "types">("registered");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -60,16 +59,15 @@ export function SpreadsheetsSettings() {
   const rows = selected ? searchMockSpreadsheet(selected, sheetName, dataQuery) : [];
   const sheet = selected?.sheets.find(entry => entry.name === sheetName);
   const fields = sheet ? [...new Set(sheet.mapping.filter(field => field !== "Not used" && field !== "Keep in workbook only"))] : [];
-  const expandButton = <Button variant="secondary" aria-label={expanded ? "Collapse spreadsheets" : "Expand spreadsheets"} aria-expanded={expanded} icon={expanded ? <Minimize2 aria-hidden className={dsIcon.sm} /> : <Maximize2 aria-hidden className={dsIcon.sm} />} onClick={() => setExpanded(current => !current)}>{expanded ? "Collapse" : "Expand"}</Button>;
-  return <section aria-label="Spreadsheets" data-expanded={expanded} className="launch-design spreadsheet-workspace min-w-0 text-body">
+  return <section aria-label="Spreadsheets" className="launch-design spreadsheet-workspace min-w-0 text-body">
     {selected ? <>
       <Button variant="ghost" icon={<ArrowLeft aria-hidden className={dsIcon.sm} />} className="mb-[19px] h-auto p-0 text-ui-secondary" onClick={() => setSelectedId(null)}>Spreadsheets</Button>
-      <div className="mb-[22px] flex flex-wrap items-start justify-between gap-5"><div className="min-w-0"><h2 className="break-words text-section font-semibold">{selected.name}</h2><p className="mt-[5px] text-ui-secondary">{types.find(type => type.id === selected.typeId)?.name} · {selected.sheets.length} sheets · {spreadsheetFields(selected).length} mapped fields</p></div><div className="flex flex-wrap gap-2">{expandButton}<Button variant="secondary" onClick={() => { setEditing(selected); setImportOpen(true); }}>Edit column mappings</Button></div></div>
+      <div className="mb-[22px] flex items-start justify-between gap-5"><div className="min-w-0"><h2 className="break-words text-section font-semibold">{selected.name}</h2><p className="mt-[5px] text-ui-secondary">{types.find(type => type.id === selected.typeId)?.name} · {selected.sheets.length} sheets · {spreadsheetFields(selected).length} mapped fields</p></div><Button variant="secondary" onClick={() => { setEditing(selected); setImportOpen(true); }}>Edit column mappings</Button></div>
       <div className="spreadsheet-detail-tools mb-[14px] flex flex-wrap items-end gap-x-[18px] gap-y-3"><ChoicePicker label="Sheet" value={sheetName} options={selected.sheets.map(entry => ({ value: entry.name, label: entry.name }))} onChange={setSheetName} className="w-[160px] shrink-0" /><div className="min-w-[180px] max-w-[340px] flex-1"><SearchInput aria-label="Search mapped data" placeholder="Search name, EID, PID, email…" value={dataQuery} onChange={event => setDataQuery(event.target.value)} onClear={() => setDataQuery("")} className="rounded-md!" /></div><p className="ml-auto shrink-0 whitespace-nowrap text-right text-caption text-ui-muted">Search uses every mapped field.</p></div>
       <SpreadsheetTable label="Registered spreadsheet rows" fields={fields} rows={rows} rowStart={(sheet?.headerRow ?? 0) + 1} rowNumbers={rows.map(row => MOCK_ROSTER_ROWS.indexOf(row) + (sheet?.headerRow ?? 0) + 1)} />
       <p className="mt-3 text-caption text-ui-muted">{rows.length} fictional records shown</p>
     </> : <>
-      <header className="mb-[22px] flex flex-wrap items-start justify-between gap-5"><div><h2 className="text-section font-semibold">Spreadsheets</h2><p className="mt-[5px] text-ui-secondary">Manage registered files and reusable spreadsheet types.</p></div><div className="flex flex-wrap gap-2">{expandButton}<Button variant="primary" onClick={() => { if (tab === "registered") { setEditing(undefined); setImportOpen(true); } else { setViewType(undefined); setTypeOpen(true); } }}>{tab === "registered" ? "Import spreadsheet" : "Add spreadsheet type"}</Button></div></header>
+      <header className="mb-[22px] flex items-start justify-between gap-5"><div><h2 className="text-section font-semibold">Spreadsheets</h2><p className="mt-[5px] text-ui-secondary">Manage registered files and reusable spreadsheet types.</p></div><Button variant="primary" onClick={() => { if (tab === "registered") { setEditing(undefined); setImportOpen(true); } else { setViewType(undefined); setTypeOpen(true); } }}>{tab === "registered" ? "Import spreadsheet" : "Add spreadsheet type"}</Button></header>
       <Tabs value={tab} onValueChange={value => { setTab(value as "registered" | "types"); setSelectedId(null); }}>
       <TabList label="Spreadsheet settings" className="spreadsheet-tabs"><span aria-hidden className="spreadsheet-tabs-indicator" data-types={tab === "types" || undefined} /><Tab value="registered" count={files.length}>Registered spreadsheets</Tab><Tab value="types" count={types.length}>Spreadsheet types</Tab></TabList>
       <TabPanel value="registered">
