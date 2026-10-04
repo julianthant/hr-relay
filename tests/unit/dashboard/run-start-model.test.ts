@@ -18,6 +18,7 @@ import {
   foldStepOmissionFacts,
   forcedStepOmissions,
   initialStepOmissionDraft,
+  inputRunDelimiterHint,
   omittedStepViews,
   runControlGroups,
   startRequestFingerprint,
@@ -27,13 +28,23 @@ import {
 } from "../../../src/dashboard/surfaces/run-start-model.js";
 import { versionTag } from "../../../src/dashboard/surfaces/format.js";
 
-describe("the descriptor version in the Run Modal footer (C96)", () => {
+describe("the descriptor version in Run Modal facts (C96)", () => {
   it("prints the stored integer with no fabricated minor version", () => {
     for (const descriptor of WORKFLOW_DESCRIPTORS) {
       const tag = versionTag(descriptor.version);
       assert.equal(tag, `v${String(descriptor.version)}`, `${descriptor.id} footer tag`);
       assert.doesNotMatch(tag, /\./u, `${descriptor.id} has no recorded minor version`);
     }
+  });
+});
+
+describe("compact input guidance follows the declared parser", () => {
+  it("names only the accepted separators", () => {
+    const rules = [{ when: { kind: "otherwise" as const }, emit: "eid" }];
+    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "whole-text" } }), "Enter one value.");
+    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["\n"] } }), "Separate values with a new line.");
+    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["\n", ";", ","] } }), "Separate values with a new line or a semicolon or a comma.");
+    assert.equal(inputRunDelimiterHint({ rules, split: { kind: "delimited", delimiters: ["|"] } }), 'Separate values with "|".');
   });
 });
 

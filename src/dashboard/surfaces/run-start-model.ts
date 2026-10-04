@@ -15,6 +15,13 @@ import {
   type StepOmissionField,
   type StepOmissionForm,
 } from "../../domain/workflow/step-omission.js";
+import type { InputParserSpec } from "../../domain/workflow/ingress.js";
+
+export function inputRunDelimiterHint(parser: InputParserSpec): string {
+  if (parser.split.kind === "whole-text") return "Enter one value.";
+  const delimiters = parser.split.delimiters.map(delimiter => delimiter === "\n" ? "a new line" : delimiter === ";" ? "a semicolon" : delimiter === "," ? "a comma" : JSON.stringify(delimiter));
+  return `Separate values with ${delimiters.join(" or ")}.`;
+}
 
 /**
  * Why THIS DIALOG cannot start a workflow.

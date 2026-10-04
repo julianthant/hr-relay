@@ -16,7 +16,7 @@ for (const viewport of [{ name: "1280x720", width: 1280, height: 720 }, { name: 
       await expect(dialog.getByRole("checkbox", { name: "Read employee", exact: true })).toBeChecked();
       await expect(dialog.getByText("Completed in the source; this workflow requires it to run again.", { exact: false })).toBeVisible();
       const before = server.h.authoritySnapshot();
-      await dialog.getByRole("button", { name: "Next", exact: true }).click();
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
       await expect(dialog.getByRole("region", { name: "Repeat transaction warning" })).toBeVisible();
       expect(server.h.authoritySnapshot()).toBe(before);
       const capture = async (stage: string) => captureParityPair(page, REFERENCES, { stateId: `run-rerun-${stage}`, viewport: viewport.name,
@@ -26,17 +26,17 @@ for (const viewport of [{ name: "1280x720", width: 1280, height: 720 }, { name: 
       await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
       await expect(dialog.getByRole("heading", { name: "Steps", exact: true })).toBeVisible();
       expect(server.h.authoritySnapshot()).toBe(before);
-      await dialog.getByRole("button", { name: "Next", exact: true }).click();
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
       const confirm = dialog.getByRole("button", { name: "Confirm", exact: true }); await confirm.focus(); await page.keyboard.press("Enter");
       await expect(dialog.getByRole("region", { name: "Values", exact: true })).toBeVisible();
       expect(server.h.authoritySnapshot()).toBe(before); expect(server.commands).toHaveLength(0);
-      await dialog.getByRole("button", { name: "Copy Employee ID", exact: true }).click();
+      await expect(dialog.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10812345");
       await dialog.getByRole("button", { name: "Copy Previous transaction", exact: true }).click();
       await dialog.getByLabel("New Previous transaction", { exact: true }).fill("Reviewed memo");
       await capture("values");
-      await dialog.getByRole("button", { name: "Next", exact: true }).click();
+      await dialog.getByRole("button", { name: "Continue", exact: true }).click();
       await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
-      await dialog.getByRole("button", { name: "Next", exact: true }).click();
+      await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
       await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible();
       expect(server.h.queueRoots).toHaveLength(1); await capture("review");
       const name = `run-rerun-${theme.name}-${viewport.name}.a11y.yml`; const tree = await page.locator("body").ariaSnapshot();

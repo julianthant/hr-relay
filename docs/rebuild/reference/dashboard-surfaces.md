@@ -6775,13 +6775,24 @@ parity references for all three.
 ##### Run, Rerun and spreadsheet presentation amendment — 2026-10-02
 
 The operator approved Design 1 with subsequent control, step-row and spreadsheet revisions.
-Run and Rerun share an 880×628 desktop frame: Run has a workflow rail, Rerun a source rail.
+The 2026-10-04 operator direction requires the approved Design 1 presentation exactly.
+Run and Rerun share an 880×628 desktop frame, 190px rail, 73px header, 54px stage bar and
+57px footer. Run has a workflow rail; Rerun has a source rail. Run follows Input → Options → Confirm;
+Customize steps inserts Steps after Options. Rerun follows Steps → Values → Options → Confirm.
+Input uses an 88px textarea and compact parsed rows. Reached stages can be revisited without losing
+the draft; later stages require the existing validation. Options use 36px workbook and segmented
+controls, with three columns for checkbox options. Workflow version appears in Options and Confirm;
+the footer shows the input count and workflow, or the source/new-run context.
 Checkboxes align with their titles; prior step outcomes use compact status labels beside the title.
 The source-history note stays at the bottom of the Rerun rail. Date popovers anchor to the input field.
 Peer controls in a row use the same height; spreadsheet Settings tabs form one connected control without
 a hover background. Its persistent selection surface slides with the shared 220ms move timing; rapid
 changes retarget the transition, and reduced motion changes selection without travel.
 Options use styled workbook choices, segmented priority/browser controls and compact fixed facts.
+Rerun pre-fills only available, declared input identifiers from the source, retaining copy attribution
+until edited. Dates and other previous values remain explicit copy actions. Real descriptor fields,
+step membership, omission dependencies and server validation remain authoritative; sample prototype
+step counts do not replace them. Step system labels come from the served task namespace projection.
 Rerun keeps source-bound values and repeat-write confirmation. A confirmed applied start closes the
 dialog and emits a toast; unknown or refused submissions retain recovery.
 
@@ -7418,8 +7429,9 @@ invalid values are announced and excluded rather than becoming plausible savings
 Local queue selection mode and Select menu items are retired. Archive applies
 immediately; Delete asks first and cancellation retains its served confirmation. Member check marks
 are retired; the final log step has no divider. Command toasts show subject and clock without the local
-actor ID. Run/Rerun retains the approved Design 1 and served launch authority pending the requested
-design discussion.
+actor ID. Run/Rerun follows the approved Design 1 proportions, controls and flows exactly, as
+required on 2026-10-04; §9.7.1 owns the presentation measurements and source-value behavior.
+Served launch authority remains unchanged.
 
 
 #### The Session Panel is the demo's strip, and its pool controls live behind `+` (D305)

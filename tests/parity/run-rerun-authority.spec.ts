@@ -11,12 +11,12 @@ async function reviewRerun(page: Page, server: RunRerunServer) {
   await gotoAppState(page, server.baseUrl, { day: server.day });
   await page.getByRole("button", { name: "Rerun", exact: true }).click();
   const dialog = page.getByRole("dialog", { name: "Rerun", exact: true });
-  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
   await dialog.getByRole("button", { name: "Confirm", exact: true }).click();
-  await dialog.getByRole("button", { name: "Copy Employee ID", exact: true }).click();
-  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  await expect(dialog.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10812345");
+  await dialog.getByRole("button", { name: "Continue", exact: true }).click();
   await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
-  await dialog.getByRole("button", { name: "Next", exact: true }).click();
+  await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
   await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible(); return dialog;
 }
 
@@ -39,18 +39,18 @@ test("real BFF Rerun survives response loss, reload and delayed worker claim", {
     await page.reload(); await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     await page.getByRole("button", { name: "Replay exact submission" }).click();
-    await expect(page.getByText("Already applied", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Run submission confirmed", exact: true })).toBeVisible();
     expect(h.queueRoots.length).toBe(priorRoots.length + 1);
     expect(server.commands).toHaveLength(2); expect(server.commands[1]).toEqual(server.commands[0]);
     const command = StartCommandRequestSchema.parse(server.commands[0]);
     const retained = await page.evaluate(() => Object.values(sessionStorage).join(""));
-    expect(retained).toContain(command.commandId); expect(retained).not.toContain("10812345");
+    expect(retained).not.toContain(command.commandId); expect(retained).not.toContain("10812345");
     const commits = h.world.events.filter((event) => event === "commit").length;
     h.world.probeResults.push(absentProbeEvidence(h.clock.now().toISOString()));
     expect((await h.execute(run)).state).toBe("done"); server.publish();
     expect(h.world.events.filter((event) => event === "commit").length).toBe(commits);
     expect(JSON.stringify(h.fresh(source))).toBe(original);
-    await page.getByText("Close", { exact: true }).click(); await page.keyboard.press("Escape"); await page.reload();
+    await expect(page.getByRole("dialog")).toHaveCount(0); await page.reload();
     await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
     expect(server.snapshot().queueSurfaces.some((row) => row.runId === run.envelope.runId && row.status === "done")).toBe(true);
   } finally { await page.close(); await server.close(); }
@@ -62,12 +62,13 @@ test("ordinary batch dry run enqueues one reviewed vector and no work before fin
     await gotoAppState(page, server.baseUrl, { day: server.day, start: true });
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByPlaceholder("Employee ID").fill("10812346\n10812347");
-    await dialog.getByRole("button", { name: "Next", exact: true }).click();
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
-    await dialog.getByRole("button", { name: "Next", exact: true }).click();
+    await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
     const submit = dialog.getByRole("button", { name: "Start dry run", exact: true }); await expect(submit).toBeVisible();
     expect(server.h.queueRoots).toHaveLength(1); await submit.click();
-    await expect(page.getByText("Start applied", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "2 runs started", exact: true })).toBeVisible();
+    await expect(dialog).toHaveCount(0);
     await expect.poll(() => new URL(page.url()).searchParams.has("day")).toBe(false);
     expect(server.h.queueRoots).toHaveLength(3); expect(server.commands).toHaveLength(1);
     for (const entry of server.h.queueRoots.slice(1)) {
@@ -92,17 +93,17 @@ test("settings save invalidates unconsumed review; new work selects saved settin
     await dialog.getByRole("button", { name: "Start dry run", exact: true }).click();
     await expect(dialog.getByText(/replan-required/u)).toBeVisible(); expect(server.h.queueRoots).toHaveLength(1);
     await dialog.getByText("Dismiss", { exact: true }).click();
-    await dialog.getByRole("button", { name: "Next", exact: true }).click();
-    await dialog.getByRole("button", { name: "Next", exact: true }).click();
-    await dialog.getByRole("button", { name: "Start dry run", exact: true }).click();
-    await expect(dialog.getByText("Start applied", { exact: true })).toBeVisible();
+    await dialog.getByRole("button", { name: "Continue", exact: true }).click();
+    await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
+    server.loseResponse(); await dialog.getByRole("button", { name: "Start dry run", exact: true }).click();
+    await expect(dialog.getByRole("button", { name: "Replay exact submission" })).toBeVisible();
     const root = server.h.queueRoots.at(-1); if (root === undefined) throw new Error("new run missing");
     const run = server.h.database.authority.runs.get(root.runId); if (run === undefined) throw new Error("run missing");
     expect(run.envelope.configSnapshotId).toBe(server.h.database.authority.runtimeConfig.get()?.configSnapshotId);
     expect(server.saveSettings({ "timeouts.taskMs": { set: 120_000 } }).state).toBe("applied");
     await page.reload(); await expect(page.locator('[data-parity-ready="true"]')).toBeVisible();
     await page.getByRole("button", { name: "Start a run", exact: true }).click(); await page.getByRole("button", { name: "Replay exact submission" }).click();
-    await expect(page.getByText("Already applied", { exact: true })).toBeVisible();
+    await expect(page.getByRole("status", { name: "Run submission confirmed", exact: true })).toBeVisible();
     expect(server.h.queueRoots).toHaveLength(2); expect(server.h.database.authority.runs.get(root.runId)).toEqual(run);
     expect(JSON.stringify(server.h.fresh(server.source))).toBe(original);
   } finally { await page.close(); await server.close(); }

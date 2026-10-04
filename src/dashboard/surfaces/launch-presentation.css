@@ -14,6 +14,9 @@
   --ds-radius-md: 6px;
   @apply text-body;
 }
+.launch-dialog {
+  @apply h-[min(calc(100dvh-32px),628px)] max-h-[calc(100dvh-32px)] max-w-[min(calc(100vw-32px),880px)] rounded-[11px] border-ui-stroke-control bg-ui-panel;
+}
 .launch-dialog > header,
 .spreadsheet-dialog > header,
 .spreadsheet-type-dialog > header {
@@ -58,10 +61,10 @@
   @apply sr-only;
 }
 .launch-design .launch-step-row {
-  @apply px-3 py-[11px];
+  @apply min-h-[58px] px-3 py-[10px];
 }
 .launch-design .launch-step-status {
-  @apply text-caption font-medium;
+  @apply h-[18px] rounded-[4px] border-ui-stroke bg-ui-table px-[6px] py-0 text-caption font-normal;
 }
 .launch-design .launch-step-status[data-status="completed"] {
   @apply text-ui-positive;
@@ -75,19 +78,19 @@
 .launch-design [data-slot="label"],
 .launch-design .ds-field-label,
 .launch-design fieldset > legend {
-  @apply text-body font-semibold text-ui-primary;
+  @apply text-body font-[550] text-ui-primary;
 }
 .launch-design .ds-choice-picker > button {
   @apply h-9;
 }
 .launch-design .launch-options-grid {
-  @apply grid grid-cols-2 gap-5;
+  @apply grid grid-cols-2 gap-4;
 }
 .launch-design .launch-flags {
-  @apply grid grid-cols-[repeat(auto-fit,minmax(170px,1fr))] gap-3;
+  @apply grid grid-cols-3 gap-[15px];
 }
 .launch-design .launch-flags .ds-checkbox-label {
-  @apply font-medium;
+  @apply font-normal;
 }
 .launch-design .launch-flags .ds-checkbox-description {
   @apply text-caption;
@@ -137,20 +140,69 @@
   @apply h-7 px-[10px] py-[5px] text-body;
 }
 
-.launch-dialog > header { @apply border-0 bg-ui-table px-6 py-5; }
-.launch-dialog > header h2 { @apply text-[18px] font-medium; }
-.launch-dialog > header p { @apply mt-1 text-body text-ui-secondary; }
-.launch-dialog > footer { @apply bg-ui-table px-6; }
-.launch-dialog .launch-workflow-rail { @apply w-[208px] bg-ui-canvas px-4 pt-4; }
-.launch-dialog .launch-workflow-rail button[aria-current] { @apply font-normal; }
-.launch-dialog .launch-stagebar { @apply gap-3 bg-ui-panel px-6 py-3; }
-.launch-dialog .launch-stagebar > li { @apply gap-2 px-0 py-1; }
-.launch-dialog .launch-stagebar > li + li::before { content: ""; @apply mr-1 h-px w-5 bg-ui-stroke; }
-.launch-dialog .launch-stage-marker { @apply size-5 text-caption; }
-.launch-dialog .launch-content { @apply gap-5 px-6 py-5; }
-.launch-dialog .launch-content > section > h3 { @apply m-0 text-heading font-medium; }
-.launch-dialog .ds-field-label { @apply font-medium; }
-.launch-dialog textarea { @apply min-h-28 bg-ui-canvas; }
+.launch-dialog > header { @apply h-[73px] border-b border-ui-stroke bg-ui-panel; }
+.launch-dialog > header > div { @apply gap-[2px]; }
+.launch-dialog > header h2 { @apply text-[16px] leading-[22px] font-semibold; }
+.launch-dialog > header p { @apply text-caption leading-[18px] text-ui-secondary; }
+.launch-dialog > header > button { @apply size-[30px]; }
+.launch-dialog > footer { @apply h-[57px] bg-ui-table; }
+.launch-dialog > footer button { @apply h-8 px-3 text-body font-medium; }
+.launch-dialog .launch-workflow-rail button[aria-current] { @apply font-semibold; }
+.launch-dialog .launch-workflow-rail nav button { @apply h-9 gap-[6px] p-[9px]; }
+.launch-dialog .launch-workflow-rail nav ul { @apply gap-1; }
+.launch-dialog .launch-workflow-rail nav { @apply py-0; }
+.launch-dialog .launch-workflow-rail nav > span { @apply text-[10px] leading-[18px] font-[650]; }
+.launch-dialog .launch-workflow-rail [data-slot="search-field-group"] { @apply h-8 min-h-8 gap-[6px] rounded-md border border-ui-stroke bg-ui-panel px-[7px] py-0; }
+.launch-dialog .launch-workflow-rail [data-slot="search-field-input"] { @apply h-[30px] min-h-0 text-caption; }
+.launch-dialog .launch-workflow-rail [data-slot="search-field-search-icon"] { @apply size-[14px]; }
+.launch-dialog .launch-stagebar { @apply h-[54px]; }
+.launch-dialog .launch-stagebar > li { @apply p-0; }
+.launch-dialog .launch-stagebar button { @apply flex items-center gap-[7px] rounded-md px-2 py-[5px] text-body; }
+.launch-dialog .launch-stagebar button:disabled { @apply opacity-100; }
+.launch-dialog .launch-stagebar button:not(:disabled):hover { @apply bg-ui-hover; }
+.launch-dialog .launch-content > section { @apply gap-1; }
+.launch-dialog .launch-content > section > h3 { @apply m-0 text-heading font-semibold; }
+.launch-dialog .launch-content textarea { @apply h-[88px] min-h-[88px] bg-ui-field px-[9px] py-[7px] leading-[21px]; }
+.launch-dialog .launch-parsed-input > li { @apply h-8 bg-ui-panel py-0; }
+.launch-dialog > footer > span:first-child { @apply font-ui; }
+.launch-dialog > footer > span:first-child > span { @apply font-ui; }
+.launch-dialog .launch-content [data-slot="input"] { @apply bg-ui-field; }
+.launch-dialog .launch-flags .ds-checkbox-control,
+.launch-dialog .launch-step-row .ds-checkbox-control { @apply mt-[2px] size-[14px]; }
+.launch-dialog .launch-flags .ds-checkbox-label,
+.launch-dialog .launch-step-row .ds-checkbox-label { @apply text-body leading-[18px]; }
+.launch-dialog .launch-flags .ds-checkbox-description,
+.launch-dialog .launch-step-row .ds-checkbox-description { @apply mt-[2px] text-caption leading-4; }
+.launch-dialog .launch-flags .ds-checkbox-description { @apply mt-[3px]; }
+.launch-dialog .launch-step-row .ds-checkbox-label { @apply font-[550]; }
+.launch-dialog .launch-options { @apply gap-[10px]; }
+.launch-dialog .launch-content:has(.launch-options) { @apply gap-[10px]; }
+.launch-dialog .launch-content:has(#run-start-steps) { @apply gap-3; }
+.launch-dialog .launch-options fieldset > div { @apply h-9 gap-[3px]; }
+.launch-dialog .launch-options fieldset > legend { @apply mb-[5px]; }
+.launch-dialog .ds-choice-picker { @apply gap-[5px]; }
+.launch-dialog .ds-choice-picker > button { @apply font-normal; }
+.launch-dialog .launch-options fieldset > div > label > span { @apply h-7; }
+.launch-dialog .launch-values-fields { @apply grid-cols-1; }
+.launch-dialog .launch-values-fields > div { @apply max-w-[280px]; }
+.launch-dialog .launch-values-fields > div > div { @apply gap-[5px]; }
+.launch-dialog .launch-values-fields input { @apply h-[34px]; }
+.launch-dialog .launch-values-omission { @apply mt-[4px]; }
+.launch-dialog .launch-values-dates fieldset { @apply gap-5; }
+.launch-dialog .launch-values-dates fieldset > div { @apply gap-[5px]; }
+.launch-dialog .launch-values-dates .ds-field-description { @apply sr-only; }
+.launch-dialog .launch-values-dates .ds-date-text-group { @apply h-9 min-h-9; }
+.launch-dialog .launch-values-dates .ds-date-text-group input { @apply h-[34px] min-h-0; }
+.launch-dialog .launch-values-omission > div > button { @apply h-[26px] px-[7px] text-caption font-medium; }
+.launch-dialog aside.launch-workflow-rail { @apply pb-[18px]; }
+.launch-dialog aside.launch-workflow-rail > div:first-child { @apply text-[10px] leading-[18px] font-[650]; }
+.launch-dialog aside.launch-workflow-rail > h3 { @apply mt-[15px]; }
+.launch-dialog aside.launch-workflow-rail > p { @apply leading-[18px]; }
+.launch-dialog aside.launch-workflow-rail > h3 + p { @apply mt-[15px]; }
+.launch-dialog aside.launch-workflow-rail > dl { @apply mt-[27px] leading-[18px]; }
+.launch-dialog aside.launch-workflow-rail > dl > div:not(:last-child) { @apply mb-3; }
+.launch-dialog aside.launch-workflow-rail dd { @apply mt-[2px]; }
+.launch-dialog aside.launch-workflow-rail > p:last-child { @apply pt-3 text-ui-primary; }
 .command-confirm-dialog { @apply max-w-[440px] border-ui-stroke-control bg-ui-panel text-ui-primary; }
 .command-confirm-dialog > header { @apply border-0 px-6 pb-0 pt-6; }
 .command-confirm-dialog > header h2 { @apply text-[18px] font-medium; }

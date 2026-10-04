@@ -8,7 +8,7 @@ type DashboardDayWire
 } from "../../../src/domain/dashboard/projection.js";
 import { StartPlanWireSchema as StartPlanResponseSchema,type StartPlanWire as StartPlanResponse } from "../../../src/domain/dashboard/start-plan.js";
 import { descriptorSetHash } from "../../../src/server/dashboard/compose.js";
-import { projectStartSteps,startStepWireControl } from "../../../src/services/start/step-selection.js";
+import { projectWorkflowStartSteps } from "../../../src/server/dashboard/queries/bootstrap.js";
 import {
 WORKFLOW_MODULES,
 } from "../../../src/control/workflow-registry.js";
@@ -46,12 +46,7 @@ export const FIXTURE_START_PICKER_BOOTSTRAP: FrontendBootstrapWire = FrontendBoo
       ...(module.descriptor.summary === undefined ? {} : { summary: module.descriptor.summary }),
       enqueue: module.descriptor.enqueue,
       version: module.descriptor.version,
-      steps: projectStartSteps(module.descriptor).map((step) => ({
-        key: step.key,
-        label: step.label,
-        includedByDefault: step.includedByDefault,
-        control: startStepWireControl(step.control),
-      })),
+      steps: projectWorkflowStartSteps(module.descriptor),
       ...(module.descriptor.surfaces.inputRun === undefined
         ? {}
         : { inputRun: module.descriptor.surfaces.inputRun }),

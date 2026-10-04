@@ -1089,6 +1089,14 @@ no registered workflow declares one, and serving an arm nothing can produce is t
 shape. `run-start.tsx` did not change at all: the composed `RunStartWorkflow` is identical field for
 field, so the whole frontend delta is the deleted import and one read site.
 
+**2026-10-04 Design 1 step metadata.** Each start step may carry `systems: BrowserSystemId[]`.
+The current bootstrap producer always serves it, using `projectWorkflowStartSteps` to project browser
+systems from the step’s declared task and transaction task namespaces. An empty array means that
+step has no browser task; older wire fixtures may omit the field and draw no invented system label.
+The frontend uses the canonical system label map. This is display metadata: step controls, omission
+forms, membership and planning authority do not change. The start-picker fixture uses the same
+projection as the producer.
+
 **D296 (2026-09-01) adds one field to the block: `spreadsheetIntake`, a REQUIRED boolean.** It is
 `true` exactly when the MODULE declares an intake projection, which is the same fact
 `command-kernel.ts` refuses an intake commit by, and it is projected from `BootstrapModuleView.intake`

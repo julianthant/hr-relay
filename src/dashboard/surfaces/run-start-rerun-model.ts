@@ -22,6 +22,12 @@ export function defaultRerunSteps(snapshot: RerunValuesSnapshot, workflow: RunSt
 }
 
 export interface RerunValueDraft { readonly text: string; readonly copied: boolean }
+export function initialRerunValueDrafts(snapshot: RerunValuesSnapshot, workflow: RunStartWorkflow): Readonly<Record<number, RerunValueDraft>> {
+  if (workflow.inputRun.state !== "present") return {};
+  const inputFields = new Set(workflow.inputRun.surface.parser.rules.map(rule => rule.emit));
+  return Object.fromEntries(snapshot.values.flatMap((candidate, index) => candidate.state === "available" && candidate.targetStepKey === undefined && inputFields.has(candidate.targetFieldPath)
+    ? [[index, { text: candidateText(candidate.value), copied: true }]] : []));
+}
 export function candidateText(value: JsonValue): string {
   return typeof value === "string" ? value : canonicalJsonStringify(value);
 }

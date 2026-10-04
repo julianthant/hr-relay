@@ -331,11 +331,11 @@ async function openDialog(
   };
 
   const press = async (name: string): Promise<void> => {
-    const action = name === "Next" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
+    const action = name === "Continue" && buttons().some(button => button.textContent?.trim() === "Preview plan") ? "Preview plan" : name;
     const visibleMatches = buttons().filter((button) => (button.textContent ?? "").trim() === action);
     const matches = visibleMatches.length > 0
       ? visibleMatches
-      : buttons().filter((button) => buttonName(button) === (name === "Next" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
+      : buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
     const only = matches[0];
     if (matches.length !== 1 || only === undefined) {
       throw new Error(
@@ -431,7 +431,7 @@ async function openDialog(
   };
 
   const disabled = (name: string): boolean => {
-    const found = buttons().filter((button) => buttonName(button) === (name === "Next" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
+    const found = buttons().filter((button) => buttonName(button) === (name === "Continue" && buttons().some(entry => entry.textContent?.trim() === "Preview plan") ? "Preview plan" : name));
     const only = found[0];
     if (found.length !== 1 || only === undefined) {
       throw new Error(`expected exactly one control named "${name}", found ${String(found.length)}`);
@@ -472,11 +472,11 @@ async function reachResult(): Promise<OpenDialog> {
     executeCommand: async () => CONFLICT,
   }));
   await dialog.type(TYPED);
-  await dialog.press("Next");
+  await dialog.press("Continue");
   assert.equal(dialog.stage(), "Options");
-  await dialog.press("Next");
+  await dialog.press("Continue");
   assert.equal(dialog.stage(), "Confirm");
-  await dialog.press("Start run");
+  await dialog.press("Start 1 run");
   assert.equal(dialog.stage(), "Confirm");
   return dialog;
 }
@@ -491,10 +491,10 @@ it("reveals the launched workflow after an applied start", async () => {
   });
   const dialog = await openDialog(client, undefined, (workflowId) => revealed.push(workflowId));
   await dialog.type(TYPED);
-  await dialog.press("Next");
-  await dialog.press("Next");
+  await dialog.press("Continue");
+  await dialog.press("Continue");
   assert.deepEqual(revealed, []);
-  await dialog.press("Start run");
+  await dialog.press("Start 1 run");
   assert.deepEqual(revealed, [WORKFLOW_ID]);
   assert.deepEqual(closed, [false], "a confirmed start must dismiss the modal");
   assert.equal(window.sessionStorage.length, 0, "an applied submission must clear durable recovery");
@@ -508,9 +508,9 @@ it("keeps the current view after a refused start", async () => {
     executeCommand: async () => CONFLICT,
   }), undefined, (workflowId) => revealed.push(workflowId));
   await dialog.type(TYPED);
-  await dialog.press("Next");
-  await dialog.press("Next");
-  await dialog.press("Start run");
+  await dialog.press("Continue");
+  await dialog.press("Continue");
+  await dialog.press("Start 1 run");
   assert.deepEqual(revealed, []);
 });
 
@@ -531,8 +531,8 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
     const settlePlan = release;
     assert.ok(settlePlan !== undefined, "the dialog never called submitStartPlan");
 
@@ -562,9 +562,9 @@ describe("a settlement that arrives after the request moved is DROPPED", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
-    await dialog.press("Start run");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    await dialog.press("Start 1 run");
     const settleCommand = release;
     assert.ok(settleCommand !== undefined, "the dialog never called executeCommand");
 
@@ -593,9 +593,9 @@ describe("C109 — a plan outlives nothing that shaped it, in the dialog", () =>
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.ok(planIsDrawn(), "the plan never rendered");
 
     await dialog.press("Back");
@@ -629,7 +629,7 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     }));
 
     await dialog.type(TYPED);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Options");
     assert.ok(dialog.text().includes("Customize steps"));
     assert.ok(!dialog.text().includes("Destination"));
@@ -649,11 +649,11 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     );
 
     await dialog.press("Customize steps");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Steps");
     assert.ok(dialog.text().includes("CRM Dates"), "the optional D285 step disappeared");
     await dialog.press("CRM Dates");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     assert.ok(!dialog.text().includes("Destination"));
     assert.ok(!dialog.text().includes("Test instance"));
@@ -683,7 +683,7 @@ describe("browser presentation is an immutable Run Options choice", () => {
       return planResponse("5a000000-0000-4000-8000-000000000001");
     } }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     const modes = [...document.querySelectorAll<HTMLInputElement>('input[type="radio"][name^="Browser mode-"]')];
     assert.deepEqual(modes.map(mode => mode.value), ["headed", "headless"]);
     assert.equal(modes.find(mode => mode.value === "headed")?.checked, true);
@@ -692,7 +692,7 @@ describe("browser presentation is an immutable Run Options choice", () => {
     assert.equal(screenshotControl.getAttribute("data-state"), "checked", "screenshot capture must default on");
     await dialog.chooseBrowserMode("headless");
     await dialog.press("Capture screenshots");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.equal(request.browserMode, "headless");
     assert.equal(request.captureBrowserScreenshots, false);
@@ -712,8 +712,8 @@ describe("the compact confirmation keeps the exact input basis", () => {
       submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001"),
     }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     assert.ok(dialog.text().includes(TYPED));
   });
@@ -743,9 +743,9 @@ describe("every exit from a settled banner returns the form to Input", () => {
       executeCommand: async () => CONFLICT,
     }));
     await dialog.type(TYPED);
-    await dialog.press("Next");
-    await dialog.press("Next");
-    await dialog.press("Start run");
+    await dialog.press("Continue");
+    await dialog.press("Continue");
+    await dialog.press("Start 1 run");
     assert.ok(dialog.text().includes("The start plan moved under this form"));
 
     await dialog.press("Reload the form");
@@ -776,30 +776,30 @@ describe("spreadsheet registration stays outside Run", () => {
   it("a served intake capability does not restore the retired upload action", async () => {
     let uploads = 0;
     const dialog = await openDialog(stubClient({ uploadIntakeFile: async () => { uploads++; throw new Error("unexpected intake"); } }));
-    await dialog.type(TYPED); await dialog.press("Next");
+    await dialog.type(TYPED); await dialog.press("Continue");
     assert.ok(!dialog.text().includes("Import a spreadsheet"));
     assert.equal(uploads, 0); assert.deepEqual(intakeHandoffs, []);
   });
-  it("describes workbook selection as mocked and excludes it from the live request", async () => {
+  it("describes workbook reference use and excludes it from the live request", async () => {
     let submission: unknown;
     const dialog = await openDialog(stubClient({ submitStartPlan: async input => { submission = input; return planResponse("5a000000-0000-4000-8000-000000000001"); } }));
-    await dialog.type(TYPED); await dialog.press("Next");
+    await dialog.type(TYPED); await dialog.press("Continue");
     assert.ok(dialog.text().includes("Workbook · Optional"));
-    assert.ok(dialog.text().includes("Mock selection for now."));
-    await dialog.press("Next");
+    assert.ok(dialog.text().includes("Choose an already imported workbook for reference or results."));
+    await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submission);
     assert.equal(request.submissions.length, 1); assert.equal(Object.hasOwn(request, "workbookId"), false);
   });
   it("keeps mock registration from becoming a prerequisite for a live start", async () => {
     const dialog = await openDialog(stubClient({ submitStartPlan: async () => planResponse("5a000000-0000-4000-8000-000000000001") }));
-    await dialog.type(TYPED); await dialog.press("Next"); await dialog.press("Next");
-    assert.equal(dialog.stage(), "Confirm"); assert.equal(dialog.disabled("Start run"), false);
+    await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Continue");
+    assert.equal(dialog.stage(), "Confirm"); assert.equal(dialog.disabled("Start 1 run"), false);
     assert.equal([...document.querySelectorAll("dt")].some(label => label.textContent === "Workbook"), false);
     assert.ok(!dialog.text().includes("Import spreadsheet"));
   });
   it("returning from Options preserves typed input and the complete path", async () => {
     const dialog = await openDialog(stubClient({}));
-    await dialog.type(TYPED); await dialog.press("Next"); await dialog.press("Back");
+    await dialog.type(TYPED); await dialog.press("Continue"); await dialog.press("Back");
     assert.equal(dialog.stage(), "Input"); assert.equal(dialog.typedInput().value, TYPED);
     assert.equal(document.querySelectorAll('[aria-label="Run configuration path"] li').length, 3);
     assert.equal(document.querySelectorAll('input[type="file"]').length, 0);
@@ -877,9 +877,9 @@ function separationsPlan(omittedSteps?: readonly string[]): StartPlanResponse {
 async function openSteps(client: DashboardClient, typed: string = DOCUMENT): Promise<OpenDialog> {
   const dialog = await openDialog(client, SEPARATIONS);
   await dialog.type(typed);
-  await dialog.press("Next");
+  await dialog.press("Continue");
   await dialog.press("Customize steps");
-  await dialog.press("Next");
+  await dialog.press("Continue");
   assert.equal(dialog.stage(), "Steps");
   return dialog;
 }
@@ -897,7 +897,7 @@ describe("an omittable step draws its own form when it is left out (D307)", () =
     // the DECLARED help line, verbatim — a form drawn without it would leave
     // the operator guessing what the fact means
     assert.ok(dialog.text().includes("The employee's last physical day of work, MM/DD/YYYY"));
-    assert.ok(dialog.text().includes("5 of 6 included"));
+    assert.ok(dialog.text().includes("5 / 6 included"));
   });
 
   it("says so when the omitted step asks for nothing at all", async () => {
@@ -944,7 +944,7 @@ describe("Confirm is not reachable while an omitted step's form does not parse (
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "6/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
 
     assert.equal(dialog.stage(), "Steps", "an unparsable fact reached Confirm");
     assert.equal(asked, 0, "the dialog asked the server for a plan it knew would be refused");
@@ -952,7 +952,7 @@ describe("Confirm is not reachable while an omitted step's form does not parse (
     assert.ok(dialog.text().includes("Fill in the facts"), "the footer never said why Next did nothing");
 
     await dialog.fill("Last day worked", "06/30/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     assert.equal(asked, 1);
   });
@@ -974,7 +974,7 @@ describe("the request carries the operator's omissions (D307)", () => {
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.fill("UCPath transaction number", "T1234567");
     await dialog.fill("Approval status", "Approved");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
 
     const request = StartPlanSubmissionSchema.parse(submitted);
@@ -1006,7 +1006,7 @@ describe("the request carries the operator's omissions (D307)", () => {
         return separationsPlan();
       },
     }));
-    await dialog.press("Next");
+    await dialog.press("Continue");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.equal(request.stepOmissions, undefined, "an empty omission list still rode the wire");
   });
@@ -1022,13 +1022,13 @@ describe("a plan that omits a different set cannot be started (D307)", () => {
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
 
     assert.ok(dialog.text().includes("This plan does not describe the steps you omitted"));
     assert.ok(dialog.text().includes("kronos-timecard"));
     assert.ok(dialog.text().includes("kuali-finalization"));
-    assert.equal(dialog.disabled("Start run"), true, "a plan for a different run was startable");
+    assert.equal(dialog.disabled("Start 1 run"), true, "a plan for a different run was startable");
   });
 
   it("starts when the plan names exactly the set the dialog sent", async () => {
@@ -1038,9 +1038,9 @@ describe("a plan that omits a different set cannot be started (D307)", () => {
     await dialog.press("Kronos timecard");
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.ok(!dialog.text().includes("This plan does not describe"));
-    assert.equal(dialog.disabled("Start run"), false);
+    assert.equal(dialog.disabled("Start 1 run"), false);
   });
 });
 
@@ -1093,35 +1093,35 @@ describe("a forced step is unchecked and LOCKED while the choice that forces it 
       },
     }), CASCADING_SEPARATIONS);
     await dialog.type(DOCUMENT);
-    await dialog.press("Next");
+    await dialog.press("Continue");
     await dialog.press("Customize steps");
-    await dialog.press("Next");
+    await dialog.press("Continue");
 
     // named BEFORE the press, so the choice is not a surprise
     assert.ok(dialog.text().includes("Also omits: UCPath transaction"));
     assert.equal(dialog.disabled("UCPath transaction"), false);
 
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("4 of 6 included"), dialog.text());
+    assert.ok(dialog.text().includes("4 / 6 included"), dialog.text());
     assert.equal(dialog.disabled("UCPath transaction"), true, "the forced row stayed pressable");
     assert.ok(dialog.text().includes("Omitted with Kronos timecard."));
 
     // pressing the locked row changes nothing
     await dialog.press("UCPath transaction");
-    assert.ok(dialog.text().includes("4 of 6 included"));
+    assert.ok(dialog.text().includes("4 / 6 included"));
 
     await dialog.fill("Last day worked", "06/30/2026");
     await dialog.fill("Separation date", "07/01/2026");
     await dialog.fill("UCPath transaction number", "T1234567");
     await dialog.fill("Approval status", "Manually Processed");
-    await dialog.press("Next");
+    await dialog.press("Continue");
     assert.equal(dialog.stage(), "Confirm");
     const request = StartPlanSubmissionSchema.parse(submitted);
     assert.deepEqual(request.stepOmissions?.map(({ step }) => step), ["kronos-timecard", "ucpath-transaction"]);
 
     await dialog.press("Back");
     await dialog.press("Kronos timecard");
-    assert.ok(dialog.text().includes("6 of 6 included"), "undoing the choice left the forced step out");
+    assert.ok(dialog.text().includes("6 / 6 included"), "undoing the choice left the forced step out");
     assert.equal(dialog.disabled("UCPath transaction"), false);
   });
 });

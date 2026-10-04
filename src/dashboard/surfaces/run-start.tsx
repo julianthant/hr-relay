@@ -2,7 +2,7 @@ import "./launch-presentation.css";
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
 import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
-import { candidateText, defaultRerunSteps, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
+import { candidateText, defaultRerunSteps, initialRerunValueDrafts, rerunSubmission, type RerunValueDraft } from "./run-start-rerun-model.js";
 import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "../app/run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "../app/run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
@@ -40,7 +40,6 @@ import {
 import type { CommandResult } from "../../domain/commands.js";
 import { settleCommandResult } from "../app/command-result.js";
 import {
-  inputRunParserLabel,
   inputRunValueNoun,
   parseInputRunText,
   toRawSubmission,
@@ -67,12 +66,14 @@ import {
   StepOmissionFactsForm,
 } from "./run-start-kit.js";
 import { useSpreadsheetMocks } from "./spreadsheet-mock-model.js";
+import { SYSTEM_LABEL, type BrowserSystemId } from "./system-chip-model.js";
 import {
   ENQUEUE_POLICY_MEANING,
   ENQUEUE_POLICY_REASON,
   foldStepOmissionFacts,
   forcedStepOmissions,
   initialStepOmissionDraft,
+  inputRunDelimiterHint,
   omittedStepViews,
   startRequestFingerprint,
   toggleStepSelection,
@@ -132,18 +133,13 @@ export interface RunStartWorkflow {
    * the server would ignore.
    */
   readonly enqueue: EnqueuePolicy;
-  /**
-   * The descriptor's own version, served on the boot document's start block
-   * (C96). The footer prints `{label} v{n}` because a confirmation dialog owes
-   * the operator the one thing the label cannot say — WHICH shape of this
-   * workflow is about to run — and it is the same integer every archived row's
-   * token tooltip carries, so the two agree by construction.
-   */
+  /** The served descriptor version, shown in Options and Confirm. */
   readonly version: number;
   readonly steps: readonly Readonly<{
     key: string;
     label: string;
     includedByDefault: boolean;
+    systems?: readonly BrowserSystemId[];
     control:
       | { state: "selectable"; inputField: string }
       /**
@@ -405,7 +401,7 @@ function PickerRow({
           : cn("hover:bg-[var(--ds-surface-2)]", node.harness === undefined ? dsFg.base : dsFg.muted),
       )}
     >
-      {workflow.code !== undefined && <span className="w-4 shrink-0 text-caption text-ui-muted">{workflow.code}</span>}
+      {workflow.code !== undefined && <span className="w-5 shrink-0 text-[10px] text-ui-muted">{workflow.code}</span>}
       <span className="min-w-0 flex-1 truncate">{workflow.label}</span>
       {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
     </BareButton>
@@ -427,41 +423,34 @@ function WorkflowPicker({
 }) {
   const [query, setQuery] = useState("");
   const [showBlocked, setShowBlocked] = useState(false);
-  const [showSummary, setShowSummary] = useState(false);
   const groups = useMemo(() => pickerGroups(workflows.filter(isStartable), query), [workflows, query]);
+  const entries = useMemo(() => groups.flatMap(group => group.entries).sort((left, right) => workflows.findIndex(entry => entry.workflowId === left.entry.workflowId) - workflows.findIndex(entry => entry.workflowId === right.entry.workflowId)), [groups, workflows]);
   const blocked = useMemo(() => workflows.filter((workflow) => !isStartable(workflow)), [workflows]);
   const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
 
   return (
     <div className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke">
-      <div className="shrink-0 px-3 pt-[18px] pb-3">
+      <div className="shrink-0 px-3 pt-[18px] pb-[15px]">
           <SearchInput
             type="text"
             aria-label="Filter workflows"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            onClear={() => setQuery("")}
+            onClear={query.length > 0 ? () => setQuery("") : undefined}
             placeholder="Find workflow…"
           />
       </div>
 
       <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
+        <SectionLabel className="mb-[15px] block">Workflows</SectionLabel>
         {groups.length === 0 ? (
           <p className={cn(dsText.meta, dsFg.muted)}>No workflow matches “{query}”.</p>
         ) : (
-          groups.map((group) => (
-            <div key={group.label} className="mb-[var(--ds-space-cozy)] flex flex-col gap-[var(--ds-space-hair)]">
-              <SectionLabel className="px-[var(--ds-space-snug)]">{group.label}</SectionLabel>
-              <PickerEntries
-                nodes={group.entries}
-                row={(node) => <PickerRow node={node} value={value} onChange={onChange} />}
-              />
-            </div>
-          ))
+          <PickerEntries nodes={entries} row={node => <PickerRow node={node} value={value} onChange={onChange} />} />
         )}
       </nav>
 
-      {workflows.find(entry => entry.workflowId === value)?.summary && <div className="mx-3 mb-4 border-t border-ui-stroke pt-3 text-caption text-ui-secondary"><p className={showSummary ? "" : "line-clamp-3"}>{workflows.find(entry => entry.workflowId === value)?.summary}</p><button type="button" className="mt-1 text-caption text-ui-muted hover:text-ui-primary" aria-expanded={showSummary} onClick={() => setShowSummary(current => !current)}>{showSummary ? "Less" : "More"}</button></div>}
+      {workflows.find(entry => entry.workflowId === value)?.summary && <div className="mx-3 mb-[18px] border-t border-ui-stroke px-1 pt-[14px] text-caption text-ui-secondary"><p className="line-clamp-2" title={workflows.find(entry => entry.workflowId === value)?.summary}>{workflows.find(entry => entry.workflowId === value)?.summary}</p></div>}
       {/* Not offered, and it says WHY. A workflow that simply vanishes from a
           picker teaches the operator the list is arbitrary.
 
@@ -576,7 +565,7 @@ function TypedInput({
         // D250 — both halves are DERIVED from the parser spec, so the box cannot
         // describe a rule it does not apply.
         label={inputRunValueNoun(surface.parser)}
-        description={inputRunParserLabel(surface.parser)}
+        description={inputRunDelimiterHint(surface.parser)}
         error={preview.problem}
       >
         <Textarea
@@ -595,7 +584,7 @@ function TypedInput({
       {preview.entries.length > 0 && (
         <section aria-label="Parsed input" className="mt-3 flex flex-col gap-3">
           <div className="flex items-center justify-between"><h4 className="text-body font-semibold">Parsed input</h4><Badge tone="neutral">{preview.entries.length} {preview.entries.length === 1 ? 'run' : 'runs'}</Badge></div>
-        <ul className="overflow-hidden rounded-md border border-ui-stroke divide-y divide-ui-stroke">
+        <ul className="launch-parsed-input overflow-hidden rounded-md border border-ui-stroke divide-y divide-ui-stroke">
           {preview.entries.map((entry) => (
             <li
               key={entry.index}
@@ -781,6 +770,7 @@ export function RunStartDialog({
         if (sourceWorkflow === undefined) throw new Error("RERUN_WORKFLOW_UNAVAILABLE");
         const selection = defaultRerunSteps(response.snapshot, sourceWorkflow);
         setWorkflowId(sourceWorkflow.workflowId); setSelectedStepKeys(selection); setSnapshot(response.snapshot);
+        setValueDrafts(initialRerunValueDrafts(response.snapshot, sourceWorkflow));
       }).catch((caught: unknown) => {
         if (launchInstance.current === instance) setSourceError(caught instanceof Error ? caught.message : String(caught));
       });
@@ -1193,8 +1183,8 @@ export function RunStartDialog({
         onCloseAutoFocus={onCloseAutoFocus}
         size="xl"
         title={isRerun ? "Rerun" : "Start a run"}
-        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow?.label ?? "Choose a workflow to begin"}
-        className="launch-design launch-dialog max-w-[min(calc(100vw-48px),920px)] h-[min(calc(100dvh-48px),540px)] max-h-[calc(100dvh-48px)]"
+        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
+        className="launch-design launch-dialog"
       >
         <div className="flex min-h-0 flex-1">
           {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} /> : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
@@ -1208,9 +1198,12 @@ export function RunStartDialog({
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
                 const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));
-                return <li key={stage.label} aria-current={stage.label === currentStage ? "step" : undefined} className="flex items-center gap-2">
-                  <span aria-hidden className="launch-stage-marker" data-current={stage.label === currentStage || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check className="size-3" /> : stage.number}</span>
-                  <span className={cn("text-body", stage.label === currentStage ? "font-semibold" : "text-ui-secondary")}>{stage.label}</span>
+                const current = index === activeIndex;
+                return <li key={stage.label} aria-current={current ? "step" : undefined}>
+                  <BareButton disabled={index > activeIndex || busy || recovery !== null} aria-label={`${stage.number} ${stage.label}`} className={dsFocus} onClick={() => setCurrentStage(stage.label)}>
+                  <span aria-hidden className="launch-stage-marker" data-current={current || undefined} data-completed={index < activeIndex || undefined}>{index < activeIndex ? <Check className="size-3" /> : stage.number}</span>
+                  <span className={cn("text-body", current ? "font-semibold" : "text-ui-secondary")}>{stage.label}</span>
+                  </BareButton>
                 </li>;
               })}
             </ol>
@@ -1232,9 +1225,13 @@ export function RunStartDialog({
             )}
 
             <section className="flex flex-col gap-1">
+              <div className="flex items-baseline justify-between gap-3">
               <h3 className="text-heading font-semibold">{currentStage === "Options" ? "Run options" : currentStage === "Steps" ? isRerun ? "Choose what to run again" : "Workflow steps" : currentStage === "Values" ? "Values for the new run" : currentStage === "Confirm" ? "Review the plan" : workflow === undefined ? "No workflow" : "Run input"}</h3>
+              {currentStage === "Steps" && workflow && <span className="text-caption text-ui-muted">{selectedStepKeys.length} / {workflow.steps.length} included</span>}
+              </div>
+              {currentStage === "Input" && inputRun.state === "present" && <p className="text-body text-ui-secondary">Enter {inputRunValueNoun(inputRun.surface.parser)}. Each entry starts one run.</p>}
               {currentStage === "Options" && <p className="text-body text-ui-secondary">Set how this work enters the queue.</p>}
-              {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : "Required steps stay included. Optional steps may be omitted."}</p>}
+              {currentStage === "Steps" && <p className="text-body text-ui-secondary">{isRerun ? "Select steps for the new run. Statuses show the source outcome." : multiSubject && steps.some(step => step.control.state === "omittable") ? multiSubjectOmissionReason : "Required steps stay included. Optional steps may be omitted."}</p>}
               {currentStage === "Values" && <p className="text-body text-ui-secondary">Review the input and values this rerun will use.</p>}
             </section>
 
@@ -1263,25 +1260,29 @@ export function RunStartDialog({
                   {isRerun && snapshot !== null && (
                     <section aria-label="Previous values" className="flex flex-col gap-[var(--ds-space-cozy)]">
                       {snapshot.values.length === 0 && <p className={cn(dsText.body, dsFg.muted)}>No reusable values recorded.</p>}
-                      <div className="grid grid-cols-1 gap-[var(--ds-space-cozy)] @min-[480px]:grid-cols-2">
+                      <div className="launch-values-fields grid gap-[var(--ds-space-cozy)]">
                       {snapshot.values.map((candidate, index) => {
                         if (candidate.targetStepKey !== undefined) return null;
                         const label = candidate.label;
                         return <div key={`${candidate.nodeId}:${candidate.fieldPath}`} className="min-w-0">
                           {candidate.state === "available" && <Field label={label}><Input className="h-9" value={valueDrafts[index]?.text ?? ""} onChange={event => setValueDrafts(current => ({ ...current, [index]: { text: event.target.value, copied: false } }))} /></Field>}
-                          <div className="mt-[var(--ds-space-tight)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)] text-caption">
+                          {!(candidate.state === "available" && valueDrafts[index]?.copied && inputRun.state === "present" && inputRun.surface.parser.rules.some(rule => rule.emit === candidate.targetFieldPath)) && <div className="mt-[var(--ds-space-tight)] flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)] text-caption">
                             <span className="min-w-0 break-words text-[color:var(--ds-fg-muted)]">{candidate.state === "available" ? `Saved ${candidateText(candidate.value)}` : `Unavailable: ${candidate.reason}`}</span>
                             {candidate.state === "available" && <Button size="sm" variant="ghost" className="h-auto p-0 text-caption text-ui-info" aria-label={`Copy ${label}`} onClick={() => setValueDrafts(current => ({ ...current, [index]: { text: candidateText(candidate.value), copied: true } }))}>Use previous</Button>}
-                          </div>
+                          </div>}
                         </div>;
                       })}
                       </div>
-                      {omissionRows.map(row => <div key={row.step} className="border-t border-ui-stroke pt-4">
-                        <div className="mb-4 flex items-start justify-between gap-3"><div><h4 className="mb-[3px] text-body font-semibold">{row.form.fields.every(field => field.kind === "us-date") ? "Timecard dates" : row.label}</h4><p className="text-caption text-ui-muted">This step is skipped. Supply its values to continue.</p></div>{snapshot.values.some(candidate => candidate.targetStepKey === row.step && candidate.state === "available") && <Button variant="secondary" size="sm" onClick={() => snapshot.values.forEach((candidate, index) => { if (candidate.targetStepKey === row.step && candidate.state === "available") copyOmittedValue(row.step, index); })}>Use all previous</Button>}</div>
+                      {omissionRows.map(row => {
+                        const datesOnly = row.form.fields.length > 0 && row.form.fields.every(field => field.kind === "us-date");
+                        return <div key={row.step} className={cn("launch-values-omission border-t border-ui-stroke pt-4", datesOnly && "launch-values-dates")}>
+                        <div className="mb-4 flex items-start justify-between gap-3"><div><h4 className="mb-[3px] text-body font-semibold">{datesOnly ? "Timecard dates" : row.label}</h4><p className="text-caption text-ui-muted">{datesOnly ? "Timecard read is skipped. Supply both dates to continue." : "This step is skipped. Supply its values to continue."}</p></div>{snapshot.values.some(candidate => candidate.targetStepKey === row.step && candidate.state === "available") && <Button variant="secondary" size="sm" onClick={() => snapshot.values.forEach((candidate, index) => { if (candidate.targetStepKey === row.step && candidate.state === "available") copyOmittedValue(row.step, index); })}>{datesOnly && row.form.fields.length === 2 ? "Use both previous" : "Use all previous"}</Button>}</div>
                         <StepOmissionFactsForm compact step={row.label} form={row.form} draft={row.draft} errors={visibleFactErrors(row)}
                           onChange={(field, next) => changeFact(row.step, row.form, field, next)} onTouch={field => touchFact(row.step, field)}
                           previous={Object.fromEntries(snapshot.values.flatMap((candidate, index) => candidate.targetStepKey === row.step && candidate.state === "available" ? [[candidate.targetFieldPath, { value: candidateText(candidate.value), onUse: () => copyOmittedValue(row.step, index)  }]] : []))} />
-                      </div>)}
+                        {datesOnly && <p className="mt-4 text-caption text-ui-muted">From the source run. You can edit dates after copying them.</p>}
+                      </div>;
+                      })}
                     </section>
                   )}
                 </section>
@@ -1303,7 +1304,7 @@ export function RunStartDialog({
               )}
 
               {currentStage === "Options" && (
-                <section aria-label="Options" className="flex flex-col gap-[14px]">
+                <section aria-label="Options" className="launch-options flex flex-col">
                   <div className="launch-flags">
                     {!isRerun && <Checkbox checked={customizeSteps} onCheckedChange={next => changeCustomizeSteps(next === true)} label="Customize steps" description="Choose optional steps." />}
                     {supportsDryRun && <Checkbox checked={dryRun} onCheckedChange={next => setDryRunRequested(next === true)} label="Dry run" description="Stop before submission." />}
@@ -1325,12 +1326,7 @@ export function RunStartDialog({
 
               {currentStage === "Steps" && workflow !== undefined && (
                 <section aria-labelledby="run-start-steps" className="flex flex-col gap-[var(--ds-space-cozy)]">
-                  <div className="flex flex-wrap items-baseline justify-between gap-[var(--ds-space-base)]">
-                    <h4 id="run-start-steps" className="sr-only">Steps</h4>
-                    <span className={cn(dsText.meta, dsText.nums, dsFg.muted)}>
-                      {selectedStepKeys.length} of {workflow.steps.length} included
-                    </span>
-                  </div>
+                  <h4 id="run-start-steps" className="sr-only">Steps</h4>
                   <ul className="overflow-hidden rounded-[var(--ds-radius-lg)] border border-[color:var(--ds-border)] divide-y divide-[color:var(--ds-border)]">
                     {workflow.steps.map((step) => {
                       const selected = selectedStepKeys.includes(step.key);
@@ -1340,14 +1336,15 @@ export function RunStartDialog({
                       const sourceState = snapshot?.steps.find(entry => entry.key === step.key)?.state;
                       return (
                         <li key={step.key} className="launch-step-row flex min-w-0 flex-col gap-2">
-                          <div className="flex items-center gap-[var(--ds-space-base)]">
+                          <div className="flex items-start gap-[var(--ds-space-base)]">
                             <Checkbox checked={selected} disabled={control.state === "required" || forcedBy.length > 0 || (control.state === "omittable" && multiSubject && selected)}
-                              onCheckedChange={next => toggleStep(step.key, next === true)} label={step.label} className="[&_.ds-checkbox-label]:font-semibold"
-                              title={control.state === "required" ? control.reason : undefined} />
+                              onCheckedChange={next => toggleStep(step.key, next === true)} label={step.label}
+                              description={step.systems?.map(system => SYSTEM_LABEL[system]).join(" · ")}
+                              title={control.state === "required" ? control.reason : control.state === "omittable" && multiSubject ? multiSubjectOmissionReason : undefined} />
                             {isRerun && snapshot !== null && <Badge tone={sourceState === "completed" ? "success" : sourceState === "failed" ? "danger" : "neutral"} className="launch-step-status" data-status={sourceState}>{sourceState === "completed" ? "Completed" : sourceState === "failed" ? "Failed" : "Not started"}</Badge>}
                           </div>
                           {control.state === "required" && <span className="sr-only">{isRerun && snapshot?.steps.find(entry => entry.key === step.key)?.state === "completed" ? `Completed in the source; this workflow requires it to run again. ${control.reason}` : control.reason}</span>}
-                          {(forcedBy.length > 0 || (control.state === "omittable" && (multiSubject || !selected))) && <p className="pl-[calc(1rem+var(--ds-space-base))] text-caption text-[color:var(--ds-fg-muted)]">{forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.` : multiSubject ? multiSubjectOmissionReason : "Use saved or entered values instead."}</p>}
+                          {(forcedBy.length > 0 || (control.state === "omittable" && !selected && !isRerun && !multiSubject)) && <p className="pl-[calc(1rem+var(--ds-space-base))] text-caption text-[color:var(--ds-fg-muted)]">{forcedBy.length > 0 ? `Omitted with ${stepLabels(forcedBy)}.` : "Use saved or entered values instead."}</p>}
                           {control.state === "omittable" && control.forces.length > 0 && (
                             <p className={cn(dsText.meta, dsFg.muted, "pl-[calc(1rem+var(--ds-space-base))]")}>
                               {`Also omits: ${stepLabels(control.forces)}`}
@@ -1415,14 +1412,11 @@ export function RunStartDialog({
             <MetaLine
               tone="faint"
               items={[
-                // `{label} v{n}` — the demo's own footer item 1
-                // (`DemoRunStart.tsx:946`). The version is what separates two
-                // runs of one workflow started a descriptor bump apart, and
-                // this dialog is the last screen before one is enqueued.
-                workflow === undefined ? undefined : `${workflow.label} ${versionTag(workflow.version)}`,
+                isRerun ? "Source run · new run" : `${preview.entries.length} ${preview.entries.length === 1 ? "run" : "runs"}`,
+                isRerun ? undefined : workflow?.label,
                 currentStage === "Input"
                   ? blockedReason ?? undefined
-                  : currentStage === "Steps"
+                  : currentStage === "Steps" && !isRerun
                   ? stepsBlockedReason ?? undefined
                   : currentStage === "Confirm" && plan !== null
                     ? `${String(plan.planned.length)} to create`
@@ -1447,17 +1441,17 @@ export function RunStartDialog({
               disabled={busy || applied || omissionMismatch || plan.planned.length === 0 || recoveryError !== null || (recovery !== null && recovery.target.startPlanId !== plan.startPlanId)}
               onClick={() => void confirmStart()}
             >
-              {plan.dryRun ? "Start dry run" : "Start run"}
+              {plan.dryRun ? "Start dry run" : isRerun ? "Create rerun" : `Start ${plan.planned.length} ${plan.planned.length === 1 ? "run" : "runs"}`}
             </Button>
           ) : (
             <Button
               variant="primary"
               loading={busy}
               iconAfter={<ArrowRight aria-hidden className="size-[14px]" />}
-              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (preview.problem !== null || preview.entries.length > 1)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
+              disabled={busy || recoveryError !== null || recovery !== null || (isRerun && (snapshot === null || sourceError !== null || (currentStage === "Values" && (preview.problem !== null || preview.entries.length > 1 || stepsBlockedReason !== null)))) || (currentStage === "Input" && blockedReason !== null) || nextStage === null}
               onClick={() => void advance()}
             >
-              {nextStage === "Confirm" ? "Preview plan" : "Next"}
+              {nextStage === "Confirm" ? "Preview plan" : "Continue"}
             </Button>
           )}
         </DialogFooter>

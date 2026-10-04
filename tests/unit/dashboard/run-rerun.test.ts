@@ -28,7 +28,7 @@ function setup() { const h = launchHarness(); cleanup.push(h.dispose); return h;
 type Harness = ReturnType<typeof setup>;
 const text = () => document.body.textContent ?? "";
 function button(name: string): HTMLButtonElement {
-  if (name === "Next" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";
+  if (name === "Continue" && [...document.querySelectorAll("button")].some(node => node.textContent?.trim() === "Preview plan")) name = "Preview plan";
   const matches = [...document.querySelectorAll("button")].filter((node) => (node.textContent?.trim() === name || node.getAttribute("aria-label") === name));
   assert.equal(matches.length, 1, `one button ${name}: ${text()}`); return matches[0];
 }
@@ -67,14 +67,14 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     await mount(h, source);
     for (const name of ["Read employee", "Check employee", "File transaction"]) assert.equal(checkbox(name).getAttribute("aria-checked"), "true");
     assert.equal(checkbox("Read employee").disabled, true); assert.match(text(), /Completed in the source; this workflow requires it to run again/u);
-    const before = h.authoritySnapshot(); await press("Next");
+    const before = h.authoritySnapshot(); await press("Continue");
     assert.match(text(), /already submitted/u); assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
-    await press("Cancel"); assert.match(text(), /3 of 3 included/u); assert.equal(h.authoritySnapshot(), before);
-    await press("Next"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
+    await press("Cancel"); assert.match(text(), /3 \/ 3 included/u); assert.equal(h.authoritySnapshot(), before);
+    await press("Continue"); await press("Confirm"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before); assert.equal(h.submissions.length, 0);
-    await press("Copy Employee ID"); await press("Copy Previous transaction");
+    assert.equal(field("Employee ID").value, "10812345"); await press("Copy Previous transaction");
     await fill(field("Previous transaction"), "edited memo");
-    await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
+    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     assert.match(text(), /Review the plan/u); const submitted = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.deepEqual(submitted.submissions, [{ eid: "10812345", memo: "edited memo" }]);
     assert.deepEqual(submitted.rerunSource?.copiedFrom, [{ nodeId: "read", fieldPath: "eid", targetFieldPath: "eid" }]);
@@ -90,12 +90,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("omitted work has no new transaction proof; copied omission facts can be cleared/edited without attribution", async () => {
     const h = setup(); const source = await h.completeSource(); const bytes = sourceBytes(h, source); await mount(h, source);
     await act(async () => { checkbox("Check employee").click(); checkbox("File transaction").click(); });
-    const before = h.authoritySnapshot(); await press("Next"); assert.ok(document.querySelector('[aria-label="Values"]'));
+    const before = h.authoritySnapshot(); await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]'));
     assert.equal(h.authoritySnapshot(), before);
-    await press("Copy Employee ID"); await fill(field("Employee ID"), ""); assert.equal(field("Employee ID").value, "");
+    assert.equal(field("Employee ID").value, "10812345"); await fill(field("Employee ID"), ""); assert.equal(field("Employee ID").value, "");
     await fill(field("Employee ID"), "10812346"); await press("Copy Check employee · Checked employee ID");
-    await fill(field("Checked employee ID"), ""); await press("Next"); assert.ok(document.querySelector('[aria-label="Values"]'));
-    await fill(field("Checked employee ID"), "10812346"); await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
+    await fill(field("Checked employee ID"), ""); assert.equal(button("Continue").disabled, true); assert.ok(document.querySelector('[aria-label="Values"]'));
+    await fill(field("Checked employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     const request = StartPlanRequestSchema.parse(h.submissions.at(-1)); assert.deepEqual(request.submissions, [{ eid: "10812346" }]);
     assert.deepEqual(request.stepOmissions, [{ step: "checking", facts: { eid: "10812346" } }, { step: "filing", facts: {} }]);
     assert.deepEqual(request.rerunSource?.copiedFrom, []); await press("Start dry run");
@@ -128,11 +128,11 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     assert.equal(checkbox("File transaction").getAttribute("aria-checked"), "true");
     assert.equal(checkbox("Check employee").getAttribute("aria-checked"), outcome === "failed" ? "false" : "true");
     await act(async () => checkbox("File transaction").click()); assert.equal(checkbox("File transaction").getAttribute("aria-checked"), "false");
-    await press("Next"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /Unavailable/u);
+    await press("Continue"); assert.ok(document.querySelector('[aria-label="Values"]')); assert.match(text(), /Unavailable/u);
   });
   it("lost response survives unmount and exact replay without a second run", async () => {
-    const h = setup(); const source = await h.completeSource(); await mount(h, source); await press("Next"); await press("Confirm");
-    await press("Copy Employee ID"); await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
+    const h = setup(); const source = await h.completeSource(); await mount(h, source); await press("Continue"); await press("Confirm");
+    assert.equal(field("Employee ID").value, "10812345"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     h.loseResponse(); await press("Start dry run"); assert.match(text(), /lost response/u); const roots = h.queueRoots;
     await act(async () => root?.unmount()); root = undefined; document.body.replaceChildren();
     await mount(h, source); assert.match(text(), /needs readback/u); await press("Replay exact submission");
@@ -145,12 +145,12 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     h.world.probeResults.push({ ...absence, evidence: { ...absence.evidence,
       idempotencyKeyDigest: deriveIdempotencyKeyDigest("ucpath", "10812346|fixture-termination") } });
     assert.equal((await h.execute(other)).state, "done");
-    await mount(h, source); await press("Next"); await press("Confirm"); await press("Copy Employee ID");
-    await fill(field("Employee ID"), "10812346"); await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
+    await mount(h, source); await press("Continue"); await press("Confirm"); await press("Copy Employee ID");
+    await fill(field("Employee ID"), "10812346"); await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     assert.ok(document.querySelector('[aria-label="Repeat transaction warning"]'));
     assert.equal(h.finalCommands.length, 0); assert.equal(h.queueRoots.length, 2);
     const first = StartPlanRequestSchema.parse(h.submissions.at(-1)); await press("Confirm");
-    assert.ok(document.querySelector('[aria-label="Values"]')); await press("Next"); await press("Next");
+    assert.ok(document.querySelector('[aria-label="Values"]')); await press("Continue"); await press("Continue");
     const second = StartPlanRequestSchema.parse(h.submissions.at(-1));
     assert.notEqual(first.warningAcknowledgment, second.warningAcknowledgment); assert.deepEqual(second.submissions[0], { eid: "10812346" });
     assert.ok(button("Start dry run")); assert.equal(h.finalCommands.length, 0);
@@ -159,8 +159,8 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
     const h = setup(); const source = await h.completeSource(); let release: () => void = () => { throw new Error("release not initialized"); };
     const pending = new Promise<void>((resolve) => { release = resolve; });
     const client = { ...h.client, executeCommand: async (input: unknown) => { const result = await h.client.executeCommand(input); await pending; return result; } };
-    await mount(h, source, client); await press("Next"); await press("Confirm"); await press("Copy Employee ID");
-    await press("Next"); await act(async () => checkbox("Dry run").click()); await press("Next");
+    await mount(h, source, client); await press("Continue"); await press("Confirm"); await press("Copy Employee ID");
+    await press("Continue"); await act(async () => checkbox("Dry run").click()); await press("Continue");
     await act(async () => { button("Start dry run").click(); button("Start dry run").click(); });
     assert.equal(h.finalCommands.length, 1); assert.equal(h.queueRoots.length, 2);
     await press("Cancel"); await press("Rerun source"); await act(async () => release());
@@ -171,7 +171,7 @@ describe("mounted Rerun uses source authority and the ordinary launch host", () 
   it("a stale source refuses in the mounted launcher before warning navigation or plan allocation", async () => {
     const h = setup(); const source = await h.completeSource();
     const before = h.authoritySnapshot(); await mount(h, { ...source, version: PositiveIntSchema.parse(source.version - 1) });
-    assert.match(text(), /source-stale/u); assert.equal(button("Next").disabled, true); assert.equal(h.authoritySnapshot(), before);
+    assert.match(text(), /source-stale/u); assert.equal(button("Continue").disabled, true); assert.equal(h.authoritySnapshot(), before);
   });
 
 });
