@@ -98,12 +98,14 @@ branch selectors and source returns remain available; switching workflows resets
 focus. Settings header actions center vertically against the complete title/description block; title-only
 headings keep actions inline. Storage checks and Preflight put their actions and scope selector beside
 the heading. The healthy storage card keeps availability on the left and the report timestamp on the
-right. The existing card-row layout keeps 13 checks visible across Storage health, Work in progress
+right. The summary has a visible Status heading; the primary checks have a Data store and recovery
+heading. The existing card-row layout keeps 13 checks visible across Storage health, Work in progress
 and Connections. Run history is removed from this page. Work counters and update stages use plain
 language; healthy checks omit internal metadata. Exact failures use contextual Diagnostic details
 disclosures. Unavailable states and failed refreshes retain their evidence and last completed report.
 Doctor authority remains unchanged. Focused verification for the 2026-10-05 amendment is
-`storage-health-polish-20261005`; frozen parity stays at 3.1.19.
+`storage-health-polish-20261005`, with restored headings verified in `storage-section-headings-20261005`;
+frozen parity stays at 3.1.19.
 The Run picker reuses permanent-rail category icons, order, row geometry and text alignment. It
 filters direct-launch eligibility from served typed-input capability or an explicit preview `runnable`
 flag; OCR and I-9 Lookup stay in their panels and Explorer but disappear from Start a run. Picker

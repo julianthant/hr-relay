@@ -7391,7 +7391,8 @@ and focused verification are retained in `workflow-mocks-20261004` under the evi
 Settings page actions center vertically on the complete title/description block. A title-only heading
 keeps its action inline. The healthy storage summary keeps its availability label on the left and
 report timestamp on the right. An absent detailed report remains explicitly not checked, and degraded
-storage retains its check freshness beside the failure.
+storage retains its check freshness beside the failure. The summary has a visible Status heading;
+the primary check card has a Data store and recovery heading, using the shared section typography.
 The 2026-10-05 storage presentation amendment keeps the existing card-row layout with 13 checks
 visible in Storage health, Work in progress and Connections. Run history is removed from this page
 at the operator's request; the doctor wire and runtime checks remain unchanged. Work counters use
@@ -7404,7 +7405,8 @@ no page-wide technical bucket. Unavailable checks never become passing or zero-c
 Failed refreshes retain the last completed report and timestamp, with a short failure notice and
 optional exact error. Current bootstrap degradation remains prominent, and a degraded doctor report
 also prevents an available summary. Doctor and recovery authority are unchanged.
-Focused verification belongs to `storage-health-polish-20261005`; full frozen parity remains at 3.1.19.
+Focused verification belongs to `storage-health-polish-20261005`, with restored headings verified
+in `storage-section-headings-20261005`; full frozen parity remains at 3.1.19.
 Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
 corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
 left edge of their rail and use one interruptible 220ms transform transition between pointer-selected

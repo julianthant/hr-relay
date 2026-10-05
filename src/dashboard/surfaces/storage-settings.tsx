@@ -154,7 +154,8 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
-    {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}
+    <BodySection title="Status">
+      {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}
       {authority === "healthy"
         ? <FormGroup label="Data store summary" className="diagnostic-summary">
           <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
@@ -163,13 +164,16 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
             </span>} />
         </FormGroup>
         : <Banner tone="danger" title="Data store unavailable">Saved run data is unavailable. Review the storage checks below.</Banner>}
+    </BodySection>
       {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">
         Try running the checks again.
         <DiagnosticFindings name="Check error" result={{ tone: "unavailable", value: "Unavailable", detail: doctor.message }} />
       </Banner>}
-      <FormGroup label="Storage health checks"><div role="list">
+      <BodySection title="Data store and recovery">
+        <FormGroup label="Storage health checks"><div role="list">
         {checks.map(check => <CheckRow findings key={check.name} {...check} />)}
-      </div></FormGroup>
+        </div></FormGroup>
+      </BodySection>
       <CheckGroup title="Work in progress" subtitle="Work waiting, assigned or awaiting confirmation. Counts can be normal while tasks are running.">
         {COUNT_CHECKS.map(check => <CheckRow key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
         {report?.counts.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Work in progress" result={{ tone: "unavailable", value: "Unavailable", detail: report.counts.cause.summary }} /></div>}

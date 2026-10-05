@@ -274,7 +274,8 @@ The Run picker uses the permanent rail's grouped navigation and only runnable en
 
 Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its report timestamp on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
 
-The 2026-10-05 storage amendment keeps the existing card-row layout with 13 checks visible.
+The 2026-10-05 storage amendment keeps the existing card-row layout with 13 checks visible, with
+Status above the summary and Data store and recovery above the primary checks.
 Run history is removed from Storage checks at the operator's request. Work counts, connection
 states and update stages use plain language; healthy internal metadata is omitted. Exact failures
 remain in contextual disclosures. Unavailable states and failed-refresh retention stay explicit.

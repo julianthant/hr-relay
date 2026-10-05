@@ -33,6 +33,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const primary = surface.getByRole("group", { name: "Storage health checks", exact: true });
       const run = surface.locator(".ds-page-heading-actions button");
       const recovery = primary.locator(".diagnostic-check-entry").filter({ hasText: "Recovery" });
+      await expect(surface.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "Data store and recovery", exact: true })).toBeVisible();
       await expect(run).toBeEnabled();
       await expect(primary.getByRole("listitem")).toHaveCount(3);
       await expect(surface.locator(".diagnostic-check-entry")).toHaveCount(13);
@@ -82,6 +84,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(surface.getByRole("group", { name: "Connections", exact: true })).toContainText("Unavailable");
       await run.click();
       await expect(surface.getByRole("alert")).toContainText("Storage checks could not finish");
+      await expect(surface.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
+      await expect(surface.getByRole("heading", { name: "Data store and recovery", exact: true })).toBeVisible();
       await expect(recovery).toContainText("No unfinished storage operations.");
       await expect(stamp).toHaveAttribute("dateTime", healthy.checkedAt);
       await expect(run).toBeEnabled();
