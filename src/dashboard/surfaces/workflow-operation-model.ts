@@ -100,7 +100,10 @@ export const MOCK_OPERATION_CATALOG: Readonly<Record<MockWorkflowId, Readonly<Re
   },
 };
 
-function usDate(value: string): string { const [year, month, day] = value.split("-"); return `${month}/${day}/${year}`; }
+function usDate(value: string): string {
+  if (!/^\d{4}-\d{2}-\d{2}$/u.test(value)) return value;
+  const [year, month, day] = value.split("-"); return `${month}/${day}/${year}`;
+}
 export function mockOperationValue(run: MockRun, value: string): string {
   if (!/^\$[a-z]/u.test(value)) return value;
   const original = seedReviewRecords(run)[0], record = run.workflowId === "ocr" ? original : mockInputRecord(run), field = (key: string) => reviewValue(record, key) || "—";
@@ -116,7 +119,7 @@ export function mockOperationValue(run: MockRun, value: string): string {
     pdf: run.draft.files.map(file => file.name).join(", "), formType: MOCK_FORM_TYPES.find(item => item.value === run.draft.formType)?.label ?? run.draft.formType, sourcePage: String(record.page),
     roster: run.draft.formType === "i9" ? "Action History" : "Onboarding Roster", rosterMode: run.draft.roster === "download" ? "Fresh SharePoint download" : "Registered local workbook",
     recordCount: String(reviewRecords(run).length), approvedCount: String(run.approvedCount ?? 0), approval: run.approved ? "Approved" : "Waiting for review",
-    signedDate: field("dateSigned") === "—" ? "08/03/2026" : usDate(field("dateSigned")),
+    signedDate: usDate(field("dateSigned")),
     contactName: field("contactName"), relationship: field("relationship"), phone: field("cellPhone"), sameAddress: field("sameAddress") === "true" ? "Yes" : "No",
     street: field("street"), city: field("city"), state: field("state"), zip: field("zip"), country: field("country"), section1: field("section1"), section2: field("section2"),
     reportStart: usDate(run.draft.startDate), reportEnd: usDate(run.draft.endDate),

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus, Drawer, DrawerContent, DrawerTrigger } from "../ds/ui.js";
+import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { LogPanel } from "./log-panel.js";
 import { LogFeed } from "./log-feed.js";
@@ -12,7 +12,8 @@ import { QueuePanel, type QueueFilterScope } from "./queue.js";
 import type { QueueSortKey } from "./queue-model.js";
 import { StatusBadge } from "./status.js";
 import { dsStatusOf } from "./status-model.js";
-import { reviewRecords, type ReviewRecord } from "./workflow-review-model.js";
+import { reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
+import { reviewSourcePages } from "./workflow-review-source-model.js";
 import { WorkflowMockReview } from "./workflow-review.js";
 
 export function WorkflowMockQueue({ label, runs, selected, onSelect, day, nowIso, sort, filter }: {
@@ -37,14 +38,17 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
 }) {
   const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
-  const { steps, timeline } = mockRunLog(run);
   const hasRecords = run.workflowId === "ocr";
+  const recordsVisible = hasRecords && (reviewOpen ?? localReviewOpen);
+  const setRecordsVisible = onReviewOpenChange ?? setLocalReviewOpen;
+  const { workflowId, draft } = run;
+  const sourcePages = useMemo(() => hasRecords ? Object.fromEntries(seedReviewRecords({ workflowId, draft }).map(record => [record.id, reviewSourcePages(record)])) : {}, [hasRecords, workflowId, draft]);
+  const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
-  return <Drawer open={reviewOpen ?? localReviewOpen} onOpenChange={onReviewOpenChange ?? setLocalReviewOpen}>
-    <LogPanel title={run.subject} steps={steps} timeline={timeline}
+  return <LogPanel title={run.subject} steps={steps} timeline={timeline}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">
-        {hasRecords && <DrawerTrigger asChild><Button size="sm" icon={<ListChecks aria-hidden className="size-4" />}>{mockNeedsReview(run) ? "Review records" : "Records"} {reviewRecords(run).length}</Button></DrawerTrigger>}
+        {hasRecords && <Button size="sm" variant={recordsVisible ? "secondary" : "outline"} aria-pressed={recordsVisible} aria-controls={recordsVisible ? `records-${mockQueueId(run.id)}` : undefined} icon={<ListChecks aria-hidden className="size-4" />} onClick={() => setRecordsVisible(!recordsVisible)}>Records {reviewRecords(run).length}</Button>}
         {run.workflowId !== "ocr" && run.ocrRunId && <Button size="sm" onClick={() => onSelect(run.ocrRunId!)}>Open OCR</Button>}
         {!["i9-lookup", "ocr"].includes(run.workflowId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
@@ -59,9 +63,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
           </PopoverContent>
         </Popover>}
       </span>}
-      content={<LogFeed steps={steps} navigation={jump => <LogTimeline stages={timeline} onJump={jump} />} />} />
-    {hasRecords && <DrawerContent title="OCR records" description={run.subject} size="min(56rem, calc(100vw - var(--ds-space-section)))" className="ds-body-scope ds-body-overlay ui-theme-scope">
-      <WorkflowMockReview run={run} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
-    </DrawerContent>}
-  </Drawer>;
+      content={recordsVisible ? <div id={`records-${mockQueueId(run.id)}`} className="flex min-h-0 min-w-0 flex-1">
+        <WorkflowMockReview key={run.id} run={run} sourcePages={sourcePages} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
+      </div> : <LogFeed steps={steps} navigation={jump => <LogTimeline stages={timeline} onJump={jump} />} />} />;
 }

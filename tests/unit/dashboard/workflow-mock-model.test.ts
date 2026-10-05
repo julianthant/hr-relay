@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_WORKFLOWS, mockWorkflow } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
-import { approveMockRun, initialMockDraft, mockDraftError, mockInputEntries, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunsForDraft, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
+import { approveMockRun, initialMockDraft, mockDraftError, mockInputEntries, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
 
 const file = { name: "packet.pdf", size: 100, digest: "copied-pdf-digest" };
 const draft = (id: string, changes: Partial<MockDraft> = {}): MockDraft => ({ ...initialMockDraft(id), text: mockWorkflow(id).example, files: [file], ...changes });
@@ -70,7 +70,7 @@ describe("legacy workflow previews", () => {
     const rerun = mockRunsForDraft("i9-check", run.draft, 2, run.id);
     expect(rerun).toHaveLength(2); expect(rerun[0].sourceId).toBe(run.id);
     expect(rerun[1].workflowId).toBe("ocr"); expect(mockNeedsReview(rerun[1])).toBe(true); expect(rerun[1].parentId).toBe(rerun[0].id); expect(rerun[1].id).not.toBe(`${run.id}:person:0`);
-    expect(steps.some(step => step.title === "Result")).toBe(true);
+    expect(steps.some(step => step.title === "Result")).toBe(false);
   });
   it("skips write terminals in dry run, rehire I-9 and normal lookup CRM dates", () => {
     const run = mockRunsForDraft("separations", draft("separations"), 1)[0];
@@ -111,7 +111,7 @@ describe("legacy workflow previews", () => {
     for (const run of runs) {
       expect(run.title).toBe(run.subject);
       const { steps } = mockRunLog(run);
-      expect(steps.length).toBeGreaterThan(1);
+      expect(steps.map(step => step.title)).toEqual(mockRunPipeline(run).map(step => step.label));
       expect(new Set(steps.map(step => step.id)).size).toBe(steps.length);
     }
   });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { QueueSurfaceWireSchema } from "../../../src/domain/dashboard/projection.js";
-import { approveMockRun, mockQueueCounts, mockQueueView, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
+import { approveMockRun, mockQueueCounts, mockQueueView, mockRunLog, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
 import { mockQueueId, mockQueueSurface, mockQueueSurfaces } from "../../../src/dashboard/surfaces/workflow-queue-model.js";
 import { discardMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
 
@@ -15,6 +15,10 @@ describe("canonical workflow mock queue presentations", () => {
       expect(row.actions).toEqual([]); expect(row.linkedRuns).toEqual([]);
       expect(row.resolvedInstances).toEqual([]);
       expect(row.session.state).toBe("absent"); expect(row.runNumber.state).toBe("absent");
+      const { timeline, endTime } = mockRunLog(runs[index]);
+      expect(row.pipeline.map(step => step.label)).toEqual(timeline.map(stage => stage.label));
+      expect(endTime >= timeline[timeline.length - 1].time!).toBe(true);
+      expect(row.updatedAt.slice(14, 19)).toBe(endTime.slice(3));
     }
   });
   it("keeps presentation identities stable through edits, filters and reordering", () => {
@@ -29,7 +33,8 @@ describe("canonical workflow mock queue presentations", () => {
   it("shows approval gates only on pending preparation and retains independent child lineage", () => {
     const runs = seedMockRuns(), parent = runs.find(run => run.workflowId === "emergency-contact")!, source = runs.find(run => run.id === parent.ocrRunId)!;
     const waiting = mockQueueSurface(source, day);
-    expect(mockQueueSurface(parent, day).status).toBe("running"); expect(mockQueueSurface(parent, day).gateOpenedAt.state).toBe("absent");
+    expect(mockQueueSurface(parent, day).status).toBe("running");
+    expect(mockQueueSurface(parent, day).liveMessage).toEqual({ state: "present", value: "Wait for OCR approval" }); expect(mockQueueSurface(parent, day).gateOpenedAt.state).toBe("absent");
     expect(waiting.status).toBe("awaiting-approval"); expect(waiting.gateOpenedAt.state).toBe("present"); expect(waiting.endedAt.state).toBe("absent");
     const approved = approveMockRun(runs, source.id);
     const child = approved.find(run => run.parentId === parent.id && run.role === "person")!;

@@ -190,7 +190,7 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
   return fields.filter(([label]) => !(run.draft.dryRun && ["HR ticket", "Signature date"].includes(label)) && !(label === "HR ticket" && !run.draft.selectedSteps.includes("submit")) && !(label === "Signature date" && !run.draft.selectedSteps.includes("transaction")) && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only" && label === "Signers"));
 }
-export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] } {
+export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[]; endTime: string } {
   const pipeline = mockRunPipeline(run);
   let elapsed = 0;
   const clock = (seconds: number) => new Date(Date.UTC(2026, 7, 3, 9, 10, seconds)).toISOString().slice(11, 19);
@@ -207,10 +207,11 @@ export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline:
     const details = mockDetailEntries(run, step, stage.state, time).flatMap<LogEntry>(entry => entry.kind === "fields" ? [{ ...entry, fields: entry.fields.filter(field => !shown.has(field.label.toLowerCase())) }].filter(entry => entry.fields.length) : [entry]);
     return { id: stage.id, time, title: step.label, ...(step.system ? { system: step.system } : {}), entries: [...(operations.length && stage.state === "completed" ? [] : [{ kind: "note" as const, id: `${run.id}:${step.key}:note`, time, message: stage.state === "cancelled" ? "Preparation discarded. No downstream work was started." : stage.state === "skipped" ? run.draft.dryRun && step.write ? "Dry run: submission skipped." : "Step omitted for this input or selected mode." : stage.state === "pending" ? "Waiting for extracted records to be approved." : step.message }]), ...operations, ...details] };
   });
-  const resultTitle = mockNeedsReview(run) ? "Review pending" : "Result";
-  steps.push({ id: `${run.id}:result`, time: clock(elapsed), title: resultTitle, entries: [{ kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: clock(elapsed), kind: "read", label, value })) }] });
-  timeline.push({ id: `${run.id}:result`, label: resultTitle, state: run.discarded ? "cancelled" : mockNeedsReview(run) ? "waiting" : mockWaitsForOcr(run) ? "pending" : "completed", time: clock(elapsed), stepId: `${run.id}:result`, substeps: [] });
-  return { steps, timeline };
+  if (!mockNeedsReview(run) && !mockWaitsForOcr(run) && steps.length > 0) {
+    const last = steps[steps.length - 1];
+    steps[steps.length - 1] = { ...last, entries: [...last.entries, { kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: clock(elapsed), kind: "read", label, value })) }] };
+  }
+  return { steps, timeline, endTime: clock(elapsed) };
 }
 
 export function mockOathDuplicate(runs: readonly MockRun[], draft: MockDraft): string | undefined {

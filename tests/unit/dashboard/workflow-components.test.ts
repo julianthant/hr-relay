@@ -81,7 +81,7 @@ describe("complete workflow presentation mocks", () => {
   it("makes Oath Upload signers independent and keeps source preparation out of their kernel logs", () => {
     const runs = preparation("oath-upload"), ocr = runs.find(run => run.workflowId === "ocr")!, result = approveMockRun(runs, ocr.id), signer = result.find(run => run.role === "person")!;
     expect(signer.workflowId).toBe("oath-signature"); expect(signer.parentId).toBe(runs[0].id); expect(signer.ocrRunId).toBe(ocr.id);
-    expect(mockRunLog(signer).timeline.map(step => step.label)).toEqual(["Verify onboarding and oath date", "Sign in to UCPath", "Sign oath", "Result"]);
+    expect(mockRunLog(signer).timeline.map(step => step.label)).toEqual(["Verify onboarding and oath date", "Sign in to UCPath", "Sign oath"]);
     const contact = preparation("emergency-contact"), approved = approveMockRun(contact, contact[1].id);
     expect(mockRunLog(approved.find(run => run.id === contact[0].id)!).timeline.map(step => step.label)).not.toContain("Save emergency contact");
     expect(mockRunLog(approved.find(run => run.role === "person")!).timeline.map(step => step.label)).toContain("Save emergency contact");
@@ -98,17 +98,28 @@ describe("complete workflow presentation mocks", () => {
     expect(reviewIsReadOnly(approved.find(run => run.id === ocr.id)!)).toBe(true);
     expect(() => updateMockReview(runs, runs[0].id, reviewRecords(ocr))).toThrow("MOCK_REVIEW_READ_ONLY");
   });
-  it("keeps system verification fields immutable while correcting extracted values", () => {
+  it("renders every extracted field, including blanks and extra response fields, as editable before approval", () => {
     const run = seedMockRuns().find(run => run.workflowId === "ocr")!;
-    const verify = reviewRecords({ ...run, records: undefined, draft: { ...run.draft, formType: "verify" } })[0];
-    for (const [formType, required] of [["oath", ["dateSigned", "employeeSigned", "officerSigned"]], ["emergency-contact", ["contactName", "relationship", "cellPhone", "sameAddress"]], ["onbase-emergency-contact", ["contactName", "relationship", "cellPhone", "sameAddress"]], ["verify", ["paperOath", "paperContact", "serviceDate", "oathDate", "i9Status", "i9Signer"]], ["i9", ["section1", "section2"]]] as const) {
-      const record = reviewRecords({ ...run, records: undefined, draft: { ...run.draft, formType } })[0];
-      expect(record.fields.map(field => field.key)).toEqual(expect.arrayContaining([...required]));
-      if (formType === "i9") expect(record.fields.some(field => field.key === "tracker")).toBe(false);
+    for (const formType of ["oath", "emergency-contact", "onbase-emergency-contact", "verify", "i9"]) {
+      const source = { ...run, records: undefined, draft: { ...run.draft, formType } };
+      const record = reviewRecords(source)[0];
+      expect(record.fields.some(field => field.readOnly)).toBe(false);
+      const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run: source, onChange: () => {}, onApprove: () => {}, onRestore: () => {} }));
+      for (const field of record.fields) {
+        expect(markup).toContain(field.label);
+        expect(editReviewRecord(record, field.key, field.kind === "boolean" ? "false" : "changed").fields).toContainEqual(expect.objectContaining({ key: field.key, value: field.kind === "boolean" ? "false" : "changed" }));
+      }
+      if (record.kind === "contact") for (const key of ["employeeName", "employeeHomePhone", "employeeStreet", "personalEmail", "street", "homePhone", "workPhone"]) expect(markup).toContain(`name="${key}"`);
+      if (record.kind === "verify") for (const key of ["serviceDate", "oathDate", "i9Status", "i9Signer"]) expect(record.fields.map(field => field.key)).not.toContain(key);
+      if (record.kind === "i9") for (const key of ["middleInitial", "dateOfBirth", "ssn", "hireDate"]) expect(markup).toContain(`name="${key}"`);
     }
-    expect(editReviewRecord(verify, "firstName", "Sam").fields).toContainEqual(expect.objectContaining({ key: "firstName", value: "Sam" }));
-    for (const key of ["serviceDate", "oathDate", "i9Status", "i9Signer"]) expect(() => editReviewRecord(verify, key, "changed")).toThrow("MOCK_REVIEW_FIELD_READ_ONLY");
-    expect(() => editReviewRecord(verify, "missing", "changed")).toThrow("MOCK_REVIEW_FIELD_UNKNOWN");
+    const record = reviewRecords(run)[0];
+    const extra = { ...record, fields: [...record.fields, { key: "providerExtra", label: "Additional extracted field", value: "", section: "Other" }] };
+    const markup = renderToStaticMarkup(createElement(WorkflowMockReview, { run: { ...run, records: [extra] }, onChange: () => {}, onRestore: () => {} }));
+    expect(markup).toContain('name="providerExtra"');
+    expect(() => editReviewRecord(record, "missing", "changed")).toThrow("MOCK_REVIEW_FIELD_UNKNOWN");
+    const proof = { ...record, fields: [{ key: "proof", label: "System proof", value: "Original", readOnly: true }] };
+    expect(() => editReviewRecord(proof, "proof", "changed")).toThrow("MOCK_REVIEW_FIELD_READ_ONLY");
   });
   it("stops Oath Upload, missing OnBase identity and unavailable I-9 at the correct dependency", () => {
     for (const [id, key, value, title] of [["oath-upload", "signers", "failed", "Wait signatures"], ["onbase", "keyset", "missing", "Fill keywords"], ["i9-lookup", "profile", "unavailable", "Lookup"]] as const) {

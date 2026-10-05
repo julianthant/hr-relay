@@ -13,8 +13,9 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
   const review = mockNeedsReview(run);
   const records = reviewRecords(run);
   const warnings = records.flatMap(record => record.warnings);
-  const { timeline } = mockRunLog(run);
-  const endClock = timeline[timeline.length - 1].time!;
+  const { timeline, endTime } = mockRunLog(run);
+  const currentStep = timeline.find(stage => stage.state === "active" || stage.state === "waiting");
+  const endClock = endTime;
   const end = `${day}T${String(Number(endClock.slice(0, 2)) + 7).padStart(2, "0")}${endClock.slice(2)}.000Z`;
   const absent = (reason: string) => ({ state: "absent" as const, reason });
   return QueueSurfaceWireSchema.parse({
@@ -33,9 +34,9 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
     startedAt: `${day}T16:10:00.000Z`, updatedAt: end,
     endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
     gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
-    liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : absent("No active step"),
+    liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : currentStep ? { state: "present", value: currentStep.label } : absent("No active step"),
     warnings: warnings.length ? { state: "present", count: warnings.length, first: warnings[0] } : absent("No record warnings"),
-    pipeline: timeline.filter(stage => stage.id !== `${run.id}:result`).map((stage, index) => ({
+    pipeline: timeline.map((stage, index) => ({
       id: `step-${index + 1}`, label: stage.label,
       state: stage.state === "completed" ? "done" : stage.state === "waiting" ? "blocked" : stage.state,
     })),

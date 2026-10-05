@@ -238,28 +238,33 @@ manual values. Settings page headings use h1; title actions share one row, icon 
 meet the 24px desktop minimum, browser titles follow the active route, and Skip to content bypasses navigation.
 The audit evidence is retained under `hr-automation-rebuild-evidence/frontend-audit-20261004/`.
 
-## OCR-only Records layout amendment (2026-10-04)
+## OCR-only Records layout amendment (2026-10-05)
 
 All local workflow queues render through the canonical QueuePanel and QueueRow. Stable local
-presentation IDs carry no runtime commands. Results live inside Logs and its timeline; the
-Logs/Records tab switcher is retired. Only OCR exposes a Records header action, opening a review
-drawer with a compact record table, one focused editor and fixed approval actions. PDF parent
-runs link to their separate OCR row. Other workflows have no record collection or editor and
+presentation IDs carry no runtime commands. Outcome values live inside the final real log step;
+the redundant Result stage and Logs/Records tab switcher are retired. Only OCR exposes a Records
+header action, toggling the full panel body while retaining its header. Two independently scrolling
+columns show
+the PDF-page image and all editable response fields, including blanks. Image URLs are separate
+from extracted values; fixtures supply immutable synthetic pages. Zoom, fit, I-9 page selection,
+record selection and fixed approval actions stay within the panel. PDF parent runs link to their separate OCR row. Other workflows have no record collection or editor and
 consume copied approved inputs. Linked parent, person, OCR and rerun-source navigation stays
 beside Rerun, with keyboard access and focus restoration.
 
 Delegated OCR owns approval, including the current local I-9 intake preview. This operator
 amendment supersedes legacy automatic I-9 intake in previews only; served runtime authority is
 unchanged. Approval requires the exact parent/target, selected resolved identities and valid
-Employee IDs. System verification and source evidence remain immutable; I-9 retention results
-stay in downstream Logs. Approval locks edits. Discard/Undo retains corrections and updates the
-parent; Add record focuses Employee ID, approval focuses the record heading and drawer closure
-restores its header action. Instructional mock paragraphs remain retired.
+Employee IDs. System verification stays in Logs and source page images remain immutable. I-9
+retention results stay in downstream Logs. Approval locks edits. Discard/Undo retains corrections and updates the
+parent; Add record focuses Employee ID, opening Records and approval focus the record heading.
+The header toggle returns to Logs while retaining corrections. Instructional mock paragraphs remain
+retired.
 
 Focused verification covers workflow contracts, OCR form schemas, editing, approval and
 discard/undo, record switching, leading-zero IDs, canonical rows, parent/child navigation,
 keyboard focus, overflow and local transport isolation in dark/light at 1024 and 1440 pixels.
-Evidence is retained under `ocr-review-20261004`; frozen references and full phase-exit gates
+Active mock queue cards show their current step beneath the progress bars. Evidence is retained
+under `ocr-review-20261004` and `ocr-inline-review-20261005`; frozen references and full phase-exit gates
 remain deferred to 3.1.19.
 
 ## Detailed workflow presentation amendment (2026-10-04)
@@ -269,7 +274,7 @@ Timeline tooltips show ordered substeps, states and synthetic durations, with ke
 the corresponding log section. Skipped commits and unavailable outcomes never appear successful.
 New-hire and concurrent-hire forms retain their distinct tab walks, identity checks and dry-run
 boundaries. Historical OCR fields remain separate from approved downstream inputs. Existing
-canonical queue rows, Logs, OCR review drawer and field-source inspection remain the presentation
+canonical queue rows, Logs, inline OCR review and field-source inspection remain the presentation
 owners; no tabs or second editor are introduced.
 
 Workflow rail active/total counts remain visible at 1024 and 1440 pixels and update from the same
@@ -286,7 +291,7 @@ stays with 3.1.19. Node/registry isolation and component-export boundary checks 
 The permanent-rail inbox retains its compact All/Unread tabs, separate category menu and canonical
 row layout. Every row offers an action linked to an exact source run, OCR preview or Archive index.
 Source subjects and workflow labels replace unrelated placeholder people. Run navigation exposes Logs;
-OCR review opens the existing editable drawer, and reopening approved records shows locked values.
+OCR review opens the editable Records body, and reopening approved records shows locked values.
 New local runs and OCR approval/discard update the inbox. Local event ages use the shared served clock.
 
 Read/unread controls and Read all are explicit and idempotent. Read state does not resolve urgency;

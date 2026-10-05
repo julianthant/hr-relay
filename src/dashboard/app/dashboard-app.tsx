@@ -1032,7 +1032,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         setRoute({ ...next, day: destination.day });
       }
       opened();
-      if (destination.kind !== "preview-run" || !destination.records) requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus());
+      requestAnimationFrame(() => {
+        const target = destination.kind === "preview-run" && destination.records
+          ? document.querySelector<HTMLElement>("[data-ocr-review-heading]")
+          : document.getElementById(DASHBOARD_MAIN_REGION_ID);
+        target?.focus({ preventScroll: true });
+      });
     });
   }, [leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId]);
 

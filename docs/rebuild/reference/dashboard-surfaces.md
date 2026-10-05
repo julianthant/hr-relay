@@ -7435,18 +7435,25 @@ log steps with timeline entries; the separate Result and Linked runs tabs are re
 keyboard-accessible icon beside Rerun opens parent, child and rerun-source navigation.
 The OCR-only Records amendment removes the Logs/Records tab switcher from local workflow runs.
 Logs remain the main detail surface; only OCR exposes a Records action in its header. That action
-opens a dedicated review drawer with a compact record table, per-record inclusion, one focused
-editor and a fixed approval footer. Other workflows offer a direct link to their OCR run and have
+toggles the entire log-panel body while retaining its header. The review body has two columns:
+a PDF-page image on the left and every extracted response field on the right, including blanks.
+Each pane scrolls independently; document zoom, fit and I-9 page selection stay within the panel.
+Record selection, inclusion and a fixed approval footer belong to the editor. Other workflows offer a direct link to their OCR run and have
 no record editor or record collection. Approved downstream inputs are copied snapshots, not editable
 records. OCR cannot approve without its exact delegating parent and target; invalid, unselected and
 unknown identities cannot fan out. Approval locks OCR edits. Discard and Undo retain corrections and
-update the waiting parent. Source transcriptions and CRM/I-9 verification evidence remain immutable.
+update the waiting parent. Source page images and CRM/I-9 verification evidence remain immutable. System checks stay in Logs;
+all extracted data is editable before approval. Raw OCR date spellings and unfamiliar relationship
+values remain visible for correction. The image-URL input is separate from response fields;
+local fixtures supply fixed synthetic pages, never a document generated from corrected values.
 I-9 retention outcomes appear only in downstream Logs, never as completed writes in pending OCR
-records. Add record focuses Employee ID, approval focuses the retained record heading and drawer
-closure restores the header action. Linked-run navigation stays beside Rerun. Informational mock
+records. Add record focuses Employee ID; opening Records and approving focus the record heading.
+Toggling back restores Logs without changing corrected data. Linked-run navigation stays beside Rerun. Informational mock
 paragraphs are retired. The palette and canonical queue, button and input primitives remain unchanged.
 Focused unit, dark/light 1024/1440 interaction, keyboard, overflow and screenshot evidence is retained
-in `ocr-review-20261004`. These are local frontend previews; served authority is unchanged. Full frozen
+in `ocr-review-20261004` and `ocr-inline-review-20261005`. Active mock queue cards show their current
+step beneath progress bars. The redundant Result timeline stage is retired; outcome values remain
+in the final real log step. These are local frontend previews; served authority is unchanged. Full frozen
 parity and phase-exit gates remain owned by 3.1.19.
 
 The workflow-detail amendment uses one pure operation catalog for local Logs, Explorer fields and
@@ -7483,7 +7490,7 @@ surfaces, omit History gap and restore focus when dismissed.
 The 2026-10-05 notification interaction amendment links each local update to an exact available queue
 run, OCR preview or Archive index. Subjects and workflow labels come from that destination. All rows
 expose their action, including completed updates and Archive. Opening a run selects its Logs and
-clears queue selection/status filters; OCR review opens the existing records drawer. Missing targets
+clears queue selection/status filters; OCR review opens the inline Records body. Missing targets
 and changed days refuse visibly instead of opening another run. Opening marks an update read only
 after navigation succeeds. Explicit read/unread controls and Read all are idempotent and do not resolve
 urgency. Category and All/Unread selections survive inbox dismissal. Read all includes hidden updates

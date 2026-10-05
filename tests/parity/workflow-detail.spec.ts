@@ -51,9 +51,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await info.attach(`rehire-tooltip-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await expect(rail.getByRole("button", { name: "Emergency Contact", exact: true }).locator(".workflow-rail-meta")).toHaveText("1 · 1");
-      await logs.getByRole("button", { name: "Open OCR", exact: true }).click(); await logs.getByRole("button", { name: "Review records 1", exact: true }).click();
-      const drawer = page.getByRole("dialog", { name: "OCR records", exact: true });
-      await drawer.getByRole("button", { name: "Approve records", exact: true }).click(); await drawer.getByRole("button", { name: "Close", exact: true }).click();
+      await logs.getByRole("button", { name: "Open OCR", exact: true }).click(); await logs.getByRole("button", { name: "Records 1", exact: true }).click();
+      const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
+      await drawer.getByRole("button", { name: "Approve records", exact: true }).click(); await logs.getByRole("button", { name: /^Records \d+$/u }).click();
       await expect(rail.getByRole("button", { name: "Emergency Contact", exact: true }).locator(".workflow-rail-meta")).toHaveText("0 · 2");
       await rail.getByRole("button", { name: "Emergency Contact", exact: true }).click();
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click(); await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
