@@ -7377,7 +7377,7 @@ The 2026-10-04 workflow-mock amendment copies contracts for all 15 rail workflow
 `legacy:hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87`. Unserved workflows have local
 queues, logs and Run/Rerun previews in the approved compact frame; served launches retain their
 existing descriptor, command and recovery authority. The served picker hands off preview choices
-without placing their IDs in a start-plan request. Preview queues and results identify fictional work.
+without placing their IDs in a start-plan request. Local preview transport remains separate from served launch authority.
 Typed inputs, PDF preparation, form types, roster selection, dry-run terminals and kernel step order
 follow the copied sources. I-9 Lookup remains delegated; SharePoint offers the configured Onboarding
 Roster; OnBase combines PDFs and admits only Emergency Contact. Full Oath Upload waits for review
@@ -7392,13 +7392,28 @@ The workflow-component amendment extends these local producers with contract-spe
 results, PDF record review, manual identity provenance, selected-person fan-out, discard and linked
 run navigation. Preparation rows own review and rollup; person rows own their kernel steps. Full
 Oath Upload links to separate Oath Signature rows; I-9 Check creates person rows automatically.
-Standalone OCR and I-9 reports remain read only. Source transcriptions and all identities are
-fictional; uploading a PDF does not invoke OCR or contact an external system in these previews.
+Standalone OCR permits corrections to extracted fields without downstream approval. Completed I-9
+retention results, approved preparations and person outcomes remain read only. CRM and I-9
+verification values cannot be edited. Source transcriptions and all identities are fictional;
+uploading a PDF does not invoke OCR or contact an external system in these previews.
 Explorer includes all 15 rail workflows with field provenance and conditional paths. The copied
 legacy demo graphs correct Work-Study pool F/reason JRL and comments, configured SharePoint
 navigation/download, and Old Kronos Time Detail validation against the pinned kernel modules.
 Onboarding dry runs stage and abandon the I-9 form, then stage Smart HR without submitting.
 The source digest inventory and verification are retained in `workflow-components-20261004`.
+The Records layout amendment reuses the canonical `QueuePanel` and `QueueRow` for every local
+workflow. Preparation and person runs keep independent rows. Local presentation identities are
+stable across edits, sorting and filtering and carry no runtime command descriptors. Results are
+log steps with timeline entries; the separate Result and Linked runs tabs are retired. A named,
+keyboard-accessible icon beside Rerun opens parent, child and rerun-source navigation.
+Records uses a compact navigator and one focused editor, with immutable source fields available
+on demand. Approval selection and actions stay in Records. Invalid identities cannot approve;
+manual identity provenance stays visible. Discard retains corrections and offers Undo discard.
+Adding a record focuses Employee ID; approval moves focus to the retained record heading. Mock
+instructional paragraphs and repeated preview qualifiers are removed from these product surfaces.
+The palette and canonical row, tab, button and input primitives remain unchanged. Focused unit,
+dark/light 1024/1440 interaction, keyboard, overflow and screenshot evidence is retained in
+`workflow-records-20261004`. Full frozen parity remains owned by 3.1.19.
 
 Scenario selectors belong outside the product screens, in `review.html`.
 Its controls select Logs, Activity and notification scenarios without changing runtime authority.

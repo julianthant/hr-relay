@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { MOCK_WORKFLOWS } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
 import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
-import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewRecords, reviewValue, updateMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
+import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewRecords, reviewValue, updateMockReview, reviewIsReadOnly, restoreMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
 import { buildWorkflowMock, COMPLETE_EXPLORER_WORKFLOWS, initialWorkflowChoices, updateWorkflowChoice, workflowChoices, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 import { workflowPreviewGraph } from "../../../src/dashboard/surfaces/workflow-preview-contracts.js";
@@ -57,24 +57,43 @@ describe("complete workflow presentation mocks", () => {
     expect(records).toHaveLength(2); expect(records[1].selected).toBe(false); expect(records[1].match).toBe("unresolved");
     const empty = updateMockReview([source], source.id, records.map(record => ({ ...record, selected: false })));
     expect(() => approveMockRun(empty, source.id)).toThrow("MOCK_APPROVAL_NO_RECORDS");
-    const discarded = discardMockReview([source], source.id);
+    const discarded = discardMockReview(empty, source.id);
     expect(() => approveMockRun(discarded, source.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
-    expect(discarded).toHaveLength(1); expect(mockRunLog(discarded[0]).timeline.every(step => step.state === "cancelled")).toBe(true);
+    expect(discarded).toHaveLength(1);
+    const restored = restoreMockReview(discarded, source.id);
+    expect(reviewRecords(restored[0])).toEqual(reviewRecords(empty[0]));
+    expect(reviewIsReadOnly(restored[0])).toBe(false);
+    expect(() => restoreMockReview([source], source.id)).toThrow("MOCK_REVIEW_RESTORE_UNAVAILABLE");
+    expect(() => restoreMockReview([{ ...discarded[0], approved: true }], source.id)).toThrow("MOCK_REVIEW_RESTORE_UNAVAILABLE"); expect(mockRunLog(discarded[0]).timeline.every(step => step.state === "cancelled")).toBe(true);
   });
   it("makes Oath Upload signers independent and keeps source preparation out of their kernel logs", () => {
     const source = preparation("oath-upload"), result = approveMockRun([source], source.id), signer = result.find(run => run.parentId === source.id)!;
     expect(signer.workflowId).toBe("oath-signature"); expect(signer.role).toBe("person");
-    expect(mockRunLog(signer).timeline.map(step => step.label)).toEqual(["Verify onboarding and oath date", "Sign in to UCPath", "Sign oath"]);
+    expect(mockRunLog(signer).timeline.map(step => step.label)).toEqual(["Verify onboarding and oath date", "Sign in to UCPath", "Sign oath", "Result"]);
     const contact = preparation("emergency-contact"), approved = approveMockRun([contact], contact.id);
     expect(mockRunLog(approved.find(run => run.id === contact.id)!).timeline.map(step => step.label)).not.toContain("Save emergency contact");
     expect(mockRunLog(approved.find(run => run.parentId === contact.id)!).timeline.map(step => step.label)).toContain("Save emergency contact");
   });
-  it("automatically fans out I-9 Check without approval and keeps standalone OCR read only", () => {
+  it("automatically fans out I-9 Check without approval and allows OCR corrections without downstream approval", () => {
     const runs = mockRunsForDraft("i9-check", { ...initialMockDraft("i9-check"), files: [{ name: "i9.pdf", size: 1024, digest: "fixture" }] }, 2);
     expect(runs).toHaveLength(2); expect(runs[1].parentId).toBe(runs[0].id);
     expect(() => approveMockRun(runs, runs[0].id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
     const ocr = seedMockRuns().find(run => run.workflowId === "ocr")!;
-    expect(() => updateMockReview([ocr], ocr.id, reviewRecords(ocr))).toThrow("MOCK_REVIEW_READ_ONLY");
+    const corrected = editReviewRecord(reviewRecords(ocr)[0], "firstName", "Sam");
+    const updated = updateMockReview([ocr], ocr.id, [corrected]);
+    expect(reviewIsReadOnly(ocr)).toBe(false); expect(reviewIsReadOnly(runs[0])).toBe(true);
+    expect(reviewValue(reviewRecords(updated[0])[0], "firstName")).toBe("Sam");
+    expect(mockRunLog(updated[0]).steps.at(-1)!.entries.some(entry => entry.kind === "fields" && entry.fields.some(field => field.label === "First name" && field.value === "Sam"))).toBe(true);
+    expect(() => approveMockRun(updated, ocr.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
+    expect(() => discardMockReview(updated, ocr.id)).toThrow("MOCK_REVIEW_READ_ONLY");
+    expect(() => updateMockReview(runs, runs[0].id, reviewRecords(runs[0]))).toThrow("MOCK_REVIEW_READ_ONLY");
+  });
+  it("keeps system verification fields immutable while correcting extracted values", () => {
+    const run = seedMockRuns().find(run => run.workflowId === "ocr")!;
+    const verify = reviewRecords({ ...run, records: undefined, draft: { ...run.draft, formType: "verify" } })[0];
+    expect(editReviewRecord(verify, "firstName", "Sam").fields).toContainEqual(expect.objectContaining({ key: "firstName", value: "Sam" }));
+    for (const key of ["serviceDate", "oathDate", "i9Status", "i9Signer"]) expect(() => editReviewRecord(verify, key, "changed")).toThrow("MOCK_REVIEW_FIELD_READ_ONLY");
+    expect(() => editReviewRecord(verify, "missing", "changed")).toThrow("MOCK_REVIEW_FIELD_UNKNOWN");
   });
   it("stops Oath Upload, missing OnBase identity and unavailable I-9 at the correct dependency", () => {
     for (const [id, key, value, title] of [["oath-upload", "signers", "failed", "Wait signatures"], ["onbase", "keyset", "missing", "Fill keywords"], ["i9-lookup", "profile", "unavailable", "Lookup"]] as const) {

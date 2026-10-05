@@ -67,7 +67,10 @@ describe("legacy workflow previews", () => {
     expect(mockNeedsReview(run)).toBe(false);
     const { steps } = mockRunLog(run);
     expect(new Set(steps.map(step => step.id)).size).toBe(steps.length);
-    expect(steps.flatMap(step => step.entries).some(entry => entry.kind === "note" && /rerun appends again/u.test(entry.message))).toBe(true);
+    const rerun = mockRunsForDraft("i9-check", run.draft, 2, run.id);
+    expect(rerun).toHaveLength(2); expect(rerun[0].sourceId).toBe(run.id);
+    expect(rerun[1].parentId).toBe(rerun[0].id); expect(rerun[1].id).not.toBe(`${run.id}:person:0`);
+    expect(steps.some(step => step.title === "Result")).toBe(true);
   });
   it("skips write terminals in dry run, rehire I-9 and normal lookup CRM dates", () => {
     const run = mockRunsForDraft("separations", draft("separations"), 1)[0];
@@ -95,7 +98,7 @@ describe("legacy workflow previews", () => {
   it("scopes status filters, counts and order to the selected preview queue", () => {
     const waiting = mockRunsForDraft("emergency-contact", draft("emergency-contact"), 1)[0];
     const done = { ...waiting, id: "done", approved: true };
-    expect(mockQueueCounts([waiting, done])).toEqual([{ status: "awaiting-approval", count: 1 }, { status: "done", count: 1 }]);
+    expect(mockQueueCounts([waiting, done])).toEqual([{ status: "awaiting-approval", count: 1 }, { status: "done", count: 1 }, { status: "cancelled", count: 0 }]);
     expect(mockQueueView([done, waiting], ["needsYou"], "newest")).toEqual([waiting]);
     expect(mockQueueView([done, waiting], ["done"], "newest")).toEqual([done]);
     expect(mockQueueView([done, waiting], ["all"], "attention")).toEqual([waiting, done]);

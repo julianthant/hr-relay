@@ -85,17 +85,20 @@ export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] 
     ...(step.key === "prep:loading-roster" && id === "i9-check" ? { message: "Load the configured Action History roster for I-9 retention matching." } : {}),
     ...(step.key === "prep:ocr" && id === "i9-check" ? { message: "Pair the packet's I-9 Section 1 and Section 2 records." } : {}),
     ...(step.key === "prep:person-lookup" && id === "ocr" && draft.formType === "verify" ? { message: "Resolve the extracted person and read CRM first day of service and oath date for Verify." } : {}),
-    ...(step.key === "prep:awaiting-approval" && id === "ocr" ? { label: "Inspect extracted records", message: "Inspect the standalone OCR result. This workflow does not approve downstream work." } : {}),
+    ...(step.key === "prep:awaiting-approval" && id === "ocr" ? { label: "Extracted records", message: "Extraction complete." } : {}),
   })) : [];
   const steps = flow.steps.filter(step => !(id === "oath-upload" && draft.uploadMode === "upload-only" && ["wait-approval", "wait-signatures"].includes(step.key)));
   return [...(draft.roster === "download" && pdf && flow.roster ? mockWorkflow("sharepoint-download").steps.map(step => ({ ...step, key: `roster:${step.key}` })) : []), ...preparation, ...steps];
 }
 export function mockNeedsReview(run: MockRun): boolean {
-  return run.draft.method === "pdf" && !run.approved && !run.discarded && run.role !== "person" && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only") && run.workflowId !== "i9-check";
+  return run.draft.method === "pdf" && !run.approved && !run.discarded && run.role !== "person" && !(run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only") && !["i9-check", "ocr"].includes(run.workflowId);
+}
+export function mockQueueStatus(run: MockRun): "cancelled" | "awaiting-approval" | "done" {
+  return run.discarded ? "cancelled" : mockNeedsReview(run) ? "awaiting-approval" : "done";
 }
 export function mockRunStatus(run: MockRun): string {
   if (run.discarded) return "Discarded";
-  if (mockNeedsReview(run)) return run.workflowId === "ocr" ? "Ready to inspect" : "Needs review";
+  if (mockNeedsReview(run)) return "Needs review";
   return run.draft.dryRun && mockWorkflow(run.workflowId).dryRun ? "Dry run complete" : "Completed";
 }
 export function mockStepState(run: MockRun, step: MockStep): LogTimelineState {
@@ -118,8 +121,8 @@ export function mockStepState(run: MockRun, step: MockStep): LogTimelineState {
 }
 export function mockRunPipeline(run: MockRun): readonly MockStep[] {
   if (run.role === "preparation" && ["emergency-contact", "onbase", "oath-signature", "i9-check"].includes(run.workflowId)) return [...mockPipeline(run.workflowId, run.draft).filter(step => step.key.startsWith("prep:") || step.key.startsWith("roster:")),
-    { key: "members", label: "Start approved people", message: "Start one independent run per selected, resolved record." },
-    { key: "rollup", label: "Collect person outcomes", message: run.workflowId === "i9-check" ? "Collect per-person retention results. A rerun appends again to the tracker." : "Keep each person's own outcome and close the packet after all people finish." }];
+    { key: "members", label: run.workflowId === "i9-check" ? "Process extracted people" : "Start approved people", message: run.workflowId === "i9-check" ? "Process each matched person." : "Start one independent run per selected, resolved record." },
+    { key: "rollup", label: "Collect person outcomes", message: run.workflowId === "i9-check" ? "Collect per-person retention results." : "Collect per-person outcomes." }];
   return run.role === "person" ? mockWorkflow(run.workflowId).steps : mockPipeline(run.workflowId, run.draft);
 }
 export function mockRunsForDraft(id: MockWorkflowId, draft: MockDraft, sequence: number, sourceId?: string): readonly MockRun[] {
@@ -157,8 +160,9 @@ export function approveMockRun(runs: readonly MockRun[], id: string): readonly M
 function usDate(value: string): string { const [year, month, day] = value.split("-"); return `${month}/${day}/${year}`; }
 function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.discarded) return [["Outcome", "Preparation discarded; no downstream work started"]];
-  if (mockNeedsReview(run)) return [["Extracted employee (fictional)", reviewName(reviewRecords(run)[0])], ["Employee ID", reviewValue(reviewRecords(run)[0], "employeeId")], ["Source PDF", run.draft.files.map(file => file.name).join(", ")]];
-  if (run.role === "preparation" && run.workflowId !== "oath-upload" && run.workflowId !== "ocr") return [["Source PDF", run.draft.files.map(file => file.name).join(", ")], ["People", String(reviewRecords(run).filter(record => run.workflowId === "i9-check" || reviewCanApprove(record)).length)], ["Outcomes", "See the independent person runs"]];
+  if (mockNeedsReview(run)) return [["Extracted employee", reviewName(reviewRecords(run)[0])], ["Employee ID", reviewValue(reviewRecords(run)[0], "employeeId")], ["Source PDF", run.draft.files.map(file => file.name).join(", ")]];
+  if (run.workflowId === "ocr") return [["Records", String(reviewRecords(run).length)], ...reviewRecords(run).flatMap(record => record.fields.filter(field => field.value).map(field => [field.label, field.kind === "boolean" ? field.value === "true" ? "Yes" : "No" : field.value] as const))];
+  if (run.role === "preparation" && run.workflowId !== "oath-upload") return [["Source PDF", run.draft.files.map(file => file.name).join(", ")], ["Completed people", String(reviewRecords(run).filter(record => run.workflowId === "i9-check" || reviewCanApprove(record)).length)]];
   const record = reviewRecords(run)[0];
   const edited: Readonly<Record<string, string>> = run.role === "person" ? { "Employee": reviewName(record), "Employee ID": reviewValue(record, "employeeId"), "UCPath ID": reviewValue(record, "employeeId"), "Contact": reviewValue(record, "contactName"), "Relationship": reviewValue(record, "relationship"), "Contact phone": reviewValue(record, "cellPhone"), "Source page": String(record.page) } : {};
   const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, edited[label] || (label === "Kuali ID" || label === "Email" || (label === "Employee ID" && /^\d{5,}$/u.test(run.subject)) ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(reviewRecords(run).filter(reviewCanApprove).length) : label === "Effective date" && run.workflowId === "work-study" ? usDate(run.draft.effectiveDate) : value)] as const);
@@ -170,7 +174,9 @@ export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline:
   const pipeline = mockRunPipeline(run);
   const timeline = pipeline.map((step, index) => ({ id: `${run.id}:${step.key}`, label: step.label, state: mockStepState(run, step), time: `09:${String(index + 10).padStart(2, "0")}:00`, stepId: `${run.id}:${step.key}`, substeps: [] }));
   const steps: LogStep[] = pipeline.map((step, index) => ({ id: timeline[index].id, time: timeline[index].time, title: step.label, ...(step.system ? { system: step.system } : {}), entries: [{ kind: "note", id: `${run.id}:${step.key}:note`, time: timeline[index].time, message: timeline[index].state === "cancelled" ? "Preparation discarded. No downstream work was started." : timeline[index].state === "skipped" ? run.draft.dryRun && step.write ? "Dry run: submission skipped." : "Step omitted for this input or selected mode." : timeline[index].state === "pending" ? "Waiting for extracted records to be approved." : step.message }, ...mockDetailEntries(run, step, timeline[index].state, timeline[index].time)] }));
-  steps.push({ id: `${run.id}:result`, time: "09:30:00", title: mockNeedsReview(run) ? "Extracted records" : "Preview result", entries: [{ kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: "09:30:00", kind: "read", label, value })) }, { kind: "note", id: `${run.id}:preview`, time: "09:30:00", message: "Fictional workflow preview. No external system was contacted." }] });
+  const resultTitle = mockNeedsReview(run) ? "Extracted records" : "Result";
+  steps.push({ id: `${run.id}:result`, time: "09:30:00", title: resultTitle, entries: [{ kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: "09:30:00", kind: "read", label, value })) }] });
+  timeline.push({ id: `${run.id}:result`, label: resultTitle, state: run.discarded ? "cancelled" : "completed", time: "09:30:00", stepId: `${run.id}:result`, substeps: [] });
   return { steps, timeline };
 }
 
@@ -185,14 +191,14 @@ export function mockOathDuplicate(runs: readonly MockRun[], draft: MockDraft): s
 }
 
 export function mockQueueView(runs: readonly MockRun[], filters: readonly StatusBucket[], sort: QueueSortKey): readonly MockRun[] {
-  const visible = runs.filter(run => filters.length === 0 || filters.includes("all") || (mockNeedsReview(run) ? filters.includes("needsYou") || filters.includes("awaiting-approval") : filters.includes("done")));
+  const visible = runs.filter(run => filters.length === 0 || filters.includes("all") || filters.includes(mockQueueStatus(run)) || (mockNeedsReview(run) && filters.includes("needsYou")));
   if (sort === "oldest") return [...visible].reverse();
   if (sort === "longest") return [...visible].sort((left, right) => mockPipeline(right.workflowId, right.draft).length - mockPipeline(left.workflowId, left.draft).length);
   if (sort === "attention") return [...visible].sort((left, right) => Number(mockNeedsReview(right)) - Number(mockNeedsReview(left)));
   return visible;
 }
 export function mockQueueCounts(runs: readonly MockRun[]): readonly StatusCountWire[] {
-  return [{ status: "awaiting-approval", count: runs.filter(mockNeedsReview).length }, { status: "done", count: runs.filter(run => !mockNeedsReview(run)).length }];
+  return (["awaiting-approval", "done", "cancelled"] as const).map(status => ({ status, count: runs.filter(run => mockQueueStatus(run) === status).length }));
 }
 
 export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): readonly { key: string; value: string }[] {

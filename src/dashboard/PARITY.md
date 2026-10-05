@@ -136,10 +136,10 @@ use file-content hashes, and reruns preserve source histories. Field copy uses E
 Kuali ID, with no trailing composition summary. Focused tests inspect all workflows in both themes
 at 1024 and 1440 pixels, retaining screenshots and checking that local previews send no writes.
 
-The workflow-component amendment keeps the same palette and primitives while adding Results,
-Records and Linked runs. Record edits preserve source transcriptions; manually changed IDs carry
+The workflow-component amendment keeps the same palette and primitives while adding workflow
+results, record review and linked-run navigation. Record edits preserve source transcriptions; manually changed IDs carry
 an explicit unverified-identity warning. Approval creates independent per-person rows, discard
-starts none, and I-9 Check fans out automatically. Standalone OCR remains inspection only.
+starts none, and I-9 Check fans out automatically. Standalone OCR permits extracted-field corrections without downstream approval.
 Explorer now lists all 15 workflows; its conditional controls cover delegated lookup, no-profile
 and unavailable I-9, oath dependencies and upload-only, OnBase identity failure, no-change pay
 rules, all five OCR forms, CRM attachment absence and empty/mismatched Time Detail PDFs.
@@ -213,3 +213,21 @@ Focused checks cover unavailable timing, partial timing coverage, zero-duration 
 manual values. Settings page headings use h1; title actions share one row, icon and search-clear targets
 meet the 24px desktop minimum, browser titles follow the active route, and Skip to content bypasses navigation.
 The audit evidence is retained under `hr-automation-rebuild-evidence/frontend-audit-20261004/`.
+
+## Focused Records layout amendment (2026-10-04)
+
+All local workflow queues now render through the canonical QueuePanel and QueueRow. Stable local
+presentation IDs carry no runtime commands; parent/person rows remain independent. Results live
+inside Logs and its timeline. Only Logs and Records tabs remain; a named icon beside Rerun opens
+parent, person and rerun-source navigation and restores focus when dismissed.
+
+Records uses a compact navigator and one editor. Source fields remain immutable and are revealed
+on demand. Editable source corrections, per-record selection, identity validation and approval
+remain distinct from read-only CRM/I-9 verification and completed outcomes. OCR corrections never
+start downstream work. Discard offers Undo without losing edits. Add record focuses Employee ID;
+approval focuses the record heading. Informational mock paragraphs are retired.
+
+Focused verification covers all 15 contracts, five OCR forms, approval and discard/undo, separate
+record edits, leading-zero IDs, canonical rows, parent/child navigation, keyboard focus and local
+transport isolation in dark/light at 1024 and 1440 pixels. Evidence is retained under
+`workflow-records-20261004`; frozen parity references and phase-exit gates remain deferred to 3.1.19.

@@ -94,7 +94,6 @@ export function WorkflowMockRunDialog({ workflowId, source, runs, onClose, onPic
           <KeyValueList items={[...mockConfirmationFacts(workflowId, draft)]} />
           <ol aria-label="Workflow plan" className="m-0 flex list-decimal flex-col gap-1 pl-5 text-body text-ui-secondary">{mockPipeline(workflowId, draft).map(step => <li key={step.key}>{step.label}{mockStepState(planRun, step) === "skipped" ? draft.dryRun && step.write ? " · skipped in dry run" : " · skipped" : ""}</li>)}</ol>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
-          <p className="text-caption text-ui-muted">Fictional preview. No external system will be contacted.</p>
         </section>}
       </DialogBody></div>
     </div><DialogFooter><span className="mr-auto text-caption text-ui-muted">{flow.label}</span>{index > 0 && <Button variant="ghost" onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="secondary" onClick={onClose}>Cancel</Button>

@@ -17,14 +17,14 @@ const VALUES: Readonly<Record<string, string>> = {
   "I-9 separation date": "Not separated", "I-9 status": "Section 2 complete", "Imported document": "DEMO-ONBASE-001 · source page 1",
   "Job code": "DEMO-JOB-001", "Job record": "0", "Job title": "Student assistant", "Last day worked": "08/02/2026", "Last punch": "08/02/2026",
   "New election": "Cash", "Oath date": "08/03/2026", "Oath signature": "08/03/2026", "Oath signatures": "1", "Oaths signed": "1",
-  "Official signer": "Alex Morgan (fictional)", "Onboarding documents": "entry-sheet.pdf, onboarding-packet.pdf", "Pages": "2", "Pages with a contact block": "1",
+  "Official signer": "Alex Morgan", "Onboarding documents": "entry-sheet.pdf, onboarding-packet.pdf", "Pages": "2", "Pages with a contact block": "1",
   "Pay rule": "DEMO-OT-BASE", "People found": "1", "People resolved": "1", "People typed": "1", "Position": "DEMO-POS-001", "Position number": "DEMO-POS-001",
   "Position pool": "F", "Preset merged": "None", "Primary contact": "Alex Lee", "Process stage": "Onboarding complete", "Profile id": "DEMO-I9-001",
   "Records read": "1", "Records reported": "1", "Reports selected": "Time Detail", "Retention row": "10000001 · Section 1 page 1 · Section 2 page 2",
   "Roster email": "jordan.lee@example.com", "Roster file": "Onboarding Roster.xlsx · local roster directory", "Roster rows matched": "1 / 1",
   "Row count": "1", "Rows read back": "1", "Separation date": "08/02/2026", "ServiceNow ticket": "DEMO-HR-001", "Sick dates in window": "None",
   "Signatures complete": "1 / 1", "Signed date": "08/03/2026", "Signed oaths found": "1", "Signers found": "1", "Start date": "08/03/2026",
-  "Target pay rule": "DEMO-OT-BASE", "Termination date": "None", "Termination type": "Voluntary", "Timekeeper": "Fictional operator", "Tracker row": "10000001 · PDF identity matched",
+  "Target pay rule": "DEMO-OT-BASE", "Termination date": "None", "Termination type": "Voluntary", "Timekeeper": "Demo operator", "Tracker row": "10000001 · PDF identity matched",
   "Transaction number": "DEMO-TXN-001", "Union code": "SX", "Wage": "$17.75 per hour",
 };
 export function mockFieldValue(run: MockRun, label: string): string {
@@ -68,9 +68,9 @@ export function mockDetailEntries(run: MockRun, step: MockStep, state: LogTimeli
   if (node?.contract.length) {
     entries.push({ kind: "fields", id: `${run.id}:${step.key}:details`, title: node.id, fields: node.contract.map((item, index) => ({ id: `${run.id}:${step.key}:detail:${index}`, time, kind: item.dir === "write" ? "fill" : "read", label: item.field === "EID" ? "Employee ID" : item.field, value: mockFieldValue(run, item.field) })) });
     const proofs = [...new Set(node.contract.filter(item => item.proof).map(item => item.proof))];
-    if (proofs.length) entries.push({ kind: "note", id: `${run.id}:${step.key}:proof`, time, message: `Fictional readback: ${proofs.join("; ")}.`, tone: "positive" });
+    if (proofs.length) entries.push({ kind: "note", id: `${run.id}:${step.key}:proof`, time, message: `Readback: ${proofs.join("; ")}.`, tone: "positive" });
   }
-  if (step.key === "prep:awaiting-approval" && run.workflowId !== "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review identity and source-page fields in Records. Only selected, resolved records fan out to independent runs.", footer: "Fictional local preview" } });
+  if (step.key === "prep:awaiting-approval" && run.workflowId !== "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
   if (run.workflowId === "oath-upload" && step.key === "fill-form") entries.push({ kind: "fields", id: `${run.id}:ticket-form`, fields: [["Subject", "HDH New Hire Oaths"], ["Attachment", run.draft.files.map(file => file.name).join(", ")]].map(([label, value], index) => ({ id: `${run.id}:ticket-field:${index}`, time, kind: "fill", label, value })) });
   return entries;
 }

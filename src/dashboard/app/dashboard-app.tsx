@@ -61,7 +61,7 @@ import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-qu
 import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
 import { approveMockRun, mockQueueCounts, mockQueueView, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
 import { WorkflowMockRunDialog } from "../surfaces/workflow-mock-run.js";
-import { discardMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
+import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
@@ -980,7 +980,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     : workflows.find(workflow => workflow.id === activeWorkflowId)?.label ?? "Dashboard";
   useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
   const previewFlow = railPreview ? mockWorkflow(railPreview) : undefined;
-  const railRows = mockRuns.filter(run => run.workflowId === railPreview);
+  const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
+  const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
   const railRow = railRows.find(run => run.id === railRun);
   const submitMock = (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
@@ -1117,7 +1118,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
             <div className="relative min-h-0 min-w-0 flex-1">
             <div className="dashboard-panel-columns">
               <div className="dashboard-queue-column">
-              {previewFlow ? <WorkflowMockQueue label={previewFlow.label} runs={mockQueueView(railRows, filter, sort)} selected={railRun} onSelect={setRailRun} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
+              {previewFlow && dateSelection.state === "valid" ? <WorkflowMockQueue label={previewFlow.label} runs={railQueueRows} selected={railRun} onSelect={setRailRun} day={day} nowIso={nowIso} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
                 <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
@@ -1153,8 +1154,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => setMockRuns(previous => approveMockRun(previous, railRow.id))}
-              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => setMockRuns(previous => discardMockReview(previous, railRow.id))}
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => setMockRuns(previous => approveMockRun(previous, railRow.id))}
+              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => setMockRuns(previous => discardMockReview(previous, railRow.id))} onRestore={() => setMockRuns(previous => restoreMockReview(previous, railRow.id))}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRailPreview(next.workflowId); setRailRun(next.id); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (
