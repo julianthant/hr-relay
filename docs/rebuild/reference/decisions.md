@@ -277,6 +277,8 @@ The controls amendment extends Settings search cues through full-width row card 
 
 Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.
 
+The workflow-detail amendment adds legacy operation sequences and fields to local Logs and Explorer, populated timeline substeps with synthetic timings, active/total rail counts at both desktop widths, and subject-only run headings. Onboarding preserves distinct new-hire and concurrent-hire forms, wrong-person readbacks and dry-run cleanup. OCR remains the sole record editor and approval owner; D347's dashboard-surfaces owner records the contract and retained evidence.
+
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including
 typed credentials, provider keys, identifiers and capture images. Action notes

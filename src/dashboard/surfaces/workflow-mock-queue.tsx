@@ -40,7 +40,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   const hasRecords = run.workflowId === "ocr";
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
   return <Drawer open={reviewOpen} onOpenChange={setReviewOpen}>
-    <LogPanel title={run.title} steps={steps} timeline={timeline}
+    <LogPanel title={run.subject} steps={steps} timeline={timeline}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">
         {hasRecords && <DrawerTrigger asChild><Button size="sm" icon={<ListChecks aria-hidden className="size-4" />}>{mockNeedsReview(run) ? "Review records" : "Records"} {reviewRecords(run).length}</Button></DrawerTrigger>}

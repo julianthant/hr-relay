@@ -261,3 +261,22 @@ discard/undo, record switching, leading-zero IDs, canonical rows, parent/child n
 keyboard focus, overflow and local transport isolation in dark/light at 1024 and 1440 pixels.
 Evidence is retained under `ocr-review-20261004`; frozen references and full phase-exit gates
 remain deferred to 3.1.19.
+
+## Detailed workflow presentation amendment (2026-10-04)
+
+Local workflow Logs and Explorer share source-backed operation detail for all 15 workflows.
+Timeline tooltips show ordered substeps, states and synthetic durations, with keyboard jumps to
+the corresponding log section. Skipped commits and unavailable outcomes never appear successful.
+New-hire and concurrent-hire forms retain their distinct tab walks, identity checks and dry-run
+boundaries. Historical OCR fields remain separate from approved downstream inputs. Existing
+canonical queue rows, Logs, OCR review drawer and field-source inspection remain the presentation
+owners; no tabs or second editor are introduced.
+
+Workflow rail active/total counts remain visible at 1024 and 1440 pixels and update from the same
+served or local rows. Run headings show only the subject. Focused dark/light keyboard, hover,
+approval, Run/Rerun, provenance, overflow and screenshot checks are retained under
+`workflow-completeness-20261004`. These previews use synthetic values and timing. Full repository
+and frozen-reference gates remain deferred to 3.1.19.
+
+The concrete-workflow-ID guard remains unresolved for local preview catalogs; its reconciliation
+stays with 3.1.19. Node/registry isolation and component-export boundary checks pass.

@@ -7449,6 +7449,19 @@ Focused unit, dark/light 1024/1440 interaction, keyboard, overflow and screensho
 in `ocr-review-20261004`. These are local frontend previews; served authority is unchanged. Full frozen
 parity and phase-exit gates remain owned by 3.1.19.
 
+The workflow-detail amendment uses one pure operation catalog for local Logs, Explorer fields and
+timeline substeps, copied from the pinned legacy workflow actions and system helpers. It includes
+authentication, navigation, form fills, readbacks, downloads, submission boundaries and conditional
+outcomes. Onboarding distinguishes the complete new-hire tab walk from concurrent-hire identity
+checks, legal-name readback and dry-run draft cancellation. Only OCR retains editable records and
+approval; historical source fields remain distinct from approved downstream snapshots. Explorer
+avoids repeated summary fields and keeps source inspection. Synthetic substep durations produce
+coherent step and queue timestamps; they are not measured execution data. Every workflow rail row
+shows active and total counts at both desktop widths, derived from its own served or local queue.
+Counts update after local approval, fan-out and discard. Run headings contain only the subject name,
+email or filename. Detailed source inventory and focused verification are retained in
+`workflow-completeness-20261004`; served commands and runtime authority remain unchanged.
+
 Scenario selectors belong outside the product screens, in `review.html`.
 Its controls select Logs, Activity and notification scenarios without changing runtime authority.
 

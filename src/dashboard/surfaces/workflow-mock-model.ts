@@ -1,11 +1,13 @@
 import { MOCK_WORKFLOWS, mockWorkflow, type MockMethod, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import type { LogStep } from "./log-feed-model.js";
+import type { LogEntry, LogStep } from "./log-feed-model.js";
+import { WorkflowCountWireSchema } from "../../domain/dashboard/projection.js";
 import type { LogTimelineStage, LogTimelineState } from "./logs/log-timeline-model.js";
 
-import type { StatusBucket, StatusCountWire } from "./shell-model.js";
+import type { StatusBucket, StatusCountWire, WorkflowCountWire } from "./shell-model.js";
 import type { QueueSortKey } from "./queue-model.js";
 import { reviewCanApprove, reviewName, reviewRecords, reviewValue, seedReviewRecords, mockInputRecord, type ReviewRecord } from "./workflow-review-model.js";
 import { mockDetailEntries } from "./workflow-result-model.js";
+import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration } from "./workflow-operation-model.js";
 
 export type MockFile = Readonly<{ name: string; size: number; digest: string }>;
 export type MockDraft = Readonly<{
@@ -134,7 +136,7 @@ export function mockRunPipeline(run: MockRun): readonly MockStep[] {
 function delegateMockOcr(run: MockRun): readonly MockRun[] {
   if (run.draft.method !== "pdf" || run.workflowId === "ocr" || run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only") return [run];
   const id = `${run.id}:ocr`;
-  const ocr: MockRun = { id, workflowId: "ocr", subject: run.subject, title: `OCR · ${run.subject}`, draft: run.draft,
+  const ocr: MockRun = { id, workflowId: "ocr", subject: run.subject, title: run.subject, draft: run.draft,
     parentId: run.id, parentWorkflowId: run.workflowId, targetWorkflowId: run.workflowId, role: "preparation",
     records: seedReviewRecords({ workflowId: "ocr", draft: run.draft }), approved: false, seeded: run.seeded };
   return [{ ...run, role: "preparation", ocrRunId: id }, ocr];
@@ -144,7 +146,7 @@ export function mockRunsForDraft(id: MockWorkflowId, draft: MockDraft, sequence:
   if (error) throw new Error(error);
   const subjects = draft.method === "typed" ? mockInputEntries(id, draft) : draft.method === "roster" ? ["Onboarding Roster"] : id === "onbase" ? [draft.files.map(file => file.name).join(" + ")] : draft.files.map(file => file.name);
   const created: readonly MockRun[] = subjects.map((subject, index) => ({ id: `mock:${id}:${sequence}:${index}`, workflowId: id, subject,
-    title: `${mockWorkflow(id).label} · ${subject}`, draft: structuredClone({ ...draft, ...(draft.method === "typed" ? { text: subject } : id === "onbase" ? {} : { files: [draft.files[index]] }) }),
+    title: subject, draft: structuredClone({ ...draft, ...(draft.method === "typed" ? { text: subject } : id === "onbase" ? {} : { files: [draft.files[index]] }) }),
     ...(sourceId ? { sourceId } : {}), ...(id === "ocr" ? { records: seedReviewRecords({ workflowId: id, draft }) } : {}), approved: false, seeded: false }));
   return created.flatMap(delegateMockOcr);
 }
@@ -154,7 +156,7 @@ export function seedMockRuns(): readonly MockRun[] {
     const draft: MockDraft = { ...initialMockDraft(flow.id), method: pdf ? "pdf" : flow.methods[0], text: flow.example,
       files: pdf ? [{ name: flow.example.endsWith(".pdf") ? flow.example : "oaths.pdf", size: 4096, digest: `fixture:${flow.id}` }] : [] };
     const subject = pdf ? draft.files.map(file => file.name).join(" + ") : flow.example;
-    return delegateMockOcr({ id: `mock:${flow.id}:sample`, workflowId: flow.id, subject, title: `${flow.label} · ${subject}`, draft, approved: false, seeded: true });
+    return delegateMockOcr({ id: `mock:${flow.id}:sample`, workflowId: flow.id, subject, title: subject, draft, approved: false, seeded: true });
   });
 }
 export function approveMockRun(runs: readonly MockRun[], id: string): readonly MockRun[] {
@@ -168,7 +170,7 @@ export function approveMockRun(runs: readonly MockRun[], id: string): readonly M
   const children: MockRun[] = records.map((record, index) => {
     const draft = { ...initialMockDraft(target), ...source.draft, text: reviewValue(record, "employeeId"), selectedSteps: mockWorkflow(target).steps.map(step => step.key) };
     return { id: `${parent.id}:person:${index}`, workflowId: target, parentId: parent.id, parentWorkflowId: parent.workflowId,
-      ocrRunId: source.id, subject: reviewName(record), title: `${mockWorkflow(target).label} · ${reviewName(record)}`, draft,
+      ocrRunId: source.id, subject: reviewName(record), title: reviewName(record), draft,
       inputRecord: structuredClone(record), role: "person", approved: true, seeded: source.seeded };
   });
   return [...children, ...runs.map(run => run.id === id || run.id === parent.id ? { ...run, approved: true, approvedCount: records.length } : run)];
@@ -190,11 +192,24 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
 }
 export function mockRunLog(run: MockRun): { steps: readonly LogStep[]; timeline: readonly LogTimelineStage[] } {
   const pipeline = mockRunPipeline(run);
-  const timeline = pipeline.map((step, index) => ({ id: `${run.id}:${step.key}`, label: step.label, state: mockStepState(run, step), time: `09:${String(index + 10).padStart(2, "0")}:00`, stepId: `${run.id}:${step.key}`, substeps: [] }));
-  const steps: LogStep[] = pipeline.map((step, index) => ({ id: timeline[index].id, time: timeline[index].time, title: step.label, ...(step.system ? { system: step.system } : {}), entries: [{ kind: "note", id: `${run.id}:${step.key}:note`, time: timeline[index].time, message: timeline[index].state === "cancelled" ? "Preparation discarded. No downstream work was started." : timeline[index].state === "skipped" ? run.draft.dryRun && step.write ? "Dry run: submission skipped." : "Step omitted for this input or selected mode." : timeline[index].state === "pending" ? "Waiting for extracted records to be approved." : step.message }, ...mockDetailEntries(run, step, timeline[index].state, timeline[index].time)] }));
+  let elapsed = 0;
+  const clock = (seconds: number) => new Date(Date.UTC(2026, 7, 3, 9, 10, seconds)).toISOString().slice(11, 19);
+  const timeline: LogTimelineStage[] = pipeline.map(step => {
+    const state = mockStepState(run, step), substeps = mockOperationSubsteps(run, step, state);
+    const seconds = substeps.reduce((total, item, position) => total + (item.state === "completed" ? mockOperationDuration(position) : 0), 0);
+    const time = clock(elapsed); elapsed += seconds;
+    return { id: `${run.id}:${step.key}`, label: step.label, state, time, stepId: `${run.id}:${step.key}`, substeps,
+      ...(seconds > 0 ? { durationLabel: seconds < 60 ? `${seconds}s` : `${Math.floor(seconds / 60)}m ${seconds % 60}s` } : {}) };
+  });
+  const steps: LogStep[] = pipeline.map((step, index) => {
+    const stage = timeline[index], time = stage.time!, operations = mockOperationEntries(run, step, stage.state, time);
+    const shown = new Set(operations.flatMap(entry => entry.kind === "fields" ? entry.fields.map(field => field.label.toLowerCase()) : []));
+    const details = mockDetailEntries(run, step, stage.state, time).flatMap<LogEntry>(entry => entry.kind === "fields" ? [{ ...entry, fields: entry.fields.filter(field => !shown.has(field.label.toLowerCase())) }].filter(entry => entry.fields.length) : [entry]);
+    return { id: stage.id, time, title: step.label, ...(step.system ? { system: step.system } : {}), entries: [...(operations.length && stage.state === "completed" ? [] : [{ kind: "note" as const, id: `${run.id}:${step.key}:note`, time, message: stage.state === "cancelled" ? "Preparation discarded. No downstream work was started." : stage.state === "skipped" ? run.draft.dryRun && step.write ? "Dry run: submission skipped." : "Step omitted for this input or selected mode." : stage.state === "pending" ? "Waiting for extracted records to be approved." : step.message }]), ...operations, ...details] };
+  });
   const resultTitle = mockNeedsReview(run) ? "Review pending" : "Result";
-  steps.push({ id: `${run.id}:result`, time: "09:30:00", title: resultTitle, entries: [{ kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: "09:30:00", kind: "read", label, value })) }] });
-  timeline.push({ id: `${run.id}:result`, label: resultTitle, state: run.discarded ? "cancelled" : mockNeedsReview(run) ? "waiting" : mockWaitsForOcr(run) ? "pending" : "completed", time: "09:30:00", stepId: `${run.id}:result`, substeps: [] });
+  steps.push({ id: `${run.id}:result`, time: clock(elapsed), title: resultTitle, entries: [{ kind: "fields", id: `${run.id}:fields`, fields: resultFields(run).map(([label, value], index) => ({ id: `${run.id}:field:${index}`, time: clock(elapsed), kind: "read", label, value })) }] });
+  timeline.push({ id: `${run.id}:result`, label: resultTitle, state: run.discarded ? "cancelled" : mockNeedsReview(run) ? "waiting" : mockWaitsForOcr(run) ? "pending" : "completed", time: clock(elapsed), stepId: `${run.id}:result`, substeps: [] });
   return { steps, timeline };
 }
 
@@ -217,6 +232,13 @@ export function mockQueueView(runs: readonly MockRun[], filters: readonly Status
 }
 export function mockQueueCounts(runs: readonly MockRun[]): readonly StatusCountWire[] {
   return (["awaiting-approval", "running", "done", "cancelled"] as const).map(status => ({ status, count: runs.filter(run => mockQueueStatus(run) === status).length }));
+}
+
+export function mockWorkflowCounts(runs: readonly MockRun[]): readonly WorkflowCountWire[] {
+  return MOCK_WORKFLOWS.map(flow => {
+    const rows = runs.filter(run => run.workflowId === flow.id);
+    return WorkflowCountWireSchema.parse({ workflowId: flow.id, count: rows.length, statusCounts: mockQueueCounts(rows) });
+  });
 }
 
 export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): readonly { key: string; value: string }[] {

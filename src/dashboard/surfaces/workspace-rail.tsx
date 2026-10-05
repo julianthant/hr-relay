@@ -11,8 +11,8 @@ import { WorkflowRail } from "./workflow-rail.js";
 
 function previewRun(): void {}
 
-export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, active, preview, onSelect, onPreview, settingsOpen }: {
-  workflows: readonly WorkflowBootstrapPrimitive[]; counts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
+export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen }: {
+  workflows: readonly WorkflowBootstrapPrimitive[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
   settingsOpen: boolean;
 }) {
@@ -50,7 +50,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, ac
     </header>
     <div className="workspace-rail-body" id={open ? "workspace-notifications" : undefined}>
       {open ? <NotificationsView state={state} filter={filter} onFilter={setFilter} onControl={(id, control) => setState(current => updateNotification(current, id, control))} onOpen={() => setNotice("Run navigation is not connected yet.")} notice={notice} />
-        : <WorkflowRail workflows={workflows} counts={counts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
+        : <WorkflowRail workflows={workflows} counts={counts} previewCounts={previewCounts} active={active} preview={preview} onSelect={onSelect} onPreview={onPreview} />}
     </div>
     {ping && pingItem && <NotificationPing item={pingItem} onClose={() => setPing(false)} onOpen={() => changeOpen(true)} />}
   </aside>;

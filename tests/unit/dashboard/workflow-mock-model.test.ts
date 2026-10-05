@@ -109,7 +109,7 @@ describe("legacy workflow previews", () => {
     expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
     expect(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {
-      expect(run.title).toContain(mockWorkflow(run.workflowId).label);
+      expect(run.title).toBe(run.subject);
       const { steps } = mockRunLog(run);
       expect(steps.length).toBeGreaterThan(1);
       expect(new Set(steps.map(step => step.id)).size).toBe(steps.length);

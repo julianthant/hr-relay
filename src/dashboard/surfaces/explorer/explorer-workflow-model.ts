@@ -1,6 +1,7 @@
 import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../workflow-mock-catalog.js";
 import { initialMockDraft, type MockRun } from "../workflow-mock-model.js";
-import { mockFieldValue } from "../workflow-result-model.js";
+import { mockFieldValue, mockStepNode } from "../workflow-result-model.js";
+import { mockOperations, mockOperationValue } from "../workflow-operation-model.js";
 import { workflowPreviewGraph, type PreviewNode } from "../workflow-preview-contracts.js";
 import type { FieldSource, FlowField, FlowPart, FlowStep } from "./explorer-flow-model.js";
 import type { MockFlow } from "./explorer-mock-fixtures.js";
@@ -45,8 +46,13 @@ export function workflowNodes(id: MockWorkflowId, values: WorkflowChoices): read
 }
 function previewRun(id: MockWorkflowId, values: WorkflowChoices): MockRun {
   const flow = mockWorkflow(id);
-  return { id: `explorer:${id}`, workflowId: id, title: flow.label, subject: flow.example, approved: values.review === "approved", seeded: true,
-    draft: { ...initialMockDraft(id), text: flow.example, dryRun: values.posture === "dry", formType: values.form ?? "oath", lookupMode: values.mode === "match" ? "match" : "search" } };
+  return { id: `explorer:${id}`, workflowId: id, title: flow.example, subject: flow.example, approved: values.review === "approved", approvedCount: values.review === "approved" ? 1 : 0, seeded: true,
+    draft: { ...initialMockDraft(id), text: flow.example, files: [{ name: flow.example.endsWith(".pdf") ? flow.example : "source-packet.pdf", size: 2048, digest: "explorer-source" }], dryRun: values.posture === "dry", formType: values.form ?? initialMockDraft(id).formType, lookupMode: values.mode === "match" ? "match" : "search" } };
+}
+function operationStep(run: MockRun, node: PreviewNode) {
+  const ocrKeys: Readonly<Record<string, string>> = { "Read forms": "prep:ocr", "Roster match": "prep:loading-roster", "Person lookup": "prep:person-lookup", "Your review": "prep:awaiting-approval" };
+  const key = run.workflowId === "ocr" ? ocrKeys[node.id] : undefined;
+  return key ? { key, label: node.id, message: node.purpose } : mockWorkflow(run.workflowId).steps.find(step => mockStepNode(run, step)?.id === node.id);
 }
 export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): MockFlow {
   const key = `fixture-${id}`;
@@ -58,13 +64,18 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
     const number = index + 2;
     const blocked = node.kind === "gate" && values.review !== "approved" || key === "fixture-oath-upload" && node.id === "Wait signatures" && values.signers !== "complete" || key === "fixture-onbase" && node.id === "Fill keywords" && values.keyset === "missing" || key === "fixture-kronos-pay-rule" && node.id === "CSV lookup" && values.action === "missing" || key === "fixture-crm-doc-download" && node.id === "Search record" && values.record === "missing" || key === "fixture-i9-check" && node.id === "OCR extraction" && values.pair === "missing" || key === "fixture-i9-lookup" && values.profile === "unavailable";
     const skip = values.posture === "dry" && node.skippedInDryRun || key === "fixture-oath-signature" && node.id === "Sign oath" && values.existing === "present" || key === "fixture-kronos-pay-rule" && node.id === "Update pay rule" && values.action === "unchanged" || key === "fixture-crm-doc-download" && ["Download", "Archive"].includes(node.id) && values.record === "empty";
+    const operation = operationStep(run, node);
+    const blockedEvidence = key === "fixture-i9-lookup" && values.profile === "absent" || key === "fixture-old-kronos-reports" && values.pdf !== "valid";
+    const operations = operation && !blocked && !skip && !blockedEvidence ? mockOperations(run, operation) : [];
+    const detailedLabels = new Set(operations.flatMap(item => item.fields?.map(([label]) => label.toLowerCase()) ?? []));
+    const contract = node.contract.map((item, fieldIndex) => ({ item, fieldIndex })).filter(({ item }) => !detailedLabels.has((item.field === "EID" ? "Employee ID" : item.field).toLowerCase()));
     const parts: FlowPart[] = [{ kind: "note", text: node.purpose }];
     if (node.when) parts.push({ kind: "note", text: `Condition: ${node.when}.` });
     if (node.delegatesTo) parts.push(action(`Delegate to ${mockWorkflow(node.delegatesTo.replace(/^fixture-/u, "")).label}; preserve its separate outcome.`, "compute"));
     if (blocked) parts.push(action(values.review === "discarded" ? "Preparation discarded. No downstream work is started." : key === "fixture-oath-upload" ? "A linked signer did not succeed. Stop before opening ServiceNow or filing the ticket." : "Required evidence is unavailable. Stop before downstream work; no successful result is inferred.", "stop"));
     else if (skip) parts.push(action(values.posture === "dry" ? "Dry run: this mutation is skipped." : values.existing === "present" ? "Saved oath exists: read its date and skip adding or saving another oath." : "No change is needed. Skip this step.", "rejoin"));
     else if (node.contract.length) {
-      parts.push({ kind: "form", id: `contract-${index}`, title: node.id, mode: node.kind === "output" ? "File output" : node.kind === "write" ? "Fill and verify" : "Read and process", parts: [{ kind: "rows", fields: node.contract.map((item, fieldIndex) => ({
+      if (contract.length) parts.push({ kind: "form", id: `contract-${index}`, title: node.id, mode: node.kind === "output" ? "File output" : node.kind === "write" ? "Fill and verify" : "Read and process", parts: [{ kind: "rows", fields: contract.map(({ item, fieldIndex }) => ({
         id: `contract-${index}-${fieldIndex}`, label: item.field === "EID" ? "Employee ID" : item.field,
         value: key === "fixture-i9-lookup" && values.profile === "absent" ? item.field === "I-9 status" ? "No profile found" : "Not available · no profile" : key === "fixture-old-kronos-reports" && values.pdf !== "valid" ? item.field === "Files saved" ? "No retained PDF" : `Tracker outcome: ${values.pdf === "empty" ? "No Data Returned" : "MISMATCH"}` : mockFieldValue(run, item.field),
         mode: item.dir === "write" && node.kind !== "output" && node.kind !== "fanout" ? "fill" : "read", source: `contract:${index}:${fieldIndex}`,
@@ -72,6 +83,11 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
       const proof = [...new Set(node.contract.filter(item => item.proof).map(item => item.proof))];
       if (proof.length) parts.push(action(`Verify: ${proof.join("; ")}.`));
     }
+    operations.forEach((item, operationIndex) => {
+      if (item.click) parts.push(action(item.click, "click"));
+      if (item.fields) parts.push({ kind: "form", id: `operation-${index}-${operationIndex}`, title: item.label, mode: item.fields.some(row => row[2] === "fill") ? "Fill" : "Read", parts: [{ kind: "rows", fields: item.fields.map(([label, value, mode], fieldIndex) => ({ id: `operation-${index}-${operationIndex}-${fieldIndex}`, label, value: mockOperationValue(run, value), mode: mode ?? "read", source: `operation:${index}:${operationIndex}:${fieldIndex}` })) }] });
+      if (item.verify) parts.push(action(item.verify));
+    });
     if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "verify" ? "Read-only completeness report: paper signatures and contacts, UCPath identity, CRM service/oath dates and I-9 signer lookup." : values.form === "i9" ? "Pair Section 1 and Section 2 identities for OCR review before downstream retention processing." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. OCR owns corrections and approval; downstream workflows consume the approved record.` });
     if (key === "fixture-old-kronos-reports" && node.id === "Downloading") parts.push(action(values.pdf === "valid" ? "Retain the matching Time Detail PDF and append Done to the tracker." : "Delete the empty or mismatched PDF and append the explicit tracker outcome.", "read"));
     steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
@@ -80,6 +96,14 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
   return { steps, summary: graph.summary, completion: "Fictional workflow path complete. No external system contacted.", path: { step: 1, control: controls.length ? `preview-workflow:${workflowChoices(id)[0].key}` : "explorer-step-1" }, stopAfter };
 }
 export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoices, field: FlowField, step: number): FieldSource | undefined {
+  const operation = /^operation:(\d+):(\d+):(\d+)$/u.exec(field.source ?? "");
+  if (operation) {
+    const node = workflowNodes(id, values)[Number(operation[1])], run = previewRun(id, values), definition = node && operationStep(run, node);
+    const group = definition && mockOperations(run, definition)[Number(operation[2])], row = group?.fields?.[Number(operation[3])];
+    if (!row) throw new Error(`EXPLORER_OPERATION_SOURCE_MISSING: ${id}:${field.source}`);
+    return { origin: id === "work-study" && row[0] === "Effective date" ? "Operator effective date" : `${node.system ? systems[node.system] ?? node.system : "Local"} · ${group.label}`, detail: node.purpose,
+      ...(group.verify ? { chain: [{ step, title: "Verify the result", detail: group.verify }] } : {}) };
+  }
   const match = /^contract:(\d+):(\d+)$/u.exec(field.source ?? "");
   if (!match) return undefined;
   const nodes = workflowNodes(id, values), nodeIndex = Number(match[1]), node = nodes[nodeIndex], row = node?.contract[Number(match[2])];

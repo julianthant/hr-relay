@@ -59,7 +59,7 @@ DASHBOARD_MAIN_REGION_ID, buildSettingsNav, resolveSettingsSection
 import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces/shell-model.js";
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
 import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
-import { approveMockRun, mockQueueCounts, mockQueueView, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
+import { approveMockRun, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
 import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
@@ -980,6 +980,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   useEffect(() => { document.title = `${pageName} — HR GPT`; }, [pageName]);
   const previewFlow = railPreview ? mockWorkflow(railPreview) : undefined;
   const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
+  const previewCounts = useMemo(() => mockWorkflowCounts(mockRuns), [mockRuns]);
   const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
   const railRow = railRows.find(run => run.id === railRun);
   const setLaunchOpen = launch.setOpen;
@@ -1016,7 +1017,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         target.focus({ preventScroll: true });
       }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} active={activeWorkflowId} preview={railPreview}
+      <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} />
 
       <main

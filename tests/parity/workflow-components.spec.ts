@@ -186,7 +186,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(logs.getByRole("textbox")).toHaveCount(0); await expect(logs.getByRole("button", { name: /^Records/u })).toHaveCount(0);
       await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
       await linked.getByRole("button", { name: /emergency-contact.pdf.*Parent/u }).click();
-      await expect(logs).toContainText("Emergency Contact · emergency-contact.pdf");
+      await expect(logs).toContainText("emergency-contact.pdf");
+      await expect(logs).not.toContainText("Emergency Contact · emergency-contact.pdf");
       await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
       await logs.getByRole("button", { name: "Records 2", exact: true }).click();
       const overflow = await drawer.evaluate(node => [...node.querySelectorAll<HTMLElement>("section, table, input")].filter(element => element.clientWidth > 0 && element.scrollWidth > element.clientWidth + 1).map(element => element.getAttribute("aria-label") ?? element.tagName));

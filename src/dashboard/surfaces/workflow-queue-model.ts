@@ -14,6 +14,8 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
   const records = reviewRecords(run);
   const warnings = records.flatMap(record => record.warnings);
   const { timeline } = mockRunLog(run);
+  const endClock = timeline[timeline.length - 1].time!;
+  const end = `${day}T${String(Number(endClock.slice(0, 2)) + 7).padStart(2, "0")}${endClock.slice(2)}.000Z`;
   const absent = (reason: string) => ({ state: "absent" as const, reason });
   return QueueSurfaceWireSchema.parse({
     surfaceKind: "single", runId: mockQueueId(run.id), itemId: mockQueueId(run.id), workflowId: run.workflowId,
@@ -28,9 +30,9 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
     facts: absent("Results appear in Logs"), title: run.subject,
     displayName: absent("Use the input subject"), subtitle: absent("The panel names the workflow"),
     status: mockQueueStatus(run),
-    startedAt: `${day}T16:10:00.000Z`, updatedAt: `${day}T16:30:00.000Z`,
-    endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: `${day}T16:30:00.000Z` },
-    gateOpenedAt: review ? { state: "present", value: `${day}T16:30:00.000Z` } : absent("No open approval"),
+    startedAt: `${day}T16:10:00.000Z`, updatedAt: end,
+    endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: end },
+    gateOpenedAt: review ? { state: "present", value: end } : absent("No open approval"),
     liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : absent("No active step"),
     warnings: warnings.length ? { state: "present", count: warnings.length, first: warnings[0] } : absent("No record warnings"),
     pipeline: timeline.filter(stage => stage.id !== `${run.id}:result`).map((stage, index) => ({

@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { MOCK_WORKFLOWS } from "../../src/dashboard/surfaces/workflow-mock-catalog.js";
+import { seedMockRuns } from "../../src/dashboard/surfaces/workflow-mock-model.js";
 import { ensureParityBundle, PARITY_DIST_DIR } from "./helpers/bundle.js";
 import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
@@ -30,7 +31,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
           await rail.getByRole("button", { name: flow.label, exact: true }).click();
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-          await expect(logs).toContainText(flow.label);
+          await expect(logs.getByRole("heading", { level: 2 })).toHaveText(seedMockRuns().find(run => run.workflowId === flow.id)!.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
           await info.attach(`delegated-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
           continue;
@@ -67,7 +68,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
         await expect(dialog).toHaveCount(0);
         const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-        await expect(logs).toContainText(flow.label);
+        await expect(logs.getByRole("heading", { level: 2 })).toHaveText(flow.methods[0] === "pdf" ? pdf.name : flow.example);
         expect(writes).toEqual([]); expect(external).toEqual([]);
         await logs.getByRole("button", { name: "Rerun", exact: true }).click();
         const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
