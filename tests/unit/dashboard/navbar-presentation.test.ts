@@ -3,6 +3,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "vitest";
 import { WorkspaceRail } from "../../../src/dashboard/surfaces/workspace-rail.js";
+import { notificationsSample } from "../../../src/dashboard/surfaces/notifications/notifications-fixture.js";
 import { NAVBAR_SAMPLE } from "../../../src/dashboard/surfaces/navbar/navbar-fixture.js";
 import { navbarCalendarKey, navbarDayLabel, navbarMonthCells, navbarMonthLabel, navbarSearch, navbarShiftDay, navbarShiftMonth } from "../../../src/dashboard/surfaces/navbar/navbar-view-model.js";
 
@@ -11,6 +12,7 @@ describe("canonical workspace rail", () => {
   it("renders all retained controls without a client provider or preflight", () => {
     const html = renderToStaticMarkup(createElement(WorkspaceRail, {
       settingsOpen: false, workflows: [], active: "", preview: null, onSelect: noop, onPreview: noop,
+      notifications: notificationsSample("normal"), onOpenNotification: noop,
     }));
     for (const label of ["HR GPT", "Search runs", "Notifications, 3 unread"]) assert.ok(html.includes(label), label);
     assert.doesNotMatch(html, /RRSS HR|aria-label="Dashboard"|Run count unavailable|HR Automation|>Settings<|lucide-shield|Preflight|doctor|Storage checks/);

@@ -27,7 +27,8 @@ describe("frontend notification state", () => {
     assert.equal(ready(updated).items[1], ready(state).items[1]);
     assert.equal(ready(updated).pinned, ready(state).pinned);
     assert.equal(ready(state).items[0].read, false);
-    assert.equal(notificationView(updateNotification(updated, "sample-verification", "read"), "all").unread, 3);
+    assert.equal(notificationView(updateNotification(updated, "sample-verification", "read"), "all").unread, 2);
+    assert.equal(notificationView(updateNotification(updated, "sample-verification", "unread"), "all").unread, 3);
   });
   it("keeps failures needing attention after their updates are read", () => {
     const state = updateNotification(notificationsSample("normal"), "sample-verification", "read");

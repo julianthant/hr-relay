@@ -30,16 +30,17 @@ export function WorkflowMockQueue({ label, runs, selected, onSelect, day, nowIso
     } }} workflowLabelOf={id => mockWorkflow(id).label} />;
 }
 
-export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect }: {
+export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange }: {
   run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
+  reviewOpen?: boolean; onReviewOpenChange?: (open: boolean) => void;
 }) {
-  const [reviewOpen, setReviewOpen] = useState(false);
+  const [localReviewOpen, setLocalReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
   const { steps, timeline } = mockRunLog(run);
   const hasRecords = run.workflowId === "ocr";
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
-  return <Drawer open={reviewOpen} onOpenChange={setReviewOpen}>
+  return <Drawer open={reviewOpen ?? localReviewOpen} onOpenChange={onReviewOpenChange ?? setLocalReviewOpen}>
     <LogPanel title={run.subject} steps={steps} timeline={timeline}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">

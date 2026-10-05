@@ -7478,7 +7478,25 @@ uses compact 28px HeroUI All/Unread tabs with a selected underline and a separat
 control for All updates, Needs you and Failed. The category control has one 14px filter icon and marks
 an active category with the info color. Read
 state and category filters intersect without resolving a run's urgency. Rows use rounded hover/focus
-surfaces, omit History gap and restore focus when dismissed. Settings opens from the Sessions gear
+surfaces, omit History gap and restore focus when dismissed.
+
+The 2026-10-05 notification interaction amendment links each local update to an exact available queue
+run, OCR preview or Archive index. Subjects and workflow labels come from that destination. All rows
+expose their action, including completed updates and Archive. Opening a run selects its Logs and
+clears queue selection/status filters; OCR review opens the existing records drawer. Missing targets
+and changed days refuse visibly instead of opening another run. Opening marks an update read only
+after navigation succeeds. Explicit read/unread controls and Read all are idempotent and do not resolve
+urgency. Category and All/Unread selections survive inbox dismissal. Read all includes hidden updates
+and restores keyboard focus when the unread list empties.
+
+OCR approval/discard updates the same notification; newly created local previews add exact run links.
+Approved records remain locked. Local event ages use the shared served clock, and read overrides are
+scoped to the exact run and day. These read flags remain local while the dashboard is mounted; this
+amendment does not implement backend publication, persistence or desktop delivery. Loading, unavailable
+and empty data remain distinct. Focused source, interaction, transport-isolation and dark/light desktop
+evidence is retained under `notifications-interactive-20261005`; 3.1.19 retains full and frozen gates.
+
+Settings opens from the Sessions gear
 beside the plus button. The Sessions toggle excludes that right-hand action region, including its
 background. The toggle hover fill fades smoothly at that boundary and uses the shared opacity transition
 with reduced-motion support. Settings replaces the dashboard with a 264px reference sidebar, Settings heading, search

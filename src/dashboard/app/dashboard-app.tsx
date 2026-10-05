@@ -65,6 +65,8 @@ import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
 import { StorageBanner } from "../surfaces/storage-settings.js";
 import { WorkspaceRail } from "../surfaces/workspace-rail.js";
+import { notificationDestinationRefusal, notificationPreviewState } from "../surfaces/notifications/notifications-preview-model.js";
+import type { NotificationDestination } from "../surfaces/notifications/notifications-view-model.js";
 import {
 bulkSubjectsOf,
 composeBulkRunCommand,
@@ -274,6 +276,8 @@ function LoadedApp({
    * page load and a parked run read `0s` for over two minutes.
    */
   const nowIso = useServedNow(boot.serverClock.now);
+  const servedNowRef = useRef(nowIso);
+  servedNowRef.current = nowIso;
   const today = serverLocalDay({ ...boot.serverClock, now: nowIso });
   const dateSelection = resolveDateSelection(route.day, today);
   const day = dateSelection.state === "valid" ? dateSelection.day : dateSelection.requested;
@@ -294,6 +298,8 @@ function LoadedApp({
   const [mockRuns, setMockRuns] = useState<readonly MockRun[]>(seedMockRuns);
   const [mockLaunch, setMockLaunch] = useState<{ workflowId: MockWorkflowId; source?: MockRun } | null>(null);
   const [railRun, setRailRun] = useState<string>();
+  const [railReviewId, setRailReviewId] = useState<string>();
+  const [mockNotificationTimes, setMockNotificationTimes] = useState<Readonly<Record<string, string>>>({});
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
     if (railPreview && mockWorkflow(railPreview).runnable) setMockLaunch({ workflowId: mockWorkflow(railPreview).id });
@@ -988,11 +994,47 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const submitMock = useCallback((id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
     setMockRuns(previous => [...created, ...previous]);
+    setMockNotificationTimes(previous => ({ ...previous, ...Object.fromEntries(created.map(run => [run.id, servedNowRef.current])) }));
     setRailPreview(id); setRailRun(created[0]?.id); setMockLaunch(null);
     setLaunchOpen(false);
   }, [mockRuns.length, setLaunchOpen]);
   const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow]);
   const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(id === "ocr" ? "mock:oath-signature:sample:ocr" : `mock:${id}:sample`); }, []);
+  const notificationScenario = new URLSearchParams(window.location.search).get("notificationsPreview") ?? "normal";
+  const notificationMinute = Math.floor(Date.parse(nowIso) / 60000);
+  const notifications = useMemo(() => notificationPreviewState(notificationScenario, {
+    day, nowIso: new Date(Math.max(notificationMinute * 60000, ...Object.values(mockNotificationTimes).map(Date.parse))).toISOString(),
+    rows: dayWire ? previewQueue.rows : undefined, runs: mockRuns, workflowLabel: workflowLabelOf, eventTimes: mockNotificationTimes,
+    unavailable: dateError ?? (dayResource.state === "failed" ? dayResource.error.message : undefined),
+  }), [notificationScenario, day, notificationMinute, dayWire, previewQueue.rows, mockRuns, workflowLabelOf, dateError, dayResource, mockNotificationTimes]);
+  const notificationContext = useRef({ day, rows: previewQueue.rows, runs: mockRuns });
+  notificationContext.current = { day, rows: previewQueue.rows, runs: mockRuns };
+  const openNotification = useCallback((destination: NotificationDestination, opened: () => void, refused: (message: string) => void) => {
+    leaveSettings(() => {
+      const context = notificationContext.current;
+      const refusal = notificationDestinationRefusal(destination, context);
+      if (refusal) { refused(refusal); return; }
+      const next = { ...routeWithoutTakeovers(route), start: false, run: undefined, section: undefined };
+      setRailReviewId(undefined);
+      setMockLaunch(null);
+      setLaunchOpen(false);
+      exitQueueSelection();
+      onFilter(["all"]);
+      if (destination.kind === "archive") { setRailPreview(null); setRoute({ ...next, archive: "" }); }
+      else if (destination.kind === "run") {
+        const row = context.rows.find(item => item.runId === destination.runId)!;
+        setRailPreview(null); setActiveWorkflowId(row.workflowId);
+        setRoute({ ...next, day: destination.day, run: destination.runId, section: "logs" });
+      } else {
+        const run = context.runs.find(item => item.id === destination.runId)!;
+        setRailPreview(run.workflowId); setRailRun(run.id);
+        if (destination.records) setRailReviewId(run.id);
+        setRoute({ ...next, day: destination.day });
+      }
+      opened();
+      if (destination.kind !== "preview-run" || !destination.records) requestAnimationFrame(() => document.getElementById(DASHBOARD_MAIN_REGION_ID)?.focus());
+    });
+  }, [leaveSettings, route, setRoute, setLaunchOpen, exitQueueSelection, onFilter, setActiveWorkflowId]);
 
 
   return (
@@ -1018,7 +1060,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
       <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
-        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} />
+        onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} />
 
       <main
         id={DASHBOARD_MAIN_REGION_ID}
@@ -1157,8 +1199,9 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 <div role="group" aria-label="Log date controls" className="dashboard-log-date"><DatePicker label="Dashboard date" hideLabel triggerLabel="Choose date" required value={day} max={today}
                   onChange={next => { if (next !== "") setRoute({ ...route, day: next, run: undefined }); }} className="w-44" footer={choose => <Button size="sm" variant="ghost" onClick={() => choose(today)}>Today</Button>} /></div>
                 </section>
-            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => setMockRuns(previous => approveMockRun(previous, railRow.id))}
-              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => setMockRuns(previous => discardMockReview(previous, railRow.id))} onRestore={() => setMockRuns(previous => restoreMockReview(previous, railRow.id))}
+            {previewFlow && railRow && dateSelection.state === "valid" ? <WorkflowMockLog key={railRow.id} run={railRow} runs={mockRuns} onRerun={() => setMockLaunch({ workflowId: railRow.workflowId, source: railRow })} onApprove={() => { setMockRuns(previous => approveMockRun(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
+              reviewOpen={railReviewId === railRow.id} onReviewOpenChange={open => setRailReviewId(open ? railRow.id : undefined)}
+              onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => { setMockRuns(previous => discardMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }} onRestore={() => { setMockRuns(previous => restoreMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRailPreview(next.workflowId); setRailRun(next.id); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
             ) : (

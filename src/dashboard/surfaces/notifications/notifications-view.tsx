@@ -1,7 +1,7 @@
 import { Tabs } from "@heroui/react/tabs";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "../../ds/dropdown-menu.js";
 import { CheckCheck, CircleAlert, Mail, ListFilter } from "lucide-react";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
 import { notificationView, type NotificationCategory, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
@@ -15,30 +15,33 @@ function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; 
       <div className="min-w-0 flex-1"><button type="button" className={cn("block min-h-6 w-full truncate text-left text-body text-ui-primary", dsFocus)} onClick={() => onOpen(item)}>{item.subject}</button>
         <p className={cn("mb-0 mt-1 text-caption", urgent ? item.tone === "danger" ? "text-ui-danger" : "text-ui-warning" : "text-ui-secondary")}>{item.title}</p>
         <p className="mb-0 mt-1 line-clamp-2 text-caption text-ui-muted">{item.detail}</p>
-        <div className="mt-2 flex items-center gap-2 text-caption text-ui-muted"><span className="truncate">{item.workflow}</span><span aria-hidden>·</span><span className="shrink-0">{item.age}</span></div>
-      </div><button type="button" aria-label={`${item.read ? "Mark unread" : "Mark read"}: ${item.title}`} title={item.read ? "Mark unread" : "Mark read"} className={iconButton} onClick={() => onControl(item.id, "read")}>{item.read ? <Mail aria-hidden className="size-3.5" /> : <CheckCheck aria-hidden className="size-3.5" />}</button>
+        <div className="mt-2 flex items-center gap-2 text-caption text-ui-muted"><span className="truncate">{item.workflow}</span>{item.age && <><span aria-hidden>·</span><span className="shrink-0">{item.age}</span></>}</div>
+      </div><button type="button" aria-label={`${item.read ? "Mark unread" : "Mark read"}: ${item.title}`} title={item.read ? "Mark unread" : "Mark read"} className={iconButton} onClick={() => onControl(item.id, item.read ? "unread" : "read")}>{item.read ? <Mail aria-hidden className="size-3.5" /> : <CheckCheck aria-hidden className="size-3.5" />}</button>
     </div>
-    {urgent && <Button variant="ghost" size="sm" className="ml-3.5 mt-1 h-6 px-1 text-ui-info" onClick={() => onOpen(item)}>{item.action}</Button>}
+    <Button variant="ghost" size="sm" className="ml-3.5 mt-1 h-6 px-1 text-ui-info" onClick={() => onOpen(item)}>{item.action}</Button>
   </li>;
 }
 
-export function NotificationsView({ state, filter, onFilter, onControl, onOpen, notice }: {
+export function NotificationsView({ state, filter, onFilter, category, onCategory, onControl, onReadAll, onOpen, notice }: {
   state: NotificationsState; filter: NotificationFilter; onFilter: (filter: NotificationFilter) => void;
-  onControl: (id: string, control: NotificationControl) => void;
+  category: NotificationCategory; onCategory: (category: NotificationCategory) => void;
+  onControl: (id: string, control: NotificationControl) => void; onReadAll: () => void;
   onOpen: (item: NotificationItem) => void; notice: string; onEnable?: () => void;
 }) {
-  const [category, setCategory] = useState<NotificationCategory>("all");
   const view = notificationView(state, filter, category);
   const surface = useRef<HTMLDivElement>(null);
+  const restoreFocus = (focused: Element | null) => window.requestAnimationFrame(() => {
+    if (focused instanceof HTMLElement && (!focused.isConnected || focused.matches(":disabled"))) surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus();
+  });
   const control = (id: string, action: NotificationControl) => {
     const focused = document.activeElement;
     onControl(id, action);
-    window.requestAnimationFrame(() => { if (focused instanceof HTMLElement && !focused.isConnected) surface.current?.querySelector<HTMLButtonElement>(`[data-notification-filter="${filter}"]`)?.focus(); });
+    restoreFocus(focused);
   };
   const unread = state.state === "ready" ? state.items.filter(item => !item.read) : [];
   return <section ref={surface} role="region" aria-label="Notifications" className="notification-rail ui-theme-scope flex min-h-0 flex-1 flex-col overflow-hidden font-ui text-ui-primary">
     <div className="flex items-center justify-between gap-2 px-4 pb-3"><span className="text-caption text-ui-muted">Notifications{view.unread !== undefined && ` · ${view.unread} unread`}</span>
-      <button type="button" disabled={!unread.length} className={cn("min-h-6 text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => unread.forEach(item => control(item.id, "read"))}>Read all</button>
+      <button type="button" disabled={!unread.length} className={cn("min-h-6 text-caption text-ui-secondary hover:text-ui-primary disabled:opacity-40", dsFocus)} onClick={() => { const focused = document.activeElement; onReadAll(); restoreFocus(focused); }}>Read all</button>
     </div>
     <Tabs selectedKey={filter === "unread" ? "unread" : "all"} onSelectionChange={key => onFilter(key as NotificationFilter)} variant="secondary" className="notification-tabs">
       <div className="notification-filter-bar">
@@ -47,7 +50,7 @@ export function NotificationsView({ state, filter, onFilter, onControl, onOpen, 
           <Tabs.Tab id="unread" data-notification-filter="unread">Unread<Tabs.Indicator /></Tabs.Tab>
         </Tabs.List></Tabs.ListContainer>
         <DropdownMenu><DropdownMenuTrigger asChild><Button size="sm" variant="ghost" className="notification-category-filter" data-filtered={category !== "all"} aria-label="Filter notifications by category" title={category === "all" ? "All updates" : category === "attention" ? "Needs you" : "Failed"} icon={<ListFilter className="size-3.5" data-icon="inline-start" />} /></DropdownMenuTrigger>
-          <DropdownMenuContent aria-label="Notification categories" align="end"><DropdownMenuGroup><DropdownMenuRadioGroup value={category} onValueChange={value => setCategory(value as NotificationCategory)}>
+          <DropdownMenuContent aria-label="Notification categories" align="end"><DropdownMenuGroup><DropdownMenuRadioGroup value={category} onValueChange={value => onCategory(value as NotificationCategory)}>
             <DropdownMenuRadioItem value="all">All updates</DropdownMenuRadioItem><DropdownMenuRadioItem value="attention">Needs you</DropdownMenuRadioItem><DropdownMenuRadioItem value="failed">Failed</DropdownMenuRadioItem>
           </DropdownMenuRadioGroup></DropdownMenuGroup></DropdownMenuContent>
         </DropdownMenu>

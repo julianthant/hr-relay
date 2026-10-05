@@ -279,6 +279,8 @@ Settings search lists matching pages and actual controls using their shared pres
 
 The workflow-detail amendment adds legacy operation sequences and fields to local Logs and Explorer, populated timeline substeps with synthetic timings, active/total rail counts at both desktop widths, and subject-only run headings. Onboarding preserves distinct new-hire and concurrent-hire forms, wrong-person readbacks and dry-run cleanup. OCR remains the sole record editor and approval owner; D347's dashboard-surfaces owner records the contract and retained evidence.
 
+The notification interaction amendment links every local inbox action to its exact run, OCR review drawer or Archive index. Source subjects/statuses, new-run and approval updates, run/day-scoped read state, retained filters and keyboard focus replace disconnected placeholders. Read state does not resolve urgency; missing destinations refuse visibly. Backend publication and persistence remain unwired. D347's dashboard-surfaces owner records the contract and retained evidence.
+
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including
 typed credentials, provider keys, identifiers and capture images. Action notes

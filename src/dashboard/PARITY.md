@@ -280,3 +280,24 @@ and frozen-reference gates remain deferred to 3.1.19.
 
 The concrete-workflow-ID guard remains unresolved for local preview catalogs; its reconciliation
 stays with 3.1.19. Node/registry isolation and component-export boundary checks pass.
+
+## Interactive notification amendment (2026-10-05)
+
+The permanent-rail inbox retains its compact All/Unread tabs, separate category menu and canonical
+row layout. Every row offers an action linked to an exact source run, OCR preview or Archive index.
+Source subjects and workflow labels replace unrelated placeholder people. Run navigation exposes Logs;
+OCR review opens the existing editable drawer, and reopening approved records shows locked values.
+New local runs and OCR approval/discard update the inbox. Local event ages use the shared served clock.
+
+Read/unread controls and Read all are explicit and idempotent. Read state does not resolve urgency;
+filters intersect, survive dismissal, and retain keyboard access. Read all includes filtered-out items
+and restores focus to the active tab when it becomes disabled. Successful navigation marks the update
+read; missing/stale destinations refuse without marking read or opening a substitute. Overrides are
+scoped to a run and day and remain local until the dashboard reloads. Backend notification publication,
+persistence and desktop delivery are outside this frontend amendment.
+
+Focused unit, browser, lint, affected TypeScript and architecture evidence is retained under
+`notifications-interactive-20261005`. Browser journeys cover dark/light at 1024×720 and 1440×1000,
+empty/loading/unavailable states, pings, exact destinations, OCR editing/approval, new-run updates,
+keyboard focus, overflow and zero write requests. Full repository and frozen parity gates, including
+the inherited concrete-workflow-ID guard conflict, remain owned by 3.1.19.

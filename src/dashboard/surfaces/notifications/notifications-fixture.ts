@@ -4,11 +4,11 @@ const sample: Extract<NotificationsState, { state: "ready" }> = {
   state: "ready",
   pinned: [{ id: "sample-gap", title: "History gap", detail: "Some events could not be recovered. Review the affected history before relying on it. This notice cannot be dismissed or marked read." }],
   items: [
-    { id: "sample-verification", title: "Document verification failed", subject: "Casey Rivera", workflow: "Separations", detail: "The saved Kuali document did not match the staged values. Review the log before taking the next action.", tone: "danger", age: "2 min ago", read: false, action: "Open log" },
-    { id: "sample-approval", title: "Approval waiting", subject: "Jordan Lee", workflow: "Person lookup", detail: "An employee match needs your review. The workflow is paused at the approval step.", tone: "warning", age: "8 min ago", read: false, action: "Review run" },
-    { id: "sample-completed", title: "Separation completed", subject: "Alex Morgan", workflow: "Separations", detail: "UCPath termination and the saved Kuali document were verified.", tone: "positive", age: "14 min ago", read: false, action: "Open log" },
-    { id: "sample-archive", title: "Archive ready", subject: "September 25", workflow: "Archive", detail: "The previous day is available in Archive.", tone: "info", age: "1 hr ago", read: true, action: "Open archive" },
-    { id: "sample-review", title: "Run waiting for review", subject: "Taylor Park", workflow: "Separations", detail: "Review the employee identity before this run continues.", tone: "warning", age: "35 min ago", read: true, action: "Review run" },
+    { id: "sample-verification", title: "Run failed", subject: "EID 10555001", workflow: "Person Lookup", detail: "Cross Verification failed.", tone: "danger", age: "2 min ago", read: false, action: "Open log", destination: { kind: "run", runId: "00000000-0004-4000-8000-000000000004", day: "2026-08-03" } },
+    { id: "sample-approval", title: "Records ready for approval", subject: "emergency-contact.pdf", workflow: "OCR", detail: "1 record is ready for review.", tone: "warning", age: "8 min ago", read: false, action: "Review records", destination: { kind: "preview-run", runId: "mock:emergency-contact:sample:ocr", day: "2026-08-03", records: true } },
+    { id: "sample-completed", title: "Run completed", subject: "EID 10001573", workflow: "Person Lookup", detail: "Completed successfully.", tone: "positive", age: "14 min ago", read: false, action: "Open log", destination: { kind: "run", runId: "00000000-0003-4000-8000-000000000003", day: "2026-08-03" } },
+    { id: "sample-archive", title: "Archive", subject: "Saved reports", workflow: "Archive", detail: "Browse saved workflow reports.", tone: "info", age: "", read: true, action: "Open archive", destination: { kind: "archive" } },
+    { id: "sample-review", title: "Approval waiting", subject: "Blirea, Glaundi", workflow: "Person Lookup", detail: "Waiting on identity review.", tone: "warning", age: "35 min ago", read: true, action: "Review run", destination: { kind: "run", runId: "00000000-0005-4000-8000-000000000005", day: "2026-08-03" } },
   ],
 };
 export function notificationsSample(scenario: string): NotificationsState {
