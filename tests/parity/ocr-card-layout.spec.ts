@@ -54,6 +54,13 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       const employee = fields.getByRole("group", { name: "Employee", exact: true });
       const oath = fields.getByRole("group", { name: "Oath", exact: true });
       await expect(fields.getByRole("group")).toHaveCount(3);
+      for (const [card, title] of [[employee, "Employee"], [oath, "Oath"]] as const) {
+        await expect(card.getByRole("heading")).toHaveCount(0);
+        const heading = fields.getByRole("heading", { name: title, exact: true });
+        const headingBounds = (await heading.boundingBox())!, cardBounds = (await card.boundingBox())!;
+        expect(headingBounds.y + headingBounds.height).toBeLessThan(cardBounds.y);
+        expect(headingBounds.x).toBe(cardBounds.x);
+      }
       await expect(selection.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeVisible();
       const include = selection.getByRole("checkbox", { name: "Include Jordan Lee", exact: true });
       const name = selection.getByRole("heading", { name: "Jordan Lee", exact: true });

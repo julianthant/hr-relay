@@ -292,7 +292,7 @@ Records appear in stacked cards within one log-panel scroll area, each allocatin
 and 40% to compact fields. Each record has an Include checkbox; one fixed footer holds the valid
 selection count and approval actions. The fields column has a selection card with the checkbox
 directly beside the name, followed by one card per response group: Employee and Oath for oath
-forms. Include remains in the checkbox's accessible name, with warnings and invalid-identity messages
+forms. Field-group titles sit above their cards. Include remains in the checkbox's accessible name, with warnings and invalid-identity messages
 inside the selection card. Adjacent boolean fields share a wrapping row, long fields use the full
 form width, and notes allow multiline editing.
 Page labels/selectors sit above the image. Zoom controls stay in the preview's bottom-right corner;

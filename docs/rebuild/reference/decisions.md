@@ -301,7 +301,7 @@ contact pages; I-9 controls label Section 1 on page 2 and Section 2 on page 1. S
 hold a 60/40 PDF/fields split inside one log-panel scroll area. Each card has an Include checkbox;
 one fixed footer approves eligible selections and retains Add record and Discard. The right column
 uses a selection card with its checkbox directly beside the name, followed by cards for response
-field groups; oaths have selection, Employee and Oath cards. Warnings remain with selection, and
+field groups, whose titles sit above their cards; oaths have selection, Employee and Oath cards. Warnings remain with selection, and
 inclusion retains its accessible name. Adjacent checkboxes share space, and long fields/notes use the
 full form width while preserving every response field and its order. Page navigation sits above
 the source; zoom/fit controls remain in the image frame's corner while magnification pans inside

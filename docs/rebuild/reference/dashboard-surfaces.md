@@ -7494,7 +7494,8 @@ The inline log body scrolls through one large card per record. Each card holds a
 and compact editable fields (40%), with an Include checkbox. PDF and fields move together in one
 vertical scroll area; record switching and separate field scrolling are retired. The fields column
 uses a compact selection card with its checkbox directly beside the person name, followed by one
-card per response field group. Oaths have three cards: selection, Employee and Oath. Inclusion keeps
+card per response field group, with each group title above its card. Oaths have three cards:
+selection, Employee and Oath. Inclusion keeps
 its accessible action name without a repeated visible Include label. Warnings and invalid-identity
 messages stay in the selection card. Adjacent boolean fields share a wrapping row; notes support
 multiline editing, and long fields use the full form width without changing response-field order or

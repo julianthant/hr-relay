@@ -60,7 +60,7 @@ function ReviewRecordCard({ run, record, original, pages, onChange, onFocus }: {
           {!readOnly && record.selected && !reviewCanApprove(record) && <p role="status" className="m-0 text-caption text-ui-warning">Enter an Employee ID of at least five digits to approve this record.</p>}
         </CardBody>
       </Card>
-      {reviewFieldGroups(record).map(group => <Card key={group.fields[0].key} role="group" aria-label={group.title}><CardBody className="p-3"><h4 className="mb-3 mt-0 text-body font-medium">{group.title}</h4><div className="grid grid-cols-1 gap-2 @min-[16rem]/record:grid-cols-2">{reviewFieldBlocks(group.fields).map(block => block[0].kind === "boolean" ? <div key={block[0].key} className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-2 py-1">{block.map(renderField)}</div> : renderField(block[0]))}</div></CardBody></Card>)}
+      {reviewFieldGroups(record).map(group => <section key={group.fields[0].key}><h4 className="mb-2 mt-0 text-body font-medium">{group.title}</h4><Card role="group" aria-label={group.title}><CardBody className="p-3"><div className="grid grid-cols-1 gap-2 @min-[16rem]/record:grid-cols-2">{reviewFieldBlocks(group.fields).map(block => block[0].kind === "boolean" ? <div key={block[0].key} className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-2 py-1">{block.map(renderField)}</div> : renderField(block[0]))}</div></CardBody></Card></section>)}
     </div>
   </section>;
 }
