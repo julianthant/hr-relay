@@ -3,8 +3,8 @@ import { useEffect, useState, type ReactNode } from "react";
 import type { StorageDoctorWire } from "../../domain/dashboard/storage.js";
 import { Badge, Banner, BodySection, Button, Disclosure, FormGroup, PageHeading, ResultRow, StatusDot, dsIcon } from "../ds/ui.js";
 import { useStorageClient } from "../state/storage-client.js";
-import { fmtClock, fmtInstantDay, plural } from "./format.js";
-import { spanAuthorityProblemDetail, type StorageHealthSummary } from "./storage-settings-model.js";
+import { fmtClock, fmtInstantDay } from "./format.js";
+import type { StorageHealthSummary } from "./storage-settings-model.js";
 import "./diagnostic-presentation.css";
 
 const AUTHORITY_HAZARD = "Nothing durable can be read or recorded.";
@@ -30,26 +30,32 @@ type DoctorState =
   | { state: "loaded"; report: StorageDoctorWire }
   | { state: "failed"; message: string; report?: StorageDoctorWire };
 type CheckTone = "pass" | "attention" | "unavailable" | "neutral";
-interface CheckResult { tone: CheckTone; value: string; evidence?: string; detail?: string; detailLabel?: string; extra?: ReactNode }
+interface CheckResult { tone: CheckTone; value: string; summary?: string; overview?: ReactNode; evidence?: string; detail?: string }
 const NOT_CHECKED: CheckResult = { tone: "neutral", value: "Not checked" };
 
-function CheckRow({ name, description, result }: { name: string; description: string; result: CheckResult }) {
+function CheckRow({ name, description, result, findings = false }: { name: string; description: string; result: CheckResult; findings?: boolean }) {
   const status = result.tone === "pass"
     ? <span className="diagnostic-check-status"><StatusDot status="verifiedDone" />{result.value}</span>
     : result.tone === "neutral"
       ? <span className="diagnostic-check-status diagnostic-check-status-neutral">{result.value}</span>
       : <Badge tone={result.tone === "attention" ? "warning" : "danger"}>{result.value}</Badge>;
   return <div className="diagnostic-check-entry" role="listitem">
-    <ResultRow label={name} description={<><span>{description}</span>
-      {result.evidence !== undefined && <span className="diagnostic-check-evidence">{result.evidence}</span>}
-      {result.detail !== undefined && <span className="diagnostic-check-evidence">
-        {result.detailLabel !== undefined && <><strong>{result.detailLabel}:</strong> </>}{result.detail}
-      </span>}
-    </>} value={status} />
-    {result.extra !== undefined && <div className="diagnostic-check-detail diagnostic-storage-detail">
-      {result.extra}
+    <ResultRow label={name} description={result.summary ?? description} value={status} />
+    {(result.overview !== undefined || (findings && result.detail !== undefined)) && <div className="diagnostic-check-detail diagnostic-storage-detail">
+      {result.overview}
+      {findings && <DiagnosticFindings name={name} result={result} />}
     </div>}
   </div>;
+}
+
+function DiagnosticFindings({ name, result }: { name: string; result: CheckResult }) {
+  if (result.detail === undefined) return null;
+  return <Disclosure summary="Diagnostic details" className="diagnostic-storage-disclosure" contentClassName="diagnostic-storage-findings">
+    <section aria-label={`${name} diagnostics`}>
+      {result.evidence !== undefined && <p className="diagnostic-check-evidence">{result.evidence}</p>}
+      <p className="diagnostic-check-evidence whitespace-pre-line">{result.detail}</p>
+    </section>
+  </Disclosure>;
 }
 
 function CheckGroup({ title, subtitle, children }: { title: string; subtitle: string; children: ReactNode }) {
@@ -59,68 +65,48 @@ function CheckGroup({ title, subtitle, children }: { title: string; subtitle: st
 }
 
 const COUNT_CHECKS = [
-  { key: "pendingCommands", name: "Pending commands", description: "Commands accepted but not yet completed." },
-  { key: "unresolvedWriteIntents", name: "Unresolved writes", description: "Database changes that still need a final outcome." },
-  { key: "leases", name: "Active leases", description: "Work currently held by a worker." },
-  { key: "providerReservations", name: "Provider reservations", description: "External provider work reserved by this system." },
-  { key: "artifactOutbox", name: "Artifact outbox", description: "Artifacts waiting to be published." },
+  { key: "pendingCommands", name: "Pending actions", description: "Accepted actions that have not finished." },
+  { key: "unresolvedWriteIntents", name: "Changes awaiting confirmation", description: "Changes still waiting for their final outcome." },
+  { key: "leases", name: "Assigned work", description: "Tasks currently held by a worker." },
+  { key: "providerReservations", name: "Provider tasks", description: "Tasks reserved with an external provider." },
+  { key: "artifactOutbox", name: "Pending outputs", description: "Outputs waiting to be published." },
 ] as const;
 const CREDENTIAL_CHECKS = [
   { key: "ucpathUserId", name: "UCPath user ID", description: "Login name for UCPath access." },
   { key: "ucpathPassword", name: "UCPath password", description: "Password for UCPath access." },
   { key: "timekeeperName", name: "Timekeeper name", description: "Name used for timekeeping workflows." },
-  { key: "sharepointOnboardingRosterUrl", name: "SharePoint onboarding roster URL", description: "Location of the onboarding roster." },
-  { key: "activityPersonPseudonym", name: "Activity person pseudonym", description: "Identifier used in activity records." },
+  { key: "sharepointOnboardingRosterUrl", name: "SharePoint roster", description: "Link to the onboarding roster." },
+  { key: "activityPersonPseudonym", name: "Activity identity", description: "Identifier used in activity records." },
 ] as const;
 
 function authorityResult(report?: StorageDoctorWire): CheckResult {
   if (report === undefined) return NOT_CHECKED;
-  if (report.authority.state === "degraded") return { tone: "unavailable", value: "Needs attention", detail: `${report.authority.cause.code}: ${report.authority.cause.summary}` };
-  return { tone: "pass", value: "Passed", evidence: `Schema v${report.authority.schemaVersion} · generation ${report.authority.authorityGeneration} · ${plural(report.authority.pageCount, "page")}` };
+  if (report.authority.state === "degraded") return { tone: "unavailable", value: "Unavailable", summary: "Stored data couldn't be read. Review the technical details.", detail: `${report.authority.cause.code}: ${report.authority.cause.summary}` };
+  return { tone: "pass", value: "Passed", summary: "Stored data is readable." };
 }
 function recoveryResult(report?: StorageDoctorWire): CheckResult {
   if (report === undefined) return NOT_CHECKED;
   const recovery = report.recovery;
-  if (recovery.state === "clear") return { tone: "pass", value: "Clear", evidence: "No interruption markers" };
+  if (recovery.state === "clear") return { tone: "pass", value: "Clear", summary: "No unfinished storage operations." };
   return {
     tone: recovery.state === "interrupted" ? "attention" : "unavailable",
     value: recovery.state === "interrupted" ? "Interrupted" : "Unavailable",
+    summary: recovery.state === "interrupted" ? "An interrupted operation needs review before starting work." : "Recovery status couldn't be checked.",
     detail: recovery.state === "unavailable" ? recovery.cause.summary : "An interrupted operation needs review before startup.",
     evidence: recovery.findings.map((finding) => `${finding.marker}: ${finding.state}`).join(" · ") || undefined,
-  };
-}
-function spanResult(report?: StorageDoctorWire): CheckResult {
-  if (report === undefined) return NOT_CHECKED;
-  const span = report.spanAuthority;
-  if (span.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: `${span.cause.code}: ${span.cause.summary}` };
-  return {
-    tone: span.state === "reconciled" ? "pass" : "attention",
-    value: span.state === "reconciled" ? "Reconciled" : "Needs attention",
-    evidence: `${plural(span.streamRunCount, "stream run")} · ${plural(span.liveRunCount, "live run")} · ${plural(span.archived.length, "archived run")} · ${plural(span.deleted.length, "deleted run")}`,
-    detailLabel: span.state === "degraded" ? plural(span.problems.length, "run record issue") : undefined,
-    detail: span.state === "degraded" ? span.problems.map((problem) => {
-      const label = {
-        missing: "Run missing",
-        "restore-loss": "Run missing after recovery",
-        "missing-span": "Activity history missing",
-        "malformed-authority": "Run record unreadable",
-        malformed: "Activity data unreadable",
-      }[problem.state];
-      return `${label}: ${spanAuthorityProblemDetail(problem)}`;
-    }).join(" · ") : undefined,
-    extra: span.archived.length > 0 ? <Disclosure summary={plural(span.archived.length, "archived run")}>
-      <ul>{span.archived.map((run) => <li key={run.runId} title={run.archivedAt}>
-        {run.runId} · {fmtInstantDay(run.archivedAt)} {fmtClock(run.archivedAt)}
-      </li>)}</ul>
-    </Disclosure> : undefined,
   };
 }
 function upgradeResult(report?: StorageDoctorWire): CheckResult {
   if (report === undefined) return NOT_CHECKED;
   const upgrades = report.authorityUpgrades;
-  if (upgrades.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: upgrades.cause.summary };
-  if (upgrades.state === "absent") return { tone: "neutral", value: "No history", evidence: upgrades.reason === "pre-journal-schema" ? "This database predates upgrade records." : "No upgrade has been recorded." };
-  return { tone: "pass", value: "Recorded", detail: upgrades.phases.map((phase) => `${phase.phase}: v${phase.fromSchemaVersion} → v${phase.toSchemaVersion} · ${fmtInstantDay(phase.recordedAt)} ${fmtClock(phase.recordedAt)}`).join(" · ") };
+  if (upgrades.state === "unavailable") return { tone: "unavailable", value: "Unavailable", summary: "Storage update history couldn't be checked.", detail: upgrades.cause.summary };
+  if (upgrades.state === "absent") return { tone: "neutral", value: "No history", summary: upgrades.reason === "pre-journal-schema" ? "Update history wasn't recorded for this older data store." : "No storage updates have been recorded." };
+  const labels = { baseline: "Starting version recorded", planned: "Update planned", committed: "Update applied", settled: "Update completed" };
+  return { tone: "pass", value: "Recorded", summary: "Recorded changes to your saved data.", overview: <Disclosure summary="Update history" className="diagnostic-storage-disclosure">
+    <ul className="diagnostic-storage-updates">{upgrades.phases.map((phase, index) => <li key={index}>
+      <span>{labels[phase.phase]}</span><time dateTime={phase.recordedAt}>{fmtInstantDay(phase.recordedAt)} {fmtClock(phase.recordedAt)}</time>
+    </li>)}</ul>
+  </Disclosure> };
 }
 function countResult(report: StorageDoctorWire | undefined, key: typeof COUNT_CHECKS[number]["key"]): CheckResult {
   if (report === undefined) return NOT_CHECKED;
@@ -132,7 +118,7 @@ function credentialResult(report: StorageDoctorWire | undefined, key: typeof CRE
   if (report === undefined) return NOT_CHECKED;
   if (report.protectedSettings.state === "unavailable") return { tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary };
   const entry = report.protectedSettings.entries.find((item) => item.name === key);
-  if (entry === undefined) return { tone: "unavailable", value: "Unknown", detail: "This credential was not included in the inspection." };
+  if (entry === undefined) return { tone: "unavailable", value: "Unknown", summary: "This setting wasn't included in the last check." };
   return { tone: "neutral", value: entry.present ? "Present" : "Not set" };
 }
 
@@ -148,7 +134,12 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
     return () => { active = false; };
   }, [client]);
   const report = doctor.state === "reading" ? undefined : doctor.report;
-  const authority = storage.authority;
+  const authority = storage.authority === "healthy" && report?.authority.state !== "degraded" ? "healthy" : "unavailable";
+  const checks = [
+    { name: "Stored data", description: "Readability of saved data.", result: authorityResult(report) },
+    { name: "Recovery", description: "Unfinished storage operations.", result: recoveryResult(report) },
+    { name: "Storage updates", description: "History of changes to saved data.", result: upgradeResult(report) },
+  ];
   const runDoctor = (): void => {
     setDoctor(previous => ({ state: "running", report: previous.state === "reading" ? undefined : previous.report }));
     client.storageDoctor().then(
@@ -158,8 +149,8 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
     );
   };
   return <section className="diagnostics-page ds-body-stack" aria-label="Storage checks">
-    <PageHeading title="Storage checks" description="Data store health, diagnostics, and recovery." className="settings-heading-actions" actions={
-      <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"} aria-label="Run the read-only storage doctor">
+    <PageHeading title="Storage checks" description="Check saved data." className="settings-heading-actions" actions={
+      <Button onClick={runDoctor} disabled={doctor.state === "running" || doctor.state === "reading"}>
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
@@ -168,23 +159,24 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         ? <FormGroup label="Data store summary" className="diagnostic-summary">
           <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
             value={<span className="diagnostic-summary-meta diagnostic-storage-summary-meta">
-              <span>{report === undefined ? "Detailed checks not run" : "Showing the last completed read-only check. Run checks again to refresh these results."}</span>
-              {report !== undefined && <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
+              {report === undefined ? <span>Not checked</span> : <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
             </span>} />
         </FormGroup>
-        : <Banner tone="danger" title="Data store unavailable">{AUTHORITY_HAZARD}</Banner>}
-      {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">{doctor.message}</Banner>}
-      <CheckGroup title="Data store and recovery" subtitle="Integrity, interrupted work, run records, and upgrades.">
-        <CheckRow name="Database integrity" description="Can the current data store be read and verified?" result={authorityResult(report)} />
-        <CheckRow name="Interrupted operation" description="Are any prior storage operations still unfinished?" result={recoveryResult(report)} />
-        <CheckRow name="Run record consistency" description="Do run records match their activity history?" result={spanResult(report)} />
-        <CheckRow name="Upgrade record" description="What schema upgrades have been recorded?" result={upgradeResult(report)} />
+        : <Banner tone="danger" title="Data store unavailable">Saved run data is unavailable. Review the storage checks below.</Banner>}
+      {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">
+        Try running the checks again.
+        <DiagnosticFindings name="Check error" result={{ tone: "unavailable", value: "Unavailable", detail: doctor.message }} />
+      </Banner>}
+      <FormGroup label="Storage health checks"><div role="list">
+        {checks.map(check => <CheckRow findings key={check.name} {...check} />)}
+      </div></FormGroup>
+      <CheckGroup title="Work in progress" subtitle="Work waiting, assigned or awaiting confirmation. Counts can be normal while tasks are running.">
+        {COUNT_CHECKS.map(check => <CheckRow key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
+        {report?.counts.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Work in progress" result={{ tone: "unavailable", value: "Unavailable", detail: report.counts.cause.summary }} /></div>}
       </CheckGroup>
-      <CheckGroup title="Work in progress" subtitle="Counts at the last check; a nonzero value can be normal while work is running.">
-        {COUNT_CHECKS.map((check) => <CheckRow key={check.key} name={check.name} description={check.description} result={countResult(report, check.key)} />)}
-      </CheckGroup>
-      <CheckGroup title="Independent credentials" subtitle="Presence only. Unset credentials affect their workflows, not data store integrity.">
-        {CREDENTIAL_CHECKS.map((check) => <CheckRow key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
+      <CheckGroup title="Connections" subtitle="Saved credentials and connection settings. Missing values affect only the workflows that use them.">
+        {CREDENTIAL_CHECKS.map(check => <CheckRow key={check.key} name={check.name} description={check.description} result={credentialResult(report, check.key)} />)}
+        {report?.protectedSettings.state === "unavailable" && <div className="diagnostic-check-detail"><DiagnosticFindings name="Connections" result={{ tone: "unavailable", value: "Unavailable", detail: report.protectedSettings.cause.summary }} /></div>}
       </CheckGroup>
   </section>;
 }

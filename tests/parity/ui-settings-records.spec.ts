@@ -141,7 +141,8 @@ for (const theme of PARITY_THEMES) test(`UI-A Settings desktop layout matrix @ $
         await expect(page.getByText("Runtime state folder", { exact: true })).toBeVisible();
         await expect(page.getByText("Configuration key", { exact: true })).toHaveCount(0);
       } else if (section === "storage") {
-        const doctor = page.getByRole("button", { name: "Run the read-only storage doctor" });
+        const doctor = page.locator(".settings-heading-actions button");
+        await expect(doctor).toBeEnabled();
         await doctor.focus(); await expect(doctor).toBeFocused();
       } else {
         await createSettingsDraft(page, section);

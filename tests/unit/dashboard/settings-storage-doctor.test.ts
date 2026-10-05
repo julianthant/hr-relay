@@ -110,138 +110,91 @@ async function mountDoctor(report: StorageDoctorWire): Promise<HTMLElement> {
   return host;
 }
 
+async function expandChecks(dom: HTMLElement): Promise<void> {
+  for (const row of dom.querySelectorAll(".diagnostic-check-entry")) {
+    const button = row.querySelector("button");
+    if (button === null) continue;
+    assert.ok(button instanceof HTMLButtonElement);
+    assert.equal(button.getAttribute("aria-expanded"), "false");
+    await act(async () => { button.click(); });
+    assert.equal(button.getAttribute("aria-expanded"), "true");
+  }
+}
+
+function assertRunHistoryAbsent(dom: HTMLElement): void {
+  assert.equal(dom.querySelectorAll(".diagnostic-check-entry").length, 13);
+  assert.equal(dom.querySelector('[aria-label="Storage health checks"] [role="list"]')?.children.length, 3);
+  assert.doesNotMatch(dom.textContent ?? "", /Run history|run record issues|stream runs|Current runs|Archived|Deleted|span_stream|record-digest|00000000|possible external write/iu);
+}
+
 describe("loaded Settings storage doctor", () => {
-  it("places healthy status at the right and retains evidence below the description", async () => {
+  it("keeps health card rows and readable summaries without internal schema metadata", async () => {
     const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
       spanAuthority: { state: "reconciled", streamRunCount: 2, liveRunCount: 2, archived: [], deleted: [] } });
     const dom = await mountDoctor(report);
-    const row = [...dom.querySelectorAll(".diagnostic-check-entry")].find(candidate => candidate.textContent?.includes("Database integrity"));
+    const row = [...dom.querySelectorAll(".diagnostic-check-entry")].find(candidate => candidate.textContent?.includes("Stored data"));
     assert.ok(row);
-    assert.match(row.querySelector(".ds-result-row-copy")?.textContent ?? "", /Schema v27 · generation 41 · 12 pages/u);
-    assert.equal(row.querySelector(".ds-result-row-side")?.textContent, "Passed");
-    assert.equal(row.querySelector(".ds-result-row-side .ds-badge"), null);
-  });
-  it.each(["missing", "restore-loss"] as const)("shows possible external write for %s recovery evidence", async (state) => {
-    const runId = "00000000-0000-4000-8000-000000000301";
-    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
-      spanAuthority: { state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
-        problems: [{ state, runId, possibleExternalWrite: true }] } });
-    const dom = await mountDoctor(report);
-    const row = [...dom.querySelectorAll(".diagnostic-check-entry")].find((candidate) => candidate.textContent?.includes("Run record consistency"));
-    assert.ok(row);
-    assert.match(row.textContent ?? "", /possible external write/u);
-    assert.ok(row.textContent?.includes(runId));
-    assert.match(row.textContent ?? "", /Needs attention/u);
+    assert.equal(row.querySelector('.ds-result-row-side')?.textContent, "Passed");
+    assert.equal(row.querySelector('.ds-badge'), null);
+    assert.match(row.querySelector('.ds-result-row-copy')?.textContent ?? "", /Stored data is readable/u);
+    assert.equal(row.querySelector("button"), null);
+    await expandChecks(dom);
+    assert.match(row.textContent ?? "", /Stored data is readable/u);
+    assert.doesNotMatch(dom.textContent ?? "", /Schema v27|generation 41|12 pages/u);
+    assert.match(dom.textContent ?? "", /Work in progress.*Pending actions.*Connections.*UCPath password/u);
+    assertRunHistoryAbsent(dom);
   });
 
-  it("renders every degraded span-authority diagnosis with exact counts and identifying facts", async () => {
-    const report = StorageDoctorWireSchema.parse({
-      ...REPORT_BASE,
-      spanAuthority: {
-        state: "degraded",
-        streamRunCount: 11,
-        liveRunCount: 7,
-        archived: [{
-          runId: "00000000-0000-4000-8000-000000000101",
-          archivedAt: "2026-08-31T15:00:00.000Z",
-        }],
-        deleted: [],
+  it.each(["missing", "restore-loss"] as const)("omits run history with %s recovery evidence", async (state) => {
+    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
+      spanAuthority: { state: "degraded", streamRunCount: 0, liveRunCount: 0, archived: [], deleted: [],
+        problems: [{ state, runId: "00000000-0000-4000-8000-000000000301", possibleExternalWrite: true }] } });
+    const dom = await mountDoctor(report);
+    assertRunHistoryAbsent(dom);
+    await expandChecks(dom);
+    assertRunHistoryAbsent(dom);
+    assert.match(dom.textContent ?? "", /Stored data.*Passed.*Recovery.*Clear/su);
+  });
+
+  it("omits run history and its raw identifiers across every degraded diagnosis", async () => {
+    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
+      spanAuthority: { state: "degraded", streamRunCount: 11, liveRunCount: 7,
+        archived: [{ runId: "00000000-0000-4000-8000-000000000101", archivedAt: "2026-08-31T15:00:00.000Z" }], deleted: [],
         problems: [
           { state: "missing", runId: "00000000-0000-4000-8000-000000000102" },
           { state: "missing-span", runId: "00000000-0000-4000-8000-000000000103" },
-          {
-            state: "malformed-authority",
-            source: "archived",
-            recordKey: "record-digest-8dc3",
-            summary: "archived authority record failed strict parsing",
-          },
-          {
-            state: "malformed",
-            runId: "00000000-0000-4000-8000-000000000104",
-            table: "span_stream",
-            summary: "queued root ordering is contradictory",
-          },
-        ],
-      },
+          { state: "malformed-authority", source: "archived", recordKey: "record-digest-8dc3", summary: "archived authority record failed strict parsing" },
+          { state: "malformed", runId: "00000000-0000-4000-8000-000000000104", table: "span_stream", summary: "queued root ordering is contradictory" },
+        ] },
     });
-
     const dom = await mountDoctor(report);
-    const text = dom.textContent ?? "";
-    assert.match(text, /Run record consistency.*Needs attention/u);
-    assert.match(text, /11 stream runs/u);
-    assert.match(text, /7 live runs/u);
-    assert.match(text, /1 archived run/u);
-    const archived = [...dom.querySelectorAll("button")].find((candidate) => candidate.textContent?.includes("1 archived run"));
-    assert.ok(archived instanceof HTMLButtonElement, "archived accounting has no reachable disclosure");
-    await act(async () => { archived.click(); });
-    assert.equal(archived.getAttribute("aria-expanded"), "true");
-    assert.match(archived.parentElement?.textContent ?? "", /00000000-0000-4000-8000-000000000101/u);
-    assert.match(text, /4 run record issues/u);
-    assert.match(text, /Run missing.*00000000-0000-4000-8000-000000000102/u);
-    assert.match(text, /Activity history missing.*00000000-0000-4000-8000-000000000103/u);
-    assert.match(text, /Run record unreadable.*archived.*record-digest-8dc3.*archived authority record failed strict parsing/u);
-    assert.match(text, /Activity data unreadable.*span_stream.*00000000-0000-4000-8000-000000000104.*queued root ordering is contradictory/u);
+    await expandChecks(dom);
+    assertRunHistoryAbsent(dom);
+    assert.doesNotMatch(dom.textContent ?? "", /strict parsing|queued root ordering/u);
   });
 
-  it("renders reconciled span authority with exact live, stream, and archived accounting", async () => {
-    const report = StorageDoctorWireSchema.parse({
-      ...REPORT_BASE,
-      spanAuthority: {
-        state: "reconciled",
-        streamRunCount: 4,
-        liveRunCount: 2,
+  it("omits reconciled run accounting and archives from storage checks", async () => {
+    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
+      spanAuthority: { state: "reconciled", streamRunCount: 4, liveRunCount: 2,
         archived: [
-          {
-            runId: "00000000-0000-4000-8000-000000000201",
-            archivedAt: "2026-08-31T14:00:00.000Z",
-          },
-          {
-            runId: "00000000-0000-4000-8000-000000000202",
-            archivedAt: "2026-08-30T14:00:00.000Z",
-          },
-        ],
-        deleted: [],
-      },
+          { runId: "00000000-0000-4000-8000-000000000201", archivedAt: "2026-08-31T14:00:00.000Z" },
+          { runId: "00000000-0000-4000-8000-000000000202", archivedAt: "2026-08-30T14:00:00.000Z" },
+        ], deleted: [] },
     });
-
     const dom = await mountDoctor(report);
-    const text = dom.textContent ?? "";
-    assert.match(text, /Run record consistency.*Reconciled/u);
-    assert.match(text, /4 stream runs/u);
-    assert.match(text, /2 live runs/u);
-    const archived = [...dom.querySelectorAll("button")].find((candidate) => candidate.textContent?.includes("2 archived runs"));
-    assert.ok(archived instanceof HTMLButtonElement, "reconciled archive accounting has no reachable disclosure");
-    await act(async () => { archived.click(); });
-    assert.equal(archived.getAttribute("aria-expanded"), "true");
-    assert.match(archived.parentElement?.textContent ?? "", /00000000-0000-4000-8000-000000000201/u);
-    assert.match(archived.parentElement?.textContent ?? "", /00000000-0000-4000-8000-000000000202/u);
-    assert.match(archived.parentElement?.textContent ?? "", /Aug 31/u);
-    assert.match(archived.parentElement?.textContent ?? "", /Aug 30/u);
-    const archivedRows = archived.parentElement?.querySelectorAll("li") ?? [];
-    assert.equal(archivedRows[0]?.title, "2026-08-31T14:00:00.000Z");
-    assert.equal(archivedRows[1]?.title, "2026-08-30T14:00:00.000Z");
-    assert.doesNotMatch(text, /run record issues/u);
+    await expandChecks(dom);
+    assertRunHistoryAbsent(dom);
+    assert.match(dom.textContent ?? "", /No unfinished storage operations/u);
   });
 
-  it("renders unavailable span authority as its exact cause rather than empty or reconciled evidence", async () => {
-    const report = StorageDoctorWireSchema.parse({
-      ...REPORT_BASE,
-      spanAuthority: {
-        state: "unavailable",
-        cause: {
-          code: "span-stream-invalid",
-          summary: "span corpus directory spans is not a regular no-follow directory",
-        },
-      },
+  it("omits unavailable run-history evidence without hiding independent storage results", async () => {
+    const report = StorageDoctorWireSchema.parse({ ...REPORT_BASE,
+      spanAuthority: { state: "unavailable", cause: { code: "span-stream-invalid", summary: "span corpus directory spans is not a regular no-follow directory" } },
     });
-
     const dom = await mountDoctor(report);
-    const text = dom.textContent ?? "";
-    assert.match(text, /Run record consistency.*Unavailable/u);
-    assert.match(text, /span-stream-invalid/u);
-    assert.match(text, /span corpus directory spans is not a regular no-follow directory/u);
-    assert.doesNotMatch(text, /Run record consistency.*Reconciled/u);
-    assert.doesNotMatch(text, /stream runs|live runs|archived runs?/u);
-    assert.doesNotMatch(text, /run record issues/u);
+    await expandChecks(dom);
+    assertRunHistoryAbsent(dom);
+    assert.doesNotMatch(dom.textContent ?? "", /span-stream-invalid|no-follow directory/u);
+    assert.match(dom.textContent ?? "", /Stored data.*Passed.*Recovery.*Clear.*Storage updates.*No history/su);
   });
 });

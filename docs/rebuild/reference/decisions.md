@@ -271,7 +271,14 @@ The workflow-mock amendment copies all 15 legacy rail contracts at `9bb973672666
 
 The Run picker uses the permanent rail's grouped navigation and only runnable entries. Served eligibility comes from declared typed-input capability; previews have an explicit `runnable` flag. I-9 Lookup remains delegated-only, and the operator excludes OCR from direct launch despite its legacy standalone prep entry. Both retain their panels and Explorer records. Workflow choices and preview control edits stay inside the launcher; the dialog, navigation, search and scroll persist. Served choices retain planner/command authority, and source-bound Rerun, recovery and focus return remain unchanged.
 
-Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its last-check status and report timestamp together on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
+Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its report timestamp on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
+
+The 2026-10-05 storage amendment keeps the existing card-row layout with 13 checks visible.
+Run history is removed from Storage checks at the operator's request. Work counts, connection
+states and update stages use plain language; healthy internal metadata is omitted. Exact failures
+remain in contextual disclosures. Unavailable states and failed-refresh retention stay explicit.
+Doctor and recovery authority are unchanged. D347's dashboard-surfaces owner records the contract
+and focused evidence.
 
 The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
 

@@ -42,6 +42,41 @@
   max-width: 52ch;
 }
 
+.diagnostic-storage-findings {
+  min-width: 0;
+  padding-block: var(--ds-space-snug);
+  overflow-wrap: anywhere;
+}
+
+.diagnostic-storage-findings .diagnostic-check-evidence {
+  margin-bottom: 0;
+  font-size: var(--ds-text-body-description);
+  line-height: var(--ds-lh-body-description);
+}
+
+.diagnostics-page .diagnostic-storage-disclosure .ds-disclosure-trigger {
+  min-height: var(--ds-h-sm);
+  padding-inline: 0;
+  color: var(--ds-fg-secondary);
+  font-size: var(--ds-text-body-description);
+  font-weight: 400;
+}
+
+.diagnostic-check-detail .diagnostic-storage-updates {
+  display: grid;
+  gap: var(--ds-space-snug);
+  margin: var(--ds-space-snug) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.diagnostic-storage-updates li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: var(--ds-space-snug);
+}
+
 .diagnostic-check-entry + .diagnostic-check-entry {
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }

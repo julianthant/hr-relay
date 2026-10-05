@@ -145,7 +145,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.getByRole("searchbox", { name: "Find workflow capabilities", exact: true })).toHaveCount(0);
       await expect(page.locator(".preflight-workflow-operations")).toContainText("Person Lookup");
       await expect(page.getByRole("heading", { name: "Workflow capabilities", exact: true })).toHaveCount(0);
-      await choosePage("Storage checks"); await expect(page.getByRole("button", { name: "Run the read-only storage doctor", exact: true })).toBeVisible();
+      await choosePage("Storage checks"); await expect(page.getByRole("button", { name: "Run storage checks", exact: true })).toBeVisible();
       await expect(page.getByRole("region", { name: "Settings", exact: true })).not.toContainText("No completed checks in this server session");
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
       expect(errors).toEqual([]); expect(writes).toEqual([]);

@@ -7389,9 +7389,22 @@ the old dashboard had no public typed Run registration for either. Labels use Em
 Kuali ID, and the workflow rail omits the trailing composition summary. The source digest inventory
 and focused verification are retained in `workflow-mocks-20261004` under the evidence root.
 Settings page actions center vertically on the complete title/description block. A title-only heading
-keeps its action inline. The healthy storage summary keeps its availability label on the left; the last
-completed check explanation and report timestamp sit together on the right. An absent detailed report
-remains explicitly not checked, and degraded storage retains its check freshness beside the failure.
+keeps its action inline. The healthy storage summary keeps its availability label on the left and
+report timestamp on the right. An absent detailed report remains explicitly not checked, and degraded
+storage retains its check freshness beside the failure.
+The 2026-10-05 storage presentation amendment keeps the existing card-row layout with 13 checks
+visible in Storage health, Work in progress and Connections. Run history is removed from this page
+at the operator's request; the doctor wire and runtime checks remain unchanged. Work counters use
+Pending actions, Changes awaiting confirmation, Assigned work, Provider tasks and Pending outputs;
+nonzero counts remain neutral. Connection rows retain each setting's present, absent, unknown or
+unavailable state. Storage updates show readable stage names and dates rather than schema version
+numbers. Healthy checks omit internal schema, generation and page metadata. Exact failure causes
+remain in a contextual Diagnostic details disclosure beside the relevant check or group; there is
+no page-wide technical bucket. Unavailable checks never become passing or zero-count results.
+Failed refreshes retain the last completed report and timestamp, with a short failure notice and
+optional exact error. Current bootstrap degradation remains prominent, and a degraded doctor report
+also prevents an available summary. Doctor and recovery authority are unchanged.
+Focused verification belongs to `storage-health-polish-20261005`; full frozen parity remains at 3.1.19.
 Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
 corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
 left edge of their rail and use one interruptible 220ms transform transition between pointer-selected

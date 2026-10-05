@@ -142,21 +142,23 @@ test.describe("loaded storage doctor", () => {
         await dismissWorkflowWindow(page);
         await assertThemeApplied(page, theme satisfies ParityTheme);
 
-        await page.getByRole("button", { name: "Run the read-only storage doctor" }).click();
-        const row = page.locator(".storage-check-row").filter({ hasText: "Run record consistency" });
+        await page.getByRole("button", { name: "Run storage checks", exact: true }).click();
         await expect(page.getByText(/terminal outbox/u)).toHaveCount(0);
-        await expect(row).toContainText("Needs attention");
-        await expect(row).toContainText("1 archived run");
-        await expect(row).toContainText("4 run record issues");
-        await row.getByText("4 run record issues", { exact: true }).click();
-        await expect(row).toContainText("Activity history missing");
-        await row.scrollIntoViewIfNeeded();
+        await expect(page.getByRole("group", { name: "Storage health checks", exact: true }).getByRole("listitem")).toHaveCount(3);
+        await expect(page.getByText("Run history", { exact: true })).toHaveCount(0);
+        const row = page.locator(".diagnostic-check-entry").filter({ hasText: "UCPath password" });
+        await expect(row).toContainText("Unavailable");
+        await page.getByRole("group", { name: "Connections", exact: true }).getByRole("button", { name: "Diagnostic details", exact: true }).click();
+        const details = page.getByRole("region", { name: "Connections diagnostics", exact: true });
+        await expect(details).toContainText("protected settings fixture is unavailable");
+        await details.scrollIntoViewIfNeeded();
 
         await assertShellGeometry(page, `storage-doctor-degraded @ ${viewport.name} ${theme.name}`);
         expect(errors, "page errors while rendering the loaded storage doctor").toEqual([]);
 
         const snapshot = await page.locator("body").ariaSnapshot();
-        expect(snapshot).toContain("Run record consistency");
+        expect(snapshot).toContain("UCPath password");
+        expect(snapshot).not.toContain("Run history");
         test.info().annotations.push({
           type: `a11y-attachment-sha256:${a11yName}`,
           description: createHash("sha256").update(snapshot).digest("hex"),
