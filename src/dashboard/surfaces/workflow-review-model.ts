@@ -18,7 +18,7 @@ export function seedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">): r
     ...(kind === "oath" ? [field("dateSigned", "Date signed", "2026-08-03", "date"), field("employeeSigned", "Employee signed", "true", "boolean"), field("officerSigned", "Officer signed", "true", "boolean")] : []),
     ...(kind === "contact" ? [field("contactName", "Contact name", "Alex Lee"), field("relationship", "Relationship", "Sibling", "relationship"), field("sameAddress", "Same address as employee", "true", "boolean"), field("street", "Street", "100 Example Street"), field("city", "City", "San Diego"), field("state", "State", "CA"), field("zip", "ZIP", "92101"), field("country", "Country", "USA"), field("cellPhone", "Cell phone", "(202) 555-0102"), field("homePhone", "Home phone", ""), field("workPhone", "Work phone", "")] : []),
     ...(kind === "verify" ? [field("paperOath", "Employee signature on paper", "Present"), field("paperContact", "Emergency contact on paper", "Present"), field("serviceDate", "First day of service · CRM", "08/03/2026"), field("oathDate", "Oath date · CRM", "08/03/2026"), field("i9Status", "Section 2 · I-9 portal", "Complete"), field("i9Signer", "Authorized representative · I-9 portal", "Alex Morgan")] : []),
-    ...(kind === "i9" ? [field("section1", "Section 1 page", "1"), field("section2", "Section 2 page", "2"), field("ucpathFound", "Found in UCPath", "Yes"), field("ppsId", "PPS ID · Action History", "DEMO-PPS-001"), field("hireDate", "Hire date · UCPath", "08/03/2026"), field("separationDate", "Separation date · Action History", "Not separated"), field("tracker", "Retention tracker", "Appended")] : []),
+    ...(kind === "i9" ? [field("section1", "Section 1 page", "1"), field("section2", "Section 2 page", "2")] : []),
   ] }];
 }
 export function reviewValue(record: ReviewRecord, key: string): string { return record.fields.find(item => item.key === key)?.value ?? ""; }
@@ -35,9 +35,10 @@ export function editReviewRecord(record: ReviewRecord, key: string, value: strin
   return { ...record, fields: record.fields.map(item => item.key === key ? { ...item, value } : item),
     ...(manual ? { match: /^\d{5,}$/u.test(value) ? "manual" : "unresolved", warnings: [...record.warnings.filter(item => item !== warning), warning] } : {}) };
 }
-export function reviewRecords(run: MockRun): readonly ReviewRecord[] { return run.records ?? seedReviewRecords(run); }
+export function reviewRecords(run: MockRun): readonly ReviewRecord[] { return run.workflowId === "ocr" ? run.records ?? seedReviewRecords(run) : []; }
+export function mockInputRecord(run: MockRun): ReviewRecord { return run.inputRecord ?? reviewRecords(run)[0] ?? seedReviewRecords(run)[0]; }
 export function reviewIsReadOnly(run: MockRun): boolean {
-  return run.workflowId === "i9-check" || run.approved || run.discarded === true || run.role === "person";
+  return run.workflowId !== "ocr" || run.approved || run.discarded === true || run.role === "person";
 }
 export function addMockReviewRecord(records: readonly ReviewRecord[]): readonly ReviewRecord[] {
   const base = records[0];
@@ -52,11 +53,11 @@ export function updateMockReview(runs: readonly MockRun[], id: string, records: 
 }
 export function discardMockReview(runs: readonly MockRun[], id: string): readonly MockRun[] {
   const run = runs.find(item => item.id === id);
-  if (!run || reviewIsReadOnly(run) || run.workflowId === "ocr") throw new Error("MOCK_REVIEW_READ_ONLY");
-  return runs.map(item => item.id === id ? { ...item, discarded: true } : item);
+  if (!run || reviewIsReadOnly(run)) throw new Error("MOCK_REVIEW_READ_ONLY");
+  return runs.map(item => item.id === id || item.id === run.parentId ? { ...item, discarded: true } : item);
 }
 export function restoreMockReview(runs: readonly MockRun[], id: string): readonly MockRun[] {
   const run = runs.find(item => item.id === id);
-  if (!run?.discarded || run.approved || run.role === "person") throw new Error("MOCK_REVIEW_RESTORE_UNAVAILABLE");
-  return runs.map(item => item.id === id ? { ...item, discarded: false } : item);
+  if (run?.workflowId !== "ocr" || !run.discarded || run.approved || run.role === "person") throw new Error("MOCK_REVIEW_RESTORE_UNAVAILABLE");
+  return runs.map(item => item.id === id || item.id === run.parentId ? { ...item, discarded: false } : item);
 }

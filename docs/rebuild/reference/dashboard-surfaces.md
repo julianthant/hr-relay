@@ -7382,7 +7382,7 @@ Typed inputs, PDF preparation, form types, roster selection, dry-run terminals a
 follow the copied sources. I-9 Lookup remains delegated; SharePoint offers the configured Onboarding
 Roster; OnBase combines PDFs and admits only Emergency Contact. Full Oath Upload waits for review
 and independent Oath Signature runs before its ServiceNow ticket; upload-only skips both. The OCR
-panel exposes inspection without downstream approval. I-9 Check uses configured Action History and
+panel owns delegated record editing and approval. I-9 Check uses configured Action History and
 appends again on rerun. Local PDF duplicate checks compare content hashes. Source histories remain
 unchanged when a rerun is added. Work-Study and Old Kronos Reports use their kernel input schemas;
 the old dashboard had no public typed Run registration for either. Labels use Employee IDs and
@@ -7415,11 +7415,12 @@ served planner and command door. Preview submission closes the same launcher and
 local queue. Rerun source binding, request invalidation, recovery and focus return remain authoritative.
 
 The workflow-component amendment extends these local producers with contract-specific read/fill
-results, PDF record review, manual identity provenance, selected-person fan-out, discard and linked
-run navigation. Preparation rows own review and rollup; person rows own their kernel steps. Full
-Oath Upload links to separate Oath Signature rows; I-9 Check creates person rows automatically.
-OCR permits corrections to extracted fields without downstream approval. Completed I-9
-retention results, approved preparations and person outcomes remain read only. CRM and I-9
+results, OCR record review, manual identity provenance, selected-person fan-out, discard and linked
+run navigation. PDF parent rows delegate to a separate OCR row, which owns records and approval;
+person rows consume approved input snapshots and own their kernel steps. Full Oath Upload links
+to separate Oath Signature rows. The current operator amendment gates I-9 intake at OCR approval
+before creating person rows; this supersedes the copied legacy automatic I-9 intake path in local
+previews only. Completed I-9 retention results and person outcomes stay in Logs. CRM and I-9
 verification values cannot be edited. Source transcriptions and all identities are fictional;
 uploading a PDF does not invoke OCR or contact an external system in these previews.
 Explorer includes all 15 rail workflows with field provenance and conditional paths. The copied
@@ -7432,14 +7433,21 @@ workflow. Preparation and person runs keep independent rows. Local presentation 
 stable across edits, sorting and filtering and carry no runtime command descriptors. Results are
 log steps with timeline entries; the separate Result and Linked runs tabs are retired. A named,
 keyboard-accessible icon beside Rerun opens parent, child and rerun-source navigation.
-Records uses a compact navigator and one focused editor, with immutable source fields available
-on demand. Approval selection and actions stay in Records. Invalid identities cannot approve;
-manual identity provenance stays visible. Discard retains corrections and offers Undo discard.
-Adding a record focuses Employee ID; approval moves focus to the retained record heading. Mock
-instructional paragraphs and repeated preview qualifiers are removed from these product surfaces.
-The palette and canonical row, tab, button and input primitives remain unchanged. Focused unit,
-dark/light 1024/1440 interaction, keyboard, overflow and screenshot evidence is retained in
-`workflow-records-20261004`. Full frozen parity remains owned by 3.1.19.
+The OCR-only Records amendment removes the Logs/Records tab switcher from local workflow runs.
+Logs remain the main detail surface; only OCR exposes a Records action in its header. That action
+opens a dedicated review drawer with a compact record table, per-record inclusion, one focused
+editor and a fixed approval footer. Other workflows offer a direct link to their OCR run and have
+no record editor or record collection. Approved downstream inputs are copied snapshots, not editable
+records. OCR cannot approve without its exact delegating parent and target; invalid, unselected and
+unknown identities cannot fan out. Approval locks OCR edits. Discard and Undo retain corrections and
+update the waiting parent. Source transcriptions and CRM/I-9 verification evidence remain immutable.
+I-9 retention outcomes appear only in downstream Logs, never as completed writes in pending OCR
+records. Add record focuses Employee ID, approval focuses the retained record heading and drawer
+closure restores the header action. Linked-run navigation stays beside Rerun. Informational mock
+paragraphs are retired. The palette and canonical queue, button and input primitives remain unchanged.
+Focused unit, dark/light 1024/1440 interaction, keyboard, overflow and screenshot evidence is retained
+in `ocr-review-20261004`. These are local frontend previews; served authority is unchanged. Full frozen
+parity and phase-exit gates remain owned by 3.1.19.
 
 Scenario selectors belong outside the product screens, in `review.html`.
 Its controls select Logs, Activity and notification scenarios without changing runtime authority.

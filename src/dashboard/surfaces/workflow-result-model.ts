@@ -3,7 +3,7 @@ import { mockWorkflow, type MockStep } from "./workflow-mock-catalog.js";
 import type { LogEntry } from "./log-feed-model.js";
 import type { LogTimelineState } from "./logs/log-timeline-model.js";
 import { workflowPreviewGraph, type PreviewNode } from "./workflow-preview-contracts.js";
-import { reviewName, reviewRecords, reviewValue } from "./workflow-review-model.js";
+import { reviewName, mockInputRecord, reviewValue } from "./workflow-review-model.js";
 
 const VALUES: Readonly<Record<string, string>> = {
   "Action": "Voluntary termination", "Active": "Yes", "Active people": "1", "Already has oath": "No", "Appointment": "Student appointment",
@@ -28,7 +28,7 @@ const VALUES: Readonly<Record<string, string>> = {
   "Transaction number": "DEMO-TXN-001", "Union code": "SX", "Wage": "$17.75 per hour",
 };
 export function mockFieldValue(run: MockRun, label: string): string {
-  const record = reviewRecords(run)[0];
+  const record = mockInputRecord(run);
   if (["EID", "Employee ID", "Matched EID", "Shown EID", "UCPath Employee ID", "UCPath ID"].includes(label)) return run.role === "person" ? reviewValue(record, "employeeId") : /^\d{5,}$/u.test(run.subject) && mockWorkflow(run.workflowId).inputLabel !== "Kuali ID" ? run.subject : "10000001";
   if (["Name", "Employee name", "Matched name", "Lived name"].includes(label)) return reviewName(record);
   if (label === "Names typed") return run.subject;
@@ -70,7 +70,7 @@ export function mockDetailEntries(run: MockRun, step: MockStep, state: LogTimeli
     const proofs = [...new Set(node.contract.filter(item => item.proof).map(item => item.proof))];
     if (proofs.length) entries.push({ kind: "note", id: `${run.id}:${step.key}:proof`, time, message: `Readback: ${proofs.join("; ")}.`, tone: "positive" });
   }
-  if (step.key === "prep:awaiting-approval" && run.workflowId !== "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
+  if (step.key === "prep:awaiting-approval" && run.workflowId === "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review records before processing." } });
   if (run.workflowId === "oath-upload" && step.key === "fill-form") entries.push({ kind: "fields", id: `${run.id}:ticket-form`, fields: [["Subject", "HDH New Hire Oaths"], ["Attachment", run.draft.files.map(file => file.name).join(", ")]].map(([label, value], index) => ({ id: `${run.id}:ticket-field:${index}`, time, kind: "fill", label, value })) });
   return entries;
 }

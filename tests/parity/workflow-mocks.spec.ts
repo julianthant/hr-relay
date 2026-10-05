@@ -85,8 +85,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       }
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       const approvalLogs = page.getByRole("region", { name: "Selected run logs", exact: true });
-      await approvalLogs.getByRole("tab", { name: /^Records/u }).click();
-      await approvalLogs.getByRole("button", { name: "Approve records", exact: true }).click();
+      await approvalLogs.getByRole("button", { name: "Open OCR", exact: true }).click();
+      await approvalLogs.getByRole("button", { name: "Review records 1", exact: true }).click();
+      const review = page.getByRole("dialog", { name: "OCR records", exact: true });
+      await review.getByRole("button", { name: "Approve records", exact: true }).click();
+      await review.getByRole("button", { name: "Close", exact: true }).click();
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Jordan Lee");
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();

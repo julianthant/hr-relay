@@ -18,7 +18,7 @@ export function workflowChoices(id: MockWorkflowId): readonly Choice[] {
     "fixture-oath-upload": [choice("mode", "Processing mode", [["full", "Full process"], ["upload-only", "Upload-only"]]), review, choice("signers", "Linked signatures", [["complete", "All succeeded"], ["failed", "One failed"], ["cancelled", "One cancelled"]]), rehearsal],
     "fixture-onbase": [review, choice("keyset", "Employee Lookup keyset", [["found", "Employee found"], ["missing", "No match; required keywords missing"]]), rehearsal],
     "fixture-kronos-pay-rule": [choice("action", "Election decision", [["change", "Rule must change"], ["unchanged", "Current rule is correct"], ["missing", "Employee absent from tracker"]])],
-    "fixture-ocr": [choice("form", "Form type", [["oath", "Oath"], ["emergency-contact", "Emergency Contact"], ["onbase-emergency-contact", "OnBase Emergency Contact"], ["verify", "Verify"], ["i9", "I-9"]])],
+    "fixture-ocr": [review, choice("form", "Form type", [["oath", "Oath"], ["emergency-contact", "Emergency Contact"], ["onbase-emergency-contact", "OnBase Emergency Contact"], ["verify", "Verify"], ["i9", "I-9"]])],
     "fixture-i9-check": [choice("pair", "Packet identity", [["complete", "Section 1 and Section 2 paired"], ["missing", "Missing person identity"]])],
     "fixture-crm-doc-download": [choice("record", "CRM search result", [["found", "Record with attached PDFs"], ["empty", "Record without attachments"], ["missing", "No matching record"]])],
     "fixture-old-kronos-reports": [choice("pdf", "Report validation", [["valid", "PDF identity matches"], ["empty", "No data returned"], ["mismatch", "PDF identity mismatch"]])],
@@ -39,7 +39,7 @@ export function workflowNodes(id: MockWorkflowId, values: WorkflowChoices): read
   if (key === "fixture-person-lookup") nodes = nodes.filter(node => values.mode === "match" ? node.lane === "Match mode" : values.mode === "delegated" ? node.lane !== "Match mode" : node.lane === "Per person" && node.id !== "CRM dates").filter(node => values.crm !== "off" || !["Cross-verification", "Match CRM check", "CRM dates"].includes(node.id)).filter(node => !(node.id === "Cross-verification" && values.identifier === "eid") && !(node.id === "CRM dates" && values.dates !== "requested"));
   if (key === "fixture-oath-signature" && values.input !== "pdf") nodes = nodes.filter(node => node.lane === "Per signer");
   if (key === "fixture-oath-upload" && values.mode === "upload-only") nodes = nodes.filter(node => node.id === "File ticket");
-  if (key === "fixture-ocr") nodes = nodes.filter(node => node.id !== "Your review");
+  if (key === "fixture-ocr") nodes = nodes.filter(node => node.id !== "Done");
   // A packet's terminal rollup follows its per-person lane, never precedes it.
   return [...nodes.filter(node => node.id !== "Rollup" && node.id !== "Report back"), ...nodes.filter(node => node.id === "Rollup" || node.id === "Report back")];
 }
@@ -72,7 +72,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
       const proof = [...new Set(node.contract.filter(item => item.proof).map(item => item.proof))];
       if (proof.length) parts.push(action(`Verify: ${proof.join("; ")}.`));
     }
-    if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "verify" ? "Read-only completeness report: paper signatures and contacts, UCPath identity, CRM service/oath dates and I-9 signer lookup." : values.form === "i9" ? "Pair Section 1 and Section 2 identities; report UCPath person matches without approval." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. Standalone records are read only.` });
+    if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "verify" ? "Read-only completeness report: paper signatures and contacts, UCPath identity, CRM service/oath dates and I-9 signer lookup." : values.form === "i9" ? "Pair Section 1 and Section 2 identities for OCR review before downstream retention processing." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. OCR owns corrections and approval; downstream workflows consume the approved record.` });
     if (key === "fixture-old-kronos-reports" && node.id === "Downloading") parts.push(action(values.pdf === "valid" ? "Retain the matching Time Detail PDF and append Done to the tracker." : "Delete the empty or mismatched PDF and append the explicit tracker outcome.", "read"));
     steps.push({ number, title: node.id, system: node.delegatesTo === "fixture-ocr" || key === "fixture-ocr" && node.system === "i9" || key === "fixture-i9-check" && node.system === "i9" ? "OCR" : node.system ? systems[node.system] ?? "Local" : "Local", parts });
     if (blocked && stopAfter === undefined) stopAfter = number;

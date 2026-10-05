@@ -38,9 +38,9 @@ describe("legacy workflow previews", () => {
   });
   it("uses real input cardinality and keeps a combined OnBase preparation", () => {
     expect(mockRunsForDraft("oath-signature", draft("oath-signature", { text: "10000001, 10000002" }), 1)).toHaveLength(2);
-    expect(mockRunsForDraft("emergency-contact", draft("emergency-contact", { files: [file, { ...file, name: "second.pdf", digest: "second" }] }), 1)).toHaveLength(2);
+    expect(mockRunsForDraft("emergency-contact", draft("emergency-contact", { files: [file, { ...file, name: "second.pdf", digest: "second" }] }), 1)).toHaveLength(4);
     const combined = mockRunsForDraft("onbase", draft("onbase", { files: [file, { ...file, name: "second.pdf" }] }), 1);
-    expect(combined).toHaveLength(1); expect(combined[0].draft.files).toHaveLength(2);
+    expect(combined).toHaveLength(2); expect(combined[0].draft.files).toHaveLength(2);
     expect(mockDraftError("onbase", draft("onbase", { documentType: "Benefits" }))).toMatch(/Only Emergency Contact/);
   });
   it("keeps upload-only out of OCR and signature waits", () => {
@@ -48,28 +48,28 @@ describe("legacy workflow previews", () => {
     expect(keys).toEqual(["servicenow-auth", "open-hr-form", "fill-form", "submit"]);
     const full = mockPipeline("oath-upload", draft("oath-upload")).map(step => step.key);
     expect(full.indexOf("wait-signatures")).toBeLessThan(full.indexOf("servicenow-auth"));
-    expect(full.slice(0, 4)).toEqual(["prep:loading-roster", "prep:ocr", "prep:person-lookup", "prep:awaiting-approval"]);
+    expect(full[0]).toBe("delegate-ocr");
   });
   it("holds downstream work for approval, then creates independent oath signers", () => {
-    const run = mockRunsForDraft("oath-upload", draft("oath-upload"), 1)[0];
+    const runs = mockRunsForDraft("oath-upload", draft("oath-upload"), 1), run = runs[0];
     const log = mockRunLog(run);
     expect(log.timeline.find(step => step.label === "Sign in to ServiceNow")!.state).toBe("pending");
-    expect(log.timeline.slice(0, 4).map(step => step.state)).toEqual(["completed", "completed", "completed", "waiting"]);
-    const after = approveMockRun([run], run.id);
+    expect(log.timeline.slice(0, 3).map(step => step.state)).toEqual(["completed", "waiting", "pending"]);
+    const after = approveMockRun(runs, runs[1].id);
     expect(after.find(candidate => candidate.id === run.id)!.approved).toBe(true);
     expect(after.find(candidate => candidate.workflowId === "oath-signature")!.parentId).toBe(run.id);
     expect(run.approved).toBe(false);
     const standalone = mockRunsForDraft("ocr", draft("ocr"), 1)[0];
     expect(() => approveMockRun([standalone], standalone.id)).toThrow("MOCK_APPROVAL_UNAVAILABLE");
   });
-  it("keeps I-9 retention automatic and gives every composed log a unique step identity", () => {
+  it("keeps I-9 downstream processing behind OCR approval and gives every log a unique step identity", () => {
     const run = mockRunsForDraft("i9-check", draft("i9-check"), 1)[0];
     expect(mockNeedsReview(run)).toBe(false);
     const { steps } = mockRunLog(run);
     expect(new Set(steps.map(step => step.id)).size).toBe(steps.length);
     const rerun = mockRunsForDraft("i9-check", run.draft, 2, run.id);
     expect(rerun).toHaveLength(2); expect(rerun[0].sourceId).toBe(run.id);
-    expect(rerun[1].parentId).toBe(rerun[0].id); expect(rerun[1].id).not.toBe(`${run.id}:person:0`);
+    expect(rerun[1].workflowId).toBe("ocr"); expect(mockNeedsReview(rerun[1])).toBe(true); expect(rerun[1].parentId).toBe(rerun[0].id); expect(rerun[1].id).not.toBe(`${run.id}:person:0`);
     expect(steps.some(step => step.title === "Result")).toBe(true);
   });
   it("skips write terminals in dry run, rehire I-9 and normal lookup CRM dates", () => {
@@ -96,17 +96,18 @@ describe("legacy workflow previews", () => {
     expect(mockOathDuplicate([{ ...source, draft: { ...source.draft, dryRun: true } }], source.draft)).toBeUndefined();
   });
   it("scopes status filters, counts and order to the selected preview queue", () => {
-    const waiting = mockRunsForDraft("emergency-contact", draft("emergency-contact"), 1)[0];
+    const waiting = mockRunsForDraft("emergency-contact", draft("emergency-contact"), 1)[1];
     const done = { ...waiting, id: "done", approved: true };
-    expect(mockQueueCounts([waiting, done])).toEqual([{ status: "awaiting-approval", count: 1 }, { status: "done", count: 1 }, { status: "cancelled", count: 0 }]);
+    expect(mockQueueCounts([waiting, done])).toEqual([{ status: "awaiting-approval", count: 1 }, { status: "running", count: 0 }, { status: "done", count: 1 }, { status: "cancelled", count: 0 }]);
     expect(mockQueueView([done, waiting], ["needsYou"], "newest")).toEqual([waiting]);
     expect(mockQueueView([done, waiting], ["done"], "newest")).toEqual([done]);
     expect(mockQueueView([done, waiting], ["all"], "attention")).toEqual([waiting, done]);
     expect(mockQueueView([done, waiting], ["all"], "oldest")).toEqual([waiting, done]);
   });
   it("seeds each workflow with its own fictional input and log graph", () => {
-    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(15);
-    expect(runs.filter(run => run.parentId && run.workflowId === "i9-check")).toHaveLength(1);
+    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(14);
+    expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
+    expect(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {
       expect(run.title).toContain(mockWorkflow(run.workflowId).label);
       const { steps } = mockRunLog(run);

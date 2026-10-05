@@ -991,7 +991,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     setLaunchOpen(false);
   }, [mockRuns.length, setLaunchOpen]);
   const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow]);
-  const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(`mock:${id}:sample`); }, []);
+  const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(id === "ocr" ? "mock:oath-signature:sample:ocr" : `mock:${id}:sample`); }, []);
 
 
   return (

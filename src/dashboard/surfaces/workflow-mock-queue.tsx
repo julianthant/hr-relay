@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
-import { ArrowUpRight, GitBranch } from "lucide-react";
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus, Tab, TabList, TabPanel, Tabs } from "../ds/ui.js";
+import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
+import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus, Drawer, DrawerContent, DrawerTrigger } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { LogPanel } from "./log-panel.js";
 import { LogFeed } from "./log-feed.js";
@@ -34,16 +34,18 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   run: MockRun; runs: readonly MockRun[]; onRerun: () => void; onApprove: () => void;
   onChange: (records: readonly ReviewRecord[]) => void; onDiscard: () => void; onRestore: () => void; onSelect: (id: string) => void;
 }) {
-  const [tab, setTab] = useState("logs");
+  const [reviewOpen, setReviewOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
   const { steps, timeline } = mockRunLog(run);
-  const hasRecords = run.draft.method === "pdf" || run.role === "person";
-  const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId);
-  return <Tabs value={tab} onValueChange={setTab} className="min-h-0 flex-1">
+  const hasRecords = run.workflowId === "ocr";
+  const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
+  return <Drawer open={reviewOpen} onOpenChange={setReviewOpen}>
     <LogPanel title={run.title} steps={steps} timeline={timeline}
       status={<StatusBadge status={dsStatusOf(mockQueueStatus(run))} presentation="queue" />}
       toolbar={<span className="flex items-center gap-2">
-        {run.workflowId !== "i9-lookup" && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
+        {hasRecords && <DrawerTrigger asChild><Button size="sm" icon={<ListChecks aria-hidden className="size-4" />}>{mockNeedsReview(run) ? "Review records" : "Records"} {reviewRecords(run).length}</Button></DrawerTrigger>}
+        {run.workflowId !== "ocr" && run.ocrRunId && <Button size="sm" onClick={() => onSelect(run.ocrRunId!)}>Open OCR</Button>}
+        {!["i9-lookup", "ocr"].includes(run.workflowId) && run.role !== "person" && <Button size="sm" onClick={onRerun}>Rerun</Button>}
         {linked.length > 0 && <Popover open={linksOpen} onOpenChange={setLinksOpen}>
           <PopoverTrigger asChild><IconButton size="sm" variant="outline" label={`Linked runs (${linked.length})`} icon={<GitBranch aria-hidden className="size-4" />} /></PopoverTrigger>
           <PopoverContent title="Linked runs" align="end" width="md">
@@ -56,10 +58,9 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
           </PopoverContent>
         </Popover>}
       </span>}
-      navigation={<TabList label="Workflow run views"><Tab value="logs">Logs</Tab>{hasRecords && <Tab value="records" count={reviewRecords(run).length}>Records</Tab>}</TabList>}
-      content={<>
-        <TabPanel value="logs" className="flex flex-col overflow-hidden"><LogFeed steps={steps} navigation={jump => <LogTimeline stages={timeline} onJump={jump} />} /></TabPanel>
-        {hasRecords && <TabPanel value="records" className="flex min-h-0 flex-col overflow-hidden"><WorkflowMockReview run={run} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} /></TabPanel>}
-      </>} />
-  </Tabs>;
+      content={<LogFeed steps={steps} navigation={jump => <LogTimeline stages={timeline} onJump={jump} />} />} />
+    {hasRecords && <DrawerContent title="OCR records" description={run.subject} size="min(56rem, calc(100vw - var(--ds-space-section)))" className="ds-body-scope ds-body-overlay ui-theme-scope">
+      <WorkflowMockReview run={run} onChange={onChange} onApprove={mockNeedsReview(run) ? onApprove : undefined} onDiscard={mockNeedsReview(run) ? onDiscard : undefined} onRestore={onRestore} />
+    </DrawerContent>}
+  </Drawer>;
 }

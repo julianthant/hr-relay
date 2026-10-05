@@ -163,7 +163,7 @@ at 1024 and 1440 pixels, retaining screenshots and checking that local previews 
 The workflow-component amendment keeps the same palette and primitives while adding workflow
 results, record review and linked-run navigation. Record edits preserve source transcriptions; manually changed IDs carry
 an explicit unverified-identity warning. Approval creates independent per-person rows, discard
-starts none, and I-9 Check fans out automatically. Standalone OCR permits extracted-field corrections without downstream approval.
+starts none. Delegated OCR owns records and approval; I-9 intake follows the current local approval amendment. Other workflows consume approved inputs and expose no record editor.
 Explorer now lists all 15 workflows; its conditional controls cover delegated lookup, no-profile
 and unavailable I-9, oath dependencies and upload-only, OnBase identity failure, no-change pay
 rules, all five OCR forms, CRM attachment absence and empty/mismatched Time Detail PDFs.
@@ -238,20 +238,26 @@ manual values. Settings page headings use h1; title actions share one row, icon 
 meet the 24px desktop minimum, browser titles follow the active route, and Skip to content bypasses navigation.
 The audit evidence is retained under `hr-automation-rebuild-evidence/frontend-audit-20261004/`.
 
-## Focused Records layout amendment (2026-10-04)
+## OCR-only Records layout amendment (2026-10-04)
 
-All local workflow queues now render through the canonical QueuePanel and QueueRow. Stable local
-presentation IDs carry no runtime commands; parent/person rows remain independent. Results live
-inside Logs and its timeline. Only Logs and Records tabs remain; a named icon beside Rerun opens
-parent, person and rerun-source navigation and restores focus when dismissed.
+All local workflow queues render through the canonical QueuePanel and QueueRow. Stable local
+presentation IDs carry no runtime commands. Results live inside Logs and its timeline; the
+Logs/Records tab switcher is retired. Only OCR exposes a Records header action, opening a review
+drawer with a compact record table, one focused editor and fixed approval actions. PDF parent
+runs link to their separate OCR row. Other workflows have no record collection or editor and
+consume copied approved inputs. Linked parent, person, OCR and rerun-source navigation stays
+beside Rerun, with keyboard access and focus restoration.
 
-Records uses a compact navigator and one editor. Source fields remain immutable and are revealed
-on demand. Editable source corrections, per-record selection, identity validation and approval
-remain distinct from read-only CRM/I-9 verification and completed outcomes. OCR corrections never
-start downstream work. Discard offers Undo without losing edits. Add record focuses Employee ID;
-approval focuses the record heading. Informational mock paragraphs are retired.
+Delegated OCR owns approval, including the current local I-9 intake preview. This operator
+amendment supersedes legacy automatic I-9 intake in previews only; served runtime authority is
+unchanged. Approval requires the exact parent/target, selected resolved identities and valid
+Employee IDs. System verification and source evidence remain immutable; I-9 retention results
+stay in downstream Logs. Approval locks edits. Discard/Undo retains corrections and updates the
+parent; Add record focuses Employee ID, approval focuses the record heading and drawer closure
+restores its header action. Instructional mock paragraphs remain retired.
 
-Focused verification covers all 15 contracts, five OCR forms, approval and discard/undo, separate
-record edits, leading-zero IDs, canonical rows, parent/child navigation, keyboard focus and local
-transport isolation in dark/light at 1024 and 1440 pixels. Evidence is retained under
-`workflow-records-20261004`; frozen parity references and phase-exit gates remain deferred to 3.1.19.
+Focused verification covers workflow contracts, OCR form schemas, editing, approval and
+discard/undo, record switching, leading-zero IDs, canonical rows, parent/child navigation,
+keyboard focus, overflow and local transport isolation in dark/light at 1024 and 1440 pixels.
+Evidence is retained under `ocr-review-20261004`; frozen references and full phase-exit gates
+remain deferred to 3.1.19.

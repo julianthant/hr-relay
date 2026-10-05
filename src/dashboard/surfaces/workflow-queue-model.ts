@@ -1,6 +1,6 @@
 import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../domain/dashboard/projection.js";
 import { sha256Hex } from "../../domain/sha256.js";
-import { mockNeedsReview, mockQueueStatus, mockRunLog, type MockRun } from "./workflow-mock-model.js";
+import { mockNeedsReview, mockWaitsForOcr, mockQueueStatus, mockRunLog, type MockRun } from "./workflow-mock-model.js";
 import { reviewCanApprove, reviewRecords } from "./workflow-review-model.js";
 
 // Presentation identities are local only; no command descriptors target them.
@@ -29,7 +29,7 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
     displayName: absent("Use the input subject"), subtitle: absent("The panel names the workflow"),
     status: mockQueueStatus(run),
     startedAt: `${day}T16:10:00.000Z`, updatedAt: `${day}T16:30:00.000Z`,
-    endedAt: review ? absent("Records await approval") : { state: "present", value: `${day}T16:30:00.000Z` },
+    endedAt: review || mockWaitsForOcr(run) ? absent("Records await approval") : { state: "present", value: `${day}T16:30:00.000Z` },
     gateOpenedAt: review ? { state: "present", value: `${day}T16:30:00.000Z` } : absent("No open approval"),
     liveMessage: review ? { state: "present", value: `${records.filter(reviewCanApprove).length} of ${records.length} records ready for approval` } : absent("No active step"),
     warnings: warnings.length ? { state: "present", count: warnings.length, first: warnings[0] } : absent("No record warnings"),
@@ -37,7 +37,7 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
       id: `step-${index + 1}`, label: stage.label,
       state: stage.state === "completed" ? "done" : stage.state === "waiting" ? "blocked" : stage.state,
     })),
-    panelKind: review ? "review" : "run", availableSections: ["logs", ...(run.draft.method === "pdf" ? ["review"] : [])],
+    panelKind: review ? "review" : "run", availableSections: ["logs", ...(run.workflowId === "ocr" ? ["review"] : [])],
     actions: [], rowRevision: 1,
   });
 }
