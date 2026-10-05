@@ -83,7 +83,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
        controls={<DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
         value={{ from: browsing.filters.from?.slice(0, 10) ?? '', to: browsing.filters.to?.slice(0, 10) ?? '' }}
         onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />}
-       summary={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`}>
+       summary={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`} summaryPosition="near-search">
        <MockArchiveRunTable rows={rows} onSelection={onSelection} />
       </TableList>
       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}

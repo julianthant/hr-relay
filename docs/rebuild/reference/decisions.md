@@ -273,6 +273,8 @@ The Run picker uses the permanent rail's grouped navigation and only runnable en
 
 Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its last-check status and report timestamp together on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
 
+The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
+
 Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.
 
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,

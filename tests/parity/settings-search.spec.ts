@@ -76,6 +76,23 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page.locator('.settings-nav-group a')).toHaveCount(14);
       await expect(clear).toHaveCount(0);
 
+      await search.fill("Dark theme");
+      await page.getByRole("link", { name: "Dark theme General", exact: true }).click();
+      const appearance = page.locator('[data-settings-path="appearance.theme"]');
+      await expect(appearance).toBeFocused();
+      await expect(appearance).toHaveClass(/settings-search-arrival/u);
+      const cue = await appearance.evaluate(element => {
+        const row = element.getBoundingClientRect(), group = element.closest(".ds-form-group")!, bounds = group.getBoundingClientRect();
+        const style = getComputedStyle(element, "::before"), border = parseFloat(getComputedStyle(group).borderLeftWidth);
+        return { left: row.left + parseFloat(style.left), right: row.right - parseFloat(style.right), groupLeft: bounds.left + border, groupRight: bounds.right - border };
+      });
+      expect(cue.left).toBeCloseTo(cue.groupLeft, 0);
+      expect(cue.right).toBeCloseTo(cue.groupRight, 0);
+      await info.attach(`settings-whole-card-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await expect(appearance).not.toHaveClass(/settings-search-arrival/u, { timeout: 3000 });
+      expect(await appearance.evaluate(element => element.style.getPropertyValue("--settings-arrival-left"))).toBe("");
+      await clear.click();
+
       for (const [section, label, value] of [
         ["routes", "Find a system or route", "CRM"], ["keyboard", "Search shortcuts", "search"],
         ["spreadsheets", "Find a spreadsheet", "student"], ["archive", "Search saved reports", "Jordan"],

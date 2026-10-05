@@ -106,7 +106,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(nav.getByRole('button', { name: /^Notifications,|^Search runs$/u })).toHaveCount(0);
       const choosePage = async (name: string) => { await nav.getByRole('link', { name, exact: true }).click(); };
       await nav.getByRole('searchbox', { name: 'Search settings', exact: true }).fill('sheet');
-      await expect(nav.getByRole('link')).toHaveCount(1); await expect(nav.getByRole('link', { name: 'Spreadsheets', exact: true })).toBeVisible();
+      await expect(nav.getByRole('link')).toHaveCount(2);
+      await expect(nav.getByRole('link', { name: 'Spreadsheets Data', exact: true })).toBeVisible();
+      await expect(nav.getByRole('link', { name: 'CRM · UCPath entry sheet Routes', exact: true })).toBeVisible();
       await nav.getByRole('searchbox', { name: 'Search settings', exact: true }).fill('');
       await choosePage('Keyboard');
       await expect(settings.locator('.shortcut-reference-row')).toHaveCount(6);

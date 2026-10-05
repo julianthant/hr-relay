@@ -1449,6 +1449,10 @@ body[data-demo-theme="light"] {
 .ds-table-toolbar-search .ds-search-field { width: 100%; }
 .ds-table-toolbar-controls { display: flex; min-width: 0; flex: 1 1 auto; flex-wrap: wrap; align-items: end; justify-content: flex-end; gap: 8px; }
 .ds-table-toolbar-summary { font-size: var(--text-caption); line-height: var(--text-caption--line-height); color: var(--ui-muted); display: flex; min-height: 36px; align-items: center; margin-left: auto; white-space: nowrap; }
+.ds-table-toolbar-summary--near-search { margin-left: 0; }
+.ds-tab-indicator { position: absolute; left: 0; bottom: -1px; width: 1px; height: 2px; background: var(--ds-accent); transform-origin: left; pointer-events: none; }
+.ds-tab-list[data-indicator-ready="true"] > .ds-tab-indicator { transition: transform var(--ds-dur-move) var(--ds-ease-standard); }
+.ds-tab-list[data-indicator-motion="instant"] > .ds-tab-indicator { transition-duration: 0ms; }
 .ds-table-list-frame { border-radius: var(--radius); border: 1px solid var(--ui-stroke); background: var(--ui-panel); min-width: 0; max-width: 100%; overflow: auto; }
 .ds-table-list-frame table { font-size: var(--text-body); line-height: var(--text-body--line-height); width: 100%; border-collapse: collapse; }
 .ds-table-list-frame thead { background: var(--ui-table); font-size: var(--text-caption); line-height: var(--text-caption--line-height); color: var(--ui-muted); }

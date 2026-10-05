@@ -7392,6 +7392,14 @@ Settings page actions center vertically on the complete title/description block.
 keeps its action inline. The healthy storage summary keeps its availability label on the left; the last
 completed check explanation and report timestamp sit together on the right. An absent detailed report
 remains explicitly not checked, and degraded storage retains its check freshness beside the failure.
+Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
+corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
+left edge of their rail and use one interruptible 220ms transform transition between pointer-selected
+tabs. Keyboard selection and reduced motion update immediately. Spreadsheet toolbar and footer controls
+share the body control height; explanatory footer and sorting notes are retired. Archive folder counts
+sit immediately beside search, with completed-date filters at the right. Activity keeps the period at the
+left and both calendars at the right, without visible endpoint prefixes; accessible Start/End labels,
+preset synchronization and manual-edit Custom selection remain.
 The Run picker amendment reuses the permanent rail's category icons, heading order, text indent,
 row height and selection surface. Its shared searchable catalog includes only runnable entries.
 Served direct launch remains the descriptor's declared typed-input capability; local previews carry
@@ -7512,11 +7520,11 @@ breadcrumb → focused heading/actions → controls/table structure as the sprea
 second Archive heading, duplicate version/count metadata, redundant scope dropdowns, table count footer,
 and overview matching-report count.
 Archive and Spreadsheets share the `TableList`/`TableToolbar` data-library pattern: 280px search at the
-left, optional filters and summary at the right, a 12px gap, and one framed table with matching header
+left, optional filters and a summary, a 12px gap, and one framed table with matching header
 and cell spacing. The overview search, workflow and outcome filters share one horizontal row at both
 supported desktop widths; the two filters divide the remaining toolbar width equally. Wide tables
 scroll inside their frame.
-Folder report counts live in the toolbar. Settings page actions center vertically against the title and
+Folder report counts sit beside search; date filters align at the right. Settings page actions center vertically against the title and
 any description; title-only headings keep actions inline. The workflow-export button is retired from
 the mounted Archive; saved-run export and version-bump actions remain beside the focused title.
 Search and completed-date filters retain their

@@ -115,7 +115,8 @@
 .settings-search-result small { color: var(--ui-secondary); font-size: 12px; }
 .settings-search-result:hover, .settings-search-result-active { background: var(--ui-hover); }
 .settings-search-arrival { position: relative; isolation: isolate; border-radius: 8px; }
-.settings-search-arrival::before { content: ""; position: absolute; inset: 0; z-index: -1; pointer-events: none; border-radius: inherit; background: color-mix(in srgb, var(--ds-focus-ring) 16%, transparent); animation: settings-search-arrival 1400ms ease-out both; }
+.settings-search-arrival::before { content: ""; position: absolute; inset: 0 var(--settings-arrival-right, 0px) 0 var(--settings-arrival-left, 0px); z-index: -1; pointer-events: none; border-radius: inherit; background: color-mix(in srgb, var(--ds-focus-ring) 16%, transparent); animation: settings-search-arrival 1400ms ease-out both; }
+.ds-form-group .settings-search-arrival::before { border-radius: 0; }
 @keyframes settings-search-arrival { 0%, 25% { opacity: 1; } 100% { opacity: 0; } }
 @media (prefers-reduced-motion: reduce) { .settings-search-arrival::before { animation: none; } }
 .settings-content[data-settings-target]::after { content: ""; height: calc(50vh - 24px); flex-shrink: 0; }

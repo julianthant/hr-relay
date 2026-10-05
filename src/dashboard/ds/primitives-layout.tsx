@@ -28,6 +28,7 @@ import { cn } from "../lib/utils.js";
 import { ShadcnCard, ShadcnCardContent, ShadcnCardFooter, ShadcnCardHeader } from "./shadcn-card.js";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "./shadcn-collapsible.js";
 import { ShadcnTabs, ShadcnTabsContent, ShadcnTabsList, ShadcnTabsTrigger } from "./shadcn-tabs.js";
+import { useTabIndicator } from "./tab-indicator-model.js";
 import { dsBorder, dsElev, dsFocus, dsIcon, dsMotion, dsRadius, dsSize, dsSurface, dsText } from "./tokens.js";
 
 /** Shared frame for dashboard and full-page action bars, including optional bands. */
@@ -139,22 +140,24 @@ export function PageHeading({
 }
 
 /** Shared search, optional filters/count and framed table for data libraries. */
-export function TableList({ search, controls, summary, children }: {
-  search: ReactNode; controls?: ReactNode; summary?: ReactNode; children: ReactNode;
+export function TableList({ search, controls, summary, summaryPosition, children }: {
+  search: ReactNode; controls?: ReactNode; summary?: ReactNode; summaryPosition?: "end" | "near-search"; children: ReactNode;
 }) {
   return <div className="ds-table-list">
-    <TableToolbar search={search} controls={controls} summary={summary} />
+    <TableToolbar search={search} controls={controls} summary={summary} summaryPosition={summaryPosition} />
     <div className="ds-table-list-frame">{children}</div>
   </div>;
 }
 
-export function TableToolbar({ search, controls, summary }: {
-  search: ReactNode; controls?: ReactNode; summary?: ReactNode;
+export function TableToolbar({ search, controls, summary, summaryPosition = "end" }: {
+  search: ReactNode; controls?: ReactNode; summary?: ReactNode; summaryPosition?: "end" | "near-search";
 }) {
+  const count = summary && <span className={cn("ds-table-toolbar-summary", summaryPosition === "near-search" && "ds-table-toolbar-summary--near-search")}>{summary}</span>;
   return <div className="ds-table-toolbar">
     <div className="ds-table-toolbar-search">{search}</div>
+    {summaryPosition === "near-search" && count}
     {controls && <div className="ds-table-toolbar-controls">{controls}</div>}
-    {summary && <span className="ds-table-toolbar-summary">{summary}</span>}
+    {summaryPosition === "end" && count}
   </div>;
 }
 
@@ -1179,16 +1182,23 @@ export function TabList({
   className?: string;
   children: ReactNode;
 }) {
+  const list = useRef<HTMLDivElement>(null);
+  const indicator = useRef<HTMLSpanElement>(null);
+  useTabIndicator(list, indicator);
   return (
     <ShadcnTabsList
+      ref={list}
       aria-label={label}
+      onKeyDownCapture={() => { if (list.current) list.current.dataset.indicatorMotion = "instant"; }}
+      onPointerDownCapture={() => { if (list.current) delete list.current.dataset.indicatorMotion; }}
       className={cn(
-        "flex shrink-0 items-center gap-[var(--ds-space-tight)] border-b",
-        "border-[color:var(--ds-border)] px-[var(--ds-space-base)]",
+        "ds-tab-list relative flex shrink-0 items-center gap-[var(--ds-space-tight)] border-b",
+        "border-[color:var(--ds-border)]",
         className,
       )}
     >
       {children}
+      <span ref={indicator} aria-hidden="true" className="ds-tab-indicator" />
     </ShadcnTabsList>
   );
 }
@@ -1223,7 +1233,7 @@ export function Tab({
         "active:translate-y-px",
         "border-b-2 border-transparent -mb-px",
         "text-[color:var(--ds-fg-muted)] hover:text-[color:var(--ds-fg)]",
-        "data-[state=active]:border-b-[color:var(--ds-accent)] data-[state=active]:font-semibold data-[state=active]:text-[color:var(--ds-fg)]",
+        "data-[state=active]:font-semibold data-[state=active]:text-[color:var(--ds-fg)]",
         "disabled:cursor-not-allowed disabled:opacity-45",
         className,
       )}

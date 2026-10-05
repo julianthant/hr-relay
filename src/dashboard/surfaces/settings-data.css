@@ -25,7 +25,7 @@
 .shortcut-setting-row kbd { border: 0; border-radius: 999px; background: var(--ui-hover); padding: 4px 10px; box-shadow: none; }
 
 .activity-header-filters { flex-wrap: wrap; align-items: flex-start; }
-.activity-header-filters > .activity-period-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; max-width: none; }
+.activity-header-filters > .activity-period-controls { display: flex; flex: 1; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; max-width: none; }
 .activity-period-controls > .ds-select-control { width: 130px; height: var(--ds-h-body-control); border-radius: var(--ds-radius-body-control); background: var(--ds-control-bg); }
 .activity-period-controls .ds-select-control, .activity-period-controls .date-input-group, .activity-period-controls .date-input-group__segment, .activity-period-controls .date-picker__trigger-indicator { font-size: var(--ds-text-ui); line-height: var(--ds-lh-ui); }
 .activity-header-filters > .activity-sample-control { max-width: 190px; }

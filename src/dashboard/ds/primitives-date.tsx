@@ -107,12 +107,12 @@ export function RangeCalendar({ label, value, onChange, focusedValue, minValue, 
   </HeroRangeCalendar>;
 }
 
-export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "Start", toLabel = "End", variant = "field", className, min, max, disabled = false, groupLabel }: {
+export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "Start", toLabel = "End", variant = "field", className, min, max, disabled = false, groupLabel, hideEndpointLabels = false }: {
   label: string; value: { from: string; to: string }; onChange: (value: { from: string; to: string }) => void;
   /** Reports a direct endpoint edit even when its draft cannot yet be applied. */
   onEdit?: () => void;
   fromLabel?: string; toLabel?: string; variant?: "field" | "toolbar"; className?: string;
-  min?: string; max?: string; disabled?: boolean; groupLabel?: string;
+  min?: string; max?: string; disabled?: boolean; groupLabel?: string; hideEndpointLabels?: boolean;
 }) {
   const [open, setOpen] = useState<"from" | "to" | null>(null);
   const [draft, setDraft] = useState(value);
@@ -151,7 +151,7 @@ export function DateRangeInput({ label, value, onChange, onEdit, fromLabel = "St
           onChange={date => changeEndpoint(key, date)}>
           <Label className={cn("ds-date-label", variant === "toolbar" && "sr-only")}>{endpointLabel}</Label>
           <DateField.Group fullWidth>
-            {variant === "toolbar" && <DateField.Prefix><span className="text-ui-muted">{endpointLabel}</span></DateField.Prefix>}
+            {variant === "toolbar" && !hideEndpointLabels && <DateField.Prefix><span className="text-ui-muted">{endpointLabel}</span></DateField.Prefix>}
             <DateField.Input>{segment => <DateField.Segment segment={segment} />}</DateField.Input>
             <DateField.Suffix><HeroDatePicker.Trigger aria-label={`Choose ${endpointLabel.toLowerCase()} date range`} aria-controls={open !== null ? id : undefined}
               onClick={event => { if (event.currentTarget instanceof HTMLButtonElement) opener.current = event.currentTarget; }}><HeroDatePicker.TriggerIndicator /></HeroDatePicker.Trigger></DateField.Suffix>

@@ -52,6 +52,10 @@ Either endpoint opens the centered shared range picker, and the second date comm
 Archive and Search retain open-ended field entry.
 The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Settings heading, ordinary
 buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
+Shared tab rails start at the left edge and move one underline over 220ms on pointer selection;
+keyboard selection and reduced motion snap. Spreadsheet toolbar and footer controls use the body
+control height and omit instructional notes. Archive folder counts sit beside search; Activity dates
+align right with accessible endpoint labels and no visible Start/End prefixes.
 Dashboard page and section headings use a shared 4px title-to-description gap. Section descriptions
 leave 12px before their card or table; page headings leave 16px before the next content block.
 Workflow readiness keeps its title and subheading close and leaves 12px before operation cards.
@@ -105,15 +109,16 @@ Archive overview and folders use shared searches; the overview also has workflow
 SearchField for shared searches. Every search field uses the UI catalog's 12px corner radius through
 the shared search token, including Settings navigation, Keyboard, Archive and the compact Run filter.
 Archive and Spreadsheets use the shared TableList/TableToolbar pattern: compact left search, optional
-right filters/count, 12px table gap and matching cell/header spacing. The Archive overview search,
-workflow and outcome filters share one horizontal row at both supported desktop widths. Title-row action alignment is
-independent of descriptions. Archive omits Export workflow and places folder report counts in the
-toolbar; saved-run export and date filters retain their behavior. Wide tables scroll within the frame.
+right filters, 12px table gap and matching cell/header spacing. The Archive overview search,
+workflow and outcome filters share one horizontal row at both supported desktop widths. Settings actions
+center on the complete title/description block. Archive omits Export workflow and places folder report
+counts beside search; saved-run export and date filters retain their behavior. Wide tables scroll within the frame.
 Search sizes and theme remain unchanged. Search fields use a neutral focus border without a bright
 halo and a small clear icon only when nonempty. Settings search indexes page and field labels with
 parent-page context, without searching values or secrets. A selected field opens its page and any
-containing disclosure, centers within the scroll pane, and receives a brief fading cue; reduced motion
-uses immediate scrolling and a temporary static cue. The exact target survives reload/history in
+containing disclosure, centers within the scroll pane, and receives a brief fading cue across the
+full-width row's card padding; reduced motion uses immediate scrolling and a temporary static cue.
+The exact target survives reload/history in
 `settingsTarget`; repeated selection works and unavailable targets are explicit. Draft guards remain intact. The centered Navbar field opens a centered search modal on click,
 Enter/Space or `/`, with keyboard Command results, clear control and focus restoration. Status/export/
 choice menus use shadcn Base UI DropdownMenu; value controls use Base UI Select. RRSS HR and the date count are removed. The editable date and calendar sit above Logs, separate from Navbar history controls. The active Settings

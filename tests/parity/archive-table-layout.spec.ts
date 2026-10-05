@@ -12,7 +12,7 @@ async function tableStyle(cell: Locator) {
 }
 
 async function expectTitleActions(heading: Locator) {
-  const title = (await heading.getByRole("heading").boundingBox())!;
+  const title = (await heading.locator(".ds-page-heading-copy").boundingBox())!;
   const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
   expect(actions.x).toBeGreaterThan(title.x + title.width);
   expect(Math.abs(actions.y + actions.height / 2 - title.y - title.height / 2)).toBeLessThanOrEqual(1);
@@ -75,6 +75,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expectTitleActions(archive.locator(".mock-archive-folder-header .ds-page-heading"));
       await expect(archive.locator(".ds-page-heading-description")).toHaveCount(0);
       await expect(archive.locator(".ds-table-toolbar-summary")).toHaveText("4 reports");
+      const searchBounds = (await archive.locator(".ds-table-toolbar-search").boundingBox())!;
+      const countBounds = (await archive.locator(".ds-table-toolbar-summary").boundingBox())!;
+      const datesBounds = (await archive.locator(".ds-date-range").boundingBox())!;
+      expect(countBounds.x - searchBounds.x - searchBounds.width).toBeCloseTo(12, 0);
+      expect(datesBounds.x).toBeGreaterThan(countBounds.x + countBounds.width);
       expect(await tableStyle(table.locator("th").first())).toEqual(headerStyle);
       expect(await table.locator("td").first().evaluate(node => getComputedStyle(node).padding)).toBe(cellPadding);
       expect((await table.locator("td").first().boundingBox())!.width).toBeGreaterThanOrEqual(314);
