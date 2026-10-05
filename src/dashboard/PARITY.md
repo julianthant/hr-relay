@@ -175,7 +175,8 @@ The 2026-10-05 mock launch layout amendment shares the served Person Lookup/Sepa
 step-list and confirmation shells. Flags precede workflow-specific settings and paired execution
 controls; labels, step counts, summary-card geometry and footer action groups match. Local root-run
 counts exclude delegated children, and upload-only step membership excludes OCR/signature waits.
-The full conditional plan remains available in a compact disclosure. Focused evidence inspects every
+The Workflow plan disclosure is removed from Run/Rerun Confirm; Steps and Logs retain selection and
+execution outcomes. Focused evidence inspects every
 rail contract, Run/Rerun and mode branches in both themes at 1024, 1440 and 1920 pixels, with no local
 preview writes. Evidence: `mock-run-layout-20261005`. Frozen-reference and full repository acceptance
 remain with 3.1.19; served authority is unchanged.
@@ -410,3 +411,7 @@ rows and axis geometry. Preflight's compact Status card uses the served Last che
 place of returned-check counts, retaining historical-result warnings and current readiness authority.
 Focused desktop dark/light checks are retained in `workflow-duration-20261005`; frozen references
 and full exit gates remain owned by 3.1.19.
+
+The 2026-10-05 confirmation simplification removes the redundant Workflow plan disclosure from
+all local Run/Rerun forms. Summary facts, omissions, optional-step selection and log outcomes remain.
+Focused evidence is `remove-workflow-plan-20261005`; frozen references and full gates remain at 3.1.19.

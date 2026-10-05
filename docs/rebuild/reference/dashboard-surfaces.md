@@ -7480,7 +7480,8 @@ unchanged. Workers, hire type, oath modes, rosters and date inputs retain their 
 Upload-only customization excludes OCR/signature waits. Turning customization off restores the full
 current-mode step selection; an empty selected set cannot advance. Steps retain system labels,
 included counts and source outcomes on rerun. Confirm uses the served summary-card and aligned
-definition-list geometry, plus a compact local Workflow plan disclosure for conditional/skipped steps.
+definition-list geometry. The redundant Workflow plan disclosure is removed from Run and Rerun
+confirmation; optional selection and source outcomes remain in Steps, with execution outcomes in Logs.
 Run counts describe root runs, including combined OnBase documents, without counting OCR children.
 The shared footer retains separate provenance and action groups with matching icons and Preview plan
 navigation. All 15 rail contracts are inspected; OCR and I-9 Lookup remain delegation-only. Focused

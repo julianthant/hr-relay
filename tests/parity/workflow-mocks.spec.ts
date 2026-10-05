@@ -95,7 +95,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(confirmation).toContainText("Headless · screenshots off");
         await expect(confirmation).toContainText(`Omitted: ${flow.steps[0].label}`);
         await expect(confirmation.locator("dl")).toHaveCSS("font-family", /-apple-system/);
-        await expect(confirmation.locator("details")).not.toHaveAttribute("open");
+        await expect(confirmation.locator("details")).toHaveCount(0);
+        await expect(confirmation.getByText("Workflow plan", { exact: true })).toHaveCount(0);
         expect((await dialog.locator(":scope > footer").boundingBox())!.height).toBe(57);
         await info.attach(`confirm-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
         await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
@@ -116,6 +117,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         await expect(rerun.getByRole("radio", { name: "Headless", exact: true })).toBeChecked();
         await expect(rerun.getByRole("checkbox", { name: "Capture screenshots", exact: true })).not.toBeChecked();
         await advance(rerun);
+        await expect(rerun.getByText("Workflow plan", { exact: true })).toHaveCount(0);
         await rerun.getByRole("button", { name: "Create rerun", exact: true }).click();
         await expect(rerun).toHaveCount(0);
         await logs.getByRole("button", { name: /^Linked runs \(\d+\)$/u }).click();
@@ -141,9 +143,11 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       await expect(upload.getByRole("button", { name: /Workers$/u })).toHaveCount(0);
       await expect(upload.getByRole("spinbutton", { name: "Workers", exact: true })).toHaveCount(0);
       await advance(upload);
-      await upload.locator("summary").filter({ hasText: "Workflow plan" }).click();
-      await expect(upload.getByRole("list", { name: "Workflow plan", exact: true })).not.toContainText("Wait for all signatures");
+      await expect(upload.getByText("Workflow plan", { exact: true })).toHaveCount(0);
       await info.attach(`upload-only-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await upload.getByRole("button", { name: "Start preview", exact: true }).click();
+      await expect(upload).toHaveCount(0);
+      await expect(approvalLogs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Wait for all signatures/u })).toHaveCount(0);
       await page.keyboard.press("Escape");
       expect(errors).toEqual([]); expect(writes).toEqual([]);
       expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(width);
@@ -180,8 +184,10 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await match.fill("Lee, Jordan, 01/01/2000, x");
     await advance(dialog);
     await advance(dialog);
-    await dialog.locator("summary").filter({ hasText: "Workflow plan" }).click();
-    await expect(dialog.getByRole("list", { name: "Workflow plan", exact: true })).toContainText("Read employment status · skipped");
+    await expect(dialog.getByText("Workflow plan", { exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+    const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
+    await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Read employment status · Skipped/u })).toBeVisible();
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Onboarding", exact: true }).click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
@@ -199,8 +205,9 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     await advance(dialog);
     await expect(dialog).toContainText("8 / 8 included");
     await expect(dialog).toContainText("Rehire · UC_CONC_HIRE");
-    await dialog.locator("summary").filter({ hasText: "Workflow plan" }).click();
-    await expect(dialog.getByRole("list", { name: "Workflow plan", exact: true })).toContainText("Create I-9 profile · skipped");
+    await expect(dialog.getByText("Workflow plan", { exact: true })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+    await expect(logs.getByRole("navigation", { name: "Run timeline", exact: true }).getByRole("button", { name: /^Create I-9 profile · Skipped/u })).toBeVisible();
     await page.keyboard.press("Escape");
     await rail.getByRole("button", { name: "Person Lookup", exact: true }).click();
     await page.getByRole("button", { name: "Start a run", exact: true }).click();

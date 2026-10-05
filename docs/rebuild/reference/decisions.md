@@ -286,7 +286,8 @@ step-list and confirmation components across the local workflows. Flags lead, wo
 retain their contracts, and Priority/Browser mode share the same geometry and labels. Step selection
 respects upload-only membership, resets when customization is disabled and blocks an empty selection.
 Confirm shows root-run counts, edited settings and omissions in the shared summary card and facts
-layout; conditional steps remain in a compact plan disclosure. Footer provenance and action groups
+layout. The redundant Workflow plan disclosure is removed from Run/Rerun confirmation; step selection
+and execution outcomes remain in Steps and Logs. Footer provenance and action groups
 match served launches. Local previews remain browser-only, with OCR/I-9 Lookup delegation-only.
 D347's dashboard-surfaces owner records the contract and `mock-run-layout-20261005` evidence.
 

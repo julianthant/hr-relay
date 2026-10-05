@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Check, ArrowLeft, ArrowRight, Play } from "lucide-react";
 import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, Badge, MetaLine, SectionLabel, SegmentedChoice, Textarea } from "../ds/ui.js";
 import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
-import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOathDuplicate, mockPipeline, mockRunStatus, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
+import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockSelectableSteps, mockOathDuplicate, mockRunStatus, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "./launch-presentation.css";
 import { cn } from "../lib/utils.js";
 import { RunConfirmLayout, RunOptionsLayout, RunStepsList } from "./run-launch-layout.js";
@@ -27,7 +27,6 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
   const count = mockLaunchCount(workflowId, draft);
   const steps = mockSelectableSteps(workflowId, draft);
   const included = steps.filter(step => draft.selectedSteps.includes(step.key)).length;
-  const planRun: MockRun = { id: "mock:plan", workflowId, title: flow.label, subject: typedEntries[0] ?? "", draft, approved: true, seeded: false };
   const patch = (next: Partial<MockDraft>) => setDraft(previous => ({ ...previous, ...next }));
   const chooseFiles = async (files: FileList | null) => {
     setReading(true); setFileError(undefined);
@@ -102,9 +101,6 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
         {stage === "Confirm" && <RunConfirmLayout count={count} flags={<RunFlagChips dryRun={flow.dryRun && draft.dryRun} priority={draft.priority === "background" ? "bulk" : "interactive"} />}
           description={source ? "A new run linked to the source." : pdf && !uploadOnly ? workflowId === "onbase" ? "One combined document sent to OCR for review." : "One run per PDF. OCR reviews records before downstream work." : "One run for each accepted entry."}
           facts={[...mockConfirmationFacts(workflowId, draft), ...(source ? [{ key: "Source", value: source.subject }] : [])]}>
-          <details className="rounded-[var(--ds-radius-lg)] border border-ui-stroke px-3 py-2 text-body"><summary className="cursor-pointer font-medium">Workflow plan</summary>
-            <ol aria-label="Workflow plan" className="mt-2 flex list-decimal flex-col gap-1 pl-5 text-body text-ui-secondary">{mockPipeline(workflowId, draft).map(step => <li key={step.key}>{step.label}{mockStepState(planRun, step) === "skipped" ? draft.dryRun && step.write ? " · skipped in dry run" : " · skipped" : ""}</li>)}</ol>
-          </details>
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </RunConfirmLayout>}
         </div>
