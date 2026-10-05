@@ -18,9 +18,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await page.getByRole("button", { name: "Start a run", exact: true }).click();
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
-    await expect(picker.getByRole("button")).toHaveCount(13);
-    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toHaveCount(0);
-    await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toHaveCount(0);
+    await expect(picker.getByRole("button")).toHaveCount(15);
+    await expect(picker.getByRole("button", { name: "OCR", exact: true })).toBeDisabled();
+    await expect(picker.getByRole("button", { name: "I-9 Lookup", exact: true })).toBeDisabled();
     await expect(picker.getByRole("heading")).toHaveText(["Search", "Separations", "Onboarding", "Work Study", "Payroll", "Utils", "OnBase", "Timekeeping"]);
     await expect(picker.locator("button span").filter({ hasText: /^pl$|^sp$/u })).toHaveCount(0);
     const originalDialog = await dialog.elementHandle(), originalPicker = await picker.elementHandle();
@@ -49,7 +49,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     await expect(dialog.getByRole("textbox", { name: "Emails", exact: true })).toHaveValue("");
     await dialog.getByRole("textbox", { name: "Emails", exact: true }).fill("jordan.lee@example.com");
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
-    const flags = dialog.getByRole("checkbox", { name: "Captures", exact: true }); await flags.uncheck();
+    const flags = dialog.getByRole("checkbox", { name: "Capture screenshots", exact: true }); await flags.uncheck();
     expect(await picker.evaluate((element, original) => element === original, originalPicker)).toBe(true);
     await expect(flags).not.toBeChecked();
     await picker.getByRole("button", { name: "I-9 Check", exact: true }).click();
@@ -65,7 +65,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) test(`group
     for (const label of ["OCR", "I-9 Lookup"]) {
       await rail.getByRole("button", { name: label, exact: true }).click();
       await page.getByRole("button", { name: "Start a run", exact: true }).click();
-      await expect(picker.getByRole("button", { name: label, exact: true })).toHaveCount(0);
+      await expect(picker.getByRole("button", { name: label, exact: true })).toBeDisabled();
       await expect(picker.locator('[aria-current="page"]')).toHaveAccessibleName("Person Lookup");
       await page.keyboard.press("Escape");
     }

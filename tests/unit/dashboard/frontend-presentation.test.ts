@@ -1,3 +1,4 @@
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
@@ -85,7 +86,7 @@ describe("frontend presentation producers", () => {
     assert.match(activity, /Workflow outcomes/);
     assert.match(activity, /36 measured/);
     assert.doesNotMatch(activity, /Sample data/);
-    const explorer = renderToStaticMarkup(createElement(WorkflowExplorer));
+    const explorer = renderToStaticMarkup(createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([]) }));
     assert.equal((explorer.match(/data-step-number=/g) ?? []).length, 22);
     assert.doesNotMatch(explorer, /Registered definition|Back to dashboard/);
     const logs = renderToStaticMarkup(createElement(LogSample));

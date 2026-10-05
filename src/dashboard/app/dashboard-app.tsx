@@ -1,3 +1,4 @@
+import { buildWorkflowCatalog, servedLaunchWorkflows } from "../surfaces/workflow-catalog-model.js";
 import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/loading.js";
 import { SettingsSectionSkeleton } from "../surfaces/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
@@ -297,6 +298,7 @@ function LoadedApp({
   const [commandResults, setCommandResults] = useState<readonly CommandResultFeedEntry[]>([]);
 
   const workflows = useMemo(() => parseWorkflows(boot.workflows), [boot.workflows]);
+  const workflowCatalog = useMemo(() => buildWorkflowCatalog(launchWorkflows(workflows)), [workflows]);
   const { selectedWorkflowId: chosenWorkflowId, setSelectedWorkflowId: setActiveWorkflowId } = useSelectedWorkflow(workflows);
   const previewQueue = useQueuePreview(dayWire?.queueSurfaces, day);
   const selectedRow = previewQueue.rows.find(row => String(row.runId) === route.run);
@@ -365,8 +367,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const { toast } = useToasts();
 
   const workflowLabelOf = useCallback(
-    (workflowId: string): string => workflows.find((w) => w.id === workflowId)?.label ?? workflowId,
-    [workflows],
+    (workflowId: string): string => workflowCatalog.find((w) => w.id === workflowId)?.label ?? workflowId,
+    [workflowCatalog],
   );
   const surfaces = useMemo((): readonly QueueSurfaceWire[] => {
     if (dayWire === undefined) return [];
@@ -415,7 +417,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
     return { kind: "status", word: filter.map(value => value === "all" ? "all" : value === "needsYou" ? "needs you" : PROPOSED_STATUS[dsStatusOf(value)].label.toLowerCase()).join(" or ") };
   }, [filter]);
 
-  const startWorkflows = useMemo(() => launchWorkflows(workflows), [workflows]);
+  const startWorkflows = useMemo(() => servedLaunchWorkflows(workflowCatalog), [workflowCatalog]);
 
   const startWorkflow = useMemo(
     () => startWorkflows.find((entry) => entry.workflowId === activeWorkflowId),
@@ -951,8 +953,8 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   // capability wire carries none on purpose, so one page cannot hold two names
   // for one workflow (D274 item 6).
   const workflowLabels = useMemo(
-    () => new Map(workflows.map((workflow) => [String(workflow.id), workflow.label])),
-    [workflows],
+    () => new Map(workflowCatalog.map((workflow) => [workflow.id, workflow.label])),
+    [workflowCatalog],
   );
   const ready = dayResource.state === "loaded" || dayResource.state === "failed";
   // One resolution of "which takeover owns the main region", so the JSX below
@@ -1091,7 +1093,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
         target.focus({ preventScroll: true });
       }} className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-[1000] focus:rounded-lg focus:bg-ui-panel focus:px-4 focus:py-2 focus:text-ui-primary focus:outline-2 focus:outline-ui-info">Skip to content</a>
       <div className="dashboard-workspace relative flex min-h-0 min-w-0 flex-1 flex-col">
-      <WorkspaceRail workflows={workflows} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
+      <WorkspaceRail workflows={workflowCatalog} counts={dayWire?.workflowCounts} previewCounts={previewCounts} active={activeWorkflowId} preview={railPreview}
         onSelect={onRailSelect} onPreview={onRailPreview} settingsOpen={settingsOpen} notifications={notifications} onOpenNotification={openNotification} />
 
       <main
@@ -1148,7 +1150,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           */}
           <DashboardTakeovers takeover={takeover} route={route} setRoute={setRoute} boot={boot}
             archiveReports={archiveReports}
-            settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
+            workflowCatalog={workflowCatalog} settingsSections={settingsSections} workflowLabels={workflowLabels} activeWorkflowId={activeWorkflowId}
             workflowLabelOf={workflowLabelOf} supportsDryRun={startWorkflow?.inputRun.state === "present" && startWorkflow.inputRun.surface.supportsDryRun === true}
             closeTakeoverTo={closeTakeoverTo}
             onSettingsExitGuardChange={onSettingsExitGuardChange} theme={theme} onToggleTheme={onToggleTheme}>
@@ -1267,6 +1269,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       </div>
 
       <SessionPanel
+        catalog={workflowCatalog}
         open={sessionsOpen}
         onOpenChange={setSessionsOpen}
         settingsOpen={settingsOpen} onSettings={() => settingsOpen ? returnToDashboard() : openSettings()}
@@ -1280,7 +1283,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       </Dialog>
       <RunLaunchHost
         controller={launch}
-        workflows={startWorkflows}
+        catalog={workflowCatalog}
         previewLaunch={mockLaunch ?? undefined}
         previewRuns={mockRuns}
         onSubmitPreview={submitMock}

@@ -1,3 +1,4 @@
+import { servedLaunchWorkflows, type WorkflowCatalogEntry } from "./workflow-catalog-model.js";
 import "./launch-presentation.css";
 import { mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { WorkflowMockRunForm } from "./workflow-mock-run.js";
@@ -413,7 +414,7 @@ function defaultWorkflowId(
 export function RunStartDialog({
   open,
   onOpenChange,
-  workflows,
+  catalog,
   panelWorkflowId,
   actorId,
   onApplied,
@@ -425,8 +426,8 @@ export function RunStartDialog({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** every workflow the boot document serves, with its declared start surface */
-  workflows: readonly RunStartWorkflow[];
+  /** Shared registration and explicit launch capabilities from the app boundary. */
+  catalog: readonly WorkflowCatalogEntry[];
   /** the Workflow Panel the operator is standing in — the dialog's default */
   panelWorkflowId: string;
   /** echoed from bootstrap; the server matches it against the request identity */
@@ -446,6 +447,8 @@ export function RunStartDialog({
   previewRuns?: readonly MockRun[];
   onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
+  const workflows = useMemo(() => servedLaunchWorkflows(catalog), [catalog]);
+  if (catalog.some(entry => entry.launch.state === "preview") && onSubmitPreview === undefined) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
   if ((previewRuns === undefined) !== (onSubmitPreview === undefined) || (previewLaunch !== undefined && onSubmitPreview === undefined)) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
   if (previewLaunch && !previewLaunch.source && !mockWorkflow(previewLaunch.workflowId).runnable) throw new Error("RUN_PREVIEW_NOT_RUNNABLE");
   const [previewSelection, setPreviewSelection] = useState(previewLaunch);
@@ -561,17 +564,17 @@ export function RunStartDialog({
 
   const pickWorkflow = useCallback((id: string) => {
     if (selectedWorkflowRef.current === id || sending.current) return;
-    const served = workflows.find(flow => flow.workflowId === id);
-    const preview = !served && onSubmitPreview ? mockWorkflow(id) : undefined;
-    if (served ? !isStartable(served) : !preview?.runnable) return;
+    const entry = catalog.find(flow => flow.id === id);
+    if (!entry || entry.launch.state === "unavailable") return;
+    if (entry.launch.state === "preview" && onSubmitPreview === undefined) return;
     selectedWorkflowRef.current = id;
     ++launchInstance.current;
     setBusy(false);
-    if (served) {
+    if (entry.served) {
       setPreviewSelection(undefined);
       selectWorkflow(id);
-    } else if (preview) setPreviewSelection({ workflowId: preview.id });
-  }, [workflows, selectWorkflow, onSubmitPreview]);
+    } else if (entry.preview) setPreviewSelection({ workflowId: entry.preview.id });
+  }, [catalog, selectWorkflow, onSubmitPreview]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
@@ -972,7 +975,7 @@ export function RunStartDialog({
     setCopiedOmissions(current => ({ ...current, [index]: true }));
   };
 
-  const picker = <RunWorkflowPicker workflows={workflows} includePreviews={onSubmitPreview !== undefined} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
+  const picker = <RunWorkflowPicker catalog={catalog} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
   const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
 
   return (
@@ -1251,7 +1254,7 @@ export function RunStartDialog({
 export function RunStartSurfaces({
   open,
   onOpenChange,
-  workflows,
+  catalog,
   panelWorkflowId,
   actorId,
   onApplied,
@@ -1264,7 +1267,7 @@ export function RunStartSurfaces({
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  workflows: readonly RunStartWorkflow[];
+  catalog: readonly WorkflowCatalogEntry[];
   panelWorkflowId: string;
   actorId: string;
   onApplied?: (workflowId: string, count?: number) => void;
@@ -1279,7 +1282,7 @@ export function RunStartSurfaces({
     <RunStartDialog
       open={open}
       onOpenChange={onOpenChange}
-      workflows={workflows}
+      catalog={catalog}
       panelWorkflowId={panelWorkflowId}
       actorId={actorId}
       onApplied={onApplied}

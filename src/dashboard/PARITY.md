@@ -387,3 +387,16 @@ approving it. Pending runs remain not completed. Snapshots join the existing Arc
 and exports until reload. Descriptor-authored served commands retain their authority. Evidence under
 `queue-footer-archive-20261005` covers dark/light at 1024 and 1440 pixels, wrapping, keyboard focus,
 OCR edit retention, linked removal and zero write requests. Frozen references remain unchanged.
+
+## Shared workflow catalog amendment (2026-10-05)
+
+The app composes one catalog from served registrations and local preview contracts. The workflow
+panel, Run/Rerun, Add workers, Explorer, Archive workflow filter and label lookups consume it. Every
+current selector exposes all 15 registrations with matching names and order. Run keeps OCR and
+I-9 Lookup visible and disabled with Parent only labels; source-bound Rerun retains its workflow.
+Add workers creates local cards for all registrations with their own system requirements. Archive
+retains historical-only identities and Explorer disables registrations lacking a copied graph.
+Served declarations and refusals win by ID; preview IDs remain outside runtime command transport.
+
+Focused verification is retained under `workflow-catalog-20261005`. Full repository and frozen
+reference exit gates remain assigned to Phase 3.1.19; this amendment does not refreeze references.

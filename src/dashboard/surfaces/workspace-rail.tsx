@@ -5,13 +5,14 @@ import { NAVBAR_SAMPLE } from "./navbar/navbar-fixture.js";
 import { RailSearch } from "./navbar/navbar-view.js";
 import { NotificationPing, NotificationsView } from "./notifications/notifications-view.js";
 import { applyNotificationReads, notificationView, type NotificationCategory, type NotificationDestination, type NotificationFilter, type NotificationsState } from "./notifications/notifications-view-model.js";
-import type { WorkflowCountWire, WorkflowBootstrapPrimitive } from "./shell-model.js";
+import type { WorkflowCountWire } from "./shell-model.js";
+import type { WorkflowCatalogEntry } from "./workflow-catalog-model.js";
 import { WorkflowRail } from "./workflow-rail.js";
 
 function previewRun(): void {}
 
 export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, previewCounts, active, preview, onSelect, onPreview, settingsOpen, notifications, onOpenNotification }: {
-  workflows: readonly WorkflowBootstrapPrimitive[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
+  workflows: readonly WorkflowCatalogEntry[]; counts?: readonly WorkflowCountWire[]; previewCounts?: readonly WorkflowCountWire[]; active: string; preview: string | null;
   onSelect: (id: string) => void; onPreview: (id: string) => void;
   settingsOpen: boolean;
   notifications: NotificationsState;

@@ -32,7 +32,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
         let dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
         const picker = dialog.getByRole("navigation", { name: "Workflow", exact: true });
         if (!flow.runnable) {
-          await expect(picker.getByRole("button", { name: flow.label, exact: true })).toHaveCount(0);
+          await expect(picker.getByRole("button", { name: flow.label, exact: true })).toBeDisabled();
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
           await rail.getByRole("button", { name: flow.label, exact: true }).click();
           const sample = seedMockRuns().find(run => run.workflowId === flow.id)!;

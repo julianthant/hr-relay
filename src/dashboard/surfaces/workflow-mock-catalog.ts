@@ -1,4 +1,6 @@
-import { WORKFLOW_RAIL_PREVIEWS } from "./workflow-rail-model.js";
+/** Label inventory copied from legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87 src/dashboard/components/dev/rebuild-demo/demo-wire.ts; presentation only. */
+const WORKFLOW_PREVIEW_DEFINITIONS = [{"id": "separations", "label": "Separations", "category": "Separations"}, {"id": "onboarding", "label": "Onboarding", "category": "Onboarding"}, {"id": "person-lookup", "label": "Person Lookup", "category": "Search"}, {"id": "i9-lookup", "label": "I-9 Lookup", "category": "Search"}, {"id": "work-study", "label": "Work-Study", "category": "Work Study"}, {"id": "kronos-pay-rule", "label": "Kronos Pay Rule", "category": "Payroll"}, {"id": "ocr", "label": "OCR", "category": "Utils"}, {"id": "oath-signature", "label": "Oath Signature", "category": "Onboarding"}, {"id": "oath-upload", "label": "Oath Upload", "category": "Onboarding"}, {"id": "emergency-contact", "label": "Emergency Contact", "category": "Onboarding"}, {"id": "onbase", "label": "OnBase", "category": "OnBase"}, {"id": "i9-check", "label": "I-9 Check", "category": "Separations"}, {"id": "crm-doc-download", "label": "CRM Doc Download", "category": "Utils"}, {"id": "sharepoint-download", "label": "SharePoint Download", "category": "Utils"}, {"id": "old-kronos-reports", "label": "Old Kronos Reports", "category": "Timekeeping"}] as const;
+
 
 /** Copied contracts: legacy hr-automation@9bb973672666b9267569a22d3fa0af722e4c5e87,
  * src/dashboard/lib/{input-run-registry,run-modal-registry,onbase-document-types,run-settings}.ts,
@@ -6,7 +8,7 @@ import { WORKFLOW_RAIL_PREVIEWS } from "./workflow-rail-model.js";
  * src/workflows/<id>/{workflow,schema,handler}.ts and src/services/ocr/forms/registry.ts.
  * Direct-launch eligibility follows the current operator policy; OCR stays delegation-only. */
 export const MOCK_LEGACY_COMMIT = "9bb973672666b9267569a22d3fa0af722e4c5e87";
-export type MockWorkflowId = typeof WORKFLOW_RAIL_PREVIEWS[number]["id"];
+export type MockWorkflowId = typeof WORKFLOW_PREVIEW_DEFINITIONS[number]["id"];
 export type MockMethod = "typed" | "pdf" | "roster" | "delegated";
 export type MockStep = Readonly<{ key: string; label: string; system?: string; message: string; write?: boolean }>;
 export type MockWorkflow = Readonly<{
@@ -91,7 +93,7 @@ const contracts: Record<MockWorkflowId, Contract> = {
     step("downloading", "Download Time Detail report", "Old Kronos", "Download the Time Detail PDF for the requested date range, validate the report and record its tracker row."),
   ], result: [["Employee", "Jordan Lee"], ["Employee ID", "10000001"], ["Report", "Time Detail_Jordan Lee (10000001).pdf"]] },
 };
-export const MOCK_WORKFLOWS: readonly MockWorkflow[] = WORKFLOW_RAIL_PREVIEWS.map(flow => ({ ...flow, ...contracts[flow.id] }));
+export const MOCK_WORKFLOWS: readonly MockWorkflow[] = WORKFLOW_PREVIEW_DEFINITIONS.map(flow => ({ ...flow, ...contracts[flow.id] }));
 export const MOCK_FORM_TYPES = [{ value: "oath", label: "Oath" }, { value: "emergency-contact", label: "Emergency Contact" }, { value: "onbase-emergency-contact", label: "OnBase Emergency Contact" }, { value: "verify", label: "Verify" }, { value: "i9", label: "I-9" }] as const;
 export const MOCK_ONBASE_TYPES = ["Benefits", "Taxes", "Awards and Honors", "Certifications and Licenses", "Disciplinary", "Education", "Emergency Contact", "Employee Relations", "General Correspondence", "Hiring", "Job Description", "Labor Relations", "Leaves", "Miscellaneous", "Performance Evaluations", "Personnel Document", "Salary", "Separation", "Service Credit", "Staff Volunteers", "Telecommuting", "Timekeeping", "Training", "Work Schedule"];
 export function mockWorkflow(id: string): MockWorkflow {

@@ -1,3 +1,4 @@
+import type { WorkflowCatalogEntry } from "../surfaces/workflow-catalog-model.js";
 import type { ComponentProps,ReactNode } from "react";
 import {
 type FrontendBootstrapWire
@@ -23,11 +24,11 @@ activeTakeover,
 routeWithoutTakeovers,
 type AppRouteState
 } from "./url-state.js";
-export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,activeWorkflowId,
+export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSections,workflowLabels,workflowCatalog,activeWorkflowId,
  workflowLabelOf,supportsDryRun,closeTakeoverTo,onSettingsExitGuardChange,theme,onToggleTheme,archiveReports,children}: {
  takeover: ReturnType<typeof activeTakeover>; route: AppRouteState; setRoute: (next: AppRouteState, mode?: "push" | "replace") => void;
  boot: FrontendBootstrapWire; settingsSections: ComponentProps<typeof SettingsPage>["sections"];
- workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
+ workflowCatalog: readonly WorkflowCatalogEntry[]; workflowLabels: ReadonlyMap<string,string>; activeWorkflowId: string; workflowLabelOf: (id: string) => string;
  supportsDryRun: boolean;
  archiveReports?: readonly MockArchiveRun[];
  closeTakeoverTo: (target: DashboardTakeoverCloseFocusTargetId,next: AppRouteState) => void;
@@ -36,6 +37,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
  const dataSection = takeover === "settings" ? route.settings
    : takeover === "explore" ? "explorer" : takeover === "archive" || takeover === "activity" ? takeover : undefined;
  const dataContent = dataSection === "archive" ? <ArchiveWorkspace
+   catalog={workflowCatalog}
    additionalReports={archiveReports}
    selection={route.archive ?? ARCHIVE_INDEX} view={route.archiveView ?? "runs"}
    folder={route.archiveDashboard === undefined || route.archiveWorkflow === undefined
@@ -47,7 +49,7 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
    onFolder={folder => setRoute({ ...route, settings: "archive", archive: ARCHIVE_INDEX,
      archiveDashboard: folder?.dashboardKey, archiveWorkflow: folder?.workflow, archiveBrowse: { filters: {} } })}
  /> : dataSection === "activity" ? <ActivityReport range={route.activity ?? ""} onRange={next => setRoute({ ...route, settings: "activity", activity: next })} />
- : dataSection === "explorer" ? <WorkflowExplorer /> : undefined;
+ : dataSection === "explorer" ? <WorkflowExplorer catalog={workflowCatalog} /> : undefined;
  return (takeover === "settings" || dataContent !== undefined ? (
             <SettingsPage
               storage={boot.storage} appearance={<AppearanceSettings theme={theme} onToggleTheme={onToggleTheme} />}

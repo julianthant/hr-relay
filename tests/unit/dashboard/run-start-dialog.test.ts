@@ -1,3 +1,4 @@
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
 // @vitest-environment jsdom
 /**
  * THE RUN MODAL, PRESSED — the half of D272 items 8 and 9 that no fold can hold.
@@ -308,7 +309,7 @@ async function openDialog(
     children: createElement(RunStartDialog, {
       open: true,
       onOpenChange: next => closed.push(next),
-      workflows: catalogue.workflows,
+      catalog: buildWorkflowCatalog(catalogue.workflows, false),
       panelWorkflowId: catalogue.panelWorkflowId,
       actorId: ACTOR_ID,
       onApplied,

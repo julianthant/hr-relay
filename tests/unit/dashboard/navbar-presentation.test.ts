@@ -1,3 +1,4 @@
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -11,7 +12,7 @@ const noop = () => {};
 describe("canonical workspace rail", () => {
   it("renders all retained controls without a client provider or preflight", () => {
     const html = renderToStaticMarkup(createElement(WorkspaceRail, {
-      settingsOpen: false, workflows: [], active: "", preview: null, onSelect: noop, onPreview: noop,
+      settingsOpen: false, workflows: buildWorkflowCatalog([]), active: "", preview: null, onSelect: noop, onPreview: noop,
       notifications: notificationsSample("normal"), onOpenNotification: noop,
     }));
     for (const label of ["HR GPT", "Search runs", "Notifications, 3 unread"]) assert.ok(html.includes(label), label);

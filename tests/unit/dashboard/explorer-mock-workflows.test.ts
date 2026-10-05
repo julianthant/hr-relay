@@ -1,3 +1,4 @@
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import assert from "node:assert/strict";
 import { act, createElement } from "react";
@@ -24,7 +25,7 @@ async function render(): Promise<void> {
   const host = document.createElement("div");
   document.body.append(host);
   root = createRoot(host);
-  await act(async () => root?.render(createElement(WorkflowExplorer)));
+  await act(async () => root?.render(createElement(WorkflowExplorer, { catalog: buildWorkflowCatalog([]) })));
 }
 function button(name: string): HTMLButtonElement {
   const found = [...document.querySelectorAll("button")].find((node) => node.getAttribute("aria-label") === name || node.textContent?.trim() === name);
@@ -92,7 +93,7 @@ describe("frontend-only Explorer mock workflows", () => {
     const workflowSelect = document.querySelector('[aria-label="Explorer workflow"]');
     assert.ok(workflowSelect instanceof HTMLButtonElement);
     await act(async () => workflowSelect.click());
-    assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), ["Separations", "Onboarding", "Emergency Contact", "Person Lookup", "I-9 Lookup", "Work-Study", "Kronos Pay Rule", "OCR", "Oath Signature", "Oath Upload", "OnBase", "I-9 Check", "CRM Doc Download", "SharePoint Download", "Old Kronos Reports"]);
+    assert.deepEqual([...document.querySelectorAll('[role="option"]')].map(option => option.textContent), buildWorkflowCatalog([]).map(entry => entry.label));
     await act(async () => document.querySelector<HTMLElement>('[role="option"][data-value="fixture-separations"]')?.click());
     assert.equal(document.querySelector('aside[aria-label="Workflow browser"]'), null);
     for (const name of ["Expand all", "Collapse all", "Version registry", "Show action legend"]) {

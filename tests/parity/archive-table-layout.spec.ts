@@ -56,7 +56,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         if (index > 0) expect(box!.x).toBeGreaterThanOrEqual(boxes[index - 1]!.x + boxes[index - 1]!.width + 8);
       }
       await info.attach(`archive-index-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
-      await chooseSelect(rootControls[1], "archive-demo-separation");
+      await chooseSelect(rootControls[1], "separations");
       await chooseSelect(rootControls[2], "done");
       await expect(archive.getByRole("region", { name: "Dashboard 1.3", exact: true }).getByRole("button", { name: /^Separations/u }).locator(".mock-archive-folder-count")).toHaveText("2 runs");
       await expect(archive.getByRole("button", { name: /^Onboarding/u })).toHaveCount(0);
@@ -65,7 +65,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(page).toHaveURL(/Jordan/u);
       await page.reload();
       await expect(rootControls[0]).toHaveValue("Jordan");
-      await expect(rootControls[1]).toHaveAttribute("data-value", "archive-demo-separation");
+      await expect(rootControls[1]).toHaveAttribute("data-value", "separations");
       await expect(rootControls[2]).toHaveAttribute("data-value", "done");
       await archive.getByRole("button", { name: "Reset filters", exact: true }).click();
       await archive.getByRole("region", { name: "Dashboard 1.3", exact: true }).getByRole("button", { name: /^Separations/u }).click();

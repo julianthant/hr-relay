@@ -7443,11 +7443,12 @@ sit immediately beside search, with completed-date filters at the right. Activit
 left and both calendars at the right, without visible endpoint prefixes; accessible Start/End labels,
 preset synchronization and manual-edit Custom selection remain.
 The Run picker amendment reuses the permanent rail's category icons, heading order, text indent,
-row height and selection surface. Its shared searchable catalog includes only runnable entries.
-Served direct launch remains the descriptor's declared typed-input capability; local previews carry
+row height and selection surface. Its shared searchable catalog includes every registered entry.
+Unavailable direct launches remain visible with a reason and a disabled control. Served direct launch remains the descriptor's declared typed-input capability; local previews carry
 an explicit `runnable` flag. I-9 Lookup is delegation-only in the pinned legacy kernel. OCR is excluded
 from direct launch by the current operator choice, although the pinned legacy upload registry offered
-standalone preparation. Both remain in the workflow panel and Explorer for their delegated records.
+standalone preparation. Both have a Parent only label in Run and remain available in the workflow panel
+and Explorer for their delegated records.
 Work-Study and Old Kronos retain the already admitted schema-backed previews. Picker choices stay
 inside the launcher, without updating dashboard selection or recreating the modal or navigation.
 Search text and scroll survive a change; selecting the current entry preserves its draft. A different
@@ -7455,6 +7456,20 @@ workflow resets only that workflow's form. Local preview controls render within 
 navigation and omission folds avoid unrelated work. Choosing a served entry always returns to the
 served planner and command door. Preview submission closes the same launcher and updates only the
 local queue. Rerun source binding, request invalidation, recovery and focus return remain authoritative.
+
+The 2026-10-05 workflow catalog amendment composes one frontend catalog at the app boundary from
+served launch declarations and the complete local preview registry. The workflow panel, Run/Rerun,
+Add workers, Explorer, Archive workflow filter and workflow-label lookups consume this same catalog.
+Served registrations replace preview launch authority by ID; their exact start declarations and
+refusals remain authoritative. New served IDs enter every selector without another local list.
+Duplicate registrations fail explicitly. Membership and action availability are separate: OCR and
+I-9 Lookup remain visible but disabled for direct launch. Source-bound Rerun cannot change its source
+workflow. Add workers remains a local presentation producer and supports every registered workflow,
+using that registration's label and system requirements without claiming a run or inventing a UCPath
+browser. Archive retains additional historical workflow identities for saved reports. Explorer lists
+new registrations without a copied graph as unavailable previews. Preview IDs never enter served
+start-plan or worker-command transport. Future backend wiring replaces the boundary producer rather
+than individual selector inventories. Focused evidence is `workflow-catalog-20261005`.
 
 The 2026-10-05 mock launch layout amendment shares Options, step-list and confirmation components
 with the served Person Lookup and Separations forms. Options places Customize steps, supported Dry run

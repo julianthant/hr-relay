@@ -1,4 +1,5 @@
-import { MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "../workflow-mock-catalog.js";
+import type { WorkflowCatalogEntry } from "../workflow-catalog-model.js";
+import { mockWorkflow, type MockWorkflowId } from "../workflow-mock-catalog.js";
 import { initialMockDraft, type MockRun } from "../workflow-mock-model.js";
 import { mockFieldValue, mockStepNode } from "../workflow-result-model.js";
 import { mockOperations, mockOperationValue } from "../workflow-operation-model.js";
@@ -114,7 +115,7 @@ export function workflowContractSource(id: MockWorkflowId, values: WorkflowChoic
     ...(readIndex >= 0 ? { reads: [{ system: systems[nodes[readIndex].system ?? row.system] ?? "Local", page: nodes[readIndex].id, field: row.field, step: readIndex + 2, fieldId: `contract-${readIndex}-${nodes[readIndex].contract.findIndex(candidate => candidate.dir === "read" && candidate.field === row.field)}` }] } : {}),
     ...(row.proof ? { chain: [{ step, title: "Verify the result", detail: row.proof }] } : {}) };
 }
-export const COMPLETE_EXPLORER_WORKFLOWS = ["fixture-separations", "fixture-onboarding", "fixture-emergency-contact", ...MOCK_WORKFLOWS.map(item => `fixture-${item.id}`).filter(id => !["fixture-separations", "fixture-onboarding", "fixture-emergency-contact"].includes(id))].map(fixtureId => {
-  const id = fixtureId.replace(/^fixture-/u, "");
-  return { id: fixtureId, title: mockWorkflow(id).label, count: workflowPreviewGraph(id).nodes.length };
-});
+export function explorerWorkflowOptions(catalog: readonly WorkflowCatalogEntry[]) {
+  return catalog.map(entry => ({ id: `fixture-${entry.id}`, title: entry.label,
+    count: entry.preview ? workflowPreviewGraph(entry.preview.id).nodes.length : 0, disabled: entry.preview === undefined }));
+}

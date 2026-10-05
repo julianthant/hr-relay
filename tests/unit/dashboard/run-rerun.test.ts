@@ -1,3 +1,4 @@
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
 // @vitest-environment jsdom
 import { requireLifecycleApplied } from "../../../src/core/run-record-service.js";
 import assert from "node:assert/strict";
@@ -52,7 +53,7 @@ async function mount(h: Harness, source: RunRecord, client: DashboardClient = h.
   const workflows = [h.workflow]; const sourceRef = { runId: source.envelope.runId, expectedVersion: source.version };
   function Launcher() { const controller = useRunLaunch(false, "launch-main"); return createElement("main", { id: "launch-main", tabIndex: -1 },
     createElement("button", { onClick: () => controller.openRerun(sourceRef) }, "Rerun source"),
-    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, workflows, panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
+    createElement(ToastProvider, { children: createElement(RunLaunchHost, { controller, catalog: buildWorkflowCatalog(workflows, false), panelWorkflowId: h.descriptor.id, actorId: "local-operator", onOpenIntake: () => { throw new Error("unexpected intake"); } }) })); }
   const host = document.createElement("div"); document.body.append(host); root = createRoot(host);
   await act(async () => root?.render(createElement(DashboardClientProvider, { client, children: createElement(Launcher) })));
   button("Rerun source").focus(); await press("Rerun source");

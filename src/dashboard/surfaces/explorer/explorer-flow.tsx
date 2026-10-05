@@ -8,7 +8,7 @@ import { ExplorerSource } from "./explorer-source.js";
 type ExplorerTimelineProps = {
   title: string; steps: readonly FlowStep[]; scenario: PreviewScenario; onScenario: (scenario: PreviewScenario) => void;
   sourceFor: (field: FlowField, step: number) => FieldSource | undefined;
-  workflows: readonly { readonly id: string; readonly title: string; readonly count: number }[];
+  workflows: readonly { readonly id: string; readonly title: string; readonly count: number; readonly disabled?: boolean }[];
   workflowId: string; onWorkflow: (id: string) => void;
   summary: string; completion: string; path: { readonly step: number; readonly control: string }; stopAfter?: number;
   onMockChoice: (id: string, value: string) => void;
@@ -20,7 +20,7 @@ export function ExplorerTimeline(props: ExplorerTimelineProps) {
     <PageHeading title="Explorer" description="Browse workflows, their steps and field sources. Fictional preview data." className="settings-heading-actions" actions={
       <Select aria-label="Explorer workflow" className="settings-heading-select" value={workflowId} onChange={event => {
         if (event.target.value !== workflowId) onWorkflow(event.target.value);
-      }}>{workflows.map(workflow => <option key={workflow.id} value={workflow.id}>{workflow.title}</option>)}</Select>
+      }}>{workflows.map(workflow => <option key={workflow.id} value={workflow.id} disabled={workflow.disabled} title={workflow.disabled ? "Workflow preview unavailable" : undefined}>{workflow.title}</option>)}</Select>
     } />
     <ExplorerWorkflowTimeline key={workflowId} {...props} />
   </section>;

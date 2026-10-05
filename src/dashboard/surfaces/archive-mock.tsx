@@ -1,3 +1,4 @@
+import type { WorkflowCatalogEntry } from "./workflow-catalog-model.js";
 import { ChevronRight, Download, FileText, Folder, Layers3 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
@@ -10,8 +11,8 @@ import { MOCK_ARCHIVE_RUNS, mockArchiveWorkflows, mockArchiveDate, mockArchiveDa
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../ds/breadcrumb.js';
 import './archive-mock.css';
 
-export function MockArchiveWorkspace({ selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder, additionalReports }: {
- selection: string; view: 'runs' | 'versions'; folder: MockArchiveFolder | null;
+export function MockArchiveWorkspace({ catalog, selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder, additionalReports }: {
+ catalog: readonly WorkflowCatalogEntry[]; selection: string; view: 'runs' | 'versions'; folder: MockArchiveFolder | null;
  browse?: ArchiveBrowseState; browseInvalid?: boolean;
  additionalReports?: readonly MockArchiveRun[];
  onBrowse: (browse: ArchiveBrowseState, mode?: 'push' | 'replace') => void;
@@ -23,7 +24,7 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
  const [exportOpen, setExportOpen] = useState(false);
  const browsing = browse ?? EMPTY_ARCHIVE_BROWSE;
  const reports = useMemo(() => [...MOCK_ARCHIVE_RUNS, ...additionalReports ?? []], [additionalReports]);
- const workflows = useMemo(() => mockArchiveWorkflows(reports), [reports]);
+ const workflows = useMemo(() => [...catalog.map(entry => ({ id: entry.id, label: entry.label })), ...mockArchiveWorkflows(reports).filter(entry => !catalog.some(current => current.id === entry.id))], [catalog, reports]);
  const scope = mockArchiveScope(folder, reports);
  const report = selection === '' ? undefined : reports.find(row => row.id === selection &&
   (folder === null || row.dashboard === folder.dashboardKey && row.workflow === folder.workflow));

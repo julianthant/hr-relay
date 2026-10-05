@@ -1,3 +1,5 @@
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
+const catalog = buildWorkflowCatalog([]);
 import assert from "node:assert/strict";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -101,18 +103,18 @@ describe("frontend timeline and sessions", () => {
   });
   it("adds the selected local count without mutating fixtures or accepting invalid input", () => {
     const empty = sessionsSample("empty");
-    const added = previewSessionAdd(empty, "separations", 2, 1);
+    const added = previewSessionAdd(empty, catalog, "separations", 2, 1);
     if (empty.state !== "ready" || added.state !== "ready") throw new Error("ready sample required");
     assert.equal(empty.workers.length, 0);
     assert.deepEqual(added.workers.map(worker => [worker.id, worker.workflow, worker.state]), [["sample-added-1", "Separations", "starting"], ["sample-added-2", "Separations", "starting"]]);
-    const many = previewSessionAdd(empty, "person-lookup", 12, 3);
+    const many = previewSessionAdd(empty, catalog, "person-lookup", 12, 3);
     if (many.state !== "ready") throw new Error("ready result required");
     assert.equal(many.workers.length, 12);
     assert.equal(new Set(many.workers.map(worker => worker.id)).size, 12);
-    assert.ok(many.workers.every(worker => worker.workflow === "Person lookup"));
+    assert.ok(many.workers.every(worker => worker.workflow === "Person Lookup"));
     assert.equal(empty.workers.length, 0);
-    for (const count of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => previewSessionAdd(empty, "separations", count, 1), /sessions-preview-add-invalid/);
-    assert.throws(() => previewSessionAdd(empty, "missing", 1, 1), /sessions-preview-add-invalid/);
+    for (const count of [0, -1, 1.5, NaN, Infinity, Number.MAX_SAFE_INTEGER + 1]) assert.throws(() => previewSessionAdd(empty, catalog, "separations", count, 1), /sessions-preview-add-invalid/);
+    assert.throws(() => previewSessionAdd(empty, catalog, "missing", 1, 1), /sessions-preview-add-invalid/);
   });
   it("distinguishes unknown state from empty workers and rejects false progress", () => {
     const active = sessionsSample("active");
@@ -128,7 +130,7 @@ describe("frontend timeline and sessions", () => {
     assert.deepEqual(sessionTimelineSummary([{ ...node, state: "pending" }]), { completed: 0, total: 1 });
   });
   it("renders the canonical Sessions host without any dashboard client provider", () => {
-    const markup = renderToStaticMarkup(createElement(SessionPanel, { open: true, onOpenChange: () => {} }));
+    const markup = renderToStaticMarkup(createElement(SessionPanel, { catalog, open: true, onOpenChange: () => {} }));
     assert.equal((markup.match(/<article /gu) ?? []).length, 4);
     assert.doesNotMatch(markup, /Sample data|Add to preview/);
     assert.match(markup, /Ready for the next run/);

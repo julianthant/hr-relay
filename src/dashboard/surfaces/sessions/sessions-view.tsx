@@ -45,7 +45,9 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
   const [workflow, setWorkflow] = useState(workflows[0]?.id ?? "");
   const [count, setCount] = useState("1");
   const validCount = Number.isSafeInteger(Number(count)) && Number(count) >= 1;
-  const validWorkflow = workflows.some(item => item.id === workflow);
+  const selectedWorkflow = workflows.find(item => item.id === workflow) ?? workflows[0];
+  const selectedWorkflowId = selectedWorkflow?.id ?? "";
+  const validWorkflow = selectedWorkflow !== undefined;
   return <section aria-label="Session Panel" className="ui-theme-scope shrink-0 border-t border-ui-stroke bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-table)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]">
     <ActionBarRow label="Session actions" className="relative h-11 gap-3 px-3">
       <button ref={toggleRef} type="button" aria-expanded={open} aria-controls={contentId} onClick={() => onOpenChange(!open)} className="session-panel-toggle absolute inset-y-0 left-0 right-[104px] cursor-pointer focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ui-info"><span className="sr-only">Sessions</span></button>
@@ -54,16 +56,16 @@ export function SessionsView({ data, open, onOpenChange, onControl, onAdd, workf
       <span className="relative z-10 ml-auto flex shrink-0 items-center gap-2">
         <Dialog open={addOpen} onOpenChange={setAddOpen}>
           <DialogTrigger asChild><Button size="sm" variant="ghost" className="size-8 p-0" aria-label="Add workers" disabled={data.state !== "ready" || !workflows.length} icon={<Plus aria-hidden className="size-4" />} /></DialogTrigger>
-          <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
+          <DialogContent title="Add workers" description="Select a workflow and worker count." className="ui-theme-scope max-w-[20rem] overflow-visible bg-ui-panel font-ui text-ui-primary [--ds-control-bg:var(--ui-field)] [--ds-control-bg-hover:var(--ui-hover)] [--ds-control-fg:var(--ui-primary)] [--ds-border-strong:var(--ui-stroke-control)] [--ds-focus-ring:var(--ui-info)]" size="sm">
             <DialogBody><div className="grid gap-3">
-              <Field label="Workflow"><Select value={workflow} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
+              <Field label="Workflow"><Select value={selectedWorkflowId} onChange={event => setWorkflow(event.target.value)}>{workflows.map(item => <option key={item.id} value={item.id}>{item.label}</option>)}</Select></Field>
               <Field label="Workers"><div className="flex items-center gap-2">
                 <Button variant="secondary" aria-label="Remove one worker" icon={<Minus aria-hidden className="size-3.5" />} disabled={!validCount || Number(count) <= 1} onClick={() => setCount(String(Number(count) - 1))} />
                 <Input aria-label="Workers" className="min-w-0 flex-1 text-center tabular-nums" type="number" min={1} step={1} value={count} onChange={event => setCount(event.target.value)} />
                 <Button variant="secondary" aria-label="Add one worker" icon={<Plus aria-hidden className="size-3.5" />} disabled={!validCount} onClick={() => setCount(String(Number(count) + 1))} />
               </div></Field>
             </div></DialogBody>
-            <DialogFooter><Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button><Button disabled={!validCount || !validWorkflow || data.state !== "ready"} onClick={() => { onAdd(workflow, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
+            <DialogFooter><Button variant="secondary" onClick={() => setAddOpen(false)}>Cancel</Button><Button disabled={!validCount || !validWorkflow || data.state !== "ready"} onClick={() => { onAdd(selectedWorkflowId, Number(count)); setAddOpen(false); onOpenChange(true); }}>Add workers</Button></DialogFooter>
           </DialogContent>
         </Dialog>
         {onSettings && <Button id={SETTINGS_GEAR_ID} size="sm" variant="ghost" className="size-8 p-0" aria-label="Settings" aria-pressed={settingsOpen} onClick={onSettings} icon={<Settings aria-hidden className="size-4" />} />}
