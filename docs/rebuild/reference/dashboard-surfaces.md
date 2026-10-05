@@ -7381,18 +7381,32 @@ without placing their IDs in a start-plan request. Local preview transport remai
 Typed inputs, PDF preparation, form types, roster selection, dry-run terminals and kernel step order
 follow the copied sources. I-9 Lookup remains delegated; SharePoint offers the configured Onboarding
 Roster; OnBase combines PDFs and admits only Emergency Contact. Full Oath Upload waits for review
-and independent Oath Signature runs before its ServiceNow ticket; upload-only skips both. Standalone
-OCR exposes inspection without downstream approval. I-9 Check uses configured Action History and
+and independent Oath Signature runs before its ServiceNow ticket; upload-only skips both. The OCR
+panel exposes inspection without downstream approval. I-9 Check uses configured Action History and
 appends again on rerun. Local PDF duplicate checks compare content hashes. Source histories remain
 unchanged when a rerun is added. Work-Study and Old Kronos Reports use their kernel input schemas;
 the old dashboard had no public typed Run registration for either. Labels use Employee IDs and
 Kuali ID, and the workflow rail omits the trailing composition summary. The source digest inventory
 and focused verification are retained in `workflow-mocks-20261004` under the evidence root.
+The Run picker amendment reuses the permanent rail's category icons, heading order, text indent,
+row height and selection surface. Its shared searchable catalog includes only runnable entries.
+Served direct launch remains the descriptor's declared typed-input capability; local previews carry
+an explicit `runnable` flag. I-9 Lookup is delegation-only in the pinned legacy kernel. OCR is excluded
+from direct launch by the current operator choice, although the pinned legacy upload registry offered
+standalone preparation. Both remain in the workflow panel and Explorer for their delegated records.
+Work-Study and Old Kronos retain the already admitted schema-backed previews. Picker choices stay
+inside the launcher, without updating dashboard selection or recreating the modal or navigation.
+Search text and scroll survive a change; selecting the current entry preserves its draft. A different
+workflow resets only that workflow's form. Local preview controls render within that form; memoized
+navigation and omission folds avoid unrelated work. Choosing a served entry always returns to the
+served planner and command door. Preview submission closes the same launcher and updates only the
+local queue. Rerun source binding, request invalidation, recovery and focus return remain authoritative.
+
 The workflow-component amendment extends these local producers with contract-specific read/fill
 results, PDF record review, manual identity provenance, selected-person fan-out, discard and linked
 run navigation. Preparation rows own review and rollup; person rows own their kernel steps. Full
 Oath Upload links to separate Oath Signature rows; I-9 Check creates person rows automatically.
-Standalone OCR permits corrections to extracted fields without downstream approval. Completed I-9
+OCR permits corrections to extracted fields without downstream approval. Completed I-9
 retention results, approved preparations and person outcomes remain read only. CRM and I-9
 verification values cannot be edited. Source transcriptions and all identities are fictional;
 uploading a PDF does not invoke OCR or contact an external system in these previews.

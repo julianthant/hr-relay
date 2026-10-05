@@ -638,7 +638,7 @@ describe("D293 keeps D285 and removes only per-start destination", () => {
     assert.equal(document.querySelectorAll('input[type="radio"][name^="Browser mode-"]').length, 2);
     assert.ok(dialog.text().includes("Active policy"));
     assert.ok(dialog.text().includes("Fixed by the selected workflow."));
-    const selectedWorkflow = document.body.querySelector('button[aria-current="true"]');
+    const selectedWorkflow = document.body.querySelector('nav[aria-label="Workflow"] button[aria-current="page"]');
     const workflow = WORKFLOWS.find((candidate) => candidate.workflowId === WORKFLOW_ID);
     assert.ok(workflow !== undefined);
     assert.ok(selectedWorkflow?.textContent?.includes(workflow.label), "the desktop picker must identify the selected workflow");

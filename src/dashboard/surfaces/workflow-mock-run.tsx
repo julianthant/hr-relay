@@ -1,19 +1,17 @@
 import { useState } from "react";
 import { Check, ArrowRight } from "lucide-react";
-import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, Dialog, DialogBody, DialogContent, DialogFooter, Field, Input, KeyValueList, SearchInput, SectionLabel, SegmentedChoice, Textarea, dsFocus } from "../ds/ui.js";
-import { cn } from "../lib/utils.js";
-import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, MOCK_WORKFLOWS, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
+import { BareButton, Banner, Button, Checkbox, ChoicePicker, DateInput, DialogBody, DialogFooter, Field, Input, KeyValueList, SectionLabel, SegmentedChoice, Textarea } from "../ds/ui.js";
+import { MOCK_FORM_TYPES, MOCK_ONBASE_TYPES, mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockOathDuplicate, mockPipeline, mockRunStatus, mockStepState, type MockDraft, type MockFile, type MockRun } from "./workflow-mock-model.js";
 import "./launch-presentation.css";
 
-export function WorkflowMockRunDialog({ workflowId, source, runs, onClose, onPick, onSubmit }: {
-  workflowId: MockWorkflowId; source?: MockRun; runs: readonly MockRun[]; onClose: () => void; onPick: (id: MockWorkflowId) => void;
+export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmit }: {
+  workflowId: MockWorkflowId; source?: MockRun; runs: readonly MockRun[]; onClose: () => void;
   onSubmit: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   const flow = mockWorkflow(workflowId);
   const [draft, setDraft] = useState<MockDraft>(() => source ? structuredClone(source.draft) : initialMockDraft(workflowId));
   const [stage, setStage] = useState(source ? "Steps" : "Input");
-  const [query, setQuery] = useState("");
   const [fileError, setFileError] = useState<string>();
   const [reading, setReading] = useState(false);
   const [optionalSteps, setOptionalSteps] = useState(false);
@@ -39,16 +37,10 @@ export function WorkflowMockRunDialog({ workflowId, source, runs, onClose, onPic
     } catch (failure) { patch({ files: [] }); setFileError(failure instanceof Error ? failure.message : "Could not read PDFs."); }
     finally { setReading(false); }
   };
-  return <Dialog open onOpenChange={open => { if (!open) onClose(); }}><DialogContent title={source ? "Rerun" : "Start a run"} description={`${flow.label} · Workflow preview`} className="launch-design launch-dialog" size="xl">
-    <div className="flex min-h-0 flex-1">
+  return <>
       {source ? <aside aria-label="Source run" className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
         <SectionLabel>Source</SectionLabel><p className="mt-3 text-body font-semibold">{flow.label}</p><p className="mt-1 break-words text-caption text-ui-secondary">{source.subject}</p><p className="mt-3 text-caption text-ui-muted">{mockRunStatus(source)}</p><p className="mt-auto text-caption text-ui-muted">Creates a new run with its own history.</p>
-      </aside> : <aside className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke">
-        <div className="px-3 pt-[18px] pb-[15px]"><SearchInput aria-label="Filter workflows" placeholder="Find workflow…" value={query} onClear={() => setQuery("")} onChange={event => setQuery(event.target.value)} /></div>
-        <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto px-3"><SectionLabel className="mb-[15px] block">Workflows</SectionLabel><ul className="m-0 flex list-none flex-col p-0">
-          {MOCK_WORKFLOWS.filter(candidate => candidate.label.toLowerCase().includes(query.toLowerCase())).map(candidate => <li key={candidate.id}><BareButton aria-current={candidate.id === workflowId ? "true" : undefined} className={cn("flex w-full items-center rounded-md text-left text-ui-secondary", dsFocus, candidate.id === workflowId && "bg-ui-hover text-ui-primary")} onClick={() => onPick(candidate.id)}>{candidate.label}</BareButton></li>)}
-        </ul></nav>
-      </aside>}
+      </aside> : null}
       <div className="flex min-h-0 min-w-0 flex-1 flex-col"><ol aria-label="Run configuration path" className="launch-stagebar m-0 list-none">
         {stages.map((name, position) => <li key={name} aria-current={name === stage ? "step" : undefined}><BareButton onClick={() => setStage(name)} disabled={position > index}>
           <span className="launch-stage-marker" data-current={name === stage || undefined} data-completed={position < index || undefined}>{position < index ? <Check className="size-3" aria-hidden /> : position + 1}</span>{name}</BareButton></li>)}
@@ -96,8 +88,8 @@ export function WorkflowMockRunDialog({ workflowId, source, runs, onClose, onPic
           {error && <p role="alert" className="text-caption text-ui-danger">{error}</p>}
         </section>}
       </DialogBody></div>
-    </div><DialogFooter><span className="mr-auto text-caption text-ui-muted">{flow.label}</span>{index > 0 && <Button variant="ghost" onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="secondary" onClick={onClose}>Cancel</Button>
+    <DialogFooter><span className="mr-auto text-caption text-ui-muted">{flow.label}</span>{index > 0 && <Button variant="ghost" onClick={() => setStage(stages[index - 1])}>Back</Button>}<Button variant="secondary" onClick={onClose}>Cancel</Button>
       <Button variant="primary" disabled={Boolean(error) || reading || (stage === "Steps" && flow.steps.length > 0 && draft.selectedSteps.length === 0)} onClick={() => stage === "Confirm" ? onSubmit(workflowId, draft, source?.id) : setStage(stages[index + 1])}>{stage === "Confirm" ? source ? "Create rerun" : "Start preview" : "Continue"}{stage !== "Confirm" && <ArrowRight className="size-3" aria-hidden />}</Button>
     </DialogFooter>
-  </DialogContent></Dialog>;
+  </>;
 }

@@ -134,11 +134,6 @@
 .launch-dialog > header > button { @apply size-[30px]; }
 .launch-dialog > footer { @apply h-[57px] bg-ui-table; }
 .launch-dialog > footer button { @apply h-8 px-3 text-body font-medium; }
-.launch-dialog .launch-workflow-rail button[aria-current] { @apply font-semibold; }
-.launch-dialog .launch-workflow-rail nav button { @apply h-9 gap-[6px] p-[9px]; }
-.launch-dialog .launch-workflow-rail nav ul { @apply gap-1; }
-.launch-dialog .launch-workflow-rail nav { @apply py-0; }
-.launch-dialog .launch-workflow-rail nav > span { @apply text-[10px] leading-[18px] font-[650]; }
 .launch-dialog .launch-workflow-rail [data-slot="search-field-group"] { @apply h-8 min-h-8 gap-[6px] border border-ui-stroke bg-ui-panel px-[7px] py-0; }
 .launch-dialog .launch-workflow-rail [data-slot="search-field-input"] { @apply h-[30px] min-h-0 text-caption; }
 .launch-dialog .launch-workflow-rail [data-slot="search-field-search-icon"] { @apply size-[14px]; }
@@ -197,3 +192,14 @@
 .command-confirm-target { @apply mx-6 my-5 flex min-w-0 flex-col gap-1 rounded-lg border border-ui-stroke bg-ui-table p-3; }
 .command-confirm-reference { @apply mt-2 break-all border-t border-ui-stroke pt-2; }
 .command-confirm-dialog > footer { @apply border-ui-stroke bg-ui-panel px-6 py-4; }
+
+.launch-dialog .launch-picker-search { @apply shrink-0 px-4 pb-3 pt-3; }
+.launch-dialog .launch-picker .workflow-rail { @apply p-2 pt-0; }
+.launch-dialog .launch-picker .workflow-rail-groups { @apply gap-4 pb-2; }
+.launch-dialog .launch-picker .workflow-rail h3 { @apply text-body; }
+.launch-dialog .launch-picker .workflow-rail button { @apply h-8 rounded-[10px] font-normal; }
+
+.launch-dialog { display: grid; grid-template-columns: 190px minmax(0, 1fr); grid-template-rows: 73px minmax(0, 1fr) 57px; }
+.launch-dialog > header, .launch-dialog > footer { grid-column: 1 / -1; }
+
+.launch-dialog .launch-picker { background: var(--ds-surface-1); }

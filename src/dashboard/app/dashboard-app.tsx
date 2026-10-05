@@ -60,7 +60,6 @@ import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
 import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
 import { approveMockRun, mockQueueCounts, mockQueueView, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
-import { WorkflowMockRunDialog } from "../surfaces/workflow-mock-run.js";
 import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
@@ -297,7 +296,7 @@ function LoadedApp({
   const [railRun, setRailRun] = useState<string>();
   const servedOpenStart = launch.openStart;
   const openStart = useCallback(() => {
-    if (railPreview) setMockLaunch({ workflowId: mockWorkflow(railPreview).id });
+    if (railPreview && mockWorkflow(railPreview).runnable) setMockLaunch({ workflowId: mockWorkflow(railPreview).id });
     else servedOpenStart();
   }, [railPreview, servedOpenStart]);
   const openRerun = launch.openRerun;
@@ -983,11 +982,14 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
   const railRows = useMemo(() => mockRuns.filter(run => run.workflowId === railPreview), [mockRuns, railPreview]);
   const railQueueRows = useMemo(() => mockQueueView(railRows, filter, sort), [railRows, filter, sort]);
   const railRow = railRows.find(run => run.id === railRun);
-  const submitMock = (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
+  const setLaunchOpen = launch.setOpen;
+  const closeMockLaunch = useCallback(() => setMockLaunch(null), []);
+  const submitMock = useCallback((id: MockWorkflowId, draft: MockDraft, sourceId?: string) => {
     const created = mockRunsForDraft(id, draft, mockRuns.length, sourceId);
     setMockRuns(previous => [...created, ...previous]);
     setRailPreview(id); setRailRun(created[0]?.id); setMockLaunch(null);
-  };
+    setLaunchOpen(false);
+  }, [mockRuns.length, setLaunchOpen]);
   const onRailSelect = useCallback((id: string) => { setRailPreview(null); selectWorkflow(id); }, [selectWorkflow]);
   const onRailPreview = useCallback((id: string) => { setRailPreview(id); setRailRun(`mock:${id}:sample`); }, []);
 
@@ -1189,12 +1191,13 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
           <DialogFooter><Button variant="secondary" onClick={() => setPendingDelete(null)}>Keep run</Button><Button variant="danger" onClick={() => { if (pendingDelete) applyPreviewAction("delete", pendingDelete); setPendingDelete(null); }}>Delete run</Button></DialogFooter>
         </DialogContent>
       </Dialog>
-      {mockLaunch && <WorkflowMockRunDialog key={`${mockLaunch.workflowId}:${mockLaunch.source?.id ?? "start"}`} workflowId={mockLaunch.workflowId} source={mockLaunch.source} runs={mockRuns}
-        onClose={() => setMockLaunch(null)} onPick={workflowId => setMockLaunch({ workflowId })} onSubmit={submitMock} />}
       <RunLaunchHost
         controller={launch}
         workflows={startWorkflows}
-        onPickPreview={workflowId => { launch.setOpen(false); setMockLaunch({ workflowId: mockWorkflow(workflowId).id }); }}
+        previewLaunch={mockLaunch ?? undefined}
+        previewRuns={mockRuns}
+        onSubmitPreview={submitMock}
+        onPreviewClose={closeMockLaunch}
         panelWorkflowId={activeWorkflowId}
         actorId={boot.actor.id}
         onApplied={(workflowId) => {

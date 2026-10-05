@@ -1,5 +1,8 @@
 import "./launch-presentation.css";
-import { MOCK_WORKFLOWS } from "./workflow-mock-catalog.js";
+import { mockWorkflow, type MockWorkflowId } from "./workflow-mock-catalog.js";
+import { WorkflowMockRunForm } from "./workflow-mock-run.js";
+import type { MockDraft, MockRun } from "./workflow-mock-model.js";
+import { RunWorkflowPicker } from "./run-start-picker.js";
 import type { RerunValuesSnapshot } from "../../domain/dashboard/rerun-values.js";
 import type { RerunWarningWire } from "../../domain/dashboard/rerun-warning.js";
 import { canonicalJsonStringify, JsonValueSchema } from "../../domain/canonical-json.js";
@@ -7,7 +10,7 @@ import { candidateText, defaultRerunSteps, initialRerunValueDrafts, rerunSubmiss
 import { readLaunchRecovery, retainLaunchFinal, dismissLaunchRecovery, type LaunchFinalCommand } from "../app/run-launch-recovery.js";
 import { createRunLaunchService, type RerunLaunchSource } from "../app/run-launch-model.js";
 /** Descriptor-driven launch UI; server planning and durable command recovery own admission. */
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { ArrowLeft, ArrowRight, Check, Keyboard, Play } from "lucide-react";
 import { cn } from "../lib/utils.js";
 import {
@@ -26,7 +29,6 @@ import {
   KeyValueList,
   MetaLine,
   SectionLabel,
-  SearchInput,
   ChoicePicker,
   SegmentedChoice,
   Textarea,
@@ -34,8 +36,6 @@ import {
   dsFg,
   dsFocus,
   dsIcon,
-  dsMotion,
-  dsRadius,
   dsText,
 } from "../ds/ui.js";
 import type { CommandResult } from "../../domain/commands.js";
@@ -51,13 +51,6 @@ import type { WorkflowModuleRole } from "../../domain/workflow/module-role.js";
 import type { EnqueuePolicy } from "../../domain/workflow/presentation.js";
 import type { StartPlanResponse } from "../client/index.js";
 import { useDashboardClient } from "../state/client-context.js";
-import {
-  groupWorkflowsByCategory,
-  workflowCategoryLabel,
-  type WorkflowCategoryGroup,
-  type WorkflowGroupEntry,
-} from "./workflow-category.js";
-import { WorkflowHarnessTag } from "./workflow-harness-tag.js";
 import {
   EnqueueResultBanner,
   LockedFact,
@@ -291,236 +284,6 @@ export function RunStartButton({ id, onOpen }: { id: string; onOpen: () => void 
 }
 
 // ---------------------------------------------------------------------------
-// The workflow picker — the rail's own categories, inside the dialog
-//
-// The picker's groups are the SHELL RAIL'S OWN RULE, not a restatement of it
-// (R2 D17/D18): `groupWorkflowsByCategory` is called here over the startable
-// catalogue and there over every workflow, so the two lists differ in their
-// ENTRIES and can never differ in their headings or their order. This used to
-// be a hand-copied second implementation, which is exactly the drift one
-// shared helper makes unrepresentable.
-// ---------------------------------------------------------------------------
-
-function matchesQuery(workflow: RunStartWorkflow, query: string): boolean {
-  const needle = query.trim().toLowerCase();
-  if (needle === "") return true;
-  return workflow.label.toLowerCase().includes(needle)
-    || (workflow.code !== undefined && workflow.code.toLowerCase().includes(needle))
-    || workflowCategoryLabel(workflow.categoryId).toLowerCase().includes(needle);
-}
-
-/** the picker's own view-model, carrying the identity the ONE rule keys on */
-type PickerEntry = RunStartWorkflow & { readonly id: string };
-
-/**
- * BOTH picker lists go through the ONE rule (ref dashboard-surfaces §Shell, D219) — the
- * startable catalogue and the "not startable" disclosure alike — so a chunk
- * harness is a step under its composition in each of them and a peer in
- * neither.
- *
- * The query filters the LIST, before grouping, rather than each group's
- * entries after it: filtering afterwards could delete a composition while
- * keeping a harness that had just been nested under it. Filtering first hands
- * the rule an honest list, and a harness whose composition the query dropped
- * takes the rule's own orphan arm — top level, still marked as a harness of
- * the composition it names.
- */
-function pickerGroups(
-  workflows: readonly RunStartWorkflow[],
-  query = "",
-): WorkflowCategoryGroup<PickerEntry>[] {
-  return groupWorkflowsByCategory(
-    workflows
-      .filter((workflow) => matchesQuery(workflow, query))
-      .map((workflow) => ({ ...workflow, id: workflow.workflowId })),
-  );
-}
-
-/**
- * ONE level of picker entries, and the nested level under each of them.
- *
- * The nesting is a real nested list inside the parent's own `<li>` rather than
- * padding on a flat list: the operator hears the same hierarchy the eye reads
- * (D187), and the nested list names the composition it belongs to. `row` is
- * supplied by the caller because the two lists this picker draws — the
- * startable catalogue and the "not startable" disclosure — differ in exactly
- * one thing, whether a row is a control, and in nothing about the structure.
- */
-function PickerEntries({
-  nodes,
-  row,
-}: {
-  nodes: readonly WorkflowGroupEntry<PickerEntry>[];
-  row: (node: WorkflowGroupEntry<PickerEntry>) => ReactNode;
-}) {
-  return (
-    <ul className="flex flex-col gap-[var(--ds-space-hair)]">
-      {nodes.map((node) => (
-        <li key={node.entry.workflowId}>
-          {row(node)}
-          {node.members.length > 0 && (
-            <ul
-              aria-label={`Proving harnesses of ${node.entry.label}`}
-              className="flex flex-col gap-[var(--ds-space-hair)] pl-[var(--ds-space-cozy)]"
-            >
-              {node.members.map((member) => (
-                <li key={member.entry.workflowId}>{row(member)}</li>
-              ))}
-            </ul>
-          )}
-        </li>
-      ))}
-    </ul>
-  );
-}
-
-/** one selectable workflow — or one step of one, marked as such */
-function PickerRow({
-  node,
-  value,
-  onChange,
-}: {
-  node: WorkflowGroupEntry<PickerEntry>;
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const workflow = node.entry;
-  const selected = workflow.workflowId === value;
-  return (
-    <BareButton
-      type="button"
-      aria-current={selected ? "true" : undefined}
-      onClick={() => onChange(workflow.workflowId)}
-      className={cn(
-        "flex w-full min-w-0 cursor-pointer items-center gap-[var(--ds-space-snug)] text-left",
-        "h-[var(--ds-h-row)] px-[var(--ds-space-snug)]",
-        dsRadius.md,
-        dsText.ui,
-        dsFocus,
-        dsMotion.fast,
-        selected
-          ? cn("bg-[var(--ds-surface-3)] font-normal", dsFg.base)
-          : cn("hover:bg-[var(--ds-surface-2)]", node.harness === undefined ? dsFg.base : dsFg.muted),
-      )}
-    >
-      {workflow.code !== undefined && <span className="w-5 shrink-0 text-[10px] text-ui-muted">{workflow.code}</span>}
-      <span className="min-w-0 flex-1 truncate">{workflow.label}</span>
-      {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
-    </BareButton>
-  );
-}
-
-/**
- * Ported from hr-automation@1bffbd65,
- * src/dashboard/components/dev/rebuild-demo/DemoRunStart.tsx:152-253.
- */
-function WorkflowPicker({
-  workflows,
-  value,
-  onChange,
-  onPickPreview,
-}: {
-  onPickPreview?: (id: string) => void;
-  workflows: readonly RunStartWorkflow[];
-  value: string;
-  onChange: (next: string) => void;
-}) {
-  const [query, setQuery] = useState("");
-  const [showBlocked, setShowBlocked] = useState(false);
-  const groups = useMemo(() => pickerGroups(workflows.filter(isStartable), query), [workflows, query]);
-  const entries = useMemo(() => groups.flatMap(group => group.entries).sort((left, right) => workflows.findIndex(entry => entry.workflowId === left.entry.workflowId) - workflows.findIndex(entry => entry.workflowId === right.entry.workflowId)), [groups, workflows]);
-  const blocked = useMemo(() => workflows.filter((workflow) => !isStartable(workflow)), [workflows]);
-  const blockedGroups = useMemo(() => pickerGroups(blocked), [blocked]);
-  const previews = onPickPreview ? MOCK_WORKFLOWS.filter(flow => !workflows.some(served => served.workflowId === flow.id) && flow.label.toLowerCase().includes(query.toLowerCase())) : [];
-
-  return (
-    <div className="launch-workflow-rail flex shrink-0 flex-col border-r border-ui-stroke">
-      <div className="shrink-0 px-3 pt-[18px] pb-[15px]">
-          <SearchInput
-            type="text"
-            aria-label="Filter workflows"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            onClear={query.length > 0 ? () => setQuery("") : undefined}
-            placeholder="Find workflow…"
-          />
-      </div>
-
-      <nav aria-label="Workflow" className="min-h-0 flex-1 overflow-y-auto px-3 py-1">
-        <SectionLabel className="mb-[15px] block">Workflows</SectionLabel>
-        {groups.length === 0 && previews.length === 0 ? (
-          <p className={cn(dsText.meta, dsFg.muted)}>No workflow matches “{query}”.</p>
-        ) : (
-          <PickerEntries nodes={entries} row={node => <PickerRow node={node} value={value} onChange={onChange} />} />
-        )}
-        {onPickPreview && previews.map(flow => <BareButton key={flow.id} className={cn("flex w-full items-center rounded-md text-left text-ui-secondary", dsFocus)} onClick={() => onPickPreview(flow.id)}>{flow.label}</BareButton>)}
-      </nav>
-
-      {/* Not offered, and it says WHY. A workflow that simply vanishes from a
-          picker teaches the operator the list is arbitrary.
-
-          A DISCLOSURE, not a Popover: `dsLayer.menu` is z-20 and a Dialog is
-          z-40, so a popover opened from inside a modal renders BEHIND it — the
-          a11y tree says it opened and the screen says nothing happened.
-
-          D251: the demo's `<dl>` is drawn, because the reason exists and always
-          did — the app composes it beside the surface it is the absence of. An
-          earlier comment here claimed this tree served none, which was the same
-          false-deferral shape R8 finding 1 found on the park cards. The reason
-          is the MODAL's own precondition and is worded as one; see
-          `run-start-model.ts`. */}
-      {blocked.length > 0 && <div className="shrink-0 border-t border-[color:var(--ds-border)] p-[var(--ds-space-base)]">
-        {showBlocked && (
-          <div className="mb-[var(--ds-space-snug)] flex max-h-[11rem] flex-col gap-[var(--ds-space-snug)] overflow-y-auto">
-            {blockedGroups.map((group) => (
-              <div key={group.label} className="flex flex-col gap-[var(--ds-space-hair)]">
-                <SectionLabel className="px-[var(--ds-space-snug)]">{group.label}</SectionLabel>
-                <PickerEntries
-                  nodes={group.entries}
-                  row={(node) => (
-                    /* The demo pairs each name with its reason in a `<dl>`; this
-                       stays a `<ul>` because the list also carries the D219
-                       HIERARCHY — a chunk harness is a step under its
-                       composition here exactly as it is above — and a nested
-                       definition list inside a `<dd>` would claim a harness is a
-                       definition of the composition it belongs to. The pair
-                       renders as the demo draws it: name, then reason beneath. */
-                    <span className="flex min-w-0 flex-col gap-[var(--ds-space-hair)] px-[var(--ds-space-snug)]">
-                      <span
-                        className={cn(
-                          "flex min-w-0 items-center gap-[var(--ds-space-snug)]",
-                          dsText.meta,
-                          node.harness === undefined ? cn("font-semibold", dsFg.base) : dsFg.secondary,
-                        )}
-                      >
-                        <span className="min-w-0 truncate">{node.entry.label}</span>
-                        {node.harness !== undefined && <WorkflowHarnessTag harness={node.harness} />}
-                      </span>
-                      {node.entry.inputRun.state === "absent" && (
-                        <span className={cn(dsText.meta, dsFg.muted)}>{node.entry.inputRun.reason}</span>
-                      )}
-                    </span>
-                  )}
-                />
-              </div>
-            ))}
-          </div>
-        )}
-        <Button
-          size="sm"
-          variant="ghost"
-          className="w-full justify-start"
-          aria-expanded={showBlocked}
-          onClick={() => setShowBlocked((open) => !open)}
-        >
-          {blocked.length} not startable
-        </Button>
-      </div>}
-    </div>
-  );
-}
-
-// ---------------------------------------------------------------------------
 // The descriptor's own parser, previewed
 // ---------------------------------------------------------------------------
 
@@ -657,7 +420,9 @@ export function RunStartDialog({
   onApplied,
   onCloseAutoFocus,
   rerunSource,
-  onPickPreview,
+  previewLaunch,
+  previewRuns,
+  onSubmitPreview,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -678,8 +443,14 @@ export function RunStartDialog({
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
-  onPickPreview?: (id: string) => void;
+  previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
+  previewRuns?: readonly MockRun[];
+  onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
+  if ((previewRuns === undefined) !== (onSubmitPreview === undefined) || (previewLaunch !== undefined && onSubmitPreview === undefined)) throw new Error("RUN_PREVIEW_CAPABILITY_INCOMPLETE");
+  if (previewLaunch && !previewLaunch.source && !mockWorkflow(previewLaunch.workflowId).runnable) throw new Error("RUN_PREVIEW_NOT_RUNNABLE");
+  const [previewSelection, setPreviewSelection] = useState(previewLaunch);
+  const [pickerQuery, setPickerQuery] = useState("");
   const client = useDashboardClient();
   const launchService = useMemo(() => createRunLaunchService(client, actorId), [client, actorId]);
   const finalRequest = useRef<LaunchFinalCommand | null>(null);
@@ -696,6 +467,8 @@ export function RunStartDialog({
   const isRerun = rerunSource !== undefined;
 
   const [workflowId, setWorkflowId] = useState<string>(() => defaultWorkflowId(workflows, panelWorkflowId));
+  const selectedWorkflowRef = useRef(previewSelection?.workflowId ?? workflowId);
+  useEffect(() => { selectedWorkflowRef.current = previewSelection?.workflowId ?? workflowId; }, [previewSelection, workflowId]);
   const [currentStage, setCurrentStage] = useState<RunStartStage>("Input");
   const [workbookId, setWorkbookId] = useState("");
   const spreadsheetMocks = useSpreadsheetMocks();
@@ -764,6 +537,8 @@ export function RunStartDialog({
     const instance = ++launchInstance.current;
     if (!open) return;
     selectWorkflow(defaultWorkflowId(workflows, panelWorkflowId));
+    setPreviewSelection(previewLaunch);
+    setPickerQuery("");
     setSnapshot(null); setSourceError(null); setValueDrafts({}); setCopiedOmissions({});
     setWarning(null); setAcknowledgment(undefined); setBusy(false);
     try { setRecovery(readLaunchRecovery(window.sessionStorage, actorId)); setRecoveryError(null); }
@@ -783,7 +558,21 @@ export function RunStartDialog({
       });
     }
     return () => { launchInstance.current = instance + 1; };
-  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, actorId, launchService]);
+  }, [open, workflows, panelWorkflowId, selectWorkflow, rerunSource, actorId, launchService, previewLaunch]);
+
+  const pickWorkflow = useCallback((id: string) => {
+    if (selectedWorkflowRef.current === id || sending.current) return;
+    const served = workflows.find(flow => flow.workflowId === id);
+    const preview = !served && onSubmitPreview ? mockWorkflow(id) : undefined;
+    if (served ? !isStartable(served) : !preview?.runnable) return;
+    selectedWorkflowRef.current = id;
+    ++launchInstance.current;
+    setBusy(false);
+    if (served) {
+      setPreviewSelection(undefined);
+      selectWorkflow(id);
+    } else if (preview) setPreviewSelection({ workflowId: preview.id });
+  }, [workflows, selectWorkflow, onSubmitPreview]);
 
   const workflow = workflows.find((entry) => entry.workflowId === workflowId);
 
@@ -816,8 +605,8 @@ export function RunStartDialog({
    * rather than a rule restated here.
    */
   const steps = workflow?.steps ?? EMPTY_STEPS;
-  const forcedByStep = forcedStepOmissions(steps, selectedStepKeys);
-  const omissionRows: readonly StepOmissionRow[] = (customizeSteps ? omittedStepViews(steps, selectedStepKeys) : []).map(
+  const forcedByStep = useMemo(() => forcedStepOmissions(steps, selectedStepKeys), [steps, selectedStepKeys]);
+  const omissionRows: readonly StepOmissionRow[] = useMemo(() => (customizeSteps ? omittedStepViews(steps, selectedStepKeys) : []).map(
     (step): StepOmissionRow => {
       if (step.control.state !== "omittable") {
         throw new Error(`step "${step.key}" is omitted but declares no omission`);
@@ -826,8 +615,8 @@ export function RunStartDialog({
       const draft = stepDrafts[step.key] ?? initialStepOmissionDraft(form);
       return { step: step.key, label: step.label, form, draft, fold: foldStepOmissionFacts(form, draft) };
     },
-  );
-  const stepOmissions = completeStepOmissions(omissionRows);
+  ), [customizeSteps, steps, selectedStepKeys, stepDrafts]);
+  const stepOmissions = useMemo(() => completeStepOmissions(omissionRows), [omissionRows]);
   const requestFingerprint = canonicalJsonStringify([rerunSource ?? null, valueDrafts, copiedOmissions, startRequestFingerprint({
     workflowId,
     text,
@@ -1184,24 +973,27 @@ export function RunStartDialog({
     setCopiedOmissions(current => ({ ...current, [index]: true }));
   };
 
+  const picker = <RunWorkflowPicker workflows={workflows} includePreviews={onSubmitPreview !== undefined} value={previewSelection?.workflowId ?? workflowId} onChange={pickWorkflow} query={pickerQuery} onQuery={setPickerQuery} />;
+  const previewFlow = previewSelection ? mockWorkflow(previewSelection.workflowId) : undefined;
+
   return (
     <Dialog open={open} onOpenChange={closeAndReset}>
       <DialogContent
         onCloseAutoFocus={onCloseAutoFocus}
         size="xl"
-        title={isRerun ? "Rerun" : "Start a run"}
-        description={isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
+        title={previewSelection?.source || isRerun ? "Rerun" : "Start a run"}
+        description={previewFlow ? `${previewFlow.label} · Workflow preview` : isRerun ? [workflow?.label, rerunSource?.label].filter(Boolean).join(" · ") : workflow ? `New work · ${workflow.label}` : "Choose a workflow to begin"}
         className="launch-design launch-dialog"
       >
-        <div className="flex min-h-0 flex-1">
-          {!isRerun ? <WorkflowPicker workflows={workflows} value={workflowId} onChange={selectWorkflow} onPickPreview={onPickPreview} /> : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
+          {previewSelection?.source ? null : !isRerun ? picker : <aside aria-label="Source run" className="launch-workflow-rail flex min-h-0 shrink-0 flex-col border-r border-ui-stroke p-3 pt-[18px]">
             <SectionLabel>Source run</SectionLabel>{rerunSource?.label && <h3 className="mt-4 text-heading font-semibold">{rerunSource.label}</h3>}
             {snapshot !== null && <><p className="mt-[6px] break-all font-mono text-caption text-ui-secondary">{rerunSource?.traceId ?? snapshot.source.runId}</p>
               <dl className="mt-[18px] space-y-[14px] text-caption"><div><dt className="text-ui-muted">Workflow</dt><dd className="mt-1">{workflow?.label} · {versionTag(snapshot.source.descriptorVersion)}</dd></div><div><dt className="text-ui-muted">Outcome</dt><dd className={cn("mt-1", snapshot.source.outcome === "done" ? "text-ui-positive" : snapshot.source.outcome === "failed" ? "text-ui-danger" : "text-ui-secondary")}>{snapshot.source.outcome === "done" ? "Completed" : snapshot.source.outcome === "failed" ? `Failed${snapshot.steps.some(step => step.state === "failed") ? ` at ${stepLabel(snapshot.steps.find(step => step.state === "failed")!.key)}` : ""}` : "Interrupted"}</dd></div><div><dt className="text-ui-muted">Progress</dt><dd className="mt-1">{snapshot.steps.filter(step => step.state === "completed").length} / {snapshot.steps.length} steps completed</dd></div></dl></>}
             <p className="mt-auto border-t border-ui-stroke pt-[14px] text-caption text-ui-muted">This creates a new run. The source keeps its original history.</p>
           </aside>}
 
-          <div className="flex min-w-0 flex-1 flex-col">
+          {previewSelection && onSubmitPreview && previewRuns ? <WorkflowMockRunForm key={`${previewSelection.workflowId}:${previewSelection.source?.id ?? "start"}`} workflowId={previewSelection.workflowId} source={previewSelection.source} runs={previewRuns} onClose={() => closeAndReset(false)} onSubmit={onSubmitPreview} /> : <>
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <ol aria-label="Run configuration path" className="launch-stagebar">
               {launchStages.map((stage, index) => {
                 const activeIndex = launchStages.findIndex(entry => entry.label === (currentStage === "Warning" ? "Steps" : currentStage));
@@ -1412,7 +1204,6 @@ export function RunStartDialog({
             </div>
           </DialogBody>
           </div>
-        </div>
 
         <DialogFooter
           meta={
@@ -1462,6 +1253,7 @@ export function RunStartDialog({
             </Button>
           )}
         </DialogFooter>
+        </>}
       </DialogContent>
     </Dialog>
   );
@@ -1482,7 +1274,9 @@ export function RunStartSurfaces({
   onOpenIntake,
   onCloseAutoFocus,
   rerunSource,
-  onPickPreview,
+  previewLaunch,
+  previewRuns,
+  onSubmitPreview,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -1493,7 +1287,9 @@ export function RunStartSurfaces({
   onOpenIntake: (workflowId: string, intakeSessionId: string) => void;
   onCloseAutoFocus?: (event: Event) => void;
   rerunSource?: RerunLaunchSource;
-  onPickPreview?: (id: string) => void;
+  previewLaunch?: Readonly<{ workflowId: MockWorkflowId; source?: MockRun }>;
+  previewRuns?: readonly MockRun[];
+  onSubmitPreview?: (id: MockWorkflowId, draft: MockDraft, sourceId?: string) => void;
 }) {
   return (
     <RunStartDialog
@@ -1506,7 +1302,9 @@ export function RunStartSurfaces({
       onOpenIntake={onOpenIntake}
       onCloseAutoFocus={onCloseAutoFocus}
       rerunSource={rerunSource}
-      onPickPreview={onPickPreview}
+      previewLaunch={previewLaunch}
+      previewRuns={previewRuns}
+      onSubmitPreview={onSubmitPreview}
     />
   );
 }

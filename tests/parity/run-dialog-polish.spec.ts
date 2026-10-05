@@ -33,7 +33,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const separations = picker.getByRole("button", { name: /Separations/u });
       const typeStyle = (node: Element) => ({ size: getComputedStyle(node).fontSize, weight: getComputedStyle(node).fontWeight });
       expect((await lookup.evaluate(typeStyle)).size).toBe((await separations.evaluate(typeStyle)).size);
-      expect((await lookup.evaluate(typeStyle)).weight).toBe("600");
+      expect((await lookup.evaluate(typeStyle)).weight).toBe("400");
       expect((await separations.evaluate(typeStyle)).weight).toBe("400");
       expect((await run.locator(":scope > header").boundingBox())!.height).toBe(73);
       expect((await run.locator(":scope > footer").boundingBox())!.height).toBe(57);

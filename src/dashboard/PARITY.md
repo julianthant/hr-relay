@@ -93,6 +93,12 @@ Version registry or action legend control. The selected-workflow intro strip and
 branch selectors and source returns remain available; switching workflows resets transient timeline state while preserving dropdown
 focus. Storage checks and Preflight put their actions and scope selector beside the heading, with
 freshness, failures and unavailable states below.
+The Run picker reuses permanent-rail category icons, order, row geometry and text alignment. It
+filters direct-launch eligibility from served typed-input capability or an explicit preview `runnable`
+flag; OCR and I-9 Lookup stay in their panels and Explorer but disappear from Start a run. Picker
+selection stays local to the launcher. The modal and navigation remain mounted, search and scroll
+persist, and selecting the current workflow keeps the draft. Served and preview launch authority
+remain separate within the shared modal. Rerun source binding, plan invalidation and focus return stay intact.
 Archive overview and folders use shared searches; the overview also has workflow/outcome filters. The 2026-10-04 revision uses HeroUI
 SearchField for shared searches. Every search field uses the UI catalog's 12px corner radius through
 the shared search token, including Settings navigation, Keyboard, Archive and the compact Run filter.
