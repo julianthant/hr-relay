@@ -7543,6 +7543,15 @@ after navigation succeeds. Explicit read/unread controls and Read all are idempo
 urgency. Category and All/Unread selections survive inbox dismissal. Read all includes hidden updates
 and restores keyboard focus when the unread list empties.
 
+The queue-link amendment derives updates from each available failed, completed, review, parked or
+partial top-level queue row, including operation groups. Member rows remain represented by their group.
+All five seeded OCR documents have direct Records actions, with review counts supplied by their queue
+projection. Existing additional examples begin read; the normal scenario retains three unread updates.
+Opening an update reveals and selects its exact queue card by scrolling only the queue pane, leaving
+the workspace header and log controls fixed. Stable run/day identities preserve read overrides when
+rows reorder or statuses change. Deleted rows and documents disappear from the source-derived inbox.
+Evidence is retained under `notifications-queue-links-20261005`.
+
 OCR approval/discard updates the same notification; newly created local previews add exact run links.
 Approved records remain locked. Local event ages use the shared served clock, and read overrides are
 scoped to the exact run and day. These read flags remain local while the dashboard is mounted; this

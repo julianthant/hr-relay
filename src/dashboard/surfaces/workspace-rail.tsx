@@ -27,7 +27,7 @@ export const WorkspaceRail = memo(function WorkspaceRail({ workflows, counts, pr
   const [ping, setPing] = useState(scenario === "ping");
   const bell = useRef<HTMLButtonElement>(null);
   const view = notificationView(state, filter);
-  const pingItem = state.state === "ready" ? state.items.find(item => item.id.startsWith("sample-completed:")) : undefined;
+  const pingItem = state.state === "ready" ? state.items.find(item => item.destination.kind === "run" && item.title === "Run completed") : undefined;
   const changeOpen = (next: boolean) => { setOpen(next); if (next) setPing(false); };
   useEffect(() => {
     if (!open || settingsOpen) return;

@@ -189,7 +189,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       expect(bounds.y + bounds.height).toBeLessThanOrEqual(width === 1024 ? 720 : 1000);
       await expect(inbox.getByRole("button", { name: /Snooze|Enable/u })).toHaveCount(0);
       const rows = inbox.locator(".notification-row");
-      await expect(rows).toHaveCount(5);
+      await expect(rows).toHaveCount(14);
       await expect(inbox.getByRole("tab")).toHaveCount(2);
       for (const tab of await inbox.getByRole("tab").all()) {
         expect((await tab.boundingBox())!.height).toBe(28);
@@ -210,7 +210,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(inbox.getByText("History gap", { exact: true })).toHaveCount(0);
       await inbox.getByRole("button", { name: "Mark read: Run failed", exact: true }).click();
       await expect(bell()).toHaveAccessibleName("Notifications, 2 unread");
-      await expect(rows).toHaveCount(5);
+      await expect(rows).toHaveCount(14);
       await inbox.getByRole("tab", { name: "Unread", exact: true }).click();
       await expect(rows).toHaveCount(2);
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
@@ -228,7 +228,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await page.getByRole("menuitemradio", { name: "All updates", exact: true }).click();
       await expect(categoryFilter).toHaveAttribute("data-filtered", "false");
       await inbox.getByRole("tab", { name: "All", exact: true }).click();
-      await expect(rows).toHaveCount(5);
+      await expect(rows).toHaveCount(14);
       await inbox.getByRole("button", { name: "Open log", exact: true }).first().click();
       await expect(inbox).toHaveCount(0);
       await expect(page.getByRole("region", { name: "Selected run logs", exact: true }).getByRole("heading", { level: 2 })).toHaveText("EID 10555001");

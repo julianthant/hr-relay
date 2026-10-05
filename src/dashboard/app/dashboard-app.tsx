@@ -60,6 +60,7 @@ import {parseWorkflows,useSelectedWorkflow,type StatusBucket } from "../surfaces
 import { WorkflowMockLog, WorkflowMockQueue } from "../surfaces/workflow-mock-queue.js";
 import { mockWorkflow, type MockWorkflowId } from "../surfaces/workflow-mock-catalog.js";
 import { approveMockRun, mockQueueCounts, mockWorkflowCounts, mockQueueView, mockRetrySource, mockRunsForDraft, seedMockRuns, type MockDraft, type MockRun } from "../surfaces/workflow-mock-model.js";
+import { mockQueueId } from "../surfaces/workflow-queue-model.js";
 import { discardMockReview, restoreMockReview, updateMockReview } from "../surfaces/workflow-review-model.js";
 import "../surfaces/permanent-shell.css";
 import { PROPOSED_STATUS,dsStatusOf } from "../surfaces/status-model.js";
@@ -1041,6 +1042,12 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
       }
       opened();
       requestAnimationFrame(() => {
+        if (destination.kind !== "archive") {
+          const queueId = destination.kind === "run" ? destination.runId : mockQueueId(destination.runId);
+          const row = document.querySelector<HTMLElement>(`.dashboard-queue-column [data-demo-row-id="${CSS.escape(queueId)}"]`);
+          const pane = row?.closest<HTMLElement>("[data-queue-scroll]");
+          if (row && pane) pane.scrollTo({ top: pane.scrollTop + row.getBoundingClientRect().top - pane.getBoundingClientRect().top - 12, behavior: "instant" });
+        }
         const target = destination.kind === "preview-run" && destination.records
           ? document.querySelector<HTMLElement>("[data-ocr-review-heading]")
           : document.getElementById(DASHBOARD_MAIN_REGION_ID);

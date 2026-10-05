@@ -320,6 +320,12 @@ row layout. Every row offers an action linked to an exact source run, OCR previe
 Source subjects and workflow labels replace unrelated placeholder people. Run navigation exposes Logs;
 OCR review opens the editable Records body, and reopening approved records shows locked values.
 New local runs and OCR approval/discard update the inbox. Local event ages use the shared served clock.
+The queue-link amendment includes every relevant top-level queue row, operation groups, parked writes
+and all five seeded OCR documents. OCR counts use the queue projection. Additional existing examples
+begin read while the normal scenario retains three unread updates. Opening selects and reveals the
+exact queue card without scrolling the outer workspace. Run/day identities survive row reordering and
+status changes; removed rows and documents leave the inbox. Focused dark/light desktop evidence is
+retained under `notifications-queue-links-20261005`.
 
 Read/unread controls and Read all are explicit and idempotent. Read state does not resolve urgency;
 filters intersect, survive dismissal, and retain keyboard access. Read all includes filtered-out items

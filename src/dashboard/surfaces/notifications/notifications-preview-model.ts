@@ -20,26 +20,28 @@ function age(instant: string, nowIso: string): string {
   return minutes < 1 ? "Just now" : minutes < 60 ? `${minutes} min ago` : minutes < 1440 ? `${Math.floor(minutes / 60)} hr ago` : `${Math.floor(minutes / 1440)} days ago`;
 }
 
-function runItem(row: QueueSurfaceWire, id: string, read: boolean, input: PreviewInput): NotificationItem {
+function runItem(row: QueueSurfaceWire, read: boolean, input: PreviewInput): NotificationItem {
   const failed = row.status === "failed";
   const waiting = row.status === "awaiting-approval";
+  const parked = row.status === "blocked";
+  const partial = row.status === "partial";
   const instant = waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined;
-  return { id: `${id}:${input.day}:${row.runId}`, subject: row.title, workflow: input.workflowLabel(row.workflowId), read,
-    title: failed ? "Run failed" : waiting ? "Approval waiting" : "Run completed",
-    detail: row.liveMessage.state === "present" ? row.liveMessage.value : failed ? "Review the failed step in the log." : waiting ? "This run is waiting for your review." : "Completed successfully.",
-    tone: failed ? "danger" : waiting ? "warning" : "positive", age: instant ? age(instant, input.nowIso) : "",
+  return { id: `queue:${input.day}:${row.runId}`, subject: row.title, workflow: input.workflowLabel(row.workflowId), read,
+    title: failed ? "Run failed" : waiting ? "Approval waiting" : parked ? "Write parked" : partial ? "Run completed with issues" : "Run completed",
+    detail: row.liveMessage.state === "present" ? row.liveMessage.value : partial && row.warnings.state === "present" ? row.warnings.first : failed ? "Review the failed step in the log." : waiting ? "This run is waiting for your review." : partial ? "Some steps did not complete. Review the log." : parked ? "Review the parked write in the log before continuing." : "Completed successfully.",
+    tone: failed ? "danger" : waiting || parked || partial ? "warning" : "positive", age: instant ? age(instant, input.nowIso) : "",
     action: waiting ? "Review run" : "Open log", destination: { kind: "run", runId: row.runId, day: input.day } };
 }
 
-function mockItem(run: MockRun, id: string, read: boolean, input: PreviewInput): NotificationItem {
+function mockItem(run: MockRun, read: boolean, input: PreviewInput): NotificationItem {
   const records = run.workflowId === "ocr";
   const waiting = mockNeedsReview(run);
   const count = records ? reviewRecords(run).length : 0;
   const row = mockQueueSurfaces([run], input.day)[0];
-  const instant = input.eventTimes?.[run.id] ?? (row.endedAt.state === "present" ? row.endedAt.value : undefined);
-  return { id: `${id}:${input.day}:${run.id}`, subject: run.subject, workflow: mockWorkflow(run.workflowId).label, read,
+  const instant = input.eventTimes?.[run.id] ?? (waiting && row.gateOpenedAt.state === "present" ? row.gateOpenedAt.value : row.endedAt.state === "present" ? row.endedAt.value : undefined);
+  return { id: `preview:${input.day}:${run.id}`, subject: row.title, workflow: mockWorkflow(run.workflowId).label, read,
     title: waiting ? "Records ready for approval" : run.discarded ? "Records discarded" : records ? "Records approved" : "Run completed",
-    detail: waiting ? `${count} ${count === 1 ? "record is" : "records are"} ready for review.` : records ? `${count} ${count === 1 ? "record" : "records"} · ${mockRunStatus(run)}` : mockRunStatus(run),
+    detail: waiting && row.liveMessage.state === "present" ? row.liveMessage.value : records ? `${count} ${count === 1 ? "record" : "records"} · ${mockRunStatus(run)}` : mockRunStatus(run),
     tone: waiting ? "warning" : run.discarded ? "info" : "positive", age: instant ? age(instant, input.nowIso) : "",
     action: records ? waiting ? "Review records" : "View records" : "Open log", destination: { kind: "preview-run", runId: run.id, day: input.day, records } };
 }
@@ -48,20 +50,16 @@ export function notificationPreviewState(scenario: string, input: PreviewInput):
   if (!["normal", "ping"].includes(scenario)) return notificationsSample(scenario);
   if (input.unavailable) return { state: "unavailable", reason: input.unavailable };
   if (!input.rows) return { state: "loading" };
-  const rows = input.rows.filter(row => row.surfaceKind === "single");
+  const rows = input.rows.filter(row => (row.surfaceKind === "single" || row.surfaceKind === "operation")
+    && ["failed", "done", "awaiting-approval", "blocked", "partial"].includes(row.status));
   const failed = rows.find(row => row.status === "failed");
   const done = rows.find(row => row.status === "done");
-  const waiting = rows.find(row => row.status === "awaiting-approval");
   const review = input.runs.find(run => run.workflowId === "ocr" && run.targetWorkflowId === "emergency-contact" && run.seeded);
-  const items: NotificationItem[] = [];
-  if (failed) items.push(runItem(failed, "sample-verification", false, input));
-  if (review) items.push(mockItem(review, "sample-approval", false, input));
-  if (done) items.push(runItem(done, "sample-completed", false, input));
+  const items: NotificationItem[] = rows.map(row => runItem(row, row !== failed && row !== done, input));
   items.push({ id: "sample-archive", title: "Archive", subject: "Saved reports", workflow: "Archive", detail: "Browse saved workflow reports.", tone: "info", age: "", read: true, action: "Open archive", destination: { kind: "archive" } });
-  if (waiting) items.push(runItem(waiting, "sample-review", true, input));
   for (const run of input.runs) {
-    if (run.seeded || (run.parentId && run.workflowId !== "ocr") || mockWaitsForOcr(run)) continue;
-    items.push(mockItem(run, `preview:${run.id}`, false, input));
+    if ((run.seeded && run.workflowId !== "ocr") || (run.parentId && run.workflowId !== "ocr") || mockWaitsForOcr(run)) continue;
+    items.push(mockItem(run, run.seeded && run !== review, input));
   }
   return { state: "ready", items, pinned: [] };
 }

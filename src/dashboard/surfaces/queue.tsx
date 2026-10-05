@@ -1245,7 +1245,7 @@ export const QueuePanel = memo(function QueuePanel({
   };
 
   const body = (
-      <div className="min-h-0 flex-1 overflow-y-auto pb-3">
+      <div data-queue-scroll className="min-h-0 flex-1 overflow-y-auto pb-3">
         {/* Empty is a STATE: what would be here, why it is not, and what to do
             — in that order, and no defence of the design. */}
         {top.length === 0 && (
