@@ -216,8 +216,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(archive.locator('.mock-archive-metadata, .mock-archive-table-footer')).toHaveCount(0);
       await expect(archive.getByRole('combobox')).toHaveCount(0);
       await archive.getByRole('textbox', { name: 'Search saved reports' }).fill('Jordan');
-      await expect(archive).toContainText('1 report');
-      await archive.getByRole('button', { name: 'Reset filters', exact: true }).click();
+      await expect(archive.getByRole('region', { name: 'Archived run search results', exact: true }).getByRole('link')).toHaveCount(2);
+      await expect(archive.getByRole('button', { name: 'Reset filters', exact: true })).toHaveCount(0);
+      await archive.getByRole('button', { name: 'Clear search', exact: true }).click();
       await archive.getByRole('button', { name: /Open report for Jordan/u }).click();
       await expect(archive.getByRole('button', { name: 'Export run', exact: true })).toBeVisible();
       await archive.getByRole('navigation', { name: 'Archive breadcrumbs' }).getByRole('button', { name: 'Separations', exact: true }).click();

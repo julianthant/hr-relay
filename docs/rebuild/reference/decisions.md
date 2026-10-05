@@ -341,6 +341,14 @@ selected workflow draft and invalidates apply eligibility. The mounted mock rema
 retained runtime sibling preserves served review matching, blockers and exact-request recovery.
 D347's dashboard-surfaces owner records the contract and `version-review-step-20261005` evidence.
 
+The Archive search amendment retires Reset filters and replaces filtered workflow folders with exact
+saved-run links using the Settings search title/context and keyboard pattern. Queries span every
+version and workflow, including current-session snapshots, while explicit filters remain applied.
+Opening a result clears the implicit folder scope atomically, retains the query and focuses the
+report; the Archive breadcrumb returns to results. The mounted Archive remains local and its runtime
+transport stays unmounted. D347's dashboard-surfaces owner records the contract and
+`archive-search-records-20261005` evidence.
+
 Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.
 
 The workflow-detail amendment adds legacy operation sequences and fields to local Logs and Explorer, populated timeline substeps with synthetic timings, active/total rail counts at both desktop widths, and subject-only run headings. Onboarding preserves distinct new-hire and concurrent-hire forms, wrong-person readbacks and dry-run cleanup. OCR remains the sole record editor and approval owner; D347's dashboard-surfaces owner records the contract and retained evidence.

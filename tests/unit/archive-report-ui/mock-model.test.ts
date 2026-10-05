@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveScope } from '../../../src/dashboard/surfaces/archive-mock-model.js';
+import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveScope, mockArchiveSearch, mockArchiveSearchHref } from '../../../src/dashboard/surfaces/archive-mock-model.js';
 import { ArchiveBrowseStateSchema } from '../../../src/dashboard/app/archive-route-model.js';
 import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive-mock-logs-model.js';
 import { logPlainText } from '../../../src/dashboard/surfaces/log-feed-model.js';
@@ -40,6 +40,36 @@ describe('local Archive mock', () => {
   expect(mockArchiveFilter(rows, { filters: { outcome: 'failed' } }).map(row => row.person)).toEqual(['Drew Ellis']);
   expect(mockArchiveFilter(rows, { filters: { outcome: 'discarded' } })).toEqual([]);
   expect(ArchiveBrowseStateSchema.safeParse({ filters: { from: mockArchiveDateBoundary('2026-09-25'), to: mockArchiveDateBoundary('2026-09-24', true) } }).success).toBe(false);
+ });
+ it('finds exact archived runs across versions using all query words and public record fields', () => {
+  const older = MOCK_ARCHIVE_RUNS[16];
+  expect(mockArchiveSearch(MOCK_ARCHIVE_RUNS, '  JORDAN   dashboard 1.2 ').map(row => row.id)).toEqual([older.id]);
+  for (const query of [older.id, String(older.number), older.employeeId, older.document, older.files[0].name]) {
+   expect(mockArchiveSearch(MOCK_ARCHIVE_RUNS, query).map(row => row.id), query).toEqual([older.id]);
+  }
+  expect(mockArchiveSearch(MOCK_ARCHIVE_RUNS, older.email).map(row => row.id)).toEqual([MOCK_ARCHIVE_RUNS[0].id, older.id]);
+  expect(mockArchiveSearch(MOCK_ARCHIVE_RUNS, 'Jordan missing-document')).toEqual([]);
+  expect(mockArchiveSearch(MOCK_ARCHIVE_RUNS, ' ')).toEqual([]);
+  expect(mockArchiveFilter(MOCK_ARCHIVE_RUNS, { filters: {} })).toEqual(MOCK_ARCHIVE_RUNS);
+  expect(mockArchiveFilter(MOCK_ARCHIVE_RUNS, { filters: { search: 'Jordan', from: mockArchiveDateBoundary('2026-09-01'), outcome: 'done' } }).map(row => row.id)).toEqual([MOCK_ARCHIVE_RUNS[0].id]);
+ });
+ it('ranks exact and prefix identities before secondary matches and includes newly archived workflows', () => {
+  const source = MOCK_ARCHIVE_RUNS[0];
+  const secondary = { ...source, id: 'secondary', person: 'Other person', title: 'Other run', fields: [['Supervisor', 'Jordan Lee']] as const };
+  const prefix = { ...source, id: 'prefix', person: 'Jordan Lee Jr', title: 'Appointment ended · Jordan Lee Jr' };
+  const current = { ...source, id: 'current', dashboard: '1.4', workflow: 'oath-signature', workflowLabel: 'Oath Signature', workflowVersion: '1.1', person: 'New signer', title: 'New signer oath', completed: undefined };
+  expect(mockArchiveSearch([secondary, prefix, source], 'Jordan Lee').map(row => row.id)).toEqual([source.id, prefix.id, secondary.id]);
+  expect(mockArchiveFilter([...MOCK_ARCHIVE_RUNS, current], { filters: { search: 'new signer oath 1.4', workflow: 'oath-signature' } })).toEqual([current]);
+ });
+ it('links to one exact run while retaining explicit search filters without folder or report-section state', () => {
+  const run = MOCK_ARCHIVE_RUNS[16];
+  const browse = { filters: { search: 'Jordan', outcome: 'done' as const, workflow: 'separations' }, section: 3 };
+  const params = new URL(mockArchiveSearchHref(run, browse), 'http://localhost').searchParams;
+  expect(params.get('archive')).toBe(run.id);
+  expect(params.get('settings')).toBe('archive');
+  expect(JSON.parse(params.get('archiveBrowse')!)).toEqual({ filters: browse.filters });
+  expect(params.has('archiveDashboard')).toBe(false);
+  expect(params.has('archiveWorkflow')).toBe(false);
  });
  it('keeps not-started steps and additional evidence in failed and cancelled reports', () => {
   const failed = MOCK_ARCHIVE_RUNS.find(row => row.outcome === 'failed')!;

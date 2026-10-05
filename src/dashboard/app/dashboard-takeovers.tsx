@@ -44,6 +44,9 @@ export function DashboardTakeovers({takeover,route,setRoute,boot,settingsSection
      ? null : { dashboardKey: route.archiveDashboard, workflow: route.archiveWorkflow }}
    browse={route.archiveBrowse} browseInvalid={route.archiveBrowseInvalid}
    onBrowse={(browse, mode) => setRoute({ ...route, settings: "archive", archive: route.archive ?? ARCHIVE_INDEX, archiveBrowse: browse, archiveBrowseInvalid: undefined }, mode)}
+   onOpenReport={id => setRoute({ ...route, settings: "archive", archive: id,
+     archiveDashboard: undefined, archiveWorkflow: undefined,
+     archiveBrowse: { filters: route.archiveBrowse?.filters ?? {} } })}
    onSelection={next => setRoute({ ...route, settings: "archive", archive: next, archiveBrowse: { ...route.archiveBrowse, filters: route.archiveBrowse?.filters ?? {}, section: undefined } })}
    onView={next => setRoute({ ...route, settings: "archive", archive: route.archive ?? ARCHIVE_INDEX, archiveView: next })}
    onFolder={folder => setRoute({ ...route, settings: "archive", archive: ARCHIVE_INDEX,

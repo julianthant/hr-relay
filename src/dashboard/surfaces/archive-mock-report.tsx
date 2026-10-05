@@ -1,4 +1,4 @@
-import type { ReactNode } from 'react';
+import { useLayoutEffect, useRef, type ReactNode } from 'react';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../ds/breadcrumb.js';
 import { Download, FileText } from 'lucide-react';
 import { Badge, Button, PageHeading, StatusPill, dsIcon, useToasts } from '../ds/ui.js';
@@ -10,6 +10,11 @@ import { LogPanel } from './log-panel.js';
 export function MockArchiveReport({ run, section, onSection, onHistory, onBack, actions }: {
  run: MockArchiveRun; section: number; onSection: (section: number) => void; onHistory: () => void; onBack: () => void; actions?: ReactNode;
 }) {
+ const article = useRef<HTMLElement>(null);
+ useLayoutEffect(() => {
+  const heading = article.current?.querySelector('h1');
+  if (heading) { heading.tabIndex = -1; heading.focus({ preventScroll: true }); }
+ }, [run.id]);
  const { toast } = useToasts();
  const activeSection = section === 1 ? 0 : section;
  const currentSection = MOCK_ARCHIVE_REPORT_SECTIONS.find(item => item.id === activeSection);
@@ -23,7 +28,7 @@ export function MockArchiveReport({ run, section, onSection, onHistory, onBack, 
    toast({ tone: 'success', title: 'Mock file downloaded', description: name });
   } catch (error) { toast({ tone: 'danger', title: 'File could not be downloaded', description: error instanceof Error ? error.message : String(error) }); }
  };
- return <article aria-label="Saved run report">
+ return <article ref={article} aria-label="Saved run report">
   <div className="mock-archive-folder-header">
    <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onHistory}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{run.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${run.dashboard}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={onBack}>{run.workflowLabel}</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>Run {run.number}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
    <PageHeading title={run.title} description={`${run.workflowLabel} · Run ${run.number}`} actionAlignment="title" actions={actions} />

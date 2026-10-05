@@ -124,6 +124,14 @@ right filters, 12px table gap and matching cell/header spacing. The Archive over
 workflow and outcome filters share one horizontal row at both supported desktop widths. Settings actions
 center on the complete title/description block. Archive omits Export workflow and places folder report
 counts beside search; saved-run export and date filters retain their behavior. Wide tables scroll within the frame.
+The 2026-10-05 search revision shows exact archived-run links across all versions and workflows,
+including current-session snapshots. Titles, workflow/version context, run IDs, employee IDs,
+documents and outcomes identify each result. Multiword matching covers public metadata, saved
+fields/settings and filenames. Explicit filters apply; implicit folder scope does not. Opening a
+result clears the folder route, preserves the query and focuses the report heading. Returning through
+Archive restores results and the selected link; arrow keys and Enter support keyboard navigation.
+Reset filters is removed. Clearing search retains explicit filters. Focused evidence:
+`archive-search-records-20261005`; connected Archive transport remains unmounted.
 Search sizes and theme remain unchanged. Search fields use a neutral focus border without a bright
 halo and a small clear icon only when nonempty. Settings search indexes page and field labels with
 parent-page context, without searching values or secrets. A selected field opens its page and any

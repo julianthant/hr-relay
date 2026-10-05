@@ -2,24 +2,29 @@ import type { WorkflowCatalogEntry } from "./workflow-catalog-model.js";
 import { ChevronRight, Download, FileText, Folder, Layers3 } from 'lucide-react';
 import { useMemo, useRef, useState } from 'react';
 import { ArchiveBrowseStateSchema, EMPTY_ARCHIVE_BROWSE, type ArchiveBrowseState } from '../app/archive-route-model.js';
-import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, SearchInput, Select, TableList, TableToolbar, dsIcon, useToasts } from '../ds/ui.js';
+import { Button, DateRangeInput, Dialog, DialogContent, PageHeading, Select, TableList, TableToolbar, dsIcon, useToasts } from '../ds/ui.js';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuGroup, DropdownMenuItem, DropdownMenuTrigger } from '../ds/dropdown-menu.js';
 import { ArchiveResourceState } from './archive-visual.js';
 import { MockArchiveBump } from './archive-mock-bump.js';
+import { ArchiveMockSearch, MockArchiveSearchResults } from './archive-mock-search.js';
 import { MockArchiveReport } from './archive-mock-report.js';
 import { MOCK_ARCHIVE_RUNS, mockArchiveWorkflows, mockArchiveDate, mockArchiveDateBoundary, mockArchiveExport, mockArchiveFilter, mockArchiveResultLabel, mockArchiveScope, type MockArchiveFolder, type MockArchiveRun } from './archive-mock-model.js';
 import { Breadcrumb, BreadcrumbItem, BreadcrumbLink, BreadcrumbList, BreadcrumbPage, BreadcrumbSeparator } from '../ds/breadcrumb.js';
 import './archive-mock.css';
 
-export function MockArchiveWorkspace({ catalog, selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder, additionalReports }: {
+export function MockArchiveWorkspace({ catalog, selection, view, folder, browse, browseInvalid, onBrowse, onSelection, onView, onFolder, onOpenReport, additionalReports }: {
  catalog: readonly WorkflowCatalogEntry[]; selection: string; view: 'runs' | 'versions'; folder: MockArchiveFolder | null;
  browse?: ArchiveBrowseState; browseInvalid?: boolean;
  additionalReports?: readonly MockArchiveRun[];
  onBrowse: (browse: ArchiveBrowseState, mode?: 'push' | 'replace') => void;
  onSelection: (id: string) => void; onView: (view: 'runs' | 'versions') => void;
  onFolder: (folder: MockArchiveFolder | null) => void;
+ onOpenReport: (id: string) => void;
 }) {
  const { toast } = useToasts();
+ const searchInputRef = useRef<HTMLInputElement>(null);
+ const searchResultsRef = useRef<HTMLElement>(null);
+ const lastSearchRun = useRef<string | undefined>(undefined);
  const bumpTrigger = useRef<HTMLButtonElement>(null);
  const [exportOpen, setExportOpen] = useState(false);
  const browsing = browse ?? EMPTY_ARCHIVE_BROWSE;
@@ -31,10 +36,12 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
  const rows = scope === null ? [] : mockArchiveFilter(scope, browsing);
  const unavailable = scope === null || selection !== '' && report === undefined;
  const invalid = browseInvalid || browsing.after !== undefined || browsing.columns !== undefined;
- const filtered = Object.values(browsing.filters).some(value => value !== undefined && value !== '');
+ const searching = Boolean(browsing.filters.search?.trim());
+ const searchRows = searching ? mockArchiveFilter(reports, browsing) : [];
+ const openSearchReport = (id: string) => { lastSearchRun.current = id; onOpenReport(id); };
  const exportRows = report ? [report] : rows;
  const exportName = report ? `mock-run-${report.number}` : `mock-archive-${folder?.dashboardKey ?? 'all'}`;
- const recover = () => { onFolder(null); };
+ const recover = () => { if (folder === null && report !== undefined && searching) onSelection(''); else onFolder(null); };
  const download = (format: 'json' | 'csv') => {
   setExportOpen(false);
   try {
@@ -49,6 +56,12 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
   if (!next.success) { toast({ tone: 'danger', title: 'Check the date range', description: 'The completed-through date must follow the completed-from date.' }); return; }
   onBrowse(next.data, mode);
  };
+ const searchInput = <ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')}
+  inputRef={searchInputRef} resultsRef={searchResultsRef} onOpenFirst={searchRows[0] ? () => openSearchReport(searchRows[0].id) : undefined} />;
+ const searchResults = <MockArchiveSearchResults rows={searchRows} browse={browsing} onSelection={openSearchReport} resultsRef={searchResultsRef} inputRef={searchInputRef} restoreRunId={lastSearchRun.current} />;
+ const dateControl = <DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
+  value={{ from: browsing.filters.from?.slice(0, 10) ?? '', to: browsing.filters.to?.slice(0, 10) ?? '' }}
+  onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />;
  const actions = <>
    {report !== undefined && !unavailable && !invalid && <DropdownMenu open={exportOpen} onOpenChange={setExportOpen}>
     <DropdownMenuTrigger asChild><Button variant="secondary" icon={<Download className={dsIcon.sm} />}>Export run</Button></DropdownMenuTrigger>
@@ -61,7 +74,7 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
  return <section aria-label="Archive" className="mock-archive settings-reference-page settings-data-section">
   {(folder === null && report === undefined || unavailable || invalid) && <PageHeading title="Archive" actionAlignment="title" actions={actions} />}
   {folder === null && report === undefined && !invalid && !unavailable && <TableToolbar
-    search={<ArchiveMockSearch value={browsing.filters.search ?? ""} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, "replace")} />}
+    search={searchInput}
     controls={<div className="mock-archive-index-filters">
     <Select aria-label="Archived workflow" value={browsing.filters.workflow ?? "all"} onChange={event => updateFilters({ ...browsing.filters, workflow: event.target.value === "all" ? undefined : event.target.value })} icon={<Folder className={dsIcon.sm} />}>
       <option value="all">All workflows</option>{workflows.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
@@ -70,28 +83,28 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
       <option value="all">All outcomes</option><option value="done">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option>
     </Select>
     </div>} />}
-  {folder === null && report === undefined && !invalid && !unavailable && filtered && <div><Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button></div>}
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />
      : unavailable ? <ArchiveResourceState kind="error" title="This saved report is unavailable" message="Choose a workflow to browse its saved reports." action={<Button variant="secondary" onClick={recover}>View version history</Button>} />
      : report ? <MockArchiveReport actions={actions} run={report} section={browsing.section ?? 0} onSection={section => onBrowse({ ...browsing, section }, 'replace')} onHistory={recover} onBack={() => folder ? onSelection('') : onFolder({ dashboardKey: report.dashboard, workflow: report.workflow })} />
      : folder === null ? <>
-      <MockVersionFolders rows={rows} onFolder={onFolder} />
+      {searching ? searchResults : <MockVersionFolders rows={rows} onFolder={onFolder} />}
      </> : <>
       <div className="mock-archive-folder-header">
        <Breadcrumb aria-label="Archive breadcrumbs"><BreadcrumbList><BreadcrumbItem><BreadcrumbLink asChild><button type="button" onClick={recover}>Archive</button></BreadcrumbLink></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><span>{folder.dashboardKey === 'unrecorded' ? 'Version not recorded' : `Dashboard ${folder.dashboardKey}`}</span></BreadcrumbItem><BreadcrumbSeparator /><BreadcrumbItem><BreadcrumbPage>{scope[0].workflowLabel}</BreadcrumbPage></BreadcrumbItem></BreadcrumbList></Breadcrumb>
        <PageHeading title={scope[0].workflowLabel} actionAlignment="title" actions={actions} />
       </div>
-      <TableList
-       search={<ArchiveMockSearch value={browsing.filters.search ?? ''} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, 'replace')} />}
-       controls={<DateRangeInput label="Completed date range" fromLabel="Completed from (UTC)" toLabel="Completed through (UTC)" className="mock-archive-date-range"
-        value={{ from: browsing.filters.from?.slice(0, 10) ?? '', to: browsing.filters.to?.slice(0, 10) ?? '' }}
-        onChange={value => updateFilters({ ...browsing.filters, from: mockArchiveDateBoundary(value.from), to: mockArchiveDateBoundary(value.to, true) })} />}
-       summary={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`} summaryPosition="near-search">
-       <MockArchiveRunTable rows={rows} onSelection={onSelection} />
-      </TableList>
-      {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another name, outcome or completed date." action={<Button variant="secondary" onClick={() => updateFilters({})}>Reset filters</Button>} />}
-      {filtered && <Button variant="ghost" size="sm" onClick={() => updateFilters({})}>Reset filters</Button>}
+      {searching ? <>
+       <TableToolbar search={searchInput} controls={dateControl} />
+       {searchResults}
+      </> : <>
+       <TableList search={searchInput}
+        controls={dateControl}
+        summary={`${rows.length} ${rows.length === 1 ? 'report' : 'reports'}`} summaryPosition="near-search">
+        <MockArchiveRunTable rows={rows} onSelection={onSelection} />
+       </TableList>
+       {rows.length === 0 && <ArchiveResourceState kind="empty" title="No reports match these filters" message="Try another outcome or completed date." />}
+      </>}
      </>}
   </div>
   <Dialog open={view === 'versions'} onOpenChange={open => { if (!open) onView('runs'); }}>
@@ -102,10 +115,6 @@ export function MockArchiveWorkspace({ catalog, selection, view, folder, browse,
    </DialogContent>}
   </Dialog>
  </section>;
-}
-
-function ArchiveMockSearch({ value, onChange }: { value: string; onChange: (value: string) => void }) {
- return <SearchInput type="text" className="mock-archive-search" aria-label="Search saved reports" placeholder="Search archived reports" value={value} onChange={event => onChange(event.target.value)} onClear={() => onChange('')} />;
 }
 
 function MockVersionFolders({ rows, onFolder }: { rows: readonly MockArchiveRun[]; onFolder: (folder: MockArchiveFolder) => void }) {

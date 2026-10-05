@@ -7723,6 +7723,16 @@ version or run writes. The retained runtime sibling shares the layout while pres
 scope/version/revision matching, blockers and the original interrupted-transfer request.
 Search and completed-date filters retain their
 route state and date boundaries. The unmounted runtime export implementation remains retained.
+Archive's mounted search lists exact archived runs across every dashboard version and workflow,
+including current-session local snapshots. A nonempty query replaces workflow folders or the scoped
+run table with title/context links. Every query word must match the public record metadata, saved
+field/settings values or retained filenames; exact identities and prefixes rank first. Explicit
+workflow, outcome and date filters still apply, while a folder's implicit scope does not constrain
+search. Each link names one report and clears the folder route atomically when opened. The query
+survives report navigation and reload; the Archive breadcrumb restores results. Arrow keys move
+between the search field and result links, Enter opens the selected run, and report headings receive
+focus. Reset filters is retired; the clear icon clears only the query. This remains a local mock,
+not evidence of connected Archive transport. Focused evidence: `archive-search-records-20261005`.
 Activity dates stay visible for every period, with the same typography and control exterior as the
 period control. Presets synchronize both dates; manual endpoint edits select Custom, including incomplete
 drafts that retain the applied report range. Average workflow time replaces Time saved, manual baselines

@@ -72,8 +72,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(archive.getByText(/^\d+ matching reports$/u)).toHaveCount(0);
       await expect(archive.getByRole('region', { name: 'Dashboard 1.3', exact: true })).toContainText('16 reports');
       await archive.getByRole('textbox', { name: 'Search saved reports', exact: true }).fill('Jordan');
-      await expect(archive.getByRole('button', { name: 'Reset filters', exact: true })).toBeVisible();
-      await archive.getByRole('button', { name: 'Reset filters', exact: true }).click();
+      await expect(archive.getByRole('region', { name: 'Archived run search results', exact: true }).getByRole('link')).toHaveCount(2);
+      await archive.getByRole('button', { name: 'Clear search', exact: true }).click();
+      await expect(archive.getByRole('region', { name: 'Dashboard 1.3', exact: true })).toContainText('16 reports');
       await expect(archive.getByRole('button', { name: 'Reset filters', exact: true })).toHaveCount(0);
       await info.attach(`archive-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: 'image/png' });
     } finally { await server.close(); }

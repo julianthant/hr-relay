@@ -91,15 +91,35 @@ export function mockArchiveScope(folder: MockArchiveFolder | null, reports: read
     const rows = reports.filter(row => row.dashboard === folder.dashboardKey && row.workflow === folder.workflow);
     return rows.length === 0 ? null : rows;
 }
+export function mockArchiveSearch(rows: readonly MockArchiveRun[], query: string): readonly MockArchiveRun[] {
+    const term = query.trim().toLocaleLowerCase();
+    if (!term) return [];
+    const words = term.split(/\s+/u);
+    const rank = (row: MockArchiveRun) => {
+        const labels = [row.title, row.person, row.id, String(row.number), row.employeeId, row.document].map(value => value.toLocaleLowerCase());
+        return labels.includes(term) ? 0 : labels.some(label => label.startsWith(term)) ? 1 : 2;
+    };
+    return rows.filter(row => {
+        const terms = [row.id, `Run ${row.number}`, row.title, row.person, row.employeeId, row.email, row.document, row.location,
+            row.workflowLabel, row.dashboard === 'unrecorded' ? 'Version not recorded' : `Dashboard ${row.dashboard}`, `Workflow ${row.workflowVersion}`,
+            mockArchiveResultLabel(row.outcome), row.completed ?? '', row.archived, ...row.fields.flat(), ...row.settings.flat(), ...row.files.map(file => file.name)].join(' ').toLocaleLowerCase();
+        return words.every(word => terms.includes(word));
+    }).sort((a, b) => rank(a) - rank(b));
+}
+export function mockArchiveSearchHref(run: MockArchiveRun, browse: ArchiveBrowseState): string {
+    const params = new URLSearchParams({ settings: 'archive', archive: run.id, archiveBrowse: JSON.stringify({ filters: browse.filters }) });
+    return `?${params.toString()}`;
+}
 export function mockArchiveFilter(rows: readonly MockArchiveRun[], browse: ArchiveBrowseState): readonly MockArchiveRun[] {
-    const f = browse.filters, search = f.search?.trim().toLocaleLowerCase() ?? '';
-    return rows.filter(row => (!search || JSON.stringify([row.title, row.person, row.employeeId, row.email, row.document, row.location, row.workflowLabel, row.dashboard, row.workflowVersion, row.fields, row.settings]).toLocaleLowerCase().includes(search)) &&
+    const f = browse.filters;
+    const filtered = rows.filter(row =>
         (f.dashboardVersion === undefined || row.dashboard === `${f.dashboardVersion.major}.${f.dashboardVersion.minor}`) && (f.workflow === undefined || row.workflow === f.workflow) &&
         (f.outcome === undefined || (f.outcome === 'done' ? row.outcome === 'verifiedDone' || row.outcome === 'doneWarnings' : row.outcome === f.outcome)) &&
         (f.title === undefined || row.title.toLocaleLowerCase().includes(f.title.toLocaleLowerCase())) &&
         (f.descriptorVersion === undefined || row.workflowVersion === f.descriptorVersion) &&
         (!f.from || row.completed !== undefined && Date.parse(row.completed) >= Date.parse(f.from)) && (!f.to || row.completed !== undefined && Date.parse(row.completed) <= Date.parse(f.to)) &&
         (!f.capturedFrom || Date.parse(row.archived) >= Date.parse(f.capturedFrom)) && (!f.capturedTo || Date.parse(row.archived) <= Date.parse(f.capturedTo)));
+    return f.search?.trim() ? mockArchiveSearch(filtered, f.search) : filtered;
 }
 export function mockArchiveDate(value: string) { return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric', year: 'numeric', timeZone: 'UTC' }).format(new Date(value)); }
 export function mockArchiveDateBoundary(value: string, end = false): string | undefined { return value === '' ? undefined : `${value}T${end ? '23:59:59.999' : '00:00:00.000'}Z`; }
