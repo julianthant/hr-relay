@@ -1,6 +1,7 @@
+import { ArchiveBumpStepHeading, ArchiveBumpVersionSummary } from './archive-bump-review.js';
 import { EMPTY_ARCHIVE_BROWSE, ArchiveBrowseStateSchema, type ArchiveBrowseState } from "../app/archive-route-model.js";
-import { Archive, ArrowRight, ChevronDown, ChevronRight, Download, Folder, Layers3 } from "lucide-react";
-import { Fragment, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Archive, ArrowLeft, ArrowRight, ChevronDown, ChevronRight, Download, Folder, Layers3 } from "lucide-react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ArchiveGroupQuery } from "../../domain/archive/report.js";
 import type { SavedArchiveQuery, SavedRuntimeVersionIndexWire } from "../../domain/dashboard/archive.js";
 import { formatRuntimeVersion } from "../../domain/archive/runtime-version.js";
@@ -400,6 +401,7 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
   const client = useArchiveClient();
   const [kind, setKind] = useState<"workflows" | "dashboard">("workflows");
   const [selected, setSelected] = useState<string[] | null>(null);
+  const [step, setStep] = useState<"select" | "review">("select");
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState("");
   const [activeReview, setActiveReview] = useState<{ changeId: string; scopeKey: string; generation: number; authorityRevision?: number } | null>(null);
@@ -432,6 +434,7 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
     if (previousContextKey.current === contextKey) return;
     previousContextKey.current = contextKey;
     setSelected(null);
+    setStep("select");
     setActiveReview(null);
     setMessage("");
   }, [contextRunId, contextWorkflowId]);
@@ -474,6 +477,7 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
   const submit = (request: unknown, action: "review" | "apply", reviewBasis?: { changeId: string; scopeKey: string; generation: number }) => {
     if (busyRef.current) return;
     busyRef.current = true;
+    setStep("review");
     setBusy(true);
     if (action === "review") setActiveReview(null);
     setMessage(action === "review" ? "Reviewing affected runs…" : "Applying version change…");
@@ -535,36 +539,47 @@ function RuntimeBumpPanel({ actorId, contextRunId, contextWorkflowId, versions, 
     return <section key={change.changeId} aria-label={change.state === "applying" ? "Version change applying" : change.state === "applied" ? "Version change applied" : "Reviewed version change"} className="space-y-[var(--ds-space-base)]">
       {change.state === "planned" && change !== currentChange && <p role="status">Review is stale for the current selection. Review again.</p>}
       {change.state === "applying" && <p role="status">Transfer interrupted or still applying. Resume with the original command request.</p>}
-      <dl className={cn(dsText.meta, "grid grid-cols-[minmax(120px,auto)_minmax(0,1fr)] border-t border-[color:var(--ds-border)] [&>dt]:border-b [&>dt]:border-[color:var(--ds-border)] [&>dt]:py-[12px] [&>dd]:border-b [&>dd]:border-[color:var(--ds-border)] [&>dd]:py-[12px]")}>
-        <dt>{"Dashboard "}</dt><dd className="m-0 text-right">{formatRuntimeVersion(change.before.dashboard)} → {formatRuntimeVersion(change.after.dashboard)}</dd>
-        {affected.map(id => { const before = change.before.workflows.find(row => row.workflowId === id)?.version; const after = change.after.workflows.find(row => row.workflowId === id)?.version; return <Fragment key={id}><dt>{`${workflowLabel(id)}: `}</dt><dd className="m-0 text-right">{before === undefined ? "Version unavailable" : formatRuntimeVersion(before)} → {after === undefined ? "Version unavailable" : formatRuntimeVersion(after)}</dd></Fragment>; })}
-      </dl>
-      {blockers.length > 0 && <p role="status" className={cn(dsText.meta, "m-0")}>Blocked by {blockers.length} active or pending {blockers.length === 1 ? "run" : "runs"}. Finish or resolve these runs before applying.</p>}
+      <ArchiveBumpVersionSummary before={change.before} after={change.after} affected={affected} workflows={wire.workflows} />
+      {blockers.length > 0 && <p role="status" className="archive-bump-notice">Blocked by {blockers.length} active or pending {blockers.length === 1 ? "run" : "runs"}. Finish or resolve these runs before applying.</p>}
       {change.state === "applying" && change.resumeRequest === undefined && !applyRequests.current.has(change.changeId) && <p role="status">The original apply request is unavailable. No replacement request will be created.</p>}
     </section>;
   };
-  return <><DialogBody className="max-h-[min(68vh,620px)] overflow-y-auto p-[20px]"><section aria-label="Plan a version bump" className="space-y-[24px]">
+  const reviewing = step === "review" || currentChange?.state === "applying";
+  const affectedCount = currentChange === undefined ? preview?.transition.affectedWorkflowIds.length ?? 0
+    : currentChange.scope.kind === "dashboard" ? currentChange.before.workflows.length : currentChange.scope.workflowIds.length;
+  const back = () => {
+    generation.current += 1;
+    setActiveReview(null);
+    setMessage("");
+    setStep("select");
+  };
+  return <><DialogBody className="archive-bump-body">
+    <ArchiveBumpStepHeading step={reviewing ? "review" : "select"} description={reviewing ? `${affectedCount} ${affectedCount === 1 ? "workflow" : "workflows"} included in this change.` : "Select the workflows to include in this change."} />
     {versions.state === "loading" && <p role="status">Refreshing runtime versions…</p>}
-    <fieldset aria-label="Version bump scope" className="space-y-[12px] border-0 p-0">
-      <div className={cn("rounded-[var(--ds-radius-md)] border p-[16px]", kind === "workflows" ? "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-3)]" : "border-[color:var(--ds-border)]") }>
-        <label className={cn(dsText.ui, "flex min-h-[32px] cursor-pointer items-center gap-[var(--ds-space-snug)] font-semibold")}><input type="radio" name="archive-bump-scope" checked={kind === "workflows"} disabled={eligible.length === 0} onChange={() => setKind("workflows")} />Selected workflow</label>
-        {kind === "workflows" && <div className="ml-[var(--ds-space-section)] mt-[12px] flex flex-col gap-[8px]">
+    {!reviewing && <fieldset aria-label="Version bump scope" className="archive-bump-scopes">
+      <div className="archive-bump-scope" data-active={kind === "workflows" || undefined}>
+        <label className="archive-bump-label"><input type="radio" name="archive-bump-scope" checked={kind === "workflows"} disabled={eligible.length === 0} onChange={() => setKind("workflows")} />Selected workflow</label>
+        {kind === "workflows" && <div className="archive-bump-picker">
           <p className={cn(dsText.meta, "m-0 font-medium")}>Workflow to bump</p>
           <Popover><PopoverTrigger asChild><Button variant="secondary" className="h-[36px] w-full justify-between border-[color:var(--ds-control-border)]" iconAfter={<ChevronDown className={dsIcon.sm} aria-hidden />} aria-label="Workflow to bump">{selectedIds.length === 0 ? "Select a workflow" : selectedIds.length === 1 ? workflowLabel(selectedIds[0]) : `${selectedIds.length} workflows · ${selectedIds.map(workflowLabel).join(", ")}`}</Button></PopoverTrigger><PopoverContent className="ds-body-scope ds-body-overlay !z-50 !w-[min(360px,calc(100vw-32px))] !bg-[var(--ds-surface-overlay)] p-[12px]" title="Workflow to bump" align="start"><fieldset aria-label="Workflows to bump" className="max-h-[240px] space-y-[4px] overflow-y-auto border-0 p-0">{wire.workflows.map(row => { const after = preview?.transition.after.workflows.find(item => item.workflowId === row.workflowId)?.version ?? row.version; return <div key={row.workflowId} className="flex min-h-[36px] items-center"><Checkbox label={`${row.label} · ${selectedIds.includes(row.workflowId) ? `${formatRuntimeVersion(row.version)} → ${formatRuntimeVersion(after)}` : `Unchanged · ${formatRuntimeVersion(row.version)}`}`} checked={selectedIds.includes(row.workflowId)} onCheckedChange={checked => setSelected(checked ? [...selectedIds, row.workflowId] : selectedIds.filter(id => id !== row.workflowId))} /></div>; })}</fieldset></PopoverContent></Popover>
         </div>}
       </div>
-      <div className={cn("rounded-[var(--ds-radius-md)] border p-[16px]", kind === "dashboard" ? "border-[color:var(--ds-control-border)] bg-[var(--ds-surface-3)]" : "border-[color:var(--ds-border)]") }>
-        <label className={cn(dsText.ui, "flex min-h-[32px] cursor-pointer items-center gap-[var(--ds-space-snug)] font-semibold")}><input type="radio" name="archive-bump-scope" checked={kind === "dashboard"} disabled={eligible.length === 0} onChange={() => setKind("dashboard")} />All workflows</label>
+      <div className="archive-bump-scope" data-active={kind === "dashboard" || undefined}>
+        <label className="archive-bump-label"><input type="radio" name="archive-bump-scope" checked={kind === "dashboard"} disabled={eligible.length === 0} onChange={() => setKind("dashboard")} />All workflows</label>
         <p className={cn(dsText.meta, "mb-0 ml-[var(--ds-space-section)] mt-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]")}>{dashboardPreview === null ? "Dashboard version preview unavailable until a workflow is registered." : `Dashboard ${formatRuntimeVersion(dashboardPreview.transition.before.dashboard)} → ${formatRuntimeVersion(dashboardPreview.transition.after.dashboard)} · All workflow versions advance together`}</p>
       </div>
-    </fieldset>
+    </fieldset>}
     {wire.workflows.length === 0 && <p role="status">No eligible workflows are registered for a version change.</p>}
-    <div className="space-y-[16px] border-t border-[color:var(--ds-border)] pt-[24px]"><h3 className={cn(dsText.ui, "m-0 font-semibold")}>Review</h3>{currentChange === undefined ? <p className={cn(dsText.meta, "m-0 text-[color:var(--ds-fg-muted)]")}>Review the version change before applying.</p> : changeSummary(currentChange)}{activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && <p role="status" className={cn(dsText.meta, "m-0")}>The reviewed versions do not match this selection. Review again.</p>}</div>
-    {wire.applyingChangeId !== undefined && <p role="status">Version change {wire.applyingChangeId} is applying.</p>}
+    {reviewing && <div className="archive-bump-review">
+      {currentChange !== undefined && changeSummary(currentChange)}
+      {currentChange === undefined && message === "" && <p role="status" className="archive-bump-notice">Review the version change before applying.</p>}
+      {activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && <p role="status" className="archive-bump-notice">The reviewed versions do not match this selection. Review again.</p>}
+    </div>}
+    {wire.applyingChangeId !== undefined && currentChange?.state !== "applying" && <p role="status">A version change is applying.</p>}
     {message !== "" && !(activeReview !== null && activeChange !== undefined && !reviewPayloadMatches && message === "Version review updated.") && <p role="status" className={cn(dsText.meta, "m-0")}>{message}</p>}
-  </section></DialogBody><DialogFooter><Button variant="secondary" onClick={onCancel}>Cancel</Button>
+  </DialogBody><DialogFooter meta={reviewing && currentChange?.state !== "applying" ? <Button variant="ghost" icon={<ArrowLeft className={dsIcon.sm} />} disabled={busy || versions.state !== "loaded"} onClick={back}>Back</Button> : undefined}><Button variant="secondary" onClick={onCancel}>Cancel</Button>
     {currentChange?.state === "applying" ? (currentChange.resumeRequest === undefined && !applyRequests.current.has(currentChange.changeId) ? null : <Button variant="primary" disabled={busy || versions.state !== "loaded" || (currentChange.resumeRequest === undefined && !applyRequests.current.has(currentChange.changeId))} onClick={() => apply(currentChange)}>Resume version change</Button>)
-      : currentChange?.state === "planned" && currentChange.members.every(member => member.state === "terminal") ? <Button variant="primary" disabled={busy || currentChange.members.some(member => member.state !== "terminal") || !reviewMatches} onClick={() => apply(currentChange)}>Apply reviewed change</Button>
+      : reviewing && currentChange?.state === "planned" && currentChange.members.every(member => member.state === "terminal") ? <Button variant="primary" disabled={busy || currentChange.members.some(member => member.state !== "terminal") || !reviewMatches} onClick={() => apply(currentChange)}>Apply reviewed change</Button>
         : <Button variant="primary" iconAfter={<ArrowRight className={dsIcon.sm} aria-hidden />} disabled={busy || scope === null || versions.state !== "loaded"} onClick={review}>Review change</Button>}
   </DialogFooter></>;
 }

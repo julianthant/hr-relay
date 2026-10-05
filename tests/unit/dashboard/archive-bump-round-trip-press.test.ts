@@ -86,6 +86,13 @@ async function runtimePress(label:string){
   const matches=runtimeButtons().filter(button=>button.textContent?.trim()===label);assert.equal(matches.length,1,`${label}: ${runtimeButtons().map(button=>button.textContent).join(", ")}`);
   await act(async()=>{matches[0].click();await Promise.resolve();await Promise.resolve();});
 }
+function versionRow(label:string, before:string, after:string) {
+  const row=[...document.querySelectorAll('[aria-label="Version changes"] tbody tr')].find(node=>node.querySelector('th')?.textContent===label);
+  assert.ok(row,`version row ${label} exists`);
+  const cells=[...row.querySelectorAll('td')];
+  assert.equal(cells[0].textContent,before);
+  assert.equal(cells[1].firstChild?.textContent,after);
+}
 async function flushRuntime(){await act(async()=>{await Promise.resolve();await Promise.resolve();await Promise.resolve();});}
 async function checkbox(label:string){
   if (![...document.querySelectorAll("label")].some(node=>node.textContent?.startsWith(`${label.split(" · ")[0]} · `))) {
@@ -142,16 +149,17 @@ it("defaults to the selected report's eligible workflow and plans each served se
   await runtimePress("Review change");await flushRuntime();
   const first=CommandRequestSchema.parse(h.commands[0]);assert.equal(first.type,"plan-runtime-version");if(first.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(first.target.scope,{kind:"workflows",workflowIds:["other-workflow"]});
-  assert.match(runtimeText(),/Dashboard 1\.0 → 1\.0/u);assert.match(runtimeText(),/Workflow B: 1\.7 → 1\.8/u);
+  versionRow("Dashboard","1.0","1.0");versionRow("Workflow B","1.7","1.8");
   assert.match(runtimeText(),/Blocked by 1 active or pending run/u);
-  assert.doesNotMatch(runtimeText(),/Workflow A: 1\.2 → 1\.3/u);
+  assert.equal([...document.querySelectorAll('[aria-label="Version changes"] tbody th')].some(node=>node.textContent==="Workflow A"),false);
+  await runtimePress("Back");
   await toggleRuntimeCheckbox("Workflow B · 1.7 → 1.8");
   await flushRuntime();
   await toggleRuntimeCheckbox("Workflow A · 1.2 → 1.3");
   await flushRuntime();await runtimePress("Review change");await flushRuntime();
   const second=CommandRequestSchema.parse(h.commands[1]);assert.equal(second.type,"plan-runtime-version");if(second.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(second.target.scope,{kind:"workflows",workflowIds:["person-lookup"]});
-  assert.match(runtimeText(),/Workflow A: 1\.2 → 1\.3/u);
+  versionRow("Workflow A","1.2","1.3");
   assert.equal(runtimeButtons().filter(button=>button.textContent==="Apply reviewed change").length,1);
   assert.equal(document.querySelector("details details button"),null, "older blocked review cannot apply");
   assert.equal(h.reads()>=3,true);
@@ -188,12 +196,13 @@ it("keeps multi-workflow minor selection and maps all registered workflows to th
   await flushRuntime();await runtimePress("Review change");await flushRuntime();
   const pair=CommandRequestSchema.parse(h.commands[0]);assert.equal(pair.type,"plan-runtime-version");if(pair.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(pair.target.scope,{kind:"workflows",workflowIds:["other-workflow","person-lookup"]});
+  await runtimePress("Back");
   await toggleRuntimeCheckbox("Workflow C · 1.4 → 1.5");
   await flushRuntime();await runtimePress("Review change");await flushRuntime();
   const all=CommandRequestSchema.parse(h.commands[1]);assert.equal(all.type,"plan-runtime-version");if(all.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
   assert.deepEqual(all.target.scope,{kind:"dashboard"});
-  assert.match(runtimeText(),/Dashboard 1\.0 → 2\.0/u);
-  for(const [label,before] of [["Workflow A","1.2"],["Workflow B","1.7"],["Workflow C","1.4"]])assert.match(runtimeText(),new RegExp(`${label}: ${before} → 2\\.0`));
+  versionRow("Dashboard","1.0","2.0");
+  for(const [label,before] of [["Workflow A","1.2"],["Workflow B","1.7"],["Workflow C","1.4"]])versionRow(label,before,"2.0");
 });
 
 it("maps a sole registered workflow to the all-workflow major action",async()=>{
@@ -229,17 +238,47 @@ it("invalidates workflow A when selection moves to blocked workflow B",async()=>
   const h=await mountRuntime();
   await runtimePress("Review change");await flushRuntime();
   const firstApply=runtimeButtons().find(button=>button.textContent==="Apply reviewed change");assert.ok(firstApply);assert.equal(firstApply.disabled,false);
+  await runtimePress("Back");
   await toggleRuntimeCheckbox("Workflow A · 1.2 → 1.3");await flushRuntime();
   await toggleRuntimeCheckbox("Workflow B · 1.7 → 1.8");await flushRuntime();
   const stale=runtimeButtons().find(button=>button.textContent==="Apply reviewed change");assert.equal(stale,undefined);
-  assert.match(runtimeText(),/Review the version change before applying/u);
+  assert.match(runtimeText(),/Choose what to update/u);
+  assert.equal(document.querySelector('[aria-label="Version changes"]'),null);
   await runtimePress("Review change");await flushRuntime();
-  assert.match(runtimeText(),/Dashboard 1\.0 → 1\.0/u);assert.match(runtimeText(),/Workflow B: 1\.7 → 1\.8/u);
+  versionRow("Dashboard","1.0","1.0");versionRow("Workflow B","1.7","1.8");
   assert.match(runtimeText(),/Blocked by 1 active or pending run/u);assert.doesNotMatch(runtimeText(),new RegExp(RUNTIME_RUN_C));
   const blocked=runtimeButtons().filter(button=>button.textContent==="Apply reviewed change").find(button=>!button.disabled);
   assert.equal(blocked,undefined);
   assert.equal(runtimeButtons().find(button=>button.textContent==="Review change")?.disabled,false);
   assert.equal(h.commands.filter(value=>CommandRequestSchema.parse(value).type==="apply-runtime-version").length,0);
+});
+
+it("holds the review page through command and readback, then Back preserves the draft without apply authority",async()=>{
+  const commandReply=Promise.withResolvers<unknown>();
+  const readback=Promise.withResolvers<SavedRuntimeVersionIndexWire>();
+  let reads=0;
+  const h=await mountRuntime({read:()=>++reads===1?Promise.resolve(RUNTIME_BEFORE):readback.promise,execute:()=>commandReply.promise});
+  await runtimePress("Review change");
+  assert.equal(document.activeElement?.textContent,"Review version change");
+  assert.equal(document.querySelector('[aria-label="Version bump scope"]'),null);
+  assert.equal(runtimeButtons().find(button=>button.textContent==="Back")?.disabled,true);
+  assert.equal(runtimeButtons().some(button=>button.textContent==="Apply reviewed change"),false);
+  const request=CommandRequestSchema.parse(h.commands[0]);
+  assert.equal(request.type,"plan-runtime-version");if(request.type!=="plan-runtime-version")throw new Error("wrong runtime plan");
+  await act(async()=>commandReply.resolve(CommandResultSchema.parse({state:"applied",commandId:request.commandId,affectedTargets:[{family:"version-archive",versionPlanId:request.commandId}]})));
+  await flushRuntime();
+  assert.equal(reads,2);
+  assert.equal(runtimeButtons().find(button=>button.textContent==="Back")?.disabled,true);
+  assert.equal(runtimeButtons().some(button=>button.textContent==="Apply reviewed change"),false);
+  await act(async()=>readback.resolve(runtimeReview(RUNTIME_BEFORE,request.commandId,request.target.scope)));
+  await flushRuntime();
+  assert.equal(runtimeButtons().find(button=>button.textContent==="Apply reviewed change")?.disabled,false);
+  versionRow("Workflow A","1.2","1.3");
+  await runtimePress("Back");
+  assert.equal(document.activeElement?.textContent,"Choose what to update");
+  assert.equal(runtimeButtons().some(button=>button.textContent==="Apply reviewed change"),false);
+  assert.equal((await checkbox("Workflow A")).getAttribute("aria-checked"),"true");
+  assert.equal(h.commands.length,1);
 });
 
 it("resumes an interrupted transfer with the exact retained request and shows its applied result",async()=>{

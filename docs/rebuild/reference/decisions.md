@@ -335,6 +335,12 @@ D347's dashboard-surfaces owner records the contract and `queue-footer-archive-2
 
 The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
 
+The Archive bump amendment moves review to a second dialog step with aligned current/new versions,
+explicit unchanged dashboard state, stable geometry and fixed footer actions. Back preserves the
+selected workflow draft and invalidates apply eligibility. The mounted mock remains local; the
+retained runtime sibling preserves served review matching, blockers and exact-request recovery.
+D347's dashboard-surfaces owner records the contract and `version-review-step-20261005` evidence.
+
 Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.
 
 The workflow-detail amendment adds legacy operation sequences and fields to local Logs and Explorer, populated timeline substeps with synthetic timings, active/total rail counts at both desktop widths, and subject-only run headings. Onboarding preserves distinct new-hire and concurrent-hire forms, wrong-person readbacks and dry-run cleanup. OCR remains the sole record editor and approval owner; D347's dashboard-surfaces owner records the contract and retained evidence.

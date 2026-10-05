@@ -6,6 +6,7 @@ import type { ArchiveBrowseState } from '../../../src/dashboard/app/archive-rout
 import { DateInput, ToastProvider } from '../../../src/dashboard/ds/ui.js';
 import { MockArchiveWorkspace } from '../../../src/dashboard/surfaces/archive-mock.js';
 import { MOCK_ARCHIVE_RUNS, MOCK_ARCHIVE_WORKFLOWS, type MockArchiveFolder } from '../../../src/dashboard/surfaces/archive-mock-model.js';
+import { buildWorkflowCatalog } from '../../../src/dashboard/surfaces/workflow-catalog-model.js';
 import { mockArchiveLogs } from '../../../src/dashboard/surfaces/archive-mock-logs-model.js';
 import { filterLogSteps, logPlainText } from '../../../src/dashboard/surfaces/log-feed-model.js';
 
@@ -22,7 +23,7 @@ async function mount(initialSelection = '', initialFolder: MockArchiveFolder | n
   const [folder, setFolder] = useState(initialFolder);
   const [view, onView] = useState<'runs' | 'versions'>('runs');
   const [browse, onBrowse] = useState<ArchiveBrowseState>({ filters: {}, section: initialSection });
-  return createElement(ToastProvider, { children: createElement(MockArchiveWorkspace, { selection, folder, view, browse, onSelection, onView, onBrowse,
+  return createElement(ToastProvider, { children: createElement(MockArchiveWorkspace, { catalog: buildWorkflowCatalog([]), selection, folder, view, browse, onSelection, onView, onBrowse,
    onFolder: next => { setFolder(next); onSelection(''); onBrowse({ filters: {} }); },
   }) });
  }
@@ -85,14 +86,23 @@ it('rejects a real or mismatched report identity without loading a different rec
  expect(versionGroups()).toEqual([{ label: 'Dashboard 1.3', count: '16 reports' }, { label: 'Dashboard 1.2', count: '10 reports' }, { label: 'Version not recorded', count: '4 reports' }]);
  expect(fetch).not.toHaveBeenCalled();
 });
-it('reviews the original bump scopes locally and invalidates review when scope changes', async () => {
+it('reviews bump scopes on a separate page and invalidates review when scope changes', async () => {
  const fetch = await mount();
  const originalVersions = versionGroups();
  await click(button('Plan a bump'));
+ expect(document.querySelector('[aria-label="Version change review"]')).toBeNull();
+ expect(document.querySelector('[aria-label="Version bump scope"]')).not.toBeNull();
  await click(button('Review change'));
+ expect(document.querySelector('[aria-label="Version bump scope"]')).toBeNull();
+ expect(document.activeElement?.textContent).toBe('Review version change');
  expect(document.body.textContent).toContain('1.13');
  expect(document.body.textContent).toContain('1.14');
  expect(button('Apply reviewed change')).toBeDefined();
+ await click(button('Back'));
+ expect(document.activeElement?.textContent).toBe('Choose what to update');
+ expect(document.querySelector('input[type="radio"]:checked')?.parentElement?.textContent).toBe('Selected workflow');
+ expect(document.querySelector('[aria-label="Workflow to bump"]')?.textContent).toBe('Separations');
+ expect(document.querySelector('[aria-label="Version changes"]')).toBeNull();
  await click(document.querySelector<HTMLInputElement>('input[type="radio"]:not(:checked)')!);
  expect(button('Review change')).toBeDefined();
  await click(button('Review change'));

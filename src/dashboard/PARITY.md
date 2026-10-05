@@ -138,8 +138,10 @@ highlights and primary-foreground labels/icons; muted group labels are 14px. Sec
 labels use smaller regular type. Activity's rounded opaque table expands workflow rows to show supplied
 versions. Log decision headers/bodies are opaque, and comparison tables have a border, muted header
 and opaque difference highlights.
-The original bump modal retains selected/all
-workflow scopes and inline review, with no runtime write. Archive transport and commands are
+The bump modal retains selected/all workflow scopes on step one. Review change opens step two
+with aligned current/new versions and explicit unchanged dashboard state. Back preserves selection
+and invalidates review. Body scrolling, stable dialog geometry, fixed footer actions and heading
+focus support both desktop widths. The preview performs no runtime write. Archive transport and commands are
 unmounted. Other app surfaces keep their existing wiring. Shared single-date and range controls pass
 their selected values, bounds and change callbacks to the calendars; invalid text drafts remain visible.
 

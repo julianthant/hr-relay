@@ -1,0 +1,32 @@
+.archive-bump-body {
+ display: flex;
+ flex-direction: column;
+ gap: 24px;
+ height: min(440px, calc(86vh - 188px));
+ flex: 0 1 auto;
+}
+.archive-bump-step-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; }
+.archive-bump-step-heading h3 { margin: 0; font-size: 16px; font-weight: 600; outline: none; }
+.archive-bump-step-heading p { margin: 6px 0 0; font-size: 14px; color: var(--ds-fg-muted); }
+.archive-bump-step-number { padding-top: 2px; flex-shrink: 0; font-size: 12px; color: var(--ds-fg-muted); }
+.archive-bump-scopes { display: flex; flex-direction: column; gap: 12px; border: 0; margin: 0; padding: 0; }
+.archive-bump-scope { padding: 18px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius-md); }
+.archive-bump-scope[data-active] { background: var(--ds-surface-2); border-color: var(--ds-control-border); }
+.archive-bump-label { display: flex; align-items: center; gap: 9px; font-size: 14px; font-weight: 600; cursor: pointer; }
+.archive-bump-label input { accent-color: var(--ds-accent); }
+.archive-bump-picker { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 0 22px; }
+.archive-bump-review { display: flex; flex-direction: column; gap: 16px; }
+.archive-bump-version-frame { overflow: hidden; border: 1px solid var(--ds-border); border-radius: var(--ds-radius-md); flex-shrink: 0; }
+.archive-bump-version-table { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 14px; }
+.archive-bump-version-table th, .archive-bump-version-table td { padding: 14px 18px; text-align: left; vertical-align: middle; overflow-wrap: anywhere; }
+.archive-bump-version-table thead { background: var(--ds-surface-2); color: var(--ds-fg-muted); }
+.archive-bump-version-table thead th { font-size: 12px; font-weight: 500; }
+.archive-bump-version-table th:first-child { width: 54%; }
+.archive-bump-version-table th:nth-child(2) { width: 20%; }
+.archive-bump-version-table tbody tr { border-top: 1px solid var(--ds-border); }
+.archive-bump-version-table tbody th { font-weight: 500; }
+.archive-bump-version-table td { font-variant-numeric: tabular-nums; }
+.archive-bump-version-table td[data-changed] { font-weight: 600; color: var(--ds-accent); }
+.archive-bump-unchanged { display: block; margin-top: 3px; font-size: 12px; color: var(--ds-fg-muted); }
+.archive-bump-note { margin: 0; font-size: 13px; line-height: 1.5; color: var(--ds-fg-muted); }
+.archive-bump-notice { margin: 0; padding: 12px 16px; border: 1px solid var(--ds-border); border-radius: var(--ds-radius-md); background: var(--ds-surface-2); font-size: 14px; }

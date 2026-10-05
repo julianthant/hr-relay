@@ -7714,6 +7714,13 @@ scroll inside their frame.
 Folder report counts sit beside search; date filters align at the right. Settings page actions center vertically against the title and
 any description; title-only headings keep actions inline. The workflow-export button is retired from
 the mounted Archive; saved-run export and version-bump actions remain beside the focused title.
+Archive's version-bump dialog separates selection from review. Review change replaces the scope
+cards with a current/new version table on step two; unchanged dashboard versions are explicit.
+Back preserves the workflow draft and invalidates apply eligibility until reviewed again. Both
+steps retain the dialog geometry, with body scrolling and fixed footer actions. Step headings
+receive keyboard focus. The mounted preview remains local; its Apply closes the dialog without
+version or run writes. The retained runtime sibling shares the layout while preserving served
+scope/version/revision matching, blockers and the original interrupted-transfer request.
 Search and completed-date filters retain their
 route state and date boundaries. The unmounted runtime export implementation remains retained.
 Activity dates stay visible for every period, with the same typography and control exterior as the
