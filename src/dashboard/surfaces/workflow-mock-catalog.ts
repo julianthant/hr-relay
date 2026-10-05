@@ -95,7 +95,17 @@ const contracts: Record<MockWorkflowId, Contract> = {
 };
 export const MOCK_WORKFLOWS: readonly MockWorkflow[] = WORKFLOW_PREVIEW_DEFINITIONS.map(flow => ({ ...flow, ...contracts[flow.id] }));
 export const MOCK_FORM_TYPES = [{ value: "oath", label: "Oath" }, { value: "emergency-contact", label: "Emergency Contact" }, { value: "onbase-emergency-contact", label: "OnBase Emergency Contact" }, { value: "verify", label: "Verify" }, { value: "i9", label: "I-9" }] as const;
-export const MOCK_ONBASE_TYPES = ["Benefits", "Taxes", "Awards and Honors", "Certifications and Licenses", "Disciplinary", "Education", "Emergency Contact", "Employee Relations", "General Correspondence", "Hiring", "Job Description", "Labor Relations", "Leaves", "Miscellaneous", "Performance Evaluations", "Personnel Document", "Salary", "Separation", "Service Credit", "Staff Volunteers", "Telecommuting", "Timekeeping", "Training", "Work Schedule"];
+export const MOCK_ONBASE_TYPES = [
+  { value: "Oath", label: "Oath", formType: "oath" },
+  { value: "I-9 Section 1", label: "I-9 Section 1", formType: "i9", i9Section: 1 },
+  { value: "I-9 Section 2", label: "I-9 Section 2", formType: "i9", i9Section: 2 },
+  { value: "Emergency Contact", label: "Emergency Contact", formType: "onbase-emergency-contact" },
+] as const;
+export function mockOnbaseDocumentType(value: string) {
+  const type = MOCK_ONBASE_TYPES.find(candidate => candidate.value === value);
+  if (!type) throw new Error("MOCK_ONBASE_DOCUMENT_TYPE_UNKNOWN");
+  return type;
+}
 export function mockWorkflow(id: string): MockWorkflow {
   const flow = MOCK_WORKFLOWS.find(candidate => candidate.id === id);
   if (!flow) throw new Error("MOCK_WORKFLOW_UNKNOWN");

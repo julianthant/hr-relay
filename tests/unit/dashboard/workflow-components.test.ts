@@ -5,14 +5,15 @@ import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflow-rev
 import { MOCK_WORKFLOWS } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
 import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft, seedMockRuns } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
 import { addMockReviewRecord, discardMockReview, editReviewRecord, reviewCanApprove, reviewRecords, reviewValue, updateMockReview, reviewIsReadOnly, restoreMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
-import { buildWorkflowMock, COMPLETE_EXPLORER_WORKFLOWS, initialWorkflowChoices, updateWorkflowChoice, workflowChoices, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
+import { buildWorkflowMock, initialWorkflowChoices, updateWorkflowChoice, workflowChoices, workflowContractSource } from "../../../src/dashboard/surfaces/explorer/explorer-workflow-model.js";
+import { buildWorkflowCatalog } from "../../../src/dashboard/surfaces/workflow-catalog-model.js";
 import { allFields } from "../../../src/dashboard/surfaces/explorer/explorer-flow-model.js";
 import { workflowPreviewGraph } from "../../../src/dashboard/surfaces/workflow-preview-contracts.js";
 
 const preparation = (id: "emergency-contact" | "onbase" | "oath-upload") => mockRunsForDraft(id, { ...initialMockDraft(id), files: [{ name: "fictional.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("complete workflow presentation mocks", () => {
   it("covers every rail workflow and renders every declared variant without missing contract values", () => {
-    expect(new Set(COMPLETE_EXPLORER_WORKFLOWS.map(item => item.id.replace(/^fixture-/u, "")))).toEqual(new Set(MOCK_WORKFLOWS.map(item => item.id)));
+    expect(new Set(buildWorkflowCatalog([]).map(item => item.id))).toEqual(new Set(MOCK_WORKFLOWS.map(item => item.id)));
     for (const flow of MOCK_WORKFLOWS) {
       const values = initialWorkflowChoices(flow.id);
       for (const scenario of [values, ...workflowChoices(flow.id).flatMap(choice => choice.options.map(([value]) => updateWorkflowChoice(flow.id, values, choice.key, value)))]) {

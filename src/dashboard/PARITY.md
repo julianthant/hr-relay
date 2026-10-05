@@ -164,7 +164,7 @@ The workflow-mock amendment covers all 15 permanent rail contracts with copied l
 workflow-specific queues and logs, and local Run/Rerun in the approved compact frame. Existing
 served launches retain their transport and recovery. Unserved picker entries hand off to local
 previews; their IDs never enter start plans. Delegated I-9 Lookup, SharePoint's configured roster,
-OnBase's combined PDFs and sole wired document type, standalone OCR inspection, I-9 retention
+OnBase's combined PDFs and four local document-type choices, standalone OCR inspection, I-9 retention
 append behavior and full/upload-only oath paths remain distinct. PDF preparations wait for review
 before downstream work; full oath approval creates independent signature rows. Duplicate checks
 use file-content hashes, and reruns preserve source histories. Field copy uses Employee IDs and
@@ -415,3 +415,8 @@ and full exit gates remain owned by 3.1.19.
 The 2026-10-05 confirmation simplification removes the redundant Workflow plan disclosure from
 all local Run/Rerun forms. Summary facts, omissions, optional-step selection and log outcomes remain.
 Focused evidence is `remove-workflow-plan-20261005`; frozen references and full gates remain at 3.1.19.
+
+The 2026-10-05 OnBase document-type amendment uses one dropdown for Oath, I-9 Section 1,
+I-9 Section 2 and Emergency Contact. The unavailable-types disclosure is removed. Selection
+continues through Confirm, OCR, approved person logs and Rerun, with single-section I-9 sources.
+Focused evidence is `onbase-document-types-20261005`; runtime document admission is unchanged.

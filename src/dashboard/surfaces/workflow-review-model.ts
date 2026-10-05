@@ -1,5 +1,5 @@
 import type { MockRun } from "./workflow-mock-model.js";
-import type { MockWorkflowId } from "./workflow-mock-catalog.js";
+import { mockOnbaseDocumentType, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import { mockDocumentFixture } from "./workflow-document-model.js";
 
 // Review shapes and selection rules copied from legacy@9bb973672666b9267569a22d3fa0af722e4c5e87,
@@ -10,15 +10,18 @@ export type ReviewRecord = Readonly<{
   fields: readonly ReviewField[]; selected: boolean; unknown?: boolean;
   match: "matched" | "unresolved" | "manual"; warnings: readonly string[];
   targetWorkflowId?: MockWorkflowId;
+  i9Section?: 1 | 2;
 }>;
 export const REVIEW_RELATIONSHIPS = ["Parent", "Sibling", "Spouse", "Domestic Partner Adult", "Domestic Partner Child", "Child", "Grandchild", "Grand Parent", "Other Relative", "Friend", "Neighbor", "Roommate", "Ward", "Medical Provider", "Emerg/Detention/Arrest Contact", "Contact if Detained/Arrested", "Other"];
 const field = (key: string, label: string, value: string, kind?: ReviewField["kind"], section?: string): ReviewField => ({ key, label, value, ...(kind ? { kind } : {}), ...(section ? { section } : {}) });
 export function seedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">): readonly ReviewRecord[] {
   const fixture = mockDocumentFixture(run.draft);
   if (fixture) return structuredClone(fixture.records);
-  const type = run.workflowId === "i9-check" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" || run.workflowId === "emergency-contact" ? "emergency-contact" : "oath";
+  const documentType = mockOnbaseDocumentType(run.draft.documentType);
+  const type = run.workflowId === "i9-check" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" ? documentType.formType : run.workflowId === "emergency-contact" ? "emergency-contact" : "oath";
   const kind = type === "i9" ? "i9" : type === "verify" ? "verify" : type === "oath" ? "oath" : "contact";
-  return [{ id: "person-1", page: 1, kind, selected: true, match: "matched", warnings: [], fields: [
+  const i9Section = kind === "i9" && "i9Section" in documentType ? documentType.i9Section : undefined;
+  return [{ id: "person-1", page: 1, kind, ...(i9Section ? { i9Section } : {}), selected: true, match: "matched", warnings: [], fields: [
     field("employeeId", "Employee ID", "10000001"), field("firstName", "First name", "Jordan"), field("lastName", "Last name", "Lee"),
     ...(kind === "oath" ? [field("printedName", "Printed name", "Lee, Jordan"), field("dateSigned", "Date signed", "2026-08-03", "date", "Oath"), field("employeeSigned", "Employee signed", "true", "boolean", "Oath"), field("officerSigned", "Officer signed", "true", "boolean", "Oath"), field("notes", "Notes", "", undefined, "Oath")] : []),
     ...(kind === "contact" ? [
@@ -28,7 +31,7 @@ export function seedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">): r
       ...[["cellPhone", "Cell phone", "(202) 555-0102"], ["homePhone", "Home phone", ""], ["workPhone", "Work phone", ""], ["street", "Street", "100 Example Street"], ["city", "City", "San Diego"], ["state", "State", "CA"], ["zip", "ZIP", "92101"], ["country", "Country", "USA"], ["notes", "Notes", ""]].map(([key, label, value]) => field(key, label, value, undefined, "Emergency contact")),
     ] : []),
     ...(kind === "verify" ? [field("printedName", "Printed name", "Lee, Jordan"), field("paperEmployeeId", "Employee ID on paper", "10000001"), field("paperEmploymentDate", "First day of service on paper", "2026-08-03", "date", "Paper forms"), field("paperDateSigned", "Date signed on paper", "2026-08-03", "date", "Paper forms"), field("employeeSigned", "Employee signed", "true", "boolean", "Paper forms"), field("officerSigned", "Officer signed", "true", "boolean", "Paper forms"), field("paperOfficialName", "Official name on paper", "Alex Morgan", undefined, "Paper forms")] : []),
-    ...(kind === "i9" ? [field("middleInitial", "Middle initial", ""), field("dateOfBirth", "Date of birth", "1990-01-01", "date", "I-9"), field("ssn", "Social Security number", "", undefined, "I-9"), field("hireDate", "First day of employment", "2026-08-03", "date", "I-9"), field("section1", "Section 1 page", "1", undefined, "I-9"), field("section2", "Section 2 page", "2", undefined, "I-9")] : []),
+    ...(kind === "i9" ? [field("middleInitial", "Middle initial", ""), ...(i9Section !== 2 ? [field("dateOfBirth", "Date of birth", "1990-01-01", "date", "I-9"), field("ssn", "Social Security number", "", undefined, "I-9"), field("section1", "Section 1 page", "1", undefined, "I-9")] : []), ...(i9Section !== 1 ? [field("hireDate", "First day of employment", "2026-08-03", "date", "I-9"), field("section2", "Section 2 page", i9Section === 2 ? "1" : "2", undefined, "I-9")] : [])] : []),
   ] }];
 }
 export function reviewValue(record: ReviewRecord, key: string): string { return record.fields.find(item => item.key === key)?.value ?? ""; }

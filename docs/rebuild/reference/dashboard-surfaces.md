@@ -7380,7 +7380,11 @@ existing descriptor, command and recovery authority. The served picker hands off
 without placing their IDs in a start-plan request. Local preview transport remains separate from served launch authority.
 Typed inputs, PDF preparation, form types, roster selection, dry-run terminals and kernel step order
 follow the copied sources. I-9 Lookup remains delegated; SharePoint offers the configured Onboarding
-Roster; OnBase combines PDFs and admits only Emergency Contact. Full Oath Upload waits for review
+Roster; OnBase combines PDFs. Its local document-type dropdown offers Oath, I-9 Section 1,
+I-9 Section 2 and Emergency Contact, without an unavailable-types disclosure. The selected type
+continues through Confirm, OCR review, approved person imports and Rerun; I-9 previews show only
+the selected section. These are frontend preview choices; runtime document admission is unchanged.
+Full Oath Upload waits for review
 and independent Oath Signature runs before its ServiceNow ticket; upload-only skips both. The OCR
 panel owns delegated record editing and approval. I-9 Check uses configured Action History and
 appends again on rerun. Local PDF duplicate checks compare content hashes. Source histories remain

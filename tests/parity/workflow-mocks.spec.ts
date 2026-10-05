@@ -14,6 +14,68 @@ async function advance(dialog: Locator) {
   await (await preview.count() ? preview : dialog.getByRole("button", { name: "Continue", exact: true })).click();
 }
 
+for (const theme of PARITY_THEMES) test(`OnBase document type selection and review @ ${theme.attribute}-1440`, async ({ page }, info) => {
+  ensureParityBundle();
+  const server = await startFixtureServer({ distDir: PARITY_DIST_DIR, bundle: { proof: "working-tree" }, profile: mockProfile });
+  const errors: string[] = [], writes: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  page.on("request", request => { if (request.method() !== "GET") writes.push(request.url()); });
+  const types = ["Oath", "I-9 Section 1", "I-9 Section 2", "Emergency Contact"];
+  try {
+    await page.setViewportSize({ width: 1440, height: 900 }); await installTheme(page, theme);
+    await page.goto(`${server.baseUrl}/?day=${FIXTURE_DAY}`);
+    const rail = page.getByRole("navigation", { name: "Workflows", exact: true });
+    const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
+    for (const type of types) {
+      await rail.getByRole("button", { name: "OnBase", exact: true }).click();
+      await page.getByRole("button", { name: "Start a run", exact: true }).click();
+      const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
+      const picker = dialog.getByRole("button", { name: "Emergency Contact Document type", exact: true });
+      await picker.press("Enter");
+      const menu = page.getByRole("menu", { name: "Emergency Contact Document type", exact: true });
+      await expect(menu.getByRole("menuitemradio")).toHaveText(types);
+      await expect(menu.getByRole("menuitemradio", { checked: true })).toHaveText("Emergency Contact");
+      await info.attach(`document-types-${type}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await menu.getByRole("menuitemradio", { name: type, exact: true }).click();
+      await expect(dialog.getByRole("button", { name: `${type} Document type`, exact: true })).toBeFocused();
+      await expect(dialog.getByText("Other document types", { exact: true })).toHaveCount(0);
+      await expect(dialog).not.toContainText("Unavailable");
+      await dialog.locator('input[type="file"]').setInputFiles(pdf);
+      await advance(dialog); await advance(dialog);
+      await expect(dialog.getByRole("region", { name: "Confirm", exact: true }).locator("dl")).toContainText(type);
+      await dialog.getByRole("button", { name: "Start preview", exact: true }).click();
+      await logs.getByRole("button", { name: "Open OCR", exact: true }).click();
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      const review = logs.getByRole("region", { name: "OCR records", exact: true });
+      if (type === "Oath") await expect(review.getByRole("textbox", { name: "Printed name", exact: true })).toBeVisible();
+      else if (type === "Emergency Contact") await expect(review.getByRole("textbox", { name: "Contact name", exact: true })).toBeVisible();
+      else {
+        const section = type.endsWith("1") ? 1 : 2;
+        await expect(review.getByRole("textbox", { name: `Section ${section} page`, exact: true })).toBeVisible();
+        await expect(review.getByRole("textbox", { name: `Section ${section === 1 ? 2 : 1} page`, exact: true })).toHaveCount(0);
+        await expect(review.getByRole("combobox", { name: "Source page", exact: true })).toHaveCount(0);
+        await expect(review.getByRole("img")).toHaveCount(1);
+      }
+      await info.attach(`review-${type}-${theme.attribute}.png`, { body: await page.screenshot(), contentType: "image/png" });
+      await review.getByRole("button", { name: "Approve records", exact: true }).click();
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click();
+      await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
+      await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button", { name: /Jordan Lee/u }).click();
+      await expect(logs).toContainText(type);
+      await expect(logs).not.toContainText("X_HR_Emergency Contact");
+      await logs.getByRole("button", { name: /^Linked runs \(/u }).click();
+      await page.getByRole("dialog", { name: "Linked runs", exact: true }).getByRole("button").filter({ hasText: "Parent ·" }).click();
+      await logs.getByRole("button", { name: "Rerun", exact: true }).click();
+      const rerun = page.getByRole("dialog", { name: "Rerun", exact: true });
+      await advance(rerun);
+      await expect(rerun.getByRole("button", { name: `${type} Document type`, exact: true })).toBeVisible();
+      await rerun.getByRole("button", { name: "Cancel", exact: true }).click();
+    }
+    expect(errors).toEqual([]); expect(writes).toEqual([]);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(1440);
+  } finally { await server.close(); }
+});
+
 for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
   test(`all workflow previews, Run and Rerun @ ${theme.attribute}-${width}`, async ({ page }, info) => {
     ensureParityBundle();

@@ -1,4 +1,4 @@
-import { MOCK_WORKFLOWS, mockWorkflow, type MockMethod, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
+import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockOnbaseDocumentType, mockWorkflow, type MockMethod, type MockStep, type MockWorkflowId } from "./workflow-mock-catalog.js";
 import type { LogEntry, LogStep } from "./log-feed-model.js";
 import { WorkflowCountWireSchema } from "../../domain/dashboard/projection.js";
 import type { LogTimelineStage, LogTimelineState } from "./logs/log-timeline-model.js";
@@ -76,7 +76,7 @@ export function mockDraftError(id: string, draft: MockDraft): string | undefined
   if (id === "old-kronos-reports" && (!validDate(draft.startDate) || !validDate(draft.endDate) || draft.startDate > draft.endDate)) return "Choose a valid report date range; start must precede end.";
   if (draft.workers !== "auto" && (!Number.isInteger(draft.workers) || draft.workers < 1 || (id !== "old-kronos-reports" && draft.workers > 8))) return "Workers must be a positive whole number.";
   if (id === "ocr" && !["oath", "emergency-contact", "onbase-emergency-contact", "verify", "i9"].includes(draft.formType)) return "Choose a supported form type.";
-  if (id === "onbase" && draft.documentType !== "Emergency Contact") return "Only Emergency Contact is wired for OnBase import.";
+  if (id === "onbase" && !MOCK_ONBASE_TYPES.some(type => type.value === draft.documentType)) return "Choose a supported document type.";
   if (draft.method === "pdf" && flow.roster && !(id === "oath-upload" && draft.uploadMode === "upload-only") && draft.roster === "none") return "Choose an existing roster or download the configured roster.";
   return undefined;
 }
@@ -85,7 +85,7 @@ export function mockPipeline(id: string, draft: MockDraft): readonly MockStep[] 
   const flow = mockWorkflow(id);
   if (id === "ocr") return [...(draft.roster === "download" ? mockWorkflow("sharepoint-download").steps.map(step => ({ ...step, key: `roster:${step.key}` })) : []), ...prep.map(step => ({ ...step,
     ...(step.key === "prep:loading-roster" && draft.formType === "i9" ? { message: "Load configured Action History for I-9 identity matching." } : {}),
-    ...(step.key === "prep:ocr" && draft.formType === "i9" ? { message: "Pair Section 1 and Section 2 identities and source pages." } : {}),
+    ...(step.key === "prep:ocr" && draft.formType === "i9" ? { message: draft.documentType.startsWith("I-9 Section ") ? `Extract ${draft.documentType} identities and source pages.` : "Pair Section 1 and Section 2 identities and source pages." } : {}),
     ...(step.key === "prep:person-lookup" && draft.formType === "verify" ? { message: "Resolve identity and read CRM service/oath dates and I-9 signer evidence." } : {}),
   }))];
   const steps = flow.steps.filter(step => !(id === "oath-upload" && draft.uploadMode === "upload-only" && ["wait-approval", "wait-signatures"].includes(step.key)));
@@ -146,6 +146,7 @@ function delegateMockOcr(run: MockRun): readonly MockRun[] {
 export function mockRunsForDraft(id: MockWorkflowId, draft: MockDraft, sequence: number, sourceId?: string): readonly MockRun[] {
   const error = mockDraftError(id, draft);
   if (error) throw new Error(error);
+  if (id === "onbase") draft = { ...draft, formType: mockOnbaseDocumentType(draft.documentType).formType };
   const subjects = draft.method === "typed" ? mockInputEntries(id, draft) : draft.method === "roster" ? ["Onboarding Roster"] : id === "onbase" ? [draft.files.map(file => file.name).join(" + ")] : draft.files.map(file => file.name);
   const created: readonly MockRun[] = subjects.map((subject, index) => ({ id: `mock:${id}:${sequence}:${index}`, workflowId: id, subject,
     title: subject, draft: structuredClone({ ...draft, ...(draft.method === "typed" ? { text: subject } : id === "onbase" ? {} : { files: [draft.files[index]] }) }),
@@ -213,7 +214,7 @@ function resultFields(run: MockRun): readonly (readonly [string, string])[] {
   if (run.role === "preparation" && run.workflowId !== "oath-upload") return [["Source PDF", run.draft.files.map(file => file.name).join(", ")], ["Completed people", String(run.approvedCount ?? 0)]];
   const record = mockInputRecord(run);
   const edited: Readonly<Record<string, string>> = run.role === "person" ? { "Employee": reviewName(record), "Employee ID": reviewValue(record, "employeeId"), "UCPath ID": reviewValue(record, "employeeId"), "Contact": reviewValue(record, "contactName"), "Relationship": reviewValue(record, "relationship"), "Contact phone": reviewValue(record, "cellPhone"), "Source page": String(record.page) } : {};
-  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, edited[label] || (label === "Kuali ID" || label === "Email" || (label === "Employee ID" && /^\d{5,}$/u.test(run.subject)) ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? usDate(run.draft.effectiveDate) : value)] as const);
+  const fields = mockWorkflow(run.workflowId).result.map(([label, value]) => [label, edited[label] || (label === "Document type" && run.workflowId === "onbase" ? run.draft.documentType : label === "Kuali ID" || label === "Email" || (label === "Employee ID" && /^\d{5,}$/u.test(run.subject)) ? run.subject : label === "PDF" ? run.draft.files.map(file => file.name).join(", ") : label === "Signers" ? String(run.approvedCount ?? 0) : label === "Effective date" && run.workflowId === "work-study" ? usDate(run.draft.effectiveDate) : value)] as const);
   if (run.workflowId === "i9-check" && run.role === "person") fields.push(["Hire date", "08/03/2026"], ["Separation date", "Not separated"], ["Retention tracker", "Appended"]);
   if (run.workflowId === "old-kronos-reports") fields.push(["Report start", usDate(run.draft.startDate)], ["Report end", usDate(run.draft.endDate)]);
   if (run.workflowId === "onbase") fields.push(["Combined PDFs", String(run.draft.files.length)]);
@@ -296,7 +297,7 @@ export function mockConfirmationFacts(id: MockWorkflowId, draft: MockDraft): rea
     ...(id === "oath-upload" ? [{ key: "Processing mode", value: uploadOnly ? "Upload-only" : "Full process" }] : []),
     ...(id === "ocr" ? [{ key: "Form type", value: draft.formType }] : []),
     ...(pdf && flow.roster && !uploadOnly ? [{ key: "Roster", value: draft.roster === "download" ? "Download Onboarding Roster" : "Existing Onboarding Roster" }] : []),
-    ...(id === "onbase" ? [{ key: "Document type", value: "X_HR_Emergency Contact" }] : []),
+    ...(id === "onbase" ? [{ key: "Document type", value: draft.documentType }] : []),
     ...((pdf && !uploadOnly) || draft.method === "typed" ? [{ key: "Workers", value: draft.workers === "auto" ? "Auto" : String(draft.workers) }] : []),
     ...(id === "work-study" ? [{ key: "Effective date", value: usDate(draft.effectiveDate) }] : []),
     ...(id === "old-kronos-reports" ? [{ key: "Report dates", value: `${usDate(draft.startDate)} – ${usDate(draft.endDate)}` }] : []),

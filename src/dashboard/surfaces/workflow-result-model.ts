@@ -34,6 +34,7 @@ export function mockFieldValue(run: MockRun, label: string): string {
   if (["EID", "Employee ID", "Matched EID", "Shown EID", "UCPath Employee ID", "UCPath ID"].includes(label)) return run.role === "person" ? reviewValue(record, "employeeId") : /^\d{5,}$/u.test(run.subject) && mockWorkflow(run.workflowId).inputLabel !== "Kuali ID" ? run.subject : "10000001";
   if (["Name", "Employee name", "Matched name", "Lived name"].includes(label)) return reviewName(record);
   if (label === "Names typed") return run.subject;
+  if (label === "Document type" && run.workflowId === "onbase") return run.draft.documentType;
   if (label === "Email searched") return run.subject.includes("@") ? run.subject : "jordan.lee@example.com";
   if (label === "Contact name") return reviewValue(record, "contactName") || "Alex Lee";
   if (label === "Phone") return reviewValue(record, "cellPhone") || "(202) 555-0102";

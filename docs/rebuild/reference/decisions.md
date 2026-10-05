@@ -290,6 +290,10 @@ layout. The redundant Workflow plan disclosure is removed from Run/Rerun confirm
 and execution outcomes remain in Steps and Logs. Footer provenance and action groups
 match served launches. Local previews remain browser-only, with OCR/I-9 Lookup delegation-only.
 D347's dashboard-surfaces owner records the contract and `mock-run-layout-20261005` evidence.
+The OnBase document-type amendment replaces the fixed Emergency Contact field and unavailable
+types with four local choices: Oath, I-9 Section 1, I-9 Section 2 and Emergency Contact. Selection
+continues through confirmation, OCR review, approved person logs and rerun. Runtime document
+admission is unchanged; focused evidence is `onbase-document-types-20261005`.
 
 Settings header actions center vertically on the title and any description; title-only headings keep actions inline. The healthy storage card places its report timestamp on the right, with availability on the left. Missing detailed reports and degraded-storage freshness remain explicit.
 

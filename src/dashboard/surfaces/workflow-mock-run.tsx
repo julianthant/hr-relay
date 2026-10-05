@@ -71,7 +71,7 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             </div>
             {reading && <p role="status">Reading PDFs…</p>}
             {draft.files.length > 0 && <ul className="m-0 list-none p-0 text-body">{draft.files.map((file, number) => <li key={number} className="flex items-center justify-between border-b border-ui-stroke py-2"><span className="truncate">{file.name}</span><span className="text-caption text-ui-muted">{Math.ceil(file.size / 1024)} KB</span></li>)}</ul>}
-            {workflowId === "onbase" && <><Field label="Document type"><Input value="X_HR_Emergency Contact" readOnly /></Field><details className="text-caption text-ui-muted"><summary>Other document types</summary><ul className="list-none p-0">{MOCK_ONBASE_TYPES.filter(type => type !== "Emergency Contact").map(type => <li key={type}>{type} · Unavailable</li>)}</ul></details><p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p></>}
+            {workflowId === "onbase" && <><ChoicePicker label="Document type" value={draft.documentType} options={MOCK_ONBASE_TYPES} onChange={documentType => patch({ documentType })} /><p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p></>}
             {workflowId === "ocr" && <ChoicePicker label="Form type" value={draft.formType} options={MOCK_FORM_TYPES} onChange={formType => patch({ formType })} />}
           </>}
           {draft.method === "roster" && <ChoicePicker label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} />}

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { MOCK_WORKFLOWS, mockWorkflow } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
+import { MOCK_WORKFLOWS, MOCK_ONBASE_TYPES, mockWorkflow } from "../../../src/dashboard/surfaces/workflow-mock-catalog.js";
 import { approveMockRun, initialMockDraft, mockConfirmationFacts, mockDraftError, mockInputEntries, mockLaunchCount, mockNeedsReview, mockOathDuplicate, mockPipeline, mockQueueCounts, mockQueueView, mockRunLog, mockRunPipeline, mockRunsForDraft, mockSelectableSteps, mockStepState, seedMockRuns, type MockDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
+import { reviewRecords } from "../../../src/dashboard/surfaces/workflow-review-model.js";
+import { reviewSourcePages } from "../../../src/dashboard/surfaces/workflow-review-source-model.js";
 
 const file = { name: "packet.pdf", size: 100, digest: "copied-pdf-digest" };
 const draft = (id: string, changes: Partial<MockDraft> = {}): MockDraft => ({ ...initialMockDraft(id), text: mockWorkflow(id).example, files: [file], ...changes });
@@ -41,7 +43,42 @@ describe("legacy workflow previews", () => {
     expect(mockRunsForDraft("emergency-contact", draft("emergency-contact", { files: [file, { ...file, name: "second.pdf", digest: "second" }] }), 1)).toHaveLength(4);
     const combined = mockRunsForDraft("onbase", draft("onbase", { files: [file, { ...file, name: "second.pdf" }] }), 1);
     expect(combined).toHaveLength(2); expect(combined[0].draft.files).toHaveLength(2);
-    expect(mockDraftError("onbase", draft("onbase", { documentType: "Benefits" }))).toMatch(/Only Emergency Contact/);
+    expect(mockDraftError("onbase", draft("onbase", { documentType: "Benefits" }))).toBe("Choose a supported document type.");
+    expect(() => mockRunsForDraft("onbase", draft("onbase", { documentType: "Benefits" }), 1)).toThrow("Choose a supported document type.");
+  });
+  it("offers exactly the four supported OnBase document types", () => {
+    expect(MOCK_ONBASE_TYPES.map(type => type.label)).toEqual(["Oath", "I-9 Section 1", "I-9 Section 2", "Emergency Contact"]);
+  });
+  it.each([
+    ["Oath", "oath", "oath"],
+    ["I-9 Section 1", "i9", "i9"],
+    ["I-9 Section 2", "i9", "i9"],
+    ["Emergency Contact", "onbase-emergency-contact", "contact"],
+  ] as const)("carries %s through confirmation, OCR, approval, logs and rerun", (documentType, formType, kind) => {
+    const input = draft("onbase", { documentType });
+    expect(mockDraftError("onbase", input)).toBeUndefined();
+    expect(mockConfirmationFacts("onbase", input)).toContainEqual({ key: "Document type", value: documentType });
+    const runs = mockRunsForDraft("onbase", input, 1), ocr = runs[1];
+    expect(ocr.draft.formType).toBe(formType);
+    const record = reviewRecords(ocr)[0];
+    expect(record.kind).toBe(kind);
+    if (documentType.startsWith("I-9")) {
+      const section = documentType === "I-9 Section 1" ? 1 : 2;
+      expect(record.i9Section).toBe(section);
+      expect(record.fields.some(field => field.key === `section${section === 1 ? 2 : 1}`)).toBe(false);
+      expect(reviewSourcePages(record).map(page => page.label)).toEqual([`Section ${section} · Page 1`]);
+    }
+    const approved = approveMockRun(runs, ocr.id), person = approved.find(run => run.role === "person")!;
+    expect(person.draft.documentType).toBe(documentType);
+    expect(person.inputRecord).toEqual(record);
+    const log = mockRunLog(person);
+    const documentFields = log.steps.flatMap(step => step.entries).flatMap(entry => entry.kind === "fields" ? entry.fields : []).filter(field => field.label === "Document type");
+    expect(documentFields.length).toBeGreaterThan(0);
+    expect(documentFields.every(field => field.value === documentType)).toBe(true);
+    const rerun = mockRunsForDraft("onbase", runs[0].draft, 2, runs[0].id);
+    expect(rerun[0].draft.documentType).toBe(documentType);
+    expect(rerun[1].draft.formType).toBe(formType);
+    expect(input.formType).toBe("onbase-emergency-contact");
   });
   it("counts the root runs shown in confirmation without counting delegated children", () => {
     expect(mockLaunchCount("oath-signature", draft("oath-signature", { text: "10000001, 10000002" }))).toBe(2);
