@@ -293,8 +293,12 @@ The 2026-10-05 document-polish amendment adds five OCR previews, excluding sick 
 records, 443 fields and 19 immutable anonymized source pages. Detect-test reviews its four emergency
 contact pages; I-9 controls label Section 1 on page 2 and Section 2 on page 1. Stacked record cards
 hold a 60/40 PDF/fields split inside one log-panel scroll area. Each card has an Include checkbox;
-one fixed footer approves eligible selections and retains Add record and Discard. Floating source
-controls, corrected immutable handoff and keyboard focus remain explicit. Run PDF/roster fields
+one fixed footer approves eligible selections and retains Add record and Discard. The name and
+selection control share one row, adjacent checkboxes share space, and long fields/notes use the
+full form width while preserving every response field and its order. Page navigation sits above
+the source; zoom/fit controls remain in the image frame's corner while magnification pans inside
+that frame without resizing the card. Corrected immutable handoff and keyboard focus remain
+explicit. Run PDF/roster fields
 share two columns; the accepted-entry disclosure is retired. Queue aliases use uppercase workflow
 codes plus eight digits while retaining command IDs and exact trace tooltips. Local Retry opens
 the parent rerun; confirmed Delete removes the linked tree and restores focus. Fixtures do not

@@ -5,7 +5,8 @@ import { WorkflowMockReview } from "../../../src/dashboard/surfaces/workflow-rev
 import { mockOperationValue } from "../../../src/dashboard/surfaces/workflow-operation-model.js";
 import { approveMockRun, initialMockDraft, mockRunLog, mockRunsForDraft } from "../../../src/dashboard/surfaces/workflow-mock-model.js";
 import { editReviewRecord, reviewRecords, reviewValue, seedReviewRecords, updateMockReview } from "../../../src/dashboard/surfaces/workflow-review-model.js";
-import { reviewFieldGroups, reviewSourcePages } from "../../../src/dashboard/surfaces/workflow-review-source-model.js";
+import { reviewFieldBlocks, reviewFieldGroups, reviewSourcePages } from "../../../src/dashboard/surfaces/workflow-review-source-model.js";
+import { OCR_DOCUMENT_FIXTURES } from "../../../src/dashboard/surfaces/workflow-document-model.js";
 
 const preparation = () => mockRunsForDraft("emergency-contact", { ...initialMockDraft("emergency-contact"), files: [{ name: "contact.pdf", size: 1024, digest: "fixture" }] }, 1);
 describe("OCR source comparison and corrected handoff", () => {
@@ -22,6 +23,12 @@ describe("OCR source comparison and corrected handoff", () => {
     const additional = { ...record, fields: [...record.fields, { key: "newKey", label: "Additional field", value: "", section: "Other" }] };
     expect(reviewFieldGroups(additional).flatMap(group => group.fields)).toEqual(additional.fields);
     expect(reviewFieldGroups(additional).map(group => group.title)).toEqual(["Employee", "Employee address", "Emergency contact", "Other"]);
+    for (const response of [...OCR_DOCUMENT_FIXTURES.flatMap(document => document.records), additional]) {
+      const displayed = reviewFieldGroups(response).flatMap(group => reviewFieldBlocks(group.fields).flat());
+      expect(displayed).toEqual(response.fields);
+      expect(displayed.every((field, index) => field === response.fields[index])).toBe(true);
+      expect(new Set(displayed.map(field => field.key)).size).toBe(response.fields.length);
+    }
   });
   it("preserves raw OCR date spellings and unmatched relationship values for correction", () => {
     const run = preparation()[1], record = reviewRecords(run)[0];

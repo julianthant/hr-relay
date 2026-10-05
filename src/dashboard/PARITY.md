@@ -284,7 +284,10 @@ coverage, not runtime OCR admission.
 
 Records appear in stacked cards within one log-panel scroll area, each allocating 60% to the PDF
 and 40% to compact fields. Each record has an Include checkbox; one fixed footer holds the valid
-selection count and approval actions. Page/zoom controls float with each PDF. Record switching,
+selection count and approval actions. The name and Include control share one row; adjacent boolean
+fields share a wrapping row, long fields use the full form width, and notes allow multiline editing.
+Page labels/selectors sit above the image. Zoom controls stay in the preview's bottom-right corner;
+magnification pans inside the fitted image frame without changing card height. Record switching,
 separate field scrolling, repeated PDF titles and field-group dividers are removed. Add record
 focuses the new Employee ID; corrections stay isolated and selected records alone fan out after
 approval. PDF/roster Run inputs share two columns. Served confirmation drops the accepted-entry
@@ -292,7 +295,8 @@ disclosure while retaining counts, governing data and refusals. Queue aliases us
 workflow code plus eight decimal digits, keeping exact trace tooltips and full command IDs. Local
 Retry opens the bound parent rerun; Delete confirms removal of the linked tree and restores queue
 focus. Focused evidence is retained under `ocr-document-polish-20261005` and
-`ocr-stacked-review-20261005`; palette, served authority and 3.1.19 gate ownership remain unchanged.
+`ocr-stacked-review-20261005` and `ocr-card-polish-20261005`; palette, served authority and 3.1.19
+gate ownership remain unchanged.
 
 ## Detailed workflow presentation amendment (2026-10-04)
 

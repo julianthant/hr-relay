@@ -7485,8 +7485,14 @@ These fixtures do not admit new runtime OCR forms or routing.
 
 The inline log body scrolls through one large card per record. Each card holds a PDF column (60%)
 and compact editable fields (40%), with an Include checkbox. PDF and fields move together in one
-vertical scroll area; record switching and separate field scrolling are retired. Floating page/zoom
-controls stay with each source. The repeated filename header and internal group dividers are retired.
+vertical scroll area; record switching and separate field scrolling are retired. The record name and
+Include control share one header row. Adjacent boolean fields share a wrapping row; notes support
+multiline editing, and long fields use the full form width without changing response-field order or
+membership. Page labels/selectors sit above the source. Zoom controls anchor to the image frame's
+bottom-right corner and contain only zoom/fit actions. The frame follows the source image's aspect
+ratio; magnified images pan inside it without resizing the card or moving its controls. Selecting a
+different source page restores the fitted view. The repeated filename header and internal group
+dividers are retired.
 One fixed footer shows the valid selection count, Add record, Discard and Approve records. Adding a
 record scrolls to its Employee ID; approval preserves field corrections, copies only eligible selected
 records to downstream previews and locks the source response. Run PDF and roster inputs share a
@@ -7501,7 +7507,8 @@ parent, never launching independently. Delete confirms removal of the document r
 descendants so OCR cannot become orphaned; an individual lookup deletes only its own subtree.
 Keyboard focus returns to the action on cancel and a remaining queue row after deletion. Local
 actions issue no BFF command. Focused verification and source/asset inventories are retained in
-`ocr-document-polish-20261005` and `ocr-stacked-review-20261005`; frozen references and full gates remain owned by 3.1.19.
+`ocr-document-polish-20261005`, `ocr-stacked-review-20261005` and `ocr-card-polish-20261005`;
+frozen references and full gates remain owned by 3.1.19.
 
 The workflow-detail amendment uses one pure operation catalog for local Logs, Explorer fields and
 timeline substeps, copied from the pinned legacy workflow actions and system helpers. It includes
