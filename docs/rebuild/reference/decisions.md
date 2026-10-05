@@ -281,6 +281,14 @@ The workflow-detail amendment adds legacy operation sequences and fields to loca
 
 The notification interaction amendment links every local inbox action to its exact run, inline OCR Records body or Archive index. Source subjects/statuses, new-run and approval updates, run/day-scoped read state, retained filters and keyboard focus replace disconnected placeholders. Read state does not resolve urgency; missing destinations refuse visibly. Backend publication and persistence remain unwired. D347's dashboard-surfaces owner records the contract and retained evidence.
 
+The 2026-10-05 document-polish amendment adds one OCR preview per supplied PDF: six documents,
+18 editable records and 22 immutable anonymized page images. PDF review uses a 60/40 split and
+floating controls. Run PDF/roster fields share two columns; the accepted-entry disclosure is retired.
+Queue aliases use uppercase workflow codes plus eight digits while retaining command IDs and exact
+trace tooltips. Local Retry opens the parent rerun; confirmed Delete removes the linked tree and
+restores focus. Mixed/separation fixtures do not admit runtime OCR forms. D347's dashboard-surfaces
+owner records provenance, frontend boundaries and retained verification.
+
 **D346 — Full local operator values (operator direction, 2026-09-24):** Logs,
 Run data, archived runs and Settings show retained values in full, including
 typed credentials, provider keys, identifiers and capture images. Action notes

@@ -462,7 +462,7 @@ async function openDialog(
  * this file is compared before it reaches an assertion for that reason.
  */
 function planIsDrawn(): boolean {
-  return document.body.querySelector("ul[aria-label='Runs this start will create']") !== null;
+  return document.body.querySelector("#run-start-confirm") !== null;
 }
 
 /** the whole happy path, up to a settled `applied` banner */

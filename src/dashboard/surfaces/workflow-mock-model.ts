@@ -8,6 +8,7 @@ import type { QueueSortKey } from "./queue-model.js";
 import { reviewCanApprove, reviewName, reviewRecords, reviewValue, seedReviewRecords, mockInputRecord, type ReviewRecord } from "./workflow-review-model.js";
 import { mockDetailEntries } from "./workflow-result-model.js";
 import { mockOperationEntries, mockOperationSubsteps, mockOperationDuration } from "./workflow-operation-model.js";
+import { OCR_DOCUMENT_FIXTURES, mockDocumentFixture } from "./workflow-document-model.js";
 
 export type MockFile = Readonly<{ name: string; size: number; digest: string }>;
 export type MockDraft = Readonly<{
@@ -134,9 +135,10 @@ export function mockRunPipeline(run: MockRun): readonly MockStep[] {
   return mockPipeline(run.workflowId, run.draft);
 }
 function delegateMockOcr(run: MockRun): readonly MockRun[] {
-  if (run.draft.method !== "pdf" || run.workflowId === "ocr" || run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only") return [run];
+  if (run.draft.method !== "pdf" && !mockDocumentFixture(run.draft) || run.workflowId === "ocr" || run.workflowId === "oath-upload" && run.draft.uploadMode === "upload-only") return [run];
   const id = `${run.id}:ocr`;
-  const ocr: MockRun = { id, workflowId: "ocr", subject: run.subject, title: run.subject, draft: run.draft,
+  const document = mockDocumentFixture(run.draft);
+  const ocr: MockRun = { id, workflowId: "ocr", subject: document?.name ?? run.subject, title: document?.name ?? run.subject, draft: run.draft,
     parentId: run.id, parentWorkflowId: run.workflowId, targetWorkflowId: run.workflowId, role: "preparation",
     records: seedReviewRecords({ workflowId: "ocr", draft: run.draft }), approved: false, seeded: run.seeded };
   return [{ ...run, role: "preparation", ocrRunId: id }, ocr];
@@ -151,13 +153,40 @@ export function mockRunsForDraft(id: MockWorkflowId, draft: MockDraft, sequence:
   return created.flatMap(delegateMockOcr);
 }
 export function seedMockRuns(): readonly MockRun[] {
-  return MOCK_WORKFLOWS.filter(flow => flow.id !== "ocr").flatMap(flow => {
+  const runs = MOCK_WORKFLOWS.filter(flow => flow.id !== "ocr").flatMap(flow => {
     const pdf = flow.methods[0] === "pdf" || flow.id === "oath-signature";
-    const draft: MockDraft = { ...initialMockDraft(flow.id), method: pdf ? "pdf" : flow.methods[0], text: flow.example,
-      files: pdf ? [{ name: flow.example.endsWith(".pdf") ? flow.example : "oaths.pdf", size: 4096, digest: `fixture:${flow.id}` }] : [] };
-    const subject = pdf ? draft.files.map(file => file.name).join(" + ") : flow.example;
-    return delegateMockOcr({ id: `mock:${flow.id}:sample`, workflowId: flow.id, subject, title: subject, draft, approved: false, seeded: true });
+    const document = OCR_DOCUMENT_FIXTURES.find(item => item.parent === flow.id);
+    const draft: MockDraft = { ...initialMockDraft(flow.id), method: pdf ? "pdf" : flow.methods[0], text: document?.formType === "separation" ? reviewValue(document.records[0], "kualiId") : flow.example,
+      ...(document ? { formType: document.formType } : {}),
+      files: document ? [{ name: document.name, size: 4096, digest: `fixture:document:${document.name}` }] : pdf ? [{ name: flow.example.endsWith(".pdf") ? flow.example : "oaths.pdf", size: 4096, digest: `fixture:${flow.id}` }] : [] };
+    const subject = pdf ? draft.files.map(file => file.name).join(" + ") : draft.text;
+    const parent: MockRun = { id: `mock:${flow.id}:sample`, workflowId: flow.id, subject, title: subject, draft, approved: false, seeded: true };
+    return delegateMockOcr(parent);
   });
+  return runs.map(run => run.workflowId === "i9-lookup" ? { ...run, parentId: "mock:onbase:sample:ocr", parentWorkflowId: "ocr" } : run);
+}
+export function mockRetrySource(runs: readonly MockRun[], id: string): MockRun {
+  let source = runs.find(run => run.id === id);
+  const visited = new Set<string>();
+  while (source && !mockWorkflow(source.workflowId).runnable) {
+    if (visited.has(source.id)) throw new Error("MOCK_RETRY_PARENT_CYCLE");
+    visited.add(source.id);
+    source = runs.find(run => run.id === source!.parentId);
+  }
+  if (!source) throw new Error("MOCK_RETRY_SOURCE_MISSING");
+  return source;
+}
+export function mockDeletionIds(runs: readonly MockRun[], id: string): readonly string[] {
+  const target = runs.find(run => run.id === id);
+  if (!target) throw new Error("MOCK_DELETE_TARGET_MISSING");
+  const root = target.workflowId === "ocr" ? runs.find(run => run.id === target.parentId) : target;
+  if (!root) throw new Error("MOCK_DELETE_PARENT_MISSING");
+  const removed = new Set([root.id]);
+  for (let previous = -1; previous !== removed.size;) {
+    previous = removed.size;
+    for (const run of runs) if (run.parentId && removed.has(run.parentId)) removed.add(run.id);
+  }
+  return [...removed];
 }
 export function approveMockRun(runs: readonly MockRun[], id: string): readonly MockRun[] {
   const source = runs.find(run => run.id === id);
@@ -166,9 +195,9 @@ export function approveMockRun(runs: readonly MockRun[], id: string): readonly M
   if (!parent || parent.ocrRunId !== id || parent.workflowId !== source.targetWorkflowId) throw new Error("MOCK_APPROVAL_PARENT_MISSING");
   const records = reviewRecords(source).filter(reviewCanApprove);
   if (!records.length) throw new Error("MOCK_APPROVAL_NO_RECORDS");
-  const target = parent.workflowId === "oath-upload" ? "oath-signature" : parent.workflowId;
   const children: MockRun[] = records.map((record, index) => {
-    const draft = { ...initialMockDraft(target), ...source.draft, text: reviewValue(record, "employeeId"), selectedSteps: mockWorkflow(target).steps.map(step => step.key) };
+    const target = record.targetWorkflowId ?? (parent.workflowId === "oath-upload" ? "oath-signature" : parent.workflowId);
+    const draft = { ...initialMockDraft(target), ...source.draft, text: reviewValue(record, record.kind === "separation" ? "kualiId" : "employeeId"), selectedSteps: mockWorkflow(target).steps.map(step => step.key) };
     return { id: `${parent.id}:person:${index}`, workflowId: target, parentId: parent.id, parentWorkflowId: parent.workflowId,
       ocrRunId: source.id, subject: reviewName(record), title: reviewName(record), draft,
       inputRecord: structuredClone(record), role: "person", approved: true, seeded: source.seeded };

@@ -17,7 +17,9 @@ async function reviewRerun(page: Page, server: RunRerunServer) {
   await dialog.getByRole("button", { name: "Continue", exact: true }).click();
   await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
   await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
-  await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible(); return dialog;
+  await expect(dialog.getByRole("button", { name: "Start dry run", exact: true })).toBeVisible();
+  await expect(dialog.locator("summary").filter({ hasText: /View .* accepted/u })).toHaveCount(0);
+  await expect(dialog).not.toContainText("planned by"); return dialog;
 }
 
 test("real BFF Rerun survives response loss, reload and delayed worker claim", { annotation: [{ type: "required-a11y-evidence", description: "run-rerun-authority.a11y.yml" }] }, async ({ page }) => {
@@ -66,6 +68,7 @@ test("ordinary batch dry run enqueues one reviewed vector and no work before fin
     await dialog.getByRole("checkbox", { name: "Dry run", exact: true }).check();
     await dialog.getByRole("button", { name: "Preview plan", exact: true }).click();
     const submit = dialog.getByRole("button", { name: "Start dry run", exact: true }); await expect(submit).toBeVisible();
+    await expect(dialog.locator("summary").filter({ hasText: /View .* accepted/u })).toHaveCount(0);
     expect(server.h.queueRoots).toHaveLength(1); await submit.click();
     await expect(page.getByRole("status", { name: "2 runs started", exact: true })).toBeVisible();
     await expect(dialog).toHaveCount(0);

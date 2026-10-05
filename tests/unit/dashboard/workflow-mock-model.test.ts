@@ -105,8 +105,10 @@ describe("legacy workflow previews", () => {
     expect(mockQueueView([done, waiting], ["all"], "oldest")).toEqual([waiting, done]);
   });
   it("seeds each workflow with its own fictional input and log graph", () => {
-    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(14);
-    expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(5);
+    const runs = seedMockRuns(); expect(runs.filter(run => !run.parentId)).toHaveLength(13);
+    expect(runs).toHaveLength(20);
+    expect(runs.find(run => run.workflowId === "i9-lookup")!.parentId).toBe("mock:onbase:sample:ocr");
+    expect(runs.filter(run => run.parentId && run.workflowId === "ocr")).toHaveLength(6);
     expect(runs.filter(run => run.records !== undefined).every(run => run.workflowId === "ocr")).toBe(true);
     for (const run of runs) {
       expect(run.title).toBe(run.subject);

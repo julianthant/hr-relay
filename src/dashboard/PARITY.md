@@ -267,6 +267,23 @@ Active mock queue cards show their current step beneath the progress bars. Evide
 under `ocr-review-20261004` and `ocr-inline-review-20261005`; frozen references and full phase-exit gates
 remain deferred to 3.1.19.
 
+The document-polish amendment adds six document-specific delegated OCR rows, with 18 editable
+response records and 22 fixed page images. The operator-supplied PDFs inform form layouts, counts,
+mixed page order and reversed I-9 pairing; raster fixtures replace employee values and signatures
+with fictional data. I-9 geometry is normalized to the first pair and the Kuali checklist frame is
+recreated. Original PDFs remain outside the repository, with hashes retained for provenance.
+Blank response fields, raw dates, additional List A slots and unresolved identities remain visible.
+Same-named user uploads cannot claim catalog images. Mixed/separation examples are frontend
+coverage, not runtime OCR admission.
+
+The review body allocates 60% to the PDF and 40% to compact fields. Page/zoom controls float at
+the bottom; repeated PDF titles and field-group dividers are removed. PDF/roster Run inputs share
+two columns. Served confirmation drops the accepted-entry disclosure while retaining counts,
+governing data and refusals. Queue aliases use an uppercase workflow code plus eight decimal digits,
+keeping exact trace tooltips and full command IDs. Local Retry opens the bound parent rerun; Delete
+confirms removal of the linked tree and restores queue focus. Focused evidence is retained under
+`ocr-document-polish-20261005`; palette, served authority and 3.1.19 gate ownership remain unchanged.
+
 ## Detailed workflow presentation amendment (2026-10-04)
 
 Local workflow Logs and Explorer share source-backed operation detail for all 15 workflows.

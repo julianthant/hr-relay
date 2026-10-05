@@ -2,13 +2,8 @@
  * Ported from legacy hr-automation@793abe1f8265f3213ffe8a80d6cfd9860a32a1dc,
  * src/dashboard/components/dev/rebuild-demo/DemoActions.tsx
  *
- * Every run control, rendered from the server-sent `actions[]` and nothing
- * else. This file exists to make one rule mechanically true: **no component
- * decides which buttons a row gets.** There is no `status === "failed" ?
- * <Retry/> : …` anywhere. A component asks for the descriptors at a placement
- * and renders them; if the surface did not send one, there is no button to
- * render — a command that must not be offered is structurally unreachable
- * rather than merely hidden.
+ * Served run controls render only the server-sent `actions[]`. Local preview
+ * callbacks provide fixture-only controls and never create command descriptors.
  *
  * Port scope: the run-action renderers (footer, banner, park resolutions,
  * outcome, context menu), the server-authored confirm dialog, and the result
@@ -228,13 +223,15 @@ export function FooterActions({
   actions,
   target,
   onAction = NOOP_ACTION,
+  onPreviewAction,
 }: {
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
   onAction?: DashboardActionHandler;
+  onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
 }) {
   const footer = actionsAt(actions, "footer");
-  if (footer.length === 0) return null;
+  if (footer.length === 0 && !onPreviewAction) return null;
   // The `Cancel group` caption beside the ✕ is GONE. An icon that already means
   // cancel, captioned "cancel", is the same word twice — and it was the only
   // label in the footer's action cluster, so it made one row's buttons a
@@ -242,6 +239,10 @@ export function FooterActions({
   // caption: it is the ✕'s own `title` below.
   return (
     <span className="flex items-center gap-[var(--ds-space-hair)]">
+      {onPreviewAction && footer.length === 0 && <>
+        <IconActionButton tone="muted" icon={<RotateCcw aria-hidden className={dsIcon.sm} />} label="Retry" onClick={event => { event.stopPropagation(); onPreviewAction('retry'); }} />
+        <IconActionButton tone="destructive" icon={<Trash2 aria-hidden className={dsIcon.sm} />} label="Delete" onClick={event => { event.stopPropagation(); onPreviewAction('delete'); }} />
+      </>}
       {footer.map((a) => (
         <IconActionButton
           key={a.key}
@@ -477,6 +478,7 @@ export function RowContextMenu({
   children,
   onSelectRow,
   onPreviewAction,
+  previewArchive = true,
 }: {
   actions: readonly ActionDescriptorWire[];
   target: ActionTarget;
@@ -486,6 +488,7 @@ export function RowContextMenu({
   children: ReactNode;
   onSelectRow?: () => void;
   onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
+  previewArchive?: boolean;
 }) {
   const items = actionsAt(actions, "menu");
   if (items.length === 0 && onSelectRow === undefined && onPreviewAction === undefined) return <>{children}</>;
@@ -501,7 +504,7 @@ export function RowContextMenu({
 
         {onPreviewAction !== undefined ? <>
           <ContextMenuItem icon={<RotateCcw className={dsIcon.sm} />} onSelect={() => onPreviewAction('retry')}>Retry</ContextMenuItem>
-          <ContextMenuItem icon={<Archive className={dsIcon.sm} />} onSelect={() => onPreviewAction('archive')}>Archive</ContextMenuItem>
+          {previewArchive && <ContextMenuItem icon={<Archive className={dsIcon.sm} />} onSelect={() => onPreviewAction('archive')}>Archive</ContextMenuItem>}
           <ContextMenuSeparator className="my-1 h-px bg-ui-stroke" />
           <ContextMenuItem icon={<Trash2 className={dsIcon.sm} />} tone="destructive" onSelect={() => requestAnimationFrame(() => onPreviewAction('delete'))}>Delete</ContextMenuItem>
         </> : groups.map((group, i) => (

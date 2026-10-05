@@ -30,8 +30,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(picker.getByRole("button", { name: flow.label, exact: true })).toHaveCount(0);
           await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
           await rail.getByRole("button", { name: flow.label, exact: true }).click();
+          const sample = seedMockRuns().find(run => run.workflowId === flow.id)!;
+          await page.getByRole("region", { name: "Queue", exact: true }).getByRole("button", { name: new RegExp(`^${sample.subject.replaceAll(".", "\\.")} —`, "u") }).click();
           const logs = page.getByRole("region", { name: "Selected run logs", exact: true });
-          await expect(logs.getByRole("heading", { level: 2 })).toHaveText(seedMockRuns().find(run => run.workflowId === flow.id)!.subject);
+          await expect(logs.getByRole("heading", { level: 2 })).toHaveText(sample.subject);
           if (flow.methods[0] === "delegated") await expect(logs).toContainText("Read Section 2 signer");
           await info.attach(`delegated-${flow.id}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
           continue;
@@ -87,10 +89,10 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
       const approvalLogs = page.getByRole("region", { name: "Selected run logs", exact: true });
       await approvalLogs.getByRole("button", { name: "Open OCR", exact: true }).click();
-      await approvalLogs.getByRole("button", { name: "Records 1", exact: true }).click();
+      await approvalLogs.getByRole("button", { name: /^Records \d+$/u }).click();
       const review = approvalLogs.getByRole("region", { name: "OCR records", exact: true });
       await review.getByRole("button", { name: "Approve records", exact: true }).click();
-      await approvalLogs.getByRole("button", { name: "Records 1", exact: true }).click();
+      await approvalLogs.getByRole("button", { name: /^Records \d+$/u }).click();
       await rail.getByRole("button", { name: "Oath Signature", exact: true }).click();
       await expect(page.getByRole("region", { name: "Queue", exact: true })).toContainText("Jordan Lee");
       await rail.getByRole("button", { name: "Oath Upload", exact: true }).click();
@@ -126,7 +128,7 @@ for (const theme of PARITY_THEMES) test(`workflow mode controls @ ${theme.attrib
     const dialog = page.getByRole("dialog", { name: "Start a run", exact: true });
     await dialog.getByRole("radio", { name: "PDFs", exact: true }).press("Space");
     await dialog.locator('input[type="file"]').setInputFiles(pdf);
-    await expect(dialog.getByRole("button", { name: "Use existing Onboarding Roster Roster", exact: true })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Existing Onboarding Roster Roster", exact: true })).toBeVisible();
     await dialog.getByRole("button", { name: "Continue", exact: true }).click();
     await expect(dialog.getByRole("button", { name: "Auto Workers", exact: true })).toBeVisible();
     await expect(dialog.getByRole("checkbox", { name: "Dry run", exact: true })).not.toBeChecked();

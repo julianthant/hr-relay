@@ -2,6 +2,8 @@ import { QueueSurfaceWireSchema, type QueueSurfaceWire } from "../../domain/dash
 import { sha256Hex } from "../../domain/sha256.js";
 import { mockNeedsReview, mockWaitsForOcr, mockQueueStatus, mockRunLog, type MockRun } from "./workflow-mock-model.js";
 import { reviewCanApprove, reviewRecords } from "./workflow-review-model.js";
+import { workflowDisplayCode } from "./run-display-model.js";
+import { mockWorkflow } from "./workflow-mock-catalog.js";
 
 // Presentation identities are local only; no command descriptors target them.
 export function mockQueueId(id: string): string {
@@ -20,7 +22,7 @@ export function mockQueueSurface(run: MockRun, day: string): QueueSurfaceWire {
   const absent = (reason: string) => ({ state: "absent" as const, reason });
   return QueueSurfaceWireSchema.parse({
     surfaceKind: "single", runId: mockQueueId(run.id), itemId: mockQueueId(run.id), workflowId: run.workflowId,
-    traceId: `mock-091000-${sha256Hex(run.id).slice(0, 4)}`, attempt: 1,
+    traceId: `${workflowDisplayCode(mockWorkflow(run.workflowId).label)}-091000-${sha256Hex(run.id).slice(0, 4)}`, attempt: 1,
     lineage: run.parentId ? { state: "child", parentRunId: mockQueueId(run.parentId) } : { state: "root" },
     containment: run.parentId ? "linked" : "root", linkedRuns: [],
     appVersion: absent("Local workflow fixture"), descriptorVersion: 1,

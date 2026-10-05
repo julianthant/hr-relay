@@ -1,0 +1,3471 @@
+[
+  {
+    "name": "single-oath.pdf",
+    "parent": "oath-signature",
+    "formType": "oath",
+    "records": [
+      {
+        "id": "person-1",
+        "page": 1,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000001",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Lee, Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "4-23-26",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "Alex Morgan",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      }
+    ],
+    "pages": [
+      "single-oath-1.webp"
+    ],
+    "sourceSha256": "74f3932ac0be5e9473ecf8a492a22c62d45ba5a55ca859d4b4e555fb3515b481"
+  },
+  {
+    "name": "multiple-oath.pdf",
+    "parent": "oath-upload",
+    "formType": "oath",
+    "records": [
+      {
+        "id": "person-1",
+        "page": 1,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000001",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Lee, Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "4-23-26",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "Alex Morgan",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      },
+      {
+        "id": "person-2",
+        "page": 2,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000002",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Casey",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Rivera",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Rivera, Casey",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "false",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      },
+      {
+        "id": "person-3",
+        "page": 3,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000003",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Chen",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Chen, Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "4-23-26",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "Alex Morgan",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      },
+      {
+        "id": "person-4",
+        "page": 4,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000004",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Taylor",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Nguyen",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Nguyen, Taylor",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "false",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      }
+    ],
+    "pages": [
+      "multiple-oath-1.webp",
+      "multiple-oath-2.webp",
+      "multiple-oath-3.webp",
+      "multiple-oath-4.webp"
+    ],
+    "sourceSha256": "2290afba5af8058ce30358b817e5ca441cc4e195d18b93f645c172d3536c9ab6"
+  },
+  {
+    "name": "emergency-contacts.pdf",
+    "parent": "emergency-contact",
+    "formType": "emergency-contact",
+    "records": [
+      {
+        "id": "person-1",
+        "page": 1,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000001",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Jordan Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000001",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "jordan.lee@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Lee",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Sibling",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      },
+      {
+        "id": "person-2",
+        "page": 2,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000002",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Casey",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Rivera",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Casey Rivera",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000002",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "casey.rivera@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Rivera",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Parent",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "false",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      },
+      {
+        "id": "person-3",
+        "page": 3,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000003",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Chen",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Morgan Chen",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000003",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "morgan.chen@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Chen",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Parent",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "false",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      }
+    ],
+    "pages": [
+      "emergency-contacts-1.webp",
+      "emergency-contacts-2.webp",
+      "emergency-contacts-3.webp"
+    ],
+    "sourceSha256": "1ee656329583b2f81a99280eaf112db4dca51190488cebac2a1dc2f9eba4ad24"
+  },
+  {
+    "name": "i9.pdf",
+    "parent": "i9-check",
+    "formType": "i9",
+    "records": [
+      {
+        "id": "person-1",
+        "page": 2,
+        "kind": "i9",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000001",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "otherLastNames",
+            "label": "Other last names",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Section 1"
+          },
+          {
+            "key": "apartment",
+            "label": "Apartment",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Section 1"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Section 1"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Section 1"
+          },
+          {
+            "key": "dateOfBirth",
+            "label": "Date of birth",
+            "value": "01/01/1990",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "ssn",
+            "label": "Social Security number",
+            "value": "000-00-0000",
+            "section": "Section 1"
+          },
+          {
+            "key": "email",
+            "label": "Email address",
+            "value": "jordan.lee@example.com",
+            "section": "Section 1"
+          },
+          {
+            "key": "phone",
+            "label": "Telephone number",
+            "value": "(202) 555-0101",
+            "section": "Section 1"
+          },
+          {
+            "key": "citizenshipStatus",
+            "label": "Citizenship status",
+            "value": "Citizen of the United States",
+            "section": "Section 1"
+          },
+          {
+            "key": "alienNumber",
+            "label": "Alien / USCIS number",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "admissionNumber",
+            "label": "Form I-94 admission number",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "passportNumber",
+            "label": "Foreign passport number",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "passportCountry",
+            "label": "Country of issuance",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "workAuthorizationExpiry",
+            "label": "Work authorization expiration",
+            "value": "",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Section 1",
+            "kind": "boolean"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Employee signature date",
+            "value": "04/23/2026",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "usedPreparer",
+            "label": "Preparer or translator used",
+            "value": "false",
+            "section": "Section 1",
+            "kind": "boolean"
+          },
+          {
+            "key": "preparerSigned",
+            "label": "Preparer signed",
+            "value": "false",
+            "section": "Section 1",
+            "kind": "boolean"
+          },
+          {
+            "key": "preparerDate",
+            "label": "Preparer signature date",
+            "value": "",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "preparerFirstName",
+            "label": "Preparer first name",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerLastName",
+            "label": "Preparer last name",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerStreet",
+            "label": "Preparer street",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerCity",
+            "label": "Preparer city",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerState",
+            "label": "Preparer state",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerZip",
+            "label": "Preparer ZIP",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "section1",
+            "label": "Section 1 page",
+            "value": "2",
+            "section": "Source pages"
+          },
+          {
+            "key": "section2",
+            "label": "Section 2 page",
+            "value": "1",
+            "section": "Source pages"
+          },
+          {
+            "key": "listATitle",
+            "label": "List A document title",
+            "value": "US Passport",
+            "section": "List A"
+          },
+          {
+            "key": "listAAuthority",
+            "label": "List A issuing authority",
+            "value": "USA",
+            "section": "List A"
+          },
+          {
+            "key": "listANumber",
+            "label": "List A document number",
+            "value": "000000000",
+            "section": "List A"
+          },
+          {
+            "key": "listAExpiration",
+            "label": "List A expiration date",
+            "value": "04/23/2036",
+            "section": "List A"
+          },
+          {
+            "key": "listBTitle",
+            "label": "List B document title",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listBAuthority",
+            "label": "List B issuing authority",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listBNumber",
+            "label": "List B document number",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listBExpiration",
+            "label": "List B expiration date",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listCTitle",
+            "label": "List C document title",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listCAuthority",
+            "label": "List C issuing authority",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listCNumber",
+            "label": "List C document number",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listCExpiration",
+            "label": "List C expiration date",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listA2Title",
+            "label": "List A document 2 title",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA2Authority",
+            "label": "List A document 2 issuing authority",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA2Number",
+            "label": "List A document 2 number",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA2Expiration",
+            "label": "List A document 2 expiration date",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Title",
+            "label": "List A document 3 title",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Authority",
+            "label": "List A document 3 issuing authority",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Number",
+            "label": "List A document 3 number",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Expiration",
+            "label": "List A document 3 expiration date",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "additionalInformation",
+            "label": "Additional information",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "hireDate",
+            "label": "First day of employment",
+            "value": "04/27/2026",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "employerSigned",
+            "label": "Employer signed",
+            "value": "true",
+            "section": "Section 2",
+            "kind": "boolean"
+          },
+          {
+            "key": "employerDate",
+            "label": "Employer signature date",
+            "value": "04/23/2026",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "employerTitle",
+            "label": "Employer title",
+            "value": "HR Representative",
+            "section": "Section 2"
+          },
+          {
+            "key": "employerLastName",
+            "label": "Employer last name",
+            "value": "Morgan",
+            "section": "Section 2"
+          },
+          {
+            "key": "employerFirstName",
+            "label": "Employer first name",
+            "value": "Alex",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessName",
+            "label": "Business name",
+            "value": "UC San Diego",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessStreet",
+            "label": "Business street",
+            "value": "9500 Gilman Drive",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessCity",
+            "label": "Business city",
+            "value": "La Jolla",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessState",
+            "label": "Business state",
+            "value": "CA",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessZip",
+            "label": "Business ZIP",
+            "value": "92093",
+            "section": "Section 2"
+          },
+          {
+            "key": "rehireDate",
+            "label": "Rehire date",
+            "value": "",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "newName",
+            "label": "New name",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "reverificationDocument",
+            "label": "Reverification document title",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "reverificationNumber",
+            "label": "Reverification document number",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "reverificationExpiry",
+            "label": "Reverification expiration",
+            "value": "",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "reverificationSigned",
+            "label": "Reverification signed",
+            "value": "false",
+            "section": "Section 2",
+            "kind": "boolean"
+          },
+          {
+            "key": "reverificationDate",
+            "label": "Reverification signature date",
+            "value": "",
+            "section": "Section 2",
+            "kind": "date"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      },
+      {
+        "id": "person-2",
+        "page": 4,
+        "kind": "i9",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000002",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Casey",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Rivera",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "otherLastNames",
+            "label": "Other last names",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Section 1"
+          },
+          {
+            "key": "apartment",
+            "label": "Apartment",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Section 1"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Section 1"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Section 1"
+          },
+          {
+            "key": "dateOfBirth",
+            "label": "Date of birth",
+            "value": "01/01/1990",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "ssn",
+            "label": "Social Security number",
+            "value": "000-00-0000",
+            "section": "Section 1"
+          },
+          {
+            "key": "email",
+            "label": "Email address",
+            "value": "casey.rivera@example.com",
+            "section": "Section 1"
+          },
+          {
+            "key": "phone",
+            "label": "Telephone number",
+            "value": "(202) 555-0101",
+            "section": "Section 1"
+          },
+          {
+            "key": "citizenshipStatus",
+            "label": "Citizenship status",
+            "value": "Citizen of the United States",
+            "section": "Section 1"
+          },
+          {
+            "key": "alienNumber",
+            "label": "Alien / USCIS number",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "admissionNumber",
+            "label": "Form I-94 admission number",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "passportNumber",
+            "label": "Foreign passport number",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "passportCountry",
+            "label": "Country of issuance",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "workAuthorizationExpiry",
+            "label": "Work authorization expiration",
+            "value": "",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Section 1",
+            "kind": "boolean"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Employee signature date",
+            "value": "04/23/2026",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "usedPreparer",
+            "label": "Preparer or translator used",
+            "value": "false",
+            "section": "Section 1",
+            "kind": "boolean"
+          },
+          {
+            "key": "preparerSigned",
+            "label": "Preparer signed",
+            "value": "false",
+            "section": "Section 1",
+            "kind": "boolean"
+          },
+          {
+            "key": "preparerDate",
+            "label": "Preparer signature date",
+            "value": "",
+            "section": "Section 1",
+            "kind": "date"
+          },
+          {
+            "key": "preparerFirstName",
+            "label": "Preparer first name",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerLastName",
+            "label": "Preparer last name",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerStreet",
+            "label": "Preparer street",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerCity",
+            "label": "Preparer city",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerState",
+            "label": "Preparer state",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "preparerZip",
+            "label": "Preparer ZIP",
+            "value": "",
+            "section": "Section 1"
+          },
+          {
+            "key": "section1",
+            "label": "Section 1 page",
+            "value": "4",
+            "section": "Source pages"
+          },
+          {
+            "key": "section2",
+            "label": "Section 2 page",
+            "value": "3",
+            "section": "Source pages"
+          },
+          {
+            "key": "listATitle",
+            "label": "List A document title",
+            "value": "US Passport",
+            "section": "List A"
+          },
+          {
+            "key": "listAAuthority",
+            "label": "List A issuing authority",
+            "value": "USA",
+            "section": "List A"
+          },
+          {
+            "key": "listANumber",
+            "label": "List A document number",
+            "value": "000000000",
+            "section": "List A"
+          },
+          {
+            "key": "listAExpiration",
+            "label": "List A expiration date",
+            "value": "04/23/2036",
+            "section": "List A"
+          },
+          {
+            "key": "listBTitle",
+            "label": "List B document title",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listBAuthority",
+            "label": "List B issuing authority",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listBNumber",
+            "label": "List B document number",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listBExpiration",
+            "label": "List B expiration date",
+            "value": "",
+            "section": "List B"
+          },
+          {
+            "key": "listCTitle",
+            "label": "List C document title",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listCAuthority",
+            "label": "List C issuing authority",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listCNumber",
+            "label": "List C document number",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listCExpiration",
+            "label": "List C expiration date",
+            "value": "",
+            "section": "List C"
+          },
+          {
+            "key": "listA2Title",
+            "label": "List A document 2 title",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA2Authority",
+            "label": "List A document 2 issuing authority",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA2Number",
+            "label": "List A document 2 number",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA2Expiration",
+            "label": "List A document 2 expiration date",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Title",
+            "label": "List A document 3 title",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Authority",
+            "label": "List A document 3 issuing authority",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Number",
+            "label": "List A document 3 number",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "listA3Expiration",
+            "label": "List A document 3 expiration date",
+            "value": "",
+            "section": "List A"
+          },
+          {
+            "key": "additionalInformation",
+            "label": "Additional information",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "hireDate",
+            "label": "First day of employment",
+            "value": "04/27/2026",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "employerSigned",
+            "label": "Employer signed",
+            "value": "true",
+            "section": "Section 2",
+            "kind": "boolean"
+          },
+          {
+            "key": "employerDate",
+            "label": "Employer signature date",
+            "value": "04/23/2026",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "employerTitle",
+            "label": "Employer title",
+            "value": "HR Representative",
+            "section": "Section 2"
+          },
+          {
+            "key": "employerLastName",
+            "label": "Employer last name",
+            "value": "Morgan",
+            "section": "Section 2"
+          },
+          {
+            "key": "employerFirstName",
+            "label": "Employer first name",
+            "value": "Alex",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessName",
+            "label": "Business name",
+            "value": "UC San Diego",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessStreet",
+            "label": "Business street",
+            "value": "9500 Gilman Drive",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessCity",
+            "label": "Business city",
+            "value": "La Jolla",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessState",
+            "label": "Business state",
+            "value": "CA",
+            "section": "Section 2"
+          },
+          {
+            "key": "businessZip",
+            "label": "Business ZIP",
+            "value": "92093",
+            "section": "Section 2"
+          },
+          {
+            "key": "rehireDate",
+            "label": "Rehire date",
+            "value": "",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "newName",
+            "label": "New name",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "reverificationDocument",
+            "label": "Reverification document title",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "reverificationNumber",
+            "label": "Reverification document number",
+            "value": "",
+            "section": "Section 2"
+          },
+          {
+            "key": "reverificationExpiry",
+            "label": "Reverification expiration",
+            "value": "",
+            "section": "Section 2",
+            "kind": "date"
+          },
+          {
+            "key": "reverificationSigned",
+            "label": "Reverification signed",
+            "value": "false",
+            "section": "Section 2",
+            "kind": "boolean"
+          },
+          {
+            "key": "reverificationDate",
+            "label": "Reverification signature date",
+            "value": "",
+            "section": "Section 2",
+            "kind": "date"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      }
+    ],
+    "pages": [
+      "i9-1.webp",
+      "i9-2.webp",
+      "i9-3.webp",
+      "i9-4.webp"
+    ],
+    "sourceSha256": "998e0e2a8ffacbfe8300ba3b9b8e8298c51cda4631290090ee21b28603bfe177"
+  },
+  {
+    "name": "detect-test.pdf",
+    "parent": "onbase",
+    "formType": "mixed",
+    "records": [
+      {
+        "id": "person-1",
+        "page": 1,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000001",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Jordan Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000001",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "jordan.lee@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Lee",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Sibling",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": [],
+        "targetWorkflowId": "emergency-contact"
+      },
+      {
+        "id": "person-2",
+        "page": 2,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Casey",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Rivera",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Casey Rivera",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000002",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "casey.rivera@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Rivera",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Parent",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "false",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": false,
+        "match": "unresolved",
+        "warnings": [
+          "Employee ID is obscured on the source page."
+        ],
+        "targetWorkflowId": "emergency-contact"
+      },
+      {
+        "id": "person-3",
+        "page": 3,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000003",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Chen",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Chen, Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "4-23-26",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "Alex Morgan",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": [],
+        "targetWorkflowId": "oath-signature"
+      },
+      {
+        "id": "person-4",
+        "page": 4,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000004",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Taylor",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Nguyen",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Taylor Nguyen",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000004",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "taylor.nguyen@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Nguyen",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Parent",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "false",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": [],
+        "targetWorkflowId": "emergency-contact"
+      },
+      {
+        "id": "person-5",
+        "page": 5,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000005",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Avery",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Patel",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Patel, Avery",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "4-23-26",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "Alex Morgan",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": [],
+        "targetWorkflowId": "oath-signature"
+      },
+      {
+        "id": "person-6",
+        "page": 6,
+        "kind": "contact",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000006",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Riley",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Park",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeName",
+            "label": "Employee name",
+            "value": "Riley Park",
+            "section": "Employee"
+          },
+          {
+            "key": "dateCompleted",
+            "label": "Date completed",
+            "value": "4/23/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "pid",
+            "label": "PID",
+            "value": "A00000006",
+            "section": "Employee"
+          },
+          {
+            "key": "jobTitle",
+            "label": "Job title",
+            "value": "Student Assistant",
+            "section": "Employee"
+          },
+          {
+            "key": "workLocation",
+            "label": "Work location",
+            "value": "Campus Services",
+            "section": "Employee"
+          },
+          {
+            "key": "mailCode",
+            "label": "Mail code",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "supervisor",
+            "label": "Supervisor",
+            "value": "Alex Morgan",
+            "section": "Employee"
+          },
+          {
+            "key": "workEmail",
+            "label": "Work email",
+            "value": "riley.park@example.com",
+            "section": "Employee"
+          },
+          {
+            "key": "personalEmail",
+            "label": "Personal email",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeHomePhone",
+            "label": "Employee home phone",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeCellPhone",
+            "label": "Employee cell phone",
+            "value": "(202) 555-0101",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeStreet",
+            "label": "Employee street",
+            "value": "100 Example Street",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCity",
+            "label": "Employee city",
+            "value": "San Diego",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeState",
+            "label": "Employee state",
+            "value": "CA",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeZip",
+            "label": "Employee ZIP",
+            "value": "92101",
+            "section": "Employee address"
+          },
+          {
+            "key": "employeeCountry",
+            "label": "Employee country",
+            "value": "USA",
+            "section": "Employee address"
+          },
+          {
+            "key": "contactName",
+            "label": "Contact name",
+            "value": "Alex Park",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "relationship",
+            "label": "Relationship",
+            "value": "Parent",
+            "section": "Emergency contact",
+            "kind": "relationship"
+          },
+          {
+            "key": "primary",
+            "label": "Primary contact",
+            "value": "true",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "sameAddress",
+            "label": "Same address as employee",
+            "value": "false",
+            "section": "Emergency contact",
+            "kind": "boolean"
+          },
+          {
+            "key": "cellPhone",
+            "label": "Cell phone",
+            "value": "(202) 555-0102",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "homePhone",
+            "label": "Home phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "workPhone",
+            "label": "Work phone",
+            "value": "",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "street",
+            "label": "Street",
+            "value": "100 Example Street",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "city",
+            "label": "City",
+            "value": "San Diego",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "zip",
+            "label": "ZIP",
+            "value": "92101",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "country",
+            "label": "Country",
+            "value": "USA",
+            "section": "Emergency contact"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Emergency contact"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": [],
+        "targetWorkflowId": "emergency-contact"
+      },
+      {
+        "id": "person-7",
+        "page": 7,
+        "kind": "oath",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000007",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Cameron",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Bell",
+            "section": "Employee"
+          },
+          {
+            "key": "printedName",
+            "label": "Printed name",
+            "value": "Bell, Cameron",
+            "section": "Employee"
+          },
+          {
+            "key": "middleInitial",
+            "label": "Middle initial",
+            "value": "",
+            "section": "Employee"
+          },
+          {
+            "key": "employmentDate",
+            "label": "Employment date",
+            "value": "04/27/26",
+            "section": "Employee",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412",
+            "section": "Employee"
+          },
+          {
+            "key": "dateSigned",
+            "label": "Date signed",
+            "value": "4-23-26",
+            "section": "Oath",
+            "kind": "date"
+          },
+          {
+            "key": "employeeSigned",
+            "label": "Employee signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officerSigned",
+            "label": "Officer signed",
+            "value": "true",
+            "section": "Oath",
+            "kind": "boolean"
+          },
+          {
+            "key": "officialName",
+            "label": "Authorized official",
+            "value": "Alex Morgan",
+            "section": "Oath"
+          },
+          {
+            "key": "officialTitle",
+            "label": "Official title",
+            "value": "HR Student Assistant",
+            "section": "Oath"
+          },
+          {
+            "key": "county",
+            "label": "County",
+            "value": "San Diego",
+            "section": "Oath"
+          },
+          {
+            "key": "state",
+            "label": "State",
+            "value": "CA",
+            "section": "Oath"
+          },
+          {
+            "key": "notes",
+            "label": "Notes",
+            "value": "",
+            "section": "Oath"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": [],
+        "targetWorkflowId": "oath-signature"
+      }
+    ],
+    "pages": [
+      "detect-test-1.webp",
+      "detect-test-2.webp",
+      "detect-test-3.webp",
+      "detect-test-4.webp",
+      "detect-test-5.webp",
+      "detect-test-6.webp",
+      "detect-test-7.webp"
+    ],
+    "sourceSha256": "993f52d9f813880654e5d9360ff0712027f9666d82b850e30e7b04d1b8ee88cc"
+  },
+  {
+    "name": "sick-hours.pdf",
+    "parent": "separations",
+    "formType": "separation",
+    "records": [
+      {
+        "id": "person-1",
+        "page": 1,
+        "kind": "separation",
+        "fields": [
+          {
+            "key": "employeeId",
+            "label": "Employee ID",
+            "value": "10000001",
+            "section": "Employee"
+          },
+          {
+            "key": "firstName",
+            "label": "First name",
+            "value": "Jordan",
+            "section": "Employee"
+          },
+          {
+            "key": "lastName",
+            "label": "Last name",
+            "value": "Lee",
+            "section": "Employee"
+          },
+          {
+            "key": "kualiId",
+            "label": "Kuali document number",
+            "value": "3949",
+            "section": "Document"
+          },
+          {
+            "key": "documentStatus",
+            "label": "Document status",
+            "value": "IN PROGRESS",
+            "section": "Document"
+          },
+          {
+            "key": "submittedAt",
+            "label": "Submitted at",
+            "value": "04/30/2026 6:57 PM",
+            "section": "Document"
+          },
+          {
+            "key": "instructions",
+            "label": "Instructions",
+            "value": "PLEASE REVIEW AND COMPLETE CHECKLIST - Task 1",
+            "section": "Document"
+          },
+          {
+            "key": "division",
+            "label": "Division",
+            "value": "Campus Dining and Retail",
+            "section": "Employee"
+          },
+          {
+            "key": "employeeType",
+            "label": "Employee type",
+            "value": "Student",
+            "section": "Employee"
+          },
+          {
+            "key": "lastDayWorked",
+            "label": "Last day worked",
+            "value": "04/23/2026",
+            "section": "Separation",
+            "kind": "date"
+          },
+          {
+            "key": "separationDate",
+            "label": "Separation date",
+            "value": "04/27/2026",
+            "section": "Separation",
+            "kind": "date"
+          },
+          {
+            "key": "location",
+            "label": "Location",
+            "value": "OceanView",
+            "section": "Separation"
+          },
+          {
+            "key": "terminationType",
+            "label": "Type of termination",
+            "value": "Attend School",
+            "section": "Separation"
+          },
+          {
+            "key": "separationComments",
+            "label": "Additional separation comments",
+            "value": "No two-week notice",
+            "section": "Separation"
+          },
+          {
+            "key": "submittedBy",
+            "label": "Submitted by",
+            "value": "Alex Morgan",
+            "section": "Timekeeper"
+          },
+          {
+            "key": "acknowledgment",
+            "label": "Timekeeper acknowledgment",
+            "value": "Request Acknowledged - In Progress",
+            "section": "Timekeeper"
+          },
+          {
+            "key": "timekeeper",
+            "label": "Timekeeper name",
+            "value": "Alex Morgan",
+            "section": "Timekeeper"
+          },
+          {
+            "key": "effectiveDate",
+            "label": "Termination effective date",
+            "value": "04/28/2026",
+            "section": "Final transactions",
+            "kind": "date"
+          },
+          {
+            "key": "department",
+            "label": "Department",
+            "value": "000412 - HousingDiningHospitality",
+            "section": "Final transactions"
+          },
+          {
+            "key": "payrollTitleCode",
+            "label": "Payroll title code",
+            "value": "004821",
+            "section": "Final transactions"
+          },
+          {
+            "key": "payrollTitle",
+            "label": "Payroll title",
+            "value": "STDT 2",
+            "section": "Final transactions"
+          },
+          {
+            "key": "terminationSubmitted",
+            "label": "Termination template submitted",
+            "value": "true",
+            "section": "Final transactions",
+            "kind": "boolean"
+          },
+          {
+            "key": "transactionNumber",
+            "label": "Transaction number",
+            "value": "DEMO-TXN-001",
+            "section": "Final transactions"
+          },
+          {
+            "key": "finalPaySubmitted",
+            "label": "Final pay request submitted",
+            "value": "false",
+            "section": "Final transactions",
+            "kind": "boolean"
+          },
+          {
+            "key": "finalPayStudent",
+            "label": "No final pay needed: student",
+            "value": "true",
+            "section": "Final transactions",
+            "kind": "boolean"
+          },
+          {
+            "key": "finalPayTransfer",
+            "label": "No final pay needed: transfer",
+            "value": "false",
+            "section": "Final transactions",
+            "kind": "boolean"
+          },
+          {
+            "key": "finalPayOther",
+            "label": "Other final pay outcome",
+            "value": "false",
+            "section": "Final transactions",
+            "kind": "boolean"
+          },
+          {
+            "key": "timekeeperComments",
+            "label": "Timekeeper / approver comments",
+            "value": "",
+            "section": "Final transactions"
+          },
+          {
+            "key": "auditNote",
+            "label": "Last day worked update",
+            "value": "Last day worked corrected after timecard review.",
+            "section": "History"
+          }
+        ],
+        "selected": true,
+        "match": "matched",
+        "warnings": []
+      }
+    ],
+    "pages": [
+      "sick-hours-1.webp",
+      "sick-hours-2.webp",
+      "sick-hours-3.webp"
+    ],
+    "sourceSha256": "c11b3d6b2483eef669d1c888e52359a5b789eeb93a5b11ff2dd9e54a72713f35"
+  }
+]

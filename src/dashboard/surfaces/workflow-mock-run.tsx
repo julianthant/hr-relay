@@ -59,14 +59,14 @@ export function WorkflowMockRunForm({ workflowId, source, runs, onClose, onSubmi
             {typedEntries.length > 0 && <ul aria-label="Parsed inputs" className="launch-parsed-input m-0 flex list-none flex-col gap-1 p-0">{typedEntries.map((entry, number) => <li key={number} className="flex items-center gap-2 rounded-md border border-ui-stroke px-2 text-body"><span className="text-ui-muted">{number + 1}</span><span className="truncate">{entry}</span></li>)}</ul>}
           </>}
           {pdf && <>
-            <Field label="PDFs"><Input type="file" multiple accept="application/pdf,.pdf" onChange={event => { void chooseFiles(event.target.files); }} /></Field>
+            <div className="grid grid-cols-2 items-start gap-3">
+              <Field label="PDFs"><Input type="file" multiple accept="application/pdf,.pdf" onChange={event => { void chooseFiles(event.target.files); }} /></Field>
+              {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
+            </div>
             {reading && <p role="status">Reading PDFs…</p>}
             {draft.files.length > 0 && <ul className="m-0 list-none p-0 text-body">{draft.files.map((file, number) => <li key={number} className="flex items-center justify-between border-b border-ui-stroke py-2"><span className="truncate">{file.name}</span><span className="text-caption text-ui-muted">{Math.ceil(file.size / 1024)} KB</span></li>)}</ul>}
             {workflowId === "onbase" && <><Field label="Document type"><Input value="X_HR_Emergency Contact" readOnly /></Field><details className="text-caption text-ui-muted"><summary>Other document types</summary><ul className="list-none p-0">{MOCK_ONBASE_TYPES.filter(type => type !== "Emergency Contact").map(type => <li key={type}>{type} · Unavailable</li>)}</ul></details><p className="text-caption text-ui-secondary">Selected PDFs merge into one document. Approved pages import separately for each person.</p></>}
             {workflowId === "ocr" && <ChoicePicker label="Form type" value={draft.formType} options={MOCK_FORM_TYPES} onChange={formType => patch({ formType })} />}
-            {flow.roster && !uploadOnly && <ChoicePicker label="Roster" value={draft.roster} options={[{ value: "existing", label: "Use existing Onboarding Roster" }, { value: "download", label: "Download Onboarding Roster" }]} onChange={roster => { if (roster === "existing" || roster === "download") patch({ roster }); }} />}
-            {workflowId === "i9-check" && <p className="text-caption text-ui-secondary">Pairs I-9 Sections 1 and 2, reads UCPath and appends the retention tracker using the configured Action History roster. A rerun appends again.</p>}
-            {workflowId === "oath-upload" && <p className="text-caption text-ui-secondary">{uploadOnly ? "Files a ServiceNow HR ticket with the PDF. OCR and oath signatures are skipped." : "Review extracted records, complete each Oath Signature, then file the PDF in ServiceNow. The ticket waits for all signers."}</p>}
           </>}
           {draft.method === "roster" && <ChoicePicker label="Spreadsheet" value="onboarding" options={[{ value: "onboarding", label: "Onboarding Roster" }]} onChange={() => undefined} />}
           {draft.method === "delegated" && <Banner tone="info" title="Delegated lookup">Searches I-9 Complete by last and first name, optionally SSN, then reads the Section 2 signer and status. The parent owns this run.</Banner>}

@@ -54,7 +54,6 @@ import { useDashboardClient } from "../state/client-context.js";
 import {
   EnqueueResultBanner,
   LockedFact,
-  PlanPreview,
   PlanRefusals,
   RunFlagChips,
   StepOmissionFactsForm,
@@ -1194,10 +1193,6 @@ export function RunStartDialog({
                         + "Go back and plan the run again — this plan would start a different run."}
                     </Banner>
                   )}
-                  <details className="rounded-md border border-ui-stroke px-3 py-2">
-                    <summary className="cursor-pointer text-caption text-ui-secondary">View {plan.planned.length} accepted {plan.planned.length === 1 ? "entry" : "entries"}</summary>
-                    <PlanPreview plan={plan} compact className="mt-3" />
-                  </details>
                   <PlanRefusals refused={plan.refused} />
                 </section>
               )}

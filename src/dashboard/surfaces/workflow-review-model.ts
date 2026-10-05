@@ -1,16 +1,21 @@
 import type { MockRun } from "./workflow-mock-model.js";
+import type { MockWorkflowId } from "./workflow-mock-catalog.js";
+import { mockDocumentFixture } from "./workflow-document-model.js";
 
 // Review shapes and selection rules copied from legacy@9bb973672666b9267569a22d3fa0af722e4c5e87,
 // src/dashboard/components/ocr/{EcRecordView,OathRecordView,VerifyRecordView,types,approval-selection}.
 export type ReviewField = Readonly<{ key: string; label: string; value: string; kind?: "date" | "boolean" | "relationship"; section?: string; readOnly?: boolean }>;
 export type ReviewRecord = Readonly<{
-  id: string; page: number; kind: "oath" | "contact" | "verify" | "i9";
+  id: string; page: number; kind: "oath" | "contact" | "verify" | "i9" | "separation";
   fields: readonly ReviewField[]; selected: boolean; unknown?: boolean;
   match: "matched" | "unresolved" | "manual"; warnings: readonly string[];
+  targetWorkflowId?: MockWorkflowId;
 }>;
 export const REVIEW_RELATIONSHIPS = ["Parent", "Sibling", "Spouse", "Domestic Partner Adult", "Domestic Partner Child", "Child", "Grandchild", "Grand Parent", "Other Relative", "Friend", "Neighbor", "Roommate", "Ward", "Medical Provider", "Emerg/Detention/Arrest Contact", "Contact if Detained/Arrested", "Other"];
 const field = (key: string, label: string, value: string, kind?: ReviewField["kind"], section?: string): ReviewField => ({ key, label, value, ...(kind ? { kind } : {}), ...(section ? { section } : {}) });
 export function seedReviewRecords(run: Pick<MockRun, "workflowId" | "draft">): readonly ReviewRecord[] {
+  const fixture = mockDocumentFixture(run.draft);
+  if (fixture) return structuredClone(fixture.records);
   const type = run.workflowId === "i9-check" ? "i9" : run.workflowId === "ocr" ? run.draft.formType : run.workflowId === "onbase" || run.workflowId === "emergency-contact" ? "emergency-contact" : "oath";
   const kind = type === "i9" ? "i9" : type === "verify" ? "verify" : type === "oath" ? "oath" : "contact";
   return [{ id: "person-1", page: 1, kind, selected: true, match: "matched", warnings: [], fields: [

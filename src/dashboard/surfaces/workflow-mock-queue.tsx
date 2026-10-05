@@ -1,6 +1,6 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowUpRight, GitBranch, ListChecks } from "lucide-react";
-import { Button, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../ds/ui.js";
+import { Button, Dialog, DialogContent, DialogBody, DialogFooter, IconButton, Popover, PopoverContent, PopoverTrigger, dsFocus } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { LogPanel } from "./log-panel.js";
 import { LogFeed } from "./log-feed.js";
@@ -15,20 +15,47 @@ import { dsStatusOf } from "./status-model.js";
 import { reviewRecords, seedReviewRecords, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewSourcePages } from "./workflow-review-source-model.js";
 import { WorkflowMockReview } from "./workflow-review.js";
+import { documentSourcePages } from "./workflow-document-model.js";
+import { mockDeletionIds } from "./workflow-mock-model.js";
 
-export function WorkflowMockQueue({ label, runs, selected, onSelect, day, nowIso, sort, filter }: {
+export function WorkflowMockQueue({ label, runs, allRuns, selected, onSelect, onRetry, onDelete, day, nowIso, sort, filter }: {
   label: string; runs: readonly MockRun[]; selected?: string; onSelect: (id: string) => void;
   day: string; nowIso: string; sort: QueueSortKey; filter?: QueueFilterScope;
+  allRuns: readonly MockRun[]; onRetry: (id: string) => void; onDelete: (ids: readonly string[]) => void;
 }) {
+  const [pendingDelete, setPendingDelete] = useState<MockRun>();
+  const queueRoot = useRef<HTMLDivElement>(null);
+  const deleted = useRef(false);
+  const deleteLauncher = useRef<HTMLElement | null>(null);
   const surfaces = useMemo(() => mockQueueSurfaces(runs, day), [runs, day]);
   const ids = useMemo(() => new Map(runs.map(run => [mockQueueId(run.id), run.id])), [runs]);
-  return <QueuePanel surfaces={surfaces} panelLabel={label} day={day} sort={sort} filter={filter}
+  return <div ref={queueRoot} className="flex min-h-0 min-w-0 flex-1 flex-col [&>section]:flex-1"><QueuePanel surfaces={surfaces} panelLabel={label} day={day} sort={sort} filter={filter}
     state={{ selectedRunId: selected ? mockQueueId(selected) : undefined, openWells: new Set(), panelWorkflowId: runs[0]?.workflowId, nowIso }}
     handlers={{ onSelect: id => {
       const target = ids.get(id);
       if (!target) throw new Error(`MOCK_QUEUE_RUN_UNKNOWN: ${id}`);
       onSelect(target);
-    } }} workflowLabelOf={id => mockWorkflow(id).label} />;
+    }, previewArchive: false, onPreviewAction: (action, targets) => {
+      const id = ids.get(targets[0]);
+      const run = allRuns.find(item => item.id === id);
+      if (!run) throw new Error("MOCK_QUEUE_ACTION_TARGET_MISSING");
+      if (action === "retry") onRetry(run.id);
+      else if (action === "delete") { deleteLauncher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null; setPendingDelete(run); }
+      else throw new Error("MOCK_QUEUE_ARCHIVE_UNAVAILABLE");
+    } }} workflowLabelOf={id => mockWorkflow(id).label} />
+    <Dialog open={!!pendingDelete} onOpenChange={open => { if (!open) setPendingDelete(undefined); }}>
+      <DialogContent title={`Delete ${pendingDelete?.subject ?? "run"}?`} size="sm" onCloseAutoFocus={event => {
+        event.preventDefault();
+        if (!deleted.current) { deleteLauncher.current?.focus(); return; }
+        deleted.current = false;
+        const target = queueRoot.current?.querySelector<HTMLElement>("[data-demo-row-id]") ?? queueRoot.current?.querySelector<HTMLElement>("h2");
+        if (target) { if (!target.hasAttribute("tabindex")) target.tabIndex = -1; target.focus(); }
+      }}>
+        <DialogBody>{pendingDelete && <p className="m-0 text-body text-ui-secondary">Remove this run and {mockDeletionIds(allRuns, pendingDelete.id).length - 1} linked runs from the queue.</p>}</DialogBody>
+        <DialogFooter><Button onClick={() => setPendingDelete(undefined)}>Cancel</Button><Button variant="danger" onClick={() => { if (!pendingDelete) return; deleted.current = true; onDelete(mockDeletionIds(allRuns, pendingDelete.id)); setPendingDelete(undefined); }}>Delete</Button></DialogFooter>
+      </DialogContent>
+    </Dialog>
+  </div>;
 }
 
 export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDiscard, onRestore, onSelect, reviewOpen, onReviewOpenChange }: {
@@ -42,7 +69,7 @@ export function WorkflowMockLog({ run, runs, onRerun, onApprove, onChange, onDis
   const recordsVisible = hasRecords && (reviewOpen ?? localReviewOpen);
   const setRecordsVisible = onReviewOpenChange ?? setLocalReviewOpen;
   const { workflowId, draft } = run;
-  const sourcePages = useMemo(() => hasRecords ? Object.fromEntries(seedReviewRecords({ workflowId, draft }).map(record => [record.id, reviewSourcePages(record)])) : {}, [hasRecords, workflowId, draft]);
+  const sourcePages = useMemo(() => hasRecords ? Object.fromEntries(seedReviewRecords({ workflowId, draft }).map(record => [record.id, documentSourcePages(draft, record) ?? reviewSourcePages(record)])) : {}, [hasRecords, workflowId, draft]);
   const { steps, timeline } = recordsVisible ? { steps: [], timeline: [] } : mockRunLog(run);
   const linked = runs.filter(item => item.parentId === run.id || item.id === run.parentId || item.id === run.sourceId || item.id === run.ocrRunId || item.ocrRunId === run.id);
   return <LogPanel title={run.subject} steps={steps} timeline={timeline}

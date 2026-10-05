@@ -39,7 +39,9 @@ describe("approved mixed queue presentation", () => {
     assert.equal(host.querySelector('[aria-label^="What is this row"]'), null);
     assert.equal(body.querySelector('[aria-label^="Attempts for"]'), null);
     assert.equal(host.querySelector('[aria-label^="Attempts for"]')?.textContent, `#${row.attempt}`);
-    assert.ok(host.textContent?.includes(row.traceId));
+    const identity = [...host.querySelectorAll('span[title]')].find(element => element.getAttribute('title') === row.traceId);
+    assert.ok(identity);
+    assert.match(identity.textContent ?? "", /^[A-Z0-9]+\d{8}$/u);
     assert.ok(!host.textContent?.includes("Attempts ·"));
   });
   it("shows all served progress states, measured durations and the step count below the bar", () => {

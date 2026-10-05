@@ -7456,6 +7456,33 @@ step beneath progress bars. The redundant Result timeline stage is retired; outc
 in the final real log step. These are local frontend previews; served authority is unchanged. Full frozen
 parity and phase-exit gates remain owned by 3.1.19.
 
+The 2026-10-05 document-polish amendment adds one delegated OCR queue row for each of the six
+operator-supplied PDFs under `legacy:data/documents`: single oath, multiple oaths, emergency
+contacts, I-9, mixed forms and the separation checklist. The fixture catalog contains 18 response
+records and 22 immutable page images. Printed form layouts, page counts and I-9 Section 1/2 pairing
+inform the previews; employee values and signatures are replaced with fictional data before raster
+assets enter the repository. Original PDFs remain outside the rebuild. I-9 scan geometry is normalized
+to its first form pair; the Kuali checklist frame is recreated. Source PDF hashes retain provenance.
+Blank fields, raw date spellings, additional List A document slots and an unresolved identity remain
+editable. A user upload with the same filename cannot claim a catalog image. Mixed-form and separation
+examples exercise frontend response coverage; they do not admit new runtime OCR forms or routing.
+
+The PDF occupies 60% of the inline review body, with compact fields in the remaining 40%. One
+floating toolbar holds page and zoom controls; the repeated filename header and internal group
+dividers are retired. Approval actions remain fixed at the bottom of the editor. Run PDF and roster
+inputs share a two-column row. Served Run confirmation retains counts, refusal and governing data
+while retiring the accepted-entry disclosure and its plan metadata.
+
+Queue footers show a stable workflow code and eight decimal digits. This is a presentation alias;
+full run IDs, routing, commands and served trace IDs remain unchanged, with the exact trace in the tooltip.
+Local workflow rows expose canonical Retry and Delete icons. Retry opens the root workflow's bound
+rerun form; the I-9 Lookup preview follows its explicit mixed-document OCR parent to the runnable
+parent, never launching independently. Delete confirms removal of the document root and its
+descendants so OCR cannot become orphaned; an individual lookup deletes only its own subtree.
+Keyboard focus returns to the action on cancel and a remaining queue row after deletion. Local
+actions issue no BFF command. Focused verification and source/asset inventories are retained in
+`ocr-document-polish-20261005`; frozen references and full gates remain owned by 3.1.19.
+
 The workflow-detail amendment uses one pure operation catalog for local Logs, Explorer fields and
 timeline substeps, copied from the pinned legacy workflow actions and system helpers. It includes
 authentication, navigation, form fills, readbacks, downloads, submission boundaries and conditional

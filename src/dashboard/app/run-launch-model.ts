@@ -21,12 +21,15 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
   const mounted = useRef(true);
   useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const intakeHandoff = useRef(false);
-  const openStart = useCallback(() => { intakeHandoff.current = false; launcher.current = null; setRerunSource(undefined); setOpen(true); }, []);
-  const openRerun = useCallback((source: RerunLaunchSource) => {
+  const rememberLauncher = useCallback(() => {
     intakeHandoff.current = false;
     launcher.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    setRerunSource(source); setOpen(true);
   }, []);
+  const openStart = useCallback(() => { intakeHandoff.current = false; launcher.current = null; setRerunSource(undefined); setOpen(true); }, []);
+  const openRerun = useCallback((source: RerunLaunchSource) => {
+    rememberLauncher();
+    setRerunSource(source); setOpen(true);
+  }, [rememberLauncher]);
   const closeFocus = useCallback((event: Event) => {
     event.preventDefault();
     if (mounted.current && !intakeHandoff.current) {
@@ -35,7 +38,7 @@ export function useRunLaunch(initialOpen: boolean, mainRegionId: string) {
     }
   }, [mainRegionId]);
   const handOffToIntake = useCallback(() => { intakeHandoff.current = true; }, []);
-  return { open, setOpen, openStart, openRerun, rerunSource, closeFocus, handOffToIntake };
+  return { open, setOpen, openStart, openRerun, rerunSource, closeFocus, handOffToIntake, rememberLauncher };
 }
 
 export function launchWorkflows(workflows: readonly WorkflowBootstrapPrimitive[]): readonly RunStartWorkflow[] {

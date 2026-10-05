@@ -55,6 +55,7 @@ import {
 } from "./actions.js";
 import { dayLabel, fmtClock, fmtElapsed, plural, runTiming } from "./format.js";
 import { testInstanceHazardTitle, testInstanceSystems } from "./test-instance-hazard.js";
+import { runDisplayId } from "./run-display-model.js";
 import { StatusBadge } from "./status.js";
 import {
   PROPOSED_STATUS,
@@ -135,6 +136,7 @@ export interface QueueHandlers {
   onSelectBulk?: (runId: string) => void;
   onExitSelection?: () => void;
   onPreviewAction?: (action: 'retry' | 'archive' | 'delete', ids: readonly string[]) => void;
+  previewArchive?: boolean;
   /** Mark a loaded member checked by you. This has no authority effect. */
   /**
    * Jump to the run that delegated this one — the panel switch AND the
@@ -409,6 +411,7 @@ function RowFooterLine({
   nowIso,
   itemGroup,
   onSelect,
+  onPreviewAction,
 }: {
   surface: QueueSurfaceWire;
   itemGroup?: QueueItemGroup;
@@ -416,6 +419,7 @@ function RowFooterLine({
   actions: readonly ActionDescriptorWire[];
   onAction?: DashboardActionHandler;
   nowIso: string;
+  onPreviewAction?: (action: 'retry' | 'archive' | 'delete') => void;
 }) {
   // Elapsed is display-only arithmetic over two SERVED instants (ref frontend-backend-integration §4).
   //
@@ -453,13 +457,9 @@ function RowFooterLine({
           selectedRunId={String(surface.runId)}
           onSelect={onSelect}
         />
-        {/* The trace id is the run's NAME in every log, every receipt and every
-            support conversation, so it is the last thing that may be cut. It is
-            `nowrap`: if the line runs out, the SEGMENTS AFTER IT wrap. It is
-            plain text in the band's secondary ink (`DemoQueue.tsx:715`) — the
-            chip beside it is the only outlined segment on the line. */}
+        {/* The compact alias is display-only; the tooltip retains the exact trace. */}
         <span className="whitespace-nowrap text-[color:var(--ds-fg-secondary)]" title={surface.traceId}>
-          {surface.traceId}
+          {runDisplayId(surface.runId, surface.traceId)}
         </span>
         {timing !== undefined && (
           <span className="whitespace-nowrap" {...(timing.title === undefined ? {} : { title: timing.title })}>
@@ -474,6 +474,7 @@ function RowFooterLine({
         <FooterActions
           actions={actions}
           target={{ runId: surface.runId, expectedVersion: surface.rowRevision }}
+          onPreviewAction={onPreviewAction}
           {...(onAction === undefined ? {} : { onAction })}
         />
       </div>
@@ -913,6 +914,7 @@ export function QueueRow({
         className="mt-[var(--ds-space-queue-top)] shrink-0"
       />}
       <RowContextMenu
+        previewArchive={handlers.previewArchive}
         actions={actions}
         target={target}
         rowLabel={queueRowTitle(surface)}
@@ -1136,6 +1138,7 @@ export function QueueRow({
           <RowFooterLine
             surface={surface}
             actions={actions}
+            {...(handlers.onPreviewAction === undefined ? {} : { onPreviewAction: (action: 'retry' | 'archive' | 'delete') => handlers.onPreviewAction?.(action, [surface.runId]) })}
             {...(onAction === undefined ? {} : { onAction })}
             nowIso={state.nowIso}
             itemGroup={itemGroup}

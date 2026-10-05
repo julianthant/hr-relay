@@ -35,7 +35,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const drawer = logs.getByRole("region", { name: "OCR records", exact: true });
       await expect(drawer).toBeVisible(); await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toBeEnabled();
       await expect.poll(async () => { const box = await drawer.boundingBox(); return box ? box.x + box.width : Infinity; }).toBeLessThanOrEqual(width);
-      await expect(logs.getByRole("heading", { level: 2, includeHidden: true })).toHaveText("emergency-contact.pdf");
+      await expect(logs.getByRole("heading", { level: 2, includeHidden: true })).toHaveText("emergency-contacts.pdf");
       await expect(drawer.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeFocused();
       await info.attach(`notification-review-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
       await drawer.getByRole("textbox", { name: "Cell phone", exact: true }).fill("619-555-0199");
@@ -53,7 +53,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       await expect(drawer).toBeVisible(); await expect(drawer).toContainText("619-555-0199");
       await expect(drawer.getByRole("textbox", { name: "Cell phone", exact: true })).toHaveCount(0);
       await expect(drawer.getByRole("button", { name: "Approve records", exact: true })).toHaveCount(0);
-      await logs.getByRole("button", { name: "Records 1", exact: true }).click(); await expect(drawer).toHaveCount(0);
+      await logs.getByRole("button", { name: /^Records \d+$/u }).click(); await expect(drawer).toHaveCount(0);
       await bell.click(); await inbox.getByRole("button", { name: "Review run", exact: true }).click();
       await expect(inbox).toHaveCount(0); expect(new URL(page.url()).searchParams.get("run")).toBe(FIXTURE_IDS.openGateRun);
       await expect(logs.getByRole("heading", { level: 2 })).toHaveText("Blirea, Glaundi");
