@@ -69,7 +69,7 @@ export function buildWorkflowMock(id: MockWorkflowId, values: WorkflowChoices): 
         value: key === "fixture-i9-lookup" && values.profile === "absent" ? item.field === "I-9 status" ? "No profile found" : "Not available · no profile" : key === "fixture-old-kronos-reports" && values.pdf !== "valid" ? item.field === "Files saved" ? "No retained PDF" : `Tracker outcome: ${values.pdf === "empty" ? "No Data Returned" : "MISMATCH"}` : mockFieldValue(run, item.field),
         mode: item.dir === "write" && node.kind !== "output" && node.kind !== "fanout" ? "fill" : "read", source: `contract:${index}:${fieldIndex}`,
       })) }] });
-      const proof = node.contract.filter(item => item.proof).map(item => item.proof);
+      const proof = [...new Set(node.contract.filter(item => item.proof).map(item => item.proof))];
       if (proof.length) parts.push(action(`Verify: ${proof.join("; ")}.`));
     }
     if (key === "fixture-ocr" && node.id === "Read forms") parts.push({ kind: "note", text: values.form === "verify" ? "Read-only completeness report: paper signatures and contacts, UCPath identity, CRM service/oath dates and I-9 signer lookup." : values.form === "i9" ? "Pair Section 1 and Section 2 identities; report UCPath person matches without approval." : `Extract ${values.form === "oath" ? "printed name, Employee ID, signed date and signature flags" : "employee identity, contact name, relationship, phones and contact address"}. Standalone records are read only.` });

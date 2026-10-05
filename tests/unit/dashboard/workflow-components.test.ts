@@ -31,6 +31,10 @@ describe("complete workflow presentation mocks", () => {
     const workRun = seedMockRuns().find(run => run.workflowId === "work-study")!;
     const fields = mockRunLog(workRun).steps.flatMap(step => step.entries.flatMap(entry => entry.kind === "fields" ? entry.fields : []));
     expect(fields).toEqual(expect.arrayContaining([expect.objectContaining({ label: "Position pool", value: "F" }), expect.objectContaining({ label: "Change reason", value: "JRL" })]));
+    const workProof = buildWorkflowMock("work-study", initialWorkflowChoices("work-study")).steps.find(step => step.title === "Transaction")!.parts.filter(part => part.kind === "action").map(part => part.text).join(" ");
+    expect(workProof.match(/staged form readback and submission confirmation/gu)).toHaveLength(1);
+    const logProof = mockRunLog(workRun).steps.flatMap(step => step.entries).filter(entry => entry.kind === "note").map(entry => entry.message).join(" ");
+    expect(logProof.match(/staged form readback and submission confirmation/gu)).toHaveLength(1);
   });
   it("keeps manual identity provenance, selection gates and each approved person's edited values", () => {
     const source = preparation("emergency-contact"), original = reviewRecords(source)[0];

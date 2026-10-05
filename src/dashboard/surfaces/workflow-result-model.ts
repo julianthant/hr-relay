@@ -67,7 +67,7 @@ export function mockDetailEntries(run: MockRun, step: MockStep, state: LogTimeli
   const entries: LogEntry[] = [];
   if (node?.contract.length) {
     entries.push({ kind: "fields", id: `${run.id}:${step.key}:details`, title: node.id, fields: node.contract.map((item, index) => ({ id: `${run.id}:${step.key}:detail:${index}`, time, kind: item.dir === "write" ? "fill" : "read", label: item.field === "EID" ? "Employee ID" : item.field, value: mockFieldValue(run, item.field) })) });
-    const proofs = node.contract.filter(item => item.proof).map(item => item.proof);
+    const proofs = [...new Set(node.contract.filter(item => item.proof).map(item => item.proof))];
     if (proofs.length) entries.push({ kind: "note", id: `${run.id}:${step.key}:proof`, time, message: `Fictional readback: ${proofs.join("; ")}.`, tone: "positive" });
   }
   if (step.key === "prep:awaiting-approval" && run.workflowId !== "ocr") entries.push({ kind: "decision", id: `${run.id}:review-gate`, time, decision: { title: run.approved ? "Records approved" : "Review extracted records", state: run.approved ? "resolved" : "review", message: "Review identity and source-page fields in Records. Only selected, resolved records fan out to independent runs.", footer: "Fictional local preview" } });
