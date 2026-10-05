@@ -17,9 +17,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
    const settings = page.getByRole('region', { name: 'Settings', exact: true });
    const nav = settings.getByRole('navigation', { name: 'Settings sections' });
    const data = nav.locator('div').filter({ has: page.locator(':scope > span', { hasText: /^Data$/ }) }).first();
-   await expect(data.getByRole('link')).toHaveText(['Explorer', 'Archive', 'Activity']);
+   await expect(data.getByRole('link')).toHaveText(['Spreadsheets', 'Explorer', 'Archive', 'Activity']);
    await expect(nav.getByRole('link', { name: 'Spreadsheets', exact: true })).toHaveCount(1);
-   await expect(data.getByRole('link', { name: 'Spreadsheets', exact: true })).toHaveCount(0);
+   await expect(data.getByRole('link', { name: 'Spreadsheets', exact: true })).toHaveCount(1);
    await nav.getByRole('link', { name: 'Archive', exact: true }).click();
    await expect(page).toHaveURL(/settings=archive/);
    await expect(settings.getByRole('heading', { name: 'Archive', exact: true })).toBeVisible();
@@ -52,7 +52,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
    await expect(settings.getByRole('button', { name: /Expand spreadsheets|Collapse spreadsheets/ })).toHaveCount(0);
    await expect(page.locator('html')).not.toHaveAttribute('data-dashboard-density', 'compact');
    expect(await page.evaluate(() => getComputedStyle(document.documentElement).zoom)).toBe('1');
-   expect((await page.getByRole('banner').boundingBox())!.height).toBe(54);
+   await expect(page.getByRole('banner')).toHaveCount(0);
+   expect((await nav.boundingBox())!.width).toBe(264);
    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
    await info.attach('settings-spreadsheets.png', { body: await page.screenshot(), contentType: 'image/png' });
    expect(errors).toEqual([]); expect(writes).toEqual([]);

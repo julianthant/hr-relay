@@ -35,6 +35,13 @@
   font-weight: 400;
 }
 
+.diagnostic-storage-summary-meta {
+  display: flex;
+  flex-direction: column;
+  gap: var(--ds-space-tight);
+  max-width: 52ch;
+}
+
 .diagnostic-check-entry + .diagnostic-check-entry {
   border-top: var(--ds-border-w) solid var(--ds-border-subtle);
 }

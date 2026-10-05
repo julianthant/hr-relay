@@ -30,7 +30,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const surface = page.getByRole('region', { name: 'Spreadsheets', exact: true });
       const heading = surface.locator('.ds-page-heading');
       expect(await typography(heading.getByRole('heading'))).toEqual(titleStyle);
-      const copy = (await heading.getByRole('heading').boundingBox())!;
+      const copy = (await heading.locator('.ds-page-heading-copy').boundingBox())!;
       const actions = (await heading.locator(':scope > div').last().boundingBox())!;
       expect(actions.x).toBeGreaterThan(copy.x + copy.width);
       expect(Math.abs(actions.y + actions.height / 2 - copy.y - copy.height / 2)).toBeLessThanOrEqual(2);

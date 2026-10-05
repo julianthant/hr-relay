@@ -1,7 +1,10 @@
 .settings-data-section { min-width: 0; }
 .settings-data-controls { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: var(--ds-space-loose); }
 .settings-heading-actions { align-items: center; }
-.settings-heading-actions > :last-child { margin-left: auto; }
+.settings-heading-actions > .ds-page-heading-actions { margin-left: auto; }
+.settings-takeover .ds-page-heading { display: flex; align-items: center; }
+.settings-takeover .ds-page-heading-copy { display: flex; flex-direction: column; gap: var(--ds-space-heading-description); }
+.settings-takeover .ds-page-heading-description { margin-top: 0; }
 .settings-heading-select { width: var(--ds-w-body-control-standard); }
 .settings-tab-body .settings-group-heading h2,
 .settings-tab-body .settings-group h3,

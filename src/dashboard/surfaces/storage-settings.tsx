@@ -163,14 +163,14 @@ export function StorageSection({ storage }: { storage: StorageHealthSummary }) {
         {doctor.state === "running" ? "Running checks…" : doctor.state === "reading" ? "Loading last check…" : report === undefined ? "Run storage checks" : "Run checks again"}
       </Button>
     } />
-    {report !== undefined && <p className="diagnostic-status">Last checked {fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</p>}
+    {authority !== "healthy" && report !== undefined && <p className="diagnostic-status">Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></p>}
       {authority === "healthy"
         ? <FormGroup label="Data store summary" className="diagnostic-summary">
-          <ResultRow label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
-            description={report === undefined
-              ? "The latest summary can read the data store. Run the checks below for detailed results."
-              : "Showing the last completed read-only check. Run checks again to refresh these results."}
-            value={<span className="diagnostic-summary-meta">{report === undefined ? "Detailed checks not run" : "Last completed check"}</span>} />
+          <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label"><StatusDot status="verifiedDone" />Data store available</span>}
+            value={<span className="diagnostic-summary-meta diagnostic-storage-summary-meta">
+              <span>{report === undefined ? "Detailed checks not run" : "Showing the last completed read-only check. Run checks again to refresh these results."}</span>
+              {report !== undefined && <span>Last checked <time dateTime={report.checkedAt}>{fmtInstantDay(report.checkedAt)} {fmtClock(report.checkedAt)}</time></span>}
+            </span>} />
         </FormGroup>
         : <Banner tone="danger" title="Data store unavailable">{AUTHORITY_HAZARD}</Banner>}
       {doctor.state === "failed" && <Banner tone="danger" title="Storage checks could not finish">{doctor.message}</Banner>}

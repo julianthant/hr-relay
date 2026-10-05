@@ -31,7 +31,8 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           }
           if (await heading.locator(".ds-page-heading-actions").count()) {
             const actions = (await heading.locator(".ds-page-heading-actions").boundingBox())!;
-            expect(Math.abs(actions.y + actions.height / 2 - title.y - title.height / 2)).toBeLessThanOrEqual(1);
+            const headingCopy = (await heading.locator(".ds-page-heading-copy").boundingBox())!;
+            expect(Math.abs(actions.y + actions.height / 2 - headingCopy.y - headingCopy.height / 2)).toBeLessThanOrEqual(1);
           }
         }
         for (const copy of await page.locator(".ds-body-section-description").all()) {

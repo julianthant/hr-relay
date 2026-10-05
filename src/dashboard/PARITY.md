@@ -91,8 +91,10 @@ Activity's report sections stack in one column at every desktop width. Explorer 
 dropdown on the right of its heading, without the workflow sidebar/search, Expand all, Collapse all,
 Version registry or action legend control. The selected-workflow intro strip and Preview paths button are removed. Per-form disclosures,
 branch selectors and source returns remain available; switching workflows resets transient timeline state while preserving dropdown
-focus. Storage checks and Preflight put their actions and scope selector beside the heading, with
-freshness, failures and unavailable states below.
+focus. Settings header actions center vertically against the complete title/description block; title-only
+headings keep actions inline. Storage checks and Preflight put their actions and scope selector beside
+the heading. The healthy storage card keeps availability on the left and the last completed check
+status and report timestamp on the right; failures and unavailable states retain their evidence.
 The Run picker reuses permanent-rail category icons, order, row geometry and text alignment. It
 filters direct-launch eligibility from served typed-input capability or an explicit preview `runnable`
 flag; OCR and I-9 Lookup stay in their panels and Explorer but disappear from Start a run. Picker

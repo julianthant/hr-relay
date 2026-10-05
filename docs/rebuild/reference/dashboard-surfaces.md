@@ -7388,6 +7388,10 @@ unchanged when a rerun is added. Work-Study and Old Kronos Reports use their ker
 the old dashboard had no public typed Run registration for either. Labels use Employee IDs and
 Kuali ID, and the workflow rail omits the trailing composition summary. The source digest inventory
 and focused verification are retained in `workflow-mocks-20261004` under the evidence root.
+Settings page actions center vertically on the complete title/description block. A title-only heading
+keeps its action inline. The healthy storage summary keeps its availability label on the left; the last
+completed check explanation and report timestamp sit together on the right. An absent detailed report
+remains explicitly not checked, and degraded storage retains its check freshness beside the failure.
 The Run picker amendment reuses the permanent rail's category icons, heading order, text indent,
 row height and selection surface. Its shared searchable catalog includes only runnable entries.
 Served direct launch remains the descriptor's declared typed-input capability; local previews carry
@@ -7512,9 +7516,10 @@ left, optional filters and summary at the right, a 12px gap, and one framed tabl
 and cell spacing. The overview search, workflow and outcome filters share one horizontal row at both
 supported desktop widths; the two filters divide the remaining toolbar width equally. Wide tables
 scroll inside their frame.
-Folder report counts live in the toolbar. Page actions align with the title row independently of its
-description. The workflow-export button is retired from the mounted Archive; saved-run export and
-version-bump actions remain beside the focused title. Search and completed-date filters retain their
+Folder report counts live in the toolbar. Settings page actions center vertically against the title and
+any description; title-only headings keep actions inline. The workflow-export button is retired from
+the mounted Archive; saved-run export and version-bump actions remain beside the focused title.
+Search and completed-date filters retain their
 route state and date boundaries. The unmounted runtime export implementation remains retained.
 Activity dates stay visible for every period, with the same typography and control exterior as the
 period control. Presets synchronize both dates; manual endpoint edits select Custom, including incomplete
