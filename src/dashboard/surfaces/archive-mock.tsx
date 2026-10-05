@@ -58,14 +58,14 @@ export function MockArchiveWorkspace({ selection, view, folder, browse, browseIn
   {(folder === null && report === undefined || unavailable || invalid) && <PageHeading title="Archive" actionAlignment="title" actions={actions} />}
   {folder === null && report === undefined && !invalid && !unavailable && <TableToolbar
     search={<ArchiveMockSearch value={browsing.filters.search ?? ""} onChange={search => updateFilters({ ...browsing.filters, search: search || undefined }, "replace")} />}
-    controls={<>
+    controls={<div className="mock-archive-index-filters">
     <Select aria-label="Archived workflow" value={browsing.filters.workflow ?? "all"} onChange={event => updateFilters({ ...browsing.filters, workflow: event.target.value === "all" ? undefined : event.target.value })} icon={<Folder className={dsIcon.sm} />}>
       <option value="all">All workflows</option>{MOCK_ARCHIVE_WORKFLOWS.map(row => <option key={row.id} value={row.id}>{row.label}</option>)}
     </Select>
     <Select aria-label="Archived outcome" value={browsing.filters.outcome ?? "all"} onChange={event => updateFilters({ ...browsing.filters, outcome: event.target.value === "all" ? undefined : event.target.value as NonNullable<ArchiveBrowseState["filters"]["outcome"]> })}>
       <option value="all">All outcomes</option><option value="done">Completed</option><option value="failed">Failed</option><option value="cancelled">Cancelled</option>
     </Select>
-    </>} />}
+    </div>} />}
   {folder === null && report === undefined && !invalid && !unavailable && filtered && <div><Button size="sm" variant="ghost" onClick={() => updateFilters({})}>Reset filters</Button></div>}
   <div className="mock-archive-canvas">
     {invalid ? <ArchiveResourceState kind="error" title="This browsing state is unavailable" message="Choose a fresh scope to continue." action={<Button variant="secondary" onClick={() => onBrowse({ filters: {} }, 'replace')}>Reset browsing</Button>} />

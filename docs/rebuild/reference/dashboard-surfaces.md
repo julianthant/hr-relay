@@ -7440,9 +7440,10 @@ notification button. Path Change buttons use the shared ordinary button radius. 
 row status values use the same description font size and weight. Storage heading, summary and diagnostic
 groups use the same section gap.
 
-Routes uses a plain CRM heading with its five-URL count and a separate shared form card for each URL.
-The CRM disclosure bar and enclosing all-systems card are removed. Other systems retain their
-disclosures in separate cards. Route labels, descriptions, required controls, system search, validation,
+Routes uses a plain system heading and URL count above one shared form card per system. All URL rows
+remain visible, with labels and descriptions at the left, URL controls at the right and inset dividers
+between rows. System disclosures and individual URL cards are removed. Route labels, descriptions,
+required controls, system search, validation,
 debounced saves, complete object patches and the protected SharePoint roster authority remain unchanged.
 
 Data → Spreadsheets uses the ordinary Settings content cap. Registered rows have a Date added column;
@@ -7483,7 +7484,9 @@ second Archive heading, duplicate version/count metadata, redundant scope dropdo
 and overview matching-report count.
 Archive and Spreadsheets share the `TableList`/`TableToolbar` data-library pattern: 280px search at the
 left, optional filters and summary at the right, a 12px gap, and one framed table with matching header
-and cell spacing. Filters wrap within the desktop content width; wide tables scroll inside their frame.
+and cell spacing. The overview search, workflow and outcome filters share one horizontal row at both
+supported desktop widths; the two filters divide the remaining toolbar width equally. Wide tables
+scroll inside their frame.
 Folder report counts live in the toolbar. Page actions align with the title row independently of its
 description. The workflow-export button is retired from the mounted Archive; saved-run export and
 version-bump actions remain beside the focused title. Search and completed-date filters retain their

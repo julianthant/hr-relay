@@ -18,15 +18,14 @@ describe("independent protected Settings surface", () => {
   it("edits the protected onboarding roster under SharePoint routes and preserves its authority", async () => {
     const h = await setup();
     await h.render("routes");
-    const sharepoint = [...h.host.querySelectorAll<HTMLButtonElement>("button")].find(button => button.textContent?.includes("SharePoint"));
+    const sharepoint = h.host.querySelector('[data-settings-path="urls.sharepoint.prod"]');
     assert.ok(sharepoint);
-    await settingsAction(() => sharepoint.click());
     const label = [...h.host.querySelectorAll<HTMLLabelElement>("label")].find(node => node.textContent === "SharePoint onboarding roster URL");
     assert.ok(label);
     const input = h.host.querySelector<HTMLInputElement>(`[id="${label.htmlFor}"]`);
     assert.ok(input);
     assert.equal(input.type, "password");
-    assert.match(sharepoint.textContent ?? "", /2 URLs/u);
+    assert.equal(sharepoint.closest(".routes-page-system")?.querySelector("h2")?.textContent, "SharePoint2 URLs");
     const search = h.host.querySelector<HTMLInputElement>('input[type="search"]');
     assert.ok(search);
     await settingsAction(() => {
@@ -36,7 +35,7 @@ describe("independent protected Settings surface", () => {
       search.dispatchEvent(new Event("input", { bubbles: true }));
     });
     assert.match(h.host.textContent ?? "", /SharePoint/u);
-    assert.doesNotMatch(h.host.textContent ?? "", /CRM production/u);
+    assert.equal(h.host.querySelector('[data-settings-path="urls.crm.prod"]'), null);
     const url = "https://example.test/onboarding-roster.xlsx";
     await settingsAction(() => h.controller().protectedEditor.update("sharepointOnboardingRosterUrl", url));
     assert.equal(input.value, url);

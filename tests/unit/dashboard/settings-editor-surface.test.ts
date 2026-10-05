@@ -362,6 +362,6 @@ describe("editable Settings surface", () => {
     assert.equal(command.payload.patch["urls.crm.prod"]?.set.entry, "https://crm.example.test/new");
     assert.equal(typeof original, "object");
     if (typeof original === "string") throw new Error("CRM route values are not an object");
-    assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one card retains the other four URLs");
+    assert.deepEqual(command.payload.patch["urls.crm.prod"]?.set, { ...original, entry: "https://crm.example.test/new" }, "editing one row retains the other four URLs");
   });
 });

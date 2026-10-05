@@ -128,25 +128,37 @@ describe("typed Settings catalog controls", () => {
     }
     assert.doesNotMatch(host.textContent ?? "", /Code-owned paths for this process|Local operator ID/u);
   });
-  it("gives each CRM URL its own card with an associated label and description", async () => {
+  it("groups each system's visible URL rows in one card with associated labels and descriptions", async () => {
     const { host } = await setup("routes");
-    const crm = host.querySelector(".routes-page-crm"); assert.ok(crm);
-    assert.equal(crm.querySelector("h2")?.textContent, "CRM5 URLs");
+    const systems = [...host.querySelectorAll(".routes-page-system")];
+    assert.equal(systems.length, 9);
+    assert.equal(host.querySelectorAll(".ds-disclosure, button[aria-expanded]").length, 0);
+    for (const system of systems) {
+      assert.equal(system.querySelectorAll(".ds-form-group").length, 1);
+      assert.equal(system.querySelectorAll(".ds-form-group .ds-form-group").length, 0);
+      assert.equal(system.querySelectorAll('[hidden], [data-state="closed"]').length, 0);
+      const name = system.querySelector("h2 span span")?.textContent;
+      assert.equal(system.querySelector('[role="group"]')?.getAttribute("aria-label"), name);
+    }
+    const crm = host.querySelector('[data-settings-path="urls.crm.prod"]'); assert.ok(crm);
+    assert.equal(crm.closest(".routes-page-system")?.querySelector("h2")?.textContent, "CRM5 URLs");
     assert.equal(crm.querySelectorAll("button").length, 0);
-    const cards = [...crm.querySelectorAll('[role="group"]')];
-    assert.deepEqual(cards.map(card => card.getAttribute("aria-label")), ["Entry", "Onboarding search", "UCPath entry sheet", "Onboarding history", "iDocs viewer"]);
-    for (const card of cards) {
-      const label = card.querySelector("label");
-      const input = card.querySelector("input");
+    const rows = [...crm.querySelectorAll(".routes-page-field")];
+    assert.equal(rows.length, 5);
+    assert.deepEqual(rows.map(row => row.querySelector("label")?.textContent), ["Entry* (required)", "Onboarding search* (required)", "UCPath entry sheet* (required)", "Onboarding history* (required)", "iDocs viewer* (required)"]);
+    for (const row of rows) {
+      const label = row.querySelector("label");
+      const input = row.querySelector("input");
       assert.ok(label); assert.ok(input);
-      assert.equal(card.querySelectorAll("input").length, 1);
+      assert.equal(row.querySelectorAll("input").length, 1);
       assert.equal(label.htmlFor, input.id);
       assert.notEqual(input.id, "");
       assert.ok(input.getAttribute("aria-describedby")?.includes("description"));
       assert.equal(input.required, true);
       assert.equal(input.type, "url");
     }
-    assert.equal(crm.closest(".ds-form-group"), null, "CRM cards have no enclosing group card");
+    assert.equal(crm.closest(".ds-form-group")?.getAttribute("aria-label"), "CRM");
+    assert.equal(host.querySelectorAll('.routes-page-field input[type="url"]').length, 18);
   });
   it("renders Performance timeouts as grouped, described controls with visible units", async () => {
     const { host } = await setup("performance");

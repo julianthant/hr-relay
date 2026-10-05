@@ -54,8 +54,9 @@ The 2026-10-04 operator revision makes Spreadsheet Settings use the shared Setti
 buttons with 14px icons and underline tabs, retaining the existing theme and blue spreadsheet accent.
 Time saved uses Activity's table typography, spacing and alternating rows, with compact minute inputs
 and coverage, manual/assisted totals and estimated savings in its footer.
-Routes shows CRM and its five-URL count above five separate shared form cards, with no CRM disclosure
-bar or enclosing all-systems card. Other systems retain disclosures in individual cards. Required URL
+Routes shows each system and its URL count above one shared form card containing all its URL rows.
+Labels and descriptions remain at the left, URL inputs at the right, with inset dividers between rows.
+All system cards remain expanded without disclosure controls or individual URL cards. Required URL
 controls, search, validation, complete-object autosaves and protected SharePoint roster authority are retained.
 Workflow readiness separates returned requirements from compact workflow disclosures. Each disclosure
 shows available/unbuilt counts, six served operations in two columns and its exact dry-run boundary.
@@ -92,7 +93,8 @@ Archive overview and folders use shared searches; the overview also has workflow
 SearchField for shared searches. Every search field uses the UI catalog's 12px corner radius through
 the shared search token, including Settings navigation, Keyboard, Archive and the compact Run filter.
 Archive and Spreadsheets use the shared TableList/TableToolbar pattern: compact left search, optional
-right filters/count, 12px table gap and matching cell/header spacing. Title-row action alignment is
+right filters/count, 12px table gap and matching cell/header spacing. The Archive overview search,
+workflow and outcome filters share one horizontal row at both supported desktop widths. Title-row action alignment is
 independent of descriptions. Archive omits Export workflow and places folder report counts in the
 toolbar; saved-run export and date filters retain their behavior. Wide tables scroll within the frame.
 Search sizes, theme and behavior remain unchanged. The centered Navbar field opens a centered search modal on click,
