@@ -56,7 +56,7 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
           await expect(source.getByRole("banner")).toHaveCount(0); await expect(source).not.toContainText(doc.name);
           await expect(source.getByRole("toolbar", { name: "PDF controls", exact: true })).toBeVisible();
           await expect(image).toHaveAccessibleName(`Source page ${record.page} of ${doc.name}`);
-          const keys = await fields.locator("input[name]").evaluateAll(nodes => nodes.map(node => node.getAttribute("name")));
+          const keys = await fields.locator("input[name],textarea[name]").evaluateAll(nodes => nodes.map(node => node.getAttribute("name")));
           for (const field of record.fields.filter(field => !field.kind || field.kind === "date")) expect(keys).toContain(field.key);
           const pages = record.kind === "i9" ? [record.page, Number(record.fields.find(field => field.key === "section2")!.value)] : [record.page];
           if (pages.length > 1) for (const [index, number] of pages.entries()) {
@@ -71,9 +71,9 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
         await info.attach(`ocr-${doc.name}-${theme.attribute}-${width}.png`, { body: await page.screenshot(), contentType: "image/png" });
         const overflow = await editor.evaluate(node => {
           const bounds = node.getBoundingClientRect();
-          return [...node.querySelectorAll<HTMLElement>("input:not([aria-hidden=true]),button:not([aria-hidden=true]),section")].filter(element => {
+          return [...node.querySelectorAll<HTMLElement>("input:not([aria-hidden=true]),textarea,button:not([aria-hidden=true]),section")].filter(element => {
             const box = element.getBoundingClientRect();
-            return box.width > 0 && (box.left < bounds.left - 1 || box.right > bounds.right + 1 || (element.tagName !== "INPUT" && element.scrollWidth > element.clientWidth + 1));
+            return box.width > 0 && (box.left < bounds.left - 1 || box.right > bounds.right + 1 || (!["INPUT", "TEXTAREA"].includes(element.tagName) && element.scrollWidth > element.clientWidth + 1));
           }).map(element => element.getAttribute("aria-label") ?? element.tagName);
         });
         expect(overflow).toEqual([]);

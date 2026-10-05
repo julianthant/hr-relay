@@ -50,9 +50,32 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440, 1920]) {
       expect((await image.boundingBox())!.width).toBe(before.image.width);
       expect(await pan.evaluate(node => ({ x: node.scrollLeft, y: node.scrollTop }))).toEqual({ x: 0, y: 0 });
       const fields = record.locator("[data-review-fields]");
+      const selection = fields.getByRole("group", { name: "Record selection", exact: true });
+      const employee = fields.getByRole("group", { name: "Employee", exact: true });
+      const oath = fields.getByRole("group", { name: "Oath", exact: true });
+      await expect(fields.getByRole("group")).toHaveCount(3);
+      await expect(selection.getByRole("heading", { name: "Jordan Lee", exact: true })).toBeVisible();
+      const include = selection.getByRole("checkbox", { name: "Include Jordan Lee", exact: true });
+      const name = selection.getByRole("heading", { name: "Jordan Lee", exact: true });
+      const includeBounds = (await include.boundingBox())!, nameBounds = (await name.boundingBox())!;
+      expect(includeBounds.x + includeBounds.width).toBeLessThan(nameBounds.x);
+      expect(Math.abs(includeBounds.y + includeBounds.height / 2 - nameBounds.y - nameBounds.height / 2)).toBeLessThanOrEqual(2);
+      const groups = [selection, employee, oath];
+      const bounds = await Promise.all(groups.map(group => group.boundingBox()));
+      for (let index = 0; index < groups.length; index++) {
+        expect(bounds[index]!.x).toBe(bounds[0]!.x);
+        expect(bounds[index]!.width).toBe(bounds[0]!.width);
+        expect(await groups[index].evaluate(node => getComputedStyle(node).borderTopStyle)).toBe("solid");
+        if (index > 0) expect(bounds[index]!.y).toBeGreaterThan(bounds[index - 1]!.y + bounds[index - 1]!.height);
+      }
+      await expect(employee.getByRole("textbox", { name: "Employee ID", exact: true })).toHaveValue("10000001");
+      await include.focus(); await page.keyboard.press("Space");
+      await expect(drawer).toContainText("3 selected for approval");
+      await page.keyboard.press("Space");
+      await expect(drawer).toContainText("4 selected for approval");
       const notes = record.getByRole("textbox", { name: "Notes", exact: true });
       await expect(notes).toHaveJSProperty("tagName", "TEXTAREA");
-      const fieldContentWidth = await fields.evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
+      const fieldContentWidth = await oath.locator('[data-slot="card-content"]').evaluate(node => node.clientWidth - parseFloat(getComputedStyle(node).paddingLeft) - parseFloat(getComputedStyle(node).paddingRight));
       expect((await notes.boundingBox())!.width).toBeCloseTo(fieldContentWidth, 0);
       const employeeSigned = record.getByRole("checkbox", { name: "Employee signed", exact: true });
       const officerSigned = record.getByRole("checkbox", { name: "Officer signed", exact: true });

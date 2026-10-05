@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Plus, ZoomIn, ZoomOut, Maximize } from "lucide-react";
-import { Badge, Button, Checkbox, Field, IconButton, Input, Select, Textarea, dsFocus } from "../ds/ui.js";
+import { Badge, Button, Card, CardBody, Checkbox, Field, IconButton, Input, Select, Textarea, dsFocus } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { addMockReviewRecord, reviewCanApprove, reviewIsReadOnly, reviewName, reviewRecords, seedReviewRecords, editReviewRecord, REVIEW_RELATIONSHIPS, type ReviewField, type ReviewRecord } from "./workflow-review-model.js";
 import { reviewFieldBlocks, reviewFieldGroups, reviewFieldPresentation, type ReviewSourcePage } from "./workflow-review-source-model.js";
@@ -49,15 +49,18 @@ function ReviewRecordCard({ run, record, original, pages, onChange, onFocus }: {
   };
   return <section aria-label={`Record ${record.id}`} data-review-record-id={record.id} onFocusCapture={onFocus} className="grid min-w-0 grid-cols-[minmax(0,3fr)_minmax(0,2fr)] overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
     <ReviewSourcePreview subject={run.subject} pages={pages} />
-    <div data-review-fields className="@container/record min-w-0 space-y-3 p-3">
-      <header className="flex flex-wrap items-center gap-2">
-        <h3 data-ocr-review-heading tabIndex={-1} className={cn("m-0 min-w-0 flex-1 break-words rounded-sm text-body font-medium", dsFocus)}>{reviewName(record)}</h3>
-        {readOnly && <Badge tone={run.approved ? "success" : "neutral"}>{run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded"}</Badge>}
-        <Checkbox className="shrink-0" label={<span>Include<span className="sr-only"> {reviewName(record)}</span></span>} checked={record.selected} disabled={readOnly || record.unknown} onCheckedChange={selected => onChange({ ...record, selected: selected === true })} />
-      </header>
-      {record.warnings.length > 0 && <div role="status" className="rounded-md border border-ui-stroke bg-ui-table px-3 py-2">{record.warnings.map(warning => <p key={warning} className="m-0 text-caption text-ui-warning">{warning}</p>)}</div>}
-      {reviewFieldGroups(record).map(group => <section key={group.fields[0].key}><h4 className="mb-2 mt-0 text-caption font-medium text-ui-muted">{group.title}</h4><div className="grid grid-cols-1 gap-2 @min-[16rem]/record:grid-cols-2">{reviewFieldBlocks(group.fields).map(block => block[0].kind === "boolean" ? <div key={block[0].key} className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-2 py-1">{block.map(renderField)}</div> : renderField(block[0]))}</div></section>)}
-      {!readOnly && record.selected && !reviewCanApprove(record) && <p role="status" className="m-0 text-caption text-ui-warning">Enter an Employee ID of at least five digits to approve this record.</p>}
+    <div data-review-fields className="@container/record min-w-0 space-y-3 bg-ui-table p-3">
+      <Card role="group" aria-label="Record selection">
+        <CardBody className="space-y-2 p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <Checkbox className="min-w-0 flex-1" label={<><span className="sr-only">Include </span><span data-ocr-review-heading role="heading" aria-level={3} tabIndex={-1} className={cn("inline-block min-w-0 break-words rounded-sm text-body font-medium", dsFocus)}>{reviewName(record)}</span></>} checked={record.selected} disabled={readOnly || record.unknown} onCheckedChange={selected => onChange({ ...record, selected: selected === true })} />
+            {readOnly && <Badge tone={run.approved ? "success" : "neutral"}>{run.discarded ? "Discarded" : record.selected ? "Approved" : "Excluded"}</Badge>}
+          </div>
+          {record.warnings.length > 0 && <div role="status">{record.warnings.map(warning => <p key={warning} className="m-0 text-caption text-ui-warning">{warning}</p>)}</div>}
+          {!readOnly && record.selected && !reviewCanApprove(record) && <p role="status" className="m-0 text-caption text-ui-warning">Enter an Employee ID of at least five digits to approve this record.</p>}
+        </CardBody>
+      </Card>
+      {reviewFieldGroups(record).map(group => <Card key={group.fields[0].key} role="group" aria-label={group.title}><CardBody className="p-3"><h4 className="mb-3 mt-0 text-body font-medium">{group.title}</h4><div className="grid grid-cols-1 gap-2 @min-[16rem]/record:grid-cols-2">{reviewFieldBlocks(group.fields).map(block => block[0].kind === "boolean" ? <div key={block[0].key} className="col-span-full flex flex-wrap items-center gap-x-4 gap-y-2 py-1">{block.map(renderField)}</div> : renderField(block[0]))}</div></CardBody></Card>)}
     </div>
   </section>;
 }

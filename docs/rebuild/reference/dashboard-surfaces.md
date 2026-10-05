@@ -7492,8 +7492,11 @@ These fixtures do not admit new runtime OCR forms or routing.
 
 The inline log body scrolls through one large card per record. Each card holds a PDF column (60%)
 and compact editable fields (40%), with an Include checkbox. PDF and fields move together in one
-vertical scroll area; record switching and separate field scrolling are retired. The record name and
-Include control share one header row. Adjacent boolean fields share a wrapping row; notes support
+vertical scroll area; record switching and separate field scrolling are retired. The fields column
+uses a compact selection card with its checkbox directly beside the person name, followed by one
+card per response field group. Oaths have three cards: selection, Employee and Oath. Inclusion keeps
+its accessible action name without a repeated visible Include label. Warnings and invalid-identity
+messages stay in the selection card. Adjacent boolean fields share a wrapping row; notes support
 multiline editing, and long fields use the full form width without changing response-field order or
 membership. Page labels/selectors sit above the source. Zoom controls anchor to the image frame's
 bottom-right corner and contain only zoom/fit actions. The frame follows the source image's aspect
@@ -7514,7 +7517,8 @@ parent, never launching independently. Delete confirms removal of the document r
 descendants so OCR cannot become orphaned; an individual lookup deletes only its own subtree.
 Keyboard focus returns to the action on cancel and a remaining queue row after deletion. Local
 actions issue no BFF command. Focused verification and source/asset inventories are retained in
-`ocr-document-polish-20261005`, `ocr-stacked-review-20261005` and `ocr-card-polish-20261005`;
+`ocr-document-polish-20261005`, `ocr-stacked-review-20261005`, `ocr-card-polish-20261005` and
+`ocr-field-cards-20261005`;
 frozen references and full gates remain owned by 3.1.19.
 
 The workflow-detail amendment uses one pure operation catalog for local Logs, Explorer fields and
