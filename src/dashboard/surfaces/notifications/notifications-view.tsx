@@ -4,9 +4,20 @@ import { CheckCheck, CircleAlert, Mail, ListFilter } from "lucide-react";
 import { useEffect, useRef } from "react";
 import { Button, Skeleton, dsFocus, useToasts } from "../../ds/ui.js";
 import { cn } from "../../lib/utils.js";
+import { LoadingRegion, SkeletonText } from "../loading.js";
 import { notificationView, type NotificationCategory, type NotificationControl, type NotificationFilter, type NotificationItem, type NotificationsState } from "./notifications-view-model.js";
 
 const iconButton = cn("inline-flex size-7 shrink-0 items-center justify-center rounded-lg text-ui-secondary hover:bg-ui-hover hover:text-ui-primary", dsFocus);
+
+function NotificationsSkeleton() {
+  return <LoadingRegion label="Loading notifications"><div aria-hidden>{[0, 1, 2].map(index => <div key={index} className="notification-row rounded-lg px-3 py-3">
+    <div className="flex items-start gap-2"><Skeleton className="mt-1.5 size-1.5 shrink-0 rounded-full" /><div className="min-w-0 flex-1">
+      <div className="min-h-6 text-body"><SkeletonText className="w-3/4" /></div><div className="mt-1 text-caption"><SkeletonText className="w-full" /></div>
+      <div className="mt-1 text-caption"><SkeletonText className="w-full" /><SkeletonText className="w-4/5" /></div><div className="mt-2 text-caption"><SkeletonText className="w-3/4" /></div>
+    </div><div className="flex size-7 shrink-0 items-center justify-center"><Skeleton className="size-3.5" /></div></div>
+    <div className="ml-3.5 mt-1 flex h-6 items-center px-1"><SkeletonText className="w-20 text-caption" /></div>
+  </div>)}</div></LoadingRegion>;
+}
 
 function NotificationRow({ item, onControl, onOpen }: { item: NotificationItem; onControl: (id: string, control: NotificationControl) => void; onOpen: (item: NotificationItem) => void }) {
   const urgent = item.tone === "danger" || item.tone === "warning";
@@ -57,7 +68,7 @@ export function NotificationsView({ state, filter, onFilter, category, onCategor
       </div>
       {(["all", "unread"] as const).map(tab => <Tabs.Panel key={tab} id={tab} className="notification-tab-panel">
       <div className="rail-scroll min-h-0 flex-1 overflow-y-auto overscroll-contain px-3 pb-3">
-        {state.state === "loading" ? <div role="status" aria-label="Loading notifications" className="flex flex-col gap-3">{[0,1,2].map(index => <Skeleton key={index} className="h-24 rounded-xl" />)}</div> : state.state === "unavailable" ? <div role="alert" className="py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-body">Notifications unavailable</p><p className="mb-0 mt-2 text-caption text-ui-secondary">{state.reason}</p></div> : <>
+        {state.state === "loading" ? <NotificationsSkeleton /> : state.state === "unavailable" ? <div role="alert" className="py-8 text-center"><CircleAlert aria-hidden className="mx-auto mb-2 size-5 text-ui-warning" /><p className="m-0 text-body">Notifications unavailable</p><p className="mb-0 mt-2 text-caption text-ui-secondary">{state.reason}</p></div> : <>
           <ul aria-label="Notification updates" className="m-0 list-none p-0">{view.shown.map(item => <NotificationRow key={item.id} item={item} onControl={control} onOpen={onOpen} />)}</ul>
           {view.shown.length === 0 && <p className="py-6 text-center text-body text-ui-secondary">{state.state === "ready" && state.items.length === 0 ? "No notifications" : category === "failed" ? "No failures" : category === "attention" ? "Nothing needs attention" : filter === "unread" ? "All caught up" : "No notifications"}</p>}
         </>}

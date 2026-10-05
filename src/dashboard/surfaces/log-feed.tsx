@@ -1,3 +1,4 @@
+import { LogSkeleton } from "./loading.js";
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from "react";
 import { ArrowDownToLine, Check, Copy, Cpu, Eye, GitBranch, Info, Monitor, MousePointer2, PanelsTopLeft, PencilLine, ScanSearch } from "lucide-react";
 import { Button, IconButton, SearchInput } from "../ds/ui.js";
@@ -111,7 +112,7 @@ export function LogFeed({ steps, label = "Run logs", embedded = false, beforeCon
         </div>
         {afterStep?.(step.id)}
       </section>)}
-      {!visible.length && <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center"><ScanSearch aria-hidden className="mb-1 size-6 text-ui-muted" /><h3 className="m-0 text-heading">{loading ? "Loading logs…" : query.trim() ? "No matching actions" : "No actions yet"}</h3><p className="m-0 text-body text-ui-secondary">{loading ? "Reading the recorded actions." : query.trim() ? "Try a field, value, or action name." : "Confirmed actions will appear here."}</p>{query.trim() && <Button variant="ghost" onClick={() => setQuery("")}>Clear search</Button>}</div>}
+      {!visible.length && (loading && !steps.length ? <LogSkeleton /> : <div className="flex min-h-64 flex-col items-center justify-center gap-2 text-center"><ScanSearch aria-hidden className="mb-1 size-6 text-ui-muted" /><h3 className="m-0 text-heading">{query.trim() ? "No matching actions" : "No actions yet"}</h3><p className="m-0 text-body text-ui-secondary">{query.trim() ? "Try a field, value, or action name." : "Confirmed actions will appear here."}</p>{query.trim() && <Button variant="ghost" onClick={() => setQuery("")}>Clear search</Button>}</div>)}
       {trailingContent}
       <div ref={end} />
     </div>

@@ -10,7 +10,7 @@ import {
   type HTMLAttributes,
   type ReactNode,
 } from "react";
-import { Button as HeroButton, Chip as HeroChip, Kbd as HeroKbd, Separator as HeroSeparator, Skeleton as HeroSkeleton, Spinner as HeroSpinner } from "@heroui/react";
+import { Button as HeroButton, Chip as HeroChip, Kbd as HeroKbd, Separator as HeroSeparator, Spinner as HeroSpinner } from "@heroui/react";
 import { Root as RadixVisuallyHidden } from "@radix-ui/react-visually-hidden";
 import { cva, type VariantProps } from "class-variance-authority";
 import { Loader2, X } from "lucide-react";
@@ -570,7 +570,8 @@ export function Spinner({ className, label = "Loading" }: { className?: string; 
  */
 export function Skeleton({ className }: { className?: string }) {
   return (
-    <HeroSkeleton
+    <span
+      data-slot="skeleton"
       aria-hidden
       className={cn(
         "block animate-pulse motion-reduce:animate-none bg-[var(--ds-surface-3)]",

@@ -287,6 +287,13 @@ the returned-check count on the right. Its repeated description and standalone C
 are retired. Explicit historical/unavailable states and compact-dialog timestamps retain their
 served meanings; report freshness and rerun authority are unchanged.
 
+The page-loading amendment replaces generic loading blocks with placeholders using each page's
+headings, groups, cards, table columns, control widths and fixed action layout. OCR images retain
+their fitted frame while loading. Known reports remain visible during refresh; unknown, failed and
+empty states stay distinct. Shared DS Skeletons respect reduced motion and loading-region status
+announcements. Synchronous previews add no artificial delay. D347's dashboard-surfaces owner records
+the contract and `page-skeletons-20261005` evidence.
+
 The controls amendment extends Settings search cues through full-width row card padding. Shared tabs begin at the rail's left edge and slide one underline over 220ms for pointer selection, snapping for keyboard and reduced motion. Spreadsheet toolbar/footer controls share the body height and omit explanatory notes. Archive folder counts sit beside search; Activity calendars align right without visible Start/End prefixes. Exact-control focus, date semantics, editing and export behavior remain unchanged. D347's dashboard-surfaces owner records the presentation contract.
 
 Settings search lists matching pages and actual controls using their shared presentation labels and parent-page context. Search fields retain 12px corners, use a quiet neutral focus border without a bright halo, and show a small clear icon only when nonempty. Field results carry `settingsTarget` under Settings, open containing disclosures, center the control and briefly highlight it; reduced motion uses immediate scrolling and a temporary static cue. The metadata index excludes values and secrets, preserves draft/exit authority, supports repeat selection and reload/history, and states unavailable targets.

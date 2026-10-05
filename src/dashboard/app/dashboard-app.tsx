@@ -1,3 +1,5 @@
+import { DashboardSkeleton, QueueSkeleton, RunPanelSkeleton } from "../surfaces/loading.js";
+import { SettingsSectionSkeleton } from "../surfaces/settings-loading.js";
 import { RerunValuesRequestSchema } from "../../domain/dashboard/rerun-values.js";
 import { routeWithoutTakeovers } from "./url-state.js";
 import { PreflightActionsProvider } from "../state/preflight-actions.js";
@@ -210,9 +212,12 @@ function BootGate({ bootstrap }: { bootstrap: ReturnType<typeof useBootstrap> })
   return (
     <main
       data-parity-ready="loading"
-      className="flex min-h-screen items-center justify-center bg-[color:var(--ds-surface-page)]"
+      className="flex min-h-0 flex-1 flex-col bg-[color:var(--ds-surface-page)]"
     >
-      <p className="text-[color:var(--ds-fg-muted)]">Starting…</p>
+      <DashboardSkeleton settings={new URLSearchParams(window.location.search).has("settings")} settingsContent={
+        ["general", "paths", "performance", "providers", "routes", "credentials"].includes(new URLSearchParams(window.location.search).get("settings") ?? "")
+          ? <SettingsSectionSkeleton section={new URLSearchParams(window.location.search).get("settings")!} /> : undefined
+      } />
     </main>
   );
 }
@@ -1187,7 +1192,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
                 onRetry={id => { const source = mockRetrySource(mockRuns, id); openMockLaunch({ workflowId: source.workflowId, source }); }}
                 onDelete={ids => { setMockRuns(previous => previous.filter(run => !ids.includes(run.id))); if (railRun && ids.includes(railRun)) { setRailRun(undefined); setRailReviewId(undefined); } }}
                 day={day} nowIso={nowIso} sort={sort} filter={queueFilterScope} /> : dayWire === undefined || workflows.length === 0 || !workflows.some(workflow => workflow.id === activeWorkflowId) ? (
-                <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
+                dateError === undefined && dayResource.state !== "failed" && dayWire === undefined ? <QueueSkeleton label={workflows.find(workflow => workflow.id === activeWorkflowId)?.label} /> : <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]">
                   <EmptyState title={dateError !== undefined ? "Choose a valid date" : dayResource.state === "failed" ? "Could not load queue" : dayWire === undefined ? "Loading queue" : workflows.length === 0 ? "No workflows available" : "Workflow unavailable"}
                     description={dateError ?? (dayResource.state === "failed" ? dayResource.error.message : dayWire === undefined ? `Waiting for the queue for ${day}.` : workflows.length === 0 ? "This server serves no workflows. Check Settings for availability." : `Workflow ${activeWorkflowId} is not served by this build. Choose an available workflow.`)} />
                 </PanelBody></Panel>
@@ -1227,7 +1232,7 @@ type UncertainCommandEntry = CommandRecoveryEntry & (
               onChange={records => setMockRuns(previous => updateMockReview(previous, railRow.id, records))} onDiscard={() => { setMockRuns(previous => discardMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }} onRestore={() => { setMockRuns(previous => restoreMockReview(previous, railRow.id)); setMockNotificationTimes(previous => ({ ...previous, [railRow.id]: nowIso })); }}
               onSelect={id => { const next = mockRuns.find(run => run.id === id); if (!next) throw new Error(`MOCK_LINKED_RUN_MISSING: ${id}`); setRailPreview(next.workflowId); setRailRun(next.id); }} /> : !previewFlow && route.run !== undefined && selectedRow !== undefined && dateSelection.state === "valid" ? (
               <LogSample key={route.run} selection={{ row: selectedRow, workflowLabel: workflowLabelOf(selectedRow.workflowId) }} />
-            ) : (
+            ) : dateError === undefined && dayResource.state !== "failed" && dayWire === undefined && route.run !== undefined ? <RunPanelSkeleton /> : (
               <Panel className="min-h-0"><PanelBody className="grid place-items-center p-[var(--ds-space-page)]"><EmptyState
                 icon={<PanelRight aria-hidden className={dsIcon.lg} />}
                 title={route.run === undefined ? "No run open" : "Run unavailable"}

@@ -1,7 +1,8 @@
+import { SettingsSectionSkeleton } from "./settings-loading.js";
 import type { ReactNode } from "react";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, ResultRow, Spinner, Switch, UnitField, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, DateInput, Field, FormGroup, Input, PageHeading, ResultRow, Switch, UnitField, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput, type SettingsDraftOperation } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -102,7 +103,7 @@ export function CompactSettingsSection({ editor, sectionId, appearance }: { edit
   return <section className="settings-compact-page">
     <PageHeading title={sectionId === "general" ? "General" : "Paths"} description={sectionId === "general" ? "Appearance, browser behavior, display, and job end date." : "Workflow files and runtime locations."} />
     {sectionId === "general" && appearance}
-    {editor.editor.state === "loading" ? <Spinner label="Reading editable settings" /> : editor.editor.state === "failed" ? <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner> : <CompactSettingsForm editor={editor} sectionId={sectionId} />}
+    {editor.editor.state === "loading" ? <SettingsSectionSkeleton section={sectionId} contentOnly /> : editor.editor.state === "failed" ? <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner> : <CompactSettingsForm editor={editor} sectionId={sectionId} />}
   </section>;
 }
 

@@ -10,6 +10,7 @@ import type { PreflightRerunState } from "./settings-preflight-model.js";
 import type { PreflightCheckWire } from "./preflight-popover-model.js";
 import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
 import "./diagnostic-presentation.css";
+import { LoadingRegion, SettingsRowsSkeleton, SkeletonText } from "./loading.js";
 
 const CHECK_COPY: Record<string, { name: string; description: string }> = {
   "runtime.compatibility": { name: "Runtime compatibility", description: "Checks Node.js and installed dependencies for this release." },
@@ -140,7 +141,7 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
     <BodySection title="Status">
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
     {historical && <Banner tone="warning" title="Previous result">{preflight.message} Run checks again for current readiness.</Banner>}
-    {preflight.state !== "refused" && <FormGroup label="Readiness summary" className="diagnostic-summary">
+    {preflight.state !== "refused" && (displayed === undefined ? <LoadingRegion label="Loading readiness"><FormGroup label="Readiness summary" className="diagnostic-summary"><ResultRow controlWidth="wide" label={<SkeletonText className="w-40" />} value={<SkeletonText className="w-32" />} /></FormGroup></LoadingRegion> : <FormGroup label="Readiness summary" className="diagnostic-summary">
       <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={historical ? "queued" : displayed === undefined ? preflight.state === "running" ? "running" : "queued"
           : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
@@ -148,13 +149,19 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
           : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
       </span>}
         value={<span className="diagnostic-summary-meta">{displayed === undefined ? "No current result" : `${displayed.checks.length} returned checks`}</span>} />
-    </FormGroup>}
+    </FormGroup>)}
     </BodySection>
     {displayed !== undefined && <>
       <SettingsPreflightGroup title="Workflow readiness" checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings}>
         {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}
       </SettingsPreflightGroup>
       <SettingsPreflightGroup title="Runtime" subtitle="Compatibility, browser tools, storage, and local resources." checks={runtimeChecks} protectedSettings={historical ? undefined : protectedSettings} />
+    </>}
+    {displayed === undefined && preflight.state !== "refused" && <>
+      <SettingsPreflightGroup title="Workflow readiness" checks={[]}>
+        {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}
+      </SettingsPreflightGroup>
+      <BodySection title="Runtime" description="Compatibility, browser tools, storage, and local resources."><LoadingRegion label="Loading readiness checks"><FormGroup label="Runtime checks loading"><SettingsRowsSkeleton rows={6} presentation="result" copy={["runtime.compatibility", "browser.assets", "config.valid", "filesystem.health", "authority.health", "ports.available"].map(id => ({ label: CHECK_COPY[id].name, description: CHECK_COPY[id].description }))} /></FormGroup></LoadingRegion></BodySection>
     </>}
   </section>;
 }

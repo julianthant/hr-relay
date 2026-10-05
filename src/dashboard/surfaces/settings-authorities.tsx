@@ -1,3 +1,4 @@
+import { SettingsSectionSkeleton } from "./settings-loading.js";
 import { useRef, useState } from "react";
 import { Plus, Server } from "lucide-react";
 import { Form } from "@heroui/react";
@@ -28,7 +29,7 @@ type Removal = { kind: "protected"; name: Parameters<Editor["protectedEditor"]["
 function CredentialsSection({ editor }: { editor: Editor }) {
   const [removal, setRemoval] = useState<Removal | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
-  if (editor.editor.state === "loading") return <Spinner label="Reading settings authorities" />;
+  if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="credentials" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Credentials unavailable">
     {editor.editor.message.replace(/ Try again\.$/u, "")} <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
   </Banner>;

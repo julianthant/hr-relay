@@ -1,3 +1,4 @@
+import { SkeletonText } from "./loading.js";
 import { useRef, useState } from "react";
 import { Check, Clock, ImageOff, PauseCircle, ScanSearch, TriangleAlert, UserRoundSearch } from "lucide-react";
 import { Button, DateInput, Dialog, DialogBody, DialogContent, Field, Input } from "../ds/ui.js";
@@ -26,7 +27,7 @@ export function LogDecisionBlock({ decision, onAction }: { decision: LogDecision
   return <Dialog open={active !== undefined} onOpenChange={open => { if (!open) { setActive(undefined); setCalendarOpen(false); } }}><article className="log-decision" aria-label={decision.title} data-decision-state={decision.state}>
     <header className="log-decision-header"><h4>{decision.title}</h4><span className={cn("log-decision-badge", status.className)}><Icon aria-hidden className="size-3.5" />{status.label}</span></header>
     <div className="log-decision-body">
-      {decision.state === "loading" ? <div className="log-decision-loading" role="status" aria-label={decision.title}><span /><span /></div> : <>
+      {decision.state === "loading" ? <div className="log-decision-loading" role="status" aria-label={decision.title}><SkeletonText className="w-4/5 text-body" /><SkeletonText className="w-3/5 text-body" /></div> : <>
         {decision.message && <p className={decision.state === "failed" ? "text-ui-danger" : decision.state === "review" ? "text-ui-info" : undefined}>{decision.message}</p>}
         {decision.attemptedAction && <p className="log-attempted">While trying to <strong>{decision.attemptedAction}</strong></p>}
         {decision.lastCompleted && <p className="log-last-completed"><Check aria-hidden className="size-3" />Last completed · {decision.lastCompleted}</p>}

@@ -1,6 +1,7 @@
+import { LoadingRegion, SettingsRowsSkeleton } from "./loading.js";
 import { useEffect, useRef, useState } from "react";
 import { Copy, Ellipsis } from "lucide-react";
-import { Banner, Button, Field, IconButton, Input, Popover, PopoverContent, PopoverTrigger, Spinner, dsIcon } from "../ds/ui.js";
+import { Banner, Button, Field, IconButton, Input, Popover, PopoverContent, PopoverTrigger, dsIcon } from "../ds/ui.js";
 import type { useStorageRelocation } from "./settings-relocation-model.js";
 import { desiredRelocationPair } from "./settings-relocation-model.js";
 import { SettingsPathPicker } from "./settings-path-picker.js";
@@ -47,7 +48,7 @@ function RuntimePathRow({ editor, name, value, title, description }: {
 }
 
 export function StorageRelocationRows({ editor }: { editor: Editor }) {
-  if (editor.read.state === "loading") return <Spinner label="Reading runtime locations" />;
+  if (editor.read.state === "loading") return <LoadingRegion label="Loading runtime locations" className="[&>*+*]:border-t [&>*+*]:border-ui-stroke"><SettingsRowsSkeleton rows={2} wide /></LoadingRegion>;
   if (editor.read.state === "unavailable") return <Banner tone="warning" title="Runtime locations unavailable">
     The active paths and relocation plan could not be verified. Editing is unavailable. <Button size="sm" variant="secondary" onClick={editor.reload}>Try again</Button>
   </Banner>;

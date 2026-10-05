@@ -2,11 +2,21 @@ import "./reference-settings.css";
 import "./settings-capabilities.css";
 import { useState } from "react";
 import { Check, Info, Minus, TriangleAlert } from "lucide-react";
-import { SearchInput, Disclosure, IconButton, PageHeading, Popover, PopoverContent, PopoverTrigger, dsIcon, dsText } from "../ds/ui.js";
+import { SearchInput, Disclosure, IconButton, PageHeading, Popover, PopoverContent, PopoverTrigger, Skeleton, dsIcon, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import { CAPABILITY_SPECS, capabilityMatrix, type CapabilityCell, type CapabilityRow } from "./settings-capabilities-model.js";
 import { useSettingsFacts } from "./settings-facts-model.js";
 import { FactsPane } from "./settings-facts.js";
+import { LoadingRegion, SkeletonText } from "./loading.js";
+
+function CapabilitiesSkeleton({ labels }: { labels: readonly string[] }) {
+  return <LoadingRegion label="Loading workflow operations" className="workflow-operations-list"><div className="workflow-operations-heading"><h3>Supported operations</h3></div>
+    {labels.map((label, index) => <div key={label} className="workflow-operations-card overflow-hidden rounded-lg border border-ui-stroke bg-ui-panel">
+      <div className="ds-disclosure-body"><div className="ds-disclosure-trigger flex items-center justify-between"><span className="ds-disclosure-body-title">{label}</span><Skeleton className="size-3" /></div></div>
+      {index === 0 && <div className="workflow-operations-content"><dl className="workflow-operations-grid">{CAPABILITY_SPECS.map(spec => <div key={spec.key} className="workflow-operation"><dt className="workflow-operation-label">{spec.label}</dt><dd className="workflow-operation-status"><SkeletonText className="w-20" /></dd><dd className="workflow-operation-detail"><SkeletonText className="w-4/5" /></dd></div>)}</dl><div className="workflow-operations-boundary"><SkeletonText className="w-3/4" /></div></div>}
+    </div>)}
+  </LoadingRegion>;
+}
 
 function CapabilityValue({ cell }: { cell: CapabilityCell }) {
   const Icon = cell.state === "available" ? Check : cell.state === "not-built" ? TriangleAlert : Minus;
@@ -55,7 +65,7 @@ export function CapabilitiesSection({ workflowLabels, integrated = false, workfl
   return <div className={integrated ? "preflight-workflow-operations" : "settings-reference-page"} aria-label={integrated ? "Workflow operations" : undefined}>
     {!integrated && <PageHeading as="h2" title="Workflow capabilities" description="Available workflow operations and dry-run boundaries." />}
     {!integrated && <SearchInput aria-label="Find workflow capabilities" placeholder="Find a workflow…" value={query} onChange={event => setQuery(event.target.value)} onClear={() => setQuery("")} />}
-    <FactsPane facts={facts}>{loaded => {
+    <FactsPane facts={facts} loading={<CapabilitiesSkeleton labels={workflowId ? [workflowLabels.get(workflowId) ?? workflowId] : [...workflowLabels.values()]} />}>{loaded => {
       const matrix = capabilityMatrix(loaded.workflowCapabilities, workflowLabels);
       if (matrix.length === 0) return <p className={dsText.body}>This build registers no workflows. The served descriptor registry is empty.</p>;
       const matching = matrix.filter(row => workflowId ? row.workflowId === workflowId : row.label.toLowerCase().includes(query.trim().toLowerCase()));

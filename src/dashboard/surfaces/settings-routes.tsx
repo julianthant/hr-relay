@@ -1,5 +1,6 @@
+import { SettingsSectionSkeleton } from "./settings-loading.js";
 import { useContext, useEffect, useRef, useState } from "react";
-import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter, Field, FormGroup, Input, PageHeading, SearchInput, Spinner, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, Dialog, DialogContent, DialogFooter, Field, FormGroup, Input, PageHeading, SearchInput, dsText } from "../ds/ui.js";
 import { cn } from "../lib/utils.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { settingInput } from "./settings-draft-model.js";
@@ -15,7 +16,7 @@ export function RoutesSection({ editor }: { editor: ReturnType<typeof useEditabl
   useEffect(() => { if (target !== undefined) setQuery(""); }, [target, visit]);
   const [removal, setRemoval] = useState<{ hasSaved: boolean; label: string } | null>(null);
   const removeTrigger = useRef<HTMLElement | null>(null);
-  if (editor.editor.state === "loading") return <Spinner label="Reading routes" />;
+  if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="routes" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Routes could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "routes");

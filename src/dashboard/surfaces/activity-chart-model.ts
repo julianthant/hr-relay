@@ -11,6 +11,10 @@ const GRANULARITY_TITLE: Record<ActivityVolumeGranularity, string> = {
   yearly: "Yearly volume",
 };
 
+export function activityVolumeTitle(granularity: ActivityVolumeGranularity): string {
+  return GRANULARITY_TITLE[granularity];
+}
+
 const GRANULARITY_UNIT: Record<ActivityVolumeGranularity, string> = {
   hourly: "hour",
   daily: "day",

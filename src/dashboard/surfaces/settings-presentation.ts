@@ -55,6 +55,12 @@ function humanize(value: string): string {
   })[word.toLowerCase()] ?? word).replace(/^./u, first => first.toUpperCase());
 }
 
+export function settingPlaceholderCopy(path: string): { label: string; description?: string } {
+  const label = TITLES[path];
+  if (label === undefined) throw new Error(`settings-placeholder-copy-missing:${path}`);
+  return { label, description: NOTES[path] };
+}
+
 export function settingObjectFieldTitle(name: string): string {
   return ({
     timeoutMs: "Timeout (ms)",

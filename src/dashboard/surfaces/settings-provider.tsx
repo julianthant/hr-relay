@@ -1,7 +1,8 @@
+import { SettingsSectionSkeleton } from "./settings-loading.js";
 import { Form } from "@heroui/react";
 import { useReducer, useRef } from "react";
 import type { EditableSettingsLeafWire } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, Field, FormGroup, Input, PageHeading, RankedList, Spinner, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, Field, FormGroup, Input, PageHeading, RankedList, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -91,7 +92,7 @@ function ModelEditor({ editor, leaf, first }: { editor: Editor; leaf: EditableSe
 }
 
 export function ProviderSettingsSection({ editor }: { editor: Editor }) {
-  if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
+  if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="providers" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "providers");

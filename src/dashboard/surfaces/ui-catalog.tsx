@@ -1,3 +1,4 @@
+import { CatalogSkeleton } from "./loading.js";
 import { observeAsyncResource } from "../state/async-resource.js";
 import "./reference-settings.css";
 /** The committed catalog is read-only; a stale artifact is a visible refusal. */
@@ -15,7 +16,6 @@ PageHeading,
 ResultRow,
 SearchInput,
 SectionLabel,
-Spinner,
 Tab,
 TabList,
 TabPanel,
@@ -309,9 +309,7 @@ export function UiCatalogSection({
                 : `${String(rail.matchedCount)} of ${String(wire.entries.length)} entries`}
             </span>}
           </div>
-          {resource.state === "loading" && <div className="flex items-center gap-[var(--ds-space-tight)] text-[color:var(--ds-fg-muted)]">
-            <Spinner label="Loading the UI catalog" /><span className={dsText.body}>Reading the committed catalog…</span>
-          </div>}
+          {resource.state === "loading" && <CatalogSkeleton />}
           {resource.state === "failed" && <Banner tone="danger" title="The committed UI catalog could not be served">{resource.error.message}</Banner>}
           {wire !== undefined && selected === undefined && <EmptyState icon={<CircleAlert aria-hidden className={dsIcon.lg} />}
             title={`Nothing in the catalog matches “${query}”`}

@@ -2,9 +2,9 @@ import { type ReactNode } from "react";
 import {
 type SettingsFactsWire
 } from "../../domain/dashboard/settings.js";
-import { Banner,dsText,Spinner } from "../ds/ui.js";
-import { cn } from "../lib/utils.js";
+import { Banner } from "../ds/ui.js";
 import { useSettingsFacts } from "./settings-facts-model.js";
+import { LoadingRegion, SettingsRowsSkeleton } from "./loading.js";
 
 
 /* ── the two served status sections (D274 item 6, ledger 3 SE40–SE42) ─────── */
@@ -18,34 +18,17 @@ import { useSettingsFacts } from "./settings-facts-model.js";
  * the failed arm names the failure, in an `alert`, instead of rendering an
  * honest-looking page of nothing.
  */
-const FACTS_LOADING = "Loading deployment facts";
-
-
 export function FactsPane({
   facts,
   children,
+  loading,
 }: {
   facts: ReturnType<typeof useSettingsFacts>;
   children: (loaded: SettingsFactsWire) => ReactNode;
+  loading?: ReactNode;
 }) {
   if (facts.state === "loading") {
-    return (
-      <span
-        className={cn(
-          dsText.meta,
-          "flex items-center gap-[var(--ds-space-snug)] p-[var(--ds-space-cozy)]",
-          "text-[color:var(--ds-fg-muted)]",
-        )}
-      >
-        {/* The spinner IS the `role="status"` here, so its name is what a
-            screen reader reads — it carries the real sentence rather than
-            "Loading" over the top of it, and the visible copy is hidden from
-            the tree so the one fact is announced once. ONE expression feeds
-            both halves, the way intake's review checkbox does. */}
-        <Spinner label={FACTS_LOADING} />
-        <span aria-hidden>{FACTS_LOADING}…</span>
-      </span>
-    );
+    return loading ?? <LoadingRegion label="Loading deployment facts"><SettingsRowsSkeleton rows={4} wide presentation="result" /></LoadingRegion>;
   }
   if (facts.state === "failed") {
     return (

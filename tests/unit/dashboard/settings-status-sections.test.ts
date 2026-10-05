@@ -308,7 +308,8 @@ describe("the F11b review fixes", () => {
 describe("the async arms (D275 item 4)", () => {
   it("says facts are loading instead of drawing an empty matrix", async () => {
     const text = await mount(SETTINGS_WORKFLOW_CAPABILITIES_SECTION_ID, pending);
-    assert.ok(text.includes("Loading deployment facts"), text);
+    assert.ok(mounted().querySelector('[role="status"][aria-label="Loading workflow operations"]'));
+    assert.ok(mounted().querySelector('[data-slot="skeleton"]'));
     assert.ok(!text.includes("Where a dry run stops"), text);
   });
 

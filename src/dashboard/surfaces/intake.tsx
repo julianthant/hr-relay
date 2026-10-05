@@ -1,3 +1,4 @@
+import { IntakeOutcomeSkeleton, IntakeSkeleton } from "./loading.js";
 import { observeResource } from "../state/async-resource.js";
 import { Checkbox as HeroCheckbox } from "@heroui/react";
 /**
@@ -92,7 +93,6 @@ PopoverTrigger,
 Refusal,
 SectionLabel,
 Select,
-Skeleton,
 Tab,
 Table,
 TabList,
@@ -1605,7 +1605,7 @@ function IntakeSessionWorkspace({
 
   const body = ((): ReactNode => {
     if (resource.state === "loading") {
-      return <Skeleton className="h-[var(--ds-h-review-page-min)] w-full" />;
+      return <IntakeSkeleton />;
     }
     if (resource.state === "failed") {
       return (
@@ -1765,6 +1765,7 @@ function IntakeSessionWorkspace({
       <PanelBody className="flex min-h-0 flex-1 flex-col gap-[var(--ds-space-loose)] overflow-y-auto p-[var(--ds-space-loose)]">
         {body}
       </PanelBody>
+      {resource.state === "loading" && <IntakeOutcomeSkeleton />}
       {resource.state === "loaded" && (
         <OutcomeBand
           session={resource.session}

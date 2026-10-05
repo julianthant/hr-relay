@@ -352,3 +352,18 @@ Focused unit, browser, lint, affected TypeScript and architecture evidence is re
 empty/loading/unavailable states, pings, exact destinations, OCR editing/approval, new-run updates,
 keyboard focus, overflow and zero write requests. Full repository and frozen parity gates, including
 the inherited concrete-workflow-ID guard conflict, remain owned by 3.1.19.
+
+## Page loading presentation
+
+Loading states use the shared DS Skeleton with page-specific geometry: Settings groups and control
+widths, Activity metrics/tables/chart, catalog columns, titled diagnostics, notification rows, session
+cards, queue cards, Logs and intake mapping/actions. OCR image placeholders fill the fixed PDF frame;
+zoom waits for the image while record fields remain editable. Placeholder values never imply a check
+passed or data is empty. Known reports remain visible during refresh, and failures retain their
+explicit messages. Decorative placeholders are hidden from assistive technology; loading regions
+announce their status, and reduced motion disables the pulse. Synchronous local pages add no fake delay.
+
+Focused geometry and interaction checks include dark/light at 1024 and 1440 pixels, screenshot/a11y
+pairs, initial bootstrap, queue errors, intake and OCR image loading/failure. Evidence is retained
+under `page-skeletons-20261005`. Existing frozen references remain unchanged. Full repository gates
+and the inherited concrete-workflow-ID guard conflict remain with 3.1.19.

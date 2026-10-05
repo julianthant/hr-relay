@@ -1,6 +1,7 @@
+import { SettingsSectionSkeleton } from "./settings-loading.js";
 import { Form } from "@heroui/react";
 import type { EditableSettingsLeafWire, EditorValue } from "../../domain/dashboard/settings-editor.js";
-import { Banner, BodySection, Button, Field, FormGroup, PageHeading, Spinner, UnitField, dsText } from "../ds/ui.js";
+import { Banner, BodySection, Button, Field, FormGroup, PageHeading, UnitField, dsText } from "../ds/ui.js";
 import { formatSetting, settingInput } from "./settings-draft-model.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { SettingsSaveFeedback } from "./settings-feedback.js";
@@ -51,7 +52,7 @@ function PerformanceRow({ editor, leaf }: { editor: Editor; leaf: EditableSettin
 }
 
 export function PerformanceSettingsSection({ editor }: { editor: Editor }) {
-  if (editor.editor.state === "loading") return <Spinner label="Reading editable settings" />;
+  if (editor.editor.state === "loading") return <SettingsSectionSkeleton section="performance" />;
   if (editor.editor.state === "failed") return <Banner tone="danger" title="Editable settings could not be read"><Button size="sm" onClick={editor.reload}>Try again</Button></Banner>;
   const document = editor.editor.document;
   const section = document.sections.find(candidate => candidate.id === "performance");

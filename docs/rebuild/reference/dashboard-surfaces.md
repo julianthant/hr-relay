@@ -7412,6 +7412,18 @@ count on the right. Its redundant summary description and standalone Checked tim
 Loading labels, refused scopes and explicit previous-result warnings preserve the served readiness
 and freshness distinctions. Compact Preflight dialogs retain their report timestamps. Focused evidence
 is retained in `preflight-summary-card-20261005`.
+Loading placeholders follow each mounted page's existing geometry. General, Paths, Performance,
+Routes, provider budgets and Credentials retain their headings, group order, row spacing and control
+widths. Activity keeps its metric cards, tables and chart frame; the UI catalog retains its two-column
+browser. Storage and Preflight keep their titled summary and check rows. Notifications, Sessions,
+queue, Logs and spreadsheet intake use placeholders for their own cards, columns and fixed actions.
+OCR source images fill the fitted PDF frame while loading, with zoom disabled until the image arrives
+and extracted fields remaining editable. Unknown data uses representative rows without inventing
+values or readiness. Existing reports remain visible during refresh; failed and empty states stay
+distinct. The shared DS Skeleton uses a quiet pulse, disabled for reduced motion, and loading regions
+announce one status while decorative placeholders remain hidden from assistive technology. Synchronous
+local previews do not add artificial delays. Focused evidence is retained in `page-skeletons-20261005`;
+full repository and frozen-reference gates remain with 3.1.19.
 Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
 corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
 left edge of their rail and use one interruptible 220ms transform transition between pointer-selected
