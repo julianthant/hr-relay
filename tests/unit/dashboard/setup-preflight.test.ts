@@ -137,10 +137,10 @@ it("Settings labels the last completed report as historical without current-read
   host=document.createElement("div");document.body.append(host);
   await act(async()=>{root=createRoot(host as HTMLElement);root.render(createElement(DashboardClientProvider,{client,children:createElement(PreflightActionsProvider,{actions,children:createElement(PreflightReportContent,{presentation:"settings",preflight:projected,onRerun(){}})})}));});
   assert.match(host.textContent??"",/Previous result/u);
-  assert.match(host.textContent??"",/Last checked/u);
+  assert.match(host.textContent??"",/Previous check/u);
   assert.match(host.textContent??"",/Run checks again for current readiness/u);
   assert.doesNotMatch(host.textContent??"",/Ready to run|Technical details|Scope details/u);
-  assert.equal(host.querySelectorAll("time").length,1);
+  assert.equal(host.querySelectorAll("time").length,0);
 });
 
 it("Settings directs missing SharePoint roster configuration to Routes",async()=>{

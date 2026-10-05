@@ -7,7 +7,6 @@ import { usePreflightScope } from "../state/preflight-client.js";
 import type { useEditableSettings } from "./settings-editor-model.js";
 import { preflightRemedy, preflightVerdict } from "./preflight-popover-model.js";
 import type { PreflightRerunState } from "./settings-preflight-model.js";
-import { fmtClock } from "./format.js";
 import type { PreflightCheckWire } from "./preflight-popover-model.js";
 import type { EditableSettingsWire } from "../../domain/dashboard/settings-editor.js";
 import "./diagnostic-presentation.css";
@@ -137,24 +136,20 @@ function SettingsPreflightReport({ preflight, onRerun, protectedSettings, workfl
         {preflight.state === "running" || (preflight.state === "historical" && preflight.checking) ? "Running checks…" : "Run checks again"}
       </Button>
     </>} />
-    <div className="diagnostic-status">
-      {scope.state === "unavailable" && <span>Workflow scopes could not be read.</span>}
-      {displayed !== undefined && <span>{historical ? "Last checked" : "Checked"} <time dateTime={displayed.report.checkedAt}>{fmtClock(displayed.report.checkedAt)}</time></span>}
-      {displayed === undefined && <span>{preflight.state === "running" ? "Checking readiness…" : "No current check"}</span>}
-    </div>
+    {scope.state === "unavailable" && <p className="diagnostic-status">Workflow scopes could not be read.</p>}
+    <BodySection title="Status">
     {preflight.state === "refused" && <Banner tone="warning" title="Readiness unavailable">{preflight.message}</Banner>}
     {historical && <Banner tone="warning" title="Previous result">{preflight.message} Run checks again for current readiness.</Banner>}
     {preflight.state !== "refused" && <FormGroup label="Readiness summary" className="diagnostic-summary">
-      <ResultRow label={<span className="diagnostic-summary-label">
+      <ResultRow controlWidth="wide" label={<span className="diagnostic-summary-label">
         <StatusDot status={historical ? "queued" : displayed === undefined ? preflight.state === "running" ? "running" : "queued"
           : verdict === "fail" ? "failed" : verdict === "warning" ? "doneWarnings" : "verifiedDone"} />
         {historical ? "Previous check" : displayed === undefined ? preflight.state === "running" ? "Checking readiness" : "Loading readiness"
           : attentionCount === 0 ? "Ready to run" : `${attentionCount} ${attentionCount === 1 ? "check needs" : "checks need"} attention`}
       </span>}
-        description={historical ? "Last completed result. Run checks again before starting work." : displayed === undefined ? preflight.state === "running" ? "The current scope is being checked." : "No current preflight report. Loading readiness…"
-          : attentionCount === 0 ? "All returned checks passed for this scope." : "Review the failed or warning checks before starting the affected workflow."}
         value={<span className="diagnostic-summary-meta">{displayed === undefined ? "No current result" : `${displayed.checks.length} returned checks`}</span>} />
     </FormGroup>}
+    </BodySection>
     {displayed !== undefined && <>
       <SettingsPreflightGroup title="Workflow readiness" checks={workflowChecks} protectedSettings={historical ? undefined : protectedSettings}>
         {workflowLabels && <CapabilitiesSection integrated workflowLabels={workflowLabels} workflowId={scope.selected === "dashboard" ? undefined : scope.selected} />}

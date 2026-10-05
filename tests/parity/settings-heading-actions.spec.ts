@@ -5,6 +5,7 @@ import { installTheme, PARITY_THEMES } from "./helpers/capture.js";
 import { startFixtureServer } from "./helpers/fixture-bff.js";
 import { startSetupPreflightServer } from "./helpers/fixture-setup-preflight.js";
 import { FIXTURE_STORAGE_DOCTOR } from "./helpers/fixture-storage.js";
+import { PreflightReadinessWireSchema } from "../../src/domain/preflight-contract.js";
 
 async function assertHeadingActions(surface: Locator): Promise<void> {
   const heading = surface.locator(".ds-page-heading").first();
@@ -115,8 +116,26 @@ for (const theme of PARITY_THEMES) for (const width of [1024, 1440]) {
       const running = heading.getByRole("button", { name: "Running checks…", exact: true });
       await expect(running).toBeDisabled();
       release!();
-      await expect(surface.locator("time")).toHaveAttribute("dateTime", server.now);
+      const summary = surface.getByRole("group", { name: "Readiness summary", exact: true });
+      await expect(summary).toBeVisible();
       await expect(rerun).toBeEnabled();
+      const readUrl = new URL("/api/v1/preflight", server.baseUrl);
+      readUrl.searchParams.set("selection", JSON.stringify({ workflowId: server.scope }));
+      const read = await page.context().request.get(readUrl.toString());
+      expect(read.ok()).toBe(true);
+      const served = PreflightReadinessWireSchema.parse(await read.json());
+      expect(served.state).toBe("present");
+      if (served.state !== "present") throw new Error("PREFLIGHT_RERUN_REPORT_MISSING");
+      expect(served.report.checkedAt).toBe(server.now);
+      await expect(surface.locator("time")).toHaveCount(0);
+      await expect(surface.locator(".diagnostic-status")).toHaveCount(0);
+      await expect(surface.getByRole("heading", { name: "Status", exact: true })).toBeVisible();
+      const copy = summary.locator(".ds-result-row-copy"), count = summary.locator(".ds-result-row-side");
+      await expect(copy.locator(".ds-field-description")).toHaveCount(0);
+      await expect(count).toHaveText(`${served.report.results.length} returned checks`);
+      const copyBounds = (await copy.boundingBox())!, countBounds = (await count.boundingBox())!;
+      expect(countBounds.x).toBeGreaterThan(copyBounds.x + copyBounds.width);
+      expect(Math.abs(countBounds.y + countBounds.height / 2 - copyBounds.y - copyBounds.height / 2)).toBeLessThanOrEqual(2);
       await assertHeadingActions(surface);
       expect(server.requests.some(request => request.method === "POST" && request.path === "/api/v1/preflight/rerun" && request.status === 200)).toBe(true);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);

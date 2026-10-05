@@ -7407,6 +7407,11 @@ optional exact error. Current bootstrap degradation remains prominent, and a deg
 also prevents an available summary. Doctor and recovery authority are unchanged.
 Focused verification belongs to `storage-health-polish-20261005`, with restored headings verified
 in `storage-section-headings-20261005`; full frozen parity remains at 3.1.19.
+Preflight uses the same compact Status section: readiness label and dot on the left, returned-check
+count on the right. Its redundant summary description and standalone Checked timestamp are retired.
+Loading labels, refused scopes and explicit previous-result warnings preserve the served readiness
+and freshness distinctions. Compact Preflight dialogs retain their report timestamps. Focused evidence
+is retained in `preflight-summary-card-20261005`.
 Settings search arrival cues extend across a full-width row's card padding, with the card clipping its
 corners. Focus and centering remain on the exact requested control. Shared underline tabs begin at the
 left edge of their rail and use one interruptible 220ms transform transition between pointer-selected

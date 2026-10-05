@@ -106,6 +106,10 @@ disclosures. Unavailable states and failed refreshes retain their evidence and l
 Doctor authority remains unchanged. Focused verification for the 2026-10-05 amendment is
 `storage-health-polish-20261005`, with restored headings verified in `storage-section-headings-20261005`;
 frozen parity stays at 3.1.19.
+Preflight's first card matches the compact storage summary under Status, with readiness on the left
+and the returned-check count on the right. The repeated summary description and standalone Checked
+timestamp are removed. Loading, unavailable and previous-result states retain their labels and
+warnings; compact Preflight dialogs retain timestamps. Evidence: `preflight-summary-card-20261005`.
 The Run picker reuses permanent-rail category icons, order, row geometry and text alignment. It
 filters direct-launch eligibility from served typed-input capability or an explicit preview `runnable`
 flag; OCR and I-9 Lookup stay in their panels and Explorer but disappear from Start a run. Picker
